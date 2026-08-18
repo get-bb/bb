@@ -201,6 +201,7 @@ function createProps(
       onParentSelectorOpenChange: noop,
       onRetryParentThreads: noop,
       onMergeBaseBranchChange: noop,
+      parentThreadProjectId: null,
       parentThreadDisplayName: null,
       parentThreads: [],
       isLoadingParentThreads: false,

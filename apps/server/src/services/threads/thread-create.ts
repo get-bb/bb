@@ -646,7 +646,6 @@ export async function createThreadFromRequest(
   const parentThread = hierarchyParentThreadId
     ? assertValidParentThread(deps, {
         parentThreadId: hierarchyParentThreadId,
-        projectId: requestInput.projectId,
       })
     : null;
   if (originKind === null && sourceThreadId !== undefined) {
@@ -674,7 +673,6 @@ export async function createThreadFromRequest(
     // the same spawn allowance exposed as ThreadResponse.canSpawnChild.
     assertValidParentThread(deps, {
       parentThreadId: sourceThread.id,
-      projectId: requestInput.projectId,
     });
   }
   if (originKind !== null && sourceThread === null) {

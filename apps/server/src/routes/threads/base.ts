@@ -344,7 +344,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       assertValidParentThread(deps, {
         childThreadId: thread.id,
         parentThreadId: payload.parentThreadId,
-        projectId: thread.projectId,
       });
     }
 

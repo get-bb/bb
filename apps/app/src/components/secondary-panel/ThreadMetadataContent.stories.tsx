@@ -39,6 +39,7 @@ export function Overview() {
       >
         {render({
           thread: makeThread({ parentThreadId: "thr_codex_parent" }),
+          parentThreadProjectId: null,
           parentThreadDisplayName: "Codex Parent",
           canAssignToParent: false,
           canTakeOverThread: true,

@@ -12,6 +12,7 @@ import type { ThreadListEntry } from "@bb/domain";
 import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { Icon } from "@bb/shared-ui/icon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { NavLink } from "react-router-dom";
 import {
@@ -73,7 +74,10 @@ import { usePaneContentSplitIndicator } from "./paneContentSplitIndicator";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
 import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
-import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
+import {
+  useSidebarProjectName,
+  useThreadTitleDisplayText,
+} from "@/components/thread/ThreadTitleMentions";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { usePluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
 
@@ -121,6 +125,9 @@ export type ThreadRowOptions =
 interface ThreadRowProps {
   projectId: string;
   thread: ThreadListEntry;
+  // Set when the thread lives in a different project than the group or parent
+  // it renders under; the row then shows a cross-project marker. Null otherwise.
+  crossProjectId: string | null;
   isActive: boolean;
   hasComposerDraft: boolean;
   onProjectSelect?: () => void;
@@ -492,6 +499,7 @@ function ThreadTrailingIndicator({
 function ThreadRowComponent({
   projectId,
   thread,
+  crossProjectId,
   isActive,
   hasComposerDraft,
   onProjectSelect,
@@ -523,6 +531,13 @@ function ThreadRowComponent({
   // Inside a section the row shows the leaf but keeps the full path for a11y.
   const visibleTitle = displayTitle ?? threadTitle;
   const labelTitle = useThreadTitleDisplayText(accessibleTitle ?? threadTitle);
+  const crossProjectName = useSidebarProjectName(crossProjectId);
+  const crossProjectLabel =
+    crossProjectId === null
+      ? null
+      : crossProjectName
+        ? `In project ${crossProjectName}`
+        : "In another project";
   const handleRename = useCallback(
     (nextTitle: string) => {
       renameThread(thread.id, nextTitle);
@@ -712,6 +727,23 @@ function ThreadRowComponent({
             <SidebarThreadTitle title={visibleTitle} />
           </span>
         )}
+        {crossProjectLabel !== null ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                data-sidebar-thread-cross-project=""
+                role="img"
+                aria-label={crossProjectLabel}
+                // Sits above the row's full-size link so it can take hover;
+                // nudged 1px down so the glyph reads centered on the text.
+                className="relative top-px z-10 flex shrink-0 items-center text-muted-foreground"
+              >
+                <Icon name="FolderExport" className="size-3.5" aria-hidden />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top">{crossProjectLabel}</TooltipContent>
+          </Tooltip>
+        ) : null}
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
             isCollapsed={isParentCollapsed}

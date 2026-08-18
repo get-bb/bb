@@ -363,6 +363,41 @@ export function useThreads(filters: UseThreadsFilters, options?: QueryOptions) {
   });
 }
 
+interface UseChildThreadsArgs {
+  enabled: boolean;
+  parentThreadId: string | undefined;
+}
+
+/**
+ * Live children of one parent across every project. A child may live in a
+ * different project than its parent, so this list is keyed by parent only and
+ * never derived from a project-scoped thread list.
+ */
+export function useChildThreads({
+  enabled: enabledOption,
+  parentThreadId,
+}: UseChildThreadsArgs) {
+  const enabled = enabledOption && Boolean(parentThreadId);
+  useThreadListRealtimeSubscription({ enabled });
+  return useQuery<ThreadListResponse>({
+    queryKey:
+      enabled && parentThreadId
+        ? threadListQueryKey({ archived: false, parentThreadId })
+        : disabledThreadListQueryKey({ archived: false }),
+    queryFn: ({ signal }) =>
+      sdk.threads.list({
+        archived: false,
+        parentThreadId: requireThreadId(
+          parentThreadId ?? "",
+          "useChildThreads",
+        ),
+        signal,
+      }),
+    enabled,
+    staleTime: THREAD_LIST_STALE_TIME_MS,
+  });
+}
+
 export function useProjectThreadSubset({
   enabled: enabledOption,
   filters,

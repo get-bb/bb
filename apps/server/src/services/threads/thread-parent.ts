@@ -41,13 +41,11 @@ export type ParentThread = Pick<
 
 export interface IsLiveParentThreadArgs {
   parentThread: ParentThread | null;
-  projectId: string;
 }
 
 export interface AssertValidParentThreadArgs {
   childThreadId?: string;
   parentThreadId: string;
-  projectId: string;
 }
 
 interface ResolveParentDepthArgs {
@@ -64,10 +62,13 @@ function toParentThread(thread: Thread): ParentThread {
   return thread;
 }
 
+/**
+ * A live parent may belong to another project: agents delegate work across
+ * repositories, and the child still reports to and inherits policy from it.
+ */
 export function isLiveParentThread(args: IsLiveParentThreadArgs): boolean {
   return (
     args.parentThread !== null &&
-    args.parentThread.projectId === args.projectId &&
     args.parentThread.archivedAt === null &&
     args.parentThread.deletedAt === null
   );
@@ -158,9 +159,6 @@ export function assertValidParentThread(
   }
   const liveParentThread: Thread = parentThread;
 
-  if (liveParentThread.projectId !== args.projectId) {
-    throwParentThreadInvalid("wrong_project");
-  }
   if (liveParentThread.archivedAt !== null) {
     throwParentThreadInvalid("archived");
   }

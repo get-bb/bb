@@ -272,6 +272,7 @@ function ThreadRowStatusFixture() {
                 <SidebarMenuItem>
                   <ThreadRow
                     projectId={PROJECT_ID}
+                    crossProjectId={null}
                     thread={makeThreadListEntry({
                       id: THREAD_ID,
                       projectId: PROJECT_ID,

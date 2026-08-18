@@ -470,6 +470,19 @@ export function useThreadTitleDisplayText(title: string): string {
   );
 }
 
+/**
+ * Looks up a project name from the sidebar's already-loaded metadata. Returns
+ * undefined outside the provider or for an unknown project.
+ */
+export function useSidebarProjectName(
+  projectId: string | null,
+): string | undefined {
+  const resources = useContext(ThreadTitleMentionResourcesContext);
+  return projectId === null
+    ? undefined
+    : resources.projectNamesById.get(projectId);
+}
+
 /** Resolves a thread mention from the sidebar's already-loaded metadata. */
 export function useSidebarThreadMentionResource(
   threadId: string,

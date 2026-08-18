@@ -44,11 +44,7 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
   BranchPicker,
   getMergeBaseBranchCandidateGroups,
@@ -94,6 +90,9 @@ const GITHUB_DARK_FAVICON_URL =
 export interface ParentSelectorRowProps {
   thread: Thread;
   projectId: string;
+  // Project of the current parent thread. A parent may live in another project,
+  // so the link routes through it. Null until the parent record loads.
+  parentThreadProjectId: string | null;
   parentThreadDisplayName: string | null;
   parentThreads: readonly ThreadListEntry[];
   canAssignToParent: boolean;
@@ -111,6 +110,7 @@ export interface ParentSelectorRowProps {
 export function ParentSelectorRow({
   thread,
   projectId,
+  parentThreadProjectId,
   parentThreadDisplayName,
   parentThreads,
   canAssignToParent,
@@ -156,7 +156,10 @@ export function ParentSelectorRow({
           )}
         >
           <Link
-            to={getThreadRoutePath({ projectId, threadId: parentThreadId })}
+            to={getThreadRoutePath({
+              projectId: parentThreadProjectId ?? projectId,
+              threadId: parentThreadId,
+            })}
             className={cn(
               "min-w-0 truncate text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2",
               COARSE_POINTER_TEXT_SM_CLASS,
@@ -897,6 +900,7 @@ export function ThreadStorageRow({
 export interface ThreadMetadataContentProps {
   thread: Thread;
   projectId: string;
+  parentThreadProjectId: string | null;
   parentThreadDisplayName: string | null;
   parentThreads: readonly ThreadListEntry[];
   canAssignToParent: boolean;
@@ -1013,6 +1017,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
   const {
     thread,
     projectId,
+    parentThreadProjectId,
     parentThreadDisplayName,
     parentThreads,
     canAssignToParent,
@@ -1047,6 +1052,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
       <ParentSelectorRow
         thread={thread}
         projectId={projectId}
+        parentThreadProjectId={parentThreadProjectId}
         parentThreadDisplayName={parentThreadDisplayName}
         parentThreads={parentThreads}
         canAssignToParent={canAssignToParent}

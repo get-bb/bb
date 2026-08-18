@@ -308,6 +308,9 @@ environment pull-request show <id>`. Diff commands require an explicit target
 - Use `--parent-self` inside a thread to parent the new thread to the current
   thread.
 - Use `--parent-thread <thread-id>` to choose another specific parent.
+- A parent can live in a different project. Pass `--project <other-id>` with
+  `--parent-self` to delegate work in another repository; the child still
+  reports back to its parent and stays under its parent's permission ceiling.
 - If provider or model choice matters, inspect options with `bb provider list`
   and `bb provider models <provider-id>`. Both accept `--machine <id-or-name>`
   (alias `--host`) or `--environment <id>` to inspect the machine where work

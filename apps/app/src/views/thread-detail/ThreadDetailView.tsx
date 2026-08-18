@@ -66,6 +66,7 @@ import {
 import {
   didThreadDetailBootstrapRefreshAfterMount,
   getLatestPendingInteraction,
+  useChildThreads,
   useProjectThreadSubset,
   useThread,
   useThreadDetailBootstrap,
@@ -829,16 +830,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     filters: EMPTY_PROJECT_THREAD_SUBSET_FILTERS,
     projectId,
   });
-  const childThreadSubsetFilters = useMemo<ProjectThreadSubsetFilters>(() => {
-    if (!thread?.id) {
-      return EMPTY_PROJECT_THREAD_SUBSET_FILTERS;
-    }
-    return { parentThreadId: thread.id };
-  }, [thread?.id]);
-  const childThreadSubsetQuery = useProjectThreadSubset({
+  // Children may live in other projects, so the list is keyed by parent only.
+  const childThreadSubsetQuery = useChildThreads({
     enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
-    filters: childThreadSubsetFilters,
-    projectId,
+    parentThreadId: thread?.id,
   });
   const parentThreads = useMemo(
     () =>
@@ -1931,10 +1926,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           ? threadSourceThreadId
           : thread?.parentThreadId;
       if (!thread || !relatedThreadId) return null;
-      const href = getThreadRoutePath({
-        projectId: thread.projectId,
-        threadId: relatedThreadId,
-      });
       // A side chat is a fork too, so it is tested first.
       const relationship = isSideChatThread
         ? "side-chat"
@@ -1943,6 +1934,12 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           : "parent";
       const relatedThread =
         relationship === "parent" ? parentThread : sourceThread;
+      // A hierarchy parent may live in another project, so the link routes
+      // through the parent's own project once it is loaded.
+      const href = getThreadRoutePath({
+        projectId: relatedThread?.projectId ?? thread.projectId,
+        threadId: relatedThreadId,
+      });
       if (relatedThread === undefined) {
         // Related record not yet loaded — show id-based fallback so the user
         // doesn't get a flicker of "no related thread" before resolution.
@@ -1957,7 +1954,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       if (
         relatedThread.archivedAt !== null ||
         relatedThread.deletedAt !== null ||
-        relatedThread.projectId !== thread.projectId
+        (relationship !== "parent" &&
+          relatedThread.projectId !== thread.projectId)
       ) {
         return null;
       }
@@ -2832,6 +2830,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           metadata={{
             thread,
             projectId,
+            parentThreadProjectId: parentThread?.projectId ?? null,
             parentThreadDisplayName: parentThreadDisplayName ?? null,
             parentThreads,
             canAssignToParent,

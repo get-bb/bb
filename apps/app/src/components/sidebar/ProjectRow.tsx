@@ -271,6 +271,8 @@ interface ProjectThreadTreeGroupProps {
 }
 
 interface ThreadTreeNodeRowProps {
+  // Project of the enclosing group for a root node, or of the parent thread for
+  // a child node. A node whose thread lives elsewhere gets a cross-project marker.
   projectId: string;
   node: ProjectThreadNode;
   depthOffset: number;
@@ -1651,8 +1653,10 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     ],
   );
   const showChildren = !isCollapsed && hasChildren;
-  const rowProjectId =
-    variant === "section" ? node.thread.projectId : projectId;
+  // Route and draft keys always use the thread's own project; a child may live
+  // in a different project than the parent it nests under.
+  const rowProjectId = node.thread.projectId;
+  const crossProjectId = rowProjectId !== projectId ? rowProjectId : null;
   const hasComposerDraft = usePromptDraftHasInput({
     kind: "thread",
     projectId: rowProjectId,
@@ -1671,6 +1675,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     <ThreadRow
       projectId={rowProjectId}
       thread={node.thread}
+      crossProjectId={crossProjectId}
       isActive={selectedThreadId === node.thread.id}
       hasComposerDraft={hasComposerDraft}
       onProjectSelect={onProjectSelect}
@@ -1705,7 +1710,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
               return (
                 <ThreadTreeItemRow
                   key={getItemKey(item)}
-                  projectId={projectId}
+                  projectId={rowProjectId}
                   item={item}
                   depthOffset={depthOffset}
                   selectedThreadId={selectedThreadId}

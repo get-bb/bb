@@ -56,6 +56,7 @@ export function ParentSelector() {
           <ParentSelectorRow
             thread={makeThread()}
             projectId={baseProps.projectId}
+            parentThreadProjectId={null}
             parentThreadDisplayName={null}
             parentThreads={parentThreads}
             canAssignToParent
@@ -74,6 +75,7 @@ export function ParentSelector() {
           <ParentSelectorRow
             thread={makeThread()}
             projectId={baseProps.projectId}
+            parentThreadProjectId={null}
             parentThreadDisplayName={null}
             parentThreads={[]}
             canAssignToParent={false}
@@ -92,6 +94,7 @@ export function ParentSelector() {
           <ParentSelectorRow
             thread={makeThread({ parentThreadId: "thr_codex_parent" })}
             projectId={baseProps.projectId}
+            parentThreadProjectId={null}
             parentThreadDisplayName="Codex Parent"
             parentThreads={parentThreads}
             canAssignToParent={false}
@@ -110,6 +113,7 @@ export function ParentSelector() {
           <ParentSelectorRow
             thread={makeThread()}
             projectId={baseProps.projectId}
+            parentThreadProjectId={null}
             parentThreadDisplayName={null}
             parentThreads={parentThreads}
             canAssignToParent

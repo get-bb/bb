@@ -388,12 +388,6 @@ function describeParentThreadInvalid({
           ? "The sender thread was deleted."
           : "That parent thread was deleted.",
       });
-    case "wrong_project":
-      return errorDescription({
-        operation,
-        title,
-        body: "Choose a parent thread from this project.",
-      });
     case "self":
       return errorDescription({
         operation,

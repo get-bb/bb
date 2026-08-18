@@ -176,6 +176,24 @@ describe("resolveCreateThreadEnvironment", () => {
     });
   });
 
+  it("defaults a child under a parent from another project to a managed worktree", () => {
+    expect(
+      resolveCreateThreadEnvironment({
+        parentThread: makeParentThread({ projectId: "proj-2" }),
+        projectId: "proj-1",
+        requestedEnvironment: {
+          type: "host",
+          hostId: "host-1",
+          workspace: { type: "unmanaged", path: null },
+        },
+      }),
+    ).toEqual({
+      type: "host",
+      hostId: "host-1",
+      workspace: { type: "managed-worktree", baseBranch: { kind: "default" } },
+    });
+  });
+
   it("keeps explicit same-environment reuse for child threads", () => {
     expect(
       resolveCreateThreadEnvironment({
@@ -190,6 +208,23 @@ describe("resolveCreateThreadEnvironment", () => {
       type: "reuse",
       environmentId: "env-1",
     });
+  });
+
+  it("does not reuse a personal parent environment from another project", () => {
+    const requestedEnvironment = {
+      type: "host",
+      workspace: { type: "personal" },
+    } as const;
+    expect(
+      resolveCreateThreadEnvironment({
+        parentThread: makeParentThread({
+          environmentId: "env-other-project-parent",
+          projectId: "proj-other",
+        }),
+        projectId: PERSONAL_PROJECT_ID,
+        requestedEnvironment,
+      }),
+    ).toEqual(requestedEnvironment);
   });
 
   it("defaults personal child threads to the parent environment", () => {
@@ -237,20 +272,6 @@ describe("resolveCreateThreadEnvironment", () => {
         },
       },
       name: "deleted parents",
-    },
-    {
-      args: {
-        parentThread: makeParentThread({
-          projectId: "proj-2",
-        }),
-        projectId: "proj-1",
-        requestedEnvironment: {
-          type: "host" as const,
-          hostId: "host-1",
-          workspace: { type: "unmanaged" as const, path: null },
-        },
-      },
-      name: "parents from another project",
     },
     {
       args: {
@@ -415,6 +436,21 @@ describe("resolveThreadExecutionPermissionMode", () => {
         parentThreadExecutionPermissionMode: "auto",
         thread: makeThread({
           parentThreadId: "thr-parent-1",
+          providerId: "codex",
+        }),
+      }),
+    ).toBe("auto");
+  });
+
+  it("clamps a child in another project to its parent's mode", () => {
+    expect(
+      resolveThreadExecutionPermissionMode(registry, {
+        requestedPermissionMode: "full",
+        parentThread: makeParentThread({ projectId: "proj-other" }),
+        parentThreadExecutionPermissionMode: "auto",
+        thread: makeThread({
+          parentThreadId: "thr-parent-1",
+          projectId: "proj-1",
           providerId: "codex",
         }),
       }),

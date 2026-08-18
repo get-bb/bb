@@ -311,6 +311,30 @@ function isRootThread(
   );
 }
 
+/**
+ * Resolve the project group that shows a thread in "By project" mode. A child
+ * follows its root ancestor, so a child from another project stays nested under
+ * its parent instead of appearing as a root in its own project. When the parent
+ * chain is not in the list (archived, hidden, or a cycle), the thread falls
+ * back to its own project.
+ */
+export function resolveSidebarProjectId(
+  thread: ThreadListEntry,
+  threadById: ReadonlyMap<string, ThreadListEntry>,
+): string {
+  const visitedThreadIds = new Set<string>([thread.id]);
+  let current = thread;
+  while (current.parentThreadId !== null) {
+    const parent = threadById.get(current.parentThreadId);
+    if (parent === undefined || visitedThreadIds.has(parent.id)) {
+      break;
+    }
+    visitedThreadIds.add(parent.id);
+    current = parent;
+  }
+  return current.projectId;
+}
+
 export function buildProjectThreadGroups(
   allProjectThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator = compareStandardThreads,

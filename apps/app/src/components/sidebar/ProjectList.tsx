@@ -83,6 +83,7 @@ import {
   compareByCreatedAtDescending,
   compareStandardThreads,
   isSidebarProjectThread,
+  resolveSidebarProjectId,
   type ProjectThreadItem,
   type SidebarSectionDefinition,
   type ThreadComparator,
@@ -1066,13 +1067,16 @@ function ProjectModeSections({
   const pathExistence = useHostPathExistence(workHostId, localPaths);
   const threadsByProject = useMemo(() => {
     const grouped = new Map<string, ThreadListEntry[]>();
+    const threadById = new Map(threads.map((thread) => [thread.id, thread]));
     for (const thread of threads) {
       if (effectivePinnedThreadIds.has(thread.id)) continue;
-      const existing = grouped.get(thread.projectId);
+      // Cross-project children render under their parent's project group.
+      const sidebarProjectId = resolveSidebarProjectId(thread, threadById);
+      const existing = grouped.get(sidebarProjectId);
       if (existing) {
         existing.push(thread);
       } else {
-        grouped.set(thread.projectId, [thread]);
+        grouped.set(sidebarProjectId, [thread]);
       }
     }
     return grouped;

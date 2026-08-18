@@ -10,6 +10,7 @@ import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
 import { SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
+import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
 import {
   NO_COLLAPSED_CHILD_ACTIVITY,
   type CollapsedChildActivity,
@@ -77,6 +78,7 @@ function UnreadDoneThreadRowCycle() {
   return (
     <StoryThreadRow
       projectId="proj_demo"
+      crossProjectId={null}
       thread={
         isUnreadDone
           ? makeThread({
@@ -103,6 +105,7 @@ function WorkflowActiveThreadRow() {
   return (
     <StoryThreadRow
       projectId="proj_demo"
+      crossProjectId={null}
       thread={makeThread({
         title: "Background workflow audit",
         titleFallback: "Background workflow audit",
@@ -124,6 +127,7 @@ function BackgroundCommandActiveThreadRow() {
   return (
     <StoryThreadRow
       projectId="proj_demo"
+      crossProjectId={null}
       thread={makeThread({
         title: "Background pixel gate",
         titleFallback: "Background pixel gate",
@@ -145,6 +149,7 @@ function BackgroundAgentActiveThreadRow() {
   return (
     <StoryThreadRow
       projectId="proj_demo"
+      crossProjectId={null}
       thread={makeThread({
         title: "Background agent review",
         titleFallback: "Background agent review",
@@ -166,6 +171,7 @@ function PlanModeActiveThreadRow() {
   return (
     <StoryThreadRow
       projectId="proj_demo"
+      crossProjectId={null}
       thread={makeThread({
         title: "Plan mode investigation",
         titleFallback: "Plan mode investigation",
@@ -187,6 +193,7 @@ function GoalActiveThreadRow() {
   return (
     <StoryThreadRow
       projectId="proj_demo"
+      crossProjectId={null}
       thread={makeThread({
         title: "Goal-driven cleanup",
         titleFallback: "Goal-driven cleanup",
@@ -208,6 +215,7 @@ function WorkflowAndRuntimeActiveThreadRow() {
   return (
     <StoryThreadRow
       projectId="proj_demo"
+      crossProjectId={null}
       thread={makeThread({
         title: "Workflow and foreground turn",
         titleFallback: "Workflow and foreground turn",
@@ -280,6 +288,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={makeThread()}
             isActive={false}
             options={defaultOption}
@@ -293,6 +302,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId={PERSONAL_PROJECT_ID}
+            crossProjectId={null}
             thread={makeThread({
               projectId: PERSONAL_PROJECT_ID,
               title: "Sketch launch checklist",
@@ -310,6 +320,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId={PERSONAL_PROJECT_ID}
+            crossProjectId={null}
             thread={makeThread({
               projectId: PERSONAL_PROJECT_ID,
               title: "Sketch launch checklist",
@@ -327,6 +338,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={makeThread()}
             isActive
             options={defaultOption}
@@ -340,6 +352,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={makeThread({
               status: "active",
               runtime: {
@@ -407,6 +420,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={makeThread({
               status: "active",
               hasPendingInteraction: true,
@@ -435,6 +449,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={makeThread({
               status: "error",
               lastReadAt: 50,
@@ -452,6 +467,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={makeThread({
               title: "Draft follow-up on release checklist",
               titleFallback: "Draft follow-up on release checklist",
@@ -469,6 +485,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={makeThread({
               title: "Editing while the agent works",
               titleFallback: "Editing while the agent works",
@@ -491,6 +508,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={makeThread({
               title: "Background thread with a saved draft",
               titleFallback: "Background thread with a saved draft",
@@ -513,6 +531,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={makeThread({
               title: "Review API migration notes",
               titleFallback: "Review API migration notes",
@@ -532,6 +551,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={makeThread({
               title:
                 "Investigate slow tests on recurring CI failures after the timeline pagination v2 merge",
@@ -549,6 +569,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={makeThread({
               title:
                 "Write a careful follow-up about the intermittent sidebar grouping bug after the next deploy",
@@ -568,6 +589,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={makeThread({
               environmentWorkspaceDisplayKind: "managed-worktree",
             })}
@@ -580,6 +602,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={makeThread({
               environmentWorkspaceDisplayKind: "unmanaged-worktree",
             })}
@@ -592,6 +615,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={makeThread({
               environmentWorkspaceDisplayKind: "unmanaged-worktree",
             })}
@@ -607,6 +631,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={parentThread}
             isActive={false}
             options={parentOption({ childCount: 0 })}
@@ -620,6 +645,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={parentThread}
             isActive={false}
             options={parentOption({
@@ -629,11 +655,48 @@ export function Overview() {
           />
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={childThread}
             isActive={false}
             options={childOption}
           />
         </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="parent with a child from another project"
+        hint="a child that lives in a different project than its parent shows the folder-export marker after its title; hover it for the project name"
+      >
+        <SidebarThreadTitleMentionResourcesProvider
+          sectionNamesById={new Map()}
+          projectNamesById={new Map([["proj_web", "web"]])}
+          threadById={new Map()}
+        >
+          <SidebarStage>
+            <StoryThreadRow
+              projectId="proj_demo"
+              crossProjectId={null}
+              thread={parentThread}
+              isActive={false}
+              options={parentOption({
+                isCollapsed: false,
+                childCount: 1,
+              })}
+            />
+            <StoryThreadRow
+              projectId="proj_web"
+              crossProjectId="proj_web"
+              thread={makeThread({
+                id: "thr_child_web",
+                projectId: "proj_web",
+                parentThreadId: parentThread.id,
+                title: "Update web client for release",
+                titleFallback: "Update web client for release",
+              })}
+              isActive={false}
+              options={childOption}
+            />
+          </SidebarStage>
+        </SidebarThreadTitleMentionResourcesProvider>
       </StoryRow>
       <StoryRow
         label="parent, collapsed"
@@ -642,6 +705,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={parentThread}
             isActive={false}
             options={parentOption({
@@ -658,6 +722,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={parentThread}
             isActive={false}
             options={parentOption({
@@ -675,6 +740,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={parentThread}
             isActive={false}
             options={parentOption({
@@ -692,6 +758,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={parentThread}
             isActive={false}
             options={parentOption({
@@ -712,6 +779,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={makeThread({
               ...childThread,
               status: "active",
@@ -732,6 +800,7 @@ export function Overview() {
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
+            crossProjectId={null}
             thread={makeThread({
               ...childThread,
               hasPendingInteraction: true,
@@ -813,6 +882,7 @@ export function SplitViewStatus() {
           <SidebarStage>
             <StoryThreadRow
               projectId="proj_demo"
+              crossProjectId={null}
               thread={makeThread({
                 id: "thr_split_idle",
                 title: "Static split position",
@@ -830,6 +900,7 @@ export function SplitViewStatus() {
           <SidebarStage>
             <StoryThreadRow
               projectId="proj_demo"
+              crossProjectId={null}
               thread={makeThread({
                 id: "thr_split_working",
                 title: "Working in split view",

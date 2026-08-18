@@ -157,10 +157,7 @@ function isManagedChildThread(args: IsManagedChildThreadArgs): boolean {
     return false;
   }
 
-  return isLiveParentThread({
-    parentThread: args.parentThread ?? null,
-    projectId: args.thread.projectId,
-  });
+  return isLiveParentThread({ parentThread: args.parentThread ?? null });
 }
 
 function resolveSupportedPermissionMode(
@@ -297,12 +294,14 @@ export async function resolveProjectDefaultThreadEnvironment(
 export function resolveCreateThreadEnvironment(
   args: ResolveCreateThreadEnvironmentArgs,
 ): EnvironmentArgs {
+  const parentThread = args.parentThread ?? null;
+  const hasLiveParent = isLiveParentThread({ parentThread });
+  // Only a same-project personal parent shares its environment. A parent from
+  // another project works in a different checkout, so the child keeps its own.
   if (
     args.projectId === PERSONAL_PROJECT_ID &&
-    isLiveParentThread({
-      parentThread: args.parentThread ?? null,
-      projectId: args.projectId,
-    }) &&
+    hasLiveParent &&
+    parentThread?.projectId === args.projectId &&
     isPersonalHostDefaultEnvironment(args.requestedEnvironment)
   ) {
     if (!args.parentThread?.environmentId) {
@@ -315,10 +314,7 @@ export function resolveCreateThreadEnvironment(
   }
 
   if (
-    isLiveParentThread({
-      parentThread: args.parentThread ?? null,
-      projectId: args.projectId,
-    }) &&
+    hasLiveParent &&
     isImplicitHostDefaultEnvironment(args.requestedEnvironment)
   ) {
     return {

@@ -117,10 +117,9 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
               transport.readJson(
                 transport.api.v1.threads.$get(
                   {
-                    query: {
-                      projectId: thread.projectId,
-                      parentThreadId: thread.id,
-                    },
+                    // Children may live in other projects, so filter by
+                    // parent only.
+                    query: { parentThreadId: thread.id },
                   },
                   ...signalRequestArgs(signal),
                 ),

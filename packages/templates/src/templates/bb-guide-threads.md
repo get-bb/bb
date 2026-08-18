@@ -16,7 +16,7 @@ Spawning:
     --prompt <prompt>              Initial prompt (required)
     --title <title>                Thread title
     --project <id>                 Project (required)
-    --parent-thread <id>           Parent thread
+    --parent-thread <id>           Parent thread (may be in another project)
     --parent-self                  Parent to the current thread (BB_THREAD_ID)
     --provider <id>                Provider override
     --model <model>                Model override

@@ -81,6 +81,7 @@ export function makePullRequest(
 export const baseProps: ThreadMetadataContentProps = {
   thread: makeThread(),
   projectId: "proj_bb",
+  parentThreadProjectId: null,
   parentThreadDisplayName: null,
   parentThreads,
   canAssignToParent: true,
