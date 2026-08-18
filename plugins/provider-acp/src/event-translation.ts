@@ -30,7 +30,6 @@ import {
   type AcceptedUserMessageState,
   type ProviderRuntimeEvent,
 } from "@get-bb/plugin-sdk/provider-bridge";
-import { z } from "zod";
 /**
  * The per-event translation scope the runtime's generic adapter passes in. Its
  * `ProviderTranslationContext` satisfies this structurally; stated here so the
@@ -55,6 +54,10 @@ import {
   acpUpdateNotificationParamsSchema,
   acpWarningNotificationParamsSchema,
 } from "./bridge-protocol.js";
+import {
+  type AcpToolCallOperation,
+  classifyAcpToolCall,
+} from "./tool-call-operation.js";
 import { acpVisibilityMetadata } from "./visibility.js";
 import {
   acpAgentMessageChunkUpdateSchema,
@@ -112,46 +115,6 @@ function mapAcpToolCallStatus(
   }
 }
 
-const acpRawInputCommandSchema = z
-  .object({ command: z.string() })
-  .passthrough();
-const acpRawInputPathSchema = z
-  .object({
-    path: z.string().optional(),
-    filePath: z.string().optional(),
-    file_path: z.string().optional(),
-  })
-  .passthrough();
-
-function extractAcpCommand(event: {
-  rawInput?: unknown;
-  title?: string;
-}): string | undefined {
-  const parsed = acpRawInputCommandSchema.safeParse(event.rawInput);
-  if (parsed.success && parsed.data.command.trim().length > 0) {
-    return parsed.data.command;
-  }
-  return toOptionalString(event.title);
-}
-
-function extractAcpToolCallPath(
-  event: Pick<AcpToolCallUpdateEvent, "locations" | "rawInput">,
-): string | undefined {
-  for (const location of event.locations ?? []) {
-    if (location.path.trim().length > 0) {
-      return location.path;
-    }
-  }
-  const parsed = acpRawInputPathSchema.safeParse(event.rawInput);
-  if (!parsed.success) {
-    return undefined;
-  }
-  return [parsed.data.path, parsed.data.filePath, parsed.data.file_path].find(
-    (value): value is string =>
-      typeof value === "string" && value.trim().length > 0,
-  );
-}
-
 function extractAcpToolCallOutputText(
   event: AcpToolCallUpdateEvent,
 ): string | undefined {
@@ -177,6 +140,7 @@ function extractAcpToolCallOutputText(
 
 function buildAcpFileChangesFromToolCall(
   event: AcpToolCallUpdateEvent,
+  operation: Extract<AcpToolCallOperation, { kind: "file_change" }>,
 ): Extract<ThreadEventItem, { type: "fileChange" }>["changes"] {
   const changes: Extract<ThreadEventItem, { type: "fileChange" }>["changes"] =
     [];
@@ -195,18 +159,8 @@ function buildAcpFileChangesFromToolCall(
   if (changes.length > 0) {
     return changes;
   }
-
-  const path = extractAcpToolCallPath(event);
-  if (!path) {
-    return [];
-  }
-  if (event.kind === "edit") {
-    return [{ path, kind: "update" }];
-  }
-  if (event.kind === "delete") {
-    return [{ path, kind: "delete" }];
-  }
-  return [];
+  const [path] = operation.paths;
+  return path === undefined ? [] : [{ path, kind: operation.changeKind }];
 }
 
 function translateAcpToolCallItem(
@@ -214,41 +168,41 @@ function translateAcpToolCallItem(
   parentToolCallId: string | undefined,
 ): ThreadEventItem {
   const status = mapAcpToolCallStatus(event.status);
+  const operation = classifyAcpToolCall(event);
 
-  if (event.kind === "execute") {
-    const command = extractAcpCommand(event);
-    if (command) {
-      const outputText = extractAcpToolCallOutputText(event);
+  if (operation.kind === "command") {
+    const outputText = extractAcpToolCallOutputText(event);
+    return withParentToolCallId(
+      {
+        type: "commandExecution",
+        id: event.toolCallId,
+        command: operation.command,
+        cwd: "",
+        status,
+        approvalStatus: null,
+        ...(outputText === undefined ? {} : { aggregatedOutput: outputText }),
+        ...(status === "completed" || status === "failed"
+          ? { exitCode: status === "failed" ? 1 : 0 }
+          : {}),
+      },
+      parentToolCallId,
+    );
+  }
+
+  if (operation.kind === "file_change") {
+    const fileChanges = buildAcpFileChangesFromToolCall(event, operation);
+    if (fileChanges.length > 0) {
       return withParentToolCallId(
         {
-          type: "commandExecution",
+          type: "fileChange",
           id: event.toolCallId,
-          command,
-          cwd: "",
+          changes: fileChanges,
           status,
           approvalStatus: null,
-          ...(outputText === undefined ? {} : { aggregatedOutput: outputText }),
-          ...(status === "completed" || status === "failed"
-            ? { exitCode: status === "failed" ? 1 : 0 }
-            : {}),
         },
         parentToolCallId,
       );
     }
-  }
-
-  const fileChanges = buildAcpFileChangesFromToolCall(event);
-  if (fileChanges.length > 0) {
-    return withParentToolCallId(
-      {
-        type: "fileChange",
-        id: event.toolCallId,
-        changes: fileChanges,
-        status,
-        approvalStatus: null,
-      },
-      parentToolCallId,
-    );
   }
 
   const outputText = extractAcpToolCallOutputText(event);

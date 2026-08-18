@@ -269,6 +269,48 @@ async function handlePrompt(message) {
 
   if (text === "/compact") {
     // OpenCode treats this exact prompt as a provider-local control.
+  } else if (text.includes("request-external-directory-permission")) {
+    // opencode's external_directory permission: the running edit tool asks
+    // with the generic kind "other", a bare directory title, and
+    // locations = [file, parentDir]. Mirrors get-bb/bb#1719.
+    notifyUpdate({
+      sessionUpdate: "tool_call",
+      toolCallId: "write-tool-1",
+      title: "Editing notes.md",
+      kind: "edit",
+      status: "pending",
+      locations: [{ path: "/tmp/qa-1719/notes.md" }],
+    });
+    let outcome = "cancelled";
+    try {
+      const result = await requestClient("session/request_permission", {
+        sessionId: activeSessionId,
+        toolCall: {
+          toolCallId: "write-tool-1",
+          title: "/tmp/qa-1719",
+          kind: "other",
+          locations: [
+            { path: "/tmp/qa-1719/notes.md" },
+            { path: "/tmp/qa-1719" },
+          ],
+          rawInput: {
+            filepath: "/tmp/qa-1719/notes.md",
+            parentDir: "/tmp/qa-1719",
+          },
+        },
+        options: [
+          { optionId: "yes", name: "Allow", kind: "allow_once" },
+          { optionId: "no", name: "Deny", kind: "reject_once" },
+        ],
+      });
+      outcome =
+        result?.outcome?.outcome === "selected"
+          ? result.outcome.optionId
+          : "cancelled";
+    } catch {
+      outcome = "error";
+    }
+    notifyUpdate(messageChunk(`permission:${outcome}`));
   } else if (text.includes("request-permission")) {
     notifyUpdate({
       sessionUpdate: "tool_call",

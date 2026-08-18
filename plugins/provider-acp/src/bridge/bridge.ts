@@ -1328,10 +1328,6 @@ function cancelPendingPermissions(session: AcpThreadSession): void {
   session.pendingPermissions.clear();
 }
 
-const acpRawInputCommandSchema = z
-  .object({ command: z.string() })
-  .passthrough();
-
 function handlePermissionRequest(
   session: AcpThreadSession,
   params: unknown,
@@ -1365,20 +1361,23 @@ function handlePermissionRequest(
   session.pendingPermissions.add(pending);
 
   const toolCall = parsed.data.toolCall;
-  const rawInputCommand = acpRawInputCommandSchema.safeParse(
-    toolCall?.rawInput,
-  );
+  const translatorState = session.translator.resolveState({
+    threadId: session.bbThreadId,
+  });
   const normalizedToolCall = toolCall?.toolCallId
     ? {
         toolCallId: toolCall.toolCallId,
-        ...(toolCall.title ? { title: toolCall.title } : {}),
-        ...(toolCall.kind ? { kind: toolCall.kind } : {}),
-        ...(rawInputCommand.success
-          ? { command: rawInputCommand.data.command }
+        ...(toolCall.title !== undefined ? { title: toolCall.title } : {}),
+        ...(toolCall.kind !== undefined ? { kind: toolCall.kind } : {}),
+        ...(toolCall.rawInput !== undefined
+          ? { rawInput: toolCall.rawInput }
           : {}),
-        ...(toolCall.locations && toolCall.locations.length > 0
-          ? { locations: toolCall.locations.map((location) => location.path) }
+        ...(toolCall.locations !== undefined
+          ? { locations: toolCall.locations }
           : {}),
+        startedToolCall: translatorState.toolCallEventsByCallId.get(
+          toolCall.toolCallId,
+        ),
       }
     : undefined;
 
@@ -1389,13 +1388,10 @@ function handlePermissionRequest(
       toolCall: normalizedToolCall,
       options: parsed.data.options,
     });
-    const state = session.translator.resolveState({
-      threadId: session.bbThreadId,
-    });
     void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
       providerThreadId: session.providerThreadId,
       threadId: session.bbThreadId,
-      turnId: state.currentTurnId ?? null,
+      turnId: translatorState.currentTurnId ?? null,
       payload,
     })
       .then((result) => {

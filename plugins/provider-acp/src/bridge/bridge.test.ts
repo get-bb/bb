@@ -1560,6 +1560,54 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("permission:no");
   });
 
+  it("presents an external-directory write permission as a file-change approval", async () => {
+    const { providerThreadId } = await startThread({
+      permissionMode: "accept-edits",
+      permissionEscalation: "ask",
+    });
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [
+        {
+          type: "text",
+          text: "request-external-directory-permission",
+          mentions: [],
+        },
+      ],
+    });
+    await waitForResponse(turnId);
+    const forwarded = await waitFor(
+      () =>
+        output.messages.find(
+          (message) =>
+            message.method === "interaction/request" &&
+            message.id !== undefined,
+        ),
+      "forwarded permission request",
+    );
+    // The permission's own tool call is the generic kind "other" with a bare
+    // directory title; the in-flight edit tool call with the same id makes it
+    // a file-change approval bounded by the named directory.
+    expect(forwarded.params).toMatchObject({
+      payload: {
+        kind: "approval",
+        subject: {
+          kind: "file_change",
+          itemId: "write-tool-1",
+          writeScope: "/tmp/qa-1719",
+        },
+      },
+    });
+    handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: forwarded.id,
+        result: { decision: "allow_once", grantedPermissions: null },
+      }),
+    );
+    await waitForTurnCompleted();
+    expect(agentMessageTexts()).toContain("permission:yes");
+  });
+
   it("answers session-grant decisions with the allow_always option", async () => {
     const { providerThreadId } = await startThread({
       permissionMode: "accept-edits",
