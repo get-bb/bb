@@ -294,8 +294,8 @@ export interface PluginNavPanelRegistration {
  * What a plugin action passes when it asks the host to open one of its panel
  * tabs. Shared by every `openPanel` entry point so a plugin registering more
  * than one kind of action can write a single open routine;
- * `PluginMessageActionThreadPanelOptions` adds the `actionId` that a
- * message action needs to name its target panel.
+ * `PluginTargetedPanelActionOpenOptions` adds the `actionId` a caller
+ * outside a panel action must pass to name the panel it wants.
  */
 export interface PluginPanelActionOpenOptions {
   /** Tab label. Default: the action's `title`. */
@@ -757,7 +757,14 @@ export interface ThreadChatMessageReference {
   sourceSeqEnd: number;
 }
 
-export interface PluginMessageActionThreadPanelOptions extends PluginPanelActionOpenOptions {
+/**
+ * What a caller that is *not* itself a panel action passes to open one — a
+ * `messageAction`'s `run`, or any component via `useBbNavigate()`. A panel
+ * action opening its own tab is already the target, so it passes the bare
+ * {@link PluginPanelActionOpenOptions} instead.
+ */
+export interface PluginTargetedPanelActionOpenOptions
+  extends PluginPanelActionOpenOptions {
   /** A `threadPanelAction` id registered by this same plugin. */
   actionId: string;
 }
@@ -783,7 +790,7 @@ export interface PluginMessageActionContext {
    * view does; a `ThreadChat` embedded in a plugin panel does not). A decline
    * is never thrown: the host logs it and reports it here.
    */
-  openPanel(options: PluginMessageActionThreadPanelOptions): boolean;
+  openPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
 }
 
 /**
@@ -1421,11 +1428,7 @@ export interface BbNavigate {
    * thread surface. Returns false when the surface has no thread side panel or
    * the action is unavailable.
    */
-  openThreadPanel(options: {
-    actionId: string;
-    title?: string;
-    params?: JsonValue;
-  }): boolean;
+  openThreadPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
 }
 
 // ---------------------------------------------------------------------------
