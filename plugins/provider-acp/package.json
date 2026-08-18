@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Run Cursor and other ACP (Agent Client Protocol) agents as bb providers, with streaming output, permission prompts, and model selection.",
+  "description": "Run bb threads with ACP agents (supports Cursor, opencode, omp and more).",
   "engines": {
     "bb": ">=0.0"
   },
   "bb": {
     "name": "ACP providers",
-    "description": "Run Cursor and other ACP (Agent Client Protocol) agents as bb providers, with streaming output, permission prompts, and model selection.",
+    "description": "Run bb threads with ACP agents (supports Cursor, opencode, omp and more).",
     "branding": {
       "icon": "./icons/acp.svg"
     },
