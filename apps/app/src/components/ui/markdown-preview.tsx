@@ -910,7 +910,7 @@ function MarkdownOrderedList({
   return (
     <ol
       {...orderedListProps}
-      className="mb-2 list-decimal pl-7 text-foreground"
+      className="mb-2 list-decimal pl-5 text-foreground"
     >
       {children}
     </ol>
