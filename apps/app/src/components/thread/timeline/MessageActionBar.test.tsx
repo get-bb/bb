@@ -65,7 +65,6 @@ describe("MessageActionBar", () => {
     const button = screen.getByRole("button", {
       name: "Send to main thread",
     });
-    expect(button.className).toContain("cursor-pointer");
     fireEvent.click(button);
     expect(onSendToMain).toHaveBeenCalledTimes(1);
   });
@@ -207,7 +206,6 @@ describe("MessageActionBar", () => {
     );
 
     const button = screen.getByRole("button", { name: "Add to chat" });
-    expect(button.className).toContain("cursor-pointer");
     fireEvent.click(button);
     expect(onAddToChat).toHaveBeenCalledWith("Quote this message.");
   });

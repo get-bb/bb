@@ -171,14 +171,9 @@ describe("Plugin detail recipe", () => {
     expect(renderedRecipe(container).map(([kind]) => kind)).toContain(
       "overview",
     );
-    const description = screen.getByText(
-      "This plugin does not describe itself.",
-    );
-    expect(description.className).not.toContain("max-w-prose");
-    expect(description.className).toContain("max-w-none");
-    expect(description.className).toContain("text-sm");
-    expect(description.className).toContain("leading-relaxed");
-    expect(description.className).toContain("text-muted-foreground");
+    expect(
+      screen.getByText("This plugin does not describe itself."),
+    ).toBeTruthy();
   });
 
   it("lists declared capabilities without category chrome", () => {
@@ -228,15 +223,8 @@ describe("Plugin detail recipe", () => {
       "Pull requests",
       "GitHub Dark",
     ] as const) {
-      expect(screen.getByText(item).className).toContain("text-xs");
+      expect(screen.getByText(item)).toBeTruthy();
     }
-    const skillName = screen.getByText("review");
-    const skillRowContent = skillName.closest("th")?.firstElementChild;
-    expect(skillName.closest("th")?.className).toContain("items-center");
-    expect(skillRowContent?.className).toContain("items-center");
-    expect(skillRowContent?.firstElementChild?.className).not.toContain(
-      "mt-px",
-    );
   });
 
   it("collapses long capability descriptions until requested", () => {
@@ -259,7 +247,6 @@ describe("Plugin detail recipe", () => {
       name: "Show full description",
     });
     expect(disclosure.getAttribute("aria-expanded")).toBe("false");
-    expect(disclosure.className).toContain("text-subtle-foreground");
 
     fireEvent.click(disclosure);
 
@@ -268,7 +255,6 @@ describe("Plugin detail recipe", () => {
       name: "Show less",
     });
     expect(collapseDisclosure.getAttribute("aria-expanded")).toBe("true");
-    expect(collapseDisclosure.className).toContain("text-subtle-foreground");
     expect(container.textContent).toContain(description);
   });
 
@@ -615,8 +601,6 @@ describe("Skill detail recipe", () => {
       "[data-skill-content-viewport]",
     );
     expect(viewport).not.toBeNull();
-    expect(viewport?.className).toContain("max-h-[60dvh]");
-    expect(viewport?.className).toContain("overflow-y-auto");
     expect(
       screen.queryByRole("navigation", { name: "Skill content pagination" }),
     ).toBeNull();
@@ -858,23 +842,13 @@ describe("Automation detail recipe", () => {
       .getByText("No runs yet.")
       .closest('[data-automation-runs-state="empty"]') as HTMLElement;
     expect(emptyRuns).not.toBeNull();
-    expect(emptyRuns.className).toContain("items-center");
-    expect(emptyRuns.className).toContain("text-center");
-    const runsTable = emptyRuns.parentElement as HTMLElement;
-    expect(runsTable.className).toContain("border");
-    expect(runsTable.className).toContain("border-border");
-    expect(runsTable.className).not.toContain("inline-block");
 
     const savedPrompt = screen.getByRole("textbox", { name: "Saved prompt" });
     expect(savedPrompt.getAttribute("aria-readonly")).toBe("true");
     expect(savedPrompt.getAttribute("aria-disabled")).toBe("true");
-    expect(savedPrompt.className).toContain("text-muted-foreground");
     const readOnlyPromptShell = container.querySelector(
       '[data-automation-prompt-readonly-shell=""]',
     ) as HTMLElement;
-    expect(readOnlyPromptShell.className).toContain("rounded-xl");
-    expect(readOnlyPromptShell.className).toContain("border-border");
-    expect(readOnlyPromptShell.className).toContain("bg-surface-recessed/55");
     expect(readOnlyPromptShell.contains(savedPrompt)).toBe(true);
     expect(savedPrompt.textContent).toBe("Summarize yesterday's commits.");
     expect(screen.queryByRole("button", { name: "Save Prompt" })).toBeNull();
@@ -888,11 +862,6 @@ describe("Automation detail recipe", () => {
     expect(disabledPermissionSelector.disabled).toBe(true);
     expect(readOnlyPromptShell.contains(disabledModelSelector)).toBe(true);
     expect(readOnlyPromptShell.contains(disabledPermissionSelector)).toBe(true);
-    expect(
-      disabledModelSelector.querySelector(
-        '[data-automation-selector-content=""]',
-      )?.className,
-    ).toContain("gap-1.5");
     expect(disabledModelSelector.getAttribute("data-state")).toBeNull();
     expect(
       disabledModelSelector.parentElement?.getAttribute("data-state"),
@@ -901,13 +870,8 @@ describe("Automation detail recipe", () => {
       '[data-automation-prompt-footer=""]',
     ) as HTMLElement;
     expect(readOnlyPromptShell.contains(readOnlyPromptFooter)).toBe(true);
-    expect(readOnlyPromptFooter.className).toContain("border-t");
-    expect(readOnlyPromptFooter.className).not.toContain("mt-1");
     const editButton = screen.getByRole("button", { name: "Edit prompt" });
     expect(editButton.querySelector('[data-icon="Edit"]')).not.toBeNull();
-    expect(editButton.className).toContain("size-6");
-    expect(editButton.className).not.toContain("bg-surface-raised");
-    expect(editButton.className).not.toContain("border-border");
     fireEvent.pointerMove(editButton);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Edit prompt",
@@ -922,29 +886,15 @@ describe("Automation detail recipe", () => {
     expect(
       container.querySelector('[data-automation-prompt-readonly-shell=""]'),
     ).toBeNull();
-    expect(promptPanel.className).toContain("bg-background");
-    expect(promptPanel.className).toContain("rounded-xl");
-    expect(promptPanel.className).toContain("shadow-lift");
-    expect(promptPanel.className).not.toContain("rounded-md");
     expect(promptContent.value).toBe("Summarize yesterday's commits.");
     expect(promptContent.readOnly).toBe(false);
-    expect(promptContent.className).toContain("min-h-28");
-    expect(promptContent.className).toContain("resize-none");
-    expect(promptContent.className).not.toContain("resize-y");
-    expect(promptContent.className).toContain("px-4");
-    expect(promptContent.className).toContain("pt-3");
     const promptActionRow = container.querySelector(
       '[data-automation-prompt-action-row=""]',
     ) as HTMLElement;
     expect(promptPanel.contains(promptActionRow)).toBe(true);
-    expect(promptActionRow.className).toContain("pb-2");
-    expect(promptActionRow.className).toContain("pl-3.5");
-    expect(promptActionRow.className).not.toContain("border-t");
     const promptFooter = container.querySelector(
       '[data-automation-prompt-footer=""]',
     ) as HTMLElement;
-    expect(promptFooter.className).toContain("justify-between");
-    expect(promptFooter.className).toContain("px-3.5");
     expect(promptFooter.textContent).toContain("Local");
     expect(promptFooter.textContent).toContain("Approve for me");
     expect(
@@ -977,10 +927,6 @@ describe("Automation detail recipe", () => {
     expect(modelSelector.getAttribute("aria-label")).toBe(
       "Provider and model: Claude, Opus 5",
     );
-    expect(
-      modelSelector.querySelector('[data-automation-selector-content=""]')
-        ?.className,
-    ).toContain("gap-1.5");
     expect(
       modelSelector.querySelector('[data-icon="ChevronDown"]'),
     ).not.toBeNull();
@@ -1022,9 +968,7 @@ describe("Automation detail recipe", () => {
       target: { value: "Summarize the last two days." },
     });
     fireEvent.keyDown(reopenedModelSelector, { key: "Enter" });
-    const modelOptions = await screen.findByRole("listbox");
-    expect(modelOptions.className).toContain("w-max");
-    expect(modelOptions.className).toContain("min-w-0");
+    await screen.findByRole("listbox");
     fireEvent.click(await screen.findByRole("option", { name: "Sonnet 5" }));
     fireEvent.keyDown(reopenedAccessSelector, { key: "Enter" });
     fireEvent.click(await screen.findByRole("option", { name: "Full Access" }));

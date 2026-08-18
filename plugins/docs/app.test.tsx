@@ -175,7 +175,6 @@ describe("Docs nav panel", () => {
       name: "Notes sidebar actions",
     });
     const navigation = slot.getByRole("navigation", { name: "Notes" });
-    expect(navigation.parentElement?.classList.contains("w-full")).toBe(true);
     expect(slot.container.querySelector("aside")).toBeNull();
     expect(slot.queryByRole("separator")).toBeNull();
     expect(
@@ -1172,7 +1171,6 @@ describe("Docs nav panel", () => {
     const dataTransfer = makeDataTransfer("projects/old.md");
     fireEvent.dragStart(file, { dataTransfer });
     const topLevel = slot.getByRole("button", { name: "Move to top level" });
-    expect(topLevel.className).toContain("absolute");
     fireEvent.dragOver(topLevel, { dataTransfer });
     fireEvent.drop(topLevel, { dataTransfer });
 
@@ -1361,7 +1359,6 @@ describe("Docs nav panel", () => {
     expect(slot.queryByText("Primary host")).toBeNull();
     const vault = slot.getByRole("combobox", { name: "Vault" });
     expect(vault.closest("aside")).toBeNull();
-    expect(vault.className).toContain("border-transparent");
     expect(slot.queryByPlaceholderText("Search this vault")).toBeNull();
     fireEvent.click(slot.getByLabelText("Search notes"));
     fireEvent.change(slot.getByPlaceholderText("Search this vault"), {

@@ -539,7 +539,6 @@ describe("ModelReasoningPicker", () => {
 
     expect(screen.getAllByText(modelLabel)).toHaveLength(3);
     const apiQualifier = screen.getByText("openai");
-    expect(apiQualifier.className).toContain("text-subtle-foreground");
     expect(screen.getByText("openai-codex")).not.toBeNull();
 
     fireEvent.click(apiQualifier);

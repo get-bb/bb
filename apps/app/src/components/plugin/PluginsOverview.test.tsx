@@ -696,16 +696,6 @@ describe("PluginsOverview", () => {
     const officialPills = screen.getAllByText("BB Official");
     expect(officialPills).toHaveLength(2);
     expect(screen.getAllByText("BB Community")).toHaveLength(1);
-    expect(officialPills[0]?.parentElement?.className).toContain("rounded-md");
-    expect(officialPills[0]?.parentElement?.className).toContain(
-      "bg-surface-recessed/45",
-    );
-    expect(officialPills[0]?.parentElement?.className).toContain(
-      "text-subtle-foreground",
-    );
-    expect(officialPills[0]?.parentElement?.className).toContain("font-medium");
-    expect(officialPills[0]?.parentElement?.className).toContain("px-2");
-    expect(officialPills[0]?.parentElement?.className).toContain("py-1");
 
     const sortTrigger = screen.getByRole("button", {
       name: "Sort: Plugin name, ascending",

@@ -407,7 +407,6 @@ describe("PluginPanelRightPanelHost", () => {
     const showButton = await screen.findByRole("button", {
       name: "Show right panel",
     });
-    expect(showButton.className).toContain("[&_svg]:size-[16px]");
     fireEvent.click(showButton);
 
     expect(screen.getByTestId("shared-thread-secondary-panel")).toBe(

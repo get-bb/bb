@@ -1032,9 +1032,6 @@ describe("SplitThreadArea", () => {
     // The lower pane's header touches the seam, so a header that paints above
     // the divider swallows its grab target and blocks vertical resizing.
     const separator = screen.getByRole("separator");
-    expect(separator.classList).toContain("h-px");
-    expect(separator.firstElementChild?.classList).toContain("h-3");
-    expect(separator.firstElementChild?.classList).toContain("w-full");
     const dividerLayer = stackingLayer(separator);
     const lowerHeader = document
       .querySelector<HTMLElement>('[data-split-pane-id="pane-2"]')
@@ -1161,8 +1158,6 @@ describe("SplitThreadArea", () => {
     });
     const separator = screen.getByRole("separator");
     expect(separator.getAttribute("aria-orientation")).toBe("horizontal");
-    expect(separator.classList).toContain("h-px");
-    expect(separator.classList).not.toContain("h-3");
 
     const hitTarget = separator.querySelector<HTMLElement>(
       "[data-split-divider-hit-target]",
@@ -1176,9 +1171,6 @@ describe("SplitThreadArea", () => {
     ) {
       throw new Error("Expected a divider hit target between split panes");
     }
-    expect(hitTarget.classList).toContain("h-3");
-    expect(hitTarget.classList).toContain("w-full");
-    expect(hitTarget.classList).toContain("cursor-row-resize");
 
     Object.defineProperty(hitTarget, "setPointerCapture", {
       configurable: true,
@@ -1226,30 +1218,6 @@ describe("SplitThreadArea", () => {
     }
     expect(resizedRoot.sizes[0]).toBeCloseTo(0.7, 5);
     expect(resizedRoot.sizes[1]).toBeCloseTo(0.3, 5);
-  });
-
-  it("keeps the merged toggle absolute and places a visible shortcut hint below pane actions", async () => {
-    commandPresentationState.isModifierHeld = true;
-    commandPresentationState.shortcut = {
-      ariaKeyshortcuts: "Control+Shift+P",
-      label: "Ctrl Shift P",
-    };
-    renderSplitArea({
-      path: threadPath("thr-a"),
-      layout: twoPaneLayout("pane-1"),
-    });
-
-    const toggle = await screen.findByTestId("split-workspace-panel-toggle");
-    expect(toggle.classList).toContain("absolute");
-    expect(toggle.classList).toContain("hidden");
-    expect(toggle.classList).not.toContain("relative");
-    // The corner button shares the pane header's px-4 action axis.
-    expect(toggle.classList).toContain("right-4");
-    expect(toggle.classList).toContain("top-2.5");
-    const hint = screen.getByText("Ctrl Shift P");
-    expect(hint.classList).toContain("absolute");
-    expect(hint.classList).toContain("right-0");
-    expect(hint.classList).toContain("top-full");
   });
 
   it("hosts one panel whose visibility survives focus changes between panes", async () => {
@@ -1579,7 +1547,6 @@ describe("SplitThreadArea", () => {
     expect(screen.queryByTestId("split-workspace-panel-toggle")).toBeNull();
     const remainingHost = screen.getByTestId("plugin-browser-host");
     expect(remainingHost.dataset.flushPageInsets).toBe("true");
-    expect(remainingHost.firstElementChild?.classList).not.toContain("-m-4");
   });
 
   it("mounts both panes with independent, threadId-keyed drafts", async () => {

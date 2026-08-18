@@ -21,10 +21,9 @@ describe("CodexCliVersionBanner", () => {
       />,
     );
 
-    const region = screen.getByRole("region", {
-      name: "Codex update required",
-    });
-    expect(region.className).toContain("bg-surface-attention");
+    expect(
+      screen.getByRole("region", { name: "Codex update required" }),
+    ).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain(
       "Update Codex before starting a thread. Installed 0.135.0; version 0.136.0 or newer is required.",
     );

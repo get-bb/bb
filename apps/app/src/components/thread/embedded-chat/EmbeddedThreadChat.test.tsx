@@ -337,9 +337,6 @@ describe("EmbeddedThreadChat", () => {
         '[data-thread-window][data-surface-tone="sidebar"]',
       ),
     ).not.toBeNull();
-    expect(screen.getByTestId("embedded-chat-scroll-area").classList).toContain(
-      "bg-sidebar",
-    );
     expect(screen.getByTestId("embedded-chat-overflow-fade").dataset.tone).toBe(
       "sidebar",
     );

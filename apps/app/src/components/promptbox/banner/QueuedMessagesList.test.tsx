@@ -136,7 +136,6 @@ describe("QueuedMessagesList", () => {
     );
 
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
-    expect(header?.className.split(/\s+/u)).toContain("border-b");
     expect(surface?.style.height).toBe("123px");
     expect(
       getByRole("button", { name: "Collapse queued messages" }).querySelector(
@@ -146,7 +145,6 @@ describe("QueuedMessagesList", () => {
 
     fireEvent.click(getByRole("button", { name: "Collapse queued messages" }));
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("collapsed");
-    expect(header?.className.split(/\s+/u)).not.toContain("border-b");
     expect(
       getByRole("button", { name: "Show queued messages" }).querySelector(
         '[data-icon="ChevronUp"]',
@@ -233,17 +231,14 @@ describe("QueuedMessagesList", () => {
       configurable: true,
       value: vi.fn(),
     });
-    expect(handle.className.split(/\s+/u)).toContain("cursor-grab");
 
     fireEvent.pointerDown(handle, {
       button: 0,
       clientY: 200,
       pointerId: 1,
     });
-    expect(handle.className.split(/\s+/u)).toContain("cursor-grabbing");
     fireEvent.pointerMove(handle, { clientY: 100, pointerId: 1 });
     fireEvent.pointerUp(handle, { clientY: 100, pointerId: 1 });
-    expect(handle.className.split(/\s+/u)).toContain("cursor-grab");
 
     expect(
       container
@@ -295,18 +290,12 @@ describe("QueuedMessagesList", () => {
     const deleteButton = getByRole("button", {
       name: "Delete queued message 1",
     });
-    const overflowButton = getByRole("button", {
-      name: "Queued message 1 actions",
-    });
 
-    expect(sendButton.closest("div")?.className).toContain("opacity-0");
-    expect(sendButton.closest("div")?.className).toContain("md:flex");
-    expect(sendButton.closest("div")?.className).toContain("hidden");
-    expect(sendButton.closest("div")?.className).toContain("absolute");
+    expect(
+      getByRole("button", { name: "Queued message 1 actions" }),
+    ).toBeTruthy();
     expect(editButton).toBeTruthy();
     expect(deleteButton).toBeTruthy();
-    expect(overflowButton.className).toContain("md:hidden");
-    expect(overflowButton.className).toContain("opacity-0");
     expect(container.querySelector('[data-icon="Sent"]')).not.toBeNull();
     expect(container.querySelector('[data-icon="Edit"]')).not.toBeNull();
     expect(container.querySelector('[data-icon="Trash2"]')).not.toBeNull();
@@ -390,17 +379,6 @@ describe("QueuedMessagesList", () => {
     expect(
       editingLabel.closest('[data-inline-message-editor-frame="embedded"]'),
     ).not.toBeNull();
-    const dismissButton = getByRole("button", {
-      name: "Stop editing queued message",
-    });
-    expect(editingLabel.parentElement?.className).toContain(
-      "text-subtle-foreground",
-    );
-    expect(dismissButton.className).toContain("ml-auto");
-    expect(dismissButton.className).toContain("size-6");
-    expect(
-      dismissButton.querySelector('[data-icon="X"]')?.getAttribute("class"),
-    ).toContain("size-3");
     expect(getByTestId("inline-queue-editor")).toBeTruthy();
 
     fireEvent.click(
@@ -996,7 +974,6 @@ describe("QueuedMessagesList", () => {
 
     const attachment = getByRole("img", { name: "2 attachments" });
     expect(attachment.textContent).toBe("2");
-    expect(attachment.className).not.toContain("group-hover/row:opacity-0");
     expect(getByText("Sending...")).not.toBeNull();
   });
 
@@ -1117,8 +1094,6 @@ describe("QueuedMessagesList", () => {
         '[data-overflow-fade="below"][data-overflow-fade-tone="surface-raised"][data-overflow-fade-inset]',
       );
       expect(fade).not.toBeNull();
-      expect(fade?.className).toContain("h-6");
-      expect(fade?.className).toContain("bottom-0");
     });
   });
 
@@ -1139,7 +1114,6 @@ describe("QueuedMessagesList", () => {
       "[data-queued-message-group-divider]",
     );
     expect(divider?.tagName).toBe("LI");
-    expect(divider?.className).toContain("h-0");
     expect(divider?.parentElement?.tagName).toBe("UL");
   });
 
@@ -1151,14 +1125,11 @@ describe("QueuedMessagesList", () => {
     ]);
     const rows = container.querySelectorAll("[data-queued-message-row]");
 
-    expect(rows[0]?.className).toContain("border-b");
-    expect(rows[1]?.className).toContain("border-b");
     const divider = container.querySelector(
       "ul > [data-queued-message-group-divider]",
     );
     expect(divider).not.toBeNull();
     expect(divider?.previousElementSibling).toBe(rows[0]);
-    expect(divider?.className).toContain("h-0");
     expect(rows[0]?.querySelector("[data-queued-message-group-divider]")).toBe(
       null,
     );

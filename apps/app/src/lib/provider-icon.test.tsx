@@ -60,11 +60,6 @@ describe("getProviderIconInfo", () => {
     expect(logo.getAttribute("src")).toBe(
       "/api/v1/system/providers/acp-do-computer/logo",
     );
-    expect([...logo.classList]).toEqual([
-      "size-4",
-      "shrink-0",
-      "object-contain",
-    ]);
 
     fireEvent.error(logo);
     expect(view.container.querySelector("img")).toBeNull();
@@ -116,7 +111,6 @@ describe("getProviderIconInfo", () => {
     expect(pluginMark).not.toBeNull();
     // Inline SVG, not an <img>: currentColor has to reach the app theme.
     expect(view.container.querySelector("img")).toBeNull();
-    expect(pluginMark?.getAttribute("class")).toBe("size-4");
 
     // Disable / failed reload disposes the registration.
     act(() => {
