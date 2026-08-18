@@ -290,6 +290,65 @@ describe("work-together principal policy", () => {
     ).resolves.toEqual({ allowed: true });
   });
 
+  it("accepts a request cell/workspace pair that differs from boot config", async () => {
+    const { publicKey } = await testKeys();
+    const membership = createWorkTogetherMembershipMemoryFake();
+    membership.setMembership({
+      cellId: OTHER_CELL,
+      subject: SUBJECT,
+      role: "owner",
+      membershipRevision: "1",
+    });
+    const { policy } = createPolicy({
+      membership,
+      publicKey,
+      cellId: CELL_ID,
+      workspaceId: WORKSPACE_ID,
+    });
+    const session = await policy.resolve(
+      requestFrom({
+        token: await signClaims(
+          baseClaims({
+            aud: OTHER_CELL,
+            workspace_id: OTHER_WORKSPACE,
+          }),
+        ),
+      }),
+    );
+    expect(session.principal.id).toBe(SUBJECT);
+    await expect(
+      session.authorize(
+        { name: "publicHttp.projects.get" },
+        { kind: "project", id: "project-1" },
+      ),
+    ).resolves.toEqual({ allowed: true });
+
+    membership.removeMembership({ cellId: OTHER_CELL, subject: SUBJECT });
+    await expect(
+      session.authorize(
+        { name: "publicHttp.projects.get" },
+        { kind: "project", id: "project-1" },
+      ),
+    ).resolves.toEqual({ allowed: false, reason: "unauthenticated" });
+  });
+
+  it("rejects a request cell with no membership even when the boot cell has one", async () => {
+    const { publicKey } = await testKeys();
+    const membership = createWorkTogetherMembershipMemoryFake();
+    membership.setMembership({
+      cellId: CELL_ID,
+      subject: SUBJECT,
+      role: "owner",
+      membershipRevision: "1",
+    });
+    const { policy } = createPolicy({ membership, publicKey });
+    const token = await signClaims(baseClaims({ aud: OTHER_CELL }));
+    await expectAssertionRejected(
+      () => policy.resolve(requestFrom({ token })),
+      [OTHER_CELL, SUBJECT],
+    );
+  });
+
   it("accepts members, bigint revisions, and canonical query targets", async () => {
     const { publicKey } = await testKeys();
     const membership = createWorkTogetherMembershipMemoryFake();
@@ -552,8 +611,16 @@ describe("work-together principal policy", () => {
         distinctive: [SUBJECT],
       },
       {
-        claims: { workspace_id: OTHER_WORKSPACE },
-        distinctive: [OTHER_WORKSPACE, SUBJECT],
+        claims: { aud: "NOT-A-UUID" },
+        distinctive: [SUBJECT],
+      },
+      {
+        claims: { workspace_id: "NOT-A-UUID" },
+        distinctive: [SUBJECT],
+      },
+      {
+        claims: { workspace_id: "DDDDDDDD-EEEE-4FFF-8000-111111111111" },
+        distinctive: [SUBJECT],
       },
       {
         claims: { request_method: "POST" },

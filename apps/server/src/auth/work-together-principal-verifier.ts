@@ -485,10 +485,10 @@ function validateClaimsAgainstRequest(args: {
   if (rawClaims.iss !== config.issuer) {
     rejectWorkTogetherPrincipalAssertion();
   }
-  if (rawClaims.aud !== config.cellId) {
+  if (!WORK_TOGETHER_CELL_ID_PATTERN.test(rawClaims.aud)) {
     rejectWorkTogetherPrincipalAssertion();
   }
-  if (rawClaims.workspace_id !== config.workspaceId) {
+  if (!WORK_TOGETHER_CELL_ID_PATTERN.test(rawClaims.workspace_id)) {
     rejectWorkTogetherPrincipalAssertion();
   }
   if (!WORK_TOGETHER_SUBJECT_PATTERN.test(rawClaims.sub)) {

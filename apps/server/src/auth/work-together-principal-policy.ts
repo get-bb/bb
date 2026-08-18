@@ -129,11 +129,12 @@ function createValidatedWorkTogetherPrincipalPolicy(
           actualTransport: request.transport,
         });
         const claims = verified.claims;
+        const requestCellId = claims.aud;
 
         let membership;
         try {
           membership = await membershipVerifier.currentMembership({
-            cellId,
+            cellId: requestCellId,
             subject: claims.sub,
           });
         } catch {
@@ -175,6 +176,7 @@ function createValidatedWorkTogetherPrincipalPolicy(
         });
         const expectedRevision = claims.membership_revision;
         const subject = claims.sub;
+        const sessionCellId = requestCellId;
         // Exact assertion expiry for client sockets (not replay-skew window).
         const expiresAtMs = claims.exp * 1000;
 
@@ -188,7 +190,7 @@ function createValidatedWorkTogetherPrincipalPolicy(
           ): Promise<PolicyDecision> {
             try {
               const currentResult = await membershipVerifier.currentMembership({
-                cellId,
+                cellId: sessionCellId,
                 subject,
               });
               if (currentResult === null) {
