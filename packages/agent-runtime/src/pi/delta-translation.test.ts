@@ -152,7 +152,9 @@ function createTextDeltaEvent(): AgentSessionEvent {
 
 function agentMessageDeltaId(events: ThreadEvent[]): string | undefined {
   const delta = events.find(
-    (event): event is Extract<ThreadEvent, { type: "item/agentMessage/delta" }> =>
+    (
+      event,
+    ): event is Extract<ThreadEvent, { type: "item/agentMessage/delta" }> =>
       event.type === "item/agentMessage/delta",
   );
   return delta?.itemId;
@@ -163,7 +165,9 @@ describe("pi delta translation equivalence", () => {
     const harness = createHarness();
     harness.translate(loadFixture("agent-start.json"));
 
-    const events = harness.translate({ type: "turn_start" } as AgentSessionEvent);
+    const events = harness.translate({
+      type: "turn_start",
+    } as AgentSessionEvent);
 
     expect(events).toEqual([]);
   });
@@ -509,16 +513,19 @@ describe("pi delta translation equivalence", () => {
       args: { aborted: true },
       expected: { status: "interrupted" },
     },
-  ])("$label manual compaction does not report success", ({ args, expected }) => {
-    const { completed, turnId } = translateManualCompaction(args);
-    expect(completed).toEqual([
-      expect.objectContaining({
-        type: "turn/completed",
-        scope: turnScope(turnId),
-        ...expected,
-      }),
-    ]);
-  });
+  ])(
+    "$label manual compaction does not report success",
+    ({ args, expected }) => {
+      const { completed, turnId } = translateManualCompaction(args);
+      expect(completed).toEqual([
+        expect.objectContaining({
+          type: "turn/completed",
+          scope: turnScope(turnId),
+          ...expected,
+        }),
+      ]);
+    },
+  );
 
   it("compaction_end without a known turn is unhandled", () => {
     const harness = createHarness();
@@ -720,9 +727,9 @@ describe("pi delta translation equivalence", () => {
     // The provider id is reverse-resolvable for the command plane.
     const startedId =
       events[0]?.type === "item/started" ? events[0].item.id : "";
-    expect(
-      harness.assembler.getProviderItemId(THREAD_ID, startedId),
-    ).toBe("tc_01a2b3c4d5e6f7g8h9i0j1k2");
+    expect(harness.assembler.getProviderItemId(THREAD_ID, startedId)).toBe(
+      "tc_01a2b3c4d5e6f7g8h9i0j1k2",
+    );
   });
 
   it("preserves parent_tool_use_id on nested sdk/message events", () => {

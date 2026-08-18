@@ -1005,7 +1005,9 @@ function extractPiToolProgressText(event: PiToolExecutionUpdateEvent): string {
   return text.length > 0 ? text : `${event.toolName} progress update`;
 }
 
-function toAssistantUsageBreakdown(lastAssistant: PiAssistantMessage | undefined) {
+function toAssistantUsageBreakdown(
+  lastAssistant: PiAssistantMessage | undefined,
+) {
   const typedUsage = lastAssistant?.usage;
   if (!typedUsage) return undefined;
 

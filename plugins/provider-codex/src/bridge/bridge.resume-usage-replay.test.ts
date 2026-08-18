@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { threadEventNotificationSchema } from "@bb/provider-bridge-protocol";
+import type { ThreadEvent } from "@bb/domain";
+import { assembleCapturedThreadEvents } from "@bb/agent-runtime/test/bridge-delta-assembly";
 import { createBridgeJsonRpcTestHarness } from "@bb/provider-bridge-protocol/testing";
 import { handleLine } from "./bridge.js";
 
@@ -12,19 +13,18 @@ import { handleLine } from "./bridge.js";
  *
  * `codex app-server` replays the rollout's last-turn token usage on
  * `thread/resume` (and `thread/fork`), scoped to that previous turn's Codex
- * turn id, before any new turn starts. The bridge stamps every turn scope
- * with a per-session id prefix (`bt<entropy>-<serial>-`), so the replayed
- * usage would name a bb turn id that bb never saw a turn/started for, and
- * the server would drop it as an orphan thread-state snapshot.
+ * turn id, before any new turn starts. The session starts with a reset
+ * assembler id space, so the replayed usage would mint a bb turn id that bb
+ * never saw a turn/started for, and the server would drop it as an orphan
+ * thread-state snapshot.
  *
- * The bridge must instead drop the replayed (turn-only) token usage and emit
- * the replayed context-window usage thread-scoped.
+ * The bridge must instead drop the replayed (turn-only) token usage delta and
+ * emit the replayed context-window usage so it assembles thread-scoped.
  */
 
 const THREAD_ID = "thr_1727_resume_usage";
 // The fake app-server replays usage on resume for `usage-replay-*` ids.
 const PROVIDER_THREAD_ID = "usage-replay-1727";
-const BRIDGE_MINTED_ID_PATTERN = /^bt[0-9a-f]{8}-\d+-/;
 
 const fakeAppServerPath = fileURLToPath(
   new URL("./fake-codex-app-server.mjs", import.meta.url),
@@ -64,13 +64,14 @@ afterEach(async () => {
   rmSync(workspaceDir, { recursive: true, force: true });
 });
 
-function threadEventsOfType(type: string) {
-  return harness.messages.flatMap((message) => {
-    if (message.method !== "thread/event") return [];
-    const parsed = threadEventNotificationSchema.safeParse(message.params);
-    if (!parsed.success) return [];
-    return parsed.data.event.type === type ? [parsed.data.event] : [];
-  });
+function assembledEvents(): ThreadEvent[] {
+  return assembleCapturedThreadEvents(harness.messages, "codex");
+}
+
+// Assembler entropy is fresh per assembly pass, so ids are only comparable
+// WITHIN one assembled snapshot; counts and scopes are stable across passes.
+function threadEventsOfType(type: ThreadEvent["type"]): ThreadEvent[] {
+  return assembledEvents().filter((event) => event.type === type);
 }
 
 function turnIdOf(event: { scope: { kind: string; turnId?: string } }) {
@@ -116,11 +117,18 @@ it("drops replayed token usage and thread-scopes replayed context usage on resum
     "session 1 turn/completed",
   );
 
-  const [turnStarted1] = threadEventsOfType("turn/started");
+  const session1Events = assembledEvents();
+  const [turnStarted1] = session1Events.filter(
+    (event) => event.type === "turn/started",
+  );
   expect(turnStarted1).toBeDefined();
   const storedTurnId = turnIdOf(turnStarted1!); // what the server persisted
-  expect(storedTurnId).toMatch(BRIDGE_MINTED_ID_PATTERN);
-  expect(storedTurnId.replace(BRIDGE_MINTED_ID_PATTERN, "")).toBe("turn-fx-1");
+  // The live turn's own usage is turn-scoped to the turn bb stored.
+  const liveUsage = session1Events.filter(
+    (event) => event.type === "thread/tokenUsage/updated",
+  );
+  expect(liveUsage.length).toBeGreaterThan(0);
+  expect(turnIdOf(liveUsage.at(-1)!)).toBe(storedTurnId);
 
   // Release the session (idle reap / archive / daemon restart all end here).
   harness.sendRequest(3, "thread/stop", {
@@ -207,8 +215,13 @@ it("drops replayed token usage and thread-scopes replayed context usage on fork"
     () => threadEventsOfType("turn/completed").length === 1,
     "fork turn/completed",
   );
-  const [turnStarted] = threadEventsOfType("turn/started");
-  const ownUsage = threadEventsOfType("thread/tokenUsage/updated");
+  const forkEvents = assembledEvents();
+  const [turnStarted] = forkEvents.filter(
+    (event) => event.type === "turn/started",
+  );
+  const ownUsage = forkEvents.filter(
+    (event) => event.type === "thread/tokenUsage/updated",
+  );
   expect(ownUsage.length).toBeGreaterThan(0);
   expect(turnIdOf(ownUsage.at(-1)!)).toBe(turnIdOf(turnStarted!));
 }, 30_000);

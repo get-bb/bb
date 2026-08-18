@@ -503,21 +503,44 @@ function sendThreadDeltas(
   if (deltas.length === 0) {
     return;
   }
+  const outDeltas: ThreadDelta[] = [];
   for (const delta of deltas) {
-    if (delta.kind === "turn.open" && delta.providerTurnId !== undefined) {
-      session.openCodexTurnIds.add(delta.providerTurnId);
+    if (delta.kind === "turn.open") {
+      session.awaitingReplayedUsage = false;
+      if (delta.providerTurnId !== undefined) {
+        session.openCodexTurnIds.add(delta.providerTurnId);
+      }
     }
     if (delta.kind === "turn.boundary" && delta.providerTurnId !== undefined) {
       session.openCodexTurnIds.delete(delta.providerTurnId);
     }
+    // Replayed thread-state snapshot (thread/resume, thread/fork): the turn
+    // it names was never started in this session, so its vouched provider
+    // turn id would mint a bb turn id unknown to bb and the server would
+    // drop the usage as an orphan. Context-window usage is session state and
+    // may be thread-scoped; token usage is turn-only and, on resume,
+    // duplicates the snapshot bb already persisted for that turn, so drop it
+    // (#1727). The fresh session has no current or last turn yet, so the
+    // context-window delta assembles thread-scoped.
+    if (session.awaitingReplayedUsage && delta.kind === "usage.exact") {
+      outDeltas.push({
+        kind: "contextWindow",
+        used: delta.last.totalTokens,
+        size: delta.modelContextWindow,
+        estimated: false,
+        attach: "currentOrLast",
+      });
+      continue;
+    }
+    outDeltas.push(delta);
   }
   if (!session.identityAnnounced) {
-    session.pendingPreIdentityDeltas.push(...deltas);
+    session.pendingPreIdentityDeltas.push(...outDeltas);
     return;
   }
   sendNotification(THREAD_DELTA_NOTIFICATION_METHOD, {
     threadId: session.bbThreadId,
-    deltas: [...deltas],
+    deltas: outDeltas,
   });
 }
 
