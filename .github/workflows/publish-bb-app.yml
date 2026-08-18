@@ -33,6 +33,8 @@ run-name: ${{ github.event_name == 'schedule' && 'Publish bb-app + desktop night
 
 # Only the npm publish job gets id-token: write, for npm trusted publishing.
 # The desktop build jobs must not inherit an OIDC token they never use.
+# The npm publish jobs run on GitHub-hosted runners. npm rejects provenance
+# bundles from self-hosted runners such as Blacksmith (E422).
 permissions:
   contents: read
 
@@ -48,7 +50,7 @@ env:
 jobs:
   publish:
     name: Publish bb-app
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm-release
     permissions:
@@ -242,7 +244,7 @@ jobs:
     name: Publish bb-app nightly after the release
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.npm_tag == 'latest' && inputs.dry_run == false }}
     needs: publish
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm-release
     permissions:
@@ -365,7 +367,7 @@ jobs:
   # docs/bb-release-process.md#publishing-the-plugin-sdk.
   publish-plugin-sdk:
     name: Publish @get-bb/plugin-sdk
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm-release
     permissions:
