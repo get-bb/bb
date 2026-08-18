@@ -12,6 +12,8 @@ import { createPortal } from "react-dom";
 import { atom, useAtom } from "jotai";
 import { atomFamily } from "jotai-family";
 import { Button } from "@bb/shared-ui/button";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
+import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -48,8 +50,7 @@ import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 
 const TERMINAL_COLS = 100;
 const TERMINAL_ROWS = 30;
-const RIGHT_PANEL_TOGGLE_CLASS =
-  "h-[28px] w-[28px] rounded-md p-0 max-md:pointer-coarse:h-[36px] max-md:pointer-coarse:w-[36px] [&_svg]:size-[13px] max-md:pointer-coarse:[&_svg]:size-[16px] text-subtle-foreground/75 hover:text-muted-foreground data-[state=open]:text-subtle-foreground/75";
+const RIGHT_PANEL_TOGGLE_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
 
 const LazyBrowserTabDeck = lazy(() =>
   import("@/components/secondary-panel/BrowserTabDeck").then(
@@ -489,7 +490,6 @@ export function PluginPanelRightPanelHost({
       onToggleMainCollapse: () => void;
       resizablePanelId?: string;
     }) => {
-      if (fileTabs.length === 0) return null;
       const deck =
         browserTabs.length === 0 ? null : (
           <Suspense fallback={null}>
@@ -579,6 +579,7 @@ export function PluginPanelRightPanelHost({
     <>
       {panel !== null &&
       togglePortalTarget !== null &&
+      !isOpen &&
       !isHostedBySplitWorkspace
         ? createPortal(
             <Tooltip>

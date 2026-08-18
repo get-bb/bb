@@ -91,14 +91,14 @@ vi.mock("@/components/secondary-panel/SecondaryPanelLayout", () => ({
   }) => (
     <div data-testid="shared-secondary-panel-layout">
       {main}
-      {open
-        ? renderPanel({
-            presentation: "inline",
-            canShowNativeBrowserView: true,
-            isMainCollapsed: false,
-            onToggleMainCollapse: () => undefined,
-          })
-        : null}
+      <div data-testid="shared-secondary-panel-region" hidden={!open}>
+        {renderPanel({
+          presentation: "inline",
+          canShowNativeBrowserView: true,
+          isMainCollapsed: false,
+          onToggleMainCollapse: () => undefined,
+        })}
+      </div>
     </div>
   ),
 }));
@@ -108,11 +108,13 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
     browserDeck,
     fileTabs,
     fileTabContent,
+    onClose,
     onOpenNewTab,
   }: {
     browserDeck: ReactNode;
     fileTabs: Array<{ id: string; filename: string; onSelect: () => void }>;
     fileTabContent: ReactNode;
+    onClose: () => void;
     onOpenNewTab: () => void;
   }) => (
     <aside data-testid="shared-thread-secondary-panel">
@@ -124,6 +126,7 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
       <button type="button" onClick={onOpenNewTab}>
         Add tab
       </button>
+      <button type="button" aria-label="Hide right panel" onClick={onClose} />
       {fileTabContent}
       {browserDeck}
     </aside>
@@ -220,18 +223,41 @@ describe("PluginPanelRightPanelHost", () => {
     cleanup();
   });
 
-  it("automatically wraps a plugin page in the shared panel layout", async () => {
+  it("keeps one panel toggle and mounts the collapsed panel before opening", async () => {
     renderHost();
 
     expect(screen.getByTestId("shared-secondary-panel-layout")).toBeTruthy();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Show right panel" }),
+    const collapsedPanel = await screen.findByTestId(
+      "shared-thread-secondary-panel",
     );
-
     expect(
-      await screen.findByTestId("shared-thread-secondary-panel"),
-    ).toBeTruthy();
+      screen.getByTestId("shared-secondary-panel-region").hasAttribute("hidden"),
+    ).toBe(true);
+
+    const showButton = await screen.findByRole("button", {
+      name: "Show right panel",
+    });
+    expect(showButton.className).toContain("[&_svg]:size-[16px]");
+    fireEvent.click(showButton);
+
+    expect(screen.getByTestId("shared-thread-secondary-panel")).toBe(
+      collapsedPanel,
+    );
+    expect(
+      screen.getByTestId("shared-secondary-panel-region").hasAttribute("hidden"),
+    ).toBe(false);
+    expect(
+      screen.queryByRole("button", { name: "Show right panel" }),
+    ).toBeNull();
+    expect(
+      screen.getAllByRole("button", { name: "Hide right panel" }),
+    ).toHaveLength(1);
     expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide right panel" }));
+    expect(
+      await screen.findByRole("button", { name: "Show right panel" }),
+    ).toBeTruthy();
   });
 
   it("opens Browser without a plugin allowlist", async () => {
