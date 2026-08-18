@@ -336,10 +336,38 @@ export function mergeLatestTimelineRows({
   };
 }
 
+/**
+ * First event sequence a window covers. Every pagination cursor names the first
+ * sequence the page that issued it covered — that is what makes older pages
+ * chain — so the cursor is the exact lower bound of the window it arrived with.
+ * No cursor means the page reached the start of the thread.
+ */
 function timelineWindowStartSequence(timeline: ThreadTimelineResponse): number {
   return timeline.timelinePage.olderCursor?.anchorSeq ?? 0;
 }
 
+/**
+ * Whether the fresh window continues the loaded one, in raw event sequences.
+ *
+ * Rows cannot answer this, in three separate ways:
+ *
+ * - Most events never become a row — `turn/completed`, token-usage and
+ *   rate-limit updates — so the distance from the last loaded row to the next
+ *   window is routinely non-zero while the history is in fact continuous. A
+ *   follow-up submitted on a budgeted thread lands exactly here: the prompt
+ *   opens the next window one sequence past a `turn/completed` that is not a
+ *   row.
+ * - Rows are ordered by where they start, not where they end, so the last row
+ *   is not the one that reaches furthest. A turn summary spans its whole turn
+ *   while shorter rows that begin later sort after it.
+ * - A window's first row can start *below* the window, because the projection
+ *   backfills a turn's `turn/started` row from under the cut.
+ *
+ * Each shape reports a break that is not there, and the caller answers a break
+ * by dropping every loaded page — the timeline visibly truncates to the newest
+ * window and refills as auto-load pages it back. The sequences the server
+ * states outright have none of these failure modes.
+ */
 function timelineWindowsAreContiguous(
   current: LoadedTimelineState,
   latestTimeline: ThreadTimelineResponse,

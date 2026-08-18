@@ -23,6 +23,7 @@ interface TimelineTestRowArgs {
 
 interface TimelineTurnTestRowArgs extends TimelineTestRowArgs {
   children?: TimelineRow[];
+  endSequence?: number;
 }
 
 function timelineCursor(args: TimelineTestRowArgs): TimelinePaginationCursor {
@@ -84,7 +85,7 @@ function turnSummaryRow(args: TimelineTurnTestRowArgs): TimelineTurnRow {
     threadId: "thread-1",
     turnId: "turn-1",
     sourceSeqStart: args.sequence,
-    sourceSeqEnd: args.sequence,
+    sourceSeqEnd: args.endSequence ?? args.sequence,
     startedAt: args.sequence,
     createdAt: args.sequence,
     kind: "turn",
@@ -479,6 +480,82 @@ describe("timeline page row merging", () => {
       "live-tail",
     ]);
     expect(next.olderCursor).toEqual(finishedCursor);
+  });
+
+  it("keeps loaded rows when unprojected events separate them from the follow-up window", () => {
+    // The shape a follow-up submission produces on a byte-budgeted thread: the
+    // completed turn's summary spans to `turn/completed`, a provider error that
+    // began later sorts after it and ends earlier, and the events carrying the
+    // turn's end never become rows at all. The prompt opening the next turn is
+    // the first sequence of the fresh window and continues the loaded history
+    // directly, so nothing may be dropped. Observed on a thread whose loaded
+    // tail ended at 62634, whose turn summary reached 62635, and whose
+    // follow-up opened the next window at 62636.
+    const oldestCursor = timelineCursor({ id: "oldest", sequence: 1 });
+    const current = makeLoadedTimelineState(
+      [
+        userRow({ id: "oldest", sequence: 1 }),
+        turnSummaryRow({ endSequence: 100, id: "turn-summary", sequence: 10 }),
+        commandRow({ id: "late-error", sequence: 99 }),
+      ],
+      oldestCursor,
+      100,
+    );
+    const latestTimeline = makeTimelineResponse(
+      [userRow({ id: "follow-up", sequence: 101 })],
+      timelineCursor({ id: "follow-up", sequence: 101 }),
+      104,
+    );
+
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: "thread-1:default",
+    });
+
+    expect(next.rows.map((row) => row.id)).toEqual([
+      "oldest",
+      "turn-summary",
+      "late-error",
+      "follow-up",
+    ]);
+    expect(next.olderCursor).toEqual(oldestCursor);
+  });
+
+  it("keeps loaded rows when a window's first row is backfilled from below the cut", () => {
+    // A sequence-cut window names the cut in its cursor, but its first row can
+    // start under it: the projection backfills the running turn's `turn/started`
+    // row from wherever that turn began. The window still continues the loaded
+    // history, so the loaded pages stay.
+    const inTurnCursor = timelineCursor({
+      id: "thread-1:in-turn:60",
+      sequence: 60,
+    });
+    const current = makeLoadedTimelineState(
+      [commandRow({ id: "loaded-work", sequence: 40 })],
+      timelineCursor({ id: "thread-1:in-turn:30", sequence: 30 }),
+      59,
+    );
+    const latestTimeline = makeTimelineResponse(
+      [
+        turnSummaryRow({ endSequence: 70, id: "turn-summary", sequence: 20 }),
+        commandRow({ id: "live-work", sequence: 65 }),
+      ],
+      inTurnCursor,
+      70,
+    );
+
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: "thread-1:default",
+    });
+
+    expect(next.rows.map((row) => row.id)).toEqual([
+      "loaded-work",
+      "turn-summary",
+      "live-work",
+    ]);
   });
 
   it("recovers from a stale cursor with a fresh latest cursor without dropping loaded rows", () => {
