@@ -1796,17 +1796,28 @@ export function PromptBoxInternal({
           mentions: mentionRanges,
         });
       },
-      onSelectionUpdate({ editor: updatedEditor }) {
+      onSelectionUpdate({ editor: updatedEditor, transaction }) {
+        // A typing transaction changes both the document and the selection, so
+        // TipTap emits selectionUpdate immediately before update. Let onUpdate
+        // handle that transaction once. The browser already reveals the caret
+        // for native contenteditable edits; measuring it here with coordsAtPos
+        // forces layout on every keystroke.
+        if (transaction.docChanged) return;
         syncTriggerStateRef.current(updatedEditor);
         scheduleRevealEditorSelection();
       },
-      onUpdate({ editor: updatedEditor }) {
+      onUpdate({ editor: updatedEditor, transaction }) {
         if (skipEditorChangeRef.current) return;
         const nextValue = promptEditorValueFromDoc(updatedEditor.state.doc);
         editorValueKeyRef.current = promptEditorValueKey(nextValue);
         onChangeRef.current(nextValue.text, nextValue.mentions);
         syncTriggerStateRef.current(updatedEditor);
-        scheduleRevealEditorSelection();
+        // Native typing already asks ProseMirror to scroll the selection into
+        // view. Clipboard and drop transactions still need the prompt's custom
+        // scroll-container reveal that originally fixed multiline paste.
+        if (transaction.getMeta("uiEvent") !== undefined) {
+          scheduleRevealEditorSelection();
+        }
       },
       // Rebuild the editor when the rich-text preference toggles so the schema
       // and input rules switch. The editor is otherwise created once; its
