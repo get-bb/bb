@@ -76,6 +76,30 @@ unexpected-exit recovery without feature-specific core hooks.
     limits without pretending to model process startup, crashes, native watcher
     recovery, or reconnect behavior.
 
+## `PluginNavPanelRegistration.experimental_fixedTabs`
+
+**What it does.** Lets a nav panel declare ordered, non-closable tabs in the
+host-owned right panel. The host owns tab selection, persistence, chrome,
+Browser and Terminal tools, and only mounts the active plugin component. A
+fixed tab receives the nav page's current `subPath`; `layout: "padded"` uses
+host padding and scrolling, while `layout: "flush"` gives the component the
+whole content region. On the first visit the first declared fixed tab opens on
+wide layouts. A later user close remains closed.
+
+**Audit before stabilizing.**
+
+1. Confirm first-visit opening and subsequent close persistence across plugin
+   reloads, app upgrades, wide/compact transitions, and page deep links.
+2. Exercise multiple fixed tabs and dynamic registration changes; selection
+   must remain stable when possible and fall back without mounting inactive
+   components.
+3. Confirm `subPath` is sufficient context and that fixed tabs should remain
+   page-scoped rather than gaining independent routes or plugin-owned state.
+4. Audit padded versus flush layout against Tasks, Docs, accessibility zoom,
+   and nested scrolling before freezing the presentation contract.
+5. Confirm named icon hints and the non-closable tab treatment remain the right
+   amount of plugin-controlled chrome.
+
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
 **What it does.** Lets a nav panel register a no-props, presentational React
@@ -199,7 +223,7 @@ registration record so fields without a registry consumer yet
    (`experimental_providerBridge`), built into `dist/host.js`, recorded in the
    one live-host-artifact registry, served by the one host artifact route, and
    cached once per plugin on the daemon. Thread commands carry `bridgeLaunch
-   {pluginId, source: {kind: "artifact", digest, byteLength}}`. Pi is the one
+{pluginId, source: {kind: "artifact", digest, byteLength}}`. Pi is the one
    provider whose bridge stays daemon-bundled
    (`DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS`); every other provider, first-party or
    not, arrives as an artifact. Before stabilizing: confirm one artifact per

@@ -252,6 +252,24 @@ export interface PluginNavPanelRegistration {
   path: string;
   component: ComponentType<PluginNavPanelProps>;
   /**
+   * Ordered, non-closable tabs shown in this page's host-owned right panel.
+   * BB owns selection and persistence and always includes its native Browser
+   * and Terminal tools beside them. Components mount only while active and
+   * receive the same `subPath` as the page component.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_fixedTabs?: readonly {
+    /** Unique within this nav panel; letters, digits, `-`, `_`. */
+    id: string;
+    title: string;
+    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+    icon: string;
+    component: ComponentType<PluginNavPanelProps>;
+    /** `flush` lets the component own padding and scrolling. */
+    layout?: "padded" | "flush";
+  }[];
+  /**
    * Optional presentational component rendered at the trailing edge of this
    * panel's sidebar row. It receives no props so it can own a narrow live
    * value through the ordinary SDK hooks without coupling that state to the

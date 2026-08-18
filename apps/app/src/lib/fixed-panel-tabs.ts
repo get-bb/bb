@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { atom } from "jotai";
 import { useAtomValue, useSetAtom } from "jotai";
@@ -8,6 +14,7 @@ import type { TerminalCreateTarget } from "@bb/server-contract";
 import { createLocalStorageSyncStorage } from "./browser-storage";
 import { useThreadTabs } from "@/hooks/queries/thread-tabs-query";
 import { closeSecondaryPanelTabInState } from "@/components/secondary-panel/secondaryPanelTabState";
+import { reconcileFixedPanelViewTabsInState } from "@/components/secondary-panel/secondaryPanelTabState";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
   createGitDiffFixedPanelTab,
@@ -20,6 +27,7 @@ import {
   serializeFixedPanelTabsState,
   type FixedPanelTab,
   type FixedPanelTabsState,
+  type FixedPanelViewTab,
   type TerminalFixedPanelTab,
 } from "./fixed-panel-tabs-state";
 import { type ThreadSecondaryPanel } from "./thread-secondary-panel";
@@ -294,6 +302,52 @@ export function useUpdateFixedPanelTabsState(
     },
     [panelStateId, queryClient, setState, syncThreadId],
   );
+}
+
+export function useReconciledFixedPanelTabsState({
+  fixedTabs,
+  openFirstFixedTabWhenEmpty = false,
+  panelStateId,
+  syncThreadId,
+}: {
+  fixedTabs: readonly FixedPanelViewTab[];
+  openFirstFixedTabWhenEmpty?: boolean;
+  panelStateId: FixedPanelTabsPanelStateId;
+  syncThreadId: FixedPanelTabsSyncThreadId;
+}): FixedPanelTabsState {
+  const state = useFixedPanelTabsState(panelStateId, syncThreadId);
+  const updateState = useUpdateFixedPanelTabsState(panelStateId, syncThreadId);
+  const reconciledState = useMemo(
+    () =>
+      reconcileFixedPanelViewTabsInState({
+        fixedTabs,
+        openFirstFixedTabWhenEmpty,
+        state,
+      }),
+    [fixedTabs, openFirstFixedTabWhenEmpty, state],
+  );
+
+  // Render the reconciled model immediately so hydration never flashes a
+  // missing tab or animates from an invalid layout. Commit the same model in a
+  // layout effect so local/server persistence catches up before paint.
+  useLayoutEffect(() => {
+    if (reconciledState === state) return;
+    updateState((current) =>
+      reconcileFixedPanelViewTabsInState({
+        fixedTabs,
+        openFirstFixedTabWhenEmpty,
+        state: current,
+      }),
+    );
+  }, [
+    fixedTabs,
+    openFirstFixedTabWhenEmpty,
+    reconciledState,
+    state,
+    updateState,
+  ]);
+
+  return reconciledState;
 }
 
 export function useTouchFixedPanelTabsState(

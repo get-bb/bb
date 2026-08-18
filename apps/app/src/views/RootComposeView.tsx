@@ -1184,7 +1184,6 @@ function RootComposeSurface({
     activeWorkspaceFileStatusLabel,
     activeBrowserTab,
     browserTabs,
-    clearActiveFileTabs,
     activateTab,
     closeTab,
     isNewTabActive,
@@ -1294,7 +1293,6 @@ function RootComposeSurface({
   const {
     closePanel: closeSecondaryPanel,
     openCompactDrawer,
-    openPanel: openSecondaryPanel,
     openStorageFile,
     openWorkspaceFile,
   } = useThreadSecondaryPanelVisibility({
@@ -1487,13 +1485,6 @@ function RootComposeSurface({
     }
     handleOpenNewTab();
   }, [closeSecondaryPanel, handleOpenNewTab, isSecondaryPanelOpen]);
-  const handleSecondaryPanelChange = useCallback<SecondaryPanelChangeHandler>(
-    (panel) => {
-      clearActiveFileTabs();
-      openSecondaryPanel(panel);
-    },
-    [clearActiveFileTabs, openSecondaryPanel],
-  );
   const handleSecondaryPanelFocus = useCallback(() => {
     touchFixedPanelTabsState();
   }, [touchFixedPanelTabsState]);
@@ -2373,12 +2364,11 @@ function RootComposeSurface({
             renderBrowserDeck,
             isBrowserTabActive,
             isOpen: isSecondaryPanelOpen,
+            fixedTabs: [],
             // The shell, tab strip, launcher, resize, and drawer behavior are
             // shared with threads. Info, Diff, and conversation full-screen
             // stay thread-only because no thread exists on this surface yet.
             showConversationCollapseControl: false,
-            showGitDiffTab: false,
-            showInfoTab: false,
             inlinePanelToggle: panelTogglePlacement.inlinePanelToggle,
             onClose: closeSecondaryPanel,
             onCollapse: closeSecondaryPanel,
@@ -2388,7 +2378,6 @@ function RootComposeSurface({
             onOpenFilePreview: handleOpenFilePreview,
             onSelectionAddToChat: handleRootPanelSelectionAddToChat,
             onPanelFocus: handleSecondaryPanelFocus,
-            onPanelChange: handleSecondaryPanelChange,
           }}
         >
           {showEmptyWelcome ? (

@@ -1060,25 +1060,25 @@ in one small package.
 
 ```ts
 bb.agents.experimental_registerProvider({
-  id: "echo-agent",              // stable public id; thread rows persist it
-  displayName: "Echo Agent",     // 1-80 chars, shown in the picker
-  icon: "./icons/echo.svg",      // optional; same grammar as bb.branding.icon
-  kind: "agent",                 // "agent" REQUIRES bridge; "router" forbids it
+  id: "echo-agent", // stable public id; thread rows persist it
+  displayName: "Echo Agent", // 1-80 chars, shown in the picker
+  icon: "./icons/echo.svg", // optional; same grammar as bb.branding.icon
+  kind: "agent", // "agent" REQUIRES bridge; "router" forbids it
   bridge: { entry: "provider-bridge" }, // names the built bundle
   capabilities: {
     // Pre-session facts only — the bridge reports the same facts at
     // initialize and may only narrow what is declared here, never widen it.
     supportsServiceTier: false,
     supportsNativeUserQuestion: false,
-    fork: "none",                    // "none" | "tip" | "checkpoint"
+    fork: "none", // "none" | "tip" | "checkpoint"
     supportsManualCompaction: false,
-    supportsThreadArchive: false,    // bb mirrors archive/unarchive onto it
-    supportsThreadRename: false,     // bb forwards renames to it
-    supportsWorkflows: false,        // the provider can run bb Workflow tools
-    permissionModes: ["full"],       // non-empty, no duplicates
-    reasoningLevels: ["medium"],     // coarse fallback ladder
+    supportsThreadArchive: false, // bb mirrors archive/unarchive onto it
+    supportsThreadRename: false, // bb forwards renames to it
+    supportsWorkflows: false, // the provider can run bb Workflow tools
+    permissionModes: ["full"], // non-empty, no duplicates
+    reasoningLevels: ["medium"], // coarse fallback ladder
   },
-  composerActions: [],           // skills typeahead is implicit
+  composerActions: [], // skills typeahead is implicit
 });
 ```
 
@@ -1252,6 +1252,15 @@ export default definePluginApp((app) => {
     icon: "Columns",
     path: "board",
     component: Board,
+    experimental_fixedTabs: [
+      {
+        id: "navigation",
+        title: "Navigation",
+        icon: "PanelRight",
+        component: BoardNavigation,
+        layout: "flush",
+      },
+    ],
     experimental_sidebarAccessory: OpenIssueCount,
   });
   app.slots.threadPanelAction({
@@ -1518,7 +1527,7 @@ Slot props contracts (versioned, additive-only):
   back/forward then walks panel-internal history (prefer this over hash
   routing).
   Registration:
-  `{ id, title, icon, path, component, experimental_sidebarAccessory?, headerContent? }`.
+  `{ id, title, icon, path, component, experimental_fixedTabs?, experimental_sidebarAccessory?, headerContent? }`.
   BB automatically wraps every plugin page in the same host-owned App panel
   used by New thread and thread pages. The page component supplies only its
   main body; it must not mount a second panel layout or register Browser and
@@ -1536,10 +1545,20 @@ Slot props contracts (versioned, additive-only):
   is page-session UI state, not plugin storage.
 
   Browser and Terminal tabs are normal host content tabs. Closing the final
-  content tab closes an otherwise empty panel; hydration also closes an open
-  panel when no durable tab survived. Plugins cannot currently contribute
-  fixed tabs to this page panel or replace its native tab chrome. Those are
-  host capabilities, not additional `navPanel` registration fields.
+  content tab closes an otherwise empty panel; if fixed tabs remain, BB falls
+  back to the first one instead. Hydration closes an open panel when no durable
+  tab survived.
+
+  `experimental_fixedTabs` declares ordered, non-closable page views in that
+  same host tab strip: `{ id, title, icon, component, layout? }`. BB opens the
+  first fixed tab on the page's first wide-layout visit, but remembers a later
+  user close. Only the active fixed-tab component is mounted. It receives the
+  same `{ subPath }` as the main page. `layout: "padded"` (the default) gives it
+  host padding and scrolling; `layout: "flush"` gives it the full panel content
+  region so it can own both. Fixed tabs add content to the shared panel; they
+  do not replace its native chrome, Browser, Terminal, or keyboard commands.
+  Experimental: see `docs/api_to_audit.md`.
+
   `experimental_sidebarAccessory` is a no-props, presentational component at
   the trailing edge of the sidebar row. It can own SDK hooks for a live count
   or short status without lifting state into the host sidebar. The host does
@@ -1559,6 +1578,7 @@ Slot props contracts (versioned, additive-only):
   title bar or the panel body. For a classic page, use an outer scroll region
   with `p-4 md:p-5` and wrap its content in a
   `mx-auto w-full max-w-3xl space-y-4` div.
+
 - `threadPanelAction` → an entry in the thread right panel's new-tab
   Actions list (next to "Start side chat" / "Start terminal"), labeled
   `title` with your compact plugin icon. This slot is only offered for an

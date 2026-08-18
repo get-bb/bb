@@ -28,6 +28,10 @@ import {
   requireUniqueId,
 } from "./composer-customization-validation.js";
 
+type PluginNavPanelFixedTabRegistration = NonNullable<
+  PluginNavPanelRegistration["experimental_fixedTabs"]
+>[number];
+
 /** Validated registrations produced by one plugin app setup execution. */
 export interface CollectedPluginAppRegistrations {
   homepageSections: PluginHomepageSectionRegistration[];
@@ -148,12 +152,58 @@ export function collectPluginAppRegistrations(
             `${kind}: "experimental_sidebarAccessory" must be a React component function when set`,
           );
         }
+        const experimentalFixedTabs: PluginNavPanelFixedTabRegistration[] =
+          (() => {
+            if (registration.experimental_fixedTabs === undefined) return [];
+            if (!Array.isArray(registration.experimental_fixedTabs)) {
+              throw new Error(
+                `${kind}: "experimental_fixedTabs" must be an array when set`,
+              );
+            }
+            const seenFixedTabIds = new Set<string>();
+            return registration.experimental_fixedTabs.map((value, index) => {
+              const fixedTabKind = `${kind}.experimental_fixedTabs[${index}]`;
+              const fixedTab = value as Record<string, unknown> | null;
+              const id = requireSlotId(fixedTabKind, fixedTab?.id);
+              requireUniqueId(fixedTabKind, seenFixedTabIds, id);
+              const layout = fixedTab?.layout;
+              if (
+                layout !== undefined &&
+                layout !== "padded" &&
+                layout !== "flush"
+              ) {
+                throw new Error(
+                  `${fixedTabKind}: "layout" must be "padded" or "flush" when set`,
+                );
+              }
+              return {
+                id,
+                title: requireNonEmptyString(
+                  fixedTabKind,
+                  "title",
+                  fixedTab?.title,
+                ),
+                icon: requireNonEmptyString(
+                  fixedTabKind,
+                  "icon",
+                  fixedTab?.icon,
+                ),
+                component: requireComponent<
+                  PluginNavPanelFixedTabRegistration["component"]
+                >(fixedTabKind, fixedTab?.component),
+                ...(layout === undefined ? {} : { layout }),
+              };
+            });
+          })();
         collected.navPanels.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           icon: requireNonEmptyString(kind, "icon", registration.icon),
           path,
           component: requireComponent(kind, registration.component),
+          ...(experimentalFixedTabs.length > 0
+            ? { experimental_fixedTabs: experimentalFixedTabs }
+            : {}),
           ...(registration.experimental_sidebarAccessory !== undefined
             ? {
                 experimental_sidebarAccessory:

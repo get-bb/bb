@@ -9,6 +9,7 @@ import {
   createHostFilePreviewFixedPanelTab,
   createNewTabFixedPanelTab,
   createPluginPanelFixedPanelTab,
+  createPluginPageFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   createThreadStorageFilePreviewFixedPanelTab,
@@ -97,6 +98,30 @@ describe("fixed-panel-tabs-state", () => {
     expect(parsed.secondary.tabs[1]).toMatchObject({
       lineRange: null,
     });
+  });
+
+  it("round-trips plugin-page fixed tab identities", () => {
+    const fixedTab = createPluginPageFixedPanelTab({
+      fixedTabId: "navigation",
+      pageId: "tasks",
+      pluginId: "tasks",
+    });
+    const state = createEmptyFixedPanelTabsState({
+      lastUsedAt: NOW,
+      secondary: {
+        activeTabId: fixedTab.id,
+        isOpen: true,
+        tabs: [fixedTab],
+      },
+    });
+
+    const parsed = parseFixedPanelTabsState({
+      initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+      now: NOW,
+      storedValue: serializeFixedPanelTabsState({ state }),
+    });
+
+    expect(parsed).toEqual(state);
   });
 
   it("drops old fixed panel state shapes instead of migrating them", () => {

@@ -21,6 +21,14 @@ import {
 import { PluginPanelRightPanelHost } from "./PluginPanelRightPanelHost";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 
+interface TestFixedTabRegistration {
+  id: string;
+  title: string;
+  icon: string;
+  component: (props: { subPath: string }) => ReactNode;
+  layout?: "padded" | "flush";
+}
+
 const browserState = vi.hoisted(() => ({ available: false }));
 const createTerminal = vi.hoisted(() => vi.fn());
 const threadTabsApi = vi.hoisted(() => ({
@@ -62,6 +70,9 @@ const terminalQueryState = vi.hoisted(() => ({
       lastUserInputAt: null,
     },
   ],
+}));
+const fixedTabState = vi.hoisted(() => ({
+  registrations: [] as TestFixedTabRegistration[],
 }));
 const hostState = vi.hoisted(() => ({
   hosts: [
@@ -106,6 +117,7 @@ vi.mock("@/lib/plugin-slots", () => ({
         icon: "Columns",
         component: () => null,
         generation: 1,
+        experimental_fixedTabs: fixedTabState.registrations,
       },
     ],
   }),
@@ -213,6 +225,8 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
     browserDeck,
     fileTabs,
     fileTabContent,
+    fixedTabs,
+    fixedTabContent,
     onClose,
     onOpenNewTab,
     topChromeSurface,
@@ -225,6 +239,12 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
       onSelect: () => void;
     }>;
     fileTabContent: ReactNode;
+    fixedTabs: Array<{
+      tab: { id: string };
+      title: string;
+      onSelect: () => void;
+    }>;
+    fixedTabContent: ReactNode;
     onClose: () => void;
     onOpenNewTab: () => void;
     topChromeSurface?: "panel" | "page";
@@ -245,11 +265,17 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
           />
         </div>
       ))}
+      {fixedTabs.map((tab) => (
+        <button key={tab.tab.id} type="button" onClick={tab.onSelect}>
+          {tab.title}
+        </button>
+      ))}
       <button type="button" onClick={onOpenNewTab}>
         Add tab
       </button>
       <button type="button" aria-label="Hide right panel" onClick={onClose} />
       {fileTabContent}
+      {fixedTabContent}
       {browserDeck}
     </aside>
   ),
@@ -315,7 +341,7 @@ vi.mock("@/components/thread/terminal/ThreadTerminalPanel", async () => {
   };
 });
 
-function renderHost(panelPath = "board") {
+function renderHost(panelPath = "board", subPath = "", store = createStore()) {
   const panelStateId = getPluginPagePanelStateId({
     panelPath,
     pluginId: "demo",
@@ -325,13 +351,13 @@ function renderHost(panelPath = "board") {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <JotaiProvider store={createStore()}>
+      <JotaiProvider store={store}>
         <TooltipProvider>
           <div data-plugin-right-panel-toggle-portal={panelStateId} />
           <PluginPanelRightPanelHost
             panelPath={panelPath}
             pluginId="demo"
-            subPath=""
+            subPath={subPath}
           >
             <div>Plugin page</div>
           </PluginPanelRightPanelHost>
@@ -350,6 +376,7 @@ describe("PluginPanelRightPanelHost", () => {
     threadTabsApi.get.mockResolvedValue({ revision: 4, tabs: [] });
     threadTabsApi.update.mockReset();
     threadTabsApi.update.mockResolvedValue({ revision: 5, tabs: [] });
+    fixedTabState.registrations = [];
     localStorage.clear();
   });
 
@@ -365,11 +392,13 @@ describe("PluginPanelRightPanelHost", () => {
       "shared-thread-secondary-panel",
     );
     expect(collapsedPanel.dataset.topChromeSurface).toBe("panel");
-    expect(
-      screen
-        .getByTestId("shared-secondary-panel-region")
-        .hasAttribute("hidden"),
-    ).toBe(true);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByTestId("shared-secondary-panel-region")
+          .hasAttribute("hidden"),
+      ).toBe(true),
+    );
 
     const showButton = await screen.findByRole("button", {
       name: "Show right panel",
@@ -402,6 +431,101 @@ describe("PluginPanelRightPanelHost", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show right panel" }));
     expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Hide right panel" }));
+    expect(
+      await screen.findByRole("button", { name: "Show right panel" }),
+    ).toBeTruthy();
+  });
+
+  it("uses the shared panel state and chrome for plugin fixed tabs", async () => {
+    function Navigation({ subPath }: { subPath: string }) {
+      return <div>Navigation for {subPath}</div>;
+    }
+    function Details({ subPath }: { subPath: string }) {
+      return <div>Details for {subPath}</div>;
+    }
+    fixedTabState.registrations = [
+      {
+        id: "navigation",
+        title: "Navigation",
+        icon: "PanelRight",
+        component: Navigation,
+      },
+      {
+        id: "details",
+        title: "Details",
+        icon: "Info",
+        component: Details,
+        layout: "flush",
+      },
+    ];
+
+    renderHost("board", "task/123");
+
+    expect(
+      screen
+        .getByTestId("shared-secondary-panel-region")
+        .hasAttribute("hidden"),
+    ).toBe(false);
+    expect(await screen.findByText("Navigation for task/123")).toBeTruthy();
+    expect(screen.queryByText("Details for task/123")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(await screen.findByText("Details for task/123")).toBeTruthy();
+    expect(screen.queryByText("Navigation for task/123")).toBeNull();
+
+    fireEvent.click(screen.getByText("Add tab"));
+    expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close New tab" }));
+    expect(screen.getByText("Navigation for task/123")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("shared-secondary-panel-region")
+        .hasAttribute("hidden"),
+    ).toBe(false);
+  });
+
+  it("does not reopen fixed tabs after navigating away and back", async () => {
+    fixedTabState.registrations = [
+      {
+        id: "navigation",
+        title: "Navigation",
+        icon: "PanelRight",
+        component: () => <div>Navigation</div>,
+      },
+    ];
+    const store = createStore();
+    const firstRender = renderHost("board", "", store);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Hide right panel" }),
+    );
+    await screen.findByRole("button", { name: "Show right panel" });
+    const panelStateId = getPluginPagePanelStateId({
+      panelPath: "board",
+      pluginId: "demo",
+    });
+    await waitFor(() => {
+      const storedValue = localStorage.getItem(
+        getFixedPanelTabsStateStorageKey({ threadId: panelStateId }),
+      );
+      expect(storedValue).not.toBeNull();
+      expect(JSON.parse(storedValue!)).toMatchObject({
+        secondary: {
+          isOpen: false,
+          tabs: [{ kind: "plugin-page-fixed", fixedTabId: "navigation" }],
+        },
+      });
+    });
+    firstRender.unmount();
+
+    renderHost("board", "", store);
+
+    await waitFor(() =>
+      expect(
+        screen
+          .getByTestId("shared-secondary-panel-region")
+          .hasAttribute("hidden"),
+      ).toBe(true),
+    );
     expect(
       await screen.findByRole("button", { name: "Show right panel" }),
     ).toBeTruthy();
