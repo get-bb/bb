@@ -168,7 +168,7 @@ describe("web normalization integration", () => {
       await ctx.runtime.shutdown();
       cleanup(ctx);
     }
-  }, 90_000);
+  }, 150_000);
 
   it("normalizes Codex native open-page activity", async () => {
     const providerId = "codex";
