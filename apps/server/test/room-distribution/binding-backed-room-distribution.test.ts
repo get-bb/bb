@@ -189,6 +189,7 @@ describe("binding-backed Work Together Room distribution", () => {
       const { host } = seedHostSession(harness.deps, { id: createHostId() });
       const target = {
         bbHostId: host.id,
+        dataDir: `/tmp/bb-host-data/${host.id}`,
         projectName: "Room Distribution Repository",
         providerId: "codex",
         sourcePath: "/srv/work-together/distribution",
@@ -198,9 +199,13 @@ describe("binding-backed Work Together Room distribution", () => {
         workspaceId: randomUUID(),
         taskId: randomUUID(),
         cellId: randomUUID(),
+        workKind: "code" as const,
+        repositorySnapshotId: randomUUID(),
         repositoryBindingId: randomUUID(),
         repositoryBindingVersion: 3,
         providerRepositoryId,
+        objectFormat: "sha1" as const,
+        baseRevision: "a".repeat(40),
         baseBranch: "main",
         baseRevision: "a".repeat(40),
         generatedBranch: "rooms/distribution-room",
@@ -210,6 +215,7 @@ describe("binding-backed Work Together Room distribution", () => {
       const provisioner = createWorkTogetherRoomResourceProvisioner(
         harness.deps,
         {
+          resolveHost: () => target,
           resolve(input) {
             return input.candidateHostId === candidateHostId &&
               input.providerRepositoryId === providerRepositoryId
@@ -304,9 +310,13 @@ describe("binding-backed Work Together Room distribution", () => {
         workspaceId: randomUUID(),
         taskId: randomUUID(),
         cellId: randomUUID(),
+        workKind: "code" as const,
+        repositorySnapshotId: randomUUID(),
         repositoryBindingId: randomUUID(),
         repositoryBindingVersion: 1,
         providerRepositoryId,
+        objectFormat: "sha1" as const,
+        baseRevision: "a".repeat(40),
         baseBranch: "main",
         baseRevision: "a".repeat(40),
         generatedBranch: "rooms/subscription-room",
@@ -316,8 +326,14 @@ describe("binding-backed Work Together Room distribution", () => {
       const provisioned = await createWorkTogetherRoomResourceProvisioner(
         harness.deps,
         {
+          resolveHost: () => ({
+            bbHostId: host.id,
+            dataDir: `/tmp/bb-host-data/${host.id}`,
+            providerId: "codex",
+          }),
           resolve: () => ({
             bbHostId: host.id,
+            dataDir: `/tmp/bb-host-data/${host.id}`,
             projectName: "Subscription Repository",
             providerId: "codex",
             sourcePath: "/srv/work-together/subscription",
@@ -407,9 +423,13 @@ describe("binding-backed Work Together Room distribution", () => {
         workspaceId: randomUUID(),
         taskId: randomUUID(),
         cellId: randomUUID(),
+        workKind: "code" as const,
+        repositorySnapshotId: randomUUID(),
         repositoryBindingId: randomUUID(),
         repositoryBindingVersion: 1,
         providerRepositoryId: "79",
+        objectFormat: "sha1" as const,
+        baseRevision: "a".repeat(40),
         baseBranch: "main",
         baseRevision: "a".repeat(40),
         generatedBranch: "rooms/command-room",
@@ -419,8 +439,14 @@ describe("binding-backed Work Together Room distribution", () => {
       const provisioned = await createWorkTogetherRoomResourceProvisioner(
         harness.deps,
         {
+          resolveHost: () => ({
+            bbHostId: host.id,
+            dataDir: `/tmp/bb-host-data/${host.id}`,
+            providerId: "codex",
+          }),
           resolve: () => ({
             bbHostId: host.id,
+            dataDir: `/tmp/bb-host-data/${host.id}`,
             projectName: "Command Repository",
             providerId: "codex",
             sourcePath: "/srv/work-together/commands",
@@ -726,6 +752,10 @@ describe("binding-backed Work Together Room distribution", () => {
         repositoryBindingId: randomUUID(),
         repositoryBindingVersion: 1,
         providerRepositoryId: "177",
+        workKind: "code" as const,
+        repositorySnapshotId: randomUUID(),
+        objectFormat: "sha1" as const,
+        baseRevision: "a".repeat(40),
         baseBranch: "main",
         baseRevision: "a".repeat(40),
         generatedBranch: "rooms/child-streams",
@@ -735,8 +765,14 @@ describe("binding-backed Work Together Room distribution", () => {
       const provisioned = await createWorkTogetherRoomResourceProvisioner(
         harness.deps,
         {
+          resolveHost: () => ({
+            bbHostId: host.id,
+            dataDir: `/tmp/bb-host-data/${host.id}`,
+            providerId: "codex",
+          }),
           resolve: () => ({
             bbHostId: host.id,
+            dataDir: `/tmp/bb-host-data/${host.id}`,
             projectName: "Child Stream Repository",
             providerId: "codex",
             sourcePath: "/srv/work-together/child-streams",
@@ -1191,6 +1227,10 @@ describe("binding-backed Work Together Room distribution", () => {
         repositoryBindingId: randomUUID(),
         repositoryBindingVersion: 1,
         providerRepositoryId: "88",
+        workKind: "code" as const,
+        repositorySnapshotId: randomUUID(),
+        objectFormat: "sha1" as const,
+        baseRevision: "a".repeat(40),
         baseBranch: "main",
         baseRevision: "a".repeat(40),
         generatedBranch: "rooms/identity-fence",
@@ -1198,8 +1238,14 @@ describe("binding-backed Work Together Room distribution", () => {
         environmentTemplate: "managed-worktree" as const,
       };
       await createWorkTogetherRoomResourceProvisioner(harness.deps, {
+        resolveHost: () => ({
+          bbHostId: host.id,
+          dataDir: `/tmp/bb-host-data/${host.id}`,
+          providerId: "codex",
+        }),
         resolve: () => ({
           bbHostId: host.id,
+          dataDir: `/tmp/bb-host-data/${host.id}`,
           projectName: "Identity Fence Repository",
           providerId: "codex",
           sourcePath: "/srv/work-together/identity-fence",
@@ -1234,6 +1280,10 @@ describe("binding-backed Work Together Room distribution", () => {
         repositoryBindingId: randomUUID(),
         repositoryBindingVersion: 1,
         providerRepositoryId: "91",
+        workKind: "code" as const,
+        repositorySnapshotId: randomUUID(),
+        objectFormat: "sha1" as const,
+        baseRevision: "a".repeat(40),
         baseBranch: "main",
         baseRevision: "a".repeat(40),
         generatedBranch: "rooms/collaboration",
@@ -1243,8 +1293,14 @@ describe("binding-backed Work Together Room distribution", () => {
       const provisioned = await createWorkTogetherRoomResourceProvisioner(
         harness.deps,
         {
+          resolveHost: () => ({
+            bbHostId: host.id,
+            dataDir: `/tmp/bb-host-data/${host.id}`,
+            providerId: "codex",
+          }),
           resolve: () => ({
             bbHostId: host.id,
+            dataDir: `/tmp/bb-host-data/${host.id}`,
             projectName: "Collaboration Repository",
             providerId: "codex",
             sourcePath: "/srv/work-together/collaboration",
@@ -1412,6 +1468,10 @@ describe("binding-backed Work Together Room distribution", () => {
         repositoryBindingId: randomUUID(),
         repositoryBindingVersion: 1,
         providerRepositoryId: "92",
+        workKind: "code" as const,
+        repositorySnapshotId: randomUUID(),
+        objectFormat: "sha1" as const,
+        baseRevision: "a".repeat(40),
         baseBranch: "main",
         baseRevision: "a".repeat(40),
         generatedBranch: "rooms/older-pages",
@@ -1421,8 +1481,14 @@ describe("binding-backed Work Together Room distribution", () => {
       const provisioned = await createWorkTogetherRoomResourceProvisioner(
         harness.deps,
         {
+          resolveHost: () => ({
+            bbHostId: host.id,
+            dataDir: `/tmp/bb-host-data/${host.id}`,
+            providerId: "codex",
+          }),
           resolve: () => ({
             bbHostId: host.id,
+            dataDir: `/tmp/bb-host-data/${host.id}`,
             projectName: "Older Pages Repository",
             providerId: "codex",
             sourcePath: "/srv/work-together/older-pages",
@@ -1584,6 +1650,10 @@ describe("binding-backed Work Together Room distribution", () => {
         repositoryBindingId: randomUUID(),
         repositoryBindingVersion: 1,
         providerRepositoryId: "204",
+        workKind: "code" as const,
+        repositorySnapshotId: randomUUID(),
+        objectFormat: "sha1" as const,
+        baseRevision: "a".repeat(40),
         baseBranch: "main",
         baseRevision: "a".repeat(40),
         generatedBranch: "rooms/subagent-older-pages",
@@ -1593,8 +1663,14 @@ describe("binding-backed Work Together Room distribution", () => {
       const provisioned = await createWorkTogetherRoomResourceProvisioner(
         harness.deps,
         {
+          resolveHost: () => ({
+            bbHostId: host.id,
+            dataDir: `/tmp/bb-host-data/${host.id}`,
+            providerId: "codex",
+          }),
           resolve: () => ({
             bbHostId: host.id,
+            dataDir: `/tmp/bb-host-data/${host.id}`,
             projectName: "Subagent Older Pages Repository",
             providerId: "codex",
             sourcePath: "/srv/work-together/subagent-older-pages",

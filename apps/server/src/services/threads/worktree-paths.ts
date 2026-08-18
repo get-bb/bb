@@ -57,6 +57,14 @@ export interface ResolvePersonalTargetPathArgs {
   environmentId: string;
 }
 
+export type ResolveIsolatedScratchTargetPathArgs =
+  ResolvePersonalTargetPathArgs;
+
+export type ResolveDetachedReadOnlyPathArgs = ResolveManagedTargetPathArgs;
+
+export type ResolveDetachedReadOnlyOutputPathArgs =
+  ResolvePersonalTargetPathArgs;
+
 export function resolveManagedTargetPath(
   args: ResolveManagedTargetPathArgs,
 ): string {
@@ -78,6 +86,37 @@ export function resolvePersonalTargetPath(
   );
 }
 
+export function resolveIsolatedScratchTargetPath(
+  args: ResolveIsolatedScratchTargetPathArgs,
+): string {
+  return path.posix.join(
+    args.dataDir,
+    "isolated-scratch-workspaces",
+    args.environmentId,
+  );
+}
+
+export function resolveDetachedReadOnlyTargetPath(
+  args: ResolveDetachedReadOnlyPathArgs,
+): string {
+  return path.posix.join(
+    args.dataDir,
+    "detached-read-only-workspaces",
+    args.environmentId,
+    deriveRepoDirName(args.sourcePath),
+  );
+}
+
+export function resolveDetachedReadOnlyOutputPath(
+  args: ResolveDetachedReadOnlyOutputPathArgs,
+): string {
+  return path.posix.join(
+    args.dataDir,
+    "detached-read-only-outputs",
+    args.environmentId,
+  );
+}
+
 /**
  * Whether a path lies inside a workspace root bb creates and destroys on a
  * host. A managed environment stores its path only once the host reports
@@ -91,5 +130,8 @@ export function isBbManagedWorkspacePath(args: {
   return [
     path.posix.join(args.dataDir, "worktrees"),
     path.posix.join(args.dataDir, "personal-workspaces"),
+    path.posix.join(args.dataDir, "isolated-scratch-workspaces"),
+    path.posix.join(args.dataDir, "detached-read-only-workspaces"),
+    path.posix.join(args.dataDir, "detached-read-only-outputs"),
   ].some((root) => args.path === root || args.path.startsWith(`${root}/`));
 }

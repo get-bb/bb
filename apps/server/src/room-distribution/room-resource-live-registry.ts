@@ -1,5 +1,6 @@
 import { listBuiltInAgentProviderInfos } from "@bb/agent-providers";
 import {
+  getLatestSessionForHost,
   listPublicHosts,
   listPublicLocalPathProjectSourcesForHost,
 } from "@bb/db";
@@ -10,6 +11,9 @@ import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import type { WorkSessionDeps } from "../types.js";
 import {
   WorkTogetherRoomProvisioningUnavailableError,
+  WorkTogetherRoomRepositoryRevisionUnavailableError,
+  type WorkTogetherRoomHostTarget,
+  type WorkTogetherRoomRepositoryTarget,
   type WorkTogetherRoomResourceRegistry,
   type WorkTogetherRoomResourceTarget,
 } from "./room-resource-provisioner.js";
@@ -20,6 +24,8 @@ export interface ResolveWorkTogetherGithubRepositoryArgs {
   hostId: string;
   knownPaths: readonly string[];
   providerRepositoryId: string;
+  objectFormat?: "sha1" | "sha256";
+  baseRevision?: string;
 }
 
 export type ResolveWorkTogetherGithubRepository = (
@@ -40,13 +46,12 @@ function defaultProviderId(): string {
 }
 
 function targetFromResolvedCheckout(
-  hostId: string,
   repository: Extract<
     ResolveGithubRepositoryResult,
     { outcome: "found" }
   >["repository"],
   sources: ReturnType<typeof listPublicLocalPathProjectSourcesForHost>,
-): WorkTogetherRoomResourceTarget {
+): WorkTogetherRoomRepositoryTarget {
   const matching = sources
     .filter((source) => source.path === repository.path)
     .sort((left, right) =>
@@ -58,8 +63,6 @@ function targetFromResolvedCheckout(
     );
   const project = matching[0];
   return Object.freeze({
-    bbHostId: hostId,
-    providerId: project?.providerId ?? defaultProviderId(),
     projectName: project?.projectName ?? repository.name,
     sourcePath: repository.path,
   });
@@ -75,6 +78,9 @@ export function createHostWorkTogetherGithubRepositoryResolver(
       command: {
         type: "workspace.resolve_github_repository",
         providerRepositoryId: args.providerRepositoryId,
+        ...(args.objectFormat !== undefined && args.baseRevision !== undefined
+          ? { objectFormat: args.objectFormat, baseRevision: args.baseRevision }
+          : {}),
         knownPaths: [...args.knownPaths],
       },
     });
@@ -87,10 +93,36 @@ export function createHostWorkTogetherGithubRepositoryResolver(
 export function createLiveWorkTogetherRoomResourceRegistry(
   deps: LiveWorkTogetherRoomResourceRegistryDeps,
 ): WorkTogetherRoomResourceRegistry {
+  const resolveHost = (input: {
+    candidateHostId: string;
+  }): WorkTogetherRoomHostTarget => {
+    if (typeof input?.candidateHostId !== "string") {
+      throw new WorkTogetherRoomProvisioningUnavailableError();
+    }
+    const hosts = listPublicHosts(deps.db);
+    if (hosts.length !== 1 || hosts[0] === undefined) {
+      throw new WorkTogetherRoomProvisioningUnavailableError();
+    }
+    const host = hosts[0];
+    const session = getLatestSessionForHost(deps.db, { hostId: host.id });
+    if (session === null || session.status !== "active") {
+      throw new WorkTogetherRoomProvisioningUnavailableError();
+    }
+    return Object.freeze({
+      bbHostId: host.id,
+      dataDir: session.dataDir,
+      providerId: defaultProviderId(),
+    });
+  };
+
   return Object.freeze({
+    resolveHost,
     async resolve(input: {
       candidateHostId: string;
       providerRepositoryId: string;
+      environmentTemplate?: "managed-worktree" | "detached-read-only";
+      objectFormat?: "sha1" | "sha256";
+      baseRevision?: string;
     }): Promise<WorkTogetherRoomResourceTarget | null> {
       if (
         typeof input?.providerRepositoryId !== "string" ||
@@ -99,11 +131,12 @@ export function createLiveWorkTogetherRoomResourceRegistry(
         throw new WorkTogetherRoomProvisioningUnavailableError();
       }
 
-      const hosts = listPublicHosts(deps.db);
-      if (hosts.length !== 1) {
-        throw new WorkTogetherRoomProvisioningUnavailableError();
-      }
-      const host = hosts[0];
+      const hostTarget = resolveHost({
+        candidateHostId: input.candidateHostId,
+      });
+      const host = listPublicHosts(deps.db).find(
+        (candidate) => candidate.id === hostTarget.bbHostId,
+      );
       if (host === undefined) {
         throw new WorkTogetherRoomProvisioningUnavailableError();
       }
@@ -122,6 +155,14 @@ export function createLiveWorkTogetherRoomResourceRegistry(
           hostId: host.id,
           knownPaths,
           providerRepositoryId: input.providerRepositoryId,
+          ...(input.environmentTemplate === "detached-read-only" &&
+          input.objectFormat !== undefined &&
+          input.baseRevision !== undefined
+            ? {
+                objectFormat: input.objectFormat,
+                baseRevision: input.baseRevision,
+              }
+            : {}),
         });
       } catch (error) {
         if (error instanceof ApiError) throw error;
@@ -134,7 +175,13 @@ export function createLiveWorkTogetherRoomResourceRegistry(
       if (result.outcome === "not_found") {
         return null;
       }
-      return targetFromResolvedCheckout(host.id, result.repository, sources);
+      if (result.outcome === "revision_unavailable") {
+        throw new WorkTogetherRoomRepositoryRevisionUnavailableError();
+      }
+      return Object.freeze({
+        ...hostTarget,
+        ...targetFromResolvedCheckout(result.repository, sources),
+      });
     },
   });
 }

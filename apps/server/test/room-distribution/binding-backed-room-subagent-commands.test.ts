@@ -151,9 +151,13 @@ async function provisionRoom(harness: TestAppHarness, seed: number) {
     workspaceId: randomUUID(),
     taskId: randomUUID(),
     cellId: randomUUID(),
+    workKind: "code" as const,
+    repositorySnapshotId: randomUUID(),
     repositoryBindingId: randomUUID(),
     repositoryBindingVersion: 1,
     providerRepositoryId: String(seed),
+    objectFormat: "sha1" as const,
+    baseRevision: "a".repeat(40),
     baseBranch: "main",
     baseRevision: "a".repeat(40),
     generatedBranch: `rooms/subagent-commands-${seed}`,
@@ -162,13 +166,14 @@ async function provisionRoom(harness: TestAppHarness, seed: number) {
   };
   const target = {
     bbHostId: host.id,
+    dataDir: `/tmp/bb-host-data/${host.id}`,
     projectName: `Room Subagent Commands ${seed}`,
     providerId: "codex",
     sourcePath: `/srv/work-together/subagent-commands-${seed}`,
   } satisfies WorkTogetherRoomResourceTarget;
   const provisioned = await createWorkTogetherRoomResourceProvisioner(
     harness.deps,
-    { resolve: () => target },
+    { resolveHost: () => target, resolve: () => target },
   ).provision({ principal: PRINCIPAL, launch });
   harness.db
     .update(environments)

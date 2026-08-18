@@ -33,6 +33,7 @@ export interface ProviderAcceptedCommandTranslationArgs {
 
 export interface ProviderAdapterFactoryOptions {
   additionalWorkspaceWriteRoots: readonly string[];
+  workspaceReadOnly?: boolean;
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeBundleDir?: string;
   bridgeNodeEnv?: Record<string, string>;

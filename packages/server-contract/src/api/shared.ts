@@ -94,10 +94,20 @@ export const personalWorkspaceSchema = z.object({
   type: z.literal("personal"),
 });
 
+export const isolatedScratchWorkspaceSchema = z.object({
+  type: z.literal("isolated-scratch"),
+});
+
+export const detachedReadOnlyWorkspaceSchema = z.object({
+  type: z.literal("detached-read-only"),
+});
+
 export const workspaceArgsSchema = z.discriminatedUnion("type", [
   unmanagedWorkspaceSchema,
   managedWorktreeWorkspaceSchema,
   personalWorkspaceSchema,
+  isolatedScratchWorkspaceSchema,
+  detachedReadOnlyWorkspaceSchema,
 ]);
 export type WorkspaceArgs = z.infer<typeof workspaceArgsSchema>;
 

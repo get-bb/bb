@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { actorStampSchema, type ActorStamp } from "./actor-stamp.js";
+import { jsonObjectSchema } from "./json-value.js";
 import { principalKindValues } from "./principal.js";
 import {
   clientTurnRequestIdSchema,
@@ -14,6 +15,7 @@ export const threadCommandKindValues = [
   "interaction.approve",
   "read.mark",
   "branch.publish",
+  "result.publish",
 ] as const;
 export const threadCommandKindSchema = z.enum(threadCommandKindValues);
 export type ThreadCommandKind = z.infer<typeof threadCommandKindSchema>;
@@ -38,6 +40,7 @@ export const threadCommandAdmissionDispositionValues = [
   "approved",
   "marked",
   "published",
+  "result-published",
 ] as const;
 export const threadCommandAdmissionDispositionSchema = z.enum(
   threadCommandAdmissionDispositionValues,
@@ -124,6 +127,16 @@ const threadCommandPublishedResultSchema = z
   })
   .strict();
 
+const threadCommandResultPublishedResultSchema = z
+  .object({
+    disposition: z.literal("result-published"),
+    resultId: z.string().uuid(),
+    resultRevision: z.number().int().positive(),
+    resultDigest: z.string().regex(/^[a-f0-9]{64}$/u),
+    submission: jsonObjectSchema,
+  })
+  .strict();
+
 export const threadCommandAdmissionResultSchema = z.discriminatedUnion(
   "disposition",
   [
@@ -135,6 +148,7 @@ export const threadCommandAdmissionResultSchema = z.discriminatedUnion(
     threadCommandApprovedResultSchema,
     threadCommandMarkedResultSchema,
     threadCommandPublishedResultSchema,
+    threadCommandResultPublishedResultSchema,
   ],
 );
 export type ThreadCommandAdmissionResult = z.infer<
@@ -187,6 +201,12 @@ export const threadCommandAdmissionCommandResultSchema = z.discriminatedUnion(
       .object({
         commandKind: z.literal("branch.publish"),
         result: threadCommandPublishedResultSchema,
+      })
+      .strict(),
+    z
+      .object({
+        commandKind: z.literal("result.publish"),
+        result: threadCommandResultPublishedResultSchema,
       })
       .strict(),
   ],

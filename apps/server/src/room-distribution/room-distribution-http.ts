@@ -19,7 +19,9 @@ import {
   parseRoomDistributionTarget,
 } from "./room-distribution-target.js";
 
-const COMMAND_BODY_LIMIT_BYTES = 131_072;
+// The typed result submission alone may canonically occupy 131,072 bytes;
+// leave bounded room for the command envelope and ordinary JSON whitespace.
+const COMMAND_BODY_LIMIT_BYTES = 262_144;
 const COMMAND_CONTENT_TYPE = /^application\/json(?:\s*;\s*charset=utf-8)?$/iu;
 const FORBIDDEN_COMMAND_KEY_TOKENS = new Set([
   "actor",

@@ -36,6 +36,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",
+    "test:gw03-s0": "git diff --check -- package.json tests/integration/package.json tests/integration/helpers/harness.ts tests/integration/vitest.gw03-s0.config.ts tests/integration/fake/gw03-s0-candidate.test.ts tests/integration/fake/gw03-s0-synthetic-provider.ts && pnpm --filter @bb/integration-tests typecheck && pnpm --filter @bb/integration-tests test:gw03-s0",
     "qa:standalone:start": "node tests/qa/scripts/run-root-command.mjs standalone:start",
     "qa:standalone:stop": "node tests/qa/scripts/run-root-command.mjs standalone:stop",
     "qa:standalone:cleanup": "node tests/qa/scripts/run-root-command.mjs standalone:cleanup",

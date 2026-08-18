@@ -117,6 +117,7 @@ interface ToCodexPermissionSettingsArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   gitWritableRoots: readonly string[];
   options: ProviderExecutionContext;
+  workspaceReadOnly: boolean;
 }
 
 interface BuildCodexConfigArgs {
@@ -124,6 +125,7 @@ interface BuildCodexConfigArgs {
   gitWritableRoots: readonly string[];
   options?: ProviderExecutionContext;
   threadId: string;
+  workspaceReadOnly: boolean;
 }
 
 interface CodexSkillsExtraRootsSetParams {
@@ -639,7 +641,7 @@ function toCodexPermissionSettings(
         sandbox: "workspace-write",
         sandboxPolicy: toWorkspaceWriteCodexSandboxPolicy(
           combineWorkspaceWriteRoots(
-            args.gitWritableRoots,
+            args.workspaceReadOnly ? [] : args.gitWritableRoots,
             args.additionalWorkspaceWriteRoots,
           ),
         ),
@@ -722,7 +724,7 @@ function buildCodexConfig(
   config["memories.generate_memories"] = args.options?.memoryEnabled ?? true;
   if (args.options?.permissionScope === "workspace") {
     const writableRoots = combineWorkspaceWriteRoots(
-      args.gitWritableRoots,
+      args.workspaceReadOnly ? [] : args.gitWritableRoots,
       args.additionalWorkspaceWriteRoots,
     );
     if (writableRoots.length > 0) {
@@ -1032,6 +1034,7 @@ export function createCodexProviderAdapter(
 ): ProviderAdapter {
   const additionalWorkspaceWriteRoots =
     opts?.additionalWorkspaceWriteRoots ?? [];
+  const workspaceReadOnly = opts?.workspaceReadOnly ?? false;
   const providerInfo = getBuiltInAgentProviderInfo("codex");
   const capabilities = providerInfo.capabilities;
   const eventTranslationState = createCodexEventTranslationState();
@@ -1135,6 +1138,7 @@ export function createCodexProviderAdapter(
         gitWritableRoots: writableRoots,
         options: command.options,
         threadId: command.threadId,
+        workspaceReadOnly,
       }),
       permissionSettings: toCodexThreadPermissionSettings(command.options),
     };
@@ -2081,6 +2085,7 @@ export function createCodexProviderAdapter(
             additionalWorkspaceWriteRoots,
             gitWritableRoots: writableRoots,
             options: command.options,
+            workspaceReadOnly,
           });
           return {
             kind: "request",

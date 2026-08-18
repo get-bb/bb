@@ -7,12 +7,14 @@ import {
   createHostId,
   environments,
   getWorkTogetherRoomResourceReservation,
+  listEnvironments,
   listEvents,
   listProjects,
   listThreads,
 } from "@bb/db";
+import type { CreateThreadEnvironmentArgs } from "@bb/server-contract";
 import { eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createWorkTogetherRoomResourceProvisioner,
   WorkTogetherRoomProvisioningConflictError,
@@ -21,16 +23,23 @@ import {
   WorkTogetherRoomRepositoryRevisionUnavailableError,
   type WorkTogetherRoomResourceProvisioner,
   type WorkTogetherRoomResourceRegistry,
+  type WorkTogetherRoomHostTarget,
   type WorkTogetherRoomResourceTarget,
 } from "../../src/room-distribution/room-resource-provisioner.js";
+import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import {
+  listQueuedCommands,
+  requireManagedWorktreeEnvironmentProvisionLiveCommand,
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
-  requireManagedWorktreeEnvironmentProvisionLiveCommand,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
 import { seedHostSession } from "../helpers/seed.js";
-import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
+import {
+  createTestAppHarness,
+  withTestHarness,
+  type TestAppHarness,
+} from "../helpers/test-app.js";
 
 const PRINCIPAL = Object.freeze({
   id: "user_room_owner",
@@ -38,12 +47,39 @@ const PRINCIPAL = Object.freeze({
   displayName: "Room Owner",
 });
 
+async function createRoomSubagent(
+  harness: TestAppHarness,
+  args: {
+    environment: CreateThreadEnvironmentArgs;
+    parentThreadId: string;
+    projectId: string;
+    prompt?: string;
+  },
+) {
+  return createThreadFromRequest(harness.deps, {
+    environment: args.environment,
+    input:
+      args.prompt === undefined
+        ? []
+        : [{ type: "text", text: args.prompt, mentions: [] }],
+    origin: "sdk",
+    parentThreadId: args.parentThreadId,
+    projectId: args.projectId,
+    providerId: "codex",
+    startedOnBehalfOf: null,
+  });
+}
+
 function registryFor(
   candidateHostId: string,
   providerRepositoryId: string,
   target: WorkTogetherRoomResourceTarget | null,
+  hostTarget: WorkTogetherRoomHostTarget = target!,
 ): WorkTogetherRoomResourceRegistry {
   return {
+    resolveHost(input) {
+      return input.candidateHostId === candidateHostId ? hostTarget : null;
+    },
     resolve(input) {
       return input.candidateHostId === candidateHostId &&
         input.providerRepositoryId === providerRepositoryId
@@ -59,11 +95,14 @@ function launch(candidateHostId: string, providerRepositoryId: string) {
     workspaceId: randomUUID(),
     taskId: randomUUID(),
     cellId: randomUUID(),
+    workKind: "code" as const,
+    repositorySnapshotId: randomUUID(),
     repositoryBindingId: randomUUID(),
     repositoryBindingVersion: 1,
     providerRepositoryId,
-    baseBranch: "main",
+    objectFormat: "sha1" as const,
     baseRevision: "a".repeat(40),
+    baseBranch: "main",
     generatedBranch: "rooms/exact-room-branch",
     candidateHostId,
     environmentTemplate: "managed-worktree" as const,
@@ -80,6 +119,7 @@ describe("Work Together Room resource provisioner", () => {
       });
       const target = {
         bbHostId: host.id,
+        dataDir: `/tmp/bb-host-data/${host.id}`,
         projectName: "WT Room Repository",
         providerId: "codex",
         sourcePath: "/srv/work-together/repository",
@@ -152,13 +192,32 @@ describe("Work Together Room resource provisioner", () => {
         launch: exactLaunch,
       });
       expect(replay).toEqual(first);
+      const child = await createRoomSubagent(harness, {
+        environment: { type: "project-default" },
+        parentThreadId: first.primaryThreadId,
+        projectId: first.projectId,
+      });
+      expect(child).toMatchObject({
+        environmentId: first.environmentId,
+        parentThreadId: first.primaryThreadId,
+        projectId: first.projectId,
+      });
       expect(listProjects(harness.db)).toHaveLength(projectCountBefore + 1);
       expect(
         listThreads(harness.db, {
           includeHidden: true,
           projectId: first.projectId,
         }),
-      ).toHaveLength(1);
+      ).toHaveLength(2);
+      expect(listEnvironments(harness.db, first.projectId)).toEqual([
+        expect.objectContaining({
+          id: first.environmentId,
+          workspaceProvisionType: "managed-worktree",
+        }),
+      ]);
+      expect(listQueuedCommands(harness, "environment.provision")).toHaveLength(
+        1,
+      );
     });
   });
 
@@ -177,6 +236,7 @@ describe("Work Together Room resource provisioner", () => {
       const { host } = seedHostSession(first.deps, { id: createHostId() });
       target = {
         bbHostId: host.id,
+        dataDir: `/tmp/bb-host-data/${host.id}`,
         projectName: "Restart-safe Room Repository",
         providerId: "codex",
         sourcePath: "/srv/work-together/restart-safe",
@@ -231,9 +291,15 @@ describe("Work Together Room resource provisioner", () => {
       const candidateHostId = randomUUID();
       const providerRepositoryId = "77";
       const exactLaunch = launch(candidateHostId, providerRepositoryId);
+      const { host } = seedHostSession(harness.deps, { id: createHostId() });
+      const hostTarget = {
+        bbHostId: host.id,
+        dataDir: `/tmp/bb-host-data/${host.id}`,
+        providerId: "codex",
+      } satisfies WorkTogetherRoomHostTarget;
       const provisioner = createWorkTogetherRoomResourceProvisioner(
         harness.deps,
-        registryFor(candidateHostId, providerRepositoryId, null),
+        registryFor(candidateHostId, providerRepositoryId, null, hostTarget),
       );
 
       await expect(
@@ -261,6 +327,7 @@ describe("Work Together Room resource provisioner", () => {
         harness.deps,
         registryFor(candidateHostId, providerRepositoryId, {
           bbHostId: host.id,
+          dataDir: `/tmp/bb-host-data/${host.id}`,
           projectName: "Revision failure",
           providerId: "codex",
           sourcePath: "/srv/work-together/revision-failure",
@@ -308,6 +375,7 @@ describe("Work Together Room resource provisioner", () => {
         harness.deps,
         registryFor(candidateHostId, providerRepositoryId, {
           bbHostId: host.id,
+          dataDir: `/tmp/bb-host-data/${host.id}`,
           projectName: "Revision mismatch",
           providerId: "codex",
           sourcePath: "/srv/work-together/revision-mismatch",
@@ -361,6 +429,7 @@ describe("Work Together Room resource provisioner", () => {
         harness.deps,
         registryFor(candidateHostId, providerRepositoryId, {
           bbHostId: "not-a-host-id",
+          dataDir: "/tmp/bb-host-data/invalid",
           projectName: "Broken",
           providerId: "codex",
           sourcePath: "/srv/work-together/broken",
@@ -386,6 +455,7 @@ describe("Work Together Room resource provisioner", () => {
       const exactLaunch = launch(candidateHostId, providerRepositoryId);
       const originalTarget = {
         bbHostId: host.id,
+        dataDir: `/tmp/bb-host-data/${host.id}`,
         projectName: "Stable Room Repository",
         providerId: "codex",
         sourcePath: "/srv/work-together/stable",
@@ -424,6 +494,7 @@ describe("Work Together Room resource provisioner", () => {
         harness.deps,
         registryFor(candidateHostId, providerRepositoryId, {
           bbHostId: host.id,
+          dataDir: `/tmp/bb-host-data/${host.id}`,
           projectName: "Immutable Room Repository",
           providerId: "codex",
           sourcePath: "/srv/work-together/immutable",
@@ -440,6 +511,302 @@ describe("Work Together Room resource provisioner", () => {
           launch: { ...exactLaunch, repositoryBindingVersion: 2 },
         }),
       ).rejects.toBeInstanceOf(WorkTogetherRoomProvisioningConflictError);
+    });
+  });
+
+  it("provisions isolated scratch to ready without resolving a repository", async () => {
+    await withTestHarness(async (harness) => {
+      const candidateHostId = randomUUID();
+      const { host } = seedHostSession(harness.deps, { id: createHostId() });
+      const resolve = vi.fn(() => {
+        throw new Error("repository resolution must not run for scratch");
+      });
+      const provisioner = createWorkTogetherRoomResourceProvisioner(
+        harness.deps,
+        {
+          resolveHost: () => ({
+            bbHostId: host.id,
+            dataDir: `/tmp/bb-host-data/${host.id}`,
+            providerId: "codex",
+          }),
+          resolve,
+        },
+      );
+      const exactLaunch = {
+        bindingId: randomUUID(),
+        workspaceId: randomUUID(),
+        taskId: randomUUID(),
+        cellId: randomUUID(),
+        candidateHostId,
+        workKind: "research" as const,
+        environmentTemplate: "isolated-scratch" as const,
+      };
+
+      const provisioning = await provisioner.provision({
+        principal: PRINCIPAL,
+        launch: exactLaunch,
+      });
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "environment.provision",
+      );
+      expect(queued.command).toMatchObject({
+        environmentId: provisioning.environmentId,
+        workspaceProvisionType: "isolated-scratch",
+      });
+      expect(queued.command).not.toHaveProperty("sourcePath");
+      expect(queued.command).not.toHaveProperty("branchName");
+      await reportQueuedCommandSuccess(harness, queued, {
+        path: `/tmp/bb-host-data/${host.id}/isolated-scratch-workspaces/${provisioning.environmentId}`,
+        isGitRepo: false,
+        isWorktree: false,
+        branchName: null,
+        defaultBranch: null,
+        transcript: [],
+      });
+
+      await expect(
+        provisioner.provision({ principal: PRINCIPAL, launch: exactLaunch }),
+      ).resolves.toMatchObject({ state: "ready", failureReason: null });
+      expect(resolve).not.toHaveBeenCalled();
+      const reservation = getWorkTogetherRoomResourceReservation(
+        harness.db,
+        exactLaunch.bindingId,
+      );
+      expect(reservation).toMatchObject({
+        repositorySnapshotId: null,
+        repositoryBindingId: null,
+        repositoryBindingVersion: null,
+        providerRepositoryId: null,
+        objectFormat: null,
+        baseRevision: null,
+        baseBranch: null,
+        generatedBranch: null,
+      });
+
+      const direct = await createRoomSubagent(harness, {
+        environment: { type: "project-default" },
+        parentThreadId: provisioning.primaryThreadId,
+        projectId: provisioning.projectId,
+      });
+      const nested = await createRoomSubagent(harness, {
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: { type: "unmanaged", path: null },
+        },
+        parentThreadId: direct.id,
+        projectId: provisioning.projectId,
+      });
+      expect([direct, nested]).toEqual([
+        expect.objectContaining({
+          environmentId: provisioning.environmentId,
+          parentThreadId: provisioning.primaryThreadId,
+          projectId: provisioning.projectId,
+        }),
+        expect.objectContaining({
+          environmentId: provisioning.environmentId,
+          parentThreadId: direct.id,
+          projectId: provisioning.projectId,
+        }),
+      ]);
+      expect(listEnvironments(harness.db, provisioning.projectId)).toEqual([
+        expect.objectContaining({
+          id: provisioning.environmentId,
+          workspaceProvisionType: "isolated-scratch",
+        }),
+      ]);
+      expect(listQueuedCommands(harness, "environment.provision")).toEqual([]);
+
+      const threadCount = listThreads(harness.db, {
+        includeHidden: true,
+        projectId: provisioning.projectId,
+      }).length;
+      const providerCommandCount = listQueuedCommands(
+        harness,
+        "thread.start",
+      ).length;
+      await expect(
+        createRoomSubagent(harness, {
+          environment: {
+            type: "host",
+            hostId: host.id,
+            workspace: { type: "isolated-scratch" },
+          },
+          parentThreadId: nested.id,
+          projectId: provisioning.projectId,
+          prompt: "Try to mint a second scratch workspace",
+        }),
+      ).rejects.toMatchObject({
+        body: { code: "invalid_request" },
+        status: 409,
+      });
+      expect(
+        listThreads(harness.db, {
+          includeHidden: true,
+          projectId: provisioning.projectId,
+        }),
+      ).toHaveLength(threadCount);
+      expect(listQueuedCommands(harness, "thread.start")).toHaveLength(
+        providerCommandCount,
+      );
+    });
+  });
+
+  it("provisions detached read-only at the exact revision without branch fields", async () => {
+    await withTestHarness(async (harness) => {
+      const candidateHostId = randomUUID();
+      const providerRepositoryId = "424242";
+      const baseRevision = "b".repeat(40);
+      const { host } = seedHostSession(harness.deps, { id: createHostId() });
+      const target = {
+        bbHostId: host.id,
+        dataDir: `/tmp/bb-host-data/${host.id}`,
+        projectName: "Read-only Room Repository",
+        providerId: "codex",
+        sourcePath: "/srv/work-together/read-only",
+      } satisfies WorkTogetherRoomResourceTarget;
+      const resolve = vi.fn(() => target);
+      const provisioner = createWorkTogetherRoomResourceProvisioner(
+        harness.deps,
+        {
+          resolveHost: () => target,
+          resolve,
+        },
+      );
+      const exactLaunch = {
+        bindingId: randomUUID(),
+        workspaceId: randomUUID(),
+        taskId: randomUUID(),
+        cellId: randomUUID(),
+        candidateHostId,
+        workKind: "research" as const,
+        environmentTemplate: "detached-read-only" as const,
+        repositorySnapshotId: randomUUID(),
+        repositoryBindingId: randomUUID(),
+        repositoryBindingVersion: 1,
+        providerRepositoryId,
+        objectFormat: "sha1" as const,
+        baseRevision,
+      };
+
+      const provisioning = await provisioner.provision({
+        principal: PRINCIPAL,
+        launch: exactLaunch,
+      });
+      expect(resolve).toHaveBeenCalledWith({
+        candidateHostId,
+        providerRepositoryId,
+        environmentTemplate: "detached-read-only",
+        objectFormat: "sha1",
+        baseRevision,
+      });
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "environment.provision",
+      );
+      expect(queued.command).toMatchObject({
+        environmentId: provisioning.environmentId,
+        workspaceProvisionType: "detached-read-only",
+        sourcePath: target.sourcePath,
+        objectFormat: "sha1",
+        baseRevision,
+      });
+      expect(queued.command).not.toHaveProperty("baseBranch");
+      expect(queued.command).not.toHaveProperty("branchName");
+      await reportQueuedCommandSuccess(harness, queued, {
+        path: `/tmp/bb-host-data/${host.id}/detached-read-only-workspaces/${provisioning.environmentId}/read-only`,
+        isGitRepo: true,
+        isWorktree: true,
+        branchName: null,
+        defaultBranch: "main",
+        transcript: [],
+      });
+
+      await expect(
+        provisioner.provision({ principal: PRINCIPAL, launch: exactLaunch }),
+      ).resolves.toMatchObject({ state: "ready", failureReason: null });
+      const reservation = getWorkTogetherRoomResourceReservation(
+        harness.db,
+        exactLaunch.bindingId,
+      );
+      expect(reservation).toMatchObject({
+        baseRevision,
+        objectFormat: "sha1",
+        baseBranch: null,
+        generatedBranch: null,
+      });
+      const repositoryResolutionCount = resolve.mock.calls.length;
+
+      const direct = await createRoomSubagent(harness, {
+        environment: { type: "project-default" },
+        parentThreadId: provisioning.primaryThreadId,
+        projectId: provisioning.projectId,
+      });
+      const nested = await createRoomSubagent(harness, {
+        environment: {
+          type: "reuse",
+          environmentId: provisioning.environmentId,
+        },
+        parentThreadId: direct.id,
+        projectId: provisioning.projectId,
+      });
+      expect([direct, nested]).toEqual([
+        expect.objectContaining({
+          environmentId: provisioning.environmentId,
+          parentThreadId: provisioning.primaryThreadId,
+          projectId: provisioning.projectId,
+        }),
+        expect.objectContaining({
+          environmentId: provisioning.environmentId,
+          parentThreadId: direct.id,
+          projectId: provisioning.projectId,
+        }),
+      ]);
+      expect(resolve).toHaveBeenCalledTimes(repositoryResolutionCount);
+      expect(listEnvironments(harness.db, provisioning.projectId)).toEqual([
+        expect.objectContaining({
+          id: provisioning.environmentId,
+          workspaceProvisionType: "detached-read-only",
+        }),
+      ]);
+      expect(listQueuedCommands(harness, "environment.provision")).toEqual([]);
+
+      const threadCount = listThreads(harness.db, {
+        includeHidden: true,
+        projectId: provisioning.projectId,
+      }).length;
+      const providerCommandCount = listQueuedCommands(
+        harness,
+        "thread.start",
+      ).length;
+      await expect(
+        createRoomSubagent(harness, {
+          environment: {
+            type: "host",
+            hostId: host.id,
+            workspace: {
+              type: "managed-worktree",
+              baseBranch: { kind: "named", name: "main" },
+            },
+          },
+          parentThreadId: nested.id,
+          projectId: provisioning.projectId,
+          prompt: "Try to turn read-only into a writable worktree",
+        }),
+      ).rejects.toMatchObject({
+        body: { code: "invalid_request" },
+        status: 409,
+      });
+      expect(
+        listThreads(harness.db, {
+          includeHidden: true,
+          projectId: provisioning.projectId,
+        }),
+      ).toHaveLength(threadCount);
+      expect(listQueuedCommands(harness, "thread.start")).toHaveLength(
+        providerCommandCount,
+      );
     });
   });
 });

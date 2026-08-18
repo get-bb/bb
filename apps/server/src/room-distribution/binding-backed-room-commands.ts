@@ -1,6 +1,8 @@
 import {
+  getEnvironment,
   getActiveStoredTurnId,
   getThreadCommandAdmission,
+  getWorkTogetherRoomResourceReservation,
   InvalidWorkTogetherRoomRootTurnOutcomeError,
   listLatestRootTurnTerminalOutcomesByThreadIds,
 } from "@bb/db";
@@ -12,6 +14,7 @@ import {
   userQuestionPendingInteractionResolutionSchema,
   type ApprovalPendingInteractionResolution,
   type ClientTurnRequestId,
+  type JsonObject,
   type PersistedThreadCommandAdmission,
   type Principal,
   type Thread,
@@ -27,6 +30,7 @@ import {
   admitInteractionApprove,
 } from "../services/threads/admitted-interaction-resolution.js";
 import { admitBranchPublish } from "../services/threads/admitted-publish.js";
+import { admitResultPublish } from "../services/threads/admitted-result-publish.js";
 import { admitReadMark } from "../services/threads/admitted-read-mark.js";
 import { admitExactSteerMessage } from "../services/threads/admitted-steer.js";
 import {
@@ -38,6 +42,8 @@ import {
   fingerprintReadMarkRequest,
   fingerprintThreadInterruptRequest,
 } from "../services/threads/message-send-fingerprint.js";
+import { hashCanonicalJsonFingerprint } from "../services/threads/canonical-json-fingerprint.js";
+import { parseWorkResultSubmission } from "../services/threads/work-result-submission.js";
 import { threadCommandAdmissionReceiptFromPersisted } from "../services/threads/thread-command-receipt.js";
 import type { AppDeps } from "../types.js";
 import type {
@@ -136,6 +142,12 @@ type RoomBranchPublishCommand = Readonly<{
   title?: string;
 }>;
 
+type RoomResultPublishCommand = Readonly<{
+  kind: "result.publish";
+  requestId: ClientTurnRequestId;
+  submission: JsonObject;
+}>;
+
 type SupportedRoomCommand =
   | RoomMessageSendCommand
   | RoomMessageSteerCommand
@@ -143,7 +155,8 @@ type SupportedRoomCommand =
   | RoomInteractionAnswerCommand
   | RoomInteractionApproveCommand
   | RoomReadMarkCommand
-  | RoomBranchPublishCommand;
+  | RoomBranchPublishCommand
+  | RoomResultPublishCommand;
 
 type RoomCommandScope = Readonly<{
   bindingId: string;
@@ -362,7 +375,43 @@ function replayCommand(
     case "interaction.approve":
     case "read.mark":
     case "branch.publish":
+    case "result.publish":
       return command;
+  }
+}
+
+function validatedResultCommand(
+  deps: AppDeps,
+  scope: RoomCommandScope,
+  command: SupportedRoomCommand,
+): SupportedRoomCommand {
+  if (command.kind !== "result.publish") return command;
+  const reservation = getWorkTogetherRoomResourceReservation(
+    deps.db,
+    scope.bindingId,
+  );
+  if (
+    reservation === null ||
+    reservation.primaryThreadId !== scope.thread.id ||
+    scope.publicStream.kind !== "primary"
+  ) {
+    unavailable();
+  }
+  try {
+    return Object.freeze({
+      ...command,
+      submission: parseWorkResultSubmission(command.submission, {
+        workKind: reservation.workKind,
+        environmentTemplate: reservation.environmentTemplate,
+        repositorySnapshotId: reservation.repositorySnapshotId,
+        objectFormat: reservation.objectFormat,
+        baseRevision: reservation.baseRevision,
+        generatedBranch: reservation.generatedBranch,
+      }),
+    });
+  } catch (error) {
+    if (error instanceof TypeError) unavailable();
+    throw error;
   }
 }
 
@@ -450,6 +499,23 @@ function decodeCommand(command: RoomJsonObject): SupportedRoomCommand {
         requestId: requestId(command.requestId),
         text: commandText(command.text),
       });
+    case "result.publish": {
+      const stream = parseRoomCommandStreamV2(command.stream);
+      if (
+        stream.kind !== "primary" ||
+        !exactKeys(command, ["kind", "requestId", "stream", "submission"]) ||
+        command.submission === null ||
+        typeof command.submission !== "object" ||
+        Array.isArray(command.submission)
+      ) {
+        unavailable();
+      }
+      return Object.freeze({
+        kind: "result.publish",
+        requestId: requestId(command.requestId),
+        submission: command.submission,
+      });
+    }
     case "message.steer":
       if (
         !exactKeys(command, [
@@ -571,6 +637,14 @@ function receiptResult(
         prUrl: result.prUrl,
         commitSha: result.commitSha,
       };
+    case "result-published":
+      return {
+        disposition: result.disposition,
+        resultId: result.resultId,
+        resultRevision: result.resultRevision,
+        resultDigest: result.resultDigest,
+        submission: result.submission,
+      };
   }
 }
 
@@ -592,8 +666,14 @@ function commandReceipt(
     commandKind: publicCommandKindName(receipt.commandKind),
     admissionSequence: receipt.admissionSequence,
     result: receiptResult(receipt.result),
-    createdAt: receipt.createdAt,
-    completedAt: receipt.completedAt,
+    createdAt:
+      receipt.commandKind === "result.publish"
+        ? new Date(receipt.createdAt).toISOString()
+        : receipt.createdAt,
+    completedAt:
+      receipt.commandKind === "result.publish"
+        ? new Date(receipt.completedAt).toISOString()
+        : receipt.completedAt,
     stream,
   };
 }
@@ -644,6 +724,8 @@ function commandFingerprint(command: SupportedRoomCommand) {
         ...(command.title !== undefined ? { title: command.title } : {}),
         ...(command.body !== undefined ? { body: command.body } : {}),
       });
+    case "result.publish":
+      return hashCanonicalJsonFingerprint(command.submission, "result.publish");
   }
 }
 
@@ -672,9 +754,10 @@ function rejectedReceipt(
   command: SupportedRoomCommand,
   reason: string,
   stream: RoomCommandStreamV2,
+  status: 200 | 409 = 200,
 ): RoomDistributionCommandResultV1 {
   return Object.freeze({
-    status: 200,
+    status,
     body: {
       schemaVersion: 2,
       outcome: "rejected",
@@ -705,6 +788,17 @@ function rejectionReason(error: ApiError): string {
 
 function canPublishBranch(authority: RoomCommandAuthority): boolean {
   return authority.role === "owner";
+}
+
+function roomHasManagedWorktree(
+  deps: AppDeps,
+  scope: RoomCommandScope,
+): boolean {
+  return (
+    scope.thread.environmentId !== null &&
+    getEnvironment(deps.db, scope.thread.environmentId)
+      ?.workspaceProvisionType === "managed-worktree"
+  );
 }
 
 function canAnswerInteraction(authority: RoomCommandAuthority): boolean {
@@ -781,7 +875,13 @@ function commandAvailable(
     case "read.mark":
       return true;
     case "branch.publish":
-      return canPublishBranch(authority) && scope.thread.status === "idle";
+      return (
+        canPublishBranch(authority) &&
+        scope.thread.status === "idle" &&
+        roomHasManagedWorktree(deps, scope)
+      );
+    case "result.publish":
+      return true;
   }
 }
 
@@ -931,8 +1031,15 @@ export function createBindingBackedRoomCommandHandler(
       ) {
         capabilities.push("interaction.approve");
       }
-      if (canPublishBranch(authority) && scope.thread.status === "idle") {
+      if (
+        canPublishBranch(authority) &&
+        scope.thread.status === "idle" &&
+        roomHasManagedWorktree(deps, scope)
+      ) {
         capabilities.push("branch.publish");
+      }
+      if (scope.publicStream.kind === "primary") {
+        capabilities.push("result.publish");
       }
       capabilities.push("read.mark");
       return capabilities;
@@ -942,7 +1049,11 @@ export function createBindingBackedRoomCommandHandler(
       scope: RoomCommandScope,
       rawCommand: RoomJsonObject,
     ): Promise<RoomDistributionCommandResultV1> {
-      const publicCommand = decodeCommand(rawCommand);
+      const publicCommand = validatedResultCommand(
+        deps,
+        scope,
+        decodeCommand(rawCommand),
+      );
       const stream = scope.publicStream;
       // Exact replay / identity conflict are decided from the durable ledger
       // before capability availability, so a resolved interaction or post-
@@ -975,6 +1086,7 @@ export function createBindingBackedRoomCommandHandler(
           publicCommand,
           "request_identity_conflict",
           stream,
+          publicCommand.kind === "result.publish" ? 409 : 200,
         );
       }
       const authority = await currentAuthority(scope);
@@ -1070,6 +1182,17 @@ export function createBindingBackedRoomCommandHandler(
               thread: scope.thread,
             });
             break;
+          case "result.publish":
+            result = admitResultPublish(deps, {
+              actor,
+              bindingId: scope.bindingId,
+              payload: {
+                requestId: command.requestId,
+                submission: command.submission,
+              },
+              thread: scope.thread,
+            });
+            break;
         }
       } catch (error) {
         const recovered = exactRecoveredAdmission(deps, scope, command);
@@ -1083,7 +1206,15 @@ export function createBindingBackedRoomCommandHandler(
           });
         }
         if (error instanceof ApiError) {
-          return rejectedReceipt(publicCommand, rejectionReason(error), stream);
+          return rejectedReceipt(
+            publicCommand,
+            rejectionReason(error),
+            stream,
+            publicCommand.kind === "result.publish" &&
+              error.body.code === "thread_command_admission_conflict"
+              ? 409
+              : 200,
+          );
         }
         deps.logger.warn(
           { err: error, commandKind: publicCommandKind(publicCommand) },

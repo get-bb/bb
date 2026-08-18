@@ -56,6 +56,23 @@ const directPersonalIntentSchema = z.object({
   workspaceProvisionType: z.literal("personal"),
 });
 
+const directIsolatedScratchIntentSchema = z.object({
+  type: z.literal("direct-isolated-scratch"),
+  environmentId: z.string().min(1),
+  hostId: z.string().min(1),
+  workspaceProvisionType: z.literal("isolated-scratch"),
+});
+
+const directDetachedReadOnlyIntentSchema = z.object({
+  type: z.literal("direct-detached-read-only"),
+  environmentId: z.string().min(1),
+  hostId: z.string().min(1),
+  sourcePath: z.string().min(1),
+  objectFormat: z.enum(["sha1", "sha256"]),
+  baseRevision: z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u),
+  workspaceProvisionType: z.literal("detached-read-only"),
+});
+
 const reuseIntentSchema = z.object({
   type: z.literal("reuse"),
   environmentId: z.string().min(1),
@@ -68,6 +85,8 @@ export const threadProvisionEnvironmentIntentSchema = z.discriminatedUnion(
     checkoutUnmanagedIntentSchema,
     directManagedIntentSchema,
     directPersonalIntentSchema,
+    directIsolatedScratchIntentSchema,
+    directDetachedReadOnlyIntentSchema,
     reuseIntentSchema,
   ],
 );

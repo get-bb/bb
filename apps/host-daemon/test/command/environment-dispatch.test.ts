@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  getDetachedReadOnlyOutputRoot,
+  getDetachedReadOnlyWorkspaceRoot,
+  getIsolatedScratchWorkspaceRoot,
   getPersonalWorkspaceRoot,
   WorkspaceError,
   type HostWorkspace,
@@ -415,6 +418,90 @@ describe("environment command dispatch", () => {
         environmentId,
         personalWorkspaceRoot,
         targetPath,
+        onProgress: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      },
+    ]);
+  });
+
+  it("covers environment.provision in isolated scratch mode", async () => {
+    const dataDir = await makeTempDir("bb-dispatch-isolated-scratch-data-");
+    const environmentId = "env_isolated_scratch";
+    const isolatedScratchWorkspaceRoot =
+      getIsolatedScratchWorkspaceRoot(dataDir);
+    const targetPath = `${isolatedScratchWorkspaceRoot}/${environmentId}`;
+    const harness = createHarness({ workspacePath: targetPath });
+    harness.workspace.isGitRepo = false;
+    harness.workspace.getCurrentBranch = async () => null;
+
+    const result = await dispatchCommand(
+      {
+        type: "environment.provision",
+        environmentId,
+        initiator: null,
+        workspaceProvisionType: "isolated-scratch",
+        targetPath,
+      },
+      harness.dispatchOptions({ dataDir }),
+    );
+
+    expect(result).toMatchObject({
+      path: targetPath,
+      isGitRepo: false,
+      isWorktree: false,
+      branchName: null,
+      defaultBranch: null,
+    });
+    expect(harness.provisions).toEqual([
+      {
+        workspaceProvisionType: "isolated-scratch",
+        environmentId,
+        isolatedScratchWorkspaceRoot,
+        targetPath,
+        onProgress: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      },
+    ]);
+  });
+
+  it("carries exact detached revision and isolated output paths", async () => {
+    const dataDir = await makeTempDir("bb-dispatch-detached-read-only-");
+    const environmentId = "env_detached_read_only";
+    const detachedReadOnlyWorkspaceRoot =
+      getDetachedReadOnlyWorkspaceRoot(dataDir);
+    const detachedReadOnlyOutputRoot = getDetachedReadOnlyOutputRoot(dataDir);
+    const targetPath = `${detachedReadOnlyWorkspaceRoot}/${environmentId}/repository`;
+    const outputPath = `${detachedReadOnlyOutputRoot}/${environmentId}`;
+    const sourcePath = "/tmp/source-repository";
+    const baseRevision = "a".repeat(40);
+    const harness = createHarness({ workspacePath: targetPath });
+
+    await dispatchCommand(
+      {
+        type: "environment.provision",
+        environmentId,
+        initiator: null,
+        workspaceProvisionType: "detached-read-only",
+        sourcePath,
+        targetPath,
+        outputPath,
+        objectFormat: "sha1",
+        baseRevision,
+      },
+      harness.dispatchOptions({ dataDir }),
+    );
+
+    expect(harness.provisions).toEqual([
+      {
+        workspaceProvisionType: "detached-read-only",
+        environmentId,
+        sourcePath,
+        targetPath,
+        outputPath,
+        detachedReadOnlyWorkspaceRoot,
+        detachedReadOnlyOutputRoot,
+        objectFormat: "sha1",
+        baseRevision,
         onProgress: expect.any(Function),
         signal: expect.any(AbortSignal),
       },

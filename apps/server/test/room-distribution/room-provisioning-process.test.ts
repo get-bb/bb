@@ -17,7 +17,7 @@ import {
 } from "../helpers/test-app.js";
 
 const BINDING_ID = "99999999-aaaa-4bbb-8ccc-dddddddddddd";
-const PATH = `/api/bb-room-provisioning/v1/room-bindings/${BINDING_ID}`;
+const PATH = `/api/bb-room-provisioning/v2/room-bindings/${BINDING_ID}`;
 const PRINCIPAL: Principal = Object.freeze({
   id: "user_RoomOwner123",
   kind: "human",
@@ -27,9 +27,13 @@ const BODY = {
   workspaceId: "11111111-1111-4111-8111-111111111111",
   taskId: "22222222-2222-4222-8222-222222222222",
   cellId: "33333333-3333-4333-8333-333333333333",
+  workKind: "code",
+  repositorySnapshotId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   repositoryBindingId: "44444444-4444-4444-8444-444444444444",
   repositoryBindingVersion: 7,
   providerRepositoryId: "42",
+  objectFormat: "sha1",
+  baseRevision: "a".repeat(40),
   baseBranch: "main",
   baseRevision: "a".repeat(40),
   generatedBranch: "rooms/room-1",

@@ -818,6 +818,49 @@ describe("codex provider adapter", () => {
     }
   });
 
+  it("excludes a read-only checkout and its Git metadata from writable roots", () => {
+    const fixture = createLinkedWorktreeFixture();
+    const outputRoot = path.join(fixture.rootPath, "room-output");
+    const adapter = createCodexProviderAdapter({
+      additionalWorkspaceWriteRoots: [outputRoot],
+      workspaceReadOnly: true,
+    });
+    try {
+      const startCommand = buildLinkedWorktreeThreadStartCommand({ fixture });
+      expect(adapter.buildCommandPlan(startCommand)).toMatchObject({
+        params: {
+          config: {
+            "sandbox_workspace_write.writable_roots": [outputRoot],
+          },
+        },
+      });
+      acceptThreadCommand({
+        adapter,
+        command: startCommand,
+        providerThreadId: "codex-read-only",
+      });
+      expect(
+        adapter.buildCommandPlan({
+          type: "turn/start",
+          clientRequestId: "creq_222222228r",
+          threadId: "bb-thread-1",
+          providerThreadId: "codex-read-only",
+          input: [promptTextInput({ text: "analyze it" })],
+          options: workspaceWriteAskProviderExecutionContext,
+        }),
+      ).toMatchObject({
+        params: {
+          sandboxPolicy: {
+            type: "workspaceWrite",
+            writableRoots: [outputRoot],
+          },
+        },
+      });
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
   it("buildCommand turn/start waits for successful thread/start before using linked worktree git writable roots", () => {
     const fixture = createLinkedWorktreeFixture();
     const adapter = createCodexProviderAdapter();

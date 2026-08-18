@@ -1,18 +1,26 @@
 export {
   getPersonalWorkspaceRoot,
+  getIsolatedScratchWorkspaceRoot,
+  getDetachedReadOnlyWorkspaceRoot,
+  getDetachedReadOnlyOutputRoot,
   openWorkspace,
   provisionWorkspace,
   validatePersonalWorkspaceTargetPath,
+  validateIsolatedScratchWorkspaceTargetPath,
+  validateDetachedReadOnlyWorkspacePaths,
 } from "./provision.js";
 export type {
   HostWorkspace,
   PersonalWorkspaceOpts,
+  IsolatedScratchWorkspaceOpts,
+  DetachedReadOnlyWorkspaceOpts,
   ProvisionWorkspaceArgs,
   UnmanagedCheckoutOpts,
   UnmanagedWorkspaceOpts,
   ManagedWorkspaceBaseOpts,
   ManagedWorktreeOpts,
   ReconnectManagedWorktreeOpts,
+  ReconnectDetachedReadOnlyWorkspaceOpts,
 } from "./provision.js";
 
 export type {

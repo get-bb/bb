@@ -15,6 +15,8 @@ export const WORKSPACE_PROVISION_TYPES = [
   "unmanaged",
   "managed-worktree",
   "personal",
+  "isolated-scratch",
+  "detached-read-only",
 ] as const;
 export const workspaceProvisionTypeSchema = z.enum(WORKSPACE_PROVISION_TYPES);
 export type WorkspaceProvisionType = z.infer<

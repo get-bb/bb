@@ -23,6 +23,7 @@ import { createHostDaemonClient } from "@bb/host-daemon-contract";
 import { initDb } from "../../../apps/server/src/db.js";
 import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedupers.js";
 import { createApp } from "../../../apps/server/src/server.js";
+import type { ServerAppDeps } from "../../../apps/server/src/types.js";
 import { PendingInteractionLifecycle } from "../../../apps/server/src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../../apps/server/src/services/machine-auth.js";
 import {
@@ -98,6 +99,11 @@ export interface IntegrationHarness {
 
 export interface CreateHarnessOptions {
   adapterFactory?: ProviderAdapterFactory;
+  appOptionsFactory?: (
+    deps: ServerAppDeps,
+  ) => NonNullable<Parameters<typeof createApp>[1]>;
+  hostId?: string;
+  loadProjectEnv?: boolean;
 }
 
 export type WithHarnessCallback<T> = (
@@ -285,7 +291,7 @@ async function startIntegrationServer(
     config,
     logger: testLogger,
   });
-  const { app, injectWebSocket } = createApp({
+  const appDeps: ServerAppDeps = {
     appVersion,
     bbAppManagedConfig,
     config,
@@ -300,7 +306,11 @@ async function startIntegrationServer(
     telemetry,
     terminalSessions,
     watchInterests,
-  });
+  };
+  const { app, injectWebSocket } = createApp(
+    appDeps,
+    options.appOptionsFactory?.(appDeps),
+  );
 
   let addressInfo: ListeningAddress | null = null;
   const server = serve(
@@ -356,7 +366,12 @@ async function startHarnessDaemon(
   const releaseLock = await acquireDaemonLock(dataDir);
 
   try {
-    const identity = await loadHostIdentity({ dataDir });
+    const identity = await loadHostIdentity({
+      dataDir,
+      ...(options.hostId !== undefined
+        ? { providedHostId: options.hostId }
+        : {}),
+    });
     const hostKey = await server.machineAuth.issueDaemonHostKey({
       hostId: identity.hostId,
       hostType: "persistent",
@@ -422,7 +437,9 @@ async function startHarnessDaemon(
 export async function createIntegrationHarness(
   options: CreateHarnessOptions = {},
 ): Promise<IntegrationHarness> {
-  await loadProjectEnvFile();
+  if (options.loadProjectEnv !== false) {
+    await loadProjectEnvFile();
+  }
   const tmpRoot = await fs.mkdtemp(path.join(tmpdir(), "bb-integration-"));
   await fs.writeFile(
     path.join(tmpRoot, "parent.pid"),

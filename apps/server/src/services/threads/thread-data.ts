@@ -9,6 +9,7 @@ import type { DbConnection, StoredEventRow } from "@bb/db";
 import { buildThreadEventRow, parseStoredThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
 import type {
+  SystemErrorEventData,
   ThreadEvent,
   ThreadEventRow,
   ThreadEventScope,
@@ -169,8 +170,16 @@ export function getLastThreadErrorMessage(
   db: DbConnection,
   threadId: string,
 ): string | null {
+  return getLastThreadError(db, threadId)?.message ?? null;
+}
+
+/** Latest system/error payload for a thread, or null when none exists. */
+export function getLastThreadError(
+  db: DbConnection,
+  threadId: string,
+): SystemErrorEventData | null {
   const row = getLatestThreadSystemErrorEventRow(db, { threadId });
   if (!row) return null;
   const eventRow = parseStoredEventRow(row);
-  return eventRow.type === "system/error" ? eventRow.data.message : null;
+  return eventRow.type === "system/error" ? eventRow.data : null;
 }

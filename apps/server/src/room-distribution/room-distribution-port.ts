@@ -21,7 +21,7 @@ export type RoomDistributionContextV1 = Readonly<{
 }>;
 
 export type RoomDistributionCommandResultV1 = Readonly<{
-  status: 200 | 202;
+  status: 200 | 202 | 409;
   body: RoomJsonObject;
 }>;
 

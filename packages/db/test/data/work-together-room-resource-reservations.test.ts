@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   createConnection,
   getWorkTogetherRoomResourceReservation,
+  getWorkTogetherRoomResourceReservationByEnvironment,
   migrate,
   reserveWorkTogetherRoomResources,
   WorkTogetherRoomResourceReservationConflictError,
@@ -20,19 +21,25 @@ function setup(path = ":memory:"): DbConnection {
   return db;
 }
 
-function input(
-  overrides: Partial<ReserveWorkTogetherRoomResourcesInput> = {},
-): ReserveWorkTogetherRoomResourcesInput {
+type ManagedInput = Extract<
+  ReserveWorkTogetherRoomResourcesInput,
+  { environmentTemplate: "managed-worktree" }
+>;
+
+function input(overrides: Partial<ManagedInput> = {}): ManagedInput {
   return {
     bindingId: randomUUID(),
     workspaceId: randomUUID(),
     taskId: randomUUID(),
     cellId: randomUUID(),
+    workKind: "code",
+    repositorySnapshotId: randomUUID(),
     repositoryBindingId: randomUUID(),
     repositoryBindingVersion: 1,
     providerRepositoryId: "42",
-    baseBranch: "main",
+    objectFormat: "sha1",
     baseRevision: "a".repeat(40),
+    baseBranch: "main",
     generatedBranch: "room/example",
     candidateHostId: randomUUID(),
     bbHostId: "host_23456789ab",
@@ -61,6 +68,76 @@ describe("Work Together Room resource reservations", () => {
       expect(getWorkTogetherRoomResourceReservation(db, launch.bindingId)).toEqual(
         reserved,
       );
+      expect(
+        getWorkTogetherRoomResourceReservationByEnvironment(db, {
+          environmentId: reserved.environmentId,
+          projectId: reserved.projectId,
+        }),
+      ).toEqual(reserved);
+      expect(
+        getWorkTogetherRoomResourceReservationByEnvironment(db, {
+          environmentId: reserved.environmentId,
+          projectId: "proj_wrongroom",
+        }),
+      ).toBeNull();
+    } finally {
+      db.$client.close();
+    }
+  });
+
+  it("persists scratch without fabricated repository facts", () => {
+    const db = setup();
+    try {
+      const launch = {
+        bindingId: randomUUID(),
+        workspaceId: randomUUID(),
+        taskId: randomUUID(),
+        cellId: randomUUID(),
+        candidateHostId: randomUUID(),
+        workKind: "code" as const,
+        environmentTemplate: "isolated-scratch" as const,
+      };
+      const reserved = reserveWorkTogetherRoomResources(db, launch);
+      expect(reserved).toMatchObject({
+        ...launch,
+        repositorySnapshotId: null,
+        repositoryBindingId: null,
+        repositoryBindingVersion: null,
+        providerRepositoryId: null,
+        objectFormat: null,
+        baseRevision: null,
+        baseBranch: null,
+        generatedBranch: null,
+      });
+      expect(reserveWorkTogetherRoomResources(db, launch)).toEqual(reserved);
+    } finally {
+      db.$client.close();
+    }
+  });
+
+  it("persists exact detached read-only facts without branches", () => {
+    const db = setup();
+    try {
+      const launch: ReserveWorkTogetherRoomResourcesInput = {
+        bindingId: randomUUID(),
+        workspaceId: randomUUID(),
+        taskId: randomUUID(),
+        cellId: randomUUID(),
+        candidateHostId: randomUUID(),
+        workKind: "research",
+        environmentTemplate: "detached-read-only",
+        repositorySnapshotId: randomUUID(),
+        repositoryBindingId: randomUUID(),
+        repositoryBindingVersion: 3,
+        providerRepositoryId: "42",
+        objectFormat: "sha256",
+        baseRevision: "b".repeat(64),
+      };
+      expect(reserveWorkTogetherRoomResources(db, launch)).toMatchObject({
+        ...launch,
+        baseBranch: null,
+        generatedBranch: null,
+      });
     } finally {
       db.$client.close();
     }

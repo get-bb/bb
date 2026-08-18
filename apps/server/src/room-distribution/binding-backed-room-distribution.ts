@@ -59,6 +59,7 @@ import {
   type WorkTogetherRoomDistributionV1,
 } from "./room-distribution-port.js";
 import { projectWorkTogetherRoomTimeline } from "./work-together-room-timeline-projection.js";
+import type { WorkTogetherRoomVisibleScalarIdentityV1 } from "./work-together-room-visible-scalar.js";
 
 const CURSOR = /^s\.([0-9]|[1-9][0-9]{0,15})$/u;
 /** Public older-page cursor: sequence only, never private anchor identity. */
@@ -536,6 +537,7 @@ export function createBindingBackedRoomDistributionV1(
     bindingId: string,
     thread: ReturnType<typeof getThread>,
     publicStreamId = bindingId,
+    attachedStreams: WorkTogetherRoomVisibleScalarIdentityV1["attachedStreams"] = [],
   ) {
     if (thread === null) unavailable();
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
@@ -556,6 +558,7 @@ export function createBindingBackedRoomDistributionV1(
       threadStatus: thread.status,
       privateActiveTurnId: getActiveStoredTurnId(deps.db, thread.id),
       timeline: response,
+      attachedStreams,
     });
     return {
       maxSeq,
@@ -569,6 +572,7 @@ export function createBindingBackedRoomDistributionV1(
     thread: NonNullable<ReturnType<typeof getThread>>,
     beforeSequence: number,
     publicStreamId: string,
+    attachedStreams: WorkTogetherRoomVisibleScalarIdentityV1["attachedStreams"] = [],
   ) {
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
     if (beforeSequence > maxSeq) unavailable("not_found");
@@ -601,6 +605,7 @@ export function createBindingBackedRoomDistributionV1(
       // Older pages never carry the live active turn tail.
       privateActiveTurnId: null,
       timeline: response,
+      attachedStreams,
     });
     return withPublicTimelineMeta(projected, response);
   }
@@ -816,6 +821,27 @@ export function createBindingBackedRoomDistributionV1(
     });
   }
 
+  async function publicAttachedStreams(
+    context: RoomDistributionContextV1,
+    reservation: NonNullable<
+      ReturnType<typeof getWorkTogetherRoomResourceReservation>
+    >,
+  ): Promise<
+    NonNullable<WorkTogetherRoomVisibleScalarIdentityV1["attachedStreams"]>
+  > {
+    const attachments = await authoritativeChildren(
+      context,
+      reservation,
+      false,
+    );
+    return attachments.map((attachment) =>
+      Object.freeze({
+        privateThreadId: attachment.childThreadId,
+        publicStreamId: attachment.id,
+      }),
+    );
+  }
+
   async function projectCurrentSubagentList(input: {
     authority: WorkTogetherRoomCommandAuthorityV1;
     context: RoomDistributionContextV1;
@@ -906,13 +932,19 @@ export function createBindingBackedRoomDistributionV1(
         }),
         context.bindingId,
       );
-      const current = timeline(context.bindingId, thread);
       const currentList = await projectCurrentSubagentList({
         authority,
         context,
         reconcile: true,
         reservation,
       });
+      const attachedStreams = await publicAttachedStreams(context, reservation);
+      const current = timeline(
+        context.bindingId,
+        thread,
+        context.bindingId,
+        attachedStreams,
+      );
       const subagents = copyPublicSubagents(currentList.subagents);
       return Object.freeze({
         schemaVersion: 2,
@@ -969,11 +1001,16 @@ export function createBindingBackedRoomDistributionV1(
       target: RoomDistributionStreamTargetV1,
     ) {
       const after = parseCursor(target.cursor);
-      const { thread, publicStreamId } = await resolveStream(
+      const { thread, publicStreamId, reservation } = await resolveStream(
         context,
         target.subagentId,
       );
-      const current = timeline(context.bindingId, thread, publicStreamId);
+      const current = timeline(
+        context.bindingId,
+        thread,
+        publicStreamId,
+        await publicAttachedStreams(context, reservation),
+      );
       if (after !== null && after > current.maxSeq) unavailable("not_found");
       const changed = after === null || current.maxSeq > after;
       return Object.freeze({
@@ -989,7 +1026,7 @@ export function createBindingBackedRoomDistributionV1(
       target: RoomDistributionOlderTimelineTargetV1,
     ) {
       const beforeSequence = parsePublicOlderCursor(target.before);
-      const { thread, publicStreamId } = await resolveStream(
+      const { thread, publicStreamId, reservation } = await resolveStream(
         context,
         target.subagentId,
       );
@@ -998,6 +1035,7 @@ export function createBindingBackedRoomDistributionV1(
         thread,
         beforeSequence,
         publicStreamId,
+        await publicAttachedStreams(context, reservation),
       );
       return Object.freeze({
         schemaVersion: 1,

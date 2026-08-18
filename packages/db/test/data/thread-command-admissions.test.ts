@@ -19,7 +19,10 @@ import type { DbConnection } from "../../src/connection.js";
 import { createProject } from "../../src/data/projects.js";
 import { createThread } from "../../src/data/threads.js";
 import { upsertHost } from "../../src/data/hosts.js";
-import { admitThreadCommand, getThreadCommandAdmission } from "../../src/data/thread-command-admissions.js";
+import {
+  admitThreadCommand,
+  getThreadCommandAdmission,
+} from "../../src/data/thread-command-admissions.js";
 import type { AdmitThreadCommandOutcome } from "../../src/data/thread-command-admissions.js";
 import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
@@ -639,9 +642,14 @@ describe("admitThreadCommand", () => {
         PRAGMA foreign_keys=ON;
       `);
 
-      // Re-apply the shipped rebuild migrations in order: 0093 (interaction
-      // columns) then 0094 (branch.publish result pointer columns).
-      for (const migration of ["0093_crazy_thing.sql", "0094_chilly_nitro.sql"]) {
+      // Re-apply the shipped rebuild migrations that touch this table: 0093
+      // (interaction columns), 0094 (branch.publish pointers), then 0103
+      // (typed result publication fields).
+      for (const migration of [
+        "0093_crazy_thing.sql",
+        "0094_chilly_nitro.sql",
+        "0103_room_result_publish.sql",
+      ]) {
         const migrationSql = readFileSync(
           new URL(`../../drizzle/${migration}`, import.meta.url),
           "utf8",

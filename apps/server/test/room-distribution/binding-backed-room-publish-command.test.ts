@@ -69,9 +69,13 @@ async function provisionIdleRoom(
     workspaceId: randomUUID(),
     taskId: randomUUID(),
     cellId: randomUUID(),
+    workKind: "code" as const,
+    repositorySnapshotId: randomUUID(),
     repositoryBindingId: randomUUID(),
     repositoryBindingVersion: 1,
     providerRepositoryId: String(args.seed),
+    objectFormat: "sha1" as const,
+    baseRevision: "a".repeat(40),
     baseBranch: "main",
     baseRevision: "a".repeat(40),
     generatedBranch: `rooms/publish-${args.seed}`,
@@ -80,6 +84,7 @@ async function provisionIdleRoom(
   };
   const target = {
     bbHostId: host.id,
+    dataDir: `/tmp/bb-host-data/${host.id}`,
     projectName: `Room Publish ${args.seed}`,
     providerId: "codex",
     sourcePath: `/srv/work-together/publish-${args.seed}`,
@@ -87,6 +92,7 @@ async function provisionIdleRoom(
   const provisioned = await createWorkTogetherRoomResourceProvisioner(
     harness.deps,
     {
+      resolveHost: () => target,
       resolve: () => target,
     },
   ).provision({ principal: args.principal, launch });

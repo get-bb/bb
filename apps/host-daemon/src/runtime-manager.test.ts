@@ -149,8 +149,11 @@ function getProvisionWorkspacePath(args: ProvisionWorkspaceArgs): string {
   switch (args.workspaceProvisionType) {
     case "managed-worktree":
     case "personal":
+    case "isolated-scratch":
+    case "detached-read-only":
       return args.targetPath;
     case "reconnect-managed-worktree":
+    case "reconnect-detached-read-only":
     case "unmanaged":
       return args.path;
   }

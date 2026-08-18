@@ -347,6 +347,7 @@ function createAgentRuntimeInternal(
 
   const providerProcesses = new RuntimeProviderProcessManager({
     additionalWorkspaceWriteRoots,
+    ...(options.workspaceReadOnly === true ? { workspaceReadOnly: true } : {}),
     adapterFactory: options.adapterFactory,
     bridgeBundleDir: options.bridgeBundleDir,
     ...(bridgeNodeEnv !== undefined ? { bridgeNodeEnv } : {}),

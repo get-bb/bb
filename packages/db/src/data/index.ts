@@ -25,6 +25,7 @@ export type {
 
 export {
   getWorkTogetherRoomResourceReservation,
+  getWorkTogetherRoomResourceReservationByEnvironment,
   getWorkTogetherRoomResourceReservationByEnvironmentId,
   reserveWorkTogetherRoomResources,
   WorkTogetherRoomResourceReservationConflictError,

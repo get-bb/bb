@@ -20,6 +20,7 @@ import {
 import {
   WORK_TOGETHER_ROOM_VISIBLE_DISALLOWED_CONTROL,
   projectWorkTogetherRoomVisibleScalar,
+  type WorkTogetherRoomVisibleScalarIdentityV1,
 } from "./work-together-room-visible-scalar.js";
 
 type RoomActivityKind =
@@ -153,6 +154,7 @@ export type ProjectWorkTogetherRoomTimelineInput = {
   threadStatus: ThreadStatus;
   privateActiveTurnId: string | null;
   timeline: ThreadTimelineResponse;
+  attachedStreams?: WorkTogetherRoomVisibleScalarIdentityV1["attachedStreams"];
 };
 
 type ProjectionEntry = {

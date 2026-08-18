@@ -69,6 +69,10 @@ function reprovisionStartedText(
       return "Restoring worktree";
     case "personal":
       return "Restoring personal workspace";
+    case "isolated-scratch":
+      return "Restoring isolated scratch workspace";
+    case "detached-read-only":
+      return "Restoring detached read-only workspace";
     case "unmanaged":
       return "Restoring environment";
   }

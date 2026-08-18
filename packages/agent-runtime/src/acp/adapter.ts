@@ -127,6 +127,7 @@ export interface CreateAcpProviderAdapterOptions {
   profile: AcpAgentProfile;
   /** Extra roots (beyond the workspace) where client fs writes are allowed. */
   additionalWorkspaceWriteRoots: readonly string[];
+  workspaceReadOnly?: boolean;
   /** Override the directory containing bundled bridge files. */
   bridgeBundleDir?: string;
   /** Optional environment values needed by the Node runtime that launches the bridge. */
@@ -620,6 +621,7 @@ export function createAcpProviderAdapter(
         logoUrl: null,
       });
   const additionalWorkspaceWriteRoots = opts.additionalWorkspaceWriteRoots;
+  const workspaceReadOnly = opts.workspaceReadOnly ?? false;
 
   function buildModelListCommand():
     | {
@@ -1433,7 +1435,10 @@ export function createAcpProviderAdapter(
         : {}),
       permissionMode: command.options.permissionMode,
       permissionEscalation: command.options.permissionEscalation,
-      workspaceWriteRoots: [cwd, ...additionalWorkspaceWriteRoots],
+      workspaceWriteRoots: [
+        ...(workspaceReadOnly ? [] : [cwd]),
+        ...additionalWorkspaceWriteRoots,
+      ],
       ...(Object.keys(envVars).length > 0 ? { envVars } : {}),
       ...(instructions ? { instructions } : {}),
       ...(command.dynamicTools && command.dynamicTools.length > 0

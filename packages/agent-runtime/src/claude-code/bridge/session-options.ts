@@ -19,6 +19,7 @@ export interface BuildSessionOptionsArgs {
   additionalWorkspaceWriteRoots?: readonly string[];
   baseInstructions?: string;
   cwd: string;
+  workspaceReadOnly?: boolean;
   disallowedTools?: readonly string[];
   instructionMode: InstructionMode;
   model?: string;
@@ -218,19 +219,24 @@ function buildWorkspaceWriteSandbox(
     // auto-allow, not its ability to run: `autoAllowBashIfSandboxed` only
     // auto-approves while the sandbox is actually active, so degrading falls
     // back to bb's own `canUseTool` gating instead of running wide open.
-    failIfUnavailable: false,
+    failIfUnavailable: params.workspaceReadOnly ?? false,
     autoAllowBashIfSandboxed: true,
     // Sandbox settings are session-fixed while escalation changes per turn;
     // the unsandboxed retry stays enabled and `canUseTool` auto-denies it on
     // escalation-denied turns.
-    allowUnsandboxedCommands: true,
+    allowUnsandboxedCommands: !(params.workspaceReadOnly ?? false),
     // The bb CLI needs loopback to reach the local server, and
     // escalation-denied turns have no unsandboxed-retry path around a block.
     // macOS-only and coarse (all localhost ports, binding on all interfaces);
     // the Linux sandbox ignores the flag.
     network: { allowLocalBinding: true },
-    ...(allowWrite.length > 0
-      ? { filesystem: { allowWrite: [...allowWrite] } }
+    ...(allowWrite.length > 0 || params.workspaceReadOnly
+      ? {
+          filesystem: {
+            ...(allowWrite.length > 0 ? { allowWrite: [...allowWrite] } : {}),
+            ...(params.workspaceReadOnly ? { denyWrite: [params.cwd] } : {}),
+          },
+        }
       : {}),
   };
 }

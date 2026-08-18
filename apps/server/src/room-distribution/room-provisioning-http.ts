@@ -1,6 +1,7 @@
 import { bodyLimit } from "hono/body-limit";
 import type { Context, Hono } from "hono";
-import { gitObjectIdSchema } from "@bb/domain";
+import { gitBranchNameSchema } from "@bb/domain";
+import { z } from "zod";
 
 import { issueRoomProvisioningAuthorization } from "../auth/room-provisioning-authorization.js";
 import { ApiError } from "../errors.js";
@@ -20,19 +21,85 @@ import { parseRoomProvisioningTarget } from "./room-provisioning-target.js";
 
 const BODY_LIMIT_BYTES = 16_384;
 const CONTENT_TYPE = /^application\/json(?:\s*;\s*charset=utf-8)?$/iu;
-const BODY_KEYS = [
-  "baseBranch",
-  "baseRevision",
-  "candidateHostId",
-  "cellId",
-  "environmentTemplate",
-  "generatedBranch",
-  "providerRepositoryId",
-  "repositoryBindingId",
-  "repositoryBindingVersion",
-  "taskId",
-  "workspaceId",
-] as const;
+const CANONICAL_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const PROVIDER_REPOSITORY_ID = /^[1-9][0-9]{0,127}$/u;
+const SHA1_OBJECT_ID = /^[0-9a-f]{40}$/u;
+const SHA256_OBJECT_ID = /^[0-9a-f]{64}$/u;
+const canonicalUuidSchema = z.string().regex(CANONICAL_UUID);
+const branchSchema = gitBranchNameSchema.refine(
+  (value) =>
+    Buffer.byteLength(value, "utf8") <= 255 && !value.startsWith("refs/"),
+);
+const workKindSchema = z.enum([
+  "conversation",
+  "research",
+  "plan",
+  "writing",
+  "code",
+  "other",
+]);
+const nonCodeWorkKindSchema = z.enum([
+  "conversation",
+  "research",
+  "plan",
+  "writing",
+  "other",
+]);
+const commonLaunchShape = {
+  workspaceId: canonicalUuidSchema,
+  taskId: canonicalUuidSchema,
+  cellId: canonicalUuidSchema,
+  candidateHostId: canonicalUuidSchema,
+};
+const repositoryLaunchShape = {
+  repositorySnapshotId: canonicalUuidSchema,
+  repositoryBindingId: canonicalUuidSchema,
+  repositoryBindingVersion: z.number().int().safe().min(1),
+  providerRepositoryId: z.string().regex(PROVIDER_REPOSITORY_ID),
+  objectFormat: z.enum(["sha1", "sha256"]),
+  baseRevision: z.string(),
+};
+const launchBodySchema = z
+  .discriminatedUnion("environmentTemplate", [
+    z
+      .object({
+        ...commonLaunchShape,
+        environmentTemplate: z.literal("isolated-scratch"),
+        workKind: workKindSchema,
+      })
+      .strict(),
+    z
+      .object({
+        ...commonLaunchShape,
+        ...repositoryLaunchShape,
+        environmentTemplate: z.literal("detached-read-only"),
+        workKind: nonCodeWorkKindSchema,
+      })
+      .strict(),
+    z
+      .object({
+        ...commonLaunchShape,
+        ...repositoryLaunchShape,
+        environmentTemplate: z.literal("managed-worktree"),
+        workKind: z.literal("code"),
+        baseBranch: branchSchema,
+        generatedBranch: branchSchema,
+      })
+      .strict(),
+  ])
+  .superRefine((body, context) => {
+    if (body.environmentTemplate === "isolated-scratch") return;
+    const revisionPattern =
+      body.objectFormat === "sha1" ? SHA1_OBJECT_ID : SHA256_OBJECT_ID;
+    if (!revisionPattern.test(body.baseRevision)) {
+      context.addIssue({
+        code: "custom",
+        path: ["baseRevision"],
+        message: "Revision does not match object format",
+      });
+    }
+  });
 
 function notFound(): never {
   throw new ApiError(404, "not_found", "Not found");
@@ -42,28 +109,10 @@ function invalidRequest(): never {
   throw new ApiError(400, "invalid_request", "Invalid request");
 }
 
-function readLaunchBody(value: unknown): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    invalidRequest();
-  }
-  const body = value as Record<string, unknown>;
-  const keys = Object.keys(body).sort();
-  if (
-    keys.length !== BODY_KEYS.length ||
-    keys.some((key, index) => key !== [...BODY_KEYS].sort()[index])
-  ) {
-    invalidRequest();
-  }
-  for (const key of BODY_KEYS) {
-    if (key === "repositoryBindingVersion") {
-      if (!Number.isSafeInteger(body[key])) invalidRequest();
-    } else if (typeof body[key] !== "string") {
-      invalidRequest();
-    }
-  }
-  if (!gitObjectIdSchema.safeParse(body.baseRevision).success) invalidRequest();
-  if (body.environmentTemplate !== "managed-worktree") invalidRequest();
-  return body;
+function readLaunchBody(value: unknown): z.infer<typeof launchBodySchema> {
+  const parsed = launchBodySchema.safeParse(value);
+  if (!parsed.success) invalidRequest();
+  return parsed.data;
 }
 
 async function provision(
@@ -98,17 +147,7 @@ async function provision(
       principal: requirePrincipal(context),
       launch: {
         bindingId: target.bindingId,
-        workspaceId: body.workspaceId as string,
-        taskId: body.taskId as string,
-        cellId: body.cellId as string,
-        repositoryBindingId: body.repositoryBindingId as string,
-        repositoryBindingVersion: body.repositoryBindingVersion as number,
-        providerRepositoryId: body.providerRepositoryId as string,
-        baseBranch: body.baseBranch as string,
-        baseRevision: body.baseRevision as string,
-        generatedBranch: body.generatedBranch as string,
-        candidateHostId: body.candidateHostId as string,
-        environmentTemplate: body.environmentTemplate as "managed-worktree",
+        ...body,
       },
     });
     context.header("cache-control", "no-store");
@@ -150,7 +189,7 @@ export function registerRoomProvisioningHttpRoute(
   resourceProvisioner: WorkTogetherRoomResourceProvisioner,
 ): void {
   app.post(
-    "/api/bb-room-provisioning/v1/room-bindings/:bindingId",
+    "/api/bb-room-provisioning/v2/room-bindings/:bindingId",
     bodyLimit({
       maxSize: BODY_LIMIT_BYTES,
       onError: (context) => context.json({ code: "body_too_large" }, 413),

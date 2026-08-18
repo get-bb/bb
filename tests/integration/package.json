@@ -6,6 +6,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
+    "test:gw03-s0": "vitest run --config vitest.gw03-s0.config.ts",
     "test:smoke": "vitest run --config vitest.config.ts fake/smoke",
     "test:integration": "vitest run --config vitest.real-provider.config.ts"
   },

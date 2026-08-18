@@ -90,6 +90,51 @@ describe("resolveGithubRepository", () => {
     });
   });
 
+  it("verifies the exact object independently of a moving branch", async () => {
+    const sourcePath = join(root, "srv", "exact-revision");
+    await mkdir(sourcePath, { recursive: true });
+    await execFileAsync("git", ["init", "-b", "main"], { cwd: sourcePath });
+    await execFileAsync("git", ["config", "user.name", "BB Tests"], {
+      cwd: sourcePath,
+    });
+    await execFileAsync("git", ["config", "user.email", "bb@example.com"], {
+      cwd: sourcePath,
+    });
+    await writeFile(join(sourcePath, "README.md"), "selected\n");
+    await execFileAsync("git", ["add", "README.md"], { cwd: sourcePath });
+    await execFileAsync("git", ["commit", "-m", "Selected"], {
+      cwd: sourcePath,
+    });
+    const { stdout } = await execFileAsync("git", ["rev-parse", "HEAD"], {
+      cwd: sourcePath,
+    });
+    const baseRevision = stdout.trim();
+    await writeFile(join(sourcePath, "README.md"), "moved\n");
+    await execFileAsync("git", ["commit", "-am", "Move branch"], {
+      cwd: sourcePath,
+    });
+    await execFileAsync(
+      "git",
+      ["remote", "add", "origin", "https://github.com/timmoshu/cc-sandbox.git"],
+      { cwd: sourcePath },
+    );
+
+    const common = {
+      providerRepositoryId: "1268425814",
+      knownPaths: [sourcePath],
+      dataDir: join(root, "data"),
+      home: join(root, "home"),
+      objectFormat: "sha1" as const,
+      resolveFullName: async () => "timmoshu/cc-sandbox",
+    };
+    await expect(
+      resolveGithubRepository({ ...common, baseRevision }),
+    ).resolves.toMatchObject({ outcome: "found" });
+    await expect(
+      resolveGithubRepository({ ...common, baseRevision: "f".repeat(40) }),
+    ).resolves.toEqual({ outcome: "revision_unavailable" });
+  });
+
   it("prefers an existing dataDir checkout when known paths miss", async () => {
     const dataDir = join(root, "data");
     const checkout = join(dataDir, "checkouts", "cc-sandbox");

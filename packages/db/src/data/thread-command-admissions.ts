@@ -107,6 +107,10 @@ function assertNullResultColumns(
     | "resultPrUrl"
     | "resultPrNumber"
     | "resultCommitSha"
+    | "resultId"
+    | "resultRevision"
+    | "resultDigest"
+    | "resultSubmissionJson"
   >,
   context: string,
 ): void {
@@ -123,6 +127,10 @@ const NON_PUBLISHED_RESULT_POINTER_COLUMNS = [
   "resultPrUrl",
   "resultPrNumber",
   "resultCommitSha",
+  "resultId",
+  "resultRevision",
+  "resultDigest",
+  "resultSubmissionJson",
 ] as const;
 
 function decodeResultFromRow(
@@ -322,6 +330,47 @@ function decodeResultFromRow(
         commitSha: row.resultCommitSha,
       });
     }
+    case "result-published": {
+      if (
+        row.resultId === null ||
+        row.resultRevision === null ||
+        row.resultDigest === null ||
+        row.resultSubmissionJson === null
+      ) {
+        throw new ThreadCommandAdmissionCorruptionError(
+          "Corrupt thread command admission: result-published result missing durable fields",
+        );
+      }
+      assertNullResultColumns(
+        row,
+        [
+          "resultEventSequence",
+          "resultQueuedMessageId",
+          "resultExpectedTurnId",
+          "resultInteractionId",
+          "resultReadCursor",
+          "resultPrUrl",
+          "resultPrNumber",
+          "resultCommitSha",
+        ],
+        "result-published result",
+      );
+      let submission: unknown;
+      try {
+        submission = JSON.parse(row.resultSubmissionJson);
+      } catch {
+        throw new ThreadCommandAdmissionCorruptionError(
+          "Corrupt thread command admission: invalid result submission JSON",
+        );
+      }
+      return parseThreadCommandAdmissionResultForKind("result.publish", {
+        disposition: "result-published",
+        resultId: row.resultId,
+        resultRevision: row.resultRevision,
+        resultDigest: row.resultDigest,
+        submission,
+      });
+    }
     default: {
       const _exhaustive: never = disposition;
       throw new ThreadCommandAdmissionCorruptionError(
@@ -385,104 +434,87 @@ function encodeResultColumns(
   resultPrUrl: string | null;
   resultPrNumber: number | null;
   resultCommitSha: string | null;
+  resultId: string | null;
+  resultRevision: number | null;
+  resultDigest: string | null;
+  resultSubmissionJson: string | null;
 } {
   const parsed = parseThreadCommandAdmissionResultForKind(commandKind, result);
+  const empty = {
+    resultEventSequence: null,
+    resultQueuedMessageId: null,
+    resultExpectedTurnId: null,
+    resultInteractionId: null,
+    resultReadCursor: null,
+    resultPrUrl: null,
+    resultPrNumber: null,
+    resultCommitSha: null,
+    resultId: null,
+    resultRevision: null,
+    resultDigest: null,
+    resultSubmissionJson: null,
+  } as const;
   switch (parsed.disposition) {
     case "started":
       return {
+        ...empty,
         resultDisposition: parsed.disposition,
         resultEventSequence: parsed.eventSequence,
-        resultQueuedMessageId: null,
-        resultExpectedTurnId: null,
-        resultInteractionId: null,
-        resultReadCursor: null,
-        resultPrUrl: null,
-        resultPrNumber: null,
-        resultCommitSha: null,
       };
     case "queued":
       return {
+        ...empty,
         resultDisposition: parsed.disposition,
-        resultEventSequence: null,
         resultQueuedMessageId: parsed.queuedMessageId,
-        resultExpectedTurnId: null,
-        resultInteractionId: null,
-        resultReadCursor: null,
-        resultPrUrl: null,
-        resultPrNumber: null,
-        resultCommitSha: null,
       };
     case "steered":
       return {
+        ...empty,
         resultDisposition: parsed.disposition,
         resultEventSequence: parsed.eventSequence,
-        resultQueuedMessageId: null,
         resultExpectedTurnId: parsed.expectedTurnId,
-        resultInteractionId: null,
-        resultReadCursor: null,
-        resultPrUrl: null,
-        resultPrNumber: null,
-        resultCommitSha: null,
       };
     case "interrupted":
       return {
+        ...empty,
         resultDisposition: parsed.disposition,
         resultEventSequence: parsed.eventSequence,
-        resultQueuedMessageId: null,
         resultExpectedTurnId: parsed.expectedTurnId,
-        resultInteractionId: null,
-        resultReadCursor: null,
-        resultPrUrl: null,
-        resultPrNumber: null,
-        resultCommitSha: null,
       };
     case "answered":
       return {
+        ...empty,
         resultDisposition: parsed.disposition,
-        resultEventSequence: null,
-        resultQueuedMessageId: null,
-        resultExpectedTurnId: null,
         resultInteractionId: parsed.interactionId,
-        resultReadCursor: null,
-        resultPrUrl: null,
-        resultPrNumber: null,
-        resultCommitSha: null,
       };
     case "approved":
       return {
+        ...empty,
         resultDisposition: parsed.disposition,
-        resultEventSequence: null,
-        resultQueuedMessageId: null,
-        resultExpectedTurnId: null,
         resultInteractionId: parsed.interactionId,
-        resultReadCursor: null,
-        resultPrUrl: null,
-        resultPrNumber: null,
-        resultCommitSha: null,
       };
     case "marked":
       return {
+        ...empty,
         resultDisposition: parsed.disposition,
-        resultEventSequence: null,
-        resultQueuedMessageId: null,
-        resultExpectedTurnId: null,
-        resultInteractionId: null,
         resultReadCursor: parsed.readCursor,
-        resultPrUrl: null,
-        resultPrNumber: null,
-        resultCommitSha: null,
       };
     case "published":
       return {
+        ...empty,
         resultDisposition: parsed.disposition,
-        resultEventSequence: null,
-        resultQueuedMessageId: null,
-        resultExpectedTurnId: null,
-        resultInteractionId: null,
-        resultReadCursor: null,
         resultPrUrl: parsed.prUrl,
         resultPrNumber: parsed.prNumber,
         resultCommitSha: parsed.commitSha,
+      };
+    case "result-published":
+      return {
+        ...empty,
+        resultDisposition: parsed.disposition,
+        resultId: parsed.resultId,
+        resultRevision: parsed.resultRevision,
+        resultDigest: parsed.resultDigest,
+        resultSubmissionJson: JSON.stringify(parsed.submission),
       };
     default: {
       const _exhaustive: never = parsed;

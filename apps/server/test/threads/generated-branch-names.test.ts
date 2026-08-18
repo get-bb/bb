@@ -187,6 +187,7 @@ describe("generated managed branch names", () => {
           resourceReservation: {
             environmentId,
             threadId,
+            environmentTemplate: "managed-worktree",
             managedBranchName: "rooms/reserved-room",
             baseRevision: "a".repeat(40),
             providerRepositoryId: "42",
@@ -247,6 +248,7 @@ describe("generated managed branch names", () => {
             resourceReservation: {
               environmentId: createEnvironmentId(),
               threadId,
+              environmentTemplate: "managed-worktree",
               managedBranchName: "refs/heads/main",
               baseRevision: "a".repeat(40),
               providerRepositoryId: "42",

@@ -150,6 +150,16 @@ function resolveHostThreadRequestEnvironment(
     };
   }
 
+  if (environment.workspace.type === "isolated-scratch") {
+    return {
+      hostId,
+      localSource: null,
+      type: "host",
+      unmanagedPath: null,
+      workspace: environment.workspace,
+    };
+  }
+
   const localSource = getProjectSourceByHost(deps.db, projectId, hostId);
   if (!localSource || localSource.type !== "local_path") {
     throw new ApiError(

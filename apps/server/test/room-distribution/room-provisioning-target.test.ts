@@ -6,7 +6,7 @@ import {
 } from "../../src/room-distribution/room-provisioning-target.js";
 
 const BINDING_ID = "99999999-aaaa-4bbb-8ccc-dddddddddddd";
-const PATH = `/api/bb-room-provisioning/v1/room-bindings/${BINDING_ID}`;
+const PATH = `/api/bb-room-provisioning/v2/room-bindings/${BINDING_ID}`;
 
 describe("Room provisioning target", () => {
   it("accepts only the exact POST/http origin-form target", () => {

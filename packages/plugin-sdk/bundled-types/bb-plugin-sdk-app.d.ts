@@ -197,6 +197,10 @@ declare const createThreadEnvironmentArgsSchema: z.ZodDiscriminatedUnion<[z.ZodO
         }, z.core.$strip>], "kind">;
     }, z.core.$strip>, z.ZodObject<{
         type: z.ZodLiteral<"personal">;
+    }, z.core.$strip>, z.ZodObject<{
+        type: z.ZodLiteral<"isolated-scratch">;
+    }, z.core.$strip>, z.ZodObject<{
+        type: z.ZodLiteral<"detached-read-only">;
     }, z.core.$strip>], "type">;
 }, z.core.$strip>, z.ZodObject<{
     type: z.ZodLiteral<"project-default">;

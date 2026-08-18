@@ -165,6 +165,32 @@ describe("acp adapter command plans", () => {
     });
   });
 
+  it("excludes a read-only workspace from ACP write roots", () => {
+    const profile = ACP_AGENT_PROFILES[0];
+    if (!profile) throw new Error("Expected the built-in Cursor ACP profile");
+    const adapter = createAcpProviderAdapter({
+      profile,
+      additionalWorkspaceWriteRoots: ["/output"],
+      workspaceReadOnly: true,
+    });
+    const plan = adapter.buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-read-only",
+      cwd: "/repository",
+      options: {
+        ...fullProviderExecutionContext,
+        permissionMode: "accept-edits",
+        permissionScope: "workspace",
+        approvalReviewer: "user",
+        permissionEscalation: "ask",
+      },
+      instructionMode: "append",
+    });
+    expect(plan).toMatchObject({
+      params: { workspaceWriteRoots: ["/output"] },
+    });
+  });
+
   it("adds ACP skill instructions to thread/start", () => {
     const adapter = createAdapter();
     const plan = adapter.buildCommandPlan({

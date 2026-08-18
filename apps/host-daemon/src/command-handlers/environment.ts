@@ -5,7 +5,12 @@ import type {
 } from "@bb/host-daemon-contract";
 import {
   getPersonalWorkspaceRoot,
+  getIsolatedScratchWorkspaceRoot,
+  getDetachedReadOnlyWorkspaceRoot,
+  getDetachedReadOnlyOutputRoot,
   validatePersonalWorkspaceTargetPath,
+  validateIsolatedScratchWorkspaceTargetPath,
+  validateDetachedReadOnlyWorkspacePaths,
   WorkspaceError,
   type ProvisionWorkspaceArgs,
 } from "@bb/host-workspace";
@@ -342,6 +347,52 @@ export function toProvisionWorkspaceOptions(
         environmentId: command.environmentId,
         personalWorkspaceRoot,
         targetPath,
+        onProgress,
+      };
+    }
+    case "isolated-scratch": {
+      const isolatedScratchWorkspaceRoot = getIsolatedScratchWorkspaceRoot(
+        options.dataDir,
+      );
+      const targetPath = validateIsolatedScratchWorkspaceTargetPath({
+        environmentId: command.environmentId,
+        isolatedScratchWorkspaceRoot,
+        targetPath: command.targetPath,
+      });
+      return {
+        workspaceProvisionType: command.workspaceProvisionType,
+        environmentId: command.environmentId,
+        isolatedScratchWorkspaceRoot,
+        targetPath,
+        onProgress,
+      };
+    }
+    case "detached-read-only": {
+      const detachedReadOnlyWorkspaceRoot = getDetachedReadOnlyWorkspaceRoot(
+        options.dataDir,
+      );
+      const detachedReadOnlyOutputRoot = getDetachedReadOnlyOutputRoot(
+        options.dataDir,
+      );
+      const { targetPath, outputPath } = validateDetachedReadOnlyWorkspacePaths(
+        {
+          environmentId: command.environmentId,
+          detachedReadOnlyWorkspaceRoot,
+          detachedReadOnlyOutputRoot,
+          targetPath: command.targetPath,
+          outputPath: command.outputPath,
+        },
+      );
+      return {
+        workspaceProvisionType: command.workspaceProvisionType,
+        environmentId: command.environmentId,
+        sourcePath: command.sourcePath,
+        targetPath,
+        outputPath,
+        detachedReadOnlyWorkspaceRoot,
+        detachedReadOnlyOutputRoot,
+        objectFormat: command.objectFormat,
+        baseRevision: command.baseRevision,
         onProgress,
       };
     }

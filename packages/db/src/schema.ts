@@ -1077,6 +1077,10 @@ export const threadCommandAdmissions = sqliteTable(
     resultPrUrl: text("result_pr_url"),
     resultPrNumber: integer("result_pr_number"),
     resultCommitSha: text("result_commit_sha"),
+    resultId: text("result_id"),
+    resultRevision: integer("result_revision"),
+    resultDigest: text("result_digest"),
+    resultSubmissionJson: text("result_submission_json"),
     createdAt: integer("created_at").notNull(),
     completedAt: integer("completed_at").notNull(),
   },
@@ -1089,21 +1093,23 @@ export const threadCommandAdmissions = sqliteTable(
     check(
       "thread_command_admissions_result_shape_check",
       sql`(
-        (${table.commandKind} = 'message.send' AND ${table.resultDisposition} = 'started' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL)
+        (${table.commandKind} = 'message.send' AND ${table.resultDisposition} = 'started' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL AND ${table.resultId} IS NULL AND ${table.resultRevision} IS NULL AND ${table.resultDigest} IS NULL AND ${table.resultSubmissionJson} IS NULL)
         OR
-        (${table.commandKind} = 'message.send' AND ${table.resultDisposition} = 'queued' AND ${table.resultQueuedMessageId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL)
+        (${table.commandKind} = 'message.send' AND ${table.resultDisposition} = 'queued' AND ${table.resultQueuedMessageId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL AND ${table.resultId} IS NULL AND ${table.resultRevision} IS NULL AND ${table.resultDigest} IS NULL AND ${table.resultSubmissionJson} IS NULL)
         OR
-        (${table.commandKind} = 'message.steer' AND ${table.resultDisposition} = 'steered' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NOT NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL)
+        (${table.commandKind} = 'message.steer' AND ${table.resultDisposition} = 'steered' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NOT NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL AND ${table.resultId} IS NULL AND ${table.resultRevision} IS NULL AND ${table.resultDigest} IS NULL AND ${table.resultSubmissionJson} IS NULL)
         OR
-        (${table.commandKind} = 'thread.interrupt' AND ${table.resultDisposition} = 'interrupted' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NOT NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL)
+        (${table.commandKind} = 'thread.interrupt' AND ${table.resultDisposition} = 'interrupted' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NOT NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL AND ${table.resultId} IS NULL AND ${table.resultRevision} IS NULL AND ${table.resultDigest} IS NULL AND ${table.resultSubmissionJson} IS NULL)
         OR
-        (${table.commandKind} = 'interaction.answer' AND ${table.resultDisposition} = 'answered' AND ${table.resultInteractionId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL)
+        (${table.commandKind} = 'interaction.answer' AND ${table.resultDisposition} = 'answered' AND ${table.resultInteractionId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL AND ${table.resultId} IS NULL AND ${table.resultRevision} IS NULL AND ${table.resultDigest} IS NULL AND ${table.resultSubmissionJson} IS NULL)
         OR
-        (${table.commandKind} = 'interaction.approve' AND ${table.resultDisposition} = 'approved' AND ${table.resultInteractionId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL)
+        (${table.commandKind} = 'interaction.approve' AND ${table.resultDisposition} = 'approved' AND ${table.resultInteractionId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL AND ${table.resultId} IS NULL AND ${table.resultRevision} IS NULL AND ${table.resultDigest} IS NULL AND ${table.resultSubmissionJson} IS NULL)
         OR
-        (${table.commandKind} = 'read.mark' AND ${table.resultDisposition} = 'marked' AND ${table.resultReadCursor} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL)
+        (${table.commandKind} = 'read.mark' AND ${table.resultDisposition} = 'marked' AND ${table.resultReadCursor} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL AND ${table.resultId} IS NULL AND ${table.resultRevision} IS NULL AND ${table.resultDigest} IS NULL AND ${table.resultSubmissionJson} IS NULL)
         OR
-        (${table.commandKind} = 'branch.publish' AND ${table.resultDisposition} = 'published' AND ${table.resultPrUrl} IS NOT NULL AND ${table.resultPrNumber} IS NOT NULL AND ${table.resultCommitSha} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL)
+        (${table.commandKind} = 'branch.publish' AND ${table.resultDisposition} = 'published' AND ${table.resultPrUrl} IS NOT NULL AND ${table.resultPrNumber} IS NOT NULL AND ${table.resultCommitSha} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultId} IS NULL AND ${table.resultRevision} IS NULL AND ${table.resultDigest} IS NULL AND ${table.resultSubmissionJson} IS NULL)
+        OR
+        (${table.commandKind} = 'result.publish' AND ${table.resultDisposition} = 'result-published' AND ${table.resultId} IS NOT NULL AND ${table.resultRevision} IS NOT NULL AND ${table.resultDigest} IS NOT NULL AND ${table.resultSubmissionJson} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL)
       )`,
     ),
   ],
@@ -1137,19 +1143,24 @@ export const workTogetherRoomResourceReservations = sqliteTable(
     workspaceId: text("workspace_id").notNull(),
     taskId: text("task_id").notNull(),
     cellId: text("cell_id").notNull(),
-    repositoryBindingId: text("repository_binding_id").notNull(),
-    repositoryBindingVersion: integer("repository_binding_version").notNull(),
-    providerRepositoryId: text("provider_repository_id").notNull(),
-    baseBranch: text("base_branch").notNull(),
+    workKind: text("work_kind", {
+      enum: ["conversation", "research", "plan", "writing", "code", "other"],
+    }).notNull(),
+    repositorySnapshotId: text("repository_snapshot_id"),
+    repositoryBindingId: text("repository_binding_id"),
+    repositoryBindingVersion: integer("repository_binding_version"),
+    providerRepositoryId: text("provider_repository_id"),
+    objectFormat: text("object_format", { enum: ["sha1", "sha256"] }),
     baseRevision: text("base_revision"),
-    generatedBranch: text("generated_branch").notNull(),
+    baseBranch: text("base_branch"),
+    generatedBranch: text("generated_branch"),
     candidateHostId: text("candidate_host_id").notNull(),
     bbHostId: text("bb_host_id"),
     projectName: text("project_name"),
     providerId: text("provider_id"),
     sourcePath: text("source_path"),
     environmentTemplate: text("environment_template")
-      .$type<"managed-worktree">()
+      .$type<"isolated-scratch" | "detached-read-only" | "managed-worktree">()
       .notNull(),
     projectId: text("project_id").notNull(),
     projectSourceId: text("project_source_id").notNull(),
@@ -1177,11 +1188,11 @@ export const workTogetherRoomResourceReservations = sqliteTable(
     ),
     check(
       "wt_room_resource_reservations_version_check",
-      sql`${table.repositoryBindingVersion} > 0`,
+      sql`${table.repositoryBindingVersion} IS NULL OR ${table.repositoryBindingVersion} > 0`,
     ),
     check(
       "wt_room_resource_reservations_template_check",
-      sql`${table.environmentTemplate} = 'managed-worktree'`,
+      sql`${table.environmentTemplate} IN ('isolated-scratch', 'detached-read-only', 'managed-worktree')`,
     ),
   ],
 );

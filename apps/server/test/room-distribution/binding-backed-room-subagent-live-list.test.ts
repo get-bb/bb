@@ -199,9 +199,13 @@ async function withLiveListRoom(
       workspaceId: randomUUID(),
       taskId: randomUUID(),
       cellId: randomUUID(),
+      workKind: "code" as const,
+      repositorySnapshotId: randomUUID(),
       repositoryBindingId: randomUUID(),
       repositoryBindingVersion: 1,
       providerRepositoryId: "401",
+      objectFormat: "sha1" as const,
+      baseRevision: "a".repeat(40),
       baseBranch: "main",
       baseRevision: "a".repeat(40),
       generatedBranch: "rooms/live-list",
@@ -211,8 +215,14 @@ async function withLiveListRoom(
     const provisioned = await createWorkTogetherRoomResourceProvisioner(
       harness.deps,
       {
+        resolveHost: () => ({
+          bbHostId: host.id,
+          dataDir: `/tmp/bb-host-data/${host.id}`,
+          providerId: "codex",
+        }),
         resolve: () => ({
           bbHostId: host.id,
+          dataDir: `/tmp/bb-host-data/${host.id}`,
           projectName: "Live List Repository",
           providerId: "codex",
           sourcePath: "/srv/work-together/live-list",

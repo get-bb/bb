@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { gitBranchNameSchema, gitObjectIdSchema } from "@bb/domain";
+import { gitBranchNameSchema } from "@bb/domain";
 
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import {
@@ -10,24 +10,57 @@ import {
 } from "../ids.js";
 import { workTogetherRoomResourceReservations } from "../schema.js";
 
-export interface ReserveWorkTogetherRoomResourcesInput {
+export const WORK_TOGETHER_ROOM_WORK_KINDS = [
+  "conversation",
+  "research",
+  "plan",
+  "writing",
+  "code",
+  "other",
+] as const;
+
+export type WorkTogetherRoomWorkKind =
+  (typeof WORK_TOGETHER_ROOM_WORK_KINDS)[number];
+
+interface ReserveWorkTogetherRoomResourcesCommonInput {
   bindingId: string;
   workspaceId: string;
   taskId: string;
   cellId: string;
-  repositoryBindingId: string;
-  repositoryBindingVersion: number;
-  providerRepositoryId: string;
-  baseBranch: string;
-  baseRevision: string;
-  generatedBranch: string;
   candidateHostId: string;
-  bbHostId: string;
-  projectName: string;
-  providerId: string;
-  sourcePath: string;
-  environmentTemplate: "managed-worktree";
+  workKind: WorkTogetherRoomWorkKind;
+  bbHostId?: string;
+  projectName?: string;
+  providerId?: string;
+  sourcePath?: string;
 }
+
+export type ReserveWorkTogetherRoomResourcesInput =
+  | (ReserveWorkTogetherRoomResourcesCommonInput & {
+      environmentTemplate: "isolated-scratch";
+    })
+  | (ReserveWorkTogetherRoomResourcesCommonInput & {
+      environmentTemplate: "detached-read-only";
+      workKind: Exclude<WorkTogetherRoomWorkKind, "code">;
+      repositorySnapshotId: string;
+      repositoryBindingId: string;
+      repositoryBindingVersion: number;
+      providerRepositoryId: string;
+      objectFormat: "sha1" | "sha256";
+      baseRevision: string;
+    })
+  | (ReserveWorkTogetherRoomResourcesCommonInput & {
+      environmentTemplate: "managed-worktree";
+      workKind: "code";
+      repositorySnapshotId: string;
+      repositoryBindingId: string;
+      repositoryBindingVersion: number;
+      providerRepositoryId: string;
+      objectFormat: "sha1" | "sha256";
+      baseRevision: string;
+      baseBranch: string;
+      generatedBranch: string;
+    });
 
 export type WorkTogetherRoomResourceReservation =
   typeof workTogetherRoomResourceReservations.$inferSelect;
@@ -42,6 +75,8 @@ export class WorkTogetherRoomResourceReservationConflictError extends Error {
 const CANONICAL_UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const PROVIDER_REPOSITORY_ID = /^[1-9][0-9]*$/u;
+const SHA1_OBJECT_ID = /^[0-9a-f]{40}$/u;
+const SHA256_OBJECT_ID = /^[0-9a-f]{64}$/u;
 const MAX_BRANCH_BYTES = 255;
 const MAX_PROVIDER_REPOSITORY_ID_BYTES = 128;
 
@@ -66,8 +101,22 @@ function validateInput(input: ReserveWorkTogetherRoomResourcesInput): void {
   requireUuid(input.workspaceId);
   requireUuid(input.taskId);
   requireUuid(input.cellId);
-  requireUuid(input.repositoryBindingId);
   requireUuid(input.candidateHostId);
+  if (!WORK_TOGETHER_ROOM_WORK_KINDS.includes(input.workKind)) {
+    throw new TypeError("Invalid Work Together Room resource reservation work kind");
+  }
+  if (
+    (input.bbHostId !== undefined && input.bbHostId.length === 0) ||
+    (input.projectName !== undefined && input.projectName.length === 0) ||
+    (input.providerId !== undefined && input.providerId.length === 0) ||
+    (input.sourcePath !== undefined && input.sourcePath.length === 0)
+  ) {
+    throw new TypeError("Invalid Work Together Room resource reservation target");
+  }
+  if (input.environmentTemplate === "isolated-scratch") return;
+
+  requireUuid(input.repositorySnapshotId);
+  requireUuid(input.repositoryBindingId);
   if (
     !Number.isSafeInteger(input.repositoryBindingVersion) ||
     input.repositoryBindingVersion < 1
@@ -85,26 +134,27 @@ function validateInput(input: ReserveWorkTogetherRoomResourcesInput): void {
       "Invalid Work Together Room resource reservation repository id",
     );
   }
-  requireBranch(input.baseBranch);
-  requireBranch(input.generatedBranch);
-  if (!gitObjectIdSchema.safeParse(input.baseRevision).success) {
+  const revisionPattern =
+    input.objectFormat === "sha1"
+      ? SHA1_OBJECT_ID
+      : input.objectFormat === "sha256"
+        ? SHA256_OBJECT_ID
+        : null;
+  if (revisionPattern === null || !revisionPattern.test(input.baseRevision)) {
     throw new TypeError(
-      "Invalid Work Together Room resource reservation base revision",
+      "Invalid Work Together Room resource reservation revision",
     );
   }
-  if (
-    input.bbHostId.length === 0 ||
-    input.projectName.length === 0 ||
-    input.providerId.length === 0 ||
-    input.sourcePath.length === 0
-  ) {
-    throw new TypeError("Invalid Work Together Room resource reservation target");
+  if (input.environmentTemplate === "detached-read-only") {
+    return;
   }
-  if (input.environmentTemplate !== "managed-worktree") {
+  if (input.environmentTemplate !== "managed-worktree" || input.workKind !== "code") {
     throw new TypeError(
       "Invalid Work Together Room resource reservation environment template",
     );
   }
+  requireBranch(input.baseBranch);
+  requireBranch(input.generatedBranch);
 }
 
 function getByBindingId(
@@ -129,18 +179,23 @@ function sameLaunchFacts(
     row.workspaceId === input.workspaceId &&
     row.taskId === input.taskId &&
     row.cellId === input.cellId &&
-    row.repositoryBindingId === input.repositoryBindingId &&
-    row.repositoryBindingVersion === input.repositoryBindingVersion &&
-    row.providerRepositoryId === input.providerRepositoryId &&
-    row.baseBranch === input.baseBranch &&
-    row.baseRevision === input.baseRevision &&
-    row.generatedBranch === input.generatedBranch &&
     row.candidateHostId === input.candidateHostId &&
-    row.bbHostId === input.bbHostId &&
-    row.projectName === input.projectName &&
-    row.providerId === input.providerId &&
-    row.sourcePath === input.sourcePath &&
-    row.environmentTemplate === input.environmentTemplate
+    row.environmentTemplate === input.environmentTemplate &&
+    row.workKind === input.workKind &&
+    (input.bbHostId === undefined || row.bbHostId === input.bbHostId) &&
+    (input.projectName === undefined || row.projectName === input.projectName) &&
+    (input.providerId === undefined || row.providerId === input.providerId) &&
+    (input.sourcePath === undefined || row.sourcePath === input.sourcePath) &&
+    (input.environmentTemplate === "isolated-scratch" ||
+      (row.repositorySnapshotId === input.repositorySnapshotId &&
+        row.repositoryBindingId === input.repositoryBindingId &&
+        row.repositoryBindingVersion === input.repositoryBindingVersion &&
+        row.providerRepositoryId === input.providerRepositoryId &&
+        row.objectFormat === input.objectFormat &&
+        row.baseRevision === input.baseRevision &&
+        (input.environmentTemplate === "detached-read-only" ||
+          (row.baseBranch === input.baseBranch &&
+            row.generatedBranch === input.generatedBranch))))
   );
 }
 
@@ -162,6 +217,27 @@ export function getWorkTogetherRoomResourceReservationByEnvironmentId(
       .from(workTogetherRoomResourceReservations)
       .where(
         eq(workTogetherRoomResourceReservations.environmentId, environmentId),
+      )
+      .get() ?? null
+  );
+}
+
+export function getWorkTogetherRoomResourceReservationByEnvironment(
+  db: DbQueryConnection,
+  input: { environmentId: string; projectId: string },
+): WorkTogetherRoomResourceReservation | null {
+  return (
+    db
+      .select()
+      .from(workTogetherRoomResourceReservations)
+      .where(
+        and(
+          eq(
+            workTogetherRoomResourceReservations.environmentId,
+            input.environmentId,
+          ),
+          eq(workTogetherRoomResourceReservations.projectId, input.projectId),
+        ),
       )
       .get() ?? null
   );

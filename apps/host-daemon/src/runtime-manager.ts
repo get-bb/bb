@@ -157,6 +157,7 @@ export interface EnsureEnvironmentArgs {
   environmentId: string;
   injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
   personalWorkspaceRoot?: string;
+  detachedReadOnlyOutputRoot?: string;
   /**
    * The thread the requesting command targets; set by thread commands that
    * resolve with injected skill sources (thread.start, turn.submit). When
@@ -1332,6 +1333,11 @@ export class RuntimeManager {
             ...(args.personalWorkspaceRoot !== undefined
               ? { personalWorkspaceRoot: args.personalWorkspaceRoot }
               : {}),
+            ...(args.detachedReadOnlyOutputRoot !== undefined
+              ? {
+                  detachedReadOnlyOutputRoot: args.detachedReadOnlyOutputRoot,
+                }
+              : {}),
             workspacePath: args.workspacePath,
             workspaceProvisionType: args.workspaceProvisionType ?? "unmanaged",
           })
@@ -1363,6 +1369,10 @@ export class RuntimeManager {
     runtime = this.createRuntime({
       workspacePath: workspace.path,
       additionalWorkspaceWriteRoots,
+      ...(provision.workspaceProvisionType === "detached-read-only" ||
+      provision.workspaceProvisionType === "reconnect-detached-read-only"
+        ? { workspaceReadOnly: true }
+        : {}),
       ...(args.skillConfig ? { skillRoots: args.skillConfig.skillRoots } : {}),
       ...(providerProcessEnv ? { env: providerProcessEnv } : {}),
       shellEnv,

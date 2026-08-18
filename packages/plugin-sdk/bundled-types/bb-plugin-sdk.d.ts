@@ -247,6 +247,8 @@ declare const environmentSchema: z$1.ZodObject<{
         unmanaged: "unmanaged";
         "managed-worktree": "managed-worktree";
         personal: "personal";
+        "isolated-scratch": "isolated-scratch";
+        "detached-read-only": "detached-read-only";
     }>;
     branchName: z$1.ZodNullable<z$1.ZodString>;
     baseBranch: z$1.ZodNullable<z$1.ZodString>;
@@ -2273,6 +2275,10 @@ declare const createThreadEnvironmentArgsSchema: z$1.ZodDiscriminatedUnion<[z$1.
         }, z$1.core.$strip>], "kind">;
     }, z$1.core.$strip>, z$1.ZodObject<{
         type: z$1.ZodLiteral<"personal">;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        type: z$1.ZodLiteral<"isolated-scratch">;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        type: z$1.ZodLiteral<"detached-read-only">;
     }, z$1.core.$strip>], "type">;
 }, z$1.core.$strip>, z$1.ZodObject<{
     type: z$1.ZodLiteral<"project-default">;
@@ -3471,6 +3477,8 @@ declare const hostDaemonCommandRegistry: {
                 unmanaged: "unmanaged";
                 "managed-worktree": "managed-worktree";
                 personal: "personal";
+                "isolated-scratch": "isolated-scratch";
+                "detached-read-only": "detached-read-only";
             }>;
         }, z$1.core.$strip>;
         projectId: z$1.ZodString;
@@ -3672,6 +3680,8 @@ declare const hostDaemonCommandRegistry: {
                 unmanaged: "unmanaged";
                 "managed-worktree": "managed-worktree";
                 personal: "personal";
+                "isolated-scratch": "isolated-scratch";
+                "detached-read-only": "detached-read-only";
             }>;
         }, z$1.core.$strip>;
         projectId: z$1.ZodString;
@@ -4344,6 +4354,8 @@ declare const hostDaemonCommandRegistry: {
                     unmanaged: "unmanaged";
                     "managed-worktree": "managed-worktree";
                     personal: "personal";
+                    "isolated-scratch": "isolated-scratch";
+                    "detached-read-only": "detached-read-only";
                 }>;
             }, z$1.core.$strip>;
             instructionMode: z$1.ZodEnum<{
@@ -4672,6 +4684,8 @@ declare const hostDaemonCommandRegistry: {
                     unmanaged: "unmanaged";
                     "managed-worktree": "managed-worktree";
                     personal: "personal";
+                    "isolated-scratch": "isolated-scratch";
+                    "detached-read-only": "detached-read-only";
                 }>;
             }, z$1.core.$strip>;
             instructionMode: z$1.ZodEnum<{
@@ -4839,6 +4853,8 @@ declare const hostDaemonCommandRegistry: {
                 unmanaged: "unmanaged";
                 "managed-worktree": "managed-worktree";
                 personal: "personal";
+                "isolated-scratch": "isolated-scratch";
+                "detached-read-only": "detached-read-only";
             }>;
         }, z$1.core.$strip>;
         type: z$1.ZodLiteral<"thread.archive">;
@@ -4965,6 +4981,31 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strict>>;
         workspaceProvisionType: z$1.ZodLiteral<"personal">;
         targetPath: z$1.ZodString;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        environmentId: z$1.ZodString;
+        type: z$1.ZodLiteral<"environment.provision">;
+        initiator: z$1.ZodNullable<z$1.ZodObject<{
+            threadId: z$1.ZodString;
+            provisioningId: z$1.ZodString;
+        }, z$1.core.$strict>>;
+        workspaceProvisionType: z$1.ZodLiteral<"isolated-scratch">;
+        targetPath: z$1.ZodString;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        environmentId: z$1.ZodString;
+        type: z$1.ZodLiteral<"environment.provision">;
+        initiator: z$1.ZodNullable<z$1.ZodObject<{
+            threadId: z$1.ZodString;
+            provisioningId: z$1.ZodString;
+        }, z$1.core.$strict>>;
+        workspaceProvisionType: z$1.ZodLiteral<"detached-read-only">;
+        sourcePath: z$1.ZodString;
+        targetPath: z$1.ZodString;
+        outputPath: z$1.ZodString;
+        objectFormat: z$1.ZodEnum<{
+            sha1: "sha1";
+            sha256: "sha256";
+        }>;
+        baseRevision: z$1.ZodString;
     }, z$1.core.$strict>], "workspaceProvisionType">, z$1.ZodObject<{
         path: z$1.ZodString;
         isGitRepo: z$1.ZodBoolean;
@@ -5011,6 +5052,8 @@ declare const hostDaemonCommandRegistry: {
                 unmanaged: "unmanaged";
                 "managed-worktree": "managed-worktree";
                 personal: "personal";
+                "isolated-scratch": "isolated-scratch";
+                "detached-read-only": "detached-read-only";
             }>;
         }, z$1.core.$strip>;
         type: z$1.ZodLiteral<"environment.destroy">;
@@ -5023,6 +5066,8 @@ declare const hostDaemonCommandRegistry: {
                 unmanaged: "unmanaged";
                 "managed-worktree": "managed-worktree";
                 personal: "personal";
+                "isolated-scratch": "isolated-scratch";
+                "detached-read-only": "detached-read-only";
             }>;
         }, z$1.core.$strip>;
         type: z$1.ZodLiteral<"workspace.commit">;
@@ -5039,6 +5084,8 @@ declare const hostDaemonCommandRegistry: {
                 unmanaged: "unmanaged";
                 "managed-worktree": "managed-worktree";
                 personal: "personal";
+                "isolated-scratch": "isolated-scratch";
+                "detached-read-only": "detached-read-only";
             }>;
         }, z$1.core.$strip>;
         type: z$1.ZodLiteral<"workspace.push">;
@@ -5057,6 +5104,8 @@ declare const hostDaemonCommandRegistry: {
                 unmanaged: "unmanaged";
                 "managed-worktree": "managed-worktree";
                 personal: "personal";
+                "isolated-scratch": "isolated-scratch";
+                "detached-read-only": "detached-read-only";
             }>;
         }, z$1.core.$strip>;
         type: z$1.ZodLiteral<"workspace.squash_merge">;
@@ -5075,6 +5124,8 @@ declare const hostDaemonCommandRegistry: {
                 unmanaged: "unmanaged";
                 "managed-worktree": "managed-worktree";
                 personal: "personal";
+                "isolated-scratch": "isolated-scratch";
+                "detached-read-only": "detached-read-only";
             }>;
         }, z$1.core.$strip>;
         type: z$1.ZodLiteral<"workspace.pull_request_action">;
@@ -5087,6 +5138,8 @@ declare const hostDaemonCommandRegistry: {
                 unmanaged: "unmanaged";
                 "managed-worktree": "managed-worktree";
                 personal: "personal";
+                "isolated-scratch": "isolated-scratch";
+                "detached-read-only": "detached-read-only";
             }>;
         }, z$1.core.$strip>;
         type: z$1.ZodLiteral<"workspace.pull_request_action">;
@@ -5099,6 +5152,8 @@ declare const hostDaemonCommandRegistry: {
                 unmanaged: "unmanaged";
                 "managed-worktree": "managed-worktree";
                 personal: "personal";
+                "isolated-scratch": "isolated-scratch";
+                "detached-read-only": "detached-read-only";
             }>;
         }, z$1.core.$strip>;
         type: z$1.ZodLiteral<"workspace.pull_request_action">;
@@ -5117,6 +5172,8 @@ declare const hostDaemonCommandRegistry: {
                 unmanaged: "unmanaged";
                 "managed-worktree": "managed-worktree";
                 personal: "personal";
+                "isolated-scratch": "isolated-scratch";
+                "detached-read-only": "detached-read-only";
             }>;
         }, z$1.core.$strip>;
         type: z$1.ZodLiteral<"workspace.pull_request_create">;
@@ -5752,6 +5809,11 @@ declare const hostDaemonCommandRegistry: {
         type: z$1.ZodLiteral<"workspace.resolve_github_repository">;
         providerRepositoryId: z$1.ZodString;
         knownPaths: z$1.ZodArray<z$1.ZodString>;
+        objectFormat: z$1.ZodOptional<z$1.ZodEnum<{
+            sha1: "sha1";
+            sha256: "sha256";
+        }>>;
+        baseRevision: z$1.ZodOptional<z$1.ZodString>;
     }, z$1.core.$strict>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         outcome: z$1.ZodLiteral<"found">;
         repository: z$1.ZodObject<{
@@ -5762,6 +5824,8 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"not_found">;
     }, z$1.core.$strict>, z$1.ZodObject<{
         outcome: z$1.ZodLiteral<"unavailable">;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        outcome: z$1.ZodLiteral<"revision_unavailable">;
     }, z$1.core.$strict>], "outcome">, "onlineRpc", true>;
     "provider_cli.status": HostDaemonCommandDescriptor<"provider_cli.status", z$1.ZodObject<{
         type: z$1.ZodLiteral<"provider_cli.status">;
@@ -5862,6 +5926,8 @@ declare const hostDaemonCommandRegistry: {
                 unmanaged: "unmanaged";
                 "managed-worktree": "managed-worktree";
                 personal: "personal";
+                "isolated-scratch": "isolated-scratch";
+                "detached-read-only": "detached-read-only";
             }>;
         }, z$1.core.$strip>;
         type: z$1.ZodLiteral<"workspace.status">;
@@ -5974,6 +6040,8 @@ declare const hostDaemonCommandRegistry: {
                 unmanaged: "unmanaged";
                 "managed-worktree": "managed-worktree";
                 personal: "personal";
+                "isolated-scratch": "isolated-scratch";
+                "detached-read-only": "detached-read-only";
             }>;
         }, z$1.core.$strip>;
         type: z$1.ZodLiteral<"workspace.diff">;
@@ -6025,6 +6093,8 @@ declare const hostDaemonCommandRegistry: {
                 unmanaged: "unmanaged";
                 "managed-worktree": "managed-worktree";
                 personal: "personal";
+                "isolated-scratch": "isolated-scratch";
+                "detached-read-only": "detached-read-only";
             }>;
         }, z$1.core.$strip>;
         type: z$1.ZodLiteral<"workspace.diffFiles">;
@@ -6089,6 +6159,8 @@ declare const hostDaemonCommandRegistry: {
                 unmanaged: "unmanaged";
                 "managed-worktree": "managed-worktree";
                 personal: "personal";
+                "isolated-scratch": "isolated-scratch";
+                "detached-read-only": "detached-read-only";
             }>;
         }, z$1.core.$strip>;
         type: z$1.ZodLiteral<"workspace.diffPatch">;
@@ -6137,6 +6209,8 @@ declare const hostDaemonCommandRegistry: {
                 unmanaged: "unmanaged";
                 "managed-worktree": "managed-worktree";
                 personal: "personal";
+                "isolated-scratch": "isolated-scratch";
+                "detached-read-only": "detached-read-only";
             }>;
         }, z$1.core.$strip>;
         type: z$1.ZodLiteral<"workspace.pull_request">;
@@ -8545,6 +8619,10 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
             }, z$1.core.$strip>], "kind">;
         }, z$1.core.$strip>, z$1.ZodObject<{
             type: z$1.ZodLiteral<"personal">;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            type: z$1.ZodLiteral<"isolated-scratch">;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            type: z$1.ZodLiteral<"detached-read-only">;
         }, z$1.core.$strip>], "type">;
     }, z$1.core.$strip>, z$1.ZodObject<{
         type: z$1.ZodLiteral<"project-default">;
@@ -9814,6 +9892,8 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
             unmanaged: "unmanaged";
             "managed-worktree": "managed-worktree";
             personal: "personal";
+            "isolated-scratch": "isolated-scratch";
+            "detached-read-only": "detached-read-only";
         }>;
         branchName: z$1.ZodNullable<z$1.ZodString>;
         baseBranch: z$1.ZodNullable<z$1.ZodString>;
@@ -13702,7 +13782,7 @@ interface PluginAgentConfigurationContext {
         id: string;
         name: string | null;
         path: string | null;
-        workspaceProvisionType: "unmanaged" | "managed-worktree" | "personal";
+        workspaceProvisionType: "unmanaged" | "managed-worktree" | "personal" | "isolated-scratch" | "detached-read-only";
         branchName: string | null;
     };
     host: {

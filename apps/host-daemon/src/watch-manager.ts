@@ -1,5 +1,6 @@
 import type { DiscoveredWorkspaceProperties } from "@bb/domain";
 import {
+  getDetachedReadOnlyOutputRoot,
   getPersonalWorkspaceRoot,
   provisionWorkspace,
   type HostWorkspace,
@@ -126,8 +127,7 @@ export class WatchManager {
     this.provisionWorkspace = options.provisionWorkspace ?? provisionWorkspace;
     this.refreshWorkspace =
       options.refreshWorkspace ??
-      ((args: RefreshWorkspaceArgs) =>
-        this.provisionWorkspace(args.provision));
+      ((args: RefreshWorkspaceArgs) => this.provisionWorkspace(args.provision));
   }
 
   async replaceWatchSet(watchSet: HostDaemonWatchSet): Promise<void> {
@@ -237,6 +237,9 @@ export class WatchManager {
           ...(this.options.dataDir
             ? {
                 personalWorkspaceRoot: getPersonalWorkspaceRoot(
+                  this.options.dataDir,
+                ),
+                detachedReadOnlyOutputRoot: getDetachedReadOnlyOutputRoot(
                   this.options.dataDir,
                 ),
               }
@@ -445,6 +448,9 @@ export class WatchManager {
       ...(this.options.dataDir
         ? {
             personalWorkspaceRoot: getPersonalWorkspaceRoot(
+              this.options.dataDir,
+            ),
+            detachedReadOnlyOutputRoot: getDetachedReadOnlyOutputRoot(
               this.options.dataDir,
             ),
           }

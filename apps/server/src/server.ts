@@ -584,9 +584,9 @@ export function createApp(
     registerRoomDistributionHttpRoutes(app, options.roomDistribution);
   }
   if (options?.roomResourceProvisioner) {
-    app.use("/api/bb-room-provisioning/v1/*", resolveHttpPrincipal);
+    app.use("/api/bb-room-provisioning/v2/*", resolveHttpPrincipal);
     app.use(
-      "/api/bb-room-provisioning/v1/*",
+      "/api/bb-room-provisioning/v2/*",
       runInternalPrincipalExecutionScope,
     );
     registerRoomProvisioningHttpRoute(app, options.roomResourceProvisioner);

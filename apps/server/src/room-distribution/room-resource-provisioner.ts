@@ -5,29 +5,57 @@ import {
   getEnvironment,
   getHost,
   getProject,
+  getProjectExecutionDefaults,
   getProjectSourceForProject,
   getThread,
   getWorkTogetherRoomResourceReservation,
   reserveWorkTogetherRoomResources,
+  workTogetherRoomResourceReservations,
   WorkTogetherRoomResourceReservationConflictError,
   type ReserveWorkTogetherRoomResourcesInput,
   type WorkTogetherRoomResourceReservation,
 } from "@bb/db";
 import type { Principal } from "@bb/domain";
+import { eq } from "drizzle-orm";
 import type { AppDeps } from "../types.js";
 import { createThreadFromRequest } from "../services/threads/thread-create.js";
+import { applyLoggedThreadLifecycleEvent } from "../services/threads/lifecycle-outcome.js";
+import { getLastProviderThreadId } from "../services/threads/thread-events.js";
+import { getActiveThreadProvisionContext } from "../services/threads/thread-provisioning-active-context.js";
+import type { ThreadProvisionEnvironmentIntent } from "../services/threads/thread-provisioning-context.js";
+import {
+  advanceThreadProvisioning,
+  requestThreadProvision,
+} from "../services/threads/thread-provisioning.js";
+import { resolveIsolatedScratchTargetPath } from "../services/threads/worktree-paths.js";
 
-export type WorkTogetherRoomResourceTarget = Readonly<{
+export type WorkTogetherRoomHostTarget = Readonly<{
   bbHostId: string;
-  projectName: string;
+  dataDir: string;
   providerId: string;
+}>;
+
+export type WorkTogetherRoomRepositoryTarget = Readonly<{
+  projectName: string;
   sourcePath: string;
 }>;
 
+export type WorkTogetherRoomResourceTarget = WorkTogetherRoomHostTarget &
+  WorkTogetherRoomRepositoryTarget;
+
 export interface WorkTogetherRoomResourceRegistry {
+  resolveHost(input: {
+    candidateHostId: string;
+  }):
+    | WorkTogetherRoomHostTarget
+    | null
+    | Promise<WorkTogetherRoomHostTarget | null>;
   resolve(input: {
     candidateHostId: string;
     providerRepositoryId: string;
+    environmentTemplate?: "managed-worktree" | "detached-read-only";
+    objectFormat?: "sha1" | "sha256";
+    baseRevision?: string;
   }):
     | WorkTogetherRoomResourceTarget
     | null
@@ -91,12 +119,56 @@ const PROVIDER_ID = /^[A-Za-z0-9._-]{1,64}$/u;
 const MAX_PROJECT_NAME_CODE_POINTS = 100;
 const MAX_SOURCE_PATH_BYTES = 4_096;
 
-function requireTarget(
+function requireHostTarget(
+  target: WorkTogetherRoomHostTarget | null,
+): WorkTogetherRoomHostTarget {
+  if (
+    target === null ||
+    !BB_HOST_ID.test(target.bbHostId) ||
+    !PROVIDER_ID.test(target.providerId) ||
+    !isAbsolute(target.dataDir) ||
+    target.dataDir === "/" ||
+    normalize(target.dataDir) !== target.dataDir ||
+    target.dataDir !== target.dataDir.trim() ||
+    /[\u0000-\u001f\u007f]/u.test(target.dataDir) ||
+    Buffer.byteLength(target.dataDir, "utf8") > MAX_SOURCE_PATH_BYTES
+  ) {
+    throw new WorkTogetherRoomProvisioningUnavailableError();
+  }
+  return target;
+}
+
+function requireRepositoryTarget(
   target: WorkTogetherRoomResourceTarget | null,
+  hostTarget: WorkTogetherRoomHostTarget,
 ): WorkTogetherRoomResourceTarget {
   if (target === null) {
     throw new WorkTogetherRoomRepositoryNotRegisteredError();
   }
+  if (
+    target.bbHostId !== hostTarget.bbHostId ||
+    target.dataDir !== hostTarget.dataDir ||
+    target.providerId !== hostTarget.providerId ||
+    target.projectName.length === 0 ||
+    target.projectName !== target.projectName.trim() ||
+    target.projectName.normalize("NFC") !== target.projectName ||
+    /[\u0000-\u001f\u007f]/u.test(target.projectName) ||
+    [...target.projectName].length > MAX_PROJECT_NAME_CODE_POINTS ||
+    !isAbsolute(target.sourcePath) ||
+    target.sourcePath === "/" ||
+    normalize(target.sourcePath) !== target.sourcePath ||
+    target.sourcePath !== target.sourcePath.trim() ||
+    /[\u0000-\u001f\u007f]/u.test(target.sourcePath) ||
+    Buffer.byteLength(target.sourcePath, "utf8") > MAX_SOURCE_PATH_BYTES
+  ) {
+    throw new WorkTogetherRoomProvisioningUnavailableError();
+  }
+  return target;
+}
+
+function requirePersistedTarget(
+  target: Omit<WorkTogetherRoomResourceTarget, "dataDir">,
+): Omit<WorkTogetherRoomResourceTarget, "dataDir"> {
   if (
     !BB_HOST_ID.test(target.bbHostId) ||
     !PROVIDER_ID.test(target.providerId) ||
@@ -117,9 +189,44 @@ function requireTarget(
   return target;
 }
 
+function persistReservationTarget(
+  deps: Pick<AppDeps, "db">,
+  reservation: WorkTogetherRoomResourceReservation,
+  target: Omit<WorkTogetherRoomResourceTarget, "dataDir">,
+): WorkTogetherRoomResourceReservation {
+  if (
+    reservation.bbHostId === target.bbHostId &&
+    reservation.projectName === target.projectName &&
+    reservation.providerId === target.providerId &&
+    reservation.sourcePath === target.sourcePath
+  ) {
+    return reservation;
+  }
+  deps.db
+    .update(workTogetherRoomResourceReservations)
+    .set({
+      bbHostId: target.bbHostId,
+      projectName: target.projectName,
+      providerId: target.providerId,
+      sourcePath: target.sourcePath,
+      updatedAt: Date.now(),
+    })
+    .where(
+      eq(workTogetherRoomResourceReservations.bindingId, reservation.bindingId),
+    )
+    .run();
+  return {
+    ...reservation,
+    bbHostId: target.bbHostId,
+    projectName: target.projectName,
+    providerId: target.providerId,
+    sourcePath: target.sourcePath,
+  };
+}
+
 function ensureConfiguredHost(
   deps: Pick<AppDeps, "db">,
-  target: WorkTogetherRoomResourceTarget,
+  target: Pick<WorkTogetherRoomHostTarget, "bbHostId">,
 ): void {
   const host = getHost(deps.db, target.bbHostId);
   if (host === null || host.destroyedAt !== null) {
@@ -129,7 +236,7 @@ function ensureConfiguredHost(
 
 function targetFromReservation(
   reservation: WorkTogetherRoomResourceReservation,
-): WorkTogetherRoomResourceTarget {
+): Omit<WorkTogetherRoomResourceTarget, "dataDir"> {
   if (
     reservation.bbHostId === null ||
     reservation.projectName === null ||
@@ -138,7 +245,7 @@ function targetFromReservation(
   ) {
     throw new WorkTogetherRoomProvisioningUnavailableError();
   }
-  return requireTarget({
+  return requirePersistedTarget({
     bbHostId: reservation.bbHostId,
     projectName: reservation.projectName,
     providerId: reservation.providerId,
@@ -155,21 +262,27 @@ function launchMatchesReservation(
     launch.workspaceId === reservation.workspaceId &&
     launch.taskId === reservation.taskId &&
     launch.cellId === reservation.cellId &&
-    launch.repositoryBindingId === reservation.repositoryBindingId &&
-    launch.repositoryBindingVersion === reservation.repositoryBindingVersion &&
-    launch.providerRepositoryId === reservation.providerRepositoryId &&
-    launch.baseBranch === reservation.baseBranch &&
-    launch.baseRevision === reservation.baseRevision &&
-    launch.generatedBranch === reservation.generatedBranch &&
     launch.candidateHostId === reservation.candidateHostId &&
-    launch.environmentTemplate === reservation.environmentTemplate
+    launch.environmentTemplate === reservation.environmentTemplate &&
+    launch.workKind === reservation.workKind &&
+    (launch.environmentTemplate === "isolated-scratch" ||
+      (launch.repositorySnapshotId === reservation.repositorySnapshotId &&
+        launch.repositoryBindingId === reservation.repositoryBindingId &&
+        launch.repositoryBindingVersion ===
+          reservation.repositoryBindingVersion &&
+        launch.providerRepositoryId === reservation.providerRepositoryId &&
+        launch.objectFormat === reservation.objectFormat &&
+        launch.baseRevision === reservation.baseRevision &&
+        (launch.environmentTemplate === "detached-read-only" ||
+          (launch.baseBranch === reservation.baseBranch &&
+            launch.generatedBranch === reservation.generatedBranch))))
   );
 }
 
 function ensureProject(
   deps: Pick<AppDeps, "db" | "hub">,
   reservation: WorkTogetherRoomResourceReservation,
-  target: WorkTogetherRoomResourceTarget,
+  target: Omit<WorkTogetherRoomResourceTarget, "dataDir">,
 ): void {
   const existing = getProject(deps.db, reservation.projectId);
   if (existing === null) {
@@ -205,7 +318,7 @@ function ensureProject(
 function assertExistingResourceCoherence(
   deps: Pick<AppDeps, "db">,
   reservation: WorkTogetherRoomResourceReservation,
-  target: WorkTogetherRoomResourceTarget,
+  target: Pick<WorkTogetherRoomHostTarget, "bbHostId" | "providerId">,
 ): void {
   const thread = getThread(deps.db, reservation.primaryThreadId);
   const environment = getEnvironment(deps.db, reservation.environmentId);
@@ -225,10 +338,11 @@ function assertExistingResourceCoherence(
     environment !== null &&
     (environment.projectId !== reservation.projectId ||
       environment.hostId !== target.bbHostId ||
-      environment.workspaceProvisionType !== "managed-worktree" ||
-      environment.baseBranch !== reservation.baseBranch ||
-      environment.baseRevision !== reservation.baseRevision ||
-      environment.branchName !== reservation.generatedBranch)
+      environment.workspaceProvisionType !== reservation.environmentTemplate ||
+      (reservation.environmentTemplate === "managed-worktree" &&
+        (environment.baseBranch !== reservation.baseBranch ||
+          environment.baseRevision !== reservation.baseRevision ||
+          environment.branchName !== reservation.generatedBranch)))
   ) {
     throw new WorkTogetherRoomProvisioningConflictError();
   }
@@ -281,6 +395,139 @@ function resultForReservation(
   });
 }
 
+function isInterruptedRoomProvisioning(
+  deps: Pick<AppDeps, "db">,
+  threadId: string,
+): boolean {
+  const thread = getThread(deps.db, threadId);
+  if (thread === null || getActiveThreadProvisionContext(thread.id) !== null) {
+    return false;
+  }
+  if (thread.status === "starting") {
+    return true;
+  }
+  // Same pre-start recovery rule as turn dispatch: an errored Room Primary
+  // that never received a provider session is a crashed setup, not a terminal
+  // run. Exact reservation replay is the caller that resumes it.
+  return (
+    thread.status === "error" && getLastProviderThreadId(deps, thread.id) === null
+  );
+}
+
+function recoveryEnvironmentIntent(
+  deps: Pick<AppDeps, "db">,
+  reservation: WorkTogetherRoomResourceReservation,
+  target: Omit<WorkTogetherRoomResourceTarget, "dataDir">,
+): ThreadProvisionEnvironmentIntent {
+  const environment = getEnvironment(deps.db, reservation.environmentId);
+  if (environment?.status === "ready" && environment.path) {
+    return {
+      type: "reuse",
+      environmentId: reservation.environmentId,
+    };
+  }
+
+  switch (reservation.environmentTemplate) {
+    case "isolated-scratch":
+      return {
+        type: "direct-isolated-scratch",
+        environmentId: reservation.environmentId,
+        hostId: target.bbHostId,
+        workspaceProvisionType: "isolated-scratch",
+      };
+    case "detached-read-only":
+      return {
+        type: "direct-detached-read-only",
+        environmentId: reservation.environmentId,
+        hostId: target.bbHostId,
+        sourcePath: target.sourcePath,
+        objectFormat: reservation.objectFormat!,
+        baseRevision: reservation.baseRevision!,
+        workspaceProvisionType: "detached-read-only",
+      };
+    case "managed-worktree":
+      return {
+        type: "direct-managed",
+        environmentId: reservation.environmentId,
+        hostId: target.bbHostId,
+        sourcePath: target.sourcePath,
+        baseBranch: {
+          kind: "named",
+          name: reservation.baseBranch!,
+        },
+        branchName: reservation.generatedBranch!,
+        workspaceProvisionType: "managed-worktree",
+      };
+  }
+}
+
+async function resumeInterruptedRoomProvisioning(
+  deps: AppDeps,
+  args: {
+    principal: Principal;
+    reservation: WorkTogetherRoomResourceReservation;
+    target: Omit<WorkTogetherRoomResourceTarget, "dataDir">;
+  },
+): Promise<void> {
+  if (!isInterruptedRoomProvisioning(deps, args.reservation.primaryThreadId)) {
+    return;
+  }
+  let thread = getThread(deps.db, args.reservation.primaryThreadId);
+  if (thread === null) {
+    return;
+  }
+
+  if (thread.status === "error") {
+    const outcome = applyLoggedThreadLifecycleEvent(deps, {
+      threadId: thread.id,
+      event: { type: "run.preparing" },
+    });
+    if (!outcome.applied) {
+      return;
+    }
+    thread = getThread(deps.db, thread.id) ?? thread;
+  }
+  if (thread.status !== "starting") {
+    return;
+  }
+
+  const defaults = getProjectExecutionDefaults(deps.db, {
+    projectId: args.reservation.projectId,
+  });
+  if (defaults === null || defaults.providerId !== thread.providerId) {
+    throw new WorkTogetherRoomProvisioningConflictError();
+  }
+
+  const context = requestThreadProvision(deps, {
+    actor: {
+      principalId: args.principal.id,
+      principalKind: args.principal.kind,
+      displayName: args.principal.displayName,
+    },
+    environmentIntent: recoveryEnvironmentIntent(
+      deps,
+      args.reservation,
+      args.target,
+    ),
+    execution: {
+      model: defaults.model,
+      serviceTier: defaults.serviceTier,
+      reasoningLevel: defaults.reasoningLevel,
+      permissionMode: defaults.permissionMode,
+      source: "client/thread/start",
+    },
+    fork: null,
+    input: [],
+    startedOnBehalfOf: null,
+    thread,
+    titleProvided: true,
+  });
+  await advanceThreadProvisioning(deps, {
+    context,
+    threadId: thread.id,
+  });
+}
+
 export function createWorkTogetherRoomResourceProvisioner(
   deps: AppDeps,
   registry: WorkTogetherRoomResourceRegistry,
@@ -289,12 +536,12 @@ export function createWorkTogetherRoomResourceProvisioner(
     async provision(
       input: ProvisionWorkTogetherRoomResourcesInput,
     ): Promise<ProvisionWorkTogetherRoomResourcesResult> {
-      let reservation: WorkTogetherRoomResourceReservation;
       const existing = getWorkTogetherRoomResourceReservation(
         deps.db,
         input.launch.bindingId,
       );
-      let target: WorkTogetherRoomResourceTarget;
+      let reservation: WorkTogetherRoomResourceReservation;
+      let target: Omit<WorkTogetherRoomResourceTarget, "dataDir">;
       if (existing !== null) {
         if (!launchMatchesReservation(input.launch, existing)) {
           throw new WorkTogetherRoomProvisioningConflictError();
@@ -302,21 +549,42 @@ export function createWorkTogetherRoomResourceProvisioner(
         reservation = existing;
         target = targetFromReservation(existing);
       } else {
-        target = requireTarget(
+        const hostTarget = requireHostTarget(
           await Promise.resolve(
-            registry.resolve({
+            registry.resolveHost({
               candidateHostId: input.launch.candidateHostId,
-              providerRepositoryId: input.launch.providerRepositoryId,
             }),
           ),
         );
+        ensureConfiguredHost(deps, hostTarget);
+        const repositoryTarget =
+          input.launch.environmentTemplate === "isolated-scratch"
+            ? null
+            : requireRepositoryTarget(
+                await Promise.resolve(
+                  registry.resolve({
+                    candidateHostId: input.launch.candidateHostId,
+                    providerRepositoryId: input.launch.providerRepositoryId,
+                    environmentTemplate: input.launch.environmentTemplate,
+                    objectFormat: input.launch.objectFormat,
+                    baseRevision: input.launch.baseRevision,
+                  }),
+                ),
+                hostTarget,
+              );
+        const projectName =
+          input.launch.environmentTemplate === "isolated-scratch"
+            ? `Room ${input.launch.bindingId.slice(0, 8)}`
+            : repositoryTarget!.projectName;
         try {
           reservation = reserveWorkTogetherRoomResources(deps.db, {
             ...input.launch,
-            bbHostId: target.bbHostId,
-            projectName: target.projectName,
-            providerId: target.providerId,
-            sourcePath: target.sourcePath,
+            bbHostId: hostTarget.bbHostId,
+            projectName,
+            providerId: hostTarget.providerId,
+            ...(repositoryTarget !== null
+              ? { sourcePath: repositoryTarget.sourcePath }
+              : {}),
           });
         } catch (error) {
           if (
@@ -326,22 +594,67 @@ export function createWorkTogetherRoomResourceProvisioner(
           }
           throw error;
         }
+        const sourcePath =
+          reservation.environmentTemplate === "isolated-scratch"
+            ? resolveIsolatedScratchTargetPath({
+                dataDir: hostTarget.dataDir,
+                environmentId: reservation.environmentId,
+              })
+            : repositoryTarget!.sourcePath;
+        target = {
+          bbHostId: hostTarget.bbHostId,
+          projectName,
+          providerId: hostTarget.providerId,
+          sourcePath,
+        };
+        reservation = persistReservationTarget(deps, reservation, target);
       }
       ensureConfiguredHost(deps, target);
       ensureProject(deps, reservation, target);
       assertExistingResourceCoherence(deps, reservation, target);
 
       if (getThread(deps.db, reservation.primaryThreadId) === null) {
+        const resourceReservation =
+          reservation.environmentTemplate === "isolated-scratch"
+            ? {
+                environmentId: reservation.environmentId,
+                environmentTemplate: "isolated-scratch" as const,
+                threadId: reservation.primaryThreadId,
+              }
+            : reservation.environmentTemplate === "detached-read-only"
+              ? {
+                  environmentId: reservation.environmentId,
+                  environmentTemplate: "detached-read-only" as const,
+                  objectFormat: reservation.objectFormat!,
+                  baseRevision: reservation.baseRevision!,
+                  threadId: reservation.primaryThreadId,
+                }
+              : {
+                  environmentId: reservation.environmentId,
+                  environmentTemplate: "managed-worktree" as const,
+                  managedBranchName: reservation.generatedBranch!,
+                  baseRevision: reservation.baseRevision!,
+                  providerRepositoryId: reservation.providerRepositoryId!,
+                  threadId: reservation.primaryThreadId,
+                };
         await createThreadFromRequest(
           deps,
           {
             environment: {
               type: "host",
               hostId: target.bbHostId,
-              workspace: {
-                type: "managed-worktree",
-                baseBranch: { kind: "named", name: reservation.baseBranch },
-              },
+              workspace:
+                reservation.environmentTemplate === "isolated-scratch"
+                  ? { type: "isolated-scratch" }
+                  : reservation.environmentTemplate === "detached-read-only"
+                    ? { type: "detached-read-only" }
+                    : {
+                        type: "managed-worktree",
+                        baseBranch: {
+                          kind: "named",
+                          name: reservation.baseBranch!,
+                        },
+                      },
             },
             input: [],
             origin: "app",
@@ -356,17 +669,16 @@ export function createWorkTogetherRoomResourceProvisioner(
               principalKind: input.principal.kind,
               displayName: input.principal.displayName,
             },
-            resourceReservation: {
-              environmentId: reservation.environmentId,
-              managedBranchName: reservation.generatedBranch,
-              baseRevision: input.launch.baseRevision,
-              providerRepositoryId: reservation.providerRepositoryId,
-              threadId: reservation.primaryThreadId,
-            },
+            resourceReservation,
           },
         );
       }
 
+      await resumeInterruptedRoomProvisioning(deps, {
+        principal: input.principal,
+        reservation,
+        target,
+      });
       assertExistingResourceCoherence(deps, reservation, target);
       return resultForReservation(deps, reservation);
     },

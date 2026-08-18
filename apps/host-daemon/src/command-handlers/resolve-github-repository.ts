@@ -24,6 +24,8 @@ export interface ResolveGithubRepositoryArgs {
   providerRepositoryId: string;
   knownPaths: readonly string[];
   dataDir: string;
+  objectFormat?: "sha1" | "sha256";
+  baseRevision?: string;
   /** Injectable for tests. */
   home?: string;
   env?: NodeJS.ProcessEnv;
@@ -166,6 +168,33 @@ interface PathSearchResult {
 
 type RepositoryCandidate = ResolvedGithubRepository & { originUrl: string };
 
+async function verifyResolvedRepository(
+  args: ResolveGithubRepositoryArgs,
+  repository: ResolvedGithubRepository,
+): Promise<ResolveGithubRepositoryResult> {
+  if (args.objectFormat === undefined || args.baseRevision === undefined) {
+    return { outcome: "found", repository };
+  }
+  const [format, revision] = await Promise.all([
+    runGit(["rev-parse", "--show-object-format"], {
+      cwd: repository.path,
+      allowFailure: true,
+      timeoutMs: GIT_REMOTE_TIMEOUT_MS,
+    }),
+    runGit(["rev-parse", "--verify", `${args.baseRevision}^{commit}`], {
+      cwd: repository.path,
+      allowFailure: true,
+      timeoutMs: GIT_REMOTE_TIMEOUT_MS,
+    }),
+  ]);
+  return format.exitCode === 0 &&
+    format.stdout.trim() === args.objectFormat &&
+    revision.exitCode === 0 &&
+    revision.stdout.trim() === args.baseRevision
+    ? { outcome: "found", repository }
+    : { outcome: "revision_unavailable" };
+}
+
 function isFileSystemErrorWithCode(
   error: unknown,
   code: string,
@@ -287,13 +316,13 @@ export async function resolveGithubRepository(
     nwo,
   );
   if (knownSearch.repository !== null) {
-    return { outcome: "found", repository: knownSearch.repository };
+    return verifyResolvedRepository(args, knownSearch.repository);
   }
 
   const checkouts = await listExistingCheckoutPaths(args.dataDir);
   const checkoutSearch = await firstMatchingRepository(checkouts.paths, nwo);
   if (checkoutSearch.repository !== null) {
-    return { outcome: "found", repository: checkoutSearch.repository };
+    return verifyResolvedRepository(args, checkoutSearch.repository);
   }
 
   const discovered = await (args.discover ?? discoverRepos)({
@@ -309,7 +338,7 @@ export async function resolveGithubRepository(
     nwo,
   );
   if (discoveredSearch.repository !== null) {
-    return { outcome: "found", repository: discoveredSearch.repository };
+    return verifyResolvedRepository(args, discoveredSearch.repository);
   }
   return knownSearch.complete &&
     checkouts.complete &&

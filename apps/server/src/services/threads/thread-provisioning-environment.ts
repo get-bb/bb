@@ -73,6 +73,9 @@ import {
 import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
 import {
   resolveManagedTargetPath,
+  resolveDetachedReadOnlyTargetPath,
+  resolveDetachedReadOnlyOutputPath,
+  resolveIsolatedScratchTargetPath,
   resolvePersonalTargetPath,
 } from "./worktree-paths.js";
 
@@ -96,6 +99,8 @@ const INITIAL_PROVISIONING_TEXT_BY_WORKSPACE_TYPE = {
   unmanaged: "Preparing workspace",
   "managed-worktree": "Preparing worktree",
   personal: "Preparing personal workspace",
+  "isolated-scratch": "Preparing isolated scratch workspace",
+  "detached-read-only": "Preparing detached read-only workspace",
 } satisfies Record<Environment["workspaceProvisionType"], string>;
 
 interface EnsureWorkspaceReadyEventArgs {
@@ -249,6 +254,25 @@ interface PersonalEnvironmentPlanArgs {
   hostId: string;
   thread: Thread;
   workspaceProvisionType: "personal";
+}
+
+interface IsolatedScratchEnvironmentPlanArgs {
+  dataDir: string;
+  environmentId: string;
+  hostId: string;
+  thread: Thread;
+  workspaceProvisionType: "isolated-scratch";
+}
+
+interface DetachedReadOnlyEnvironmentPlanArgs {
+  dataDir: string;
+  environmentId: string;
+  hostId: string;
+  sourcePath: string;
+  objectFormat: "sha1" | "sha256";
+  baseRevision: string;
+  thread: Thread;
+  workspaceProvisionType: "detached-read-only";
 }
 
 interface EnsureEnvironmentRequestedArgs {
@@ -607,7 +631,7 @@ function appendProvisioningStartedEvent(
 }
 
 function createProvisioningEnvironment(
-  deps: Pick<AppDeps, "db" | "hub">,
+  deps: ThreadProvisionWriteDeps,
   args: CreateProvisioningEnvironmentArgs,
 ): ThreadProvisioningResult {
   const result = deps.db.transaction(
@@ -638,11 +662,45 @@ function createProvisioningEnvironment(
         };
       }
 
-      const environment = createEnvironment(
-        tx,
-        deps.hub,
-        args.environmentInput,
-      );
+      const reservedEnvironment = args.environmentInput.id
+        ? getEnvironment(tx, args.environmentInput.id)
+        : null;
+      if (
+        reservedEnvironment &&
+        (reservedEnvironment.projectId !== args.environmentInput.projectId ||
+          reservedEnvironment.hostId !== args.environmentInput.hostId ||
+          reservedEnvironment.workspaceProvisionType !==
+            args.environmentInput.workspaceProvisionType ||
+          reservedEnvironment.managed !==
+            (args.environmentInput.managed ?? false) ||
+          (args.environmentInput.baseBranch !== undefined &&
+            reservedEnvironment.baseBranch !==
+              args.environmentInput.baseBranch) ||
+          (args.environmentInput.branchName !== undefined &&
+            reservedEnvironment.branchName !== args.environmentInput.branchName))
+      ) {
+        throw new ApiError(
+          409,
+          "invalid_request",
+          "Reserved environment conflicts with existing state",
+        );
+      }
+      if (
+        reservedEnvironment &&
+        reservedEnvironment.status !== "ready" &&
+        reservedEnvironment.status !== "provisioning" &&
+        reservedEnvironment.status !== "error"
+      ) {
+        throw new ApiError(
+          409,
+          "invalid_request",
+          `Reserved environment is ${reservedEnvironment.status}`,
+        );
+      }
+
+      const environment =
+        reservedEnvironment ??
+        createEnvironment(tx, deps.hub, args.environmentInput);
       if (args.thread.environmentId !== environment.id) {
         updateThread(tx, deps.hub, args.thread.id, {
           environmentId: environment.id,
@@ -652,6 +710,13 @@ function createProvisioningEnvironment(
       const attachedContext = createEnvironmentAttachedContext(args.context, {
         attachedEnvironmentId: environment.id,
       });
+      if (environment.status === "ready" && environment.path) {
+        saveThreadProvisionContext({
+          threadId: args.thread.id,
+          context: attachedContext,
+        });
+        return { context: attachedContext, environment };
+      }
       const appendedSequence = appendThreadProvisioningEventInTransaction(tx, {
         threadId: args.thread.id,
         environmentId: environment.id,
@@ -670,9 +735,34 @@ function createProvisioningEnvironment(
         context,
         environment,
       });
-      // No provision.requested event here: the environment was created in
-      // this same transaction with status "provisioning".
-      return { context, environment, provisionRequest };
+      // A newly created environment already starts in provisioning. A reserved
+      // errored row is the same saga identity after an interrupted attempt, so
+      // explicitly move that row back into provisioning before reissuing its
+      // exact provision request. A reserved provisioning row belongs to a
+      // restarted process (the active thread context is process-local and was
+      // absent), so its lost request is safe to reissue without changing state.
+      if (environment.status === "error") {
+        const requestedOutcome =
+          applyLoggedEnvironmentLifecycleEventInTransaction(
+            { db: tx, logger: deps.logger },
+            {
+              environmentId: environment.id,
+              event: { type: "provision.requested" },
+            },
+          );
+        if (!requestedOutcome.applied) {
+          throw new Error("Reserved environment could not resume provisioning");
+        }
+        deps.hub.notifyEnvironment(
+          environment.id,
+          requestedOutcome.changes,
+        );
+      }
+      return {
+        context,
+        environment: getEnvironment(tx, environment.id) ?? environment,
+        provisionRequest,
+      };
     },
     { behavior: "immediate" },
   );
@@ -910,6 +1000,78 @@ function buildPersonalEnvironmentPlan(
   };
 }
 
+function buildIsolatedScratchEnvironmentPlan(
+  args: IsolatedScratchEnvironmentPlanArgs,
+): ThreadProvisionEnvironmentPlan {
+  return {
+    environmentInput: {
+      id: args.environmentId,
+      projectId: args.thread.projectId,
+      hostId: args.hostId,
+      managed: true,
+      workspaceProvisionType: args.workspaceProvisionType,
+      status: "provisioning",
+    },
+    buildRequest: ({ context, environment }) =>
+      buildDirectEnvironmentProvisionRequest({
+        command: buildEnvironmentProvisionCommand({
+          environmentId: environment.id,
+          hostId: args.hostId,
+          initiator: {
+            threadId: args.thread.id,
+            provisioningId: context.state.provisioningId,
+          },
+          targetPath: resolveIsolatedScratchTargetPath({
+            dataDir: args.dataDir,
+            environmentId: environment.id,
+          }),
+          workspaceProvisionType: args.workspaceProvisionType,
+        }),
+        provisioningId: context.state.provisioningId,
+      }),
+  };
+}
+
+function buildDetachedReadOnlyEnvironmentPlan(
+  args: DetachedReadOnlyEnvironmentPlanArgs,
+): ThreadProvisionEnvironmentPlan {
+  return {
+    environmentInput: {
+      id: args.environmentId,
+      projectId: args.thread.projectId,
+      hostId: args.hostId,
+      managed: true,
+      workspaceProvisionType: args.workspaceProvisionType,
+      status: "provisioning",
+    },
+    buildRequest: ({ context, environment }) =>
+      buildDirectEnvironmentProvisionRequest({
+        command: buildEnvironmentProvisionCommand({
+          environmentId: environment.id,
+          hostId: args.hostId,
+          initiator: {
+            threadId: args.thread.id,
+            provisioningId: context.state.provisioningId,
+          },
+          sourcePath: args.sourcePath,
+          targetPath: resolveDetachedReadOnlyTargetPath({
+            dataDir: args.dataDir,
+            environmentId: environment.id,
+            sourcePath: args.sourcePath,
+          }),
+          outputPath: resolveDetachedReadOnlyOutputPath({
+            dataDir: args.dataDir,
+            environmentId: environment.id,
+          }),
+          objectFormat: args.objectFormat,
+          baseRevision: args.baseRevision,
+          workspaceProvisionType: args.workspaceProvisionType,
+        }),
+        provisioningId: context.state.provisioningId,
+      }),
+  };
+}
+
 async function resolveEnvironmentCreationPlan(
   deps: ThreadProvisioningDeps,
   args: ResolveEnvironmentCreationPlanArgs,
@@ -949,6 +1111,33 @@ async function resolveEnvironmentCreationPlan(
       return buildPersonalEnvironmentPlan({
         dataDir: hostSession.dataDir,
         hostId: args.intent.hostId,
+        thread: args.thread,
+        workspaceProvisionType: args.intent.workspaceProvisionType,
+      });
+    }
+    case "direct-isolated-scratch": {
+      const hostSession = await ensureHostSessionReadyForWork(deps, {
+        hostId: args.intent.hostId,
+      });
+      return buildIsolatedScratchEnvironmentPlan({
+        dataDir: hostSession.dataDir,
+        environmentId: args.intent.environmentId,
+        hostId: args.intent.hostId,
+        thread: args.thread,
+        workspaceProvisionType: args.intent.workspaceProvisionType,
+      });
+    }
+    case "direct-detached-read-only": {
+      const hostSession = await ensureHostSessionReadyForWork(deps, {
+        hostId: args.intent.hostId,
+      });
+      return buildDetachedReadOnlyEnvironmentPlan({
+        dataDir: hostSession.dataDir,
+        environmentId: args.intent.environmentId,
+        hostId: args.intent.hostId,
+        sourcePath: args.intent.sourcePath,
+        objectFormat: args.intent.objectFormat,
+        baseRevision: args.intent.baseRevision,
         thread: args.thread,
         workspaceProvisionType: args.intent.workspaceProvisionType,
       });

@@ -51,6 +51,7 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
     params: z.object({
       threadId: z.string(),
       cwd: z.string(),
+      workspaceReadOnly: z.boolean().default(false),
       baseInstructions: z.string(),
       additionalWorkspaceWriteRoots: bridgeAdditionalWorkspaceWriteRootsSchema,
       plugins: bridgeClaudePluginsSchema,
@@ -80,6 +81,7 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
     params: z.object({
       threadId: z.string(),
       cwd: z.string(),
+      workspaceReadOnly: z.boolean().default(false),
       providerThreadId: z.string().nullable(),
       baseInstructions: z.string().optional(),
       additionalWorkspaceWriteRoots: bridgeAdditionalWorkspaceWriteRootsSchema,
@@ -110,6 +112,7 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
     params: z.object({
       threadId: z.string(),
       cwd: z.string(),
+      workspaceReadOnly: z.boolean().default(false),
       sourceProviderThreadId: z.string(),
       sourceProviderCheckpointId: z.string().min(1).optional(),
       baseInstructions: z.string().optional(),

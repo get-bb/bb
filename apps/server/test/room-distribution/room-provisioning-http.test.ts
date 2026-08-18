@@ -16,7 +16,7 @@ import {
 } from "../../src/room-distribution/room-resource-provisioner.js";
 
 const BINDING_ID = "99999999-aaaa-4bbb-8ccc-dddddddddddd";
-const PATH = `/api/bb-room-provisioning/v1/room-bindings/${BINDING_ID}`;
+const PATH = `/api/bb-room-provisioning/v2/room-bindings/${BINDING_ID}`;
 const PRINCIPAL: Principal = Object.freeze({
   id: "user_RoomOwner123",
   kind: "human",
@@ -26,9 +26,13 @@ const BODY = Object.freeze({
   workspaceId: "11111111-1111-4111-8111-111111111111",
   taskId: "22222222-2222-4222-8222-222222222222",
   cellId: "33333333-3333-4333-8333-333333333333",
+  workKind: "code",
+  repositorySnapshotId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   repositoryBindingId: "44444444-4444-4444-8444-444444444444",
   repositoryBindingVersion: 7,
   providerRepositoryId: "42",
+  objectFormat: "sha1",
+  baseRevision: "a".repeat(40),
   baseBranch: "main",
   baseRevision: "a".repeat(40),
   generatedBranch: "rooms/room-1",
@@ -85,7 +89,7 @@ function fixture(
       : new Response("failed", { status: 500 }),
   );
   app.use(
-    "/api/bb-room-provisioning/v1/*",
+    "/api/bb-room-provisioning/v2/*",
     createResolvePrincipalMiddleware(policy, "http"),
   );
   registerRoomProvisioningHttpRoute(app, { provision });
@@ -133,10 +137,52 @@ describe("Room provisioning HTTP adapter", () => {
       { ...BODY, repositoryBindingVersion: 1.5 },
       { ...BODY, baseRevision: "ABC" },
       { ...BODY, environmentTemplate: "direct" },
+      { ...BODY, workKind: "research" },
+      { ...BODY, baseRevision: null },
+      { ...BODY, objectFormat: "sha256" },
     ]) {
       expect((await test.app.request(request(body))).status).toBe(400);
     }
     expect(test.provision).not.toHaveBeenCalled();
+  });
+
+  it("accepts only the three exact V2 profile shapes", async () => {
+    const scratch = {
+      workspaceId: BODY.workspaceId,
+      taskId: BODY.taskId,
+      cellId: BODY.cellId,
+      candidateHostId: BODY.candidateHostId,
+      workKind: "writing",
+      environmentTemplate: "isolated-scratch",
+    };
+    const readOnly = {
+      workspaceId: BODY.workspaceId,
+      taskId: BODY.taskId,
+      cellId: BODY.cellId,
+      candidateHostId: BODY.candidateHostId,
+      workKind: "research",
+      environmentTemplate: "detached-read-only",
+      repositorySnapshotId: BODY.repositorySnapshotId,
+      repositoryBindingId: BODY.repositoryBindingId,
+      repositoryBindingVersion: BODY.repositoryBindingVersion,
+      providerRepositoryId: BODY.providerRepositoryId,
+      objectFormat: BODY.objectFormat,
+      baseRevision: BODY.baseRevision,
+    };
+    for (const valid of [scratch, readOnly, BODY]) {
+      expect((await fixture().app.request(request(valid))).status).toBe(202);
+    }
+
+    for (const invalid of [
+      { ...scratch, repositoryBindingId: BODY.repositoryBindingId },
+      { ...readOnly, baseBranch: "main" },
+      { ...readOnly, workKind: "code" },
+      { ...BODY, workKind: "research" },
+      { ...BODY, generatedBranch: null },
+      { ...scratch, environmentTemplate: "unknown" },
+    ]) {
+      expect((await fixture().app.request(request(invalid))).status).toBe(400);
+    }
   });
 
   it("maps stable ready/conflict/unavailable outcomes without leaking errors", async () => {

@@ -753,6 +753,10 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "provider.list_models includes an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
     "provider.list_models may omit cwd when only user-level provider configuration applies.",
+  "hostDaemonOnlineRpcCommandSchema.objectFormat":
+    "repository discovery omits exact object format unless detached read-only acquisition must verify a selected object.",
+  "hostDaemonOnlineRpcCommandSchema.baseRevision":
+    "repository discovery omits exact revision unless detached read-only acquisition must verify a selected object.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.cwd":
     "dynamic ACP launch specs may omit cwd so the daemon uses the caller's workspace cwd.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.modelCli":
@@ -1119,12 +1123,14 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
+    // v128: isolated-scratch and detached-read-only provision commands.
+    // v127: exact base-revision pinning for managed-worktree provision.
     // v126: home discovery marks unreadable or failed directory walks as
     // truncated so workspace.resolve_github_repository cannot confirm
     // not_found when a sealed tree may still hold the checkout.
     // v125: workspace.resolve_github_repository maps a numeric GitHub
     // repository id to a local checkout the host already has.
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(127);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(128);
   });
 
   it("requires an explicit intent on a thread stop command", () => {
@@ -1392,6 +1398,38 @@ describe("host-daemon command schemas", () => {
     ).toMatchObject({
       type: "environment.provision",
       workspaceProvisionType: "personal",
+    });
+
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "environment.provision",
+        environmentId: "env_isolated_scratch",
+        initiator: null,
+        workspaceProvisionType: "isolated-scratch",
+        targetPath: "/tmp/bb/isolated-scratch-workspaces/env_isolated_scratch",
+      }),
+    ).toMatchObject({
+      type: "environment.provision",
+      workspaceProvisionType: "isolated-scratch",
+    });
+
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "environment.provision",
+        environmentId: "env_detached_read_only",
+        initiator: null,
+        workspaceProvisionType: "detached-read-only",
+        sourcePath: "/tmp/source",
+        targetPath:
+          "/tmp/bb/detached-read-only-workspaces/env_detached_read_only/repository",
+        outputPath: "/tmp/bb/detached-read-only-outputs/env_detached_read_only",
+        objectFormat: "sha1",
+        baseRevision: "a".repeat(40),
+      }),
+    ).toMatchObject({
+      type: "environment.provision",
+      workspaceProvisionType: "detached-read-only",
+      baseRevision: "a".repeat(40),
     });
 
     expect(

@@ -1132,7 +1132,12 @@ export async function dispatchManagedEnvironmentReprovision(
   args: DispatchManagedEnvironmentReprovisionArgs,
 ): Promise<ManagedReprovisionResult> {
   const provisionType = args.environment.workspaceProvisionType;
-  if (!args.environment.managed || provisionType === "unmanaged") {
+  if (
+    !args.environment.managed ||
+    provisionType === "unmanaged" ||
+    provisionType === "isolated-scratch" ||
+    provisionType === "detached-read-only"
+  ) {
     throw new ApiError(
       409,
       "invalid_request",

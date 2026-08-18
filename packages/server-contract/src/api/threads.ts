@@ -324,6 +324,16 @@ const threadCommandAdmissionPublishedResultSchema = z
   })
   .strict();
 
+const threadCommandAdmissionResultPublishedResultSchema = z
+  .object({
+    disposition: z.literal("result-published"),
+    resultId: z.string().uuid(),
+    resultRevision: z.number().int().positive(),
+    resultDigest: z.string().regex(/^[a-f0-9]{64}$/u),
+    submission: z.record(z.string(), jsonValueSchema),
+  })
+  .strict();
+
 export const threadCommandAdmissionReceiptResultSchema = z.discriminatedUnion(
   "disposition",
   [
@@ -335,6 +345,7 @@ export const threadCommandAdmissionReceiptResultSchema = z.discriminatedUnion(
     threadCommandAdmissionApprovedResultSchema,
     threadCommandAdmissionMarkedResultSchema,
     threadCommandAdmissionPublishedResultSchema,
+    threadCommandAdmissionResultPublishedResultSchema,
   ],
 );
 export type ThreadCommandAdmissionReceiptResult = z.infer<

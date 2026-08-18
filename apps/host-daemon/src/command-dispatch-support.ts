@@ -16,7 +16,10 @@ import type {
   ProviderCliStatus,
   WorkspaceContext,
 } from "@bb/host-daemon-contract";
-import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
+import {
+  getDetachedReadOnlyOutputRoot,
+  getPersonalWorkspaceRoot,
+} from "@bb/host-workspace";
 import type { InteractiveResolveCommandInput } from "./interactive-request-registry.js";
 import { RuntimeManager, type RuntimeEntry } from "./runtime-manager.js";
 import type { TerminalManager } from "./terminals/terminal-manager.js";
@@ -244,7 +247,12 @@ export async function requireWorkspaceEnvironment(
       ? { targetThreadId: args.targetThreadId }
       : {}),
     ...(args.dataDir
-      ? { personalWorkspaceRoot: getPersonalWorkspaceRoot(args.dataDir) }
+      ? {
+          personalWorkspaceRoot: getPersonalWorkspaceRoot(args.dataDir),
+          detachedReadOnlyOutputRoot: getDetachedReadOnlyOutputRoot(
+            args.dataDir,
+          ),
+        }
       : {}),
     workspacePath: args.workspaceContext.workspacePath,
     workspaceProvisionType: args.workspaceContext.workspaceProvisionType,

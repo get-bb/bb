@@ -436,10 +436,14 @@ async function advanceThreadProvisioningOnce(
       thread,
     });
     context = ready.context;
+    const currentThread = getThread(deps.db, thread.id);
+    if (currentThread?.status !== "starting") {
+      return;
+    }
     await startThreadIfEnvironmentReady(deps, {
       context: ready.context,
       environment: ready.environment,
-      thread: ready.thread,
+      thread: currentThread,
     });
   } catch (error) {
     const failureThread = getCurrentProvisioningFailureThread(deps, {

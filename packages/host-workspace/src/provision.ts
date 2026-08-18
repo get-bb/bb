@@ -27,6 +27,7 @@ import {
   withCheckoutMutationLock,
 } from "./checkout-mutation-lock.js";
 import { createWorktree, removeWorktree } from "./provisioning.js";
+import { runGitWithWorktreeMetadataLock } from "./worktree-metadata-lock.js";
 import {
   detectGitRepo,
   getAbsoluteGitDir,
@@ -105,6 +106,12 @@ export interface ReconnectManagedWorktreeOpts extends ProvisionBase {
   path: string;
 }
 
+export interface ReconnectDetachedReadOnlyWorkspaceOpts extends ProvisionBase {
+  workspaceProvisionType: "reconnect-detached-read-only";
+  path: string;
+  outputPath: string;
+}
+
 export interface PersonalWorkspaceOpts extends ProvisionBase {
   workspaceProvisionType: "personal";
   /** Environment ID that owns the personal scratch workspace. */
@@ -115,16 +122,52 @@ export interface PersonalWorkspaceOpts extends ProvisionBase {
   targetPath: string;
 }
 
+export interface IsolatedScratchWorkspaceOpts extends ProvisionBase {
+  workspaceProvisionType: "isolated-scratch";
+  environmentId: string;
+  isolatedScratchWorkspaceRoot: string;
+  targetPath: string;
+}
+
+export interface DetachedReadOnlyWorkspaceOpts extends ProvisionBase {
+  workspaceProvisionType: "detached-read-only";
+  environmentId: string;
+  sourcePath: string;
+  targetPath: string;
+  outputPath: string;
+  detachedReadOnlyWorkspaceRoot: string;
+  detachedReadOnlyOutputRoot: string;
+  objectFormat: "sha1" | "sha256";
+  baseRevision: string;
+}
+
 export type ProvisionWorkspaceArgs =
   | UnmanagedWorkspaceOpts
   | ManagedWorktreeOpts
   | PersonalWorkspaceOpts
-  | ReconnectManagedWorktreeOpts;
+  | IsolatedScratchWorkspaceOpts
+  | DetachedReadOnlyWorkspaceOpts
+  | ReconnectManagedWorktreeOpts
+  | ReconnectDetachedReadOnlyWorkspaceOpts;
 
 export interface ValidatePersonalWorkspaceTargetPathArgs {
   environmentId: string;
   personalWorkspaceRoot: string;
   targetPath: string;
+}
+
+export interface ValidateIsolatedScratchWorkspaceTargetPathArgs {
+  environmentId: string;
+  isolatedScratchWorkspaceRoot: string;
+  targetPath: string;
+}
+
+export interface ValidateDetachedReadOnlyWorkspacePathsArgs {
+  environmentId: string;
+  detachedReadOnlyWorkspaceRoot: string;
+  detachedReadOnlyOutputRoot: string;
+  targetPath: string;
+  outputPath: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -202,6 +245,8 @@ class ProvisionedHostWorkspace implements HostWorkspace {
 
   private readonly ws: Workspace;
   private readonly destroyFn: () => Promise<void>;
+  private readonly readOnly: boolean;
+  private readonly additionalWorkspaceWriteRoots: readonly string[];
 
   constructor(opts: {
     path: string;
@@ -209,6 +254,8 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     isGitRepo: boolean;
     isWorktree: boolean;
     destroyFn: () => Promise<void>;
+    readOnly?: boolean;
+    additionalWorkspaceWriteRoots?: readonly string[];
   }) {
     this.path = opts.path;
     this.managed = opts.managed;
@@ -216,6 +263,9 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     this.isWorktree = opts.isWorktree;
     this.ws = new Workspace(opts.path);
     this.destroyFn = opts.destroyFn;
+    this.readOnly = opts.readOnly ?? false;
+    this.additionalWorkspaceWriteRoots =
+      opts.additionalWorkspaceWriteRoots ?? [];
   }
 
   async getCurrentBranch(): Promise<string | null> {
@@ -246,6 +296,9 @@ class ProvisionedHostWorkspace implements HostWorkspace {
   }
 
   getAdditionalWorkspaceWriteRoots(): Promise<string[]> {
+    if (this.additionalWorkspaceWriteRoots.length > 0) {
+      return Promise.resolve([...this.additionalWorkspaceWriteRoots]);
+    }
     if (!this.isGitRepo || !this.isWorktree) {
       return Promise.resolve([]);
     }
@@ -273,12 +326,14 @@ class ProvisionedHostWorkspace implements HostWorkspace {
   }
 
   runPullRequestAction(action: PullRequestActionOptions): Promise<void> {
+    this.assertWritable();
     return this.ws.runPullRequestAction(action);
   }
 
   createPullRequest(
     options: CreatePullRequestOptions,
   ): Promise<CreatePullRequestResult> {
+    this.assertWritable();
     return this.ws.createPullRequest(options);
   }
 
@@ -291,23 +346,37 @@ class ProvisionedHostWorkspace implements HostWorkspace {
   }
 
   commit(options: CommitOptions): Promise<CommitResult> {
+    this.assertWritable();
     return this.ws.commit(options);
   }
 
   pushBranch(options: PushBranchOptions): Promise<PushBranchResult> {
+    this.assertWritable();
     return this.ws.pushBranch(options);
   }
 
   reset(): Promise<void> {
+    this.assertWritable();
     return this.ws.reset();
   }
 
   fetch(options?: FetchOptions): Promise<void> {
+    this.assertWritable();
     return this.ws.fetch(options);
   }
 
   squashMerge(options: SquashMergeOptions): Promise<SquashMergeResult> {
+    this.assertWritable();
     return this.ws.squashMergeInto(options);
+  }
+
+  private assertWritable(): void {
+    if (this.readOnly) {
+      throw new WorkspaceError(
+        "workspace_read_only",
+        "Detached read-only workspace does not permit Git mutations",
+      );
+    }
   }
 
   destroy(): Promise<void> {
@@ -342,8 +411,14 @@ export async function provisionWorkspace(
       return provisionWorktree(opts);
     case "personal":
       return provisionPersonalWorkspace(opts);
+    case "isolated-scratch":
+      return provisionIsolatedScratchWorkspace(opts);
+    case "detached-read-only":
+      return provisionDetachedReadOnlyWorkspace(opts);
     case "reconnect-managed-worktree":
       return reconnectManagedWorktree(opts);
+    case "reconnect-detached-read-only":
+      return reconnectDetachedReadOnlyWorkspace(opts);
   }
 }
 
@@ -387,35 +462,111 @@ export function getPersonalWorkspaceRoot(dataDir: string): string {
   return path.resolve(dataDir, "personal-workspaces");
 }
 
+export function getIsolatedScratchWorkspaceRoot(dataDir: string): string {
+  return path.resolve(dataDir, "isolated-scratch-workspaces");
+}
+
+export function getDetachedReadOnlyWorkspaceRoot(dataDir: string): string {
+  return path.resolve(dataDir, "detached-read-only-workspaces");
+}
+
+export function getDetachedReadOnlyOutputRoot(dataDir: string): string {
+  return path.resolve(dataDir, "detached-read-only-outputs");
+}
+
+export function validateIsolatedScratchWorkspaceTargetPath(
+  args: ValidateIsolatedScratchWorkspaceTargetPathArgs,
+): string {
+  return validateManagedEmptyWorkspaceTargetPath({
+    environmentId: args.environmentId,
+    root: args.isolatedScratchWorkspaceRoot,
+    targetPath: args.targetPath,
+    errorCode: "invalid_isolated_scratch_workspace_path",
+    workspaceLabel: "Isolated scratch workspace",
+  });
+}
+
 export function validatePersonalWorkspaceTargetPath(
   args: ValidatePersonalWorkspaceTargetPathArgs,
 ): string {
+  return validateManagedEmptyWorkspaceTargetPath({
+    environmentId: args.environmentId,
+    root: args.personalWorkspaceRoot,
+    targetPath: args.targetPath,
+    errorCode: "invalid_personal_workspace_path",
+    workspaceLabel: "Personal workspace",
+  });
+}
+
+export function validateDetachedReadOnlyWorkspacePaths(
+  args: ValidateDetachedReadOnlyWorkspacePathsArgs,
+): { targetPath: string; outputPath: string } {
   if (
     path.basename(args.environmentId) !== args.environmentId ||
     args.environmentId === "." ||
     args.environmentId === ".."
   ) {
     throw new WorkspaceError(
-      "invalid_personal_workspace_path",
-      "Personal workspace environmentId must be a single path segment",
+      "invalid_detached_read_only_workspace_path",
+      "Detached read-only environmentId must be a single path segment",
+    );
+  }
+  const workspaceRoot = path.resolve(args.detachedReadOnlyWorkspaceRoot);
+  const environmentRoot = path.resolve(workspaceRoot, args.environmentId);
+  const targetPath = path.resolve(args.targetPath);
+  if (
+    path.dirname(targetPath) !== environmentRoot ||
+    !isRelativeChildPath(path.relative(workspaceRoot, targetPath))
+  ) {
+    throw new WorkspaceError(
+      "invalid_detached_read_only_workspace_path",
+      "Detached read-only checkout must be directly under its environment root",
+    );
+  }
+  const outputRoot = path.resolve(args.detachedReadOnlyOutputRoot);
+  const outputPath = path.resolve(args.outputPath);
+  if (outputPath !== path.resolve(outputRoot, args.environmentId)) {
+    throw new WorkspaceError(
+      "invalid_detached_read_only_output_path",
+      "Detached read-only output path must match the environment id",
+    );
+  }
+  return { targetPath, outputPath };
+}
+
+function validateManagedEmptyWorkspaceTargetPath(args: {
+  environmentId: string;
+  root: string;
+  targetPath: string;
+  errorCode: string;
+  workspaceLabel: string;
+}): string {
+  if (
+    path.basename(args.environmentId) !== args.environmentId ||
+    args.environmentId === "." ||
+    args.environmentId === ".."
+  ) {
+    throw new WorkspaceError(
+      args.errorCode,
+      `${args.workspaceLabel} environmentId must be a single path segment`,
     );
   }
 
-  const root = path.resolve(args.personalWorkspaceRoot);
+  const root = path.resolve(args.root);
   const expectedTargetPath = path.resolve(root, args.environmentId);
   const rootRelativeExpectedPath = path.relative(root, expectedTargetPath);
   if (!isRelativeChildPath(rootRelativeExpectedPath)) {
     throw new WorkspaceError(
-      "invalid_personal_workspace_path",
-      "Personal workspace target path must be under the personal workspace root",
+      args.errorCode,
+      `${args.workspaceLabel} target path must be under its workspace root`,
     );
   }
 
   const targetPath = path.resolve(args.targetPath);
   if (targetPath !== expectedTargetPath) {
     throw new WorkspaceError(
-      "invalid_personal_workspace_path",
-      "Personal workspace target path must match the environment id",
+      args.errorCode,
+      `${args.workspaceLabel} target path must match the environment id`,
     );
   }
 
@@ -745,8 +896,136 @@ async function provisionWorktree(
 async function provisionPersonalWorkspace(
   opts: PersonalWorkspaceOpts,
 ): Promise<HostWorkspace> {
-  throwIfProvisionAborted(opts.signal);
   const targetPath = validatePersonalWorkspaceTargetPath(opts);
+  return provisionManagedEmptyWorkspace(opts, targetPath);
+}
+
+async function provisionIsolatedScratchWorkspace(
+  opts: IsolatedScratchWorkspaceOpts,
+): Promise<HostWorkspace> {
+  const targetPath = validateIsolatedScratchWorkspaceTargetPath(opts);
+  return provisionManagedEmptyWorkspace(opts, targetPath);
+}
+
+async function requireExactRevision(
+  opts: Pick<
+    DetachedReadOnlyWorkspaceOpts,
+    "sourcePath" | "objectFormat" | "baseRevision" | "signal"
+  >,
+): Promise<void> {
+  const format = await runGit(["rev-parse", "--show-object-format"], {
+    cwd: opts.sourcePath,
+    allowFailure: true,
+    signal: opts.signal,
+  });
+  const revision = await runGit(
+    ["rev-parse", "--verify", `${opts.baseRevision}^{commit}`],
+    {
+      cwd: opts.sourcePath,
+      allowFailure: true,
+      signal: opts.signal,
+    },
+  );
+  if (
+    format.exitCode !== 0 ||
+    format.stdout.trim() !== opts.objectFormat ||
+    revision.exitCode !== 0 ||
+    revision.stdout.trim() !== opts.baseRevision
+  ) {
+    throw new WorkspaceError(
+      "repository_revision_unavailable",
+      "The exact repository revision is unavailable",
+    );
+  }
+}
+
+async function provisionDetachedReadOnlyWorkspace(
+  opts: DetachedReadOnlyWorkspaceOpts,
+): Promise<HostWorkspace> {
+  const { targetPath, outputPath } =
+    validateDetachedReadOnlyWorkspacePaths(opts);
+  throwIfProvisionAborted(opts.signal);
+  if (
+    !(await pathExists(opts.sourcePath)) ||
+    !(await detectGitRepo(opts.sourcePath))
+  ) {
+    throw new WorkspaceError(
+      "repository_revision_unavailable",
+      "The registered repository is unavailable",
+    );
+  }
+  await requireExactRevision(opts);
+
+  const targetExisted = await pathExists(targetPath);
+  if (!targetExisted) {
+    await mkdir(path.dirname(targetPath), { recursive: true });
+    try {
+      await runGitWithWorktreeMetadataLock(
+        ["worktree", "add", "--detach", targetPath, opts.baseRevision],
+        { cwd: opts.sourcePath, signal: opts.signal },
+      );
+    } catch (error) {
+      await removeWorktree({
+        path: targetPath,
+        force: true,
+        pruneEmptyParent: true,
+      });
+      throw error;
+    }
+  }
+
+  const [isGitRepo, checkoutRef] = await Promise.all([
+    detectGitRepo(targetPath),
+    getCheckoutRef(targetPath),
+  ]);
+  const head = await runGit(["rev-parse", "HEAD"], {
+    cwd: targetPath,
+    allowFailure: true,
+    signal: opts.signal,
+  });
+  if (
+    !isGitRepo ||
+    checkoutRef.kind !== "detached" ||
+    head.exitCode !== 0 ||
+    head.stdout.trim() !== opts.baseRevision
+  ) {
+    if (!targetExisted) {
+      await removeWorktree({
+        path: targetPath,
+        force: true,
+        pruneEmptyParent: true,
+      });
+    }
+    throw new WorkspaceError(
+      "repository_revision_unavailable",
+      "Detached checkout does not match the exact repository revision",
+    );
+  }
+
+  await mkdir(outputPath, { recursive: true });
+  return new ProvisionedHostWorkspace({
+    path: targetPath,
+    managed: true,
+    isGitRepo: true,
+    isWorktree: true,
+    readOnly: true,
+    additionalWorkspaceWriteRoots: [outputPath],
+    destroyFn: async () => {
+      await removeWorktree({
+        path: targetPath,
+        force: true,
+        pruneEmptyParent: true,
+      });
+      await rm(outputPath, { recursive: true, force: true });
+    },
+  });
+}
+
+async function provisionManagedEmptyWorkspace(
+  opts: ProvisionBase,
+  targetPath: string,
+): Promise<HostWorkspace> {
+  throwIfProvisionAborted(opts.signal);
   const targetExisted = await pathExists(targetPath);
   await mkdir(targetPath, { recursive: true });
   try {
@@ -757,7 +1036,6 @@ async function provisionPersonalWorkspace(
     }
     throw error;
   }
-
   const detectedGitRepo = targetExisted
     ? await detectGitRepo(targetPath)
     : false;
@@ -765,7 +1043,6 @@ async function provisionPersonalWorkspace(
     ? await hasContainedPersonalGitMetadata(targetPath)
     : false;
   const isWorktree = isGitRepo ? await detectWorktree(targetPath) : false;
-
   return new ProvisionedHostWorkspace({
     path: targetPath,
     managed: true,
@@ -809,4 +1086,34 @@ async function reconnectManagedWorktree(
       removeWorktree({ path: opts.path, force: true, pruneEmptyParent: true }),
     opts.signal,
   );
+}
+
+async function reconnectDetachedReadOnlyWorkspace(
+  opts: ReconnectDetachedReadOnlyWorkspaceOpts,
+): Promise<HostWorkspace> {
+  const workspace = await reconnectManaged(
+    opts.path,
+    () =>
+      removeWorktree({ path: opts.path, force: true, pruneEmptyParent: true }),
+    opts.signal,
+  );
+  if ((await workspace.getCurrentBranch()) !== null) {
+    throw new WorkspaceError(
+      "repository_revision_unavailable",
+      "Detached read-only checkout is no longer detached",
+    );
+  }
+  await mkdir(opts.outputPath, { recursive: true });
+  return new ProvisionedHostWorkspace({
+    path: workspace.path,
+    managed: true,
+    isGitRepo: workspace.isGitRepo,
+    isWorktree: workspace.isWorktree,
+    readOnly: true,
+    additionalWorkspaceWriteRoots: [opts.outputPath],
+    destroyFn: async () => {
+      await workspace.destroy();
+      await rm(opts.outputPath, { recursive: true, force: true });
+    },
+  });
 }

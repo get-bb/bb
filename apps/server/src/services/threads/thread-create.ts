@@ -71,6 +71,7 @@ import type {
 import { resolveManagedDefaultBaseBranchSpec } from "../projects/worktree-base-branch.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
+import { resolveWorkTogetherRoomChildEnvironment } from "./work-together-room-child-fence.js";
 
 type ThreadCreateDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -100,15 +101,28 @@ interface CreateProvisioningThreadArgs {
   threadId?: string;
 }
 
-export interface ThreadCreateResourceReservation {
+interface ThreadCreateResourceReservationCommon {
   /** Exact internal BB IDs allocated before resource creation. */
   environmentId: string;
   threadId: string;
-  /** Exact managed-worktree branch retained by the enclosing Room saga. */
-  managedBranchName: string;
-  baseRevision: string;
-  providerRepositoryId: string;
 }
+
+export type ThreadCreateResourceReservation =
+  | (ThreadCreateResourceReservationCommon & {
+      environmentTemplate: "isolated-scratch";
+    })
+  | (ThreadCreateResourceReservationCommon & {
+      environmentTemplate: "detached-read-only";
+      objectFormat: "sha1" | "sha256";
+      baseRevision: string;
+    })
+  | (ThreadCreateResourceReservationCommon & {
+      environmentTemplate: "managed-worktree";
+      /** Exact managed-worktree branch retained by the enclosing Room saga. */
+      managedBranchName: string;
+      baseRevision: string;
+      providerRepositoryId: string;
+    });
 
 const RESERVED_ENVIRONMENT_ID = /^env_[23456789abcdefghijkmnpqrstuvwxyz]{10}$/u;
 const RESERVED_THREAD_ID = /^thr_[23456789abcdefghijkmnpqrstuvwxyz]{10}$/u;
@@ -122,14 +136,21 @@ function requireThreadCreateResourceReservation(
   }
   if (
     rawRequestInput.environment.type !== "host" ||
-    rawRequestInput.environment.workspace.type !== "managed-worktree" ||
     !RESERVED_ENVIRONMENT_ID.test(reservation.environmentId) ||
     !RESERVED_THREAD_ID.test(reservation.threadId) ||
-    Buffer.byteLength(reservation.managedBranchName, "utf8") > 255 ||
-    reservation.managedBranchName.startsWith("refs/") ||
-    !gitBranchNameSchema.safeParse(reservation.managedBranchName).success ||
-    !gitObjectIdSchema.safeParse(reservation.baseRevision).success ||
-    !/^[1-9][0-9]{0,127}$/u.test(reservation.providerRepositoryId)
+    (reservation.environmentTemplate === "managed-worktree" &&
+      (rawRequestInput.environment.workspace.type !== "managed-worktree" ||
+        Buffer.byteLength(reservation.managedBranchName, "utf8") > 255 ||
+        reservation.managedBranchName.startsWith("refs/") ||
+        !gitBranchNameSchema.safeParse(reservation.managedBranchName)
+          .success ||
+        !gitObjectIdSchema.safeParse(reservation.baseRevision).success ||
+        !/^[1-9][0-9]{0,127}$/u.test(reservation.providerRepositoryId))) ||
+    (reservation.environmentTemplate === "isolated-scratch" &&
+      rawRequestInput.environment.workspace.type !== "isolated-scratch") ||
+    (reservation.environmentTemplate === "detached-read-only" &&
+      (rawRequestInput.environment.workspace.type !== "detached-read-only" ||
+        !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u.test(reservation.baseRevision)))
   ) {
     throw new ApiError(
       400,
@@ -336,7 +357,11 @@ function scheduleThreadProvisioningAdvance(
 function shouldAdvanceProvisioningBeforeResponse(
   environmentIntent: ThreadProvisionEnvironmentIntent,
 ): boolean {
-  return environmentIntent.type === "direct-personal";
+  return (
+    environmentIntent.type === "direct-personal" ||
+    environmentIntent.type === "direct-isolated-scratch" ||
+    environmentIntent.type === "direct-detached-read-only"
+  );
 }
 
 function requestUsesPersonalWorkspace(
@@ -673,16 +698,67 @@ export async function createThreadFromRequest(
       'originPluginId requires origin "plugin"',
     );
   }
-  // Resolve the server-owned "project-default" environment marker into a
-  // concrete environment before any workspace/provisioning logic runs.
+  const originKind = rawRequestInput.originKind ?? null;
+  const sourceThreadId =
+    rawRequestInput.sourceThreadId ??
+    (originKind !== null ? rawRequestInput.parentThreadId : undefined);
+  const hierarchyParentThreadId =
+    originKind === null ? rawRequestInput.parentThreadId : undefined;
+  const parentThread = hierarchyParentThreadId
+    ? assertValidParentThread(deps, {
+        parentThreadId: hierarchyParentThreadId,
+        projectId: rawRequestInput.projectId,
+      })
+    : null;
+  if (originKind === null && sourceThreadId !== undefined) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "sourceThreadId requires an originKind",
+    );
+  }
+  if (originKind === null && rawRequestInput.sourceSeqEnd !== undefined) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "sourceSeqEnd requires an originKind",
+    );
+  }
+  const sourceThread = sourceThreadId
+    ? requireLiveSourceThread(deps, {
+        projectId: rawRequestInput.projectId,
+        sourceThreadId,
+      })
+    : null;
+  if (originKind !== null && sourceThread !== null) {
+    // Forks and side chats are not hierarchy children, but they still consume
+    // the same spawn allowance exposed as ThreadResponse.canSpawnChild.
+    assertValidParentThread(deps, {
+      parentThreadId: sourceThread.id,
+      projectId: rawRequestInput.projectId,
+    });
+  }
+  if (originKind !== null && sourceThread === null) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "originKind requires a sourceThreadId",
+    );
+  }
+  const fencedEnvironment = resolveWorkTogetherRoomChildEnvironment(deps, {
+    parentThread,
+    requestedEnvironment: rawRequestInput.environment,
+  });
+  // Resolve the server-owned default only after the Room fence has had the
+  // opportunity to bind an implicit child to its reserved environment.
   const requestInput = {
     ...rawRequestInput,
     environment:
-      rawRequestInput.environment.type === "project-default"
+      fencedEnvironment.type === "project-default"
         ? await resolveProjectDefaultThreadEnvironment(deps, {
             projectId: rawRequestInput.projectId,
           })
-        : rawRequestInput.environment,
+        : fencedEnvironment,
   };
   // Plugin mentions resolve once at send time (plugin design §4.9): each
   // unique mention becomes an agent-only context input appended after the
@@ -695,53 +771,6 @@ export async function createThreadFromRequest(
     requestInput.input = [...requestInput.input, ...pluginMentionContext];
   }
   assertProjectWorkspaceCompatibility(project, requestInput);
-  const originKind = requestInput.originKind ?? null;
-  const sourceThreadId =
-    requestInput.sourceThreadId ??
-    (originKind !== null ? requestInput.parentThreadId : undefined);
-  const hierarchyParentThreadId =
-    originKind === null ? requestInput.parentThreadId : undefined;
-  const parentThread = hierarchyParentThreadId
-    ? assertValidParentThread(deps, {
-        parentThreadId: hierarchyParentThreadId,
-        projectId: requestInput.projectId,
-      })
-    : null;
-  if (originKind === null && sourceThreadId !== undefined) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      "sourceThreadId requires an originKind",
-    );
-  }
-  if (originKind === null && requestInput.sourceSeqEnd !== undefined) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      "sourceSeqEnd requires an originKind",
-    );
-  }
-  const sourceThread = sourceThreadId
-    ? requireLiveSourceThread(deps, {
-        projectId: requestInput.projectId,
-        sourceThreadId,
-      })
-    : null;
-  if (originKind !== null && sourceThread !== null) {
-    // Forks and side chats are not hierarchy children, but they still consume
-    // the same spawn allowance exposed as ThreadResponse.canSpawnChild.
-    assertValidParentThread(deps, {
-      parentThreadId: sourceThread.id,
-      projectId: requestInput.projectId,
-    });
-  }
-  if (originKind !== null && sourceThread === null) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      "originKind requires a sourceThreadId",
-    );
-  }
   const forkSourceEnvironmentId =
     options.forkSourceEnvironmentId ??
     (originKind === "fork" &&
@@ -921,10 +950,57 @@ export async function createThreadFromRequest(
         break;
       }
 
+      if (workspace.type === "isolated-scratch") {
+        if (resourceReservation?.environmentTemplate !== "isolated-scratch") {
+          throw new Error(
+            "Isolated scratch thread creation requires reserved Room resources",
+          );
+        }
+        environmentIntent = {
+          type: "direct-isolated-scratch",
+          environmentId: resourceReservation.environmentId,
+          hostId,
+          workspaceProvisionType: workspace.type,
+        };
+        break;
+      }
+
+      if (workspace.type === "detached-read-only") {
+        if (resourceReservation?.environmentTemplate !== "detached-read-only") {
+          throw new Error(
+            "Detached read-only thread creation requires reserved Room resources",
+          );
+        }
+        const readOnlySource = resolvedEnvironment.localSource;
+        if (!readOnlySource) {
+          throw new Error(
+            "Validated detached read-only request is missing a local source",
+          );
+        }
+        environmentIntent = {
+          type: "direct-detached-read-only",
+          environmentId: resourceReservation.environmentId,
+          hostId,
+          sourcePath: readOnlySource.path,
+          objectFormat: resourceReservation.objectFormat,
+          baseRevision: resourceReservation.baseRevision,
+          workspaceProvisionType: workspace.type,
+        };
+        break;
+      }
+
       const managedSource = resolvedEnvironment.localSource;
       if (!managedSource) {
         throw new Error(
           "Validated managed host request is missing a local source",
+        );
+      }
+      if (
+        resourceReservation !== undefined &&
+        resourceReservation.environmentTemplate !== "managed-worktree"
+      ) {
+        throw new Error(
+          "Managed thread creation requires managed-worktree Room resources",
         );
       }
       environmentIntent = {

@@ -84,6 +84,9 @@ export interface AgentRuntimeOptions {
   /** Working directory for provider processes. */
   workspacePath: string;
 
+  /** Exclude workspacePath from provider write roots while retaining read access. */
+  workspaceReadOnly?: boolean;
+
   /** Extra paths workspace-write providers may mutate in addition to workspacePath. */
   additionalWorkspaceWriteRoots?: readonly string[];
 

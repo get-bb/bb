@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { WorkspaceProvisionType } from "@bb/domain";
 import type { WorkspaceContext } from "@bb/host-daemon-contract";
 import type { ProvisionWorkspaceArgs } from "@bb/host-workspace";
@@ -5,6 +6,7 @@ import type { ProvisionWorkspaceArgs } from "@bb/host-workspace";
 interface ReconnectProvisionArgs {
   environmentId: string;
   personalWorkspaceRoot?: string;
+  detachedReadOnlyOutputRoot?: string;
   workspacePath: string;
   workspaceProvisionType: WorkspaceProvisionType;
 }
@@ -12,6 +14,7 @@ interface ReconnectProvisionArgs {
 interface WorkspaceContextProvisionArgs {
   environmentId: string;
   personalWorkspaceRoot?: string;
+  detachedReadOnlyOutputRoot?: string;
   workspaceContext: WorkspaceContext;
 }
 
@@ -41,6 +44,27 @@ export function reconnectProvisionArgs(
         personalWorkspaceRoot: args.personalWorkspaceRoot,
         targetPath: args.workspacePath,
       };
+    case "isolated-scratch":
+      return {
+        workspaceProvisionType: "isolated-scratch",
+        environmentId: args.environmentId,
+        isolatedScratchWorkspaceRoot: path.dirname(args.workspacePath),
+        targetPath: args.workspacePath,
+      };
+    case "detached-read-only":
+      if (!args.detachedReadOnlyOutputRoot) {
+        throw new Error(
+          "Detached read-only output root is required to reconnect the workspace",
+        );
+      }
+      return {
+        workspaceProvisionType: "reconnect-detached-read-only",
+        path: args.workspacePath,
+        outputPath: path.join(
+          args.detachedReadOnlyOutputRoot,
+          args.environmentId,
+        ),
+      };
   }
 }
 
@@ -51,6 +75,9 @@ export function reconnectProvisionArgsFromWorkspaceContext(
     environmentId: args.environmentId,
     ...(args.personalWorkspaceRoot !== undefined
       ? { personalWorkspaceRoot: args.personalWorkspaceRoot }
+      : {}),
+    ...(args.detachedReadOnlyOutputRoot !== undefined
+      ? { detachedReadOnlyOutputRoot: args.detachedReadOnlyOutputRoot }
       : {}),
     workspacePath: args.workspaceContext.workspacePath,
     workspaceProvisionType: args.workspaceContext.workspaceProvisionType,

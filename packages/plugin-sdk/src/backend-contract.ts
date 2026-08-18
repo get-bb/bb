@@ -405,7 +405,12 @@ export interface PluginAgentConfigurationContext {
     id: string;
     name: string | null;
     path: string | null;
-    workspaceProvisionType: "unmanaged" | "managed-worktree" | "personal";
+    workspaceProvisionType:
+      | "unmanaged"
+      | "managed-worktree"
+      | "personal"
+      | "isolated-scratch"
+      | "detached-read-only";
     branchName: string | null;
   };
   host: {

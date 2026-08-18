@@ -37,7 +37,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 127 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 128 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -1040,6 +1040,26 @@ const personalEnvironmentProvisionCommandSchema =
     })
     .strict();
 
+const isolatedScratchEnvironmentProvisionCommandSchema =
+  environmentProvisionCommandBaseSchema
+    .extend({
+      workspaceProvisionType: z.literal("isolated-scratch"),
+      targetPath: z.string().min(1),
+    })
+    .strict();
+
+const detachedReadOnlyEnvironmentProvisionCommandSchema =
+  environmentProvisionCommandBaseSchema
+    .extend({
+      workspaceProvisionType: z.literal("detached-read-only"),
+      sourcePath: z.string().min(1),
+      targetPath: z.string().min(1),
+      outputPath: z.string().min(1),
+      objectFormat: z.enum(["sha1", "sha256"]),
+      baseRevision: z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u),
+    })
+    .strict();
+
 /**
  * Provision a workspace for an environment.
  *
@@ -1064,6 +1084,8 @@ export const environmentProvisionCommandSchema = z.discriminatedUnion(
     unmanagedEnvironmentProvisionCommandSchema,
     managedWorktreeEnvironmentProvisionCommandSchema,
     personalEnvironmentProvisionCommandSchema,
+    isolatedScratchEnvironmentProvisionCommandSchema,
+    detachedReadOnlyEnvironmentProvisionCommandSchema,
   ],
 );
 export type EnvironmentProvisionCommand = z.infer<
@@ -1599,8 +1621,35 @@ const resolveGithubRepositoryCommandSchema = z
     type: z.literal("workspace.resolve_github_repository"),
     providerRepositoryId: z.string().regex(/^[1-9][0-9]{0,127}$/u),
     knownPaths: z.array(z.string().min(1).max(4096)).max(500),
+    objectFormat: z.enum(["sha1", "sha256"]).optional(),
+    baseRevision: z
+      .string()
+      .regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u)
+      .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      (value.objectFormat === undefined) !==
+      (value.baseRevision === undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "objectFormat and baseRevision must be supplied together",
+      });
+      return;
+    }
+    if (value.objectFormat !== undefined && value.baseRevision !== undefined) {
+      const expectedLength = value.objectFormat === "sha1" ? 40 : 64;
+      if (value.baseRevision.length !== expectedLength) {
+        context.addIssue({
+          code: "custom",
+          path: ["baseRevision"],
+          message: "baseRevision does not match objectFormat",
+        });
+      }
+    }
+  });
 
 export const resolvedGithubRepositorySchema = z
   .object({
@@ -1623,6 +1672,7 @@ export const resolveGithubRepositoryResultSchema = z.discriminatedUnion(
       .strict(),
     z.object({ outcome: z.literal("not_found") }).strict(),
     z.object({ outcome: z.literal("unavailable") }).strict(),
+    z.object({ outcome: z.literal("revision_unavailable") }).strict(),
   ],
 );
 export type ResolveGithubRepositoryResult = z.infer<

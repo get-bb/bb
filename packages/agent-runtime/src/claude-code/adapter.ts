@@ -661,6 +661,7 @@ export function createClaudeCodeProviderAdapter(
 ): ProviderAdapter {
   const additionalWorkspaceWriteRoots =
     opts?.additionalWorkspaceWriteRoots ?? [];
+  const workspaceReadOnly = opts?.workspaceReadOnly ?? false;
   const providerInfo = getBuiltInAgentProviderInfo("claude-code");
   const capabilities = providerInfo.capabilities;
 
@@ -912,6 +913,7 @@ export function createClaudeCodeProviderAdapter(
                 baseInstructions,
                 threadId: command.threadId,
                 cwd: command.cwd,
+                workspaceReadOnly,
                 instructionMode: command.instructionMode,
                 claudeCodeMockCliTraffic:
                   command.options.claudeCodeMockCliTraffic,
@@ -984,6 +986,7 @@ export function createClaudeCodeProviderAdapter(
                 baseInstructions,
                 threadId: command.threadId,
                 cwd: command.cwd,
+                workspaceReadOnly,
                 providerThreadId: command.providerThreadId,
                 instructionMode: command.instructionMode,
                 claudeCodeMockCliTraffic:
@@ -1130,6 +1133,7 @@ export function createClaudeCodeProviderAdapter(
                 baseInstructions,
                 threadId: command.threadId,
                 cwd: command.cwd,
+                workspaceReadOnly,
                 sourceProviderThreadId: command.sourceProviderThreadId,
                 ...(command.sourceProviderCheckpointId !== undefined
                   ? {

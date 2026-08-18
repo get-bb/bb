@@ -1003,6 +1003,31 @@ describe("bridge", () => {
     });
   });
 
+  it("denies writes to a read-only workspace while allowing the output root", () => {
+    const options = buildSessionOptions(
+      {
+        workflowsEnabled: false,
+        additionalWorkspaceWriteRoots: ["/tmp/output"],
+        baseInstructions: "Analyze the repository.",
+        cwd: "/tmp/repository",
+        workspaceReadOnly: true,
+        instructionMode: "append",
+        getPermissionEscalation: () => "deny",
+        permissionMode: "acceptEdits",
+        permissionScope: "workspace",
+      },
+      {},
+    );
+    expect(options.sandbox).toMatchObject({
+      failIfUnavailable: true,
+      allowUnsandboxedCommands: false,
+      filesystem: {
+        allowWrite: ["/tmp/output"],
+        denyWrite: ["/tmp/repository"],
+      },
+    });
+  });
+
   it("keeps plan sessions on native gating without the workspace sandbox", () => {
     const options = buildSessionOptions(
       {

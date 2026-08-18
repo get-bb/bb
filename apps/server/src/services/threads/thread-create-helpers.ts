@@ -122,6 +122,24 @@ export type EnvironmentProvisionCommandArgs =
       hostId: string;
       initiator: EnvironmentProvisionCommandInitiator;
       targetPath: string;
+    }
+  | {
+      workspaceProvisionType: "isolated-scratch";
+      environmentId: string;
+      hostId: string;
+      initiator: EnvironmentProvisionCommandInitiator;
+      targetPath: string;
+    }
+  | {
+      workspaceProvisionType: "detached-read-only";
+      environmentId: string;
+      hostId: string;
+      initiator: EnvironmentProvisionCommandInitiator;
+      sourcePath: string;
+      targetPath: string;
+      outputPath: string;
+      objectFormat: "sha1" | "sha256";
+      baseRevision: string;
     };
 
 export function buildEnvironmentProvisionCommand(
@@ -166,6 +184,26 @@ export function buildEnvironmentProvisionCommand(
         initiator: args.initiator,
         workspaceProvisionType: args.workspaceProvisionType,
         targetPath: args.targetPath,
+      };
+    case "isolated-scratch":
+      return {
+        type: "environment.provision" as const,
+        environmentId: args.environmentId,
+        initiator: args.initiator,
+        workspaceProvisionType: args.workspaceProvisionType,
+        targetPath: args.targetPath,
+      };
+    case "detached-read-only":
+      return {
+        type: "environment.provision" as const,
+        environmentId: args.environmentId,
+        initiator: args.initiator,
+        workspaceProvisionType: args.workspaceProvisionType,
+        sourcePath: args.sourcePath,
+        targetPath: args.targetPath,
+        outputPath: args.outputPath,
+        objectFormat: args.objectFormat,
+        baseRevision: args.baseRevision,
       };
   }
 }

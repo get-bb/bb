@@ -1,6 +1,6 @@
 import { canonicalizeInternalRequestTarget } from "@bb/server-contract";
 
-const PREFIX = "/api/bb-room-provisioning/v1/room-bindings/";
+const PREFIX = "/api/bb-room-provisioning/v2/room-bindings/";
 const CANONICAL_UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 

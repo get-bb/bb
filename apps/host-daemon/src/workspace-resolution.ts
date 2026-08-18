@@ -5,7 +5,11 @@ import type {
   WorkspaceResolutionFailureCode,
 } from "@bb/host-daemon-contract";
 import { workspaceResolutionFailureCodeSchema } from "@bb/host-daemon-contract";
-import { getPersonalWorkspaceRoot, WorkspaceError } from "@bb/host-workspace";
+import {
+  getDetachedReadOnlyOutputRoot,
+  getPersonalWorkspaceRoot,
+  WorkspaceError,
+} from "@bb/host-workspace";
 import type { RuntimeEntry, RuntimeManager } from "./runtime-manager.js";
 import {
   CommandDispatchError,
@@ -152,6 +156,9 @@ export async function resolveWorkspaceForCommand(
           ...(args.dataDir
             ? {
                 personalWorkspaceRoot: getPersonalWorkspaceRoot(args.dataDir),
+                detachedReadOnlyOutputRoot: getDetachedReadOnlyOutputRoot(
+                  args.dataDir,
+                ),
               }
             : {}),
           workspaceContext: args.workspaceContext,

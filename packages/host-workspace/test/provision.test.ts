@@ -735,6 +735,121 @@ describe("provisionWorkspace", () => {
     });
   });
 
+  describe("isolated-scratch", () => {
+    it("creates and destroys an independent non-git managed workspace", async () => {
+      const parentDir = await makeTempDir("bb-isolated-scratch-parent-");
+      const environmentId = "env_isolated_scratch";
+      const isolatedScratchWorkspaceRoot = path.join(
+        parentDir,
+        "isolated-scratch-workspaces",
+      );
+      const targetPath = path.join(isolatedScratchWorkspaceRoot, environmentId);
+
+      const ws = await provisionWorkspace({
+        workspaceProvisionType: "isolated-scratch",
+        environmentId,
+        isolatedScratchWorkspaceRoot,
+        targetPath,
+      });
+
+      expect(ws).toMatchObject({
+        path: targetPath,
+        managed: true,
+        isGitRepo: false,
+        isWorktree: false,
+      });
+      await ws.destroy();
+      await expect(fs.stat(targetPath)).rejects.toThrow();
+    });
+  });
+
+  describe("detached-read-only", () => {
+    it("checks out the exact revision detached and exposes only its output root for writes", async () => {
+      const sourcePath = await initRepo();
+      const baseRevision = (
+        await runGit(["rev-parse", "HEAD"], { cwd: sourcePath })
+      ).stdout.trim();
+      await fs.writeFile(path.join(sourcePath, "later.txt"), "later\n", "utf8");
+      await runGit(["add", "later.txt"], { cwd: sourcePath });
+      await runGit(["commit", "-m", "Move source branch"], {
+        cwd: sourcePath,
+      });
+
+      const dataDir = await makeTempDir("bb-detached-read-only-");
+      const environmentId = "env_detached_read_only";
+      const detachedReadOnlyWorkspaceRoot = path.join(
+        dataDir,
+        "detached-read-only-workspaces",
+      );
+      const detachedReadOnlyOutputRoot = path.join(
+        dataDir,
+        "detached-read-only-outputs",
+      );
+      const targetPath = path.join(
+        detachedReadOnlyWorkspaceRoot,
+        environmentId,
+        "repository",
+      );
+      const outputPath = path.join(detachedReadOnlyOutputRoot, environmentId);
+
+      const ws = await provisionWorkspace({
+        workspaceProvisionType: "detached-read-only",
+        environmentId,
+        sourcePath,
+        targetPath,
+        outputPath,
+        detachedReadOnlyWorkspaceRoot,
+        detachedReadOnlyOutputRoot,
+        objectFormat: "sha1",
+        baseRevision,
+      });
+
+      await expect(ws.getCurrentBranch()).resolves.toBeNull();
+      await expect(ws.getHeadSha()).resolves.toBe(baseRevision);
+      await expect(ws.getAdditionalWorkspaceWriteRoots()).resolves.toEqual([
+        outputPath,
+      ]);
+      expect(() =>
+        ws.commit({ message: "forbidden", noVerify: false }),
+      ).toThrowError(expect.objectContaining({ code: "workspace_read_only" }));
+      await expect(fs.stat(outputPath)).resolves.toBeDefined();
+    });
+
+    it("rejects an unavailable exact revision", async () => {
+      const sourcePath = await initRepo();
+      const dataDir = await makeTempDir("bb-detached-missing-");
+      const environmentId = "env_detached_missing";
+      await expect(
+        provisionWorkspace({
+          workspaceProvisionType: "detached-read-only",
+          environmentId,
+          sourcePath,
+          targetPath: path.join(
+            dataDir,
+            "detached-read-only-workspaces",
+            environmentId,
+            "repository",
+          ),
+          outputPath: path.join(
+            dataDir,
+            "detached-read-only-outputs",
+            environmentId,
+          ),
+          detachedReadOnlyWorkspaceRoot: path.join(
+            dataDir,
+            "detached-read-only-workspaces",
+          ),
+          detachedReadOnlyOutputRoot: path.join(
+            dataDir,
+            "detached-read-only-outputs",
+          ),
+          objectFormat: "sha1",
+          baseRevision: "f".repeat(40),
+        }),
+      ).rejects.toHaveProperty("code", "repository_revision_unavailable");
+    });
+  });
+
   describe("reconnect-managed-worktree", () => {
     it("reconnects to an existing worktree with managed=true", async () => {
       const repoPath = await initRepo();

@@ -1,12 +1,18 @@
 export const WORK_TOGETHER_ROOM_VISIBLE_DISALLOWED_CONTROL =
   /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 
+export type WorkTogetherRoomVisibleStreamAliasV1 = Readonly<{
+  privateThreadId: string;
+  publicStreamId: string;
+}>;
+
 export type WorkTogetherRoomVisibleScalarIdentityV1 = Readonly<{
   bindingId: string;
   environmentId: string;
   privateThreadId: string;
   projectId: string;
   publicStreamId: string;
+  attachedStreams?: readonly WorkTogetherRoomVisibleStreamAliasV1[];
 }>;
 
 /**
@@ -24,6 +30,12 @@ export function projectWorkTogetherRoomVisibleScalar(
     identity.privateThreadId,
     identity.publicStreamId,
   );
+  for (const attached of identity.attachedStreams ?? []) {
+    projected = projected.replaceAll(
+      attached.privateThreadId,
+      attached.publicStreamId,
+    );
+  }
   projected = projected.replaceAll(
     identity.environmentId,
     `${identity.bindingId}:environment`,
