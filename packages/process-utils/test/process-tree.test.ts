@@ -1,6 +1,13 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,6 +17,7 @@ import {
   killProcessesWithCwdUnder,
   listProcessesWithCwdUnder,
   spawnPortablePipedProcess,
+  stopProcessGroupLeaderFirst,
 } from "../src/index.js";
 
 const posixOnly = process.platform === "win32" ? describe.skip : describe;
@@ -166,6 +174,89 @@ posixOnly("process tree helpers", () => {
       { pid: child.pid, cwd: target },
     ]);
     expect(await listProcessesWithCwdUnder({ directory: link })).toEqual([]);
+  });
+
+  it("stops the leader first so it can shut its own child down", async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "bb-leader-first-")));
+    cleanupDirs.push(dir);
+    const log = join(dir, "log");
+    // The child logs every signal in arrival order and exits only on
+    // SIGUSR1, which the leader sends from its own SIGTERM handler. A
+    // group-wide SIGTERM would reach the child first and log "child-term".
+    writeFileSync(
+      join(dir, "child.cjs"),
+      [
+        'const fs = require("node:fs");',
+        "const log = process.argv[2];",
+        'process.on("SIGTERM", () => fs.appendFileSync(log, "child-term\\n"));',
+        'process.on("SIGUSR1", () => {',
+        '  fs.appendFileSync(log, "child-usr1\\n");',
+        "  process.exit(0);",
+        "});",
+        'console.log("ready");',
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(dir, "leader.sh"),
+      [
+        "#!/bin/sh",
+        '"$3" "$2" "$1" &',
+        "child=$!",
+        'trap \'echo leader-term >> "$1"; kill -USR1 "$child"; wait "$child"; exit 0\' TERM',
+        "while :; do sleep 0.1; done",
+      ].join("\n"),
+    );
+    const child = spawnPortablePipedProcess({
+      command: "sh",
+      args: [
+        join(dir, "leader.sh"),
+        log,
+        join(dir, "child.cjs"),
+        process.execPath,
+      ],
+      detached: true,
+    });
+    cleanupPids.push(child.pid ?? 0);
+    expect(await readFirstLine(child.stdout)).toBe("ready");
+
+    await stopProcessGroupLeaderFirst({
+      child,
+      timeoutMs: 5000,
+      killGraceMs: 1000,
+    });
+
+    expect(child.exitCode).toBe(0);
+    expect(isProcessGroupAlive(child)).toBe(false);
+    expect(readFileSync(log, "utf8")).toBe("leader-term\nchild-usr1\n");
+  });
+
+  it("escalates to the group when a member outlives the leader", async () => {
+    // The leader exits on SIGTERM; its child ignores SIGTERM and only dies
+    // from the SIGKILL escalation.
+    const child = spawnPortablePipedProcess({
+      command: "sh",
+      args: [
+        "-c",
+        'trap "exit 0" TERM; sh -c \'trap "" TERM; while :; do sleep 0.1; done\' & echo $!; while :; do sleep 0.1; done',
+      ],
+      detached: true,
+    });
+    const memberPid = Number(await readFirstLine(child.stdout));
+    cleanupPids.push(child.pid ?? 0, memberPid);
+    const startedAt = Date.now();
+
+    await stopProcessGroupLeaderFirst({
+      child,
+      timeoutMs: 300,
+      killGraceMs: 5000,
+    });
+
+    // Resolves once the group is gone, not at the SIGKILL grace timer.
+    expect(Date.now() - startedAt).toBeLessThan(2000);
+    expect(child.exitCode).toBe(0);
+    await waitFor(() => !isAlive(memberPid));
+    expect(isProcessGroupAlive(child)).toBe(false);
   });
 
   it("returns an empty list for a directory that no process uses", async () => {

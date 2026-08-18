@@ -54,6 +54,17 @@ export interface KillProcessGroupArgs {
   signal: NodeJS.Signals;
 }
 
+export interface StopProcessGroupLeaderFirstArgs {
+  child: ChildProcess;
+  /** Time after the leader SIGTERM before the whole group gets SIGKILL. */
+  timeoutMs: number;
+  /**
+   * Time to wait for the exit after SIGKILL before the promise resolves
+   * anyway. Use 0 to resolve as soon as SIGKILL is sent.
+   */
+  killGraceMs: number;
+}
+
 export interface ProcessWithCwd {
   pid: number;
   cwd: string;
@@ -228,6 +239,86 @@ export function isProcessGroupAlive(child: {
   }
 }
 
+function hasChildExited(child: ChildProcess): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
+const PROCESS_GROUP_EXIT_POLL_MS = 100;
+
+/**
+ * Stops a process-group leader and everything it started, leader first.
+ *
+ * SIGTERM goes to the leader alone so a provider bridge can drive its own
+ * CLI down gracefully instead of racing a group-wide SIGTERM. Escalation keys
+ * on "any group member still alive": when the leader exits and members
+ * remain, the group gets SIGTERM and is polled; when `timeoutMs` passes and
+ * anything remains, the group gets SIGKILL. Resolves once the group is gone
+ * or `killGraceMs` after SIGKILL.
+ */
+export function stopProcessGroupLeaderFirst(
+  args: StopProcessGroupLeaderFirstArgs,
+): Promise<void> {
+  const { child, timeoutMs, killGraceMs } = args;
+  if (hasChildExited(child) && !isProcessGroupAlive(child)) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolveStop) => {
+    let settled = false;
+    let hardTimer: NodeJS.Timeout | undefined;
+    let poll: NodeJS.Timeout | undefined;
+    const finish = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(softTimer);
+      if (hardTimer !== undefined) {
+        clearTimeout(hardTimer);
+      }
+      if (poll !== undefined) {
+        clearInterval(poll);
+      }
+      resolveStop();
+    };
+    const groupGone = (): boolean =>
+      hasChildExited(child) && !isProcessGroupAlive(child);
+    const softTimer = setTimeout(() => {
+      if (groupGone()) {
+        finish();
+        return;
+      }
+      killProcessGroup({ child, signal: "SIGKILL" });
+      if (killGraceMs <= 0) {
+        finish();
+        return;
+      }
+      hardTimer = setTimeout(finish, killGraceMs);
+    }, timeoutMs);
+
+    // Group members outlive the leader: signal them and poll so the stop
+    // resolves as soon as they are gone instead of at the SIGKILL timer.
+    const stopSurvivingMembers = (): void => {
+      if (!isProcessGroupAlive(child)) {
+        finish();
+        return;
+      }
+      killProcessGroup({ child, signal: "SIGTERM" });
+      poll = setInterval(() => {
+        if (!isProcessGroupAlive(child)) {
+          finish();
+        }
+      }, PROCESS_GROUP_EXIT_POLL_MS);
+    };
+
+    if (hasChildExited(child)) {
+      stopSurvivingMembers();
+      return;
+    }
+    child.once("exit", stopSurvivingMembers);
+    child.kill("SIGTERM");
+  });
+}
+
 function isPathUnderDirectory(candidate: string, directory: string): boolean {
   // Linux reports a removed cwd as "<path> (deleted)".
   const normalized = candidate.endsWith(" (deleted)")
@@ -366,6 +457,8 @@ function signalProcesses(
 /**
  * Sends SIGTERM to every process rooted in `directory`, waits up to
  * `graceMs`, rescans, and SIGKILLs the processes that are still rooted there.
+ * Ownership-agnostic: any process of the current user with a cwd under
+ * `directory` is a target, whether or not this process started it.
  * Each signal follows a fresh scan, so a reused pid or a process that
  * appeared during shutdown never receives a stale signal. Repeats until a
  * scan finds nothing, bounded by a small round limit. Returns the processes

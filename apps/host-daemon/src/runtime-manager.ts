@@ -1138,6 +1138,13 @@ export class RuntimeManager {
    * process groups, but processes that start a new session (`setsid`,
    * `nohup`, detached dev servers) survive that and would otherwise keep
    * running with a cwd in a deleted directory.
+   *
+   * The sweep is ownership-agnostic on purpose: it kills ANY process of this
+   * user whose cwd is inside the workspace, including ones bb never started
+   * (a shell `cd`'d into the worktree, an editor terminal, a debugger). The
+   * directory is about to be deleted, so those processes lose their cwd
+   * anyway. Only managed workspaces are swept; personal workspaces stay
+   * untouched.
    */
   private async killManagedWorkspaceProcesses(
     entry: RuntimeEntry,

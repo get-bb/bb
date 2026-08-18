@@ -2,10 +2,9 @@ import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import {
-  isProcessGroupAlive,
-  killProcessGroup,
   sanitizeInheritedChildProcessEnv,
   spawnPortablePipedProcess,
+  stopProcessGroupLeaderFirst,
   supportsProcessGroups,
 } from "@bb/process-utils";
 import type {
@@ -438,29 +437,13 @@ export class RuntimeProviderProcessManager {
 
     for (const [processKey, providerProcess] of this.processes) {
       if (!hasChildProcessExited(providerProcess.child)) {
+        // Leader first: the bridge handles SIGTERM by closing its CLI
+        // sessions gracefully. Group SIGTERM/SIGKILL only on escalation.
         shutdownPromises.push(
-          new Promise<void>((resolve) => {
-            const timer = setTimeout(() => {
-              killProcessGroup({
-                child: providerProcess.child,
-                signal: "SIGKILL",
-              });
-              resolve();
-            }, 5000);
-
-            providerProcess.child.on("exit", () => {
-              // Keep the SIGKILL timer while group members outlive the leader.
-              if (isProcessGroupAlive(providerProcess.child)) {
-                return;
-              }
-              clearTimeout(timer);
-              resolve();
-            });
-
-            killProcessGroup({
-              child: providerProcess.child,
-              signal: "SIGTERM",
-            });
+          stopProcessGroupLeaderFirst({
+            child: providerProcess.child,
+            timeoutMs: 5000,
+            killGraceMs: 0,
           }),
         );
       }
@@ -677,35 +660,12 @@ export class RuntimeProviderProcessManager {
       return;
     }
 
-    await new Promise<void>((resolve) => {
-      const timeoutMs = args.timeoutMs ?? 5000;
-      const softTimer = setTimeout(() => {
-        if (
-          !hasChildProcessExited(args.providerProcess.child) ||
-          isProcessGroupAlive(args.providerProcess.child)
-        ) {
-          killProcessGroup({
-            child: args.providerProcess.child,
-            signal: "SIGKILL",
-          });
-        }
-      }, timeoutMs);
-      const hardTimer = setTimeout(resolve, timeoutMs + 1000);
-
-      args.providerProcess.child.once("exit", () => {
-        // Keep the SIGKILL timer while group members outlive the leader.
-        if (isProcessGroupAlive(args.providerProcess.child)) {
-          return;
-        }
-        clearTimeout(softTimer);
-        clearTimeout(hardTimer);
-        resolve();
-      });
-
-      killProcessGroup({
-        child: args.providerProcess.child,
-        signal: "SIGTERM",
-      });
+    // Leader first: the bridge handles SIGTERM by closing its CLI sessions
+    // gracefully. Group SIGTERM/SIGKILL only on escalation.
+    await stopProcessGroupLeaderFirst({
+      child: args.providerProcess.child,
+      timeoutMs: args.timeoutMs ?? 5000,
+      killGraceMs: 1000,
     });
   }
 
