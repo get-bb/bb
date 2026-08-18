@@ -451,8 +451,9 @@ interface PluginNavPanelRegistration {
     /**
      * Ordered, non-closable tabs shown in this page's host-owned right panel.
      * BB owns selection and persistence and always includes its native Browser
-     * and Terminal tools beside them. Components mount only while active and
-     * receive the same `subPath` as the page component.
+     * and Terminal tools beside them. Components mount only while their tab is
+     * active and the panel is open, and receive the same `subPath` as the page
+     * component.
      *
      * Experimental: see docs/api_to_audit.md.
      */

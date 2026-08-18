@@ -1,4 +1,4 @@
-import type { PluginNavPanelRightPanelViewProps } from "@get-bb/plugin-sdk/app";
+import type { PluginNavPanelProps } from "@get-bb/plugin-sdk/app";
 import {
   useActiveTasks,
   useFolders,
@@ -12,9 +12,7 @@ import { TasksSidebar } from "./sidebar.js";
 import { NewProjectDialog } from "../views/manage/index.js";
 import { useState } from "react";
 
-function TasksNavigationPanelContent({
-  subPath,
-}: PluginNavPanelRightPanelViewProps) {
+function TasksNavigationPanelContent({ subPath }: PluginNavPanelProps) {
   const route = parseTasksRoute(subPath);
   const navigation = useTasksNavigation();
   const folders = useFolders();
@@ -44,7 +42,7 @@ function TasksNavigationPanelContent({
   );
 }
 
-export function TasksNavigationPanel(props: PluginNavPanelRightPanelViewProps) {
+export function TasksNavigationPanel(props: PluginNavPanelProps) {
   return (
     <TasksRefreshProvider>
       <TasksNavigationPanelContent {...props} />

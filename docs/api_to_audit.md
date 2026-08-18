@@ -80,8 +80,8 @@ unexpected-exit recovery without feature-specific core hooks.
 
 **What it does.** Lets a nav panel declare ordered, non-closable tabs in the
 host-owned right panel. The host owns tab selection, persistence, chrome,
-Browser and Terminal tools, and only mounts the active plugin component. A
-fixed tab receives the nav page's current `subPath`; `layout: "padded"` uses
+Browser and Terminal tools, and only mounts the active plugin component while
+the panel is open. A fixed tab receives the nav page's current `subPath`; `layout: "padded"` uses
 host padding and scrolling, while `layout: "flush"` gives the component the
 whole content region. On the first visit the first declared fixed tab opens on
 wide layouts. A later user close remains closed.

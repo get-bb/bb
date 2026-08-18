@@ -1552,8 +1552,8 @@ Slot props contracts (versioned, additive-only):
   `experimental_fixedTabs` declares ordered, non-closable page views in that
   same host tab strip: `{ id, title, icon, component, layout? }`. BB opens the
   first fixed tab on the page's first wide-layout visit, but remembers a later
-  user close. Only the active fixed-tab component is mounted. It receives the
-  same `{ subPath }` as the main page. `layout: "padded"` (the default) gives it
+  user close. Only the active fixed-tab component is mounted, and closing the
+  panel unmounts it. It receives the same `{ subPath }` as the main page. `layout: "padded"` (the default) gives it
   host padding and scrolling; `layout: "flush"` gives it the full panel content
   region so it can own both. Fixed tabs add content to the shared panel; they
   do not replace its native chrome, Browser, Terminal, or keyboard commands.

@@ -469,6 +469,11 @@ describe("PluginPanelRightPanelHost", () => {
     expect(await screen.findByText("Navigation for task/123")).toBeTruthy();
     expect(screen.queryByText("Details for task/123")).toBeNull();
 
+    fireEvent.click(screen.getByRole("button", { name: "Hide right panel" }));
+    expect(screen.queryByText("Navigation for task/123")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show right panel" }));
+    expect(await screen.findByText("Navigation for task/123")).toBeTruthy();
+
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
     expect(await screen.findByText("Details for task/123")).toBeTruthy();
     expect(screen.queryByText("Navigation for task/123")).toBeNull();

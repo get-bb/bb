@@ -435,7 +435,7 @@ export function PluginPanelRightPanelHost({
         ) ?? null)
       : null;
   const fixedTabContent =
-    panel !== null && activeFixedTabRegistration !== null ? (
+    panel !== null && activeFixedTabRegistration !== null && isOpen ? (
       <PluginSlotMount
         key={`${pluginId}/${panel.id}/${activeFixedTabRegistration.id}/${panel.generation}`}
         pluginId={pluginId}

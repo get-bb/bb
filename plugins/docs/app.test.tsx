@@ -12,7 +12,7 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app"));
 const docsRegistration = app.navPanels[0]!;
-const navigationView = docsRegistration.experimental_rightPanel?.views?.[0]!;
+const navigationView = docsRegistration.experimental_fixedTabs?.[0]!;
 const navigationRegistration = {
   ...docsRegistration,
   component: navigationView.component,
@@ -140,17 +140,14 @@ describe("Docs nav panel", () => {
       id: "docs",
       title: "Docs",
       path: "docs",
-      experimental_rightPanel: {
-        defaultViewId: "navigation",
-        views: [
-          {
-            id: "navigation",
-            title: "Navigation",
-            icon: "ListView",
-            layout: "flush",
-          },
-        ],
-      },
+      experimental_fixedTabs: [
+        {
+          id: "navigation",
+          title: "Navigation",
+          icon: "ListView",
+          layout: "flush",
+        },
+      ],
     });
     expect(app.navPanels[0]?.headerContent).toBeUndefined();
     expect(app.messageDirectives).toHaveLength(1);
@@ -169,7 +166,7 @@ describe("Docs nav panel", () => {
   it("renders navigation in the BB-owned right-panel view without custom chrome", async () => {
     const slot = renderSlot(
       navigationRegistration,
-      { subPath: "personal", params: null },
+      { subPath: "personal" },
       { rpc: { listNotes: () => listNotesResult([]) } },
     );
 
@@ -194,7 +191,7 @@ describe("Docs nav panel", () => {
   it("keeps folder children together in the native navigation view", async () => {
     const slot = renderSlot(
       navigationRegistration,
-      { subPath: "personal", params: null },
+      { subPath: "personal" },
       {
         rpc: {
           listNotes: () =>
@@ -236,7 +233,7 @@ describe("Docs nav panel", () => {
   it("passes note paths with spaces to host navigation without pre-encoding", async () => {
     const slot = renderSlot(
       navigationRegistration,
-      { subPath: "personal", params: null },
+      { subPath: "personal" },
       {
         rpc: {
           listNotes: () =>
@@ -391,7 +388,7 @@ describe("Docs nav panel", () => {
     );
     const navigation = renderSlot(
       navigationRegistration,
-      { subPath: "personal/personal.md", params: null },
+      { subPath: "personal/personal.md" },
       { rpc },
     );
     await waitFor(() => expect(pending).toHaveLength(1));
@@ -410,9 +407,7 @@ describe("Docs nav panel", () => {
     ]);
 
     page.rerender(<docsRegistration.component subPath="work/work.md" />);
-    navigation.rerender(
-      <navigationView.component subPath="work/work.md" params={null} />,
-    );
+    navigation.rerender(<navigationView.component subPath="work/work.md" />);
     expect(page.queryByText("Personal document")).toBeNull();
     expect(navigation.queryByText("Personal note")).toBeNull();
     await waitFor(() => expect(pending).toHaveLength(1));
@@ -535,7 +530,7 @@ describe("Docs nav panel", () => {
     let workNotebookRequested = false;
     const slot = renderSlot(
       navigationRegistration,
-      { subPath: "personal/personal.md", params: null },
+      { subPath: "personal/personal.md" },
       {
         rpc: {
           listNotes: (rawInput: unknown) => {
@@ -562,9 +557,7 @@ describe("Docs nav panel", () => {
       ),
     );
 
-    slot.rerender(
-      <navigationView.component subPath="work/work.md" params={null} />,
-    );
+    slot.rerender(<navigationView.component subPath="work/work.md" />);
     await waitFor(() => expect(workNotebookRequested).toBe(true));
     await act(async () => {
       pendingCreate.resolve({ path: "created-in-personal.md" });
@@ -606,7 +599,7 @@ describe("Docs nav panel", () => {
     };
     const slot = renderSlot(
       navigationRegistration,
-      { subPath: "personal", params: null },
+      { subPath: "personal" },
       { rpc: { listNotes: () => unavailable } },
     );
 
@@ -856,7 +849,7 @@ describe("Docs nav panel", () => {
   it("creates a note inside the currently selected folder", async () => {
     const slot = renderSlot(
       navigationRegistration,
-      { subPath: "personal/projects/existing.md", params: null },
+      { subPath: "personal/projects/existing.md" },
       {
         rpc: {
           listNotes: () =>
@@ -901,7 +894,7 @@ describe("Docs nav panel", () => {
   it("deletes a file directly from its context menu", async () => {
     const slot = renderSlot(
       navigationRegistration,
-      { subPath: "personal/projects/old.md", params: null },
+      { subPath: "personal/projects/old.md" },
       {
         rpc: {
           listNotes: () =>
@@ -948,7 +941,7 @@ describe("Docs nav panel", () => {
   it("reorders files by dragging within a folder", async () => {
     const slot = renderSlot(
       navigationRegistration,
-      { subPath: "personal", params: null },
+      { subPath: "personal" },
       {
         rpc: {
           listNotes: () =>
@@ -994,7 +987,7 @@ describe("Docs nav panel", () => {
   it("moves a file when it is dropped onto a folder", async () => {
     const slot = renderSlot(
       navigationRegistration,
-      { subPath: "personal/old.md", params: null },
+      { subPath: "personal/old.md" },
       {
         rpc: {
           listNotes: () =>
@@ -1050,7 +1043,7 @@ describe("Docs nav panel", () => {
   it("moves a nested file back to the top level", async () => {
     const slot = renderSlot(
       navigationRegistration,
-      { subPath: "personal/projects/old.md", params: null },
+      { subPath: "personal/projects/old.md" },
       {
         rpc: {
           listNotes: () =>
@@ -1246,7 +1239,7 @@ describe("Docs nav panel", () => {
   it("filters the vault tree by note title", async () => {
     const slot = renderSlot(
       navigationRegistration,
-      { subPath: "personal", params: null },
+      { subPath: "personal" },
       {
         rpc: {
           listNotes: () =>

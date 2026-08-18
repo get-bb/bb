@@ -626,8 +626,7 @@ function refreshNotebookStore(
   store: NotebookStore,
   rpc: DocsRpcClient,
 ): Promise<void> {
-  if (notebookStores.get(store.vaultId) !== store)
-    return Promise.resolve();
+  if (notebookStores.get(store.vaultId) !== store) return Promise.resolve();
   if (store.inFlight) return store.inFlight;
   const requestId = ++store.requestId;
   const request = rpc
@@ -2171,18 +2170,15 @@ export default definePluginApp((app) => {
     icon: "FileText",
     path: "docs",
     component: NotesPanel,
-    experimental_rightPanel: {
-      views: [
-        {
-          id: "navigation",
-          title: "Navigation",
-          icon: "ListView",
-          component: NotesNavigationPanel,
-          layout: "flush",
-        },
-      ],
-      defaultViewId: "navigation",
-    },
+    experimental_fixedTabs: [
+      {
+        id: "navigation",
+        title: "Navigation",
+        icon: "ListView",
+        component: NotesNavigationPanel,
+        layout: "flush",
+      },
+    ],
   });
   app.slots.threadPanelAction({
     id: "document",

@@ -25,7 +25,7 @@ const { pagerPosition } = await import("./topbar.js");
 const { loadViewMode } = await import("./view-preference.js");
 
 const tasksRegistration = app.navPanels[0]!;
-const navigationView = tasksRegistration.experimental_rightPanel?.views?.[0]!;
+const navigationView = tasksRegistration.experimental_fixedTabs?.[0]!;
 const navigationRegistration = {
   ...tasksRegistration,
   component: navigationView.component,
@@ -260,18 +260,15 @@ describe("task pager", () => {
 });
 
 describe("tasks app shell", () => {
-  it("registers navigation as the default BB-owned right-panel view", () => {
-    expect(tasksRegistration.experimental_rightPanel).toMatchObject({
-      defaultViewId: "navigation",
-      views: [
-        {
-          id: "navigation",
-          title: "Navigation",
-          icon: "ListView",
-          layout: "flush",
-        },
-      ],
-    });
+  it("registers navigation as a BB-owned fixed panel tab", () => {
+    expect(tasksRegistration.experimental_fixedTabs).toMatchObject([
+      {
+        id: "navigation",
+        title: "Navigation",
+        icon: "ListView",
+        layout: "flush",
+      },
+    ]);
   });
 
   it("does not treat the first connection as a reconnect", async () => {

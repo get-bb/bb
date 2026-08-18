@@ -12,18 +12,15 @@ export default definePluginApp((app) => {
     path: "tasks",
     component: TasksAppShell,
     experimental_sidebarAccessory: TasksSidebarAccessory,
-    experimental_rightPanel: {
-      views: [
-        {
-          id: "navigation",
-          title: "Navigation",
-          icon: "ListView",
-          component: TasksNavigationPanel,
-          layout: "flush",
-        },
-      ],
-      defaultViewId: "navigation",
-    },
+    experimental_fixedTabs: [
+      {
+        id: "navigation",
+        title: "Navigation",
+        icon: "ListView",
+        component: TasksNavigationPanel,
+        layout: "flush",
+      },
+    ],
   });
   app.slots.threadPanelAction({
     id: "task",
