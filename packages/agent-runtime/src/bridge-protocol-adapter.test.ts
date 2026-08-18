@@ -390,3 +390,164 @@ describe("inbound request decoding", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Provider-native id translation (thread/delta bridges)
+// ---------------------------------------------------------------------------
+
+function feedDeltas(
+  adapter: ReturnType<typeof makeAdapter>,
+  threadId: string,
+  deltas: unknown[],
+): ThreadEvent[] {
+  return adapter.translateEvent({
+    jsonrpc: "2.0",
+    method: "thread/delta",
+    params: { threadId, deltas },
+  });
+}
+
+describe("provider-native id translation", () => {
+  it("reverse-maps steer/interrupt turn ids to provider-native ids", () => {
+    const adapter = makeAdapter();
+    const [started] = feedDeltas(adapter, "t_1", [
+      { kind: "turn.open", providerTurnId: "codex-turn-1" },
+    ]);
+    const bbTurnId =
+      started?.type === "turn/started" && started.scope.kind === "turn"
+        ? started.scope.turnId
+        : "";
+    expect(bbTurnId).not.toBe("");
+
+    const steer = adapter.buildCommandPlan({
+      type: "turn/steer",
+      threadId: "t_1",
+      providerThreadId: "p_1",
+      expectedTurnId: bbTurnId,
+      input: [],
+      clientRequestId: "creq_abcdefghjk",
+      options: fullModeOptions,
+    });
+    expect(steer).toMatchObject({
+      params: { expectedTurnId: "codex-turn-1" },
+    });
+
+    const stop = adapter.buildCommandPlan({
+      type: "thread/stop",
+      threadId: "t_1",
+      providerThreadId: "p_1",
+      activeTurnId: bbTurnId,
+    });
+    expect(stop).toMatchObject({
+      params: { intent: "interrupt", activeTurnId: "codex-turn-1" },
+    });
+
+    // No mapping (thread/event bridges, pi/acp): the bb id passes through.
+    const passthrough = adapter.buildCommandPlan({
+      type: "turn/steer",
+      threadId: "t_1",
+      providerThreadId: "p_1",
+      expectedTurnId: "unmapped-turn",
+      input: [],
+      clientRequestId: "creq_abcdefghjk",
+      options: fullModeOptions,
+    });
+    expect(passthrough).toMatchObject({
+      params: { expectedTurnId: "unmapped-turn" },
+    });
+  });
+
+  it("maps providerNativeIds interaction requests onto assembler-minted ids", () => {
+    const adapter = makeAdapter();
+    const events = feedDeltas(adapter, "t_1", [
+      { kind: "turn.open", providerTurnId: "codex-turn-1" },
+      {
+        kind: "item.open",
+        key: { providerItemId: "cmd-1" },
+        item: { type: "command", command: "git status", cwd: "/repo" },
+        providerTurnId: "codex-turn-1",
+      },
+    ]);
+    const bbItemId =
+      events[1]?.type === "item/started" ? events[1].item.id : "";
+    const bbTurnId =
+      events[0]?.type === "turn/started" && events[0].scope.kind === "turn"
+        ? events[0].scope.turnId
+        : "";
+
+    const params = {
+      providerThreadId: "p_1",
+      threadId: "t_1",
+      turnId: "codex-turn-1",
+      providerNativeIds: true,
+      payload: {
+        kind: "approval",
+        subject: {
+          kind: "command",
+          itemId: "cmd-1",
+          command: "git status",
+          cwd: null,
+          actions: [],
+          sessionGrant: null,
+        },
+        reason: null,
+        availableDecisions: ["allow_once", "deny"],
+      },
+    };
+    const decoded = adapter.decodeInteractiveRequest?.({
+      id: 11,
+      method: "interaction/request",
+      params,
+    });
+    expect(decoded).toMatchObject({
+      turnId: bbTurnId,
+      payload: { subject: { itemId: bbItemId } },
+    });
+
+    // Without the marker the ids pass through untouched (acp keeps its
+    // provider-native approval subject ids — app-visible behavior unchanged).
+    const unmarked = adapter.decodeInteractiveRequest?.({
+      id: 12,
+      method: "interaction/request",
+      params: { ...params, providerNativeIds: undefined },
+    });
+    expect(unmarked).toMatchObject({
+      turnId: "codex-turn-1",
+      payload: { subject: { itemId: "cmd-1" } },
+    });
+  });
+
+  it("maps providerNativeIds tool-call requests onto assembler-minted ids", () => {
+    const adapter = makeAdapter();
+    const events = feedDeltas(adapter, "t_1", [
+      { kind: "turn.open", providerTurnId: "codex-turn-1" },
+      {
+        kind: "item.open",
+        key: { providerItemId: "dyn-1" },
+        item: { type: "tool", tool: "bb_test_ping" },
+        providerTurnId: "codex-turn-1",
+      },
+    ]);
+    const bbItemId =
+      events[1]?.type === "item/started" ? events[1].item.id : "";
+    const bbTurnId =
+      events[0]?.type === "turn/started" && events[0].scope.kind === "turn"
+        ? events[0].scope.turnId
+        : "";
+
+    const decoded = adapter.decodeToolCallRequest({
+      id: 13,
+      method: "item/tool/call",
+      params: {
+        providerThreadId: "p_1",
+        threadId: "t_1",
+        turnId: "codex-turn-1",
+        callId: "dyn-1",
+        tool: "bb_test_ping",
+        arguments: {},
+        providerNativeIds: true,
+      },
+    });
+    expect(decoded).toMatchObject({ turnId: bbTurnId, callId: bbItemId });
+  });
+});

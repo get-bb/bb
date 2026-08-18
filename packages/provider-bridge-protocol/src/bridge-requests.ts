@@ -64,6 +64,15 @@ export const interactionRequestParamsSchema = z
     threadId: z.string().min(1).optional(),
     turnId: z.union([z.string().min(1), z.null()]),
     payload: pendingInteractionPayloadSchema,
+    /**
+     * The request's turn id and approval-subject item ids are in the
+     * provider's native id space (a `thread/delta` bridge holds no bb ids):
+     * the runtime adapter translates them through the delta assembler's maps
+     * before the interaction reaches the app. Omission means the ids are
+     * already app-visible (thread/event bridges, and delta bridges whose
+     * approval subjects never referenced timeline ids).
+     */
+    providerNativeIds: z.boolean().optional(),
   })
   .passthrough();
 

@@ -118,7 +118,18 @@ const interactionRequestParamsSchema = z.object({
   threadId: z.string().min(1).optional(),
   turnId: z.union([z.string().min(1), z.null()]),
   payload: pendingInteractionPayloadSchema,
+  /**
+   * The request's ids are provider-native (a thread/delta bridge holds no bb
+   * ids): translate the turn id and approval-subject item ids through the
+   * delta assembler's maps so the app sees the timeline's own ids.
+   */
+  providerNativeIds: z.boolean().optional(),
 });
+
+/** The provider-native-id marker on a normalized tool-call request. */
+const providerNativeIdsParamsSchema = z
+  .object({ providerNativeIds: z.boolean().optional() })
+  .passthrough();
 
 /**
  * Execution options → canonical wire options. Core execution fields map
@@ -383,7 +394,16 @@ export function createBridgeProtocolAdapter(
             params: {
               threadId: command.threadId,
               providerThreadId: command.providerThreadId,
-              expectedTurnId: command.expectedTurnId,
+              // Central minting made turn ids runtime-owned: a delta bridge
+              // receives its provider's own turn id back (the assembler's
+              // reverse map) and does zero id translation. thread/event
+              // bridges (and delta bridges without native turn ids) have no
+              // mapping, so the bb id passes through unchanged.
+              expectedTurnId:
+                deltaAssembler.getProviderTurnId(
+                  command.threadId,
+                  command.expectedTurnId,
+                ) ?? command.expectedTurnId,
               input: command.input,
               clientRequestId: command.clientRequestId,
               options: toBridgeWireOptions(
@@ -404,7 +424,14 @@ export function createBridgeProtocolAdapter(
               // a release. Phase 2a threads the daemon's explicit intent
               // through instead.
               intent: command.activeTurnId !== null ? "interrupt" : "release",
-              activeTurnId: command.activeTurnId,
+              // Same reverse mapping as turn/steer's expectedTurnId.
+              activeTurnId:
+                command.activeTurnId === null
+                  ? null
+                  : (deltaAssembler.getProviderTurnId(
+                      command.threadId,
+                      command.activeTurnId,
+                    ) ?? command.activeTurnId),
             },
           };
         case "thread/discard":
@@ -599,11 +626,37 @@ export function createBridgeProtocolAdapter(
       if (typeof request.id !== "string" && typeof request.id !== "number") {
         return null;
       }
-      return decodeNormalizedProviderToolCallRequest(
+      const decoded = decodeNormalizedProviderToolCallRequest(
         request.id,
         request.method,
         request.params,
       );
+      if (decoded === null) {
+        return decoded;
+      }
+      const marker = providerNativeIdsParamsSchema.safeParse(request.params);
+      if (
+        marker.success !== true ||
+        marker.data.providerNativeIds !== true ||
+        decoded.threadId === undefined
+      ) {
+        return decoded;
+      }
+      // Provider-native ids: translate through the assembler's maps so the
+      // runtime routes against the timeline's own turn/item ids. Unknown ids
+      // pass through unchanged (the maps only miss when the id never appeared
+      // on the thread's delta stream).
+      return {
+        ...decoded,
+        turnId:
+          decoded.turnId === null
+            ? null
+            : (deltaAssembler.getBbTurnId(decoded.threadId, decoded.turnId) ??
+              decoded.turnId),
+        callId:
+          deltaAssembler.getBbItemId(decoded.threadId, decoded.callId) ??
+          decoded.callId,
+      };
     },
 
     decodeInteractiveRequest(
@@ -619,13 +672,36 @@ export function createBridgeProtocolAdapter(
       if (!parsed.success) {
         return null;
       }
+      const { providerNativeIds, threadId, ...decoded } = parsed.data;
+      let turnId = decoded.turnId;
+      let payload = decoded.payload;
+      if (providerNativeIds === true && threadId !== undefined) {
+        // Provider-native ids: the approval subject must reference the item
+        // id the app's timeline carries (the server materializes the approval
+        // row under subject.itemId), and the turn id must be the assembler's.
+        turnId =
+          turnId === null
+            ? null
+            : (deltaAssembler.getBbTurnId(threadId, turnId) ?? turnId);
+        if (payload.kind === "approval") {
+          payload = {
+            ...payload,
+            subject: {
+              ...payload.subject,
+              itemId:
+                deltaAssembler.getBbItemId(threadId, payload.subject.itemId) ??
+                payload.subject.itemId,
+            },
+          };
+        }
+      }
       return {
         requestId: request.id,
         method: request.method,
-        providerThreadId: parsed.data.providerThreadId,
-        turnId: parsed.data.turnId,
-        payload: parsed.data.payload,
-        ...(parsed.data.threadId ? { threadId: parsed.data.threadId } : {}),
+        providerThreadId: decoded.providerThreadId,
+        turnId,
+        payload,
+        ...(threadId ? { threadId } : {}),
       };
     },
 
