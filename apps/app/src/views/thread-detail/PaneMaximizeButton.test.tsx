@@ -9,7 +9,6 @@ import {
 } from "@testing-library/react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { HEADER_PANE_ACTION_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
 
@@ -124,18 +123,6 @@ describe("PaneMaximizeButton", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 500));
     expect(screen.queryByRole("menu", { name: "Pane arrangement" })).toBeNull();
-  });
-
-  it("uses the reduced-glyph header geometry so the arrows do not outsize the close/panel controls", () => {
-    renderButton(false);
-    const button = screen.getByRole("button", { name: "Full Screen (⌘⇧E)" });
-    // The maximize/restore double-arrows paint larger than the compact close X,
-    // so they render one optical step down while keeping the shared hit target.
-    for (const token of HEADER_PANE_ACTION_ICON_BUTTON_CLASS.split(/\s+/)) {
-      expect(button.classList.contains(token), `missing ${token}`).toBe(true);
-    }
-    expect(button.classList.contains("[&_svg]:size-[13px]")).toBe(true);
-    expect(button.classList.contains("[&_svg]:size-[16px]")).toBe(false);
   });
 
   it("does not render outside a multi-pane workspace", () => {

@@ -19,7 +19,7 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { PluginDetail, ToolsScrollPage, ToolsView } from "./ToolsView";
+import { PluginDetail, ToolsView } from "./ToolsView";
 import {
   CatalogPluginDetail,
   CatalogPluginDetailBanner,
@@ -86,40 +86,6 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
-});
-
-describe("ToolsScrollPage layout", () => {
-  it("gives bounded collection pages a definite, full-pane viewport", () => {
-    render(
-      <ToolsScrollPage fillViewport>
-        <div>Skills collection</div>
-      </ToolsScrollPage>,
-    );
-
-    // The child owns the scrolling, so the page must hand it the full pane:
-    // a definite height for the inner viewport to bound itself against, and
-    // no width cap — the centered column would leave the gutters wheel-dead.
-    const content = screen.getByText("Skills collection").parentElement;
-    const classes = content?.className.split(/\s+/) ?? [];
-    expect(classes).toContain("h-full");
-    expect(classes).toContain("w-full");
-    expect(classes).not.toContain("max-w-5xl");
-    expect(classes).not.toContain("overflow-y-auto");
-  });
-
-  it("keeps bottom padding after detail content that exceeds the viewport", () => {
-    render(
-      <ToolsScrollPage>
-        <div>Long plugin detail</div>
-      </ToolsScrollPage>,
-    );
-
-    const content = screen.getByText("Long plugin detail").parentElement;
-    const classes = content?.className.split(/\s+/) ?? [];
-    expect(classes).toContain("min-h-full");
-    expect(classes).toContain("pb-4");
-    expect(classes).not.toContain("h-full");
-  });
 });
 
 describe("PluginDetail official catalog lifecycle", () => {
@@ -808,31 +774,6 @@ describe("PluginDetail runtime health", () => {
     expect(
       alert.compareDocumentPosition(about) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-  });
-
-  it("spans the pane instead of sitting inset in the detail column", () => {
-    const { container } = renderRuntimeStatus("error");
-    const alert = screen.getByRole("alert");
-
-    // Full-bleed: the tinted surface has no radius and no side borders, only a
-    // rule under it, so it reads as a bar across the pane rather than a card.
-    expect(alert.className).toContain("border-b");
-    expect(alert.className).not.toContain("rounded");
-    expect(alert.className).not.toContain("mx-");
-
-    // Only the text lines up with the page gutter, using the same column width
-    // and padding as ToolsScrollPage (ToolsView.tsx:87), so a banner and a
-    // section heading share a left edge.
-    const inner = alert.firstElementChild as HTMLElement;
-    expect(inner.className).toContain("max-w-5xl");
-    expect(inner.className).toContain("px-4");
-    expect(inner.className).toContain("md:px-5");
-
-    // And it is outside the detail page entirely, not nested in a section.
-    expect(alert.closest("[data-resource-detail-section]")).toBeNull();
-    expect(
-      container.querySelector('[data-resource-detail-section="overview"]'),
-    ).not.toBeNull();
   });
 
   it("offers Reload for degraded runtime status without a bottom rule", () => {

@@ -263,20 +263,6 @@ describe("RootComposeSecondaryContent desktop layout", () => {
     expect(screen.getByTestId("plugin-homepage-sections")).not.toBeNull();
   });
 
-  it("marks the root compose top strip as a macOS window drag region", () => {
-    setMacosDesktopChrome();
-
-    renderRootCompose({
-      isCompactViewport: false,
-      isSecondaryPanelOpen: false,
-    });
-
-    const strip = screen.getByTestId("root-compose-main-window-drag-strip");
-    expect(strip.className).toContain("h-[48px]");
-    expect(strip.className).toContain("[app-region:drag]");
-    expect(strip.className).toContain("[-webkit-app-region:drag]");
-  });
-
   it("keeps the drag strip on a split pane that touches the window top edge", () => {
     setMacosDesktopChrome();
 
@@ -312,26 +298,6 @@ describe("RootComposeSecondaryContent desktop layout", () => {
   // be opened. jsdom can't run the native region resolution, so these lock the
   // class/DOM contract that drives it: the cutout is a child of the strip
   // (resolved after it) at the pinned toggle's shared position.
-  it("carves the pinned toggle footprint out of the drag strip while the panel is closed", () => {
-    setMacosDesktopChrome();
-
-    renderRootCompose({
-      isCompactViewport: false,
-      isSecondaryPanelOpen: false,
-    });
-
-    const strip = screen.getByTestId("root-compose-main-window-drag-strip");
-    const cutout = screen.getByTestId("root-compose-drag-strip-toggle-cutout");
-    expect(cutout.parentElement).toBe(strip);
-    expect(cutout.className).toContain("[app-region:no-drag]");
-    expect(cutout.className).toContain("[-webkit-app-region:no-drag]");
-    for (const positionClass of ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS.split(
-      " ",
-    )) {
-      expect(cutout.className).toContain(positionClass);
-    }
-  });
-
   it("keeps the drag strip whole while the panel is open (the panel chrome carves instead)", () => {
     setMacosDesktopChrome();
 

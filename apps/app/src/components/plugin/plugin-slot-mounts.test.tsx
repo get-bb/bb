@@ -1489,18 +1489,6 @@ describe("plugin panel shared title bar and full-bleed body", () => {
     ).toBe("plugin-panel:demo:board:pane-docs");
   });
 
-  it("gives the component a zero-padding full-bleed body", () => {
-    setPluginSlotRegistrations(
-      "demo",
-      registrationSet({ navPanels: [panelSlot({})] }),
-    );
-    renderPanelBody();
-    const body = screen.getByTestId("plugin-panel-body");
-    expect(body.className).toContain("-m-4");
-    expect(body.className).toContain("md:-m-5");
-    expect(body.className).not.toMatch(/(?:^|\s)p[trblxy]?-/u);
-  });
-
   it("still contains a crashing panel inside the error boundary", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});

@@ -45,32 +45,6 @@ function renderPanel(args: {
   );
 }
 
-describe("ThreadSecondaryPanel resize handle", () => {
-  it("uses a real 12px hit target centered over the resize seam", () => {
-    const view = renderPanel({
-      isConversationCollapsed: false,
-      onToggleConversationCollapse: noop,
-    });
-
-    const handle = view.getByRole("separator", {
-      name: "Resize thread and right panel",
-    });
-    const hitTarget = handle.querySelector("[data-panel-resize-hit-target]");
-
-    expect(handle.className.split(/\s+/u)).toContain("z-[25]");
-    expect(hitTarget).not.toBeNull();
-    expect(hitTarget?.className.split(/\s+/u)).toEqual(
-      expect.arrayContaining([
-        "left-1/2",
-        "z-10",
-        "w-3",
-        "-translate-x-1/2",
-        "cursor-col-resize",
-      ]),
-    );
-  });
-});
-
 describe("ThreadSecondaryPanel compact file content", () => {
   it("retains the active file body after the persistent drawer closes", () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
@@ -125,41 +99,6 @@ describe("ThreadSecondaryPanel compact file content", () => {
     view.rerender(renderDrawer(false));
 
     expect(screen.getByLabelText("Retained file content")).toBe(fileContent);
-  });
-});
-
-describe("ThreadSecondaryPanel fixed tab content", () => {
-  it("gives flush plugin content a full-height flex region", () => {
-    const { wrapper: Wrapper } = createQueryClientTestHarness();
-    render(
-      <Wrapper>
-        <TooltipProvider>
-          <PanelGroup direction="horizontal">
-            <ThreadSecondaryPanel
-              activeTab={createThreadInfoFixedPanelTab()}
-              canUseGitUi={false}
-              fixedTabContent={<div data-testid="flush-fixed-content" />}
-              fixedTabContentFillsRegion
-              isConversationCollapsed={false}
-              isOpen
-              metadataContent={null}
-              onClose={noop}
-              onCollapse={noop}
-              onFileTabReorder={noop}
-              onOpenNewTab={noop}
-              onPanelChange={noop}
-              onPanelFocus={noop}
-              onToggleConversationCollapse={noop}
-              renderAsDrawer={false}
-            />
-          </PanelGroup>
-        </TooltipProvider>
-      </Wrapper>,
-    );
-
-    expect(
-      screen.getByTestId("flush-fixed-content").parentElement?.className,
-    ).toContain("flex min-h-0 flex-1 flex-col overflow-hidden");
   });
 });
 

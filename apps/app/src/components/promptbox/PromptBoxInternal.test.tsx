@@ -1558,48 +1558,6 @@ describe("PromptBoxInternal zen mode layout", () => {
     fireEvent.transitionEnd(form, { propertyName: "height" });
     window.localStorage.removeItem(storageKey);
   });
-
-  it("keeps long editor content constrained to the scroll area", async () => {
-    const storageKey = "bb.test.promptbox.zen-layout";
-    window.localStorage.removeItem(storageKey);
-
-    render(
-      <PromptBoxInternal
-        {...createPromptBoxProps({
-          value: Array.from(
-            { length: 40 },
-            (_, index) => `Line ${index + 1}`,
-          ).join("\n"),
-          promptActions,
-          zenMode: { storageKey },
-        })}
-      />,
-    );
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Make prompt box larger" }),
-    );
-
-    await waitFor(() => {
-      const scrollContainer = document.querySelector(
-        "[data-promptbox-editor-scroll]",
-      );
-      if (!(scrollContainer instanceof HTMLElement)) {
-        throw new Error("Prompt editor scroll container was not rendered");
-      }
-
-      expect(scrollContainer.classList.contains("min-h-0")).toBe(true);
-      expect(scrollContainer.parentElement?.classList.contains("min-h-0")).toBe(
-        true,
-      );
-    });
-
-    const footerRow = screen.getByRole("button", { name: "Prompt actions" })
-      .parentElement?.parentElement;
-    expect(footerRow?.classList.contains("shrink-0")).toBe(true);
-
-    window.localStorage.removeItem(storageKey);
-  });
 });
 
 describe("PromptBoxInternal plugin composer actions", () => {

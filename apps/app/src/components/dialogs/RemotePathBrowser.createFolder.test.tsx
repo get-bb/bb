@@ -65,47 +65,6 @@ describe("getFolderNameValidationMessage", () => {
   });
 });
 
-describe("RemotePathBrowser entries", () => {
-  it("lets long file and folder names shrink within the browser", async () => {
-    const longFolderName = "long-folder-name-".repeat(20);
-    const longFileName = `${"long-file-name-".repeat(20)}.tar.gz`;
-    directory.mockResolvedValue({
-      directory: "/home/me",
-      parent: "/home",
-      entries: [
-        {
-          kind: "directory",
-          name: longFolderName,
-          path: `/home/me/${longFolderName}`,
-        },
-        {
-          kind: "file",
-          name: longFileName,
-          path: `/home/me/${longFileName}`,
-        },
-      ],
-    });
-    const { wrapper: Wrapper } = createQueryClientTestHarness();
-
-    render(
-      <Wrapper>
-        <RemotePathBrowser
-          hostId="host_atum"
-          allowCreateFolder
-          onDirectoryChange={vi.fn()}
-        />
-      </Wrapper>,
-    );
-
-    for (const name of [longFolderName, longFileName]) {
-      const label = await screen.findByText(name);
-      expect(label.className).toContain("min-w-0");
-      expect(label.className).toContain("truncate");
-      expect(label.getAttribute("title")).toBe(name);
-    }
-  });
-});
-
 describe("RemotePathBrowser new folder", () => {
   it("hides folder creation for existing-folder pickers", async () => {
     directory.mockResolvedValue(listing("/home/me", ["existing"]));

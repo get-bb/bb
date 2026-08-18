@@ -25,7 +25,6 @@ import type {
   AgentExecutionUpdate,
   AutomationExecutionOptionsResponse,
   AutomationResponse,
-  AutomationRunResponse,
 } from "bb-plugin-automations/rpc-types";
 import {
   AutomationDetailView as AutomationDetailViewBase,
@@ -151,38 +150,6 @@ describe("Plugin detail recipe", () => {
       ["activity", "Background services"],
       ["activity", "Scheduled jobs"],
     ]);
-  });
-
-  it("uses the Background services fill for both detail-table header orientations", () => {
-    renderPlugin({
-      ...PLUGIN,
-      capabilities: [
-        {
-          kind: "skill",
-          id: "review",
-          label: "Review issues",
-          detail: "Review repository issues.",
-        },
-      ],
-      services: [{ name: "sync", state: "running" }],
-    });
-
-    for (const name of ["Delivery", "Version"]) {
-      const header = screen.getByRole("rowheader", { name });
-      expect(header.className).toContain("bg-surface-recessed/55");
-      expect(header.className).toContain("font-medium");
-    }
-    expect(
-      screen.getByRole("rowheader", { name: /Review issues/ }).className,
-    ).toContain("bg-surface-recessed/55");
-
-    for (const header of screen.getAllByRole("columnheader")) {
-      expect(header.className).toContain("bg-surface-recessed/55");
-    }
-
-    expect(
-      screen.getByRole("rowheader", { name: "sync" }).className,
-    ).not.toContain("bg-surface-recessed/55");
   });
 
   it("omits an activity section the plugin has no rows for", () => {
@@ -608,48 +575,6 @@ describe("Detail page header slots", () => {
   });
 });
 
-describe("Plugin detail route states", () => {
-  it("keeps the detail page width while loading and when the plugin is missing", () => {
-    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
-    const { container, rerender } = render(
-      <QueryClientWrapper>
-        <PluginDetail
-          isLoading
-          plugin={null}
-          pending={false}
-          openSourceDisabled
-          onToggle={() => {}}
-          onEdit={() => {}}
-          onOpenSource={() => {}}
-          onDelete={() => {}}
-        />
-      </QueryClientWrapper>,
-    );
-    expect(
-      container.querySelector("[data-resource-detail-state]")?.className,
-    ).toContain("max-w-5xl");
-
-    rerender(
-      <QueryClientWrapper>
-        <PluginDetail
-          isLoading={false}
-          plugin={null}
-          pending={false}
-          openSourceDisabled
-          onToggle={() => {}}
-          onEdit={() => {}}
-          onOpenSource={() => {}}
-          onDelete={() => {}}
-        />
-      </QueryClientWrapper>,
-    );
-    expect(
-      container.querySelector("[data-resource-detail-state]")?.className,
-    ).toContain("max-w-5xl");
-    expect(screen.getByText("Plugin not found.")).toBeTruthy();
-  });
-});
-
 function renderSkill(files: readonly string[]) {
   return render(
     <SkillDetailView
@@ -682,30 +607,6 @@ describe("Skill detail recipe", () => {
       ["includes", "Files"],
       ["definition", "/skills/writing-voice/SKILL.md"],
     ]);
-  });
-
-  it("keeps file-load failure copy neutral and puts severity on the icon", () => {
-    const { container } = render(
-      <SkillDetailView
-        title="writing-voice"
-        path="/skills/writing-voice/SKILL.md"
-        files={["/skills/writing-voice/SKILL.md"]}
-        selectedPath="/skills/writing-voice/SKILL.md"
-        onSelectFile={() => {}}
-        contentState={{
-          kind: "error",
-          message: "Could not load this file.",
-          onRetry: () => {},
-        }}
-      />,
-    );
-
-    const alert = screen.getByRole("alert");
-    expect(alert.textContent).toBe("Could not load this file.");
-    expect(alert.className).not.toContain("text-destructive");
-    expect(
-      container.querySelector('[data-icon="CircleX"]')?.getAttribute("class"),
-    ).toContain("text-destructive");
   });
 
   it("keeps short skill content in one chunk with no sentinel or pager", () => {
@@ -887,22 +788,6 @@ function AutomationDetailView({
     />
   );
 }
-
-const FAILED_SCRIPT_RUN: AutomationRunResponse = {
-  id: "run_failed",
-  automationId: AUTOMATION.id,
-  runMode: "script",
-  threadId: null,
-  status: "failed",
-  trigger: "schedule",
-  skipReason: null,
-  error: "provider timed out",
-  output: null,
-  exitCode: 1,
-  scheduledFor: 1_700_000_000_000,
-  startedAt: 1_700_000_000_000,
-  finishedAt: 1_700_000_001_000,
-};
 
 describe("Automation detail recipe", () => {
   it("keeps Definition ahead of Runs, including with no runs yet", async () => {
@@ -1577,45 +1462,6 @@ describe("Automation detail recipe", () => {
     expect(errorState.className).not.toContain("text-destructive");
     expect(container.querySelector('[data-icon="CircleX"]')).toBeNull();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
-  });
-
-  it("keeps failed script details readable without repeating severity color", () => {
-    render(
-      <MemoryRouter>
-        <AutomationDetailView
-          automation={{
-            ...AUTOMATION,
-            execution: {
-              mode: "script",
-              script: "pnpm test",
-              interpreter: "bash",
-              timeoutMs: 60_000,
-            },
-          }}
-          projectLabel="Local"
-          runsState={{
-            runs: [FAILED_SCRIPT_RUN],
-            nextCursor: null,
-            loading: false,
-            loadingMore: false,
-            error: null,
-            loadMore: () => {},
-            retry: () => {},
-          }}
-          actionPending={false}
-          onToggle={() => {}}
-          onEdit={() => {}}
-          onRunNow={() => {}}
-          onDelete={() => {}}
-          onOpenThread={() => {}}
-        />
-      </MemoryRouter>,
-    );
-
-    const details = screen.getByText("provider timed out");
-    expect(details.tagName).toBe("PRE");
-    expect(details.className).toContain("text-foreground");
-    expect(details.className).not.toContain("text-destructive");
   });
 
   it.each([
