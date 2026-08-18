@@ -728,8 +728,8 @@ declare const instructionModeSchema: z.ZodEnum<{
 type InstructionMode = z.infer<typeof instructionModeSchema>;
 declare const permissionModeSchema: z.ZodEnum<{
     full: "full";
-    "accept-edits": "accept-edits";
     auto: "auto";
+    "accept-edits": "accept-edits";
 }>;
 type PermissionMode = z.infer<typeof permissionModeSchema>;
 declare const permissionEscalationValues: readonly ["ask", "deny"];
@@ -2235,6 +2235,7 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
         deprecation: "deprecation";
         config: "config";
         general: "general";
+        "compaction-skipped": "compaction-skipped";
     }>;
     summary: z.ZodOptional<z.ZodString>;
     details: z.ZodOptional<z.ZodString>;
@@ -3134,6 +3135,7 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
         deprecation: "deprecation";
         config: "config";
         general: "general";
+        "compaction-skipped": "compaction-skipped";
     }>;
     summary: z.ZodOptional<z.ZodString>;
     details: z.ZodOptional<z.ZodString>;
@@ -3427,8 +3429,8 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
         permissionMode: z.ZodEnum<{
             readonly: "readonly";
             full: "full";
-            "accept-edits": "accept-edits";
             auto: "auto";
+            "accept-edits": "accept-edits";
             "workspace-write": "workspace-write";
         }>;
     }, z.core.$strip>;
@@ -4310,8 +4312,8 @@ declare const initializeResultSchema: z.ZodObject<{
             checkpoint: "checkpoint";
         }>>;
         approvalEnforcedBy: z.ZodDefault<z.ZodEnum<{
-            runtime: "runtime";
             provider: "provider";
+            runtime: "runtime";
         }>>;
     }, z.core.$loose>>;
 }, z.core.$loose>;
@@ -4355,16 +4357,16 @@ declare const bridgeExecutionOptionsSchema: z.ZodIntersection<z.ZodObject<{
     permissionScope: z.ZodLiteral<"workspace">;
     approvalReviewer: z.ZodLiteral<"user">;
     permissionEscalation: z.ZodEnum<{
-        ask: "ask";
         deny: "deny";
+        ask: "ask";
     }>;
 }, z.core.$strip>, z.ZodObject<{
     permissionMode: z.ZodLiteral<"auto">;
     permissionScope: z.ZodLiteral<"workspace">;
     approvalReviewer: z.ZodLiteral<"automatic">;
     permissionEscalation: z.ZodEnum<{
-        ask: "ask";
         deny: "deny";
+        ask: "ask";
     }>;
 }, z.core.$strip>, z.ZodObject<{
     permissionMode: z.ZodLiteral<"full">;
@@ -4508,16 +4510,16 @@ declare const threadStartParamsSchema: z.ZodObject<{
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"user">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"auto">;
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"automatic">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"full">;
@@ -4564,16 +4566,16 @@ declare const threadResumeParamsSchema: z.ZodObject<{
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"user">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"auto">;
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"automatic">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"full">;
@@ -4621,16 +4623,16 @@ declare const threadForkParamsSchema: z.ZodObject<{
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"user">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"auto">;
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"automatic">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"full">;
@@ -4788,16 +4790,16 @@ declare const turnStartParamsSchema: z.ZodObject<{
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"user">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"auto">;
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"automatic">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"full">;
@@ -4916,16 +4918,16 @@ declare const turnSteerParamsSchema: z.ZodObject<{
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"user">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"auto">;
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"automatic">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"full">;
@@ -5828,6 +5830,7 @@ declare const threadEventNotificationSchema: z.ZodObject<{
             deprecation: "deprecation";
             config: "config";
             general: "general";
+            "compaction-skipped": "compaction-skipped";
         }>;
         summary: z.ZodOptional<z.ZodString>;
         details: z.ZodOptional<z.ZodString>;
@@ -5838,8 +5841,8 @@ declare const threadEventNotificationSchema: z.ZodObject<{
         originalModel: z.ZodString;
         fallbackModel: z.ZodString;
         reason: z.ZodEnum<{
-            provider: "provider";
             refusal: "refusal";
+            provider: "provider";
         }>;
         message: z.ZodString;
     }, z.core.$strip>, z.ZodObject<{
@@ -6120,8 +6123,8 @@ declare const threadEventNotificationSchema: z.ZodObject<{
             }>;
             permissionMode: z.ZodEnum<{
                 readonly: "readonly";
-                "accept-edits": "accept-edits";
                 auto: "auto";
+                "accept-edits": "accept-edits";
                 full: "full";
                 "workspace-write": "workspace-write";
             }>;

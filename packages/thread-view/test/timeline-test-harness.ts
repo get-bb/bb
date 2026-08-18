@@ -228,6 +228,7 @@ interface ProviderErrorArgs extends ProviderTurnEventOptions {
 }
 
 interface ProviderWarningArgs extends ProviderTurnEventOptions {
+  category?: ThreadEventWarningCategory;
   details?: string;
   summary?: string;
 }
@@ -828,7 +829,7 @@ export function createTimelineEventFactory(
         type: "provider/warning",
         data: {
           ...providerFields(args),
-          category: "general",
+          category: args.category ?? "general",
           summary: args.summary,
           details: args.details,
         },

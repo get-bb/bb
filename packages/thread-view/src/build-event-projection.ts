@@ -597,10 +597,13 @@ function getCompactionTurnFinalization(
       detail: decoded.detail ?? decoded.message,
     };
   }
-  // A provider warning inside a compaction turn means the provider declined
-  // to compact (for example pi's "Nothing to compact"): the row settles as a
-  // skipped compaction instead of staying pending forever.
-  if (decoded.type === "provider/warning") {
+  // The provider declined a requested compaction (for example pi's "Nothing
+  // to compact"): the row settles as a skipped compaction instead of staying
+  // pending forever. Other warnings inside the turn leave the row alone.
+  if (
+    decoded.type === "provider/warning" &&
+    decoded.category === "compaction-skipped"
+  ) {
     return {
       status: "completed",
       detail: decoded.details ?? decoded.summary,

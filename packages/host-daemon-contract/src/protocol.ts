@@ -1,3 +1,8 @@
+// Version 135 adds the `compaction-skipped` provider warning category. The Pi
+// bridge now reports a refused manual compaction ("Nothing to compact") as
+// that warning plus a completed turn instead of a failed turn. An older daemon
+// still sends the failed turn, so the server would move the thread to error.
+//
 // Version 134 keeps replayed Codex usage snapshots off unknown turn ids: the
 // Codex bridge drops the turn-only token usage that codex replays on
 // thread/resume and thread/fork and emits the replayed context-window usage
@@ -39,7 +44,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 134 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 135 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

@@ -233,6 +233,11 @@ export const threadEventWarningCategorySchema = z.enum([
   "deprecation",
   "config",
   "general",
+  /**
+   * The provider declined a compaction that bb asked for because there was
+   * nothing to compact. The warning settles the pending compaction row.
+   */
+  "compaction-skipped",
 ]);
 export type ThreadEventWarningCategory = z.infer<
   typeof threadEventWarningCategorySchema

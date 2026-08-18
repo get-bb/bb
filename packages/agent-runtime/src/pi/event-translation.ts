@@ -782,7 +782,7 @@ export function createPiEventTranslator(
             threadId,
             providerThreadId: "",
             scope: turnScope(turnId),
-            category: "general",
+            category: "compaction-skipped",
             summary: "Context compaction skipped",
             details: compactionNoopDetail,
           });

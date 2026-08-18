@@ -520,7 +520,7 @@ describe("pi event translation", () => {
         expect.objectContaining({
           type: "provider/warning",
           scope: turnScope("turn-1"),
-          category: "general",
+          category: "compaction-skipped",
           summary: "Context compaction skipped",
           details: errorMessage,
         }),
