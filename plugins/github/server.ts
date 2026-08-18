@@ -832,16 +832,19 @@ export default async function plugin(bb: BbPluginApi) {
             }`,
           );
         }
+        // syncAll() can still be running when the host aborts the service.
+        // AbortSignal does not replay that event to a listener added later.
+        if (signal.aborted) break;
         await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, delayMs);
-          signal.addEventListener(
-            "abort",
-            () => {
-              clearTimeout(timer);
-              resolve();
-            },
-            { once: true },
-          );
+          const onAbort = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+          const timer = setTimeout(() => {
+            signal.removeEventListener("abort", onAbort);
+            resolve();
+          }, delayMs);
+          signal.addEventListener("abort", onAbort, { once: true });
         });
       }
     },

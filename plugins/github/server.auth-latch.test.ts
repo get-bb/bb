@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server";
 
@@ -107,9 +107,16 @@ async function loadWithSyncServiceOnce(
   await plugin(bb);
   // Run the sync service the way the host does at activation. Before the fix
   // its first syncAll() threw NeedsConfigurationError and it stopped for
-  // good; the fixed plugin keeps looping, so abort it after its first pass.
+  // good; the fixed plugin keeps looping, so abort its first pass after the
+  // first gh call starts and wait for a clean shutdown.
+  const callsBeforeService = ghCalls().length;
   const { controller, done } = harness.runService("sync");
-  await new Promise((resolve) => setTimeout(resolve, 150));
+  await vi.waitFor(
+    () => {
+      expect(ghCalls().length).toBeGreaterThan(callsBeforeService);
+    },
+    { timeout: 4_000 },
+  );
   controller.abort();
   await done;
   return { bb, harness };
@@ -207,21 +214,30 @@ describe("github plugin gh auth probe (#1758)", () => {
     expect(probes).toHaveLength(1);
   });
 
-  // This drives two full sync passes over two repos, each shelling out to the
-  // fake gh, on top of the service's own activation pass. The packages shard
-  // runs every workspace suite in parallel, so loaded CI hosts can exceed
-  // Vitest's 5s default without the behavior being stuck.
-  it("treats a pass where every repo failed as a failure and keeps the old sync time", async () => {
+  // Slow the service's auth probe so abort lands while syncAll() is in flight.
+  // AbortSignal does not replay an abort to listeners added afterward, so the
+  // service must check the signal before starting its retry delay.
+  // The 20 s cap leaves process-spawn headroom on the packages shard; the old
+  // code deterministically enters its 30 s retry delay.
+  it("stops promptly when aborted during an all-repos failure and keeps the old sync time", async () => {
     writeFileSync(apiDownFlag, "");
+    writeFileSync(slowStatusFlag, "");
     const { bb, harness } = await loadWithSyncServiceOnce({
       settings: { extraRepos: "acme/one acme/two" },
     });
+    rmSync(slowStatusFlag);
     // The sync service must not crash out (the host would stop it during
     // activation) and must not record a successful pass.
     expect(harness.needsConfigurationMessages).toEqual([]);
     expect(await bb.storage.kv.get("sync-cursor")).toBeUndefined();
-    await expect(harness.callRpc("refresh")).rejects.toThrow(/all 2 repo/);
-    expect(await bb.storage.kv.get("sync-cursor")).toBeUndefined();
+    expect(harness.logEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          message: expect.stringMatching(/all 2 repo/),
+        }),
+      ]),
+    );
 
     // Once GitHub answers again the next pass records a sync time.
     rmSync(apiDownFlag);
