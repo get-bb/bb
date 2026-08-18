@@ -117,7 +117,8 @@ export interface NewThreadComposerPromptOptions {
   header?: ReactNode;
   externallyBlocked?: boolean;
   resolveMentionLink?: PromptMentionLinkResolver;
-  pluginComposerHost?: PluginComposerHost | null;
+  /** Override the host bound to this prompt box; omission uses this Composer's host. */
+  pluginComposerHost?: PluginComposerHost;
   textEffects?: NewThreadPromptBoxProps["textEffects"];
   allowNoProject?: boolean;
   createProject?: ProjectSelectorCreateProjectConfig;

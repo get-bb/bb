@@ -795,6 +795,7 @@ function FollowUpPromptBoxWithComposer({
         <DefaultFollowUpComposer
           active={composer.threadRuntimeDisplayStatus === "active"}
           composerElement={composerElement}
+          hasPluginComposerScope={composerScope !== null}
           isPrimaryComposer={isPrimaryComposer}
           showScrollToBottomButton={showScrollToBottomButton}
           stack={stack}
@@ -808,6 +809,7 @@ function FollowUpPromptBoxWithComposer({
 interface DefaultFollowUpComposerProps {
   active: boolean;
   composerElement: ReactNode;
+  hasPluginComposerScope: boolean;
   isPrimaryComposer: boolean;
   showScrollToBottomButton: boolean;
   stack: ReactNode | null;
@@ -818,6 +820,7 @@ interface DefaultFollowUpComposerProps {
 export function DefaultFollowUpComposer({
   active,
   composerElement,
+  hasPluginComposerScope,
   isPrimaryComposer,
   showScrollToBottomButton,
   stack,
@@ -835,7 +838,11 @@ export function DefaultFollowUpComposer({
         className="space-y-2"
       >
         <div ref={stackRef} className="grid gap-2">
-          <ComposerBannersSlot>{stack}</ComposerBannersSlot>
+          {hasPluginComposerScope ? (
+            <ComposerBannersSlot>{stack}</ComposerBannersSlot>
+          ) : (
+            stack
+          )}
         </div>
         <div data-follow-up-composer-anchor="">{composerElement}</div>
       </div>
