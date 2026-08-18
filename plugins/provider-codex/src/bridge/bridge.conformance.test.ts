@@ -12,6 +12,8 @@ import {
   captureBridgeJsonRpcOutput,
   type CapturedBridgeJsonRpcOutput,
 } from "@bb/provider-bridge-protocol/testing";
+import { THREAD_DELTA_NOTIFICATION_METHOD } from "@bb/provider-bridge-protocol";
+import { createBridgeDeltaEventCollector } from "@bb/agent-runtime/test/bridge-delta-assembly";
 import { handleLine } from "./bridge.js";
 
 /**
@@ -24,9 +26,9 @@ import { handleLine } from "./bridge.js";
  *
  * The scripted app-server answers every turn delta-first (an
  * `item/agentMessage/delta` before any `item/started` for that item), so the
- * bridge's item-opening synthesis, bridge-minted id stamping, and
- * cross-resume id uniqueness (fresh entropy-prefixed session serial per
- * construction) are what the kit verifies.
+ * assembler's item-opening synthesis, central id minting, and cross-resume id
+ * uniqueness (the bridge's `session.reset` starts a fresh provider id space
+ * per construction) are what the kit verifies.
  *
  * `turn/settles-without-activity` covers the shape codex's native lifecycle
  * does not settle on its own: a prompt the app-server accepts and finishes
@@ -85,12 +87,32 @@ afterEach(async () => {
 
 it("passes the canonical protocol suite against supervised fake app-server children", async () => {
   let drained = 0;
+  // The conformance kit speaks the thread/event grammar; the codex bridge now
+  // emits thread/delta. Run deltas through a real assembler (the runtime
+  // adapter's exact translation, held stateful across the whole run) and hand
+  // the kit the canonical thread/event notifications it expects.
+  const collector = createBridgeDeltaEventCollector("codex");
   const transport: BridgeConformanceTransport = {
     send: (line) => handleLine(line),
     takeMessages: () => {
       const fresh = output.messages.slice(drained);
       drained = output.messages.length;
-      return fresh;
+      return fresh.flatMap((message) => {
+        if (message.method !== THREAD_DELTA_NOTIFICATION_METHOD) {
+          return [message];
+        }
+        const threadId =
+          typeof (message.params as { threadId?: unknown } | undefined)
+            ?.threadId === "string"
+            ? (message.params as { threadId: string }).threadId
+            : "";
+        return collector.assembleMessage(message).map((event) => ({
+          jsonrpc: "2.0" as const,
+          method: "thread/event",
+          // ThreadEvents are JSON data; the capture type demands JsonValue.
+          params: JSON.parse(JSON.stringify({ threadId, event })) as never,
+        }));
+      });
     },
   };
 

@@ -1,23 +1,31 @@
+/**
+ * Codex dialect parsing → narrow-grammar deltas.
+ *
+ * Codex's app-server natively emits turn/item/delta notifications with
+ * provider ids, so this module is a near-1:1 mapping onto `thread/delta`
+ * semantic deltas: every delta carries codex's own turn id as the vouched
+ * `providerTurnId` join key and item ids as `key.providerItemId`; the runtime
+ * delta assembler mints the bb ids and constructs the canonical events.
+ *
+ * The one dialect state here is the rate-limit snapshot merge (sparse rolling
+ * updates inherit the previous snapshot's windows and keep the reached-reason
+ * sticky while it is still provably active). It stays bridge-side because it
+ * is seeded from a per-child `account/rateLimits/read` post-initialize call
+ * the assembler never sees.
+ */
 import {
   type ProviderErrorCategory,
   type ProviderErrorInfo,
   type ProviderRateLimitState,
   type ProviderRateLimitStatus,
   type ProviderRateLimitWindow,
-  type ThreadEvent,
-  type ThreadEventContextWindowUsage,
-  type ThreadEventWebFetchItem,
-  type ThreadEventWebSearchItem,
-  type ThreadEventItemApprovalStatus,
-  type ThreadEventItem,
+  providerRawEventSchema,
+  type DeltaItemShape,
+  type ProviderRawEvent,
+  type ThreadDelta,
   type ThreadEventItemStatus,
   type ThreadEventTurnStatus,
   type ThreadEventUserContent,
-  threadScope,
-  turnScope,
-  UNSTAMPED_THREAD_ID,
-  createUnhandledProviderEvent,
-  toOptionalRecord,
   type JsonRpcMessage,
   type ProviderRuntimeEvent,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -40,10 +48,6 @@ import { codexVisibilityMetadata } from "./visibility.js";
 
 function assertNever(value: never, message?: string): never {
   throw new Error(message ?? `Unexpected value: ${String(value)}`);
-}
-
-interface CodexLastTokenUsage {
-  totalTokens: number;
 }
 
 interface CodexEventTranslationState {
@@ -199,28 +203,18 @@ function normalizeCodexRateLimits(
   };
 }
 
-type CodexNormalizedWebItem =
-  | ThreadEventWebSearchItem
-  | ThreadEventWebFetchItem;
-
 type CodexErrorEvent = Extract<CodexHandledEvent, { method: "error" }>;
 type CodexErrorPayload = CodexErrorEvent["params"]["error"];
 
 type CodexItemTranslationResult =
-  | { kind: "translated"; item: ThreadEventItem }
+  | {
+      kind: "translated";
+      shape: DeltaItemShape;
+      status: ThreadEventItemStatus;
+      approvalDenied: boolean;
+    }
   | { kind: "ignored" }
   | { kind: "unhandled" };
-
-function toCodexContextWindowUsage(
-  lastTokenUsage: CodexLastTokenUsage,
-  modelContextWindow: number | null,
-): ThreadEventContextWindowUsage {
-  return {
-    usedTokens: lastTokenUsage.totalTokens,
-    modelContextWindow,
-    estimated: false,
-  };
-}
 
 function getCodexErrorProviderCode(errorInfo: CodexErrorInfo): string {
   if (typeof errorInfo === "string") {
@@ -325,37 +319,50 @@ function toProviderErrorInfo(
   };
 }
 
-interface CodexUnhandledEventArgs {
-  rawEvent: JsonRpcMessage;
-  rawType?: string;
-  threadId?: string;
-  providerThreadId?: string;
-  turnId?: string;
-  parentToolCallId?: string;
+function toRawEvent(rawEvent: JsonRpcMessage): ProviderRawEvent {
+  const parsed = providerRawEventSchema.safeParse(rawEvent);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  return {
+    jsonrpc: "2.0",
+    ...(rawEvent.id !== undefined ? { id: rawEvent.id } : {}),
+    method: rawEvent.method,
+    params: {
+      serializationError:
+        "Provider raw event params were not JSON-serializable.",
+    },
+  };
 }
 
-function buildUnhandledCodexEvent(
-  args: CodexUnhandledEventArgs,
-): ThreadEvent[] {
+interface CodexUnhandledDeltaArgs {
+  rawEvent: JsonRpcMessage;
+  rawType?: string;
+  providerTurnId?: string;
+  parentRef?: string;
+}
+
+function buildUnhandledCodexDeltas(
+  args: CodexUnhandledDeltaArgs,
+): ThreadDelta[] {
   const description = codexVisibilityMetadata.describeRawEvent(args.rawEvent);
   if (description.coverage !== "unknown" && args.rawType === undefined) {
     return [];
   }
 
   return [
-    createUnhandledProviderEvent({
-      providerId: "codex",
-      rawEvent: args.rawEvent,
+    {
+      kind: "unhandled",
+      raw: toRawEvent(args.rawEvent),
       rawType: args.rawType ?? description.kind,
-      ...(args.threadId ? { threadId: args.threadId } : {}),
-      ...(args.providerThreadId
-        ? { providerThreadId: args.providerThreadId }
+      // Codex's own notifications name their turn; only a vouched turn id
+      // may turn-scope the event (the only-caller-vouched-turn-ids rule).
+      vouchedTurn: args.providerTurnId !== undefined,
+      ...(args.providerTurnId !== undefined
+        ? { providerTurnId: args.providerTurnId }
         : {}),
-      ...(args.turnId ? { turnId: args.turnId } : {}),
-      ...(args.parentToolCallId
-        ? { parentToolCallId: args.parentToolCallId }
-        : {}),
-    }),
+      ...(args.parentRef !== undefined ? { parentRef: args.parentRef } : {}),
+    },
   ];
 }
 
@@ -387,18 +394,6 @@ function toItemStatus(status: CodexItemStatus): ThreadEventItemStatus {
     default:
       return assertNever(status);
   }
-}
-
-function toApprovalStatus(
-  status: CodexItemStatus,
-  eventMethod: "item/started" | "item/completed",
-): ThreadEventItemApprovalStatus {
-  // A started event is not terminal even if Codex includes a terminal-looking
-  // status. Only completed declined items represent a denied approval/policy.
-  if (eventMethod === "item/completed" && status === "declined") {
-    return "denied";
-  }
-  return null;
 }
 
 function translateCodexUserContent(
@@ -497,9 +492,9 @@ function normalizeCodexUrl(args: CodexUrlArgs): string | null {
   return url ?? null;
 }
 
-function normalizeCodexWebItem(
+function normalizeCodexWebItemShape(
   item: Extract<CodexHandledThreadItem, { type: "webSearch" }>,
-): CodexNormalizedWebItem | null {
+): DeltaItemShape | null {
   if (!item.action) {
     return null;
   }
@@ -514,40 +509,21 @@ function normalizeCodexWebItem(
       if (!queries) {
         return null;
       }
-      return {
-        type: "webSearch",
-        id: item.id,
-        queries,
-        resultText: null,
-      };
+      return { type: "webSearch", queries };
     }
     case "openPage": {
       const url = normalizeCodexUrl({ actionUrl: item.action.url });
       if (!url) {
         return null;
       }
-      return {
-        type: "webFetch",
-        id: item.id,
-        url,
-        prompt: null,
-        pattern: null,
-        resultText: null,
-      };
+      return { type: "webFetch", url, pattern: null };
     }
     case "findInPage": {
       const url = normalizeCodexUrl({ actionUrl: item.action.url });
       if (!url) {
         return null;
       }
-      return {
-        type: "webFetch",
-        id: item.id,
-        url,
-        prompt: null,
-        pattern: item.action.pattern ?? null,
-        resultText: null,
-      };
+      return { type: "webFetch", url, pattern: item.action.pattern ?? null };
     }
     case "other":
       return null;
@@ -562,57 +538,62 @@ function shouldIgnoreCodexWebItem(
   return item.action === null || item.action.type === "other";
 }
 
-function translateCodexItem(
-  item: unknown,
-  eventMethod: "item/started" | "item/completed",
-): CodexItemTranslationResult {
+function toolStatusFields(status: CodexItemStatus): {
+  status: ThreadEventItemStatus;
+  approvalDenied: boolean;
+} {
+  return {
+    status: toItemStatus(status),
+    // Only completed declined items represent a denied approval/policy; the
+    // caller applies this on item.close only (a started event is not
+    // terminal even if Codex includes a terminal-looking status).
+    approvalDenied: status === "declined",
+  };
+}
+
+function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
   const parsed = codexHandledThreadItemSchema.safeParse(item);
   if (!parsed.success) {
     return { kind: "unhandled" };
   }
 
   const parsedItem: CodexHandledThreadItem = parsed.data;
-  const isStartedEvent = eventMethod === "item/started";
   switch (parsedItem.type) {
     case "agentMessage":
       return {
         kind: "translated",
-        item: {
-          type: "agentMessage",
-          id: parsedItem.id,
-          text: parsedItem.text,
-        },
+        shape: { type: "agentMessage", text: parsedItem.text },
+        status: "completed",
+        approvalDenied: false,
       };
-    case "userMessage": {
-      const content = parsedItem.content
-        .map((entry) => translateCodexUserContent(entry))
-        .filter((entry) => entry.type !== "text" || entry.text.length > 0);
-      return {
-        kind: "translated",
-        item: { type: "userMessage", id: parsedItem.id, content },
-      };
-    }
+    case "userMessage":
+      // bb already owns the user message it sent; the provider's echo of it
+      // would render a duplicate.
+      return { kind: "ignored" };
     case "commandExecution":
       return {
         kind: "translated",
-        item: {
-          type: "commandExecution",
-          id: parsedItem.id,
+        shape: {
+          type: "command",
           command: parsedItem.command,
           cwd: parsedItem.cwd,
-          status: isStartedEvent ? "pending" : toItemStatus(parsedItem.status),
-          approvalStatus: toApprovalStatus(parsedItem.status, eventMethod),
-          aggregatedOutput: parsedItem.aggregatedOutput ?? undefined,
-          exitCode: parsedItem.exitCode ?? undefined,
-          durationMs: parsedItem.durationMs ?? undefined,
+          ...(parsedItem.aggregatedOutput === null
+            ? {}
+            : { aggregatedOutput: parsedItem.aggregatedOutput }),
+          ...(parsedItem.exitCode === null
+            ? {}
+            : { exitCode: parsedItem.exitCode }),
+          ...(parsedItem.durationMs === null
+            ? {}
+            : { durationMs: parsedItem.durationMs }),
         },
+        ...toolStatusFields(parsedItem.status),
       };
     case "fileChange":
       return {
         kind: "translated",
-        item: {
+        shape: {
           type: "fileChange",
-          id: parsedItem.id,
           changes: parsedItem.changes.map((change) => ({
             path: change.path,
             kind: change.kind.type,
@@ -621,51 +602,55 @@ function translateCodexItem(
               : {}),
             ...(change.diff ? { diff: change.diff } : {}),
           })),
-          status: isStartedEvent ? "pending" : toItemStatus(parsedItem.status),
-          approvalStatus: toApprovalStatus(parsedItem.status, eventMethod),
         },
+        ...toolStatusFields(parsedItem.status),
       };
-    case "mcpToolCall": {
-      const toolArguments = toOptionalRecord(parsedItem.arguments);
+    case "mcpToolCall":
       return {
         kind: "translated",
-        item: {
-          type: "toolCall",
-          id: parsedItem.id,
+        shape: {
+          type: "tool",
           server: parsedItem.server,
           tool: parsedItem.tool,
-          ...(toolArguments ? { arguments: toolArguments } : {}),
-          status: isStartedEvent ? "pending" : toItemStatus(parsedItem.status),
-          error: parsedItem.error?.message,
-          durationMs: parsedItem.durationMs ?? undefined,
+          ...(parsedItem.arguments === undefined
+            ? {}
+            : { args: parsedItem.arguments }),
+          ...(parsedItem.error?.message === undefined
+            ? {}
+            : { error: parsedItem.error.message }),
+          ...(parsedItem.durationMs === null || parsedItem.durationMs === undefined
+            ? {}
+            : { durationMs: parsedItem.durationMs }),
         },
+        ...toolStatusFields(parsedItem.status),
       };
-    }
     case "dynamicToolCall": {
       const result = extractDynamicToolCallResult(parsedItem.contentItems);
-      const toolArguments = toOptionalRecord(parsedItem.arguments);
+      const error = buildDynamicToolCallError(parsedItem.success, result);
       return {
         kind: "translated",
-        item: {
-          type: "toolCall",
-          id: parsedItem.id,
+        shape: {
+          type: "tool",
           tool: parsedItem.tool,
-          ...(toolArguments ? { arguments: toolArguments } : {}),
-          status: isStartedEvent ? "pending" : toItemStatus(parsedItem.status),
-          result,
-          error: buildDynamicToolCallError(parsedItem.success, result),
-          durationMs: parsedItem.durationMs ?? undefined,
+          ...(parsedItem.arguments === undefined
+            ? {}
+            : { args: parsedItem.arguments }),
+          ...(result === undefined ? {} : { result }),
+          ...(error === undefined ? {} : { error }),
+          ...(parsedItem.durationMs === null || parsedItem.durationMs === undefined
+            ? {}
+            : { durationMs: parsedItem.durationMs }),
         },
+        ...toolStatusFields(parsedItem.status),
       };
     }
     case "collabAgentToolCall":
       return {
         kind: "translated",
-        item: {
-          type: "toolCall",
-          id: parsedItem.id,
+        shape: {
+          type: "tool",
           tool: parsedItem.tool,
-          arguments: {
+          args: {
             senderThreadId: parsedItem.senderThreadId,
             receiverThreadIds: parsedItem.receiverThreadIds,
             ...(parsedItem.prompt ? { prompt: parsedItem.prompt } : {}),
@@ -674,68 +659,64 @@ function translateCodexItem(
               ? { reasoningEffort: parsedItem.reasoningEffort }
               : {}),
           },
-          status: isStartedEvent ? "pending" : toItemStatus(parsedItem.status),
           result: parsedItem.agentsStates,
         },
+        ...toolStatusFields(parsedItem.status),
       };
     case "subAgentActivity":
-      // The adapter translates this statefully so it can correlate the
+      // The translator handles this statefully so it can correlate the
       // activity with the child turn and close the synthetic delegation row.
       return { kind: "ignored" };
     case "webSearch": {
       if (shouldIgnoreCodexWebItem(parsedItem)) {
         return { kind: "ignored" };
       }
-      const normalized = normalizeCodexWebItem(parsedItem);
-      return normalized
-        ? { kind: "translated", item: normalized }
+      const shape = normalizeCodexWebItemShape(parsedItem);
+      return shape
+        ? { kind: "translated", shape, status: "completed", approvalDenied: false }
         : { kind: "unhandled" };
     }
     case "imageView":
       return {
         kind: "translated",
-        item: {
-          type: "imageView",
-          id: parsedItem.id,
-          path: parsedItem.path,
-        },
+        shape: { type: "imageView", path: parsedItem.path },
+        status: "completed",
+        approvalDenied: false,
       };
     case "reasoning":
       return {
         kind: "translated",
-        item: {
+        shape: {
           type: "reasoning",
-          id: parsedItem.id,
           summary: parsedItem.summary,
           content: parsedItem.content,
         },
+        status: "completed",
+        approvalDenied: false,
       };
     case "plan":
       return {
         kind: "translated",
-        item: {
-          type: "plan",
-          id: parsedItem.id,
-          text: parsedItem.text,
-        },
+        shape: { type: "plan", text: parsedItem.text },
+        status: "completed",
+        approvalDenied: false,
       };
     case "contextCompaction":
       return {
         kind: "translated",
-        item: {
-          type: "contextCompaction",
-          id: parsedItem.id,
-        },
+        shape: { type: "compaction" },
+        status: "completed",
+        approvalDenied: false,
       };
     default:
       return assertNever(parsedItem);
   }
 }
 
-export function translateCodexEvent(
+export function translateCodexEventToDeltas(
   event: ProviderRuntimeEvent,
   state: CodexEventTranslationState,
-): ThreadEvent[] {
+): ThreadDelta[] {
   const envelope = codexBridgeEnvelopeSchema.safeParse(event);
   if (!envelope.success) {
     return [];
@@ -750,8 +731,8 @@ export function translateCodexEvent(
   const parsed = codexHandledEventSchema.safeParse(rawEvent);
   if (!parsed.success) {
     return isHandledCodexMethod(rawEvent.method)
-      ? buildUnhandledCodexEvent({ rawEvent, rawType: rawEvent.method })
-      : buildUnhandledCodexEvent({ rawEvent });
+      ? buildUnhandledCodexDeltas({ rawEvent, rawType: rawEvent.method })
+      : buildUnhandledCodexDeltas({ rawEvent });
   }
 
   const handledEvent: CodexHandledEvent = parsed.data;
@@ -763,92 +744,69 @@ export function translateCodexEvent(
       );
       return [
         {
-          type: "provider/rateLimits/updated",
-          threadId: UNSTAMPED_THREAD_ID,
-          providerThreadId: "",
-          scope: threadScope(),
+          kind: "provider.rateLimits",
           rateLimits: normalizeCodexRateLimits(rateLimits),
         },
       ];
     }
     case "turn/started":
       return [
-        {
-          type: "turn/started",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: turnScope(handledEvent.params.turn.id),
-        },
+        { kind: "turn.open", providerTurnId: handledEvent.params.turn.id },
       ];
-    case "turn/completed":
+    case "turn/completed": {
+      const status = toTurnStatus(handledEvent.params.turn.status);
       return [
         {
-          type: "turn/completed",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: turnScope(handledEvent.params.turn.id),
-          status: toTurnStatus(handledEvent.params.turn.status),
+          kind: "turn.boundary",
+          providerTurnId: handledEvent.params.turn.id,
+          status,
           ...(handledEvent.params.turn.error?.message
             ? { error: { message: handledEvent.params.turn.error.message } }
             : {}),
+          // The Codex turn id is the value codex thread/fork accepts as
+          // lastTurnId, and unlike any in-memory map it survives bridge and
+          // runtime restarts. Only completed turns are fork points — a failed
+          // or interrupted turn may be absent from the rollout.
+          ...(status === "completed"
+            ? { providerCheckpointId: handledEvent.params.turn.id }
+            : {}),
         },
       ];
+    }
     case "thread/started": {
-      const events: ThreadEvent[] = [
+      const deltas: ThreadDelta[] = [
+        { kind: "thread.started" },
         {
-          type: "thread/started",
-          threadId: handledEvent.params.thread.id,
-          scope: threadScope(),
-        },
-        {
-          type: "thread/identity",
-          threadId: handledEvent.params.thread.id,
+          kind: "thread.identity",
           providerThreadId: handledEvent.params.thread.id,
-          scope: threadScope(),
         },
       ];
       if (handledEvent.params.thread.preview) {
-        events.push({
-          type: "thread/name/updated",
-          threadId: handledEvent.params.thread.id,
-          providerThreadId: handledEvent.params.thread.id,
-          scope: threadScope(),
-          threadName: handledEvent.params.thread.preview,
+        deltas.push({
+          kind: "thread.name",
+          name: handledEvent.params.thread.preview,
         });
       }
-      return events;
+      return deltas;
     }
     case "thread/archived":
     case "thread/unarchived":
       return [];
     case "thread/name/updated":
       return handledEvent.params.threadName
-        ? [
-            {
-              type: "thread/name/updated",
-              threadId: handledEvent.params.threadId,
-              providerThreadId: handledEvent.params.threadId,
-              scope: threadScope(),
-              threadName: handledEvent.params.threadName,
-            },
-          ]
+        ? [{ kind: "thread.name", name: handledEvent.params.threadName }]
         : [];
     case "thread/compacted":
       return [
         {
-          type: "thread/compacted",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: turnScope(handledEvent.params.turnId),
+          kind: "context.compacted",
+          providerTurnId: handledEvent.params.turnId,
         },
       ];
     case "thread/goal/updated":
       return [
         {
-          type: "thread/goal/updated",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: threadScope(),
+          kind: "thread.goal",
           objective: handledEvent.params.goal.objective,
           status: handledEvent.params.goal.status,
           tokenBudget: handledEvent.params.goal.tokenBudget,
@@ -857,198 +815,166 @@ export function translateCodexEvent(
         },
       ];
     case "thread/goal/cleared":
-      return [
-        {
-          type: "thread/goal/cleared",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: threadScope(),
-        },
-      ];
+      return [{ kind: "thread.goalCleared" }];
     case "item/started":
     case "item/completed": {
-      const translation = translateCodexItem(
-        handledEvent.params.item,
-        handledEvent.method,
-      );
+      const translation = translateCodexItemShape(handledEvent.params.item);
       if (translation.kind === "ignored") {
         return [];
       }
       if (translation.kind === "unhandled") {
-        return buildUnhandledCodexEvent({
+        return buildUnhandledCodexDeltas({
           rawEvent,
           rawType: handledEvent.method,
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          turnId: handledEvent.params.turnId,
+          providerTurnId: handledEvent.params.turnId,
         });
+      }
+      const key = { providerItemId: handledEvent.params.item.id };
+      if (handledEvent.method === "item/started") {
+        return [
+          {
+            kind: "item.open",
+            key,
+            item: translation.shape,
+            providerTurnId: handledEvent.params.turnId,
+          },
+        ];
       }
       return [
         {
-          type: handledEvent.method,
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: turnScope(handledEvent.params.turnId),
-          item: translation.item,
+          kind: "item.close",
+          key,
+          status: translation.status,
+          ...(translation.approvalDenied ? { approvalStatus: "denied" } : {}),
+          item: translation.shape,
+          providerTurnId: handledEvent.params.turnId,
         },
       ];
     }
     case "item/agentMessage/delta":
       return [
         {
-          type: "item/agentMessage/delta",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: turnScope(handledEvent.params.turnId),
-          itemId: handledEvent.params.itemId,
-          delta: handledEvent.params.delta,
+          kind: "item.textDelta",
+          key: { providerItemId: handledEvent.params.itemId },
+          channel: "agentMessage",
+          text: handledEvent.params.delta,
+          providerTurnId: handledEvent.params.turnId,
         },
       ];
     case "item/commandExecution/outputDelta":
       return [
         {
-          type: "item/commandExecution/outputDelta",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: turnScope(handledEvent.params.turnId),
-          itemId: handledEvent.params.itemId,
-          delta: handledEvent.params.delta,
+          kind: "item.outputDelta",
+          key: { providerItemId: handledEvent.params.itemId },
+          channel: "command",
+          text: handledEvent.params.delta,
+          providerTurnId: handledEvent.params.turnId,
         },
       ];
     case "item/fileChange/outputDelta":
       return [
         {
-          type: "item/fileChange/outputDelta",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: turnScope(handledEvent.params.turnId),
-          itemId: handledEvent.params.itemId,
-          delta: handledEvent.params.delta,
+          kind: "item.outputDelta",
+          key: { providerItemId: handledEvent.params.itemId },
+          channel: "fileChange",
+          text: handledEvent.params.delta,
+          providerTurnId: handledEvent.params.turnId,
         },
       ];
     case "item/reasoning/summaryTextDelta":
       return [
         {
-          type: "item/reasoning/summaryTextDelta",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: turnScope(handledEvent.params.turnId),
-          itemId: handledEvent.params.itemId,
-          delta: handledEvent.params.delta,
+          kind: "item.textDelta",
+          key: { providerItemId: handledEvent.params.itemId },
+          channel: "reasoningSummary",
+          text: handledEvent.params.delta,
+          providerTurnId: handledEvent.params.turnId,
         },
       ];
     case "item/reasoning/textDelta":
       return [
         {
-          type: "item/reasoning/textDelta",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: turnScope(handledEvent.params.turnId),
-          itemId: handledEvent.params.itemId,
-          delta: handledEvent.params.delta,
+          kind: "item.textDelta",
+          key: { providerItemId: handledEvent.params.itemId },
+          channel: "reasoningText",
+          text: handledEvent.params.delta,
+          providerTurnId: handledEvent.params.turnId,
         },
       ];
     case "item/plan/delta":
       return [
         {
-          type: "item/plan/delta",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: turnScope(handledEvent.params.turnId),
-          itemId: handledEvent.params.itemId,
-          delta: handledEvent.params.delta,
+          kind: "item.textDelta",
+          key: { providerItemId: handledEvent.params.itemId },
+          channel: "plan",
+          text: handledEvent.params.delta,
+          providerTurnId: handledEvent.params.turnId,
         },
       ];
     case "item/mcpToolCall/progress":
       return [
         {
-          type: "item/toolCall/progress",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: turnScope(handledEvent.params.turnId),
-          itemId: handledEvent.params.itemId,
+          kind: "item.progress",
+          key: { providerItemId: handledEvent.params.itemId },
           ...(handledEvent.params.message
             ? { message: handledEvent.params.message }
             : {}),
+          providerTurnId: handledEvent.params.turnId,
         },
       ];
     case "thread/tokenUsage/updated":
       return [
         {
-          type: "thread/tokenUsage/updated",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: turnScope(handledEvent.params.turnId),
-          tokenUsage: {
-            total: {
-              totalTokens: handledEvent.params.tokenUsage.total.totalTokens,
-              inputTokens: handledEvent.params.tokenUsage.total.inputTokens,
-              cachedInputTokens:
-                handledEvent.params.tokenUsage.total.cachedInputTokens,
-              outputTokens: handledEvent.params.tokenUsage.total.outputTokens,
-              reasoningOutputTokens:
-                handledEvent.params.tokenUsage.total.reasoningOutputTokens,
-            },
-            last: {
-              totalTokens: handledEvent.params.tokenUsage.last.totalTokens,
-              inputTokens: handledEvent.params.tokenUsage.last.inputTokens,
-              cachedInputTokens:
-                handledEvent.params.tokenUsage.last.cachedInputTokens,
-              outputTokens: handledEvent.params.tokenUsage.last.outputTokens,
-              reasoningOutputTokens:
-                handledEvent.params.tokenUsage.last.reasoningOutputTokens,
-            },
-            modelContextWindow:
-              handledEvent.params.tokenUsage.modelContextWindow,
+          kind: "usage.exact",
+          total: {
+            totalTokens: handledEvent.params.tokenUsage.total.totalTokens,
+            inputTokens: handledEvent.params.tokenUsage.total.inputTokens,
+            cachedInputTokens:
+              handledEvent.params.tokenUsage.total.cachedInputTokens,
+            outputTokens: handledEvent.params.tokenUsage.total.outputTokens,
+            reasoningOutputTokens:
+              handledEvent.params.tokenUsage.total.reasoningOutputTokens,
           },
-        },
-        {
-          type: "thread/contextWindowUsage/updated",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: turnScope(handledEvent.params.turnId),
-          contextWindowUsage: toCodexContextWindowUsage(
-            handledEvent.params.tokenUsage.last,
-            handledEvent.params.tokenUsage.modelContextWindow,
-          ),
+          last: {
+            totalTokens: handledEvent.params.tokenUsage.last.totalTokens,
+            inputTokens: handledEvent.params.tokenUsage.last.inputTokens,
+            cachedInputTokens:
+              handledEvent.params.tokenUsage.last.cachedInputTokens,
+            outputTokens: handledEvent.params.tokenUsage.last.outputTokens,
+            reasoningOutputTokens:
+              handledEvent.params.tokenUsage.last.reasoningOutputTokens,
+          },
+          modelContextWindow: handledEvent.params.tokenUsage.modelContextWindow,
+          providerTurnId: handledEvent.params.turnId,
         },
       ];
     case "turn/plan/updated":
       return [
         {
-          type: "turn/plan/updated",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: turnScope(handledEvent.params.turnId),
-          plan: handledEvent.params.plan.map((step) => ({
+          kind: "turn.plan",
+          steps: handledEvent.params.plan.map((step) => ({
             step: step.step,
             status: step.status === "inProgress" ? "active" : step.status,
           })),
           ...(handledEvent.params.explanation
             ? { explanation: handledEvent.params.explanation }
             : {}),
+          providerTurnId: handledEvent.params.turnId,
         },
       ];
     case "turn/diff/updated":
       return [
         {
-          type: "turn/diff/updated",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: turnScope(handledEvent.params.turnId),
+          kind: "turn.diff",
           diff: handledEvent.params.diff,
+          providerTurnId: handledEvent.params.turnId,
         },
       ];
     case "error": {
       const errorInfo = toProviderErrorInfo(handledEvent.params.error);
       return [
         {
-          type: "provider/error",
-          threadId: handledEvent.params.threadId,
-          providerThreadId: handledEvent.params.threadId,
-          scope: handledEvent.params.turnId
-            ? turnScope(handledEvent.params.turnId)
-            : threadScope(),
+          kind: "provider.error",
           message: "Provider error",
           detail: handledEvent.params.error.additionalDetails
             ? `${handledEvent.params.error.message}\n${handledEvent.params.error.additionalDetails}`
@@ -1057,16 +983,18 @@ export function translateCodexEvent(
             ? { willRetry: handledEvent.params.willRetry }
             : {}),
           ...(errorInfo ? { errorInfo } : {}),
+          // Codex names its turn when the error belongs to one; an error
+          // without a native turn id must stay thread-scoped even mid-turn.
+          ...(handledEvent.params.turnId !== undefined
+            ? { providerTurnId: handledEvent.params.turnId }
+            : { threadScoped: true }),
         },
       ];
     }
     case "deprecationNotice":
       return [
         {
-          type: "provider/warning",
-          threadId: UNSTAMPED_THREAD_ID,
-          providerThreadId: "",
-          scope: threadScope(),
+          kind: "provider.warning",
           category: "deprecation",
           summary: handledEvent.params.summary,
           ...(handledEvent.params.details
@@ -1077,10 +1005,7 @@ export function translateCodexEvent(
     case "configWarning":
       return [
         {
-          type: "provider/warning",
-          threadId: UNSTAMPED_THREAD_ID,
-          providerThreadId: "",
-          scope: threadScope(),
+          kind: "provider.warning",
           category: "config",
           summary: handledEvent.params.summary,
           ...(handledEvent.params.details

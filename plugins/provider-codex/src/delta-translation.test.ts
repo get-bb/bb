@@ -1,26 +1,36 @@
 import { describe, expect, it } from "vitest";
-import { threadScope, turnScope } from "@bb/domain";
+import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
+import {
+  createDeltaAssembler,
+  type DeltaAssembler,
+} from "@bb/agent-runtime/test/bridge-delta-assembly";
 import type { ServerNotification as CodexServerNotification } from "./generated/codex-app-server/schema/ServerNotification.js";
 import type { Turn } from "./generated/codex-app-server/schema/v2/Turn.js";
-import { createCodexEventTranslator } from "./translator.js";
+import {
+  createCodexEventTranslator,
+  type CodexEventTranslator,
+} from "./translator.js";
 
 /**
- * Per-event Codex translation invariants (codex/event-translation.ts).
+ * Per-event Codex translation equivalence for the narrow-grammar path.
  *
- * These moved off codex/adapter.test.ts, which was deleted when the codex
- * legacy adapter graduated. They outlive that adapter because
- * event-translation.ts and translator.ts are shared verbatim with the canonical
- * codex bridge: the legacy adapter's `translateEvent` was a pure pass-through to
- * `createCodexEventTranslator(...).translateEvent`, so every assertion here
- * still pins live bridge behavior.
+ * These are the codex event-translation suite's cases, ported so the SAME
+ * codex app-server notifications drive the new pipeline: codex dialect events
+ * → semantic deltas → the runtime delta assembler → canonical ThreadEvents.
+ * Event content, ordering, scoping, and statuses are asserted exactly as
+ * before; ids are asserted by shape and via the assembler's provider↔bb maps
+ * because minting moved from the bridge to the assembler (thread/provider
+ * thread ids are stamped downstream by the runtime, so events leave with
+ * empty ids here).
  *
- * Split of responsibility with codex/translator.test.ts: that file keeps the
- * *stateful* correlation invariants — command-output recovery across event
- * reordering, subagent/delegation parent links, accepted-turn correlation —
- * which need multi-event sequences against one translator instance. This file
- * holds the per-event translation surface: one event in, translated bb events
- * out.
+ * Split of responsibility with translator.test.ts is unchanged: that file
+ * keeps the *stateful* correlation invariants; this file holds the per-event
+ * translation surface.
  */
+
+const THREAD_ID = "t-codex-translation";
+const ENTROPY = "cx-test";
+const ITEM_ID_PATTERN = /^cx-test-i\d+$/;
 
 function codexEvent<M extends CodexServerNotification["method"]>(
   method: M,
@@ -46,8 +56,40 @@ function codexTurn(args: {
   };
 }
 
-function createTranslator() {
-  return createCodexEventTranslator({ additionalWorkspaceWriteRoots: [] });
+interface CodexEquivalenceHarness {
+  assembler: DeltaAssembler;
+  translator: CodexEventTranslator;
+  translate(event: Parameters<CodexEventTranslator["translateEvent"]>[0]): ThreadEvent[];
+  /** bb turn id minted for a codex turn id (empty when never seen). */
+  turnId(codexTurnId: string): string;
+  /** bb item id minted for a codex item id (empty when never seen). */
+  itemId(codexItemId: string): string;
+}
+
+function createHarness(): CodexEquivalenceHarness {
+  const translator = createCodexEventTranslator({
+    additionalWorkspaceWriteRoots: [],
+  });
+  const assembler = createDeltaAssembler({
+    providerId: "codex",
+    entropyPrefix: ENTROPY,
+  });
+  return {
+    assembler,
+    translator,
+    translate(event) {
+      return assembler.assemble({
+        threadId: THREAD_ID,
+        deltas: translator.translateEvent(event),
+      });
+    },
+    turnId(codexTurnId) {
+      return assembler.getBbTurnId(THREAD_ID, codexTurnId) ?? "";
+    },
+    itemId(codexItemId) {
+      return assembler.getBbItemId(THREAD_ID, codexItemId) ?? "";
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -55,27 +97,25 @@ function createTranslator() {
 // ---------------------------------------------------------------------------
 
 describe("codex turn lifecycle translation", () => {
-  it("translateEvent turn/started", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("translates turn/started into a keyed turn/started", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("turn/started", {
         threadId: "t1",
         turn: codexTurn({ id: "turn-1", status: "inProgress", error: null }),
       }),
     );
-    expect(events).toContainEqual(
+    expect(events).toEqual([
       expect.objectContaining({
         type: "turn/started",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
+        scope: turnScope(harness.turnId("turn-1")),
       }),
-    );
+    ]);
   });
 
-  it("translateEvent accepts legacy Codex bridge envelopes without jsonrpc", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent({
+  it("accepts legacy Codex bridge envelopes without jsonrpc", () => {
+    const harness = createHarness();
+    const events = harness.translate({
       method: "turn/started",
       params: {
         threadId: "t1",
@@ -86,16 +126,14 @@ describe("codex turn lifecycle translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
+        scope: turnScope(harness.turnId("turn-1")),
       }),
     );
   });
 
-  it("translateEvent surfaces malformed handled Codex events as provider/unhandled", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent({
+  it("surfaces malformed handled Codex events as provider/unhandled", () => {
+    const harness = createHarness();
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "turn/started",
       params: {
@@ -108,14 +146,13 @@ describe("codex turn lifecycle translation", () => {
         type: "provider/unhandled",
         providerId: "codex",
         rawType: "turn/started",
-        threadId: "t1",
       }),
     );
   });
 
-  it("translateEvent ignores resolved Codex server requests", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("ignores resolved Codex server requests", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("serverRequest/resolved", {
         threadId: "t1",
         requestId: 0,
@@ -125,15 +162,15 @@ describe("codex turn lifecycle translation", () => {
     expect(events).toEqual([]);
   });
 
-  it("translateEvent suppresses automatic review lifecycle notifications", () => {
-    const translator = createTranslator();
+  it("suppresses automatic review lifecycle notifications", () => {
+    const harness = createHarness();
 
     for (const method of [
       "item/autoApprovalReview/started",
       "item/autoApprovalReview/completed",
     ]) {
       expect(
-        translator.translateEvent({
+        harness.translate({
           jsonrpc: "2.0",
           method,
           params: {
@@ -146,9 +183,9 @@ describe("codex turn lifecycle translation", () => {
     }
   });
 
-  it("translateEvent turn/completed with status and error", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("translates turn/completed with status and error", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("turn/completed", {
         threadId: "t1",
         turn: codexTurn({
@@ -165,17 +202,35 @@ describe("codex turn lifecycle translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "turn/completed",
-        threadId: "t1",
-        scope: turnScope("turn-1"),
+        scope: turnScope(harness.turnId("turn-1")),
         status: "failed",
         error: { message: "rate limited" },
       }),
     );
+    // Only completed turns are fork points.
+    expect(events[0]).not.toHaveProperty("providerCheckpointId");
   });
 
-  it("translateEvent turn/completed maps interrupted status", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("stamps the codex turn id as providerCheckpointId on completed turns", () => {
+    const harness = createHarness();
+    const events = harness.translate(
+      codexEvent("turn/completed", {
+        threadId: "t1",
+        turn: codexTurn({ id: "turn-1", status: "completed", error: null }),
+      }),
+    );
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "turn/completed",
+        status: "completed",
+        providerCheckpointId: "turn-1",
+      }),
+    ]);
+  });
+
+  it("maps interrupted turn status", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("turn/completed", {
         threadId: "t1",
         turn: codexTurn({ id: "turn-1", status: "interrupted", error: null }),
@@ -195,9 +250,9 @@ describe("codex turn lifecycle translation", () => {
 // ---------------------------------------------------------------------------
 
 describe("codex thread lifecycle translation", () => {
-  it("translateEvent thread/started emits started + identity + name", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("translates thread/started into started + identity + name", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("thread/started", {
         thread: {
           id: "codex-uuid-123",
@@ -223,32 +278,22 @@ describe("codex thread lifecycle translation", () => {
         },
       }),
     );
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "thread/started",
-        threadId: "codex-uuid-123",
-      }),
-    );
-    expect(events).toContainEqual(
+    expect(events).toEqual([
+      expect.objectContaining({ type: "thread/started" }),
       expect.objectContaining({
         type: "thread/identity",
-        threadId: "codex-uuid-123",
         providerThreadId: "codex-uuid-123",
       }),
-    );
-    expect(events).toContainEqual(
       expect.objectContaining({
         type: "thread/name/updated",
-        threadId: "codex-uuid-123",
-        providerThreadId: "codex-uuid-123",
         threadName: "Fix the tests",
       }),
-    );
+    ]);
   });
 
-  it("translateEvent thread/name/updated", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("translates thread/name/updated", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("thread/name/updated", {
         threadId: "t1",
         threadName: "Updated title",
@@ -257,53 +302,45 @@ describe("codex thread lifecycle translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "thread/name/updated",
-        threadId: "t1",
-        providerThreadId: "t1",
         threadName: "Updated title",
       }),
     );
   });
 
-  it("translateEvent thread/name/updated ignores empty name", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("ignores thread/name/updated with an empty name", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("thread/name/updated", { threadId: "t1" }),
     );
     expect(events).toHaveLength(0);
   });
 
-  it("translateEvent ignores native archive acknowledgements", () => {
-    const translator = createTranslator();
+  it("ignores native archive acknowledgements", () => {
+    const harness = createHarness();
 
     expect(
-      translator.translateEvent(
-        codexEvent("thread/archived", { threadId: "t1" }),
-      ),
+      harness.translate(codexEvent("thread/archived", { threadId: "t1" })),
     ).toEqual([]);
     expect(
-      translator.translateEvent(
-        codexEvent("thread/unarchived", { threadId: "t1" }),
-      ),
+      harness.translate(codexEvent("thread/unarchived", { threadId: "t1" })),
     ).toEqual([]);
   });
 
-  it("translateEvent maps native thread goal notifications", () => {
-    const translator = createTranslator();
+  it("maps native thread goal notifications", () => {
+    const harness = createHarness();
 
     expect(
-      translator.translateEvent(
-        codexEvent("thread/goal/cleared", { threadId: "t1" }),
-      ),
+      harness.translate(codexEvent("thread/goal/cleared", { threadId: "t1" })),
     ).toEqual([
       {
         type: "thread/goal/cleared",
-        threadId: "t1",
-        providerThreadId: "t1",
+        threadId: "",
+        providerThreadId: "",
         scope: threadScope(),
       },
     ]);
     expect(
-      translator.translateEvent(
+      harness.translate(
         codexEvent("thread/goal/updated", {
           threadId: "t1",
           turnId: null,
@@ -322,8 +359,8 @@ describe("codex thread lifecycle translation", () => {
     ).toEqual([
       {
         type: "thread/goal/updated",
-        threadId: "t1",
-        providerThreadId: "t1",
+        threadId: "",
+        providerThreadId: "",
         scope: threadScope(),
         objective: "Finish the task",
         status: "active",
@@ -334,17 +371,15 @@ describe("codex thread lifecycle translation", () => {
     ]);
   });
 
-  it("translateEvent thread/compacted emits a compacted event", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("translates thread/compacted scoped to its vouched turn", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("thread/compacted", { threadId: "t1", turnId: "turn-1" }),
     );
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "thread/compacted",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
+        scope: turnScope(harness.turnId("turn-1")),
       }),
     );
   });
@@ -355,9 +390,9 @@ describe("codex thread lifecycle translation", () => {
 // ---------------------------------------------------------------------------
 
 describe("codex item translation", () => {
-  it("translateEvent item/started with agentMessage", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("translates item/started with agentMessage", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/started", {
         threadId: "t1",
         turnId: "turn-1",
@@ -374,17 +409,19 @@ describe("codex item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/started",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
-        item: { type: "agentMessage", id: "item-1", text: "Hello" },
+        scope: turnScope(harness.turnId("turn-1")),
+        item: {
+          type: "agentMessage",
+          id: harness.itemId("item-1"),
+          text: "Hello",
+        },
       }),
     );
   });
 
-  it("translateEvent item/started with userMessage is suppressed as a provider echo", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("suppresses item/started with userMessage as a provider echo", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/started", {
         threadId: "t1",
         turnId: "turn-1",
@@ -405,68 +442,52 @@ describe("codex item translation", () => {
     expect(events).toMatchObject([]);
   });
 
-  it("translateEvent item/started with imageView maps to imageView", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps imageView items on start and completion", () => {
+    const harness = createHarness();
+    const started = harness.translate(
       codexEvent("item/started", {
         threadId: "t1",
         turnId: "turn-1",
         startedAtMs: 0,
-        item: {
-          type: "imageView",
-          id: "image-1",
-          path: "/tmp/image.png",
-        },
+        item: { type: "imageView", id: "image-1", path: "/tmp/image.png" },
       }),
     );
-
-    expect(events).toContainEqual(
+    expect(started).toContainEqual(
       expect.objectContaining({
         type: "item/started",
-        threadId: "t1",
-        scope: turnScope("turn-1"),
+        scope: turnScope(harness.turnId("turn-1")),
         item: {
           type: "imageView",
-          id: "image-1",
+          id: harness.itemId("image-1"),
           path: "/tmp/image.png",
         },
       }),
     );
-  });
 
-  it("translateEvent item/completed with imageView maps to imageView", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+    const completed = harness.translate(
       codexEvent("item/completed", {
         threadId: "t1",
         turnId: "turn-1",
         completedAtMs: 0,
-        item: {
-          type: "imageView",
-          id: "image-1",
-          path: "/tmp/image.png",
-        },
+        item: { type: "imageView", id: "image-1", path: "/tmp/image.png" },
       }),
     );
-
-    expect(events).toContainEqual(
+    expect(completed).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
+        scope: turnScope(harness.turnId("turn-1")),
         item: {
           type: "imageView",
-          id: "image-1",
+          id: harness.itemId("image-1"),
           path: "/tmp/image.png",
         },
       }),
     );
   });
 
-  it("translateEvent unknown codex notifications fall back to provider/unhandled", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent({
+  it("falls back to thread-scoped provider/unhandled for unknown notifications", () => {
+    const harness = createHarness();
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "item/tool/requestUserInput",
       params: {
@@ -475,25 +496,23 @@ describe("codex item translation", () => {
       },
     });
 
-    // Thread scope, not turnScope("turn-1"): this notification failed schema
-    // parsing, so nothing here vouches for that turn id being one bb started.
-    // Turn-scoping an event whose turn/started the server never stored gets the
-    // event dropped; thread scope keeps it. Codex notifications bb *does* parse
-    // still carry turn scope — see the handled item/started cases above.
+    // Thread scope, not turn scope: this notification failed schema parsing,
+    // so nothing here vouches for that turn id being one bb started. Codex
+    // notifications bb *does* parse still carry turn scope — see the handled
+    // item/started cases above.
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "provider/unhandled",
         providerId: "codex",
         rawType: "item/tool/requestUserInput",
-        threadId: "t1",
         scope: threadScope(),
       }),
     );
   });
 
-  it("translateEvent ignores Codex turn moderation metadata", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent({
+  it("ignores Codex turn moderation metadata", () => {
+    const harness = createHarness();
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "turn/moderationMetadata",
       params: {
@@ -511,9 +530,9 @@ describe("codex item translation", () => {
     expect(events).toEqual([]);
   });
 
-  it("translateEvent ignores Codex raw response completions", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent({
+  it("ignores Codex raw response completions", () => {
+    const harness = createHarness();
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "rawResponse/completed",
       params: {
@@ -534,9 +553,9 @@ describe("codex item translation", () => {
     expect(events).toEqual([]);
   });
 
-  it("translateEvent item/mcpToolCall/progress maps to shared tool progress", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps item/mcpToolCall/progress to shared tool progress", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/mcpToolCall/progress", {
         threadId: "t1",
         turnId: "turn-1",
@@ -548,18 +567,15 @@ describe("codex item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/toolCall/progress",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
-        itemId: "mcp-1",
+        scope: turnScope(harness.turnId("turn-1")),
         message: "Connecting to MCP server",
       }),
     );
   });
 
-  it("translateEvent item/completed with commandExecution maps status", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps completed commandExecution status and output fields", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/completed", {
         threadId: "t1",
         turnId: "turn-1",
@@ -582,14 +598,13 @@ describe("codex item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
+        scope: turnScope(harness.turnId("turn-1")),
         item: expect.objectContaining({
           type: "commandExecution",
-          id: "cmd-1",
+          id: harness.itemId("cmd-1"),
           command: "ls -la",
           status: "completed",
+          aggregatedOutput: "file1\nfile2",
           exitCode: 0,
           durationMs: 150,
         }),
@@ -597,9 +612,9 @@ describe("codex item translation", () => {
     );
   });
 
-  it("translateEvent item/completed with declined commandExecution maps approval denial", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps a declined commandExecution to an approval denial", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/completed", {
         threadId: "t1",
         turnId: "turn-1",
@@ -623,12 +638,8 @@ describe("codex item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
         item: expect.objectContaining({
           type: "commandExecution",
-          id: "cmd-1",
           status: "interrupted",
           approvalStatus: "denied",
         }),
@@ -636,9 +647,9 @@ describe("codex item translation", () => {
     );
   });
 
-  it("translateEvent item/started normalizes commandExecution to pending", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("normalizes started commandExecutions to pending with no approval verdict", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/started", {
         threadId: "t1",
         turnId: "turn-1",
@@ -662,12 +673,8 @@ describe("codex item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/started",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
         item: expect.objectContaining({
           type: "commandExecution",
-          id: "cmd-1",
           command: "ls -la",
           status: "pending",
           approvalStatus: null,
@@ -676,9 +683,9 @@ describe("codex item translation", () => {
     );
   });
 
-  it("translateEvent item/completed with fileChange maps kind correctly", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps fileChange kinds and diffs", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/completed", {
         threadId: "t1",
         turnId: "turn-1",
@@ -698,30 +705,51 @@ describe("codex item translation", () => {
         },
       }),
     );
-    const itemEvent = events.find((e) => e.type === "item/completed");
+    const itemEvent = events.find((event) => event.type === "item/completed");
     expect(itemEvent).toBeDefined();
     if (
       itemEvent?.type === "item/completed" &&
       itemEvent.item.type === "fileChange"
     ) {
-      expect(itemEvent.item.changes).toMatchObject([
-        {
-          path: "src/foo.ts",
-          kind: "update",
-          diff: "+line",
-        },
-        {
-          path: "src/bar.ts",
-          kind: "add",
-        },
+      expect(itemEvent.item.changes).toEqual([
+        { path: "src/foo.ts", kind: "update", diff: "+line" },
+        { path: "src/bar.ts", kind: "add" },
       ]);
       expect(itemEvent.item.status).toBe("completed");
     }
   });
 
-  it("translateEvent item/completed with mcpToolCall maps to toolCall", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps a declined fileChange to an approval denial", () => {
+    const harness = createHarness();
+    const events = harness.translate(
+      codexEvent("item/completed", {
+        threadId: "t1",
+        turnId: "turn-1",
+        completedAtMs: 0,
+        item: {
+          type: "fileChange",
+          id: "edit-1",
+          status: "declined",
+          changes: [{ path: "new.txt", kind: { type: "add" }, diff: "+hello" }],
+        },
+      }),
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "fileChange",
+          status: "interrupted",
+          approvalStatus: "denied",
+        }),
+      }),
+    );
+  });
+
+  it("maps mcpToolCall to toolCall with server and duration", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/completed", {
         threadId: "t1",
         turnId: "turn-1",
@@ -743,14 +771,13 @@ describe("codex item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
+        scope: turnScope(harness.turnId("turn-1")),
         item: expect.objectContaining({
           type: "toolCall",
-          id: "mcp-1",
+          id: harness.itemId("mcp-1"),
           server: "myserver",
           tool: "search",
+          arguments: { query: "test" },
           status: "completed",
           durationMs: 200,
         }),
@@ -758,47 +785,9 @@ describe("codex item translation", () => {
     );
   });
 
-  it("translateEvent item/completed with declined fileChange maps approval denial", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
-      codexEvent("item/completed", {
-        threadId: "t1",
-        turnId: "turn-1",
-        completedAtMs: 0,
-        item: {
-          type: "fileChange",
-          id: "edit-1",
-          status: "declined",
-          changes: [
-            {
-              path: "new.txt",
-              kind: { type: "add" },
-              diff: "+hello",
-            },
-          ],
-        },
-      }),
-    );
-
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "item/completed",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
-        item: expect.objectContaining({
-          type: "fileChange",
-          id: "edit-1",
-          status: "interrupted",
-          approvalStatus: "denied",
-        }),
-      }),
-    );
-  });
-
-  it("translateEvent item/completed with dynamicToolCall maps to toolCall", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps dynamicToolCall to toolCall with textual results", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/completed", {
         threadId: "t1",
         turnId: "turn-1",
@@ -819,12 +808,8 @@ describe("codex item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
         item: expect.objectContaining({
           type: "toolCall",
-          id: "dyn-1",
           tool: "bb_test_ping",
           status: "completed",
           result: "PONG_FROM_TOOL",
@@ -834,9 +819,9 @@ describe("codex item translation", () => {
     );
   });
 
-  it("translateEvent item/completed with failed dynamicToolCall preserves textual errors", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent({
+  it("preserves textual errors on failed dynamicToolCalls", () => {
+    const harness = createHarness();
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "item/completed",
       params: {
@@ -859,12 +844,8 @@ describe("codex item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
         item: expect.objectContaining({
           type: "toolCall",
-          id: "dyn-err-1",
           status: "failed",
           result: "permission denied",
           error: "permission denied",
@@ -873,9 +854,9 @@ describe("codex item translation", () => {
     );
   });
 
-  it("translateEvent item/completed with image-only dynamicToolCall keeps readable output", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("keeps readable output for image-only dynamicToolCalls", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/completed", {
         threadId: "t1",
         turnId: "turn-1",
@@ -902,12 +883,8 @@ describe("codex item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
         item: expect.objectContaining({
           type: "toolCall",
-          id: "dyn-img-1",
           status: "failed",
           result: "[image: https://example.com/tool-result.png]",
           error: "[image: https://example.com/tool-result.png]",
@@ -916,9 +893,9 @@ describe("codex item translation", () => {
     );
   });
 
-  it("translateEvent item/completed with collabAgentToolCall maps to toolCall", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps collabAgentToolCall to toolCall with agent states as the result", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/completed", {
         threadId: "t1",
         turnId: "turn-1",
@@ -942,12 +919,8 @@ describe("codex item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
         item: expect.objectContaining({
           type: "toolCall",
-          id: "collab-1",
           tool: "spawnAgent",
           status: "completed",
           arguments: expect.objectContaining({
@@ -965,9 +938,9 @@ describe("codex item translation", () => {
     );
   });
 
-  it("translateEvent item/completed with declined collabAgentToolCall maps to interrupted", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent({
+  it("maps a declined collabAgentToolCall to interrupted", () => {
+    const harness = createHarness();
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "item/completed",
       params: {
@@ -991,21 +964,17 @@ describe("codex item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
         item: expect.objectContaining({
           type: "toolCall",
-          id: "collab-declined-1",
           status: "interrupted",
         }),
       }),
     );
   });
 
-  it("translateEvent item/completed with reasoning maps to reasoning", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps completed reasoning items", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/completed", {
         threadId: "t1",
         turnId: "turn-1",
@@ -1021,12 +990,9 @@ describe("codex item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
         item: {
           type: "reasoning",
-          id: "reasoning-1",
+          id: harness.itemId("reasoning-1"),
           summary: ["Read the search flow"],
           content: ["Investigated the search sidebar state machine."],
         },
@@ -1034,9 +1000,9 @@ describe("codex item translation", () => {
     );
   });
 
-  it("translateEvent item/completed with plan maps to plan", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps completed plan items", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/completed", {
         threadId: "t1",
         turnId: "turn-1",
@@ -1051,41 +1017,30 @@ describe("codex item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
         item: {
           type: "plan",
-          id: "plan-1",
+          id: harness.itemId("plan-1"),
           text: "1. Read the file\n2. Edit the function",
         },
       }),
     );
   });
 
-  it("translateEvent item/started with contextCompaction maps to contextCompaction", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps started contextCompaction items", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/started", {
         threadId: "t1",
         turnId: "turn-1",
         startedAtMs: 0,
-        item: {
-          type: "contextCompaction",
-          id: "compact-1",
-        },
+        item: { type: "contextCompaction", id: "compact-1" },
       }),
     );
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/started",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
-        item: {
-          type: "contextCompaction",
-          id: "compact-1",
-        },
+        scope: turnScope(harness.turnId("turn-1")),
+        item: { type: "contextCompaction", id: harness.itemId("compact-1") },
       }),
     );
   });
@@ -1096,9 +1051,9 @@ describe("codex item translation", () => {
 // ---------------------------------------------------------------------------
 
 describe("codex web item translation", () => {
-  it("translateEvent item/completed with search maps to webSearch", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps completed search actions to webSearch", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/completed", {
         threadId: "t1",
         turnId: "turn-1",
@@ -1114,12 +1069,9 @@ describe("codex web item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
         item: {
           type: "webSearch",
-          id: "web-1",
+          id: harness.itemId("web-1"),
           queries: ["react suspense"],
           resultText: null,
         },
@@ -1127,9 +1079,9 @@ describe("codex web item translation", () => {
     );
   });
 
-  it("translateEvent item/started with search maps to webSearch and merges query fields", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("merges query fields on started search actions", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/started", {
         threadId: "t1",
         turnId: "turn-1",
@@ -1150,12 +1102,9 @@ describe("codex web item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/started",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
         item: {
           type: "webSearch",
-          id: "web-start-1",
+          id: harness.itemId("web-start-1"),
           queries: [
             "react suspense primary",
             "react suspense secondary",
@@ -1167,31 +1116,27 @@ describe("codex web item translation", () => {
     );
   });
 
-  it("translateEvent item/started with camelCase openPage maps to webFetch", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps openPage actions to webFetch on start and completion", () => {
+    const harness = createHarness();
+    const started = harness.translate(
       codexEvent("item/started", {
         threadId: "t1",
         turnId: "turn-1",
         startedAtMs: 0,
         item: {
           type: "webSearch",
-          id: "web-open-start-1",
+          id: "web-open-1",
           query: "ignored fallback",
           action: { type: "openPage", url: "https://example.com" },
         },
       }),
     );
-
-    expect(events).toContainEqual(
+    expect(started).toContainEqual(
       expect.objectContaining({
         type: "item/started",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
         item: {
           type: "webFetch",
-          id: "web-open-start-1",
+          id: harness.itemId("web-open-1"),
           url: "https://example.com",
           prompt: null,
           pattern: null,
@@ -1199,49 +1144,8 @@ describe("codex web item translation", () => {
         },
       }),
     );
-  });
 
-  it("translateEvent item/started with camelCase findInPage maps to webFetch", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
-      codexEvent("item/started", {
-        threadId: "t1",
-        turnId: "turn-1",
-        startedAtMs: 0,
-        item: {
-          type: "webSearch",
-          id: "web-find-start-1",
-          query: "ignored fallback",
-          action: {
-            type: "findInPage",
-            url: "https://example.com",
-            pattern: "Example Domain",
-          },
-        },
-      }),
-    );
-
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "item/started",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
-        item: {
-          type: "webFetch",
-          id: "web-find-start-1",
-          url: "https://example.com",
-          prompt: null,
-          pattern: "Example Domain",
-          resultText: null,
-        },
-      }),
-    );
-  });
-
-  it("translateEvent item/completed with camelCase openPage maps to webFetch", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+    const completed = harness.translate(
       codexEvent("item/completed", {
         threadId: "t1",
         turnId: "turn-1",
@@ -1254,33 +1158,24 @@ describe("codex web item translation", () => {
         },
       }),
     );
-
-    expect(events).toContainEqual(
+    expect(completed).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
-        item: {
+        item: expect.objectContaining({
           type: "webFetch",
-          id: "web-open-1",
+          id: harness.itemId("web-open-1"),
           url: "https://example.com",
-          prompt: null,
-          pattern: null,
-          resultText: null,
-        },
+        }),
       }),
     );
-    expect(events).not.toContainEqual(
-      expect.objectContaining({
-        type: "provider/unhandled",
-      }),
+    expect(completed).not.toContainEqual(
+      expect.objectContaining({ type: "provider/unhandled" }),
     );
   });
 
-  it("translateEvent item/completed with camelCase findInPage maps to webFetch", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps findInPage actions to webFetch with the pattern", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/completed", {
         threadId: "t1",
         turnId: "turn-1",
@@ -1301,12 +1196,9 @@ describe("codex web item translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
         item: {
           type: "webFetch",
-          id: "web-find-1",
+          id: harness.itemId("web-find-1"),
           url: "https://example.com",
           prompt: null,
           pattern: "Example Domain",
@@ -1315,53 +1207,47 @@ describe("codex web item translation", () => {
       }),
     );
     expect(events).not.toContainEqual(
-      expect.objectContaining({
-        type: "provider/unhandled",
-      }),
+      expect.objectContaining({ type: "provider/unhandled" }),
     );
   });
 
-  it("translateEvent ignores placeholder webSearch started items without canonical details", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
-      codexEvent("item/started", {
-        threadId: "t1",
-        turnId: "turn-1",
-        startedAtMs: 0,
-        item: {
-          type: "webSearch",
-          id: "web-placeholder-1",
-          query: "",
-          action: { type: "other" },
-        },
-      }),
-    );
-
-    expect(events).toMatchObject([]);
+  it("ignores placeholder webSearch items without canonical details", () => {
+    const harness = createHarness();
+    expect(
+      harness.translate(
+        codexEvent("item/started", {
+          threadId: "t1",
+          turnId: "turn-1",
+          startedAtMs: 0,
+          item: {
+            type: "webSearch",
+            id: "web-placeholder-1",
+            query: "",
+            action: { type: "other" },
+          },
+        }),
+      ),
+    ).toMatchObject([]);
+    expect(
+      harness.translate(
+        codexEvent("item/completed", {
+          threadId: "t1",
+          turnId: "turn-1",
+          completedAtMs: 0,
+          item: {
+            type: "webSearch",
+            id: "web-placeholder-completed-1",
+            query: "",
+            action: null,
+          },
+        }),
+      ),
+    ).toMatchObject([]);
   });
 
-  it("translateEvent ignores placeholder webSearch completed items without canonical details", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
-      codexEvent("item/completed", {
-        threadId: "t1",
-        turnId: "turn-1",
-        completedAtMs: 0,
-        item: {
-          type: "webSearch",
-          id: "web-placeholder-completed-1",
-          query: "",
-          action: null,
-        },
-      }),
-    );
-
-    expect(events).toMatchObject([]);
-  });
-
-  it("translateEvent item/completed with missing openPage url falls back to provider/unhandled", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("falls back to provider/unhandled for openPage actions without a url", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/completed", {
         threadId: "t1",
         turnId: "turn-1",
@@ -1379,7 +1265,8 @@ describe("codex web item translation", () => {
       events.some(
         (event) =>
           event.type === "provider/unhandled" &&
-          event.rawType === "item/completed",
+          event.rawType === "item/completed" &&
+          event.scope.kind === "turn",
       ),
     ).toBe(true);
     expect(
@@ -1396,9 +1283,9 @@ describe("codex web item translation", () => {
 // ---------------------------------------------------------------------------
 
 describe("codex delta and usage translation", () => {
-  it("translateEvent item/agentMessage/delta", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("synthesizes item/started for a delta-first agent message and keeps the id", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/agentMessage/delta", {
         threadId: "t1",
         turnId: "turn-1",
@@ -1406,21 +1293,44 @@ describe("codex delta and usage translation", () => {
         delta: "hello ",
       }),
     );
-    expect(events).toContainEqual(
+    const itemId = harness.itemId("item-1");
+    expect(itemId).toMatch(ITEM_ID_PATTERN);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "item/started",
+        scope: turnScope(harness.turnId("turn-1")),
+        item: { type: "agentMessage", id: itemId, text: "" },
+      }),
       expect.objectContaining({
         type: "item/agentMessage/delta",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
-        itemId: "item-1",
+        scope: turnScope(harness.turnId("turn-1")),
+        itemId,
         delta: "hello ",
       }),
-    );
+    ]);
+
+    // A second delta streams into the already-open item.
+    expect(
+      harness.translate(
+        codexEvent("item/agentMessage/delta", {
+          threadId: "t1",
+          turnId: "turn-1",
+          itemId: "item-1",
+          delta: "world",
+        }),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "item/agentMessage/delta",
+        itemId,
+        delta: "world",
+      }),
+    ]);
   });
 
-  it("translateEvent item/commandExecution/outputDelta", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("never synthesizes an opening item for command output deltas", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("item/commandExecution/outputDelta", {
         threadId: "t1",
         turnId: "turn-1",
@@ -1428,21 +1338,19 @@ describe("codex delta and usage translation", () => {
         delta: "output line\n",
       }),
     );
-    expect(events).toContainEqual(
+    expect(events).toEqual([
       expect.objectContaining({
         type: "item/commandExecution/outputDelta",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
-        itemId: "cmd-1",
+        scope: turnScope(harness.turnId("turn-1")),
+        itemId: harness.itemId("cmd-1"),
         delta: "output line\n",
       }),
-    );
+    ]);
   });
 
-  it("translateEvent thread/tokenUsage/updated", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("fans thread/tokenUsage/updated out to both usage events exactly", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("thread/tokenUsage/updated", {
         threadId: "t1",
         turnId: "turn-1",
@@ -1468,7 +1376,7 @@ describe("codex delta and usage translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "thread/tokenUsage/updated",
-        threadId: "t1",
+        scope: turnScope(harness.turnId("turn-1")),
         tokenUsage: expect.objectContaining({
           total: expect.objectContaining({ totalTokens: 100 }),
           modelContextWindow: 128000,
@@ -1493,9 +1401,9 @@ describe("codex delta and usage translation", () => {
 // ---------------------------------------------------------------------------
 
 describe("codex plan translation", () => {
-  it("translateEvent turn/plan/updated maps step statuses", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps turn/plan/updated step statuses", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("turn/plan/updated", {
         threadId: "t1",
         turnId: "turn-1",
@@ -1510,9 +1418,7 @@ describe("codex plan translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "turn/plan/updated",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
+        scope: turnScope(harness.turnId("turn-1")),
         explanation: "Here's the plan",
         plan: [
           { step: "Read the file", status: "completed" },
@@ -1523,9 +1429,9 @@ describe("codex plan translation", () => {
     );
   });
 
-  it("translateEvent turn/plan/updated tolerates null explanations", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent({
+  it("tolerates null explanations", () => {
+    const harness = createHarness();
+    const events = harness.translate({
       method: "turn/plan/updated",
       params: {
         threadId: "t1",
@@ -1541,15 +1447,38 @@ describe("codex plan translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "turn/plan/updated",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
+        scope: turnScope(harness.turnId("turn-1")),
         plan: [
           { step: "Read the file", status: "completed" },
           { step: "Run tests", status: "pending" },
         ],
       }),
     );
+    expect(events[0]).not.toHaveProperty("explanation");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Turn diffs
+// ---------------------------------------------------------------------------
+
+describe("codex turn diff translation", () => {
+  it("maps turn/diff/updated onto the vouched turn", () => {
+    const harness = createHarness();
+    const events = harness.translate(
+      codexEvent("turn/diff/updated", {
+        threadId: "t1",
+        turnId: "turn-1",
+        diff: "+added line",
+      }),
+    );
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "turn/diff/updated",
+        scope: turnScope(harness.turnId("turn-1")),
+        diff: "+added line",
+      }),
+    ]);
   });
 });
 
@@ -1558,9 +1487,9 @@ describe("codex plan translation", () => {
 // ---------------------------------------------------------------------------
 
 describe("codex error and warning translation", () => {
-  it("translateEvent error includes detail and willRetry", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("includes detail and willRetry on turn-scoped errors", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("error", {
         threadId: "t1",
         turnId: "turn-1",
@@ -1575,9 +1504,7 @@ describe("codex error and warning translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "provider/error",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
+        scope: turnScope(harness.turnId("turn-1")),
         message: "Provider error",
         detail: "Rate limited\nretry after 30s",
         willRetry: true,
@@ -1585,9 +1512,38 @@ describe("codex error and warning translation", () => {
     );
   });
 
-  it("translateEvent error maps codexErrorInfo to provider error info", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("keeps a turnless error thread-scoped even while a turn is open", () => {
+    const harness = createHarness();
+    harness.translate(
+      codexEvent("turn/started", {
+        threadId: "t1",
+        turn: codexTurn({ id: "turn-1", status: "inProgress", error: null }),
+      }),
+    );
+    const events = harness.translate({
+      jsonrpc: "2.0",
+      method: "error",
+      params: {
+        threadId: "t1",
+        error: {
+          message: "startup failed",
+          codexErrorInfo: null,
+          additionalDetails: null,
+        },
+      },
+    });
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "provider/error",
+        scope: threadScope(),
+        detail: "startup failed",
+      }),
+    ]);
+  });
+
+  it("maps codexErrorInfo to provider error info", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("error", {
         threadId: "t1",
         turnId: "turn-1",
@@ -1605,9 +1561,7 @@ describe("codex error and warning translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "provider/error",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
+        scope: turnScope(harness.turnId("turn-1")),
         message: "Provider error",
         detail: "stream disconnected",
         willRetry: false,
@@ -1620,9 +1574,9 @@ describe("codex error and warning translation", () => {
     );
   });
 
-  it("translateEvent deprecationNotice maps to warning", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps deprecationNotice to a thread-scoped warning", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("deprecationNotice", {
         summary: "Model deprecated",
         details: "Use newer model",
@@ -1633,6 +1587,7 @@ describe("codex error and warning translation", () => {
         type: "provider/warning",
         threadId: "",
         providerThreadId: "",
+        scope: threadScope(),
         category: "deprecation",
         summary: "Model deprecated",
         details: "Use newer model",
@@ -1640,9 +1595,9 @@ describe("codex error and warning translation", () => {
     );
   });
 
-  it("translateEvent configWarning maps to warning", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("maps configWarning to a thread-scoped warning", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("configWarning", {
         summary: "Bad config",
         details: null,
@@ -1659,9 +1614,9 @@ describe("codex error and warning translation", () => {
     );
   });
 
-  it("translateEvent ignores MCP startup status updates", () => {
-    const translator = createTranslator();
-    const failedEvents = translator.translateEvent({
+  it("ignores MCP startup status updates", () => {
+    const harness = createHarness();
+    const failedEvents = harness.translate({
       jsonrpc: "2.0",
       method: "mcpServer/startupStatus/updated",
       params: {
@@ -1670,7 +1625,7 @@ describe("codex error and warning translation", () => {
         error: "MCP client failed to start",
       },
     });
-    const readyEvents = translator.translateEvent({
+    const readyEvents = harness.translate({
       jsonrpc: "2.0",
       method: "mcpServer/startupStatus/updated",
       params: {
@@ -1690,9 +1645,9 @@ describe("codex error and warning translation", () => {
 // ---------------------------------------------------------------------------
 
 describe("codex account rate-limit translation", () => {
-  it("translateEvent preserves Codex subscription rate limits", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent(
+  it("preserves Codex subscription rate limits", () => {
+    const harness = createHarness();
+    const events = harness.translate(
       codexEvent("account/rateLimits/updated", {
         rateLimits: {
           limitId: "codex",
@@ -1733,8 +1688,8 @@ describe("codex account rate-limit translation", () => {
   });
 
   it("uses Codex's reached reason before credit and spend metadata", () => {
-    const translator = createTranslator();
-    const [event] = translator.translateEvent(
+    const harness = createHarness();
+    const [event] = harness.translate(
       codexEvent("account/rateLimits/updated", {
         rateLimits: {
           limitId: "codex",
@@ -1773,8 +1728,8 @@ describe("codex account rate-limit translation", () => {
   });
 
   it("hydrates Codex rate limits before merging truly sparse rolling updates", () => {
-    const translator = createTranslator();
-    const requests = translator.buildPostInitializeRequests();
+    const harness = createHarness();
+    const requests = harness.translator.buildPostInitializeRequests();
     expect(requests).toHaveLength(1);
     const [rateLimitRead] = requests;
     if (rateLimitRead === undefined) {
@@ -1802,7 +1757,7 @@ describe("codex account rate-limit translation", () => {
       },
     });
 
-    const [sparseEvent] = translator.translateEvent({
+    const [sparseEvent] = harness.translate({
       jsonrpc: "2.0",
       method: "account/rateLimits/updated",
       params: {
@@ -1831,7 +1786,7 @@ describe("codex account rate-limit translation", () => {
       },
     });
 
-    const [resetEvent] = translator.translateEvent({
+    const [resetEvent] = harness.translate({
       jsonrpc: "2.0",
       method: "account/rateLimits/updated",
       params: {
@@ -1859,9 +1814,9 @@ describe("codex account rate-limit translation", () => {
 // ---------------------------------------------------------------------------
 
 describe("codex ignored notifications", () => {
-  it("translateEvent ignores remote control status changes", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent({
+  it("ignores remote control status changes", () => {
+    const harness = createHarness();
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "remoteControl/status/changed",
       params: {
@@ -1873,9 +1828,9 @@ describe("codex ignored notifications", () => {
     expect(events).toEqual([]);
   });
 
-  it("translateEvent ignores thread settings updates", () => {
-    const translator = createTranslator();
-    const events = translator.translateEvent({
+  it("ignores thread settings updates", () => {
+    const harness = createHarness();
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "thread/settings/updated",
       params: {

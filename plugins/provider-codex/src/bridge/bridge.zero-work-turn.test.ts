@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
-import { threadEventNotificationSchema } from "@bb/provider-bridge-protocol";
+import { assembleCapturedThreadEvents } from "@bb/agent-runtime/test/bridge-delta-assembly";
 import { createBridgeJsonRpcTestHarness } from "@bb/provider-bridge-protocol/testing";
 import type { BridgeJsonRpcTestHarness } from "@bb/provider-bridge-protocol/testing";
 import { handleLine } from "./bridge.js";
@@ -36,15 +36,9 @@ let harness: BridgeJsonRpcTestHarness;
 let workspaceDir: string;
 
 function threadEvents(): ThreadEvent[] {
-  const events: ThreadEvent[] = [];
-  for (const message of harness.messages) {
-    if (message.method !== "thread/event") continue;
-    const parsed = threadEventNotificationSchema.safeParse(message.params);
-    if (parsed.success && parsed.data.threadId === THREAD_ID) {
-      events.push(parsed.data.event);
-    }
-  }
-  return events;
+  // The bridge emits thread/delta; run the whole capture through a fresh
+  // assembler (the runtime adapter's exact translation) for canonical events.
+  return assembleCapturedThreadEvents(harness.messages, "codex");
 }
 
 async function waitForEvents(
