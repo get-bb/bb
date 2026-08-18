@@ -436,16 +436,8 @@ describe("useThreadFileTabs file opener diversion", () => {
     });
   }
 
-  function setDefaultOpener() {
-    window.localStorage.setItem(
-      "bb.fileOpenerByExtension",
-      JSON.stringify({ md: "notes:editor" }),
-    );
-  }
-
-  it("diverts working-tree markdown opens to the preferred opener tab", () => {
+  it("automatically diverts matching working-tree files to the opener tab", () => {
     registerNotesOpener();
-    setDefaultOpener();
     const { result } = renderThreadHook(() =>
       useThreadFileTabs({
         panelStateId: "opener-divert",
@@ -460,7 +452,7 @@ describe("useThreadFileTabs file opener diversion", () => {
       result.current.openTab({
         kind: "workspace-file-preview",
         tab: {
-          lineRange: null,
+          lineRange: { startLineNumber: 7, endLineNumber: 9 },
           path: "notes/todo.md",
           source: { kind: "working-tree" },
           statusLabel: null,
@@ -485,11 +477,103 @@ describe("useThreadFileTabs file opener diversion", () => {
       kind: "workspace",
       environmentId: "env_1",
     });
+    expect(result.current.activePluginPanelTab?.fileOpenerOwner).toMatchObject({
+      kind: "workspace-file-preview",
+      tab: {
+        lineRange: { startLineNumber: 7, endLineNumber: 9 },
+      },
+    });
+    expect(result.current.activeFileOpenerOwner).toBe(
+      result.current.activePluginPanelTab?.fileOpenerOwner,
+    );
+    expect(result.current.activeWorkspaceFilePath).toBe("notes/todo.md");
+    expect(result.current.activeWorkspaceFileLineRange).toEqual({
+      startLineNumber: 7,
+      endLineNumber: 9,
+    });
+
+    const firstTabId = result.current.activePluginPanelTab?.id;
+    act(() =>
+      result.current.openTab({
+        kind: "workspace-file-preview",
+        tab: {
+          lineRange: { startLineNumber: 15, endLineNumber: 15 },
+          path: "notes/todo.md",
+          source: { kind: "working-tree" },
+          statusLabel: null,
+        },
+      }),
+    );
+    expect(result.current.activePluginPanelTab?.id).toBe(firstTabId);
+    expect(result.current.activeWorkspaceFileLineRange).toEqual({
+      startLineNumber: 15,
+      endLineNumber: 15,
+    });
+  });
+
+  it("preserves native host and thread-storage preview state", () => {
+    registerNotesOpener();
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "opener-owner-context",
+        syncThreadId: "thr_owner",
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    act(() =>
+      result.current.openTab({
+        kind: "host-file-preview",
+        tab: {
+          lineRange: { startLineNumber: 11, endLineNumber: 12 },
+          path: "/tmp/readme.md",
+        },
+      }),
+    );
+    expect(result.current.activeFileOpenerOwner).toEqual({
+      kind: "host-file-preview",
+      environmentId: "env_1",
+      tab: {
+        lineRange: { startLineNumber: 11, endLineNumber: 12 },
+        path: "/tmp/readme.md",
+      },
+      threadId: "thr_owner",
+    });
+    expect(result.current.activeHostFilePath).toBe("/tmp/readme.md");
+    expect(result.current.activeHostFileLineRange).toEqual({
+      startLineNumber: 11,
+      endLineNumber: 12,
+    });
+
+    act(() =>
+      result.current.openTab({
+        kind: "thread-storage-file-preview",
+        tab: {
+          lineRange: { startLineNumber: 2, endLineNumber: 5 },
+          path: "artifacts/report.md",
+        },
+      }),
+    );
+    expect(result.current.activeFileOpenerOwner).toEqual({
+      kind: "thread-storage-file-preview",
+      environmentId: "env_1",
+      tab: {
+        lineRange: { startLineNumber: 2, endLineNumber: 5 },
+        path: "artifacts/report.md",
+      },
+      threadId: "thr_owner",
+    });
+    expect(result.current.activeStorageFilePath).toBe("artifacts/report.md");
+    expect(result.current.activeStorageFileLineRange).toEqual({
+      startLineNumber: 2,
+      endLineNumber: 5,
+    });
   });
 
   it("keeps the built-in preview for ref snapshots and unmatched extensions", () => {
     registerNotesOpener();
-    setDefaultOpener();
     const { result } = renderThreadHook(() =>
       useThreadFileTabs({
         panelStateId: "opener-skip",
@@ -531,9 +615,7 @@ describe("useThreadFileTabs file opener diversion", () => {
     expect(result.current.activeWorkspaceFilePath).toBe("src/index.ts");
   });
 
-  it("falls back to the built-in preview when the preferred opener is gone", () => {
-    // Preference points at an opener that is not registered (plugin removed).
-    setDefaultOpener();
+  it("falls back to the built-in preview when no opener is registered", () => {
     const { result } = renderThreadHook(() =>
       useThreadFileTabs({
         panelStateId: "opener-gone",
@@ -559,9 +641,40 @@ describe("useThreadFileTabs file opener diversion", () => {
     expect(result.current.activeWorkspaceFilePath).toBe("notes/todo.md");
   });
 
+  it("keeps the built-in preview when Settings pins it", () => {
+    window.localStorage.setItem(
+      "bb.fileOpenerByExtension",
+      JSON.stringify({ md: "__builtin__" }),
+    );
+    registerNotesOpener();
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "opener-built-in",
+        syncThreadId: "opener-built-in",
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    act(() =>
+      result.current.openTab({
+        kind: "workspace-file-preview",
+        tab: {
+          lineRange: null,
+          path: "notes/todo.md",
+          source: { kind: "working-tree" },
+          statusLabel: null,
+        },
+      }),
+    );
+
+    expect(result.current.activePluginPanelTab).toBeNull();
+    expect(result.current.activeWorkspaceFilePath).toBe("notes/todo.md");
+  });
+
   it("honors per-open viewer overrides in both directions", () => {
     registerNotesOpener();
-    setDefaultOpener();
     const { result } = renderThreadHook(() =>
       useThreadFileTabs({
         panelStateId: "opener-override",
@@ -572,7 +685,7 @@ describe("useThreadFileTabs file opener diversion", () => {
       }),
     );
 
-    // "builtin" override skips the opener default entirely.
+    // "builtin" override skips the automatic opener entirely.
     act(() =>
       result.current.openTab(
         {
@@ -590,8 +703,7 @@ describe("useThreadFileTabs file opener diversion", () => {
     expect(result.current.activePluginPanelTab).toBeNull();
     expect(result.current.activeWorkspaceFilePath).toBe("notes/todo.md");
 
-    // A forced opener applies even with no default preference set.
-    window.localStorage.removeItem("bb.fileOpenerByExtension");
+    // A forced opener can still select a registered provider explicitly.
     act(() =>
       result.current.openTab(
         {

@@ -1,4 +1,4 @@
-import { execFile, type ExecFileException } from "node:child_process";
+import { execFile, spawn, type ExecFileException } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -60,6 +60,15 @@ export interface GitCommandResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+}
+
+export type GitNullRecordFormat = "single" | "name-status" | "numstat";
+
+export interface GitNullRecordLimitResult extends GitCommandResult {
+  /** Complete records retained in stdout. */
+  recordCount: number;
+  /** True when the child was stopped as soon as maxRecords was collected. */
+  recordLimitReached: boolean;
 }
 
 type BranchStatus = {
@@ -299,6 +308,166 @@ export async function runGit(
       },
     );
   }
+}
+
+/**
+ * Runs Git while collecting at most `maxRecords` complete NUL-delimited
+ * records, then stops the child. `single` records contain one token (for
+ * example `ls-files -z`); `name-status` records contain a status plus one path,
+ * or a status plus old/new paths for renames and copies; `numstat` records
+ * contain counts plus one path, or counts plus old/new rename paths.
+ *
+ * This is deliberately record-bounded instead of byte-buffer-bounded: callers
+ * enforcing a file-count ceiling can collect exactly the ceiling plus one
+ * sentinel without first buffering the repository's complete output.
+ */
+export async function runGitWithNullRecordLimit(
+  args: string[],
+  options: RunGitOptions,
+  recordFormat: GitNullRecordFormat,
+  maxRecords: number,
+): Promise<GitNullRecordLimitResult> {
+  if (!Number.isInteger(maxRecords) || maxRecords <= 0) {
+    throw new WorkspaceError(
+      "invalid_request",
+      "maxRecords must be a positive integer",
+    );
+  }
+  if (options.signal?.aborted) {
+    throw createGitCommandCancelledError(args, options.signal.reason);
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = spawn("git", args, {
+      cwd: options.cwd,
+      env: resolveGitProcessEnv({ env: options.env }),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stdoutRecords: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let pending = Buffer.alloc(0);
+    let currentRecord: Buffer[] = [];
+    let expectedTokens = recordFormat === "single" ? 1 : 0;
+    let recordCount = 0;
+    let recordLimitReached = false;
+    let aborted = false;
+    let timedOut = false;
+    let spawnError: Error | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    const stopChild = (): void => {
+      child.stdout.pause();
+      child.kill();
+    };
+    const onAbort = (): void => {
+      if (recordLimitReached) return;
+      aborted = true;
+      stopChild();
+    };
+
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    if (options.signal?.aborted) onAbort();
+    if (options.timeoutMs !== undefined) {
+      timeout = setTimeout(() => {
+        if (recordLimitReached) return;
+        timedOut = true;
+        stopChild();
+      }, options.timeoutMs);
+    }
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      if (recordLimitReached) return;
+      const input =
+        pending.length === 0 ? chunk : Buffer.concat([pending, chunk]);
+      let tokenStart = 0;
+      for (let index = 0; index < input.length; index += 1) {
+        if (input[index] !== 0) continue;
+
+        const token = Buffer.from(input.subarray(tokenStart, index));
+        currentRecord.push(token);
+        if (currentRecord.length === 1) {
+          if (recordFormat === "name-status") {
+            const statusLetter = token[0];
+            expectedTokens = statusLetter === 82 || statusLetter === 67 ? 3 : 2;
+          } else if (recordFormat === "numstat") {
+            // With `--numstat -z`, ordinary entries are one token containing
+            // counts + path. Rename/copy entries end the first token after the
+            // counts, then carry old/new paths as two additional tokens.
+            const firstTab = token.indexOf(9);
+            const secondTab = token.indexOf(9, firstTab + 1);
+            expectedTokens = secondTab === token.length - 1 ? 3 : 1;
+          }
+        }
+
+        if (currentRecord.length === expectedTokens) {
+          for (const recordToken of currentRecord) {
+            stdoutRecords.push(recordToken, Buffer.from([0]));
+          }
+          currentRecord = [];
+          expectedTokens = recordFormat === "single" ? 1 : 0;
+          recordCount += 1;
+          if (recordCount === maxRecords) {
+            recordLimitReached = true;
+            pending = Buffer.alloc(0);
+            stopChild();
+            return;
+          }
+        }
+        tokenStart = index + 1;
+      }
+      pending = Buffer.from(input.subarray(tokenStart));
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderrChunks.push(chunk);
+    });
+    child.once("error", (error) => {
+      spawnError = error;
+    });
+    child.once("close", (code) => {
+      if (timeout !== undefined) clearTimeout(timeout);
+      options.signal?.removeEventListener("abort", onAbort);
+
+      const stdout = Buffer.concat(stdoutRecords).toString("utf8");
+      const stderr = Buffer.concat(stderrChunks).toString("utf8");
+      if (recordLimitReached) {
+        resolve({
+          stdout,
+          stderr,
+          exitCode: 0,
+          recordCount,
+          recordLimitReached: true,
+        });
+        return;
+      }
+      if (aborted || options.signal?.aborted) {
+        reject(createGitCommandCancelledError(args, options.signal?.reason));
+        return;
+      }
+      if (timedOut && options.timeoutMs !== undefined) {
+        reject(createGitCommandTimedOutError(args, options.timeoutMs));
+        return;
+      }
+      if (spawnError !== undefined) {
+        reject(
+          createGitCommandFailedError(args, trimOutput(stderr), spawnError),
+        );
+        return;
+      }
+
+      const exitCode = code ?? 1;
+      if (exitCode === 0 || options.allowFailure === true) {
+        resolve({
+          stdout,
+          stderr,
+          exitCode,
+          recordCount,
+          recordLimitReached: false,
+        });
+        return;
+      }
+      reject(createGitCommandFailedError(args, trimOutput(stderr)));
+    });
+  });
 }
 
 export async function getAbsoluteGitDir(cwd: string): Promise<string> {

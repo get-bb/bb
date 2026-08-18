@@ -7,6 +7,7 @@ import type { RuntimeEntry } from "../runtime-manager.js";
 import {
   CommandDispatchError,
   ExpectedCommandDispatchError,
+  resolveRuntimeBridgeLaunch,
   type CommandDispatchOptions,
   type CommandOf,
 } from "../command-dispatch-support.js";
@@ -25,6 +26,7 @@ type ExistingThreadRuntimeCommand =
 interface ResumeThreadRuntimeIfMissingArgs {
   command: ExistingThreadRuntimeCommand;
   entry: RuntimeEntry;
+  options: CommandDispatchOptions;
 }
 
 interface StageThreadCommandInputArgs {
@@ -168,7 +170,7 @@ async function stageThreadCommandInput(
 async function resumeThreadRuntimeIfMissing(
   args: ResumeThreadRuntimeIfMissingArgs,
 ): Promise<void> {
-  const { command, entry } = args;
+  const { command, entry, options } = args;
   const { resumeContext } = command;
   if (entry.runtime.hasThread(command.threadId)) {
     return;
@@ -179,12 +181,17 @@ async function resumeThreadRuntimeIfMissing(
       `No provider thread id available for thread ${command.threadId}`,
     );
   }
+  const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+    command.resumeContext.bridgeLaunch ?? command.bridgeLaunch,
+    options,
+  );
   await entry.runtime.resumeThread({
     ...(command.resumeContext.acpLaunchSpec !== undefined
       ? { acpLaunchSpec: command.resumeContext.acpLaunchSpec }
       : command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),
+    bridgeLaunch,
     environmentId: command.environmentId,
     threadId: command.threadId,
     projectId: resumeContext.projectId,
@@ -217,6 +224,10 @@ export async function startThread(
     threadStorageRootPath: options.threadStorageRootPath,
   });
   try {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
     const entry = await requireResolvedWorkspaceForCommand({
       dataDir: options.dataDir,
       environmentId: command.environmentId,
@@ -229,6 +240,7 @@ export async function startThread(
       ...(command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),
+      bridgeLaunch,
       environmentId: command.environmentId,
       threadId: command.threadId,
       projectId: command.projectId,
@@ -257,6 +269,10 @@ export async function prepareThreadRewind(
   options: CommandDispatchOptions,
 ): Promise<HostDaemonCommandResult<"thread.rewind.prepare">> {
   await requireSupportedProviderCliForThreadStart({ command, options });
+  const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+    command.bridgeLaunch,
+    options,
+  );
   const entry = await requireResolvedWorkspaceForCommand({
     dataDir: options.dataDir,
     environmentId: command.environmentId,
@@ -269,6 +285,7 @@ export async function prepareThreadRewind(
     ...(command.acpLaunchSpec !== undefined
       ? { acpLaunchSpec: command.acpLaunchSpec }
       : {}),
+    bridgeLaunch,
     environmentId: command.environmentId,
     threadId: command.threadId,
     leaseId: command.leaseId,
@@ -326,7 +343,7 @@ export async function ensureThreadRuntime(
       `Thread ${command.threadId} still runs a turn in environment ${busyEnvironmentId}`,
     );
   }
-  await resumeThreadRuntimeIfMissing({ command, entry });
+  await resumeThreadRuntimeIfMissing({ command, entry, options });
   return entry;
 }
 
@@ -398,7 +415,11 @@ export async function submitTurn(
       : {}),
   };
   try {
-    await resumeThreadRuntimeIfMissing({ command: stagedCommand, entry });
+    await resumeThreadRuntimeIfMissing({
+      command: stagedCommand,
+      entry,
+      options,
+    });
     switch (command.target.mode) {
       case "start":
         return await runSubmittedTurn(stagedCommand, entry);

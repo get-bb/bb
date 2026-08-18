@@ -1,4 +1,4 @@
-import type { BbPluginApi, PluginCliContext } from "@bb/plugin-sdk";
+import type { BbPluginApi, PluginCliContext } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 const hostSchema = z.object({ id: z.string().min(1), name: z.string().min(1) });

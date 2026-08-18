@@ -1,14 +1,15 @@
 ---
 name: bb-plugin-authoring
-description: Write, build, and install bb plugins. Use whenever the task is to create a bb plugin, extend bb itself, or add a bb CLI command, agent tool, background service, settings, panel, mention provider, or other bb surface via a plugin. Covers the entire backend BbPluginApi and the frontend @bb/plugin-sdk/app contract with working patterns.
+description: Write, build, and install bb plugins. Use whenever the task is to create a bb plugin, extend bb itself, or add a bb CLI command, agent tool, background service, settings, panel, mention provider, or other bb surface via a plugin. Covers the entire backend BbPluginApi and the frontend @get-bb/plugin-sdk/app contract with working patterns.
 ---
 
 # Authoring bb plugins
 
 A bb plugin is a TypeScript package running in-process inside the bb server.
 Its backend entry default-exports a factory that receives the full plugin API
-(`bb`); an optional frontend entry registers React UI inside the bb app.
-Plugins are full-trust code: they can read all local bb data.
+(`bb`); an optional frontend entry registers React UI inside the bb app; an
+optional host entry is bundled and runs as a supervised Node worker on targeted
+enrolled hosts. Plugins are full-trust code in every runtime.
 
 Plugins are on by default. Builtin plugins ship with bb; a few sit behind
 their own product gates. `bb plugin list` shows each plugin's status.
@@ -19,7 +20,7 @@ their own product gates. `bb plugin list` shows each plugin's status.
 bb plugin new hello            # scaffolds ./bb-plugin-hello (add --app for a frontend entry)
 cd bb-plugin-hello
 bb plugin install .            # registers the directory in place (--yes to skip the prompt)
-bb plugin dev                  # watch loop: rebuild frontend (if any) + reload on every save
+bb plugin dev                  # rebuild app/host bundles + reload on every save
 ```
 
 The manifest is `package.json`:
@@ -29,13 +30,14 @@ The manifest is `package.json`:
   "name": "bb-plugin-hello",
   "version": "0.1.0",
   "type": "module",
-  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.4.2" },
+  "engines": { "bb": ">=0.9", "bbPluginSdk": ">=0.4.3" },
   "bb": {
     "name": "Hello",
     "description": "A friendly example plugin.",
     "branding": { "icon": "Zap" },
     "server": "./server.ts",
     "app": "./app.tsx",
+    "host": "./host.ts",
     "skills": ["skills"]
   }
 }
@@ -56,6 +58,12 @@ The manifest is `package.json`:
   after any install that omits dev deps — including the packaged CLI's own,
   which runs npm under `NODE_ENV=production`. `devDependencies` is for types
   and tooling only.
+- `bb.host` (optional, singular) — full-trust Node 22 ESM entry bundled into
+  `dist/host.js` + source map + `host.meta.json`. Its owning server entry calls
+  it through typed host RPC. The daemon downloads it lazily, verifies its
+  digest, and reuses one worker per plugin generation. Pure JavaScript
+  dependencies are bundled; host code may use Node APIs such as
+  `child_process`, `fs`, and `fetch`.
   Installing or updating a git plugin needs `npm` on PATH; checking for
   updates does not, because a check reads the manifest and never builds. Path
   installs build from dependencies you have already installed.
@@ -100,9 +108,12 @@ The manifest is `package.json`:
   different branded artwork and provide a dark variant when needed.
 - `engines.bb` — optional semver range checked against the bb app version.
 - `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
-  (currently `0.4.2`; the scaffold writes `"^0.4.2"`). Absent means a legacy
-  manifest. Managed (`git:`/`npm:`) installs **refuse** a mismatch against
-  the running SDK; path installs surface it as `incompatible` at load.
+  (currently `0.4.3`; the scaffold writes `">=0.4.3"`). bb reads it as a floor,
+  not a ceiling: a later SDK in the same major still loads the plugin, so a
+  caret range keeps working after the SDK moves forward. Absent means a legacy
+  manifest. Managed (`git:`/`npm:`) installs **refuse** a plugin that needs a
+  newer SDK than the host provides, or one pinned to a different major; path
+  installs surface it as `incompatible` at load.
   Compatible updates (`bb plugin outdated` / `bb plugin update`) only select
   candidates that satisfy these ranges; newer incompatible releases are
   reported as blocked rather than applied. Dev builds (bb `0.0.0`) skip
@@ -113,8 +124,8 @@ The manifest is `package.json`:
   the previous state snapshot and records the failure for the user. Keep
   `engines.*` honest and ship load-safe factories so an update never strands
   users.
-- `bb plugin build` stamps authoritative metadata into both
-  `dist/server.meta.json` and `dist/app.meta.json`: `sdkMajor`, `sdkVersion`,
+- `bb plugin build` stamps authoritative metadata into every declared
+  artifact's `dist/*.meta.json`: `sdkMajor`, `sdkVersion`,
   `artifactFormatVersion` (currently `1`), `pluginId`, `pluginVersion`, and
   `builtWith: { bbVersion, pluginSdkVersion }`. Managed installs reject
   artifacts whose `pluginId`/`pluginVersion` disagree with the package
@@ -131,7 +142,7 @@ Backend API imports normally stay type-only;
 the root runtime exports are `defineRpcContract`, supplied by BB for shared
 schema contracts, and the numeric `PLUGIN_CLI_OUTPUT_MAX_BYTES` ceiling:
 `import { defineRpcContract, type BbPluginApi } from
-"@bb/plugin-sdk"`. Validator imports such as Zod are normal plugin runtime
+"@get-bb/plugin-sdk"`. Validator imports such as Zod are normal plugin runtime
 dependencies (and are bundled by `bb plugin build`).
 
 On-disk state per plugin: `<dataDir>/plugins/<id>/data.db` (its SQLite),
@@ -145,13 +156,29 @@ This skill is a guide, not the contract. For an exact signature or a symbol it
 does not cover:
 
 1. **`bb plugin types`**, run in the plugin directory (or given its path),
-   rewrites that plugin's `types/*.d.ts` from the running bb — no server
-   needed. The scaffold seeds them once, so a cloned or older plugin can be
-   thousands of lines behind. `--check` reports staleness without writing;
-   `bb plugin build` and `bb plugin dev` refresh them too.
-2. **Read `types/bb-plugin-sdk.d.ts`** (`-app.d.ts` for frontend symbols) —
-   the authoritative surface, ~13,000 lines of readable declarations with doc
-   comments, and what the scaffold `tsconfig.json` maps `@bb/plugin-sdk` to.
+   syncs that plugin's SDK surface to the running bb — no server needed. For a
+   plugin that depends on the npm package it repins the exact
+   `@get-bb/plugin-sdk` devDependency to this bb's SDK version (run
+   `npm install` after); for an older plugin that still vendors `types/*.d.ts`
+   it rewrites those declarations. Either way a cloned or older plugin can be
+   thousands of lines behind. `--check` reports a mismatch without writing;
+   `bb plugin build` and `bb plugin dev` keep things in step too.
+2. **Read the bundled declarations** — the authoritative surface, ~13,000
+   lines of readable declarations with doc comments:
+   - plugins scaffolded by a current bb depend on the npm package, so after
+     `npm install` read
+     `node_modules/@get-bb/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts`
+     (`bb-plugin-sdk-app.d.ts` for frontend symbols and
+     `bb-plugin-sdk-host.d.ts` for the host entry);
+   - plugins scaffolded before that still carry the root declaration in
+     `types/bb-plugin-sdk.d.ts` (plus `types/bb-plugin-sdk-app.d.ts` for an
+     app), which the plugin's `tsconfig.json` maps
+     `@get-bb/plugin-sdk` onto. Read whichever the plugin in front of you has.
+     That layout still works for existing entries, but migrate before adding
+     `bb.host` so the `/host` and `/testing/host` subpaths are present; `bb
+plugin migrate` converts such a plugin to the npm package (it prints the plan
+     and asks first, and needs `--yes` when stdin is not a terminal). Never
+     migrate a plugin the user did not ask you to migrate.
 3. **`git clone --depth 1 https://github.com/get-bb/bb`** for host behavior or
    a reference implementation: `packages/plugin-sdk/src/`,
    `apps/server/src/services/plugins/`, `plugins/`.
@@ -170,21 +197,125 @@ bb plugin install ./bb-plugin-notes
 bb plugin install npm:bb-plugin-notes@^1.0.0
 bb plugin install https://github.com/acme/bb-plugin-notes
 bb plugin install git:https://github.com/acme/bb-plugin-notes.git@main
+bb plugin install git:https://github.com/acme/bb-plugin-notes.git@^1.2.0
 ```
 
 A bare HTTP(S) repository URL tracks its default branch. Use the `git:` form
 with an explicit branch, tag, or commit when that tracking intent matters.
 
-BB has one maintained set of official plugins; users cannot add third-party
-catalogs. Official-plugin inclusion is a BB release decision, not part of the
-plugin authoring workflow: official plugins ship bundled inside the app itself
-and install from that local copy — no network fetch, no separate publish
-pipeline.
+### Releasing a git plugin with semver tags
+
+Tag each release `vX.Y.Z` and users can install a range instead of a ref:
+bb reads the repository's tags, installs the highest release the range allows,
+and `bb plugin update` moves them to later releases in the same range.
+Prereleases stay out unless the range names one. Give each plugin of a
+multi-plugin repository its own tag prefix — `notes/v1.2.3` — and users add
+`--tag-prefix notes/`.
+
+bb records the tag it installed together with the commit that tag pointed at,
+and refuses the plugin if that tag is ever moved to another commit. Publish a
+fix as a new version rather than retagging.
+
+### Several plugins in one repository
+
+Keep each plugin in its own directory with its own `package.json`, then index
+the directories in a `.bb/plugins.json` collection manifest at the repository
+root:
+
+```json
+{
+  "$schema": "https://getbb.app/schemas/plugins.schema.json",
+  "schemaVersion": 1,
+  "name": "acme-plugins",
+  "plugins": [
+    { "name": "notes", "source": "./plugins/notes" },
+    { "name": "status", "source": "./plugins/status" }
+  ]
+}
+```
+
+Each `source` is a repository-relative directory that starts with `./`. The
+file is an index only — it never overrides a plugin's identity, branding,
+entry points, or engine ranges. Users install one plugin at a time:
+
+```sh
+bb plugin install git:https://github.com/acme/bb-plugins.git@main --plugin notes
+bb plugin install git:https://github.com/acme/bb-plugins.git@main --subdirectory plugins/notes
+bb plugin install path:. --plugin notes
+```
+
+`--subdirectory` works without a collection manifest; `--plugin` resolves an
+entry name from it. If the repository is not itself a plugin, an install with
+neither flag fails and lists the entry names.
+
+### Publishing your own marketplace
+
+A marketplace is one `marketplace.json` file. It lists plugins with their
+store branding and their npm or git source; it never hosts plugin code, and
+installing an entry runs the same install pipeline a direct install runs.
+
+```json
+{
+  "$schema": "https://getbb.app/schemas/marketplace.schema.json",
+  "schemaVersion": 1,
+  "name": "acme-plugins",
+  "displayName": "Acme Plugins",
+  "description": "Plugins the Acme team maintains.",
+  "plugins": [
+    {
+      "id": "notes",
+      "displayName": "Notes",
+      "description": "Keep notes beside a thread.",
+      "icon": { "url": "./icons/notes.svg" },
+      "tags": ["notes", "interface"],
+      "author": { "name": "Acme", "github": "acme", "url": "https://acme.dev" },
+      "engines": { "bb": ">=0.0.34" },
+      "source": {
+        "git": {
+          "url": "https://github.com/acme/bb-plugins.git",
+          "subdir": "plugins/notes",
+          "range": "^1.0.0",
+          "tagPrefix": "notes/"
+        }
+      }
+    }
+  ]
+}
+```
+
+The schema is strict: an unknown field rejects the whole document, and the
+last catalog bb validated keeps serving. `name` is the marketplace's identity
+and must be unique on the user's machine; `bb-community` is reserved. `engines`
+may narrow a plugin manifest's ranges and never widen them. Icons are `.svg`,
+`.png`, or `.webp`, either an absolute https URL or a path relative to the
+manifest — bb fetches and validates them server-side and serves them from its
+own origin.
+
+Host it three ways, and users add whichever fits:
+
+```sh
+bb marketplace add https://plugins.acme.dev/marketplace.json
+bb marketplace add git:github.com/acme/bb-marketplace@main
+bb marketplace add path:/work/acme-marketplace
+```
+
+An https marketplace is re-read with a conditional request; a git one is
+cloned into a throwaway checkout each refresh, with `marketplace.json` and any
+relative icons read from the repository root. Prefer git tag ranges over
+pinned refs so a release reaches users without a catalog change. Before
+installing from a marketplace that is not `bb-community`, bb resolves and shows
+the true source — including the exact release tag and commit a range lands
+on — so keep your listed URL, subdirectory, and range honest.
+
+BB's own official plugins are separate: inclusion in the `bb-community`
+marketplace is a BB release decision, not part of the plugin authoring
+workflow, and the bundled official plugins ship inside the app itself and
+install from that local copy with no network fetch.
 
 ## The backend factory
 
 ```ts
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 
 export default async function plugin(bb: BbPluginApi) {
   // Register surfaces here. Load-safe: settings, storage, http, rpc,
@@ -271,6 +402,143 @@ listening throws, so prefer reading it from handlers, services, and timers.
 
 ### bb.hosts
 
+For a plugin with a singular `bb.host` entry, define one runtime contract
+shared by the server and host modules:
+
+```ts
+// contract.ts
+import {
+  defineRpcContract,
+  type ExperimentalHostSignals,
+} from "@get-bb/plugin-sdk";
+import { z } from "zod";
+
+export const hostContract = defineRpcContract({
+  setEnabled: {
+    input: z.object({ enabled: z.boolean() }).strict(),
+    output: z.object({ enabled: z.boolean() }).strict(),
+  },
+});
+
+export const hostSignals = {
+  changed: {
+    payload: z.object({ reason: z.string() }).strict(),
+  },
+} satisfies ExperimentalHostSignals;
+```
+
+The host entry default-exports its implementation:
+
+```ts
+// host.ts
+import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
+import { hostContract, hostSignals } from "./contract.js";
+
+export default experimental_defineHostEntry({
+  contract: hostContract,
+  experimental_signals: hostSignals,
+  handlers: {
+    setEnabled: async ({ enabled }, context) => {
+      await setEnabled(enabled, context.signal);
+      await context.experimental_emitSignal("changed", {
+        reason: "setting-applied",
+      });
+      return { enabled };
+    },
+  },
+  dispose: async () => closeChildren(),
+});
+```
+
+The server factory calls only its own host entry:
+
+```ts
+const host = bb.hosts.experimental_client({
+  contract: hostContract,
+  experimental_signals: hostSignals,
+});
+const result = await host.call(
+  "setEnabled",
+  { enabled: true },
+  { hostId, signal },
+);
+const unsubscribeWorkerExit = host.experimental_onWorkerExit(({ hostId }) => {
+  // Reassert durable desired state; the next call starts a fresh worker.
+});
+const unsubscribeChanged = host.experimental_onSignal(
+  "changed",
+  ({ hostId, payload }) => {
+    // Invalidate or reread server state for this host.
+  },
+);
+```
+
+Create the client and register signal handlers in the factory, but call host
+methods only after registration completes — from an RPC/event handler,
+background service, or timer. Candidate-time calls are rejected because that
+generation is not active or fetchable yet.
+
+`context.signal` aborts one call. `context.lifecycle.signal` aborts the whole
+worker process on idle eviction, reload, disable, uninstall, or daemon
+shutdown. Close timers, sockets, and child processes from the lifecycle signal
+and `dispose`.
+`context.experimental_paths.dataDir` is persistent and scoped to this plugin on
+the targeted daemon; `tempDir` is deleted with the worker process.
+`context.experimental_watch(options, listener)` uses the daemon's native file
+watcher. Deliveries are coalesced and serialized while the listener is busy;
+on `rescan-required`, reread current state instead of trusting prior events.
+Subscriptions are disposed with the worker and can also be disposed directly.
+Active calls and native watches automatically keep the worker running. For
+independent background work, acquire a lease during a handler with
+`context.experimental_retainWorker()` and dispose it when that work stops.
+Lease disposal is idempotent.
+
+Host signals are schema-validated, private to the plugin that owns the host
+entry, and ephemeral. Use them as invalidations or progress notifications, not
+as durable state; the server callback receives the authenticated `hostId`.
+V1 calls still target only an explicit enrolled host. If a method operates on
+an environment or directory, resolve it with `bb.sdk` and put the needed id or
+absolute path in that method's typed input. Core does not infer an environment,
+cwd, or lock for host RPC.
+
+The worker is lazy and reusable; there is no short-/long-lived manifest flag.
+After five minutes with no active call, native watch, or retained lease, the
+daemon gracefully stops it. A later call starts it again. This idle stop does
+not emit `experimental_onWorkerExit`. A crash fails in-flight calls, emits
+`experimental_onWorkerExit` to the active server generation, and a later call
+starts a fresh worker. Graceful reload, disable, uninstall, and daemon shutdown
+do not emit it. The event is ephemeral, so long-lived plugins must also
+reconcile when their target host reconnects. On reconnect, the daemon keeps
+workers whose generation is still active and disposes generations disabled or
+replaced while it was offline. There is no global worker-count limit. Host code
+receives the normalized user `PATH` without daemon-owned `BB_*` variables.
+
+These single-worker, idle-eviction, retention, and call-timeout rules describe
+the host RPC consumer only. Another daemon subsystem may attach the same
+`bb.host` artifact through a different bootstrap and own a separate process
+lifecycle.
+
+Host production code may import public `@get-bb/plugin-sdk` entrypoints, Node
+APIs, and ordinary third-party dependencies. It must not import private
+monorepo packages such as `@bb/domain`, `@bb/host-workspace`, or any other
+`@bb/*` package; the host artifact build rejects those imports anywhere in its
+dependency graph, including type-only imports and relative paths that resolve
+into a private package. Keep shared contract types plugin-local and validate
+them at the RPC boundary.
+
+Keep `@get-bb/plugin-sdk` in exact `devDependencies`, not production
+dependencies. The host builder supplies its small runtime helpers and bundles
+them into the self-contained artifact, including for managed Git installs that
+omit dev dependencies. The daemon never resolves the SDK or private BB
+packages from the plugin at runtime.
+
+Pure JavaScript dependencies are bundled. For external tools, use
+`child_process` to probe or invoke tools on `PATH`. bb V1 provides no
+privileged package installer; a plugin that invokes a system installer owns
+user consent, elevation, platform-specific behavior, and recovery.
+
+The rest of `bb.hosts` controls shared loopback port exposure.
+
 Control-plane declarations for host-local daemon behavior. Use
 `bb.hosts.declareSharedPorts(hostId, ports)` to replace this plugin's
 desired loopback port set for one host. `ports` contains integers from 1–65535;
@@ -284,8 +552,9 @@ daemon derives both from its trusted gate; plugins cannot choose a domain or
 send tunnel identity toward a credential-bearing daemon connection.
 
 Declarations are load-scoped: reload, disable, or shutdown clears them after
-the plugin's own dispose hooks run. This is a control-plane API only; plugins
-do not receive daemon streaming or socket primitives.
+the plugin's own dispose hooks run. Plugins do not receive daemon streaming or
+socket primitives. Add streaming only for a use case that cannot use bounded
+calls, pagination, and lossy invalidation signals.
 
 ```ts
 const tunnel = await bb.hosts.ensureSharedPortTunnel(hostId);
@@ -307,25 +576,25 @@ that need the singleton personal project use
 `bb.sdk.projects.list({ includePersonal: true })`.
 
 **Area map.** Every area below is reachable from `bb.sdk`. This lists the
-methods, not their arguments — read `types/bb-plugin-sdk.d.ts` for exact
-signatures.
+methods, not their arguments — read the bundled `bb-plugin-sdk.d.ts` for exact
+signatures (see "Looking up the exact API").
 
-| Area | Methods |
-| --- | --- |
-| `threads` | `list` `get` `search` `spawn` `fork` `send` `update` `delete` `stop` `compact` `wait` `open` `output` `timeline` `conversationOutline` `promptHistory` `archive` `archiveAll` `unarchive` `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary` `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storagePaths` `cancelPlan` `clearGoal` `continueAfterRateLimit` `rateLimitRecovery` `defaultExecutionOptions`; sub-areas `events` (`list` `wait`), `interactions` (`get` `list` `cancel` `resolve` `respond`), `queuedMessages` (`create` `list` `update` `delete` `send` `reorder` `setGroupBoundary`), `tabs` (`get` `update`) |
-| `threadSections` | `list` `create` `update` `delete` |
-| `projects` | `list` `get` `create` `update` `delete` `reorder` `paths` `files` `fileContent` `branches` `commands` `defaultExecutionOptions` `promptHistory`; sub-areas `attachments` (`upload` `read` `copy`), `sources` (`add` `update` `delete`) |
-| `environments` | `get` `update` `status` `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles` `diffBranches` `diffPatch` `pullRequest` `markPullRequestDraft` `markPullRequestReady` `mergePullRequest` `squashMerge` |
-| `hosts` | `list` `get` `update` `delete` `directory` `pathsExist` `pickFolder` `cloneDefaultPath` `createJoinCode` `retryUpdate` `providerCliStatus` `installProviderCli` |
-| `files` | `read` `write` `list` `listPaths` `mkdir` `move` `remove` `createPreview` |
-| `terminals` | `list` `create` `get` `input` `output` `resize` `rename` `restart` `close` |
-| `providers` | `list` `models` |
-| `skills` | `list` `listFiles` `getContent` `update` `remove`; sub-area `registry` (`search` `get` `detail` `install` `repositoryStars`) |
-| `plugins` | `list` `install` `remove` `enable` `disable` `reload` `token` `callRpc` `getSource` `getSettings` `updateSettings` `checkUpdates` `listUpdateResults` `applyUpdate`; sub-area `catalog` (`search` `status` `install`) |
-| `theme` | `get` `catalog` `set` |
-| `status` | `get` |
-| `system` | `version` `config` `reloadConfig` `attention` `usageLimits` `executionOptions` `transcribeVoice` `updateGeneralSettings` `updateKeyboardSettings` `updateExperiments` `cliSkillsStatus` `installCliSkills` `onboardingAgents` `onboardingRepos` `onboardingEvent` |
-| `guide` | `render` (the `bb guide` text; local, no request) |
+| Area             | Methods                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `threads`        | `list` `get` `search` `spawn` `fork` `send` `update` `delete` `stop` `compact` `wait` `open` `output` `timeline` `conversationOutline` `promptHistory` `archive` `archiveAll` `unarchive` `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary` `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storagePaths` `cancelPlan` `clearGoal` `defaultExecutionOptions`; sub-areas `events` (`list` `wait`), `interactions` (`get` `list` `cancel` `resolve` `respond`), `queuedMessages` (`create` `list` `update` `delete` `send` `reorder` `setGroupBoundary`), `tabs` (`get` `update`) |
+| `threadSections` | `list` `create` `update` `delete`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `projects`       | `list` `get` `create` `update` `delete` `reorder` `paths` `files` `fileContent` `branches` `commands` `defaultExecutionOptions` `promptHistory`; sub-areas `attachments` (`upload` `read` `copy`), `sources` (`add` `update` `delete`)                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `environments`   | `get` `update` `status` `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles` `diffBranches` `diffPatch` `pullRequest` `markPullRequestDraft` `markPullRequestReady` `mergePullRequest` `squashMerge`                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `hosts`          | `list` `get` `update` `delete` `directory` `pathsExist` `pickFolder` `cloneDefaultPath` `createJoinCode` `retryUpdate` `providerCliStatus` `installProviderCli`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `files`          | `read` `write` `list` `listPaths` `mkdir` `move` `remove` `createPreview`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `terminals`      | `list` `create` `get` `input` `output` `resize` `rename` `restart` `close`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `providers`      | `list` `models`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `skills`         | `list` `listFiles` `getContent` `update` `remove`; sub-area `registry` (`search` `get` `detail` `install` `repositoryStars`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `plugins`        | `list` `install` `remove` `enable` `disable` `reload` `token` `callRpc` `getSource` `getSettings` `updateSettings` `checkUpdates` `listUpdateResults` `applyUpdate`; sub-area `catalog` (`search` `status` `install`)                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `theme`          | `get` `catalog` `set`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `status`         | `get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `system`         | `version` `config` `reloadConfig` `attention` `usageLimits` `executionOptions` `transcribeVoice` `updateGeneralSettings` `updateKeyboardSettings` `updateExperiments` `cliSkillsStatus` `installCliSkills` `onboardingAgents` `onboardingRepos` `onboardingEvent`                                                                                                                                                                                                                                                                                                                                                                                         |
+| `guide`          | `render` (the `bb guide` text; local, no request)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 Prefer your own `bb.settings` and `bb.storage` over `sdk.system` and
 `sdk.plugins` for your plugin's own configuration. The `system` and `plugins`
@@ -363,6 +632,10 @@ await bb.sdk.threads.update({ threadId, title: "Fix the flaky test" });
 `threads.update` writes `title`, `sectionId`, `parentThreadId`, `model`,
 `reasoningLevel`, and `visibility`. Use `threads.timeline` (or
 `threads.output` for the last assistant text) to read a thread's messages.
+For raw history, `threads.events.list` defaults to ascending order and supports
+exclusive `afterSeq` / `beforeSeq` cursors, `order: "asc" | "desc"`, and a
+non-empty typed `types` array. Combine `order: "desc"` with `beforeSeq` to page
+backward from the newest matching events without reading unrelated payloads.
 
 Use `visibility: "hidden"` for background workers. Hidden threads stay
 out of sidebar organization and do not contribute unread/pending favicon
@@ -372,6 +645,29 @@ and direct-ID behavior. A thread you spawn with a `parentThreadId` inherits the
 parent's visibility when you omit `visibility`, and a hidden child still
 reports its turns and blockers to its parent. This is an organization contract, not a security
 boundary: plugins are full-trust server code.
+
+Hidden worker threads need explicit runtime cleanup. Stop each hidden thread
+promptly after its final result, including error paths. Stop releases an active,
+idle, or stuck runtime and preserves the thread for a later resume. Archive
+first when the worker no longer belongs in active lists. Use a `finally`
+block so a plugin failure cannot retain the agent process:
+
+```ts
+const worker = await bb.sdk.threads.spawn({
+  projectId,
+  environment: { type: "project-default" },
+  prompt: "Review this change.",
+  visibility: "hidden",
+});
+
+try {
+  await bb.sdk.threads.wait({ threadId: worker.id, status: "idle" });
+  return await bb.sdk.threads.output({ threadId: worker.id });
+} finally {
+  await bb.sdk.threads.archive({ threadId: worker.id });
+  await bb.sdk.threads.stop({ threadId: worker.id });
+}
+```
 
 SDK realtime observation stays separate from plugin lifecycle events:
 `bb.sdk.subscribe({ event, callback, ...selector })` returns an unsubscribe
@@ -492,7 +788,7 @@ the handler and output before serialization; handler parameters and return
 values are inferred from the schemas.
 
 ```ts
-import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export const rpcContract = defineRpcContract({
@@ -522,7 +818,7 @@ In `app.tsx`, import only the backend contract's type. The backend module and
 its dependencies are erased from the frontend bundle:
 
 ```tsx
-import { useRpc } from "@bb/plugin-sdk/app";
+import { useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "./server";
 
 function IssuesButton() {
@@ -625,7 +921,7 @@ bb.cli.register({
 Agents discover plugin commands through the server-generated
 `plugin-commands` skill, which lists each command's `summary` and the
 `commands` usage lines — fill both in. Combined stdout and stderr must fit
-`PLUGIN_CLI_OUTPUT_MAX_BYTES` from `@bb/plugin-sdk` (1,048,576 UTF-8 bytes).
+`PLUGIN_CLI_OUTPUT_MAX_BYTES` from `@get-bb/plugin-sdk` (1,048,576 UTF-8 bytes).
 The host rejects a larger result atomically as `plugin_cli_output_too_large`;
 it never clips it. Page growing collections, cap verbose fields, and use
 file/streaming commands for large content. Caveat: under the workspace
@@ -755,6 +1051,114 @@ safety policy such as permission escalation is unchanged. The legacy
 `contributeInstructions` provider remains excluded from side chats, so use
 `configure` for side-chat-aware dynamic instructions.
 
+### bb.agents.experimental_registerProvider — agent providers
+
+A plugin can contribute a full agent provider: a picker entry whose threads
+run on a **provider bridge** the plugin ships. The working reference is
+`examples/plugins/echo-provider` — declaration, bridge, and conformance test
+in one small package.
+
+```ts
+bb.agents.experimental_registerProvider({
+  id: "echo-agent", // stable public id; thread rows persist it
+  displayName: "Echo Agent", // 1-80 chars, shown in the picker
+  icon: "./icons/echo.svg", // optional; same grammar as bb.branding.icon
+  kind: "agent", // "agent" REQUIRES bridge; "router" forbids it
+  bridge: { entry: "provider-bridge" }, // names the built bundle
+  capabilities: {
+    // Pre-session facts only — the bridge reports the same facts at
+    // initialize and may only narrow what is declared here, never widen it.
+    supportsServiceTier: false,
+    supportsNativeUserQuestion: false,
+    fork: "none", // "none" | "tip" | "checkpoint"
+    supportsManualCompaction: false,
+    supportsThreadArchive: false, // bb mirrors archive/unarchive onto it
+    supportsThreadRename: false, // bb forwards renames to it
+    supportsWorkflows: false, // the provider can run bb Workflow tools
+    permissionModes: ["full"], // non-empty, no duplicates
+    reasoningLevels: ["medium"], // coarse fallback ladder
+  },
+  composerActions: [], // skills typeahead is implicit
+});
+```
+
+**The icon.** `icon` takes the same two shapes as `bb.branding.icon`: a named
+host glyph (`"Zap"`) or a plugin-relative SVG path (`"./icons/echo.svg"`). A
+path is served to clients as a `logoUrl` and drawn through `<img>`, so its
+`currentColor` cannot follow the bb theme; a glyph name carries no bytes, so
+there is no `logoUrl` at all. For a monochrome mark, ship an `app.tsx` too and
+register the same artwork with
+`app.slots.experimental_providerIcon({ providerId, icon })` — it renders
+inline and inherits the theme. The four first-party provider plugins do
+exactly this (`plugins/provider-codex/app.tsx`).
+
+Ids are collision-rejected against core providers and other plugins'
+registrations; registrations replace wholesale on reload like every other
+surface. Disabling the plugin removes the provider (open threads show a
+provider-unavailable state instead of erroring).
+
+**The bridge.** A provider bridge ships inside the plugin's `bb.host`
+artifact — the same artifact a host RPC entry ships in, and a plugin may have
+both. Export it by name:
+
+```ts
+// host.ts (bb.host)
+import { experimental_defineProviderBridge } from "@get-bb/plugin-sdk/provider-bridge";
+
+export const experimental_providerBridge = experimental_defineProviderBridge({
+  handleLine(line) {
+    /* one JSON-RPC line from the runtime */
+  },
+  // Optional; called once before the first line, with this plugin's
+  // persistent dataDir and this process's own tempDir.
+  start({ pluginId, dataDir, tempDir }) {},
+  onClose() {}, // stdin closed: the runtime is gone
+  onSigterm() {},
+});
+```
+
+Do NOT start the bridge yourself: the daemon owns the process boundary (argv,
+plugin-scoped directories, bounded stdin framing, signals) and imports this
+export out of the artifact. Importing the module must start nothing, which is
+also what lets your conformance test drive `handleLine` in-process.
+
+Everything a bridge compiles against is published at
+`@get-bb/plugin-sdk/provider-bridge` — protocol schemas, the bridge kit, and the event
+vocabulary — so add `@get-bb/plugin-sdk` to `dependencies` (not just
+`devDependencies`). A `bb.host` artifact cannot import bb's private `@bb/*`
+workspace packages; an installed plugin could not resolve them.
+
+The bridge speaks the canonical Provider Bridge Protocol — line-delimited
+JSON-RPC 2.0 over stdio, documented in `docs/provider-bridge-protocol.md`.
+Minimum correct surface: the `initialize`
+handshake (`{protocolVersion, capabilities}`), `thread/start` /
+`thread/resume` answering `{providerThreadId}` after a `thread/identity`
+notification, `turn/start` driving the event grammar (`turn/input/accepted`
+→ `turn/started` → `item/started` → deltas → `item/completed` →
+`turn/completed` as `thread/event` notifications carrying bb
+`ThreadEvent`s), `thread/stop` honoring both intents (`release` must
+fabricate nothing), and reply hygiene: unknown method → `-32601`, invalid
+params → `-32602` with the issues, never a silent drop. The bridge — never
+the provider — mints every turn and item id, with per-instance entropy so
+ids survive restarts and resumes.
+
+**Conformance.** Ship a test that drives
+`@bb/provider-bridge-protocol/conformance` against your bridge in-process:
+export the bridge surface, wire `runBridgeConformance` with a
+transport whose `send` calls it and whose `takeMessages` drains captured
+stdout, and assert all eleven scenarios pass (see
+`examples/plugins/echo-provider/provider-bridge.conformance.test.ts`).
+
+**Delivery.** On install/reload the server builds `dist/host.js` and records
+its digest. Thread commands for the provider carry `{pluginId, digest}` to the
+host daemon, which downloads the bytes from the server, verifies the digest
+before caching them, and runs the artifact with its own node — it never
+executes unverified bytes. It is one cache and one route with the host RPC
+worker, because it is one artifact.
+Trust model: installation trust, exactly like every other plugin surface. A
+bridge runs only for an installed, enabled plugin, and only on hosts whose
+server instructs it.
+
 ### bb.ui — host-rendered UI (no frontend bundle needed)
 
 ```ts
@@ -800,7 +1204,7 @@ captured `bb` from a previous load throws `PluginContextStaleError` on use
 
 ## Frontend (`bb.app` entry)
 
-`app.tsx` default-exports `definePluginApp` from `@bb/plugin-sdk/app`.
+`app.tsx` default-exports `definePluginApp` from `@get-bb/plugin-sdk/app`.
 React and the SDK are **never bundled** — `bb plugin build` shims them to
 the host's shared runtime, so the bundle only works inside bb.
 
@@ -815,7 +1219,7 @@ import {
   useBbNavigate,
   useComposer,
   useComposerView,
-} from "@bb/plugin-sdk/app";
+} from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner"; // shimmed to the host toaster
 import { Button } from "@/components/ui/button"; // vendored source YOU own
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -848,6 +1252,15 @@ export default definePluginApp((app) => {
     icon: "Columns",
     path: "board",
     component: Board,
+    experimental_fixedTabs: [
+      {
+        id: "navigation",
+        title: "Navigation",
+        icon: "PanelRight",
+        component: BoardNavigation,
+        layout: "flush",
+      },
+    ],
     experimental_sidebarAccessory: OpenIssueCount,
   });
   app.slots.threadPanelAction({
@@ -942,8 +1355,10 @@ surface them here instead, filtering `experimental_useSidebarThreads()` by
 ### Replacing the sidebar thread list
 
 `app.slots.experimental_threadList` is the one **exclusive** slot: only one
-list fills the sidebar's scroll area. Registering it does not take the sidebar
-— the built-in list stays the default, and the user picks a provider in
+list fills the sidebar's scroll area. Registering activates the replacement
+while the plugin is enabled. If multiple plugins register one, the first in
+deterministic slot order is active by default; removing it reveals the next.
+The user can pin BB's list or a specific provider under
 **Settings → Appearance → Sidebar**. The choice is per client.
 
 Your component gets the scrolling list and nothing else. The New-thread button,
@@ -968,6 +1383,9 @@ interface PluginThreadListProps {
   /** The host search field's text; "" when the field is closed. The host owns
       that field — filter by this rather than shipping a second one. */
   searchQuery: string;
+  /** BB's bound thread list. Render it to delegate conditionally without
+      re-entering plugin replacement resolution. */
+  experimental_Original: ComponentType;
 }
 ```
 
@@ -1003,7 +1421,7 @@ Destructive actions deliberately route through the host's own flow, so there
 is no silent `delete`: deletion is recursive, and only bb can show the
 confirmation that counts the child threads.
 
-Unit-test a list with `renderSlot(...)` from `@bb/plugin-sdk/testing/app`:
+Unit-test a list with `renderSlot(...)` from `@get-bb/plugin-sdk/testing/app`:
 seed rows with the `sidebarThreads` option and assert against
 `inspection.sidebarActionCalls`.
 
@@ -1109,7 +1527,38 @@ Slot props contracts (versioned, additive-only):
   back/forward then walks panel-internal history (prefer this over hash
   routing).
   Registration:
-  `{ id, title, icon, path, component, experimental_sidebarAccessory?, headerContent? }`.
+  `{ id, title, icon, path, component, experimental_fixedTabs?, experimental_sidebarAccessory?, headerContent? }`.
+  BB automatically wraps every plugin page in the same host-owned App panel
+  used by New thread and thread pages. The page component supplies only its
+  main body; it must not mount a second panel layout or register Browser and
+  Terminal itself. BB owns the desktop split, compact drawer, header/panel
+  toggle, resizing, tab strip, persistence, and the shared `panel.toggle`,
+  `panel.newTab`, and `terminal.open` keyboard commands.
+
+  New tab is a transient host launcher. On a plugin page it offers Browser
+  (when the desktop browser is available) and Terminal; it does not offer
+  workspace file search because a generic plugin page has no implicit project,
+  environment, or working directory. The Terminal row includes a compact
+  connected-machine selector, initially resolving the primary machine and then
+  the first connected fallback. Changing the selector does not launch
+  anything; activating Start terminal uses the selected machine. The selection
+  is page-session UI state, not plugin storage.
+
+  Browser and Terminal tabs are normal host content tabs. Closing the final
+  content tab closes an otherwise empty panel; if fixed tabs remain, BB falls
+  back to the first one instead. Hydration closes an open panel when no durable
+  tab survived.
+
+  `experimental_fixedTabs` declares ordered, non-closable page views in that
+  same host tab strip: `{ id, title, icon, component, layout? }`. BB opens the
+  first fixed tab on the page's first wide-layout visit, but remembers a later
+  user close. Only the active fixed-tab component is mounted, and closing the
+  panel unmounts it. It receives the same `{ subPath }` as the main page. `layout: "padded"` (the default) gives it
+  host padding and scrolling; `layout: "flush"` gives it the full panel content
+  region so it can own both. Fixed tabs add content to the shared panel; they
+  do not replace its native chrome, Browser, Terminal, or keyboard commands.
+  Experimental: see `docs/api_to_audit.md`.
+
   `experimental_sidebarAccessory` is a no-props, presentational component at
   the trailing edge of the sidebar row. It can own SDK hooks for a live count
   or short status without lifting state into the host sidebar. The host does
@@ -1129,6 +1578,7 @@ Slot props contracts (versioned, additive-only):
   title bar or the panel body. For a classic page, use an outer scroll region
   with `p-4 md:p-5` and wrap its content in a
   `mx-auto w-full max-w-3xl space-y-4` div.
+
 - `threadPanelAction` → an entry in the thread right panel's new-tab
   Actions list (next to "Start side chat" / "Start terminal"), labeled
   `title` with your compact plugin icon. This slot is only offered for an
@@ -1140,7 +1590,7 @@ Slot props contracts (versioned, additive-only):
   rendering `component` with `{ threadId: string, params: JsonValue | null }`.
   Omitting `run` opens a tab immediately with defaults. Write parameters are
   typed as the recursively JSON-safe `JsonValue` exported by both
-  `@bb/plugin-sdk` and `@bb/plugin-sdk/app`; they persist with the tab across reloads (null when
+  `@get-bb/plugin-sdk` and `@get-bb/plugin-sdk/app`; they persist with the tab across reloads (null when
   none was passed); identical action+params re-opens focus the existing
   tab (title refreshed), different params open sibling tabs. The tab pill
   shows your compact plugin icon + the tab title. Errors thrown from `run`
@@ -1179,9 +1629,11 @@ Slot props contracts (versioned, additive-only):
   (sync or async) are contained and logged,
   never breaking the sidebar. `title` is the tooltip + accessible label;
   `icon` is a BB icon-name hint (unknown names fall back to a generic bolt).
-- `fileOpener` → `{ path: string, source }` — register as a viewer/editor
+- `fileOpener` → `{ path: string, source, experimental_Original }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
-  Users set the per-extension default under Settings → "File openers", and
+  Matching files use the first applicable opener in deterministic slot order
+  by default. Users can pin BB's preview or a specific opener per extension
+  under Settings → "File openers", and
   right-clicking a file link in rendered markdown offers a one-off
   "Open with …" choice; matching files opened in the right panel then
   render your component in a plugin tab instead of the built-in preview —
@@ -1190,6 +1642,8 @@ Slot props contracts (versioned, additive-only):
   `{ kind: "workspace" | "host" | "thread-storage", threadId, environmentId,
 projectId }` (nullable fields) and `path` follows the source (workspace:
   worktree-relative; host: absolute; thread-storage: storage-relative).
+  `experimental_Original` is BB's preview bound to this file; render it to
+  delegate conditionally without re-entering plugin replacement resolution.
   Applies only to live file content — git-ref snapshots and deleted files
   always use the built-in preview, and a removed/disabled opener degrades
   back to it. Pair with `bb.sdk.files` (rpc from your server) to load and
@@ -1239,6 +1693,19 @@ openWorkspaceFile }` — register a leaf
   `useBbNavigate().openThreadPanel`. Errors from `run` (sync or
   async) are contained and
   logged, never breaking the timeline.
+- `experimental_providerIcon` → the React component bb draws as one agent
+  provider's icon. Registration: `{ providerId, icon }`, where `providerId` is
+  the provider's id (`"codex"`, `"acp-cursor"`) — not the plugin id — and
+  `icon` is a component receiving only `className` (host sizing plus the
+  provider color class). Use it for a theme-aware mark: a file logo
+  (`bb.branding.icon`, or a path-shaped provider declaration `icon`) is drawn
+  through `<img>`, a separate document where `currentColor` resolves to black
+  and is invisible on dark themes, so keep files for intentionally colored
+  logos and register a component for anything that should follow the theme.
+  A component beats the file logo for that provider; disabling the plugin
+  falls back to it. One registration per provider id per plugin; if two
+  plugins claim one provider id the host keeps the first by plugin id and
+  warns. Reference: `plugins/provider-codex/app.tsx`.
 
 Host components:
 
@@ -1311,6 +1778,13 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   `project-default` environment seeds nothing, and a seeded host/worktree
   that no longer exists falls back to the composer's default environment.
 
+  Projectless threads: the project picker always offers "Don't work in a
+  project". That choice submits BB's personal-project id in `projectId` (not
+  `null`) and a host environment with `workspace: { type: "personal" }`.
+  Forward both fields unchanged to `threads.spawn`. If you need metadata for
+  the selected project, call `bb.sdk.projects.list({ includePersonal: true })`
+  because the ordinary list omits the personal project.
+
   The composer resolves selections; YOUR PLUGIN creates the thread. On
   submit it calls `onSubmit(request)` with a JSON-serializable
   `NewThreadRequest`
@@ -1328,7 +1802,7 @@ serviceTier?, executionInputSources, environment, input }`. Forward it
 
   ```tsx
   // app.tsx
-  import { experimental_NewThreadComposer as NewThreadComposer } from "@bb/plugin-sdk/app";
+  import { experimental_NewThreadComposer as NewThreadComposer } from "@get-bb/plugin-sdk/app";
 
   <NewThreadComposer
     defaultProjectId={projectId}
@@ -1429,7 +1903,7 @@ banners?, richText? })`. Omitted `scopes` means all thread, queued-message,
   reference: `examples/plugins/composer-customization`.
 
 UI components — **vendored shadcn source you own** (the shadcn model; the
-old host-provided component kit is REMOVED — `@bb/plugin-sdk/app` exports
+old host-provided component kit is REMOVED — `@get-bb/plugin-sdk/app` exports
 only `definePluginApp` + the hooks):
 
 - Builtin plugins in this repo import shared UI from `@bb/shared-ui` (the
@@ -1464,7 +1938,7 @@ only `definePluginApp` + the hooks):
   React context on every plugin surface; add `@pierre/diffs` to
   devDependencies for types). Pass
   `theme: { dark: document.documentElement.dataset.bbCodeThemeDark,
-  light: document.documentElement.dataset.bbCodeThemeLight }` so a custom
+light: document.documentElement.dataset.bbCodeThemeLight }` so a custom
   UI theme's Pierre JSON applies. Synthesize a `diff --git a/<p> b/<p>`
   header when your patch source (e.g. the GitHub REST API) omits it — see
   `plugins/github/app.tsx`.
@@ -1506,20 +1980,23 @@ hardcoded colors break custom palettes.
 
 ## Testing a plugin
 
-### Unit tests with `@bb/plugin-sdk/testing`
+### Unit tests with `@get-bb/plugin-sdk/testing`
 
-`@bb/plugin-sdk/testing` is the official vitest harness for workspace and
+`@get-bb/plugin-sdk/testing` is the official vitest harness for workspace and
 standalone plugins. The packed package ships runtime JavaScript and portable
-declarations for both testing subpaths. A scaffold still vendors the root/app
-types, so add `@bb/plugin-sdk` as a devDependency when tests import the
-testing harness (plus its optional peers: `better-sqlite3` for backend tests;
-React, React DOM, Testing Library, and jsdom for frontend tests).
+declarations for all three testing entrypoints. A current scaffold already declares
+`@get-bb/plugin-sdk` as an exact devDependency, so the harness is on disk after
+`npm install`; an older plugin that still vendors `types/` must add that
+devDependency (or run `bb plugin migrate`) before tests can import the harness.
+Either way, install its optional peers too: `better-sqlite3` for backend tests;
+React, React DOM, Testing Library, and jsdom for frontend tests.
 
 The fake plugin host's `bb` satisfies `BbPluginApi` with host-faithful
 semantics: real better-sqlite3 temporary storage (never mock the db), the kv
 256KB cap, schema-RPC validation/error/strict-JSON behavior, additive events,
 keyed registration failures, atomic reload, conditional agent configuration,
-request input, and `threads.spawn` plugin attribution.
+request input, typed host-call validation/signal delivery, and `threads.spawn`
+plugin attribution.
 
 Backend (`server.ts`) — `createFakePluginHost()`:
 
@@ -1527,13 +2004,16 @@ Backend (`server.ts`) — `createFakePluginHost()`:
 import {
   createFakePluginHost,
   makeThreadResponse,
-} from "@bb/plugin-sdk/testing";
+} from "@get-bb/plugin-sdk/testing";
 import plugin from "./server";
 
 const { bb, harness } = createFakePluginHost({
   pluginId: "my-plugin",
   settings: { apiToken: "tok" }, // pre-seeded stored values (secrets included)
   sdk: { threads: { spawn: async () => ({ id: "th_1" }) } },
+  experimental_callHostRpc: async ({ method, input, target, signal }) => {
+    return { ok: true }; // validated against the method's output schema
+  },
 });
 await plugin(bb);
 
@@ -1548,6 +2028,12 @@ await harness.behavior.emitThreadEvent("thread.idle", {
   lastAssistantText: "done",
 });
 await harness.behavior.callAgentTool("lookup_doc", { query: "x" }); // parse (zod) + execute
+await harness.behavior.experimental_emitHostSignal(
+  "changed",
+  { reason: "test" },
+  { kind: "host", hostId: "host-test" },
+);
+await harness.behavior.experimental_emitHostWorkerExit("host-test");
 await harness.behavior.resolveAgentConfiguration(context); // validated tools/skills/instructions
 await harness.lifecycle.dispose(); // abort services, hooks LIFO, close database; stale bb throws
 ```
@@ -1562,13 +2048,32 @@ Inspect: `harness.inspection.sdk.calls` /
 `harness.inspection.sdk.callsTo("threads.spawn")` (every
 `bb.sdk` call is recorded; unstubbed methods throw naming the path to stub —
 `harness.sdk.stub("projects.list", fn)` adds one late), `harness.logEntries`,
-`harness.realtimeSignals`, `harness.needsConfigurationMessages`, and
+`harness.realtimeSignals`, `harness.experimental_hostRpcCalls`,
+`harness.needsConfigurationMessages`, and
 `harness.registrations` (http routes, rpc methods, services, schedules, cli,
 agent tools/configure provider, mention providers). Pass
 `agentSkillIds` to `createFakePluginHost` to declare the manifest skill names
 available to the configure driver.
 
-Frontend (`app.tsx`) — `@bb/plugin-sdk/testing/app` (vitest + jsdom):
+Host entry (`host.ts`) — `@get-bb/plugin-sdk/testing/host`:
+
+```ts
+import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
+import hostEntry from "./host.js";
+
+const harness = experimental_createHostEntryHarness(hostEntry);
+
+const result = await harness.experimental_call("setEnabled", { enabled: true });
+await harness.experimental_dispose();
+```
+
+This harness applies the real contract schemas, request/lifecycle
+cancellation, JSON round-tripping, and the host result-size limit. Use injected
+child-process adapters for feature tests. Worker startup, crashes, artifact
+verification, and reconnect behavior belong in daemon integration tests, not
+this in-process harness.
+
+Frontend (`app.tsx`) — `@get-bb/plugin-sdk/testing/app` (vitest + jsdom):
 
 ```tsx
 // @vitest-environment jsdom
@@ -1576,7 +2081,7 @@ import {
   loadPluginApp,
   mountPluginContentScripts,
   renderSlot,
-} from "@bb/plugin-sdk/testing/app";
+} from "@get-bb/plugin-sdk/testing/app";
 
 // The thunk matters: app.tsx binds the plugin runtime at module load, so
 // loadPluginApp installs the test runtime BEFORE importing it. (For static
@@ -1632,9 +2137,10 @@ multi-plugin arbitration. Use a live loop for those host boundaries.
 
 ### Live loop against a running bb
 
-- `bb plugin dev` is the loop: save → rebuild (if `bb.app`) → reload; open
-  app pages pick new UI up live. Build/reload failures print and keep
-  watching.
+- `bb plugin dev` is the loop: save → rebuild declared `bb.app` and `bb.host`
+  artifacts → reload; open app pages pick new UI up live and
+  host workers move to the new generation on their next call. Build/reload
+  failures print and keep watching.
 - `bb plugin list` shows status, services, schedules (with last_error),
   handler stats, and the CLI command; `bb plugin logs <id> -f` follows
   `bb.log` output. Add `--json` to any plugin command for machine output.
@@ -1717,6 +2223,10 @@ Remaining reference examples in `examples/plugins/`:
   `defineRpcContract` plus `PLUGIN_CLI_OUTPUT_MAX_BYTES`; validator imports are
   plugin dependencies. The
   scaffold tsconfig typechecks both `server.ts` and `app.tsx`.
-- `types/*.d.ts` is a per-plugin copy, not a live view of the SDK: run
-  `bb plugin types` before trusting it, and never fall back to a minified
-  `dist/` bundle — see "Looking up the exact API".
+- The declarations you read are pinned to one SDK version, not a live view:
+  new plugins get them from the exact `@get-bb/plugin-sdk` devDependency, older
+  ones from a vendored `types/*.d.ts` copy. Run `bb plugin types` before
+  trusting either — it repins the devDependency or rewrites `types/` as
+  appropriate — and never fall back to a minified `dist/` bundle — see
+  "Looking up the exact API". `bb plugin migrate` moves an older plugin off the
+  vendored copy, but only when the user asks for it.

@@ -11,6 +11,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { CURATED_MARKETPLACE_NAME } from "../plugin-catalog/marketplace-manifest.js";
 import {
   createPluginStateSnapshot,
   getInstalledPlugin,
@@ -61,6 +62,11 @@ const installedPluginRowFields = {
   sourceGitSubdirectory: z.string().nullable(),
   sourceGitRequestedRef: z.string().nullable(),
   sourceGitRefKind: z.enum(["branch", "tag", "commit"]).nullable(),
+  // Snapshots written before git ranges existed omit these; those rows all
+  // pinned one ref.
+  sourceGitRange: z.string().nullable().default(null),
+  sourceGitTagPrefix: z.string().nullable().default(null),
+  sourceGitResolvedTag: z.string().nullable().default(null),
   npmResolvedVersion: z.string().nullable(),
   npmIntegrity: z.string().nullable(),
   gitResolvedCommit: z.string().nullable(),
@@ -85,6 +91,9 @@ const installedPluginRowSchema = z
     ...installedPluginRowFields,
     provenance: z.enum(["builtin", "direct", "catalog"]),
     catalogEntryId: z.string().nullable(),
+    // Snapshots written before marketplaces were named omit this; those rows
+    // all came from the official catalog.
+    catalogMarketplaceName: z.string().nullable().default(null),
   })
   .strict();
 const legacyInstalledPluginRowSchema = z
@@ -266,7 +275,7 @@ export async function readPluginSnapshotRegistration(args: {
   const installed = getInstalledPlugin(args.db, legacy.id);
   if (
     legacy.provenance === "marketplace" &&
-    marketplaceId === "bb-official" &&
+    marketplaceId === CURATED_MARKETPLACE_NAME &&
     marketplaceEntryId !== null &&
     installed?.provenance === "catalog" &&
     installed.catalogEntryId === marketplaceEntryId
@@ -275,12 +284,14 @@ export async function readPluginSnapshotRegistration(args: {
       ...registration,
       provenance: "catalog",
       catalogEntryId: marketplaceEntryId,
+      catalogMarketplaceName: CURATED_MARKETPLACE_NAME,
     };
   }
   return {
     ...registration,
     provenance: legacy.provenance === "builtin" ? "builtin" : "direct",
     catalogEntryId: null,
+    catalogMarketplaceName: null,
   };
 }
 

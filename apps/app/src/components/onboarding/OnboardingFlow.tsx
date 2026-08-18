@@ -15,6 +15,7 @@ import {
 } from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { useLocalPathPicker } from "@/hooks/useLocalPathPicker";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
@@ -240,9 +241,10 @@ function AgentRows({
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      void navigator.clipboard
-                        ?.writeText(agent.loginCommand ?? "")
-                        .catch(() => {});
+                      void copyToClipboardWithToast(agent.loginCommand ?? "", {
+                        successMessage: null,
+                        errorMessage: null,
+                      });
                     }}
                   >
                     Copy

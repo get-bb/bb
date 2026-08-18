@@ -7,7 +7,7 @@
 // Server-owned policy lives here: the reply-anchor seed rule and the
 // empty-fork cleanup sweep. The archive cascade is BB's own: a hidden fork
 // retires with its source thread whether or not this plugin is enabled.
-import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export const REPLY_SEED_PREFIX =

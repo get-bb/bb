@@ -89,6 +89,7 @@ const dirtyUncommittedStatus: WorkspaceStatus = {
     files: promptboxBannerFiles,
     insertions: 312,
     deletions: 47,
+    lineStatsComplete: true,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -226,6 +227,7 @@ const dirtyUncommittedManyStatus: WorkspaceStatus = {
     files: dirtyUncommittedManyFiles,
     insertions: 1284,
     deletions: 312,
+    lineStatsComplete: true,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -247,18 +249,19 @@ const untrackedOnlyStatus: WorkspaceStatus = {
       {
         path: "apps/app/notes/triage.md",
         status: "??",
-        insertions: 18,
-        deletions: 0,
+        insertions: null,
+        deletions: null,
       },
       {
         path: "apps/app/scripts/dev-bb-worktree.sh",
         status: "??",
-        insertions: 42,
-        deletions: 0,
+        insertions: null,
+        deletions: null,
       },
     ],
-    insertions: 60,
+    insertions: 0,
     deletions: 0,
+    lineStatsComplete: false,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -279,6 +282,7 @@ const committedUnmergedStatus: WorkspaceStatus = {
     files: [],
     insertions: 0,
     deletions: 0,
+    lineStatsComplete: true,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -299,6 +303,7 @@ const committedUnmergedStatus: WorkspaceStatus = {
     files: promptboxBannerFiles.slice(0, 3),
     insertions: 128,
     deletions: 24,
+    lineStatsComplete: true,
   },
 };
 
@@ -831,7 +836,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="untracked only"
-        hint='workingTree.state = "untracked" with synthesized insertion stats'
+        hint='workingTree.state = "untracked" with intentionally unavailable line stats'
       >
         <Row section={untrackedSection} initiallyExpandedSection="git" />
       </StoryRow>

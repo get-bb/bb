@@ -2,7 +2,7 @@ import type {
   BbPluginApi,
   PluginSettingDescriptors,
   PluginSettingsValues,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 
 export const WORKFLOW_SETTING_DESCRIPTORS = {
   maxActiveRuns: {

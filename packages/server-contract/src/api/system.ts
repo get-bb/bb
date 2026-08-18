@@ -12,9 +12,10 @@ import {
   pluginThemeMetaSchema,
   providerInfoSchema,
 } from "@bb/domain";
-import { hostPlatformSchema } from "@bb/host-daemon-contract";
+import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
 
 export const systemExecutionOptionsModelLoadErrorCodeSchema = z.enum([
+  "provider_unavailable",
   "missing_executable",
   "auth_required",
   "timeout",

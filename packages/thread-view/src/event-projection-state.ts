@@ -6,6 +6,7 @@ import type {
 } from "./event-projection-types.js";
 import {
   flushBufferedAssistantMessages,
+  flushBufferedAssistantMessagesForTurn,
   type AssistantStreamProjectionState,
 } from "./assistant-stream-projection.js";
 import {
@@ -21,12 +22,15 @@ import { createToolActivityState } from "./tool-activity-projection.js";
 import {
   createOperationProjectionState,
   flushPendingFileEditOutput,
+  interruptOpenCompactions,
   type CompactionTurnFinalizationStatus,
   type OperationProjectionState,
 } from "./operation-projection.js";
+import type { EventMeta } from "./event-decode.js";
 import {
   createReasoningProjectionState,
   finalizeOpenReasoningLifecycles,
+  finalizeOpenReasoningLifecyclesForTurn,
   type ReasoningProjectionState,
 } from "./reasoning-lifecycle-projection.js";
 import { shouldPreservePendingMessages } from "./user-message-parsing.js";
@@ -67,12 +71,14 @@ interface FinalizeProjectionMessagesArgs {
 }
 
 interface ThreadInterruptedArgs {
-  completedAt: number;
+  meta: EventMeta;
   state: ProjectionState;
+  threadId: string;
 }
 
 export interface ProjectionState
-  extends AssistantStreamProjectionState,
+  extends
+    AssistantStreamProjectionState,
     OperationProjectionState,
     ReasoningProjectionState,
     BackgroundTaskProjectionState {
@@ -137,14 +143,19 @@ export function onTurnCompleted(args: CompleteTurnArgs): void {
       status: "interrupted",
     });
   }
-  finalizeOpenReasoningLifecycles(args.state);
+  finalizeOpenReasoningLifecyclesForTurn(args.state, args.turnId);
 }
 
 export function onThreadInterrupted(args: ThreadInterruptedArgs): void {
-  args.state.threadInterruptedAt = args.completedAt;
+  args.state.threadInterruptedAt = args.meta.createdAt;
+  interruptOpenCompactions({
+    state: args.state,
+    meta: args.meta,
+    threadId: args.threadId,
+  });
   for (const turnId of args.state.openTurnIds) {
     args.state.pendingFinalizationByTurnId.set(turnId, {
-      completedAt: args.completedAt,
+      completedAt: args.meta.createdAt,
       status: "interrupted",
     });
   }
@@ -154,6 +165,18 @@ export function onThreadInterrupted(args: ThreadInterruptedArgs): void {
 
 export function flushProjectionBufferedOutputs(state: ProjectionState): void {
   flushBufferedAssistantMessages(state);
+  flushPendingToolActivityOutput(state);
+  flushPendingFileEditOutput(state);
+}
+
+export function flushProjectionBufferedOutputsAfterTurnCompleted(
+  state: ProjectionState,
+  turnId: string,
+): void {
+  flushBufferedAssistantMessagesForTurn(state, turnId);
+  // Tool and file-edit buffers predate turn-scoped assistant buffering. Their
+  // call identity is not uniformly scope-qualified, so retain the established
+  // global flush behavior until that state is redesigned end to end.
   flushPendingToolActivityOutput(state);
   flushPendingFileEditOutput(state);
 }
@@ -189,6 +212,19 @@ function finalizePendingMessages(args: FinalizeProjectionMessagesArgs): void {
 
   for (const message of args.state.messages) {
     if (message.kind !== "operation") continue;
+    // Pi can start automatic compaction after it has completed the owning
+    // turn. The thread is idle while that background lifecycle is still in
+    // flight, so idle alone is not evidence that the compaction stopped. Keep
+    // it pending until an explicit completion, provider error, or thread
+    // interruption settles it.
+    if (
+      args.options?.threadStatus === "idle" &&
+      message.opType === "compaction" &&
+      message.scope.kind === "turn" &&
+      args.state.closedTurnIds.has(message.scope.turnId)
+    ) {
+      continue;
+    }
     finalizeOperationMessage(message, args.options);
   }
 

@@ -9,8 +9,8 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import type { ComposerView, PluginComposerScope } from "@bb/plugin-sdk";
-import { isComposerDraftEmpty } from "@bb/plugin-sdk/internal/composer-view";
+import type { ComposerView, PluginComposerScope } from "@get-bb/plugin-sdk";
+import { isComposerDraftEmpty } from "@get-bb/plugin-sdk/internal/composer-view";
 import type { PromptDraftState } from "@/lib/prompt-draft";
 
 /**

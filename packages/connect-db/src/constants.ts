@@ -16,57 +16,113 @@ export const HANDLE_MAX_LENGTH = 30;
  * Includes current + plausibly-future service names and common lure targets.
  */
 export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
+  // Core product and routing.
   "www",
   // `default` collides with the primary server's row name on (user_id, name).
   "default",
   "api",
   "app",
-  "admin",
+  "bb",
   "connect",
+  "dashboard",
+  "getbb",
+
+  // Public website and company properties.
+  "about",
+  "blog",
+  "careers",
+  "changelog",
+  "community",
+  "doc",
+  "docs",
   "download",
   "downloads",
-  "docs",
-  "doc",
-  "status",
-  "staging",
-  "stage",
-  "dev",
-  "test",
-  "mail",
-  "email",
-  "smtp",
-  "cdn",
-  "assets",
-  "static",
-  "bb",
-  "getbb",
+  "feedback",
+  "forum",
   "help",
+  "jobs",
+  "legal",
+  "pricing",
+  "privacy",
+  "roadmap",
+  "status",
   "support",
-  "billing",
+  "terms",
+
+  // Identity, account, billing, and trust surfaces.
+  "abuse",
   "account",
   "accounts",
+  "admin",
   "auth",
+  "billing",
   "login",
   "logout",
-  "signup",
-  "dashboard",
-  "settings",
-  "blog",
-  "about",
-  "legal",
-  "privacy",
-  "terms",
+  "oauth",
+  "password",
+  "register",
+  "reset",
   "security",
-  "root",
-  "system",
+  "settings",
+  "signin",
+  "signout",
+  "signup",
+  "sso",
+  "trust",
+  "verify",
+
+  // Network, delivery, and storage infrastructure.
+  "assets",
+  "cdn",
+  "dns",
+  "edge",
+  "email",
+  "files",
+  "ftp",
+  "gateway",
+  "git",
+  "images",
+  "imap",
   "internal",
+  "mail",
+  "media",
+  "mx",
   "ns1",
   "ns2",
+  "origin",
+  "pop",
+  "proxy",
+  "relay",
+  "root",
+  "smtp",
+  "static",
+  "system",
+  "tunnel",
+  "upload",
+  "uploads",
+  "websocket",
+  "ws",
+
+  // Deployment and release channels.
+  "alpha",
+  "beta",
+  "canary",
+  "demo",
+  "dev",
+  "preview",
+  "prod",
+  "production",
+  "stage",
+  "staging",
+  "test",
 ]);
 
-/** Per-account resource ceilings enforced at the gate (open-signup abuse guard). */
-export const MAX_SERVERS_PER_ACCOUNT = 10;
-export const MAX_MACHINES_PER_ACCOUNT = 5;
+/**
+ * Per-account resource ceiling enforced at the gate (open-signup abuse guard).
+ * Servers and machines each count separately against this one limit: an
+ * account can own up to 20 servers and, independently, up to 20 machines.
+ */
+export const MAX_PER_ACCOUNT = 20;
 
 /** Connect-code lifetimes. */
 export const CONNECT_CODE_TTL_MS = 10 * 60 * 1000;
@@ -136,7 +192,10 @@ export interface VisitorHost {
  * (prefix = handle, suffix = target). An invalid target makes the whole
  * host unroutable (null), not a bare-handle fallback.
  */
-export function parseVisitorHost(host: string, baseDomain: string): VisitorHost | null {
+export function parseVisitorHost(
+  host: string,
+  baseDomain: string,
+): VisitorHost | null {
   const suffix = `.${baseDomain}`;
   if (!host.endsWith(suffix)) return null;
   const label = host.slice(0, -suffix.length);

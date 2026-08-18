@@ -3,10 +3,7 @@ import {
   type PluginSettingsSectionSlot,
 } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
-import {
-  ResourceDetailPanel,
-  ResourceDetailConfigurationSection,
-} from "@bb/shared-ui/resource-list";
+import { ResourceDetailPanel } from "@bb/shared-ui/resource-detail";
 
 /**
  * Plugin `settingsSection` slot mounts, rendered on that plugin's canonical
@@ -34,9 +31,12 @@ function PluginSettingsSectionList({
         return section.title === undefined ? (
           <PluginSettingsSectionPanel key={key} section={section} />
         ) : (
-          <ResourceDetailConfigurationSection key={key} label={section.title}>
+          <div key={key} className="space-y-3">
+            <h3 className="text-xs font-medium text-foreground">
+              {section.title}
+            </h3>
             <PluginSettingsSectionPanel section={section} />
-          </ResourceDetailConfigurationSection>
+          </div>
         );
       })}
     </div>

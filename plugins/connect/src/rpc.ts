@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { defineRpcContract, type PluginRpcHandlers } from "@bb/plugin-sdk";
+import { defineRpcContract, type PluginRpcHandlers } from "@get-bb/plugin-sdk";
 import {
   ConnectListError,
   type DesktopSession,

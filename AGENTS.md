@@ -29,7 +29,7 @@
 
 ## Plugin API
 
-- Any new public plugin API member (a `@bb/plugin-sdk/app` export, an `app.slots.*` method, or a `BbPluginApi` property) ships with an `experimental_` name prefix and an entry in [docs/api_to_audit.md](docs/api_to_audit.md) describing what it does and what to audit before stabilizing. Dropping the prefix is the deliberate stabilization step: audit the entry, rename project-wide, and remove it from the doc in the same change.
+- Any new public plugin API member (a `@get-bb/plugin-sdk/app` export, an `app.slots.*` method, or a `BbPluginApi` property) ships with an `experimental_` name prefix and an entry in [docs/api_to_audit.md](docs/api_to_audit.md) describing what it does and what to audit before stabilizing. Dropping the prefix is the deliberate stabilization step: audit the entry, rename project-wide, and remove it from the doc in the same change.
 
 ## Data Access
 
@@ -57,6 +57,8 @@
 
 ## GitHub Issues And Pull Requests
 
+- Follow [docs/filing-issues.md](docs/filing-issues.md) when you file an issue. Reproduce first; give versions, minimal copy-pasteable steps, expected vs actual output pasted verbatim, evidence with commit permalinks, and what you ruled out. Use the issue form's sections. Do not file from a single symptom or log line, and do not open a duplicate — add evidence to the existing issue instead.
+- Follow `.github/PULL_REQUEST_TEMPLATE.md` when you open a pull request: what was wrong (root cause), what changed, how you verified (tests that fail before and pass after), `Fixes #N`.
 - When an agent creates a GitHub issue or pull request, add this line at the end of the body:
 
   ```

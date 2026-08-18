@@ -51,4 +51,15 @@ describe("QA runbook contracts", () => {
     );
     expect(runbook).not.toMatch(/active[_ -]provisioning[_ -]id/i);
   });
+
+  it("recovers when daemon disconnect settlement races an active-state snapshot", async () => {
+    const runbook = await readRunbook("manual-runbook.md");
+
+    expect(runbook).toContain(
+      'bb thread wait "$SMOKE_THREAD_ID" --status idle --timeout 180 || true',
+    );
+    expect(runbook).toContain(
+      'if [ "$THREAD_STATE" != "idle" ]; then\n  bb thread tell "$SMOKE_THREAD_ID" "Say exactly: recovery ok" --mode auto',
+    );
+  });
 });

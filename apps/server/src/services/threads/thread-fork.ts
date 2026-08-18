@@ -5,7 +5,6 @@ import {
   type PromptInput,
   type Thread,
 } from "@bb/domain";
-import { supportsNativeFork } from "@bb/agent-providers";
 import type { EnvironmentArgs, ForkThreadRequest } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
@@ -33,8 +32,11 @@ function requireForkSourceThread(
   return sourceThread;
 }
 
-function requireForkCapableProvider(sourceThread: Thread): void {
-  if (!supportsNativeFork(sourceThread.providerId)) {
+function requireForkCapableProvider(
+  deps: Pick<ThreadForkDeps, "providerRegistry">,
+  sourceThread: Thread,
+): void {
+  if (!deps.providerRegistry.supportsFork(sourceThread.providerId)) {
     throw new ApiError(
       400,
       "invalid_request",
@@ -99,7 +101,7 @@ export async function createThreadForkFromRequest(
   request: ForkThreadRequest,
 ) {
   const sourceThread = requireForkSourceThread(deps, request.sourceThreadId);
-  requireForkCapableProvider(sourceThread);
+  requireForkCapableProvider(deps, sourceThread);
   const sourceEnvironment = requireSourceEnvironment(deps, sourceThread);
   // A fork continues the source conversation, so it defaults to the source's
   // recorded execution options rather than provider defaults.

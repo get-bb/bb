@@ -1,4 +1,4 @@
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   deleteExpiredTerminalRuns,
@@ -130,12 +130,12 @@ function setup(
             logoUrl: null,
             available: true,
             capabilities: {
-              supportsArchive: true,
-              supportsRename: true,
+              supportsThreadArchive: true,
+              supportsThreadRename: true,
               supportsServiceTier: true,
-              supportsUserQuestion: false,
+              supportsNativeUserQuestion: false,
               supportsFork: true,
-              supportedPermissionModes: ["full"],
+              permissionModes: ["full"],
             },
             composerActions: [],
           },

@@ -51,6 +51,7 @@ function createSession(args: CreateSessionArgs): HostDaemonSessionOpenResponse {
     leaseTimeoutMs: args.leaseTimeoutMs,
     retiredEnvironmentIds: [],
     connectShares: { generation: 0, ports: [] },
+    pluginHostGenerations: [],
     sessionId: args.sessionId,
     watchSet: {
       generation: 0,
@@ -83,8 +84,10 @@ function createServerClientFixture(args: CreateServerClientFixtureArgs = {}) {
   };
   const serverClient = {
     openSession,
+    getRuntimePolicy: unused,
     fetchProjectAttachment: unused,
     fetchSkillTree: unused,
+    fetchPluginHostArtifact: unused,
     postEvents: unused,
     callTool: unused,
     registerInteractiveRequest: unused,

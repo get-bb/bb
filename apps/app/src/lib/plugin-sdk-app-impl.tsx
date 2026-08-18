@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { MarkdownProps, PluginSdkApp } from "@bb/plugin-sdk";
+import type { MarkdownProps, PluginSdkApp } from "@get-bb/plugin-sdk";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
 import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
@@ -27,7 +27,7 @@ import {
 import { useSidebarThreadSplit } from "./plugin-sidebar-split";
 
 /**
- * The real `@bb/plugin-sdk/app` surface (plugin design §5.2), assigned to
+ * The real `@get-bb/plugin-sdk/app` surface (plugin design §5.2), assigned to
  * `globalThis.__bbPluginRuntime.pluginSdkApp` by installPluginRuntime() so
  * `bb plugin build` shims resolve it inside plugin bundles. `satisfies
  * PluginSdkApp` keeps it in type-sync with the facade package; the plugin SDK

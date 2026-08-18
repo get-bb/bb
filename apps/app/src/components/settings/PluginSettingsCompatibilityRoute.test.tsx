@@ -4,7 +4,6 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { PluginSettingsCompatibilityRoute } from "./PluginSettingsCompatibilityRoute";
-import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 
 function ToolsPluginsLocation() {
   const location = useLocation();
@@ -14,67 +13,62 @@ function ToolsPluginsLocation() {
       <output data-testid="tools-plugins-location">
         {location.pathname}
         {location.search}
+        {location.hash}
       </output>
     </div>
   );
 }
 
-function renderRoute(path: string, toolsHubEnabled = false) {
+function renderRoute(path: string) {
   render(
-    <ToolsHubExperimentProvider enabled={toolsHubEnabled}>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route
-            path="/settings/plugins"
-            element={
-              <PluginSettingsCompatibilityRoute>
-                <div>Settings plugin manager</div>
-              </PluginSettingsCompatibilityRoute>
-            }
-          />
-          <Route
-            path="/settings/plugins/:pluginId"
-            element={
-              <PluginSettingsCompatibilityRoute>
-                <div>Settings plugin detail</div>
-              </PluginSettingsCompatibilityRoute>
-            }
-          />
-          <Route path="/tools/plugins" element={<ToolsPluginsLocation />} />
-          <Route
-            path="/tools/plugins/:pluginId"
-            element={<div>Tools plugin detail</div>}
-          />
-        </Routes>
-      </MemoryRouter>
-    </ToolsHubExperimentProvider>,
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route
+          path="/settings/plugins"
+          element={
+            <PluginSettingsCompatibilityRoute>
+              <div>Settings plugin manager</div>
+            </PluginSettingsCompatibilityRoute>
+          }
+        />
+        <Route
+          path="/settings/plugins/:pluginId"
+          element={
+            <PluginSettingsCompatibilityRoute>
+              <div>Settings plugin detail</div>
+            </PluginSettingsCompatibilityRoute>
+          }
+        />
+        <Route path="/extensions/plugins" element={<ToolsPluginsLocation />} />
+        <Route
+          path="/extensions/plugins/:pluginId"
+          element={<ToolsPluginsLocation />}
+        />
+      </Routes>
+    </MemoryRouter>,
   );
 }
 
 describe("PluginSettingsCompatibilityRoute", () => {
   afterEach(cleanup);
 
-  it("keeps the Settings manager available", () => {
-    renderRoute("/settings/plugins");
+  it("renders per-plugin settings pages in place — Settings owns them now", () => {
+    renderRoute("/settings/plugins/example");
 
-    expect(screen.getByText("Settings plugin manager")).toBeTruthy();
+    expect(screen.getByText("Settings plugin detail")).toBeTruthy();
     expect(screen.queryByText("Tools plugins")).toBeNull();
   });
 
-  it("keeps Settings plugin detail routes available", () => {
-    renderRoute("/settings/plugins/example", true);
+  it.each(["/settings/plugins", "/settings/plugins/"])(
+    "moves legacy plugin management at %s to Extensions",
+    (path) => {
+      renderRoute(path);
 
-    expect(screen.getByText("Settings plugin detail")).toBeTruthy();
-    expect(screen.queryByText("Tools plugin detail")).toBeNull();
-  });
-
-  it("moves legacy plugin management to Extensions while enabled", () => {
-    renderRoute("/settings/plugins", true);
-
-    expect(screen.getByText("Tools plugins")).toBeTruthy();
-    expect(screen.getByTestId("tools-plugins-location").textContent).toBe(
-      "/tools/plugins?view=installed",
-    );
-    expect(screen.queryByText("Settings plugin manager")).toBeNull();
-  });
+      expect(screen.getByText("Tools plugins")).toBeTruthy();
+      expect(screen.getByTestId("tools-plugins-location").textContent).toBe(
+        "/extensions/plugins?view=installed",
+      );
+      expect(screen.queryByText("Settings plugin manager")).toBeNull();
+    },
+  );
 });

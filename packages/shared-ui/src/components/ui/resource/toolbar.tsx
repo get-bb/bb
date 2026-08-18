@@ -63,7 +63,11 @@ export function ResourceToolbar({
           {controls}
         </div>
       ) : null}
-      {action}
+      {action ? (
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {action}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -137,8 +141,7 @@ const RESOURCE_MENU_TRIGGER_ENGAGED_CLASS =
  * cluster. `--background` is `var(--canvas)`, so custom palettes get their own
  * paper colour rather than a hardcoded white.
  */
-const RESOURCE_MENU_TRIGGER_RESTING_CLASS =
-  "border border-input bg-background";
+const RESOURCE_MENU_TRIGGER_RESTING_CLASS = "border border-input bg-background";
 
 /**
  * Engagement is driven by React state, not `data-[state=open]`.
@@ -591,19 +594,30 @@ export interface ResourceCreateMenuAction {
   onSelect: () => void;
 }
 
+export interface ResourceCreateTemplateGroup {
+  label: string;
+  templates: readonly ResourceCreateTemplate[];
+}
+
 export function ResourceCreateButton({
   label,
   templates,
   templateMenuLabel = "Examples",
+  templateGroups,
   menuActions = [],
   onCreate,
 }: {
   label: string;
   templates: readonly ResourceCreateTemplate[];
   templateMenuLabel?: string;
+  /** Overrides the flat template list with labeled tiers, in menu order. */
+  templateGroups?: readonly ResourceCreateTemplateGroup[];
   menuActions?: readonly ResourceCreateMenuAction[];
   onCreate: (prompt?: string) => void;
 }) {
+  const groups: readonly ResourceCreateTemplateGroup[] = templateGroups ?? [
+    { label: templateMenuLabel, templates },
+  ];
   return (
     <div className="flex shrink-0 items-stretch">
       <Button
@@ -637,28 +651,34 @@ export function ResourceCreateButton({
               {action.label}
             </DropdownMenuItem>
           ))}
-          {menuActions.length > 0 ? <DropdownMenuSeparator /> : null}
-          <DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
-            {templateMenuLabel}
-          </DropdownMenuLabel>
-          {templates.map((template) => (
-            <DropdownMenuItem
-              key={template.label}
-              className="py-2"
-              onSelect={() => onCreate(template.prompt)}
-            >
-              {template.icon ? (
-                <Icon
-                  name={template.icon}
-                  className="size-4 shrink-0 text-muted-foreground"
-                  aria-hidden
-                />
+          {groups.map((group, index) => (
+            <Fragment key={group.label}>
+              {index > 0 || menuActions.length > 0 ? (
+                <DropdownMenuSeparator />
               ) : null}
-              <span className="min-w-0 truncate text-sm text-foreground">
-                {template.label}
-              </span>
-              <span className="sr-only">: {template.description}</span>
-            </DropdownMenuItem>
+              <DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
+                {group.label}
+              </DropdownMenuLabel>
+              {group.templates.map((template) => (
+                <DropdownMenuItem
+                  key={template.label}
+                  className="py-2"
+                  onSelect={() => onCreate(template.prompt)}
+                >
+                  {template.icon ? (
+                    <Icon
+                      name={template.icon}
+                      className="size-4 shrink-0 text-muted-foreground"
+                      aria-hidden
+                    />
+                  ) : null}
+                  <span className="min-w-0 truncate text-sm text-foreground">
+                    {template.label}
+                  </span>
+                  <span className="sr-only">: {template.description}</span>
+                </DropdownMenuItem>
+              ))}
+            </Fragment>
           ))}
         </DropdownMenuContent>
       </DropdownMenu>

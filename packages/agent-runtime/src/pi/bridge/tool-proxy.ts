@@ -17,7 +17,7 @@ export type ToolCallForwarder = (
  * that forward execution back to the server via the bridge protocol.
  */
 export function buildDynamicTools(
-  dynamicTools: DynamicToolDefinition[],
+  dynamicTools: readonly DynamicToolDefinition[],
   forwardToolCall: ToolCallForwarder,
 ): ToolDefinition[] {
   return dynamicTools.map((def) => {

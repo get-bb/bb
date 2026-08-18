@@ -353,32 +353,103 @@ describe("public thread fork route", () => {
     });
   });
 
-  it("rejects a source provider without native fork capability", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const sourceThread = seedThread(harness.deps, {
-        environmentId: environment.id,
-        projectId: project.id,
-        providerId: "acp-test-agent",
-      });
+  it("forks a custom ACP provider and uses the returned child session", async () => {
+    await withTestHarness(
+      {
+        customAcpAgents: [
+          {
+            id: "test-agent",
+            displayName: "Test Agent",
+            command: "test-agent",
+            args: ["acp"],
+            env: {},
+            supportsManualCompaction: false,
+          },
+        ],
+      },
+      async (harness) => {
+        const { host } = seedHostSession(harness.deps);
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+        });
+        const sourceThread = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+          providerId: "acp-test-agent",
+        });
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: environment.id,
+          model: "acp-default",
+          providerThreadId: "provider-acp-source",
+          threadId: sourceThread.id,
+        });
+        seedTurnStarted(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId: "provider-acp-source",
+          sequence: 3,
+          threadId: sourceThread.id,
+          turnId: "turn-acp-source",
+        });
 
-      const response = await postFork(harness, {
-        sourceThreadId: sourceThread.id,
-      });
+        const response = await postFork(harness, {
+          sourceThreadId: sourceThread.id,
+          workspace: "reuse",
+        });
 
-      expect(response.status).toBe(400);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "invalid_request",
-        message: "Provider acp-test-agent does not support thread forks",
-      });
-      expect(getThread(harness.db, sourceThread.id)).not.toBeNull();
-    });
+        expect(response.status).toBe(201);
+        const fork = threadResponseSchema.parse(await readJson(response));
+        const start = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.start" && command.threadId === fork.id,
+        );
+        if (start.command.type !== "thread.start") {
+          throw new Error("Expected thread.start");
+        }
+        expect(start.command).toMatchObject({
+          providerId: "acp-test-agent",
+          acpLaunchSpec: {
+            command: "test-agent",
+            args: ["acp"],
+          },
+          fork: { sourceProviderThreadId: "provider-acp-source" },
+        });
+
+        await reportQueuedCommandSuccess(harness, start, {
+          providerThreadId: "provider-acp-child",
+        });
+        expect(
+          listEvents(harness.db, { threadId: fork.id }).some(
+            (event) => event.providerThreadId === "provider-acp-child",
+          ),
+        ).toBe(true);
+
+        const sendResponse = await harness.app.request(
+          `/api/v1/threads/${fork.id}/send`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              input: [{ type: "text", text: "Continue the fork" }],
+              mode: "auto",
+              permissionMode: "full",
+            }),
+          },
+        );
+        expect(sendResponse.status).toBe(200);
+        const turn = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "turn.submit" && command.threadId === fork.id,
+        );
+        expect(turn.command).toMatchObject({
+          resumeContext: { providerThreadId: "provider-acp-child" },
+        });
+      },
+    );
   });
 });

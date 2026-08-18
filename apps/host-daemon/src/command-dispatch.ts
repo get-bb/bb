@@ -11,9 +11,9 @@ import {
 } from "@bb/host-daemon-contract";
 import semver from "semver";
 import {
-  CommandDispatchError,
   defaultListModels,
   ExpectedCommandDispatchError,
+  resolveRuntimeBridgeLaunch,
   type CommandOf,
   type CommandDispatchOptions,
 } from "./command-dispatch-support.js";
@@ -21,10 +21,6 @@ import {
   cancelEnvironmentProvision,
   provisionEnvironment,
 } from "./command-handlers/environment.js";
-import {
-  createCaffeinateManager,
-  type CaffeinateManager,
-} from "./command-handlers/caffeinate.js";
 import { listHostBranches } from "./command-handlers/host-branches.js";
 import {
   installGlobalSkills,
@@ -87,7 +83,6 @@ import {
 } from "./workspace-resolution.js";
 
 const THREAD_STOP_ACTIVE_TURN_WAIT_MS = 5_000;
-const defaultCaffeinateManager = createCaffeinateManager();
 
 export {
   CommandDispatchError,
@@ -121,12 +116,6 @@ function providerCliEnvFromShellEnv(
   shellEnv: NodeJS.ProcessEnv,
 ): NodeJS.ProcessEnv {
   return shellEnv.PATH ? { ...process.env, PATH: shellEnv.PATH } : process.env;
-}
-
-function getCaffeinateManager(
-  options: CommandDispatchOptions,
-): CaffeinateManager {
-  return options.caffeinateManager ?? defaultCaffeinateManager;
 }
 
 function handleProviderCliInstallEventLine(
@@ -419,13 +408,7 @@ const commandHandlers: CommandHandlerMap = {
       command.environmentId,
     );
     if (!entry) {
-      if (released.releasedEnvironmentIds.length === 0) {
-        throw new CommandDispatchError(
-          "unknown_environment",
-          `No runtime exists for environment ${command.environmentId}`,
-        );
-      }
-      // The old owner stopped, so the stop reached the running turn.
+      // No loaded runtime means the idempotent stop already reached its goal.
       await options.eventSink.flush();
       return {
         providerCheckpointId: released.providerCheckpointId,
@@ -437,10 +420,24 @@ const commandHandlers: CommandHandlerMap = {
       // and the turn/started event has not been observed yet. Wait for the
       // runtime to learn the active turn (event-driven, resolves null on
       // timeout or when the thread goes idle) so the provider stop carries
-      // the right turn id.
-      await entry.runtime.waitForActiveTurn(command.threadId, {
-        timeoutMs: THREAD_STOP_ACTIVE_TURN_WAIT_MS,
-      });
+      // the right turn id. A release does not wait: the server already
+      // settled the thread as idle, so waiting only burns the full timeout on
+      // every runtime it unloads.
+      //
+      // A release can still lose a race with a turn that started after the
+      // server read the thread. Stopping then would end accepted work and
+      // leave the server holding an active thread with no runtime, so a
+      // release skips a busy runtime instead. A later idle release unloads it.
+      if (command.intent === "release") {
+        if (entry.runtime.getActiveTurnId(command.threadId) !== null) {
+          await options.eventSink.flush();
+          return { providerCheckpointId };
+        }
+      } else {
+        await entry.runtime.waitForActiveTurn(command.threadId, {
+          timeoutMs: THREAD_STOP_ACTIVE_TURN_WAIT_MS,
+        });
+      }
       const result = await entry.runtime.stopThread({
         threadId: command.threadId,
       });
@@ -506,12 +503,17 @@ const commandHandlers: CommandHandlerMap = {
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
     // Archive works on stored provider state, not on the live session, so it
     // must not stop a turn in the environment the thread left.
     await entry.runtime.archiveThread({
       threadId: command.threadId,
       providerId: command.providerId,
       providerThreadId: command.providerThreadId,
+      bridgeLaunch,
     });
     return {};
   },
@@ -520,10 +522,15 @@ const commandHandlers: CommandHandlerMap = {
       await options.runtimeManager.ensureProviderMaintenanceRuntime({
         dataDir: options.dataDir,
       });
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
     await runtime.unarchiveThread({
       threadId: command.threadId,
       providerId: command.providerId,
       providerThreadId: command.providerThreadId,
+      bridgeLaunch,
     });
     return {};
   },
@@ -630,8 +637,15 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     path: resolveProjectCloneDefaultPath(options.dataDir, command.projectSlug),
   }),
   "host.pick_folder": pickHostFolder,
-  "host.caffeinate": async (command, options) =>
-    getCaffeinateManager(options).setEnabled(command.enabled),
+  "plugin.host.call": async () => {
+    throw new Error("plugin.host.call must be routed by CommandRouter");
+  },
+  "plugin.host.cancel": async () => {
+    throw new Error("plugin.host.cancel must be routed by CommandRouter");
+  },
+  "plugin.host.dispose": async () => {
+    throw new Error("plugin.host.dispose must be routed by CommandRouter");
+  },
   "host.list_commands": listHostCommands,
   "host.list_skills": listHostSkills,
   "host.delete_skill": deleteHostSkill,
@@ -644,14 +658,20 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.read_file": readHostFile,
   "host.read_file_relative": readHostRelativeFile,
   "host.write_file": writeHostFile,
-  "provider.list_models": async (command, options) =>
-    (options.listModels ?? defaultListModels)({
+  "provider.list_models": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return (options.listModels ?? defaultListModels)({
       providerId: command.providerId,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
       ...(command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),
-    }),
+      bridgeLaunch,
+    });
+  },
   "known_acp_agents.status": async (command, options) =>
     getKnownAcpAgentsStatus({
       agents: command.agents,
@@ -687,6 +707,8 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         outcome: "available",
         workspaceStatus: await resolution.entry.workspace.getStatus({
           mergeBaseBranch: command.mergeBaseBranch,
+          maxUntrackedLineStatFiles: command.maxUntrackedLineStatFiles,
+          maxUntrackedLineStatBytes: command.maxUntrackedLineStatBytes,
         }),
       };
     } catch (error) {
@@ -718,6 +740,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
           target: command.target,
           maxDiffBytes: command.maxDiffBytes,
           maxFileListBytes: command.maxFileListBytes,
+          maxUntrackedFiles: command.maxUntrackedFiles,
         }),
       };
     } catch (error) {
@@ -747,6 +770,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         outcome: "available",
         ...(await resolution.entry.workspace.diffFiles({
           target: command.target,
+          maxFiles: command.maxFiles,
         })),
       };
     } catch (error) {

@@ -9,7 +9,7 @@ import {
   connectCode,
   labelClaim,
   machine,
-  MAX_SERVERS_PER_ACCOUNT,
+  MAX_PER_ACCOUNT,
   schema,
   server,
   user,
@@ -175,14 +175,14 @@ describe("createServer (connect another bb)", () => {
     seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     // One primary already; add up to the cap, then the next is rejected.
-    for (let i = 1; i < MAX_SERVERS_PER_ACCOUNT; i++) {
+    for (let i = 1; i < MAX_PER_ACCOUNT; i++) {
       expect("ok" in (await createServer(deps, "u1", `sawyer-${i}`))).toBe(
         true,
       );
     }
     expect(
       db.select().from(server).where(eq(server.userId, "u1")).all(),
-    ).toHaveLength(MAX_SERVERS_PER_ACCOUNT);
+    ).toHaveLength(MAX_PER_ACCOUNT);
     expect(await createServer(deps, "u1", "sawyer-over")).toEqual({
       error: "server-limit",
     });
@@ -481,7 +481,7 @@ describe("getAccountState (adaptive single / multi)", () => {
     expect(state.handle).toBeNull();
     expect(state.servers).toHaveLength(0);
     expect(state.githubLogin).toBe("sawyerhood");
-    expect(state.maxServers).toBe(MAX_SERVERS_PER_ACCOUNT);
+    expect(state.maxServers).toBe(MAX_PER_ACCOUNT);
   });
 
   it("returns one server, flagged primary, after a claim", async () => {

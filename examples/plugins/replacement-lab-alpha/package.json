@@ -1,0 +1,27 @@
+{
+  "name": "bb-plugin-replacement-lab-alpha",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bbPluginSdk": ">=0.4.3"
+  },
+  "bb": {
+    "name": "Replacement Lab Alpha",
+    "description": "Exercises thread-list and file-opener replacement behavior.",
+    "branding": {
+      "icon": "Code"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}

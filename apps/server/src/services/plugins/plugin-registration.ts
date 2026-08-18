@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { isBbManagedWorkspacePath } from "../threads/worktree-paths.js";
 import {
   getInstalledPlugin,
   getInstalledPluginRegistration,
@@ -8,6 +9,7 @@ import {
   upsertInstalledPlugin,
   type InstalledPluginRow,
   type LegacyPluginExactResolution,
+  type NormalizeLegacyInstalledPluginInput,
   type PluginExactResolution,
   type PluginProvenance,
   type PluginSourceIntent,
@@ -17,11 +19,18 @@ import {
   builtinPluginSource,
   type BundledPluginRegistration,
 } from "./builtin-registry.js";
+import { CURATED_MARKETPLACE_NAME } from "../plugin-catalog/marketplace-manifest.js";
+import type { PluginSourceSelection } from "@bb/server-contract";
+import type { TelemetryEvent } from "../system/telemetry.js";
+import { resolveSelectedSubdirectory } from "./collection-manifest.js";
 import {
   isCommitSha,
   parsePluginSource,
+  pluginRootDir,
+  realPathInside,
   runInstallCommand,
 } from "./install-sources.js";
+import { gitRefNameForRow, gitSelectorForRow } from "./git-source-intent.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import type {
   InstallContext,
@@ -40,6 +49,36 @@ import {
   type PluginResolvedUpdateVersion,
 } from "./update-resolver.js";
 
+/**
+ * The anonymous install event. Only public plugins report names: bundled
+ * builtins and entries of the curated `bb-community` marketplace. A direct
+ * install or a third-party catalog (a local `path:` or private git
+ * marketplace) can name private code, so it reports only the shape of the
+ * install.
+ */
+export function pluginInstalledTelemetryEvent(
+  pluginId: string,
+  provenance: PluginProvenance,
+  sourceIntent: PluginSourceIntent,
+): Extract<TelemetryEvent, { name: "plugin_installed" }> {
+  const isPublic =
+    provenance.kind === "builtin" ||
+    (provenance.kind === "catalog" &&
+      provenance.marketplace === CURATED_MARKETPLACE_NAME);
+  return {
+    name: "plugin_installed",
+    properties: {
+      plugin_id: isPublic ? pluginId : null,
+      provenance: provenance.kind,
+      marketplace:
+        isPublic && provenance.kind === "catalog"
+          ? provenance.marketplace
+          : null,
+      source_kind: sourceIntent.kind,
+    },
+  };
+}
+
 export interface PluginRegistrationContext {
   deps: PluginServiceDeps;
   bundledPlugins: readonly BundledPluginRegistration[];
@@ -47,6 +86,8 @@ export interface PluginRegistrationContext {
   disposeOne: (id: string) => Promise<void>;
   loadOne: (row: InstalledPluginRow) => Promise<void>;
   validateInstallDir: (args: RegisterInstalledArgs) => Promise<PluginManifest>;
+  checkEngineRange: (manifest: PluginManifest) => string | undefined;
+  checkPluginSdkRange: (manifest: PluginManifest) => string | undefined;
   syncCliSkill: () => Promise<void>;
   notifyPluginsChanged: () => void;
   list: () => PluginListEntry[];
@@ -60,6 +101,8 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     disposeOne,
     loadOne,
     validateInstallDir,
+    checkEngineRange,
+    checkPluginSdkRange,
     syncCliSkill,
     notifyPluginsChanged,
     list,
@@ -101,7 +144,8 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     }
     if (
       provenance.kind === "catalog" &&
-      row.catalogEntryId !== provenance.entryId
+      (row.catalogEntryId !== provenance.entryId ||
+        catalogMarketplaceOf(row) !== provenance.marketplace)
     ) {
       return false;
     }
@@ -117,11 +161,27 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
         row.sourceNpmSpecKind === intent.specKind
       );
     }
+    const selector = gitSelectorForRow(row);
+    if (
+      row.sourceGitUrl !== intent.url ||
+      row.sourceGitSubdirectory !== intent.subdirectory ||
+      selector === null
+    ) {
+      return false;
+    }
+    // The resolved tag of a range install moves with every update, so the
+    // range and its prefix are the identity, not what they point at today.
+    if (selector.kind === "ref") {
+      return (
+        intent.selector.kind === "ref" &&
+        selector.ref === intent.selector.ref &&
+        selector.refKind === intent.selector.refKind
+      );
+    }
     return (
-      row.sourceGitUrl === intent.url &&
-      row.sourceGitSubdirectory === intent.subdirectory &&
-      row.sourceGitRequestedRef === intent.requestedRef &&
-      row.sourceGitRefKind === intent.refKind
+      intent.selector.kind === "range" &&
+      selector.range === intent.selector.range &&
+      selector.tagPrefix === intent.selector.tagPrefix
     );
   }
 
@@ -133,6 +193,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       current.source === expected.source &&
       current.provenance === expected.provenance &&
       current.catalogEntryId === expected.catalogEntryId &&
+      current.catalogMarketplaceName === expected.catalogMarketplaceName &&
       current.sourceKind === expected.sourceKind &&
       current.sourcePath === expected.sourcePath &&
       current.sourceBuiltinName === expected.sourceBuiltinName &&
@@ -144,6 +205,9 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       current.sourceGitSubdirectory === expected.sourceGitSubdirectory &&
       current.sourceGitRequestedRef === expected.sourceGitRequestedRef &&
       current.sourceGitRefKind === expected.sourceGitRefKind &&
+      current.sourceGitRange === expected.sourceGitRange &&
+      current.sourceGitTagPrefix === expected.sourceGitTagPrefix &&
+      current.sourceGitResolvedTag === expected.sourceGitResolvedTag &&
       current.npmResolvedVersion === expected.npmResolvedVersion &&
       current.npmIntegrity === expected.npmIntegrity &&
       current.gitResolvedCommit === expected.gitResolvedCommit &&
@@ -159,6 +223,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       source: row.source,
       provenance: row.provenance,
       catalogEntryId: row.catalogEntryId,
+      catalogMarketplaceName: row.catalogMarketplaceName,
       sourceKind: row.sourceKind,
       sourcePath: row.sourcePath,
       sourceBuiltinName: row.sourceBuiltinName,
@@ -170,6 +235,9 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       sourceGitSubdirectory: row.sourceGitSubdirectory,
       sourceGitRequestedRef: row.sourceGitRequestedRef,
       sourceGitRefKind: row.sourceGitRefKind,
+      sourceGitRange: row.sourceGitRange,
+      sourceGitTagPrefix: row.sourceGitTagPrefix,
+      sourceGitResolvedTag: row.sourceGitResolvedTag,
     });
   }
 
@@ -217,6 +285,22 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     ) {
       refuseBuiltinShadow(initialManifest.id);
     }
+    // Compatibility is decided here, at the one chokepoint every managed
+    // registration passes through. `validateInstallDir` runs the same checks,
+    // but a cache hit registers with `validated: true` and skips it — and a
+    // cached artifact this bb accepted before can fail its own range after a
+    // bb or SDK version change. The plugin's package.json is the only source
+    // of truth for compatibility, so read it on every path.
+    if (args.refuseEngineMismatch) {
+      const engineProblem =
+        checkEngineRange(initialManifest) ??
+        checkPluginSdkRange(initialManifest);
+      if (engineProblem !== undefined) {
+        throw new Error(
+          `install refused: plugin "${initialManifest.id}" ${engineProblem}`,
+        );
+      }
+    }
     const manifest = args.validated
       ? initialManifest
       : await validateInstallDir(args);
@@ -254,6 +338,13 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     notifyPluginsChanged();
     const entry = list().find((p) => p.id === manifest.id);
     if (!entry) throw new Error(`plugin ${manifest.id} missing after install`);
+    deps.telemetry.capture(
+      pluginInstalledTelemetryEvent(
+        manifest.id,
+        args.provenance,
+        args.sourceIntent,
+      ),
+    );
     return entry;
   }
 
@@ -263,9 +354,32 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
 
   async function installPathSource(
     path: string,
+    selection: PluginSourceSelection,
     context: InstallContext = directInstallContext,
   ): Promise<PluginListEntry> {
-    const rootDir = resolve(path);
+    const checkoutDir = resolve(path);
+    const subdirectory = await resolveSelectedSubdirectory({
+      checkoutDir,
+      selection,
+      sourceLabel: checkoutDir,
+    });
+    // A local repository is the author's own directory, so the selected plugin
+    // is recorded by its resolved path; symlink containment still applies.
+    const rootDir =
+      subdirectory === null
+        ? checkoutDir
+        : await realPathInside(
+            checkoutDir,
+            pluginRootDir(checkoutDir, subdirectory),
+            "plugin subdirectory",
+          );
+    if (isBbManagedWorkspacePath({ dataDir: deps.dataDir, path: rootDir })) {
+      logger.warn(
+        `plugin "${rootDir}" is installed from inside a bb-managed workspace; ` +
+          "its source will be deleted when that environment is destroyed (e.g. when the owning thread is archived). " +
+          "Reinstall from a stable path outside the managed workspace to avoid losing it.",
+      );
+    }
     return registerInstalled({
       rootDir,
       source: `path:${rootDir}`,
@@ -329,20 +443,29 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       };
     }
     if (row.sourceKind === "git") {
+      const ref = gitRefNameForRow(row);
       if (
         row.sourceGitUrl === null ||
-        row.sourceGitRequestedRef === null ||
+        ref === null ||
         row.gitResolvedCommit === null
       ) {
         throw new Error(`plugin "${row.id}" has corrupt normalized git state`);
       }
       return gitResolvedVersion({
         url: row.sourceGitUrl,
-        ref: row.sourceGitRequestedRef,
+        ref,
         commit: row.gitResolvedCommit,
       });
     }
     return { version: row.version, display: row.source };
+  }
+
+  /**
+   * Rows written before marketplaces were named all came from the official
+   * catalog, so a missing name reads as `bb-community` rather than as corrupt.
+   */
+  function catalogMarketplaceOf(row: InstalledPluginRow): string {
+    return row.catalogMarketplaceName ?? CURATED_MARKETPLACE_NAME;
   }
 
   function provenanceForRow(row: InstalledPluginRow): PluginProvenance {
@@ -352,6 +475,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     }
     return {
       kind: "catalog",
+      marketplace: catalogMarketplaceOf(row),
       entryId: row.catalogEntryId,
     };
   }
@@ -365,19 +489,16 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     }
     if (row.sourceKind === "npm")
       return { kind: "npm", ...npmIntentForRow(row) };
-    if (
-      row.sourceKind === "git" &&
-      row.sourceGitUrl !== null &&
-      row.sourceGitRequestedRef !== null &&
-      row.sourceGitRefKind !== null
-    ) {
-      return {
-        kind: "git",
-        url: row.sourceGitUrl,
-        subdirectory: row.sourceGitSubdirectory,
-        requestedRef: row.sourceGitRequestedRef,
-        refKind: row.sourceGitRefKind,
-      };
+    if (row.sourceKind === "git") {
+      const selector = gitSelectorForRow(row);
+      if (row.sourceGitUrl !== null && selector !== null) {
+        return {
+          kind: "git",
+          url: row.sourceGitUrl,
+          subdirectory: row.sourceGitSubdirectory,
+          selector,
+        };
+      }
     }
     throw new Error(`plugin "${row.id}" has corrupt normalized source intent`);
   }
@@ -438,7 +559,11 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     // record the user's opt-in as a catalog install of the bundled entry.
     return plugin.autoInstall
       ? { kind: "builtin" }
-      : { kind: "catalog", entryId: plugin.name };
+      : {
+          kind: "catalog",
+          marketplace: CURATED_MARKETPLACE_NAME,
+          entryId: plugin.name,
+        };
   }
 
   async function installBuiltinSource(
@@ -527,7 +652,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
   async function backfillNormalizedPluginRegistrations(): Promise<void> {
     for (const row of listUnnormalizedPluginRegistrations(deps.db)) {
       const parsed = parsePluginSource(row.source);
-      let sourceIntent: PluginSourceIntent;
+      let sourceIntent: NormalizeLegacyInstalledPluginInput["sourceIntent"];
       let exactResolution: LegacyPluginExactResolution;
       let provenance: PluginProvenance = { kind: "direct" };
       if (parsed.kind === "path") {
@@ -552,25 +677,25 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
           integrity: null,
         };
       } else {
-        let refKind: GitRefKind = isCommitSha(parsed.ref) ? "commit" : "branch";
+        // Legacy rows predate range installs: every one of them stored a
+        // literal ref spec.
+        const ref =
+          parsed.selector.kind === "range" ? parsed.spec : parsed.selector.ref;
+        let refKind: GitRefKind | null = isCommitSha(ref) ? "commit" : null;
         try {
-          const remote = await resolveGitRef({
-            url: parsed.url,
-            ref: parsed.ref,
-          });
+          const remote = await resolveGitRef({ url: parsed.url, ref });
           if (remote.outcome === "resolved") refKind = remote.refKind;
         } catch {
-          // Preserve startup for an offline legacy install. Non-SHA legacy
-          // refs historically refreshed, so branch is the safe fallback.
+          // Preserve startup for an offline legacy install. Keep the kind
+          // unknown because guessing branch can bypass moved-tag detection.
         }
         sourceIntent = {
           kind: "git",
           url: parsed.url,
           subdirectory: null,
-          requestedRef: parsed.ref,
-          refKind,
+          selector: { kind: "ref", ref, refKind },
         };
-        let commit: string | null = isCommitSha(parsed.ref) ? parsed.ref : null;
+        let commit: string | null = isCommitSha(ref) ? ref : null;
         try {
           commit = await runInstallCommand("git", [
             "-C",

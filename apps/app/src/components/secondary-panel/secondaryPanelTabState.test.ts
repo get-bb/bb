@@ -5,6 +5,7 @@ import {
   createGitDiffFixedPanelTab,
   createHostFilePreviewFixedPanelTab,
   createNewTabFixedPanelTab,
+  createPluginPageFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   createThreadStorageFilePreviewFixedPanelTab,
@@ -15,6 +16,7 @@ import {
   buildOrderedSecondaryPanelFileTabs,
   closeSecondaryPanelTabInState,
   openSecondaryPanelTabInState,
+  reconcileFixedPanelViewTabsInState,
   replaceNewTabWithSecondaryPanelTabInState,
 } from "./secondaryPanelTabState";
 
@@ -112,7 +114,7 @@ describe("secondaryPanelTabState", () => {
     ]);
   });
 
-  it("clears active state when closing the only active file tab", () => {
+  it("activates a remaining fixed tab when closing the last content tab", () => {
     const fileTab = createHostFilePreviewFixedPanelTab({
       environmentId: "env-1",
       tab: {
@@ -131,10 +133,143 @@ describe("secondaryPanelTabState", () => {
 
     const nextState = closeSecondaryPanelTabInState(state, fileTab.id);
 
-    expect(nextState.secondary.activeTabId).toBeNull();
+    expect(nextState.secondary.activeTabId).toBe(
+      createThreadInfoFixedPanelTab().id,
+    );
     expect(nextState.secondary.tabs.map((tab) => tab.id)).toEqual([
       createThreadInfoFixedPanelTab().id,
     ]);
+    expect(nextState.secondary.isOpen).toBe(true);
+  });
+
+  it("reconciles every surface's fixed tabs ahead of closable content", () => {
+    const infoTab = createThreadInfoFixedPanelTab();
+    const diffTab = createGitDiffFixedPanelTab();
+    const contentTab = makeWorkspaceTab("env-1");
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: contentTab.id,
+        isOpen: true,
+        tabs: [contentTab, infoTab],
+      },
+    });
+
+    const nextState = reconcileFixedPanelViewTabsInState({
+      fixedTabs: [infoTab, diffTab],
+      state,
+    });
+
+    expect(nextState.secondary).toEqual({
+      activeTabId: contentTab.id,
+      isOpen: true,
+      tabs: [infoTab, diffTab, contentTab],
+    });
+  });
+
+  it("opens the first plugin-page fixed tab only on first initialization", () => {
+    const navigationTab = createPluginPageFixedPanelTab({
+      fixedTabId: "navigation",
+      pageId: "tasks",
+      pluginId: "tasks",
+    });
+    const initial = reconcileFixedPanelViewTabsInState({
+      fixedTabs: [navigationTab],
+      openFirstFixedTabWhenEmpty: true,
+      state: createEmptyFixedPanelTabsState(),
+    });
+
+    expect(initial.secondary).toEqual({
+      activeTabId: navigationTab.id,
+      isOpen: true,
+      tabs: [navigationTab],
+    });
+
+    const hidden = {
+      ...initial,
+      secondary: { ...initial.secondary, isOpen: false },
+    };
+    expect(
+      reconcileFixedPanelViewTabsInState({
+        fixedTabs: [navigationTab],
+        openFirstFixedTabWhenEmpty: true,
+        state: hidden,
+      }),
+    ).toBe(hidden);
+  });
+
+  it("falls back through the shared fixed-tab order when one disappears", () => {
+    const firstTab = createPluginPageFixedPanelTab({
+      fixedTabId: "navigation",
+      pageId: "docs",
+      pluginId: "docs",
+    });
+    const secondTab = createPluginPageFixedPanelTab({
+      fixedTabId: "outline",
+      pageId: "docs",
+      pluginId: "docs",
+    });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: firstTab.id,
+        isOpen: true,
+        tabs: [firstTab, secondTab],
+      },
+    });
+
+    const nextState = reconcileFixedPanelViewTabsInState({
+      fixedTabs: [secondTab],
+      state,
+    });
+
+    expect(nextState.secondary).toEqual({
+      activeTabId: secondTab.id,
+      isOpen: true,
+      tabs: [secondTab],
+    });
+  });
+
+  it("retains an active Diff tab until eligibility is authoritative", () => {
+    const infoTab = createThreadInfoFixedPanelTab();
+    const diffTab = createGitDiffFixedPanelTab();
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: diffTab.id,
+        isOpen: true,
+        tabs: [infoTab, diffTab],
+      },
+    });
+
+    const whileLoading = reconcileFixedPanelViewTabsInState({
+      fixedTabs: [infoTab, diffTab],
+      state,
+    });
+    expect(whileLoading).toBe(state);
+
+    const onceIneligible = reconcileFixedPanelViewTabsInState({
+      fixedTabs: [infoTab],
+      state,
+    });
+    expect(onceIneligible.secondary).toEqual({
+      activeTabId: infoTab.id,
+      isOpen: true,
+      tabs: [infoTab],
+    });
+  });
+
+  it("closes the panel and removes its sole New tab launcher", () => {
+    const newTab = createNewTabFixedPanelTab();
+    const state = openSecondaryPanelTabInState({
+      state: createEmptyFixedPanelTabsState(),
+      tab: newTab,
+    });
+
+    const nextState = closeSecondaryPanelTabInState(state, newTab.id);
+
+    expect(nextState.secondary).toEqual({
+      activeTabId: null,
+      isOpen: false,
+      tabs: [],
+    });
   });
 
   it("keeps the active tab when closing an inactive file tab", () => {

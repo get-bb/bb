@@ -44,8 +44,6 @@ import {
 import { THREAD_SEARCH_LIMIT_PER_GROUP } from "@/hooks/queries/thread-queries";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
-import { ToolsSidebar } from "@/components/tools/ToolsSidebar";
-import { SidebarProvider } from "@/components/ui/sidebar";
 import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
@@ -507,19 +505,6 @@ function LoadedSidebarWithPluginPages() {
   );
 }
 
-function ExtensionsSidebarFrame() {
-  return (
-    <SidebarProvider className="h-[680px] min-h-0 w-full max-w-[320px] overflow-hidden rounded-md border border-sidebar-border shadow-sm">
-      <ToolsSidebar
-        appRoutePath="/"
-        isResizing={false}
-        onResizeMouseDown={noop}
-        showTopReserve={false}
-      />
-    </SidebarProvider>
-  );
-}
-
 function OrganizationSidebar({
   hosts,
   mode,
@@ -714,10 +699,6 @@ export function PluginPages() {
       </StoryRow>
     </StoryCard>
   );
-}
-
-export function Extensions() {
-  return <ExtensionsSidebarFrame />;
 }
 
 export function OrganizationModes() {

@@ -446,6 +446,7 @@ export function makeWorkspaceStatus(
       state: "clean",
       insertions: 0,
       deletions: 0,
+      lineStatsComplete: true,
       files: [],
     },
     branch: {
@@ -466,6 +467,7 @@ export function makeWorkspaceStatus(
       commits: [],
       insertions: 0,
       deletions: 0,
+      lineStatsComplete: true,
       files: [],
     },
   };

@@ -54,6 +54,11 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginMentionProviderRegistration",
   "PluginMentionSearchContext",
   "PluginMentionTrigger",
+  "PluginProviderCapabilities",
+  "PluginProviderComposerAction",
+  "PluginProviderDeclaration",
+  "PluginProviderPermissionMode",
+  "PluginProviderReasoningLevel",
   "PluginRealtime",
   "PluginRpc",
   "PluginServerApi",
@@ -94,6 +99,29 @@ const EXPECTED_RPC_ROOT_TYPE_EXPORTS = [
 ] as const;
 
 const EXPECTED_RPC_ROOT_VALUE_EXPORTS = ["defineRpcContract"] as const;
+
+const EXPECTED_HOST_ROOT_TYPE_EXPORTS = [
+  "ExperimentalHostCallOptions",
+  "ExperimentalHostClient",
+  "ExperimentalHostEntry",
+  "ExperimentalHostPaths",
+  "ExperimentalHostRpcContext",
+  "ExperimentalHostRpcHandlers",
+  "ExperimentalHostSignalContract",
+  "ExperimentalHostSignalEvent",
+  "ExperimentalHostSignals",
+  "ExperimentalHostWatchChange",
+  "ExperimentalHostWatchChangeType",
+  "ExperimentalHostWatchEvent",
+  "ExperimentalHostWatchListener",
+  "ExperimentalHostWatchOptions",
+  "ExperimentalHostWatchSubscription",
+  "ExperimentalHostWorkerLease",
+] as const;
+
+const EXPECTED_HOST_ROOT_VALUE_EXPORTS = [
+  "experimental_defineHostEntry",
+] as const;
 
 function namesFromMatches(source: string, pattern: RegExp): string[] {
   return Array.from(source.matchAll(pattern), (match) => match[1]).sort();
@@ -174,6 +202,37 @@ describe("backend plugin SDK public surface", () => {
       expect(rootTypeExports.has(exportName), exportName).toBe(true);
     }
     for (const exportName of EXPECTED_RPC_ROOT_VALUE_EXPORTS) {
+      expect(rootValueExports.has(exportName), exportName).toBe(true);
+    }
+  });
+
+  it("keeps every host contract export in the root declaration bundle", async () => {
+    const [hostContract, declarations] = await Promise.all([
+      readFile(new URL("../host-contract.ts", import.meta.url), "utf8"),
+      readFile(
+        new URL("../../bundled-types/bb-plugin-sdk.d.ts", import.meta.url),
+        "utf8",
+      ),
+    ]);
+    const declaredTypes = namesFromMatches(
+      hostContract,
+      /^export (?:interface|type) ([A-Za-z0-9_]+)/gmu,
+    );
+    const declaredValues = namesFromMatches(
+      hostContract,
+      /^export (?:class|const|function) ([A-Za-z0-9_]+)/gmu,
+    );
+    expect(declaredTypes).toEqual([...EXPECTED_HOST_ROOT_TYPE_EXPORTS].sort());
+    expect(declaredValues).toEqual(
+      [...EXPECTED_HOST_ROOT_VALUE_EXPORTS].sort(),
+    );
+
+    const rootTypeExports = rootExportNames(declarations, "type");
+    const rootValueExports = rootExportNames(declarations, "value");
+    for (const exportName of EXPECTED_HOST_ROOT_TYPE_EXPORTS) {
+      expect(rootTypeExports.has(exportName), exportName).toBe(true);
+    }
+    for (const exportName of EXPECTED_HOST_ROOT_VALUE_EXPORTS) {
       expect(rootValueExports.has(exportName), exportName).toBe(true);
     }
   });

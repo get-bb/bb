@@ -6,13 +6,13 @@ describe("resolvePermissionModeSelection", () => {
     expect(
       resolvePermissionModeSelection({
         rawPermissionMode: "accept-edits",
-        supportedPermissionModes: ["accept-edits", "auto", "full"],
+        permissionModes: ["accept-edits", "auto", "full"],
       }),
     ).toBe("accept-edits");
     expect(
       resolvePermissionModeSelection({
         rawPermissionMode: "full",
-        supportedPermissionModes: ["accept-edits", "full"],
+        permissionModes: ["accept-edits", "full"],
       }),
     ).toBe("full");
   });
@@ -23,7 +23,7 @@ describe("resolvePermissionModeSelection", () => {
     expect(
       resolvePermissionModeSelection({
         rawPermissionMode: "auto",
-        supportedPermissionModes: ["accept-edits", "full"],
+        permissionModes: ["accept-edits", "full"],
       }),
     ).toBe("full");
   });
@@ -32,7 +32,7 @@ describe("resolvePermissionModeSelection", () => {
     expect(
       resolvePermissionModeSelection({
         rawPermissionMode: "accept-edits",
-        supportedPermissionModes: ["auto", "full"],
+        permissionModes: ["auto", "full"],
       }),
     ).toBe("auto");
   });
@@ -41,13 +41,13 @@ describe("resolvePermissionModeSelection", () => {
     expect(
       resolvePermissionModeSelection({
         rawPermissionMode: "accept-edits",
-        supportedPermissionModes: ["full"],
+        permissionModes: ["full"],
       }),
     ).toBe("full");
     expect(
       resolvePermissionModeSelection({
         rawPermissionMode: "accept-edits",
-        supportedPermissionModes: [],
+        permissionModes: [],
       }),
     ).toBe("auto");
   });

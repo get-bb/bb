@@ -7,7 +7,7 @@ import {
   usePluginSlots,
   type PluginSidebarFooterActionSlot,
 } from "@/lib/plugin-slots";
-import { getSettingsPluginRoutePath } from "@/lib/route-paths";
+import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
@@ -80,7 +80,9 @@ function runSidebarFooterAction({
   navigate: ReturnType<typeof useNavigate>;
 }): void {
   const openSettings = () => {
-    void navigate(getSettingsPluginRoutePath(action.pluginId));
+    void navigate(
+      getPluginConfigurationRoutePath({ pluginId: action.pluginId }),
+    );
   };
   const warn = (error: unknown) => {
     console.warn(

@@ -1015,7 +1015,7 @@ describe("gate worker share hosts", () => {
   it("redirects reserved handles and 404s the apex", async () => {
     const { env, ctx } = makeEnv(() => new Response("ok"));
     const reserved = await worker.fetch(
-      visitorRequest("www.getbb.app", "/docs"),
+      visitorRequest("docs.getbb.app", "/docs"),
       env as never,
       ctx,
     );

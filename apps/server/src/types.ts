@@ -17,6 +17,8 @@ import type { NotificationHub } from "./ws/hub.js";
 import type { WatchInterestCoordinator } from "./ws/watch-interests.js";
 import type { HostSharedPortCoordinator } from "./ws/host-shared-ports.js";
 import type { SkillTreeRegistry } from "./services/skills/injected-skills.js";
+import type { ProviderRegistryService } from "./services/providers/provider-registry.js";
+import type { PluginHostArtifactRegistry } from "./services/plugins/plugin-host-artifact-registry.js";
 
 export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 
@@ -40,6 +42,8 @@ export interface ServerRuntimeConfig {
    * {@link MANAGED_ENVIRONMENT_RETIRE_GRACE_MS}; set to 0 to destroy immediately.
    */
   managedEnvironmentRetireGraceMs: number;
+  /** Manifest URL of the reserved `bb-community` plugin marketplace. */
+  marketplaceUrl: string;
   openAiApiKey: string;
   serverPort: number;
   sharedSkillRoots: ProviderNativeSkillRoots;
@@ -57,6 +61,8 @@ export interface AppDeps {
   logger: ServerLogger;
   machineAuth: MachineAuthService;
   pendingInteractions: PendingInteractionLifecycle;
+  providerRegistry: ProviderRegistryService;
+  pluginHostArtifacts: PluginHostArtifactRegistry;
   skillTreeRegistry: SkillTreeRegistry;
   telemetry: TelemetryService;
   terminalSessions: TerminalSessionLifecycle;
@@ -76,6 +82,8 @@ export type LifecycleDeps = Pick<
   | "hub"
   | "lifecycleDedupers"
   | "machineAuth"
+  | "providerRegistry"
+  | "pluginHostArtifacts"
   | "skillTreeRegistry"
   | "telemetry"
 >;

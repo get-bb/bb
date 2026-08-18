@@ -1,5 +1,94 @@
 # Changelog
 
+## 0.38.0
+
+This release adds the Extensions Page, community plugins, shareable plugin marketplaces, and a Linux desktop app.
+
+### Extensions Page
+
+The new Extensions Page gives plugins and skills a home in the bb sidebar.
+
+- Browse and install plugins and skills.
+- Use the new plugin creation wizard to choose a starting point and ask an agent to build a plugin.
+
+### Plugin marketplaces
+
+The new marketplace format lets anyone publish a collection of plugins from a Git repository.
+
+- Add a shared marketplace from Settings or with `bb marketplace add`.
+- A marketplace can list plugins from Git repositories or npm packages.
+- One repository can contain many plugins through `.bb/plugins.json`.
+- bb shows the exact source before it installs a marketplace plugin.
+
+### Community plugins
+
+bb now includes the [BB Community marketplace](https://github.com/get-bb/marketplace). Plugins from this reviewed marketplace appear in the Extensions Page for all bb users.
+
+- Ask an agent to submit your plugin. The agent checks it and opens a pull request against the marketplace repository.
+- We review each submission before we add it to the default marketplace.
+
+### Plugin development
+
+- The plugin SDK types are now on npm in [`@get-bb/plugin-sdk`](https://www.npmjs.com/package/@get-bb/plugin-sdk).
+- A plugin theme can include matching code themes for diffs and file previews.
+
+### Linux desktop app (Alpha)
+
+The Linux desktop app is now available as an Alpha x64 AppImage. Stable and nightly releases include Linux builds and update feeds.
+
+### New features
+
+- Sent-message editing is now on by default.
+- Double-click a thread name to edit it in place.
+- You can now disable split dimming in Appearance settings.
+- New shortcuts cycle models, providers, and reasoning levels in both directions.
+- A thread can keep model and reasoning changes with Codex, Claude Code, Pi, and ACP providers.
+- Generic ACP agents can fork a provider session when the agent supports it.
+
+### Performance
+
+- Database work is faster and causes fewer app stalls.
+- Several iOS improvements make drawers, the right panel, and terminal focus faster and more reliable.
+- The installed-plugin page stays responsive with a long list.
+- File previews scroll to the requested line, and large untracked files cannot stall status or diff work.
+
+### Fixes and polish
+
+- The new-thread composer and the right panel now use one layout across core and plugin pages.
+- A child thread cannot exceed its parent's permission mode. Parent threads also show permission requests from their children.
+- The terminal handles Fish shell startup and reconnects more reliably.
+- Long streamed messages remain complete when a turn finishes.
+- Provider exits no longer leave a turn pending before it starts.
+- Claude rate-limit retries and provider exits no longer race with turn completion.
+- Machine setup gives clearer results, and a machine keeps its display name after a reconnect.
+- The in-panel browser recovers after its renderer exits.
+- Plugin content scripts cannot move React-owned elements and blank the app.
+- Plugin path installs warn when a managed worktree can disappear.
+- `bb connect` no longer causes an unnecessary local-network permission prompt.
+- Custom ACP agents can start from the user's shell `PATH`.
+- A steer now cancels the live ACP prompt before the next prompt starts.
+- Pi can turn reasoning off on models that support it. Lowercase Pi tool calls now render correctly.
+- Codex keeps command output during a rename race and respects `CODEX_HOME` for usage data.
+- The plugin CLI retries its first connection before it reports that bb is unavailable.
+- The Tasks plugin can dispatch work outside a Git repository.
+
+### Thanks
+
+Nineteen changes came from outside the core team. Thank you:
+
+- **[@smsunarto](https://github.com/smsunarto)** added ACP session forks and model controls. They also fixed Fish terminal startup, machine names, and smaller UI problems.
+- **[@salemsayed](https://github.com/salemsayed)** added the Linux AppImage target.
+- **[@sholub-dev](https://github.com/sholub-dev)** stopped child threads from exceeding a parent's permission mode.
+- **[@PennybagsCX](https://github.com/PennybagsCX)** added the managed-worktree warning for local plugin installs.
+- **[@AndrewSB](https://github.com/AndrewSB)** fixed watcher pipe failures and Codex usage lookup with a custom `CODEX_HOME`.
+- **[@DevVig](https://github.com/DevVig)** and **[@jerrison](https://github.com/jerrison)** fixed prompts that stayed pending after a provider exited.
+- **[@fgrehm](https://github.com/fgrehm)** let Pi turn reasoning off when a model supports it.
+- **[@MGrin](https://github.com/MGrin)** made the plugin CLI retry its connection probe.
+- **[@Willhong](https://github.com/Willhong)** found known ACP agents through the user's shell `PATH`.
+- **[@MPIsaac-Per](https://github.com/MPIsaac-Per)** fixed the Pi extension lifecycle in the native bridge.
+- **[@galligan](https://github.com/galligan)** made a new plugin scaffold install and build correctly.
+- **[@charpeni](https://github.com/charpeni)** pinned GitHub Actions to fixed revisions.
+
 ## 0.37.0
 
 A much faster app on your phone, message editing, manual context compaction, shared skills, and a long list of fixes.

@@ -40,6 +40,8 @@ export interface PluginManifest {
   serverEntry: string;
   /** Absolute path of the frontend entry file, when declared. */
   appEntry: string | undefined;
+  /** Absolute path of the host-runtime entry file, when declared. */
+  hostEntry: string | undefined;
   /** CSS palettes declared by `bb.themes`, with manifest-relative paths resolved. */
   themes: Array<{
     id: string;
@@ -154,6 +156,16 @@ export async function readPluginManifest(
       `manifest bb.server points at a missing file: ${bb.server}`,
     );
   }
+  const hostEntry = bb.host
+    ? resolveEntry(rootDir, bb.host, "bb.host")
+    : undefined;
+  if (hostEntry !== undefined) {
+    try {
+      await stat(hostEntry);
+    } catch {
+      throw new Error(`manifest bb.host points at a missing file: ${bb.host}`);
+    }
+  }
   const skillsRootPaths = (bb.skills ?? ["skills"]).map((entry) =>
     resolveEntry(rootDir, entry.replace(/\/\*$/, ""), "bb.skills"),
   );
@@ -235,7 +247,10 @@ export async function readPluginManifest(
         codeTheme.dark,
       );
     }
-    if (codeTheme?.light !== undefined && isCodeThemeFilePath(codeTheme.light)) {
+    if (
+      codeTheme?.light !== undefined &&
+      isCodeThemeFilePath(codeTheme.light)
+    ) {
       codeThemePaths.light = resolvePluginCodeThemePath(
         rootDir,
         theme.id,
@@ -287,6 +302,7 @@ export async function readPluginManifest(
     bbPluginSdkRange: engines?.bbPluginSdk,
     serverEntry,
     appEntry: bb.app ? resolveEntry(rootDir, bb.app, "bb.app") : undefined,
+    hostEntry,
     themes,
     skillsRootPaths,
     skillNames: await readSkillNames(skillsRootPaths),

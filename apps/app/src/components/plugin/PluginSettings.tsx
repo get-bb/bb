@@ -11,12 +11,21 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
+import { Link } from "react-router-dom";
 import { SettingsWithControl } from "@/components/ui/settings-section.js";
+import { getPluginDetailRoutePath } from "@/lib/route-paths";
 import { Switch } from "@bb/shared-ui/switch";
-import { ResourceDetailPanel } from "@bb/shared-ui/resource-list";
+import {
+  ResourceDetailConfigurationSection,
+  ResourceDetailOverviewSection,
+  ResourceDetailPanel,
+  ResourceDetailStack,
+} from "@bb/shared-ui/resource-detail";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { applyPluginSettingsView } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   updatePluginSettings,
+  usePluginList,
   usePluginSettingsView,
   type PluginListItem,
   type PluginSettingFieldDescriptor,
@@ -286,6 +295,82 @@ const PLUGIN_STATUSES_WITH_SETTINGS = [
   "needs-configuration",
   "degraded",
 ];
+
+/**
+ * The Settings-page home for one plugin's configuration. The Extensions
+ * detail page links here rather than hosting the form itself.
+ */
+export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
+  const listQuery = usePluginList({ enabled: true });
+  const plugin =
+    listQuery.data?.plugins.find(
+      (entry: PluginListItem) => entry.id === pluginId,
+    ) ?? null;
+  if (listQuery.isFetching && listQuery.data === undefined) {
+    return (
+      <p className="text-sm text-muted-foreground" role="status">
+        Loading plugin settings…
+      </p>
+    );
+  }
+  if (plugin === null) {
+    return (
+      <p className="text-sm text-muted-foreground" role="status">
+        This plugin is not installed.
+      </p>
+    );
+  }
+  // Mirrors the Extensions detail page: the same header anatomy and section
+  // stack, with a "Plugin details" section that is the counterpart of the
+  // detail page's Configuration section (each one sentence linking across).
+  return (
+    <div className="mx-auto w-full max-w-5xl">
+      <div className="flex items-center gap-3">
+        <div className="size-9 shrink-0">
+          <PluginIcon
+            pluginId={plugin.id}
+            icon={plugin.icon}
+            className="size-full"
+          />
+        </div>
+        <div className="min-w-0">
+          <h1 className="truncate text-lg font-semibold text-foreground">
+            {plugin.name ?? plugin.id}
+          </h1>
+          {plugin.description ? (
+            <p className="truncate text-xs text-subtle-foreground">
+              {plugin.description}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      <ResourceDetailStack className="mt-6">
+        <ResourceDetailConfigurationSection label="Configuration">
+          <PluginSettingsDetail plugin={plugin} />
+        </ResourceDetailConfigurationSection>
+        <ResourceDetailOverviewSection label="Plugin details">
+          <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
+            Release, capabilities, and health live on{" "}
+            <Link
+              to={getPluginDetailRoutePath({
+                pluginId,
+                view: "installed",
+              })}
+              className="inline-flex items-center gap-0.5 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              its plugin page
+              <Icon
+                name="ChevronRight"
+                className="size-3.5 no-underline"
+                aria-hidden
+              />
+            </Link>
+          </p>
+        </ResourceDetailOverviewSection>
+      </ResourceDetailStack>
+    </div>
+  );
+}
 
 /** Exported for tests (status gating of the settings form). */
 export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {

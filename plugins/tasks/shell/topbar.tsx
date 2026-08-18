@@ -2,7 +2,11 @@ import { useCallback, useMemo } from "react";
 import type { Project, Task } from "../shared/contract.js";
 import { groupTasksByStatus } from "../views/list/lib.js";
 import { listAllTasks, useTasksQuery } from "./data.js";
-import type { TaskViewMode, TasksRoute } from "./routes.js";
+import type {
+  ResolvedTasksRoute,
+  TaskViewMode,
+  TasksRoute,
+} from "./routes.js";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -182,9 +186,8 @@ function RefreshTasksButton() {
 }
 
 export interface TasksTopbarProps {
-  route: TasksRoute;
+  route: ResolvedTasksRoute;
   projects: Project[] | undefined;
-  sidebarCollapsed: boolean;
   /**
    * Pager scope on task routes: the list/board browsed before (projectId null
    * = All tasks). null when no list/board was visited this session (deep
@@ -192,7 +195,6 @@ export interface TasksTopbarProps {
    */
   pagerScope: { projectId: string | null } | null;
   onNavigate: (route: TasksRoute) => void;
-  onToggleSidebar: () => void;
   onNewTask: () => void;
   onBack: () => void;
 }
@@ -200,10 +202,8 @@ export interface TasksTopbarProps {
 export function TasksTopbar({
   route,
   projects,
-  sidebarCollapsed,
   pagerScope,
   onNavigate,
-  onToggleSidebar,
   onNewTask,
   onBack,
 }: TasksTopbarProps) {
@@ -277,10 +277,12 @@ export function TasksTopbar({
                 type="button"
                 className="hidden min-w-0 items-center gap-2 text-muted-foreground hover:text-foreground @md:flex"
                 onClick={() =>
+                  // No explicit view: the shell restores the project's
+                  // remembered List/Board choice.
                   onNavigate({
                     kind: "project",
                     projectId: project.id,
-                    view: "list",
+                    view: null,
                   })
                 }
               >
@@ -354,16 +356,6 @@ export function TasksTopbar({
           <span className="hidden @lg:inline">New task</span>
         </Button>
       ) : null}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-7 max-md:pointer-coarse:size-9"
-        aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        aria-expanded={!sidebarCollapsed}
-        onClick={onToggleSidebar}
-      >
-        <Icon name="PanelRight" className="size-4" />
-      </Button>
     </header>
   );
 }

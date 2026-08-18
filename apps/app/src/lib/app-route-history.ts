@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import type { Location } from "react-router-dom";
 
@@ -117,8 +117,57 @@ function reduceHistory(
 }
 
 /**
+ * The stack lives at module scope, not in the consuming component: the
+ * Back/Forward controls are mounted by whichever sidebar the current layout
+ * uses (app, settings, or Extensions), and navigating between those layouts
+ * REMOUNTS the controls. Component state restarted the stack at every such
+ * remount, which is exactly the moment the user wants Back — e.g. an
+ * Extensions page handing off to the new-thread composer swaps sidebars and
+ * used to arrive with Back disabled.
+ */
+const EMPTY_HISTORY_STATE: AppRouteHistoryState = { entries: [], index: 0 };
+let historyState = EMPTY_HISTORY_STATE;
+// Identity of the last recorded location. React Router hands out a fresh
+// location object per navigation, so identity both dedupes double effects and
+// lets a freshly mounted instance record a navigation the unmounting one
+// missed (cleanup runs instead of effects during the swap commit).
+let lastRecordedLocation: Location | null = null;
+const historyListeners = new Set<() => void>();
+
+function recordLocation(
+  location: Location,
+  navigationType: AppRouteNavigationType,
+): void {
+  if (lastRecordedLocation === location) {
+    return;
+  }
+  lastRecordedLocation = location;
+  const entry = { key: location.key, url: getNormalizedUrl(location) };
+  historyState =
+    historyState.entries.length === 0
+      ? { entries: [entry], index: 0 }
+      : reduceHistory(historyState, navigationType, entry);
+  for (const listener of historyListeners) {
+    listener();
+  }
+}
+
+function subscribeToHistory(listener: () => void): () => void {
+  historyListeners.add(listener);
+  return () => {
+    historyListeners.delete(listener);
+  };
+}
+
+/** Test-only: forget the module-level stack between cases. */
+export function resetAppRouteHistoryForTest(): void {
+  historyState = EMPTY_HISTORY_STATE;
+  lastRecordedLocation = null;
+}
+
+/**
  * App-shell route history for the sidebar Back/Forward controls. Tracks the
- * React Router entries visited while mounted and exposes browser-style
+ * React Router entries visited while the app runs and exposes browser-style
  * navigation that skips duplicate same-URL slots and never steps into
  * history the app did not record. This is app-route history only; it does not
  * touch the in-thread browser tab history.
@@ -128,37 +177,18 @@ export function useRouteStateHistoryNavigation(): AppRouteHistoryNavigation {
   const navigationType = useNavigationType();
   const navigate = useNavigate();
 
-  const [state, setState] = useState<AppRouteHistoryState>(() => ({
-    entries: [{ key: location.key, url: getNormalizedUrl(location) }],
-    index: 0,
-  }));
-
-  // The mounted location is recorded at init, so the effect only reacts to
-  // later navigations. Dedupe on the location object identity (React Router
-  // hands out a fresh location per navigation) rather than `location.key`: keys
-  // can collide on `"default"`, which would otherwise drop a real POP and leave
-  // the stack stale.
-  const lastLocationRef = useRef(location);
-  // Mirror the committed state so the click handlers read the latest stack and
-  // index without being re-created on every navigation.
-  const stateRef = useRef(state);
-  stateRef.current = state;
-
   useEffect(() => {
-    if (lastLocationRef.current === location) {
-      return;
-    }
-    lastLocationRef.current = location;
-    setState((previous) =>
-      reduceHistory(previous, navigationType, {
-        key: location.key,
-        url: getNormalizedUrl(location),
-      }),
-    );
+    recordLocation(location, navigationType);
   }, [location, navigationType]);
 
+  const state = useSyncExternalStore(
+    subscribeToHistory,
+    () => historyState,
+    () => historyState,
+  );
+
   const goBack = useCallback(() => {
-    const current = stateRef.current;
+    const current = historyState;
     const target = findBackTargetIndex(current);
     if (target === null) {
       return;
@@ -167,7 +197,7 @@ export function useRouteStateHistoryNavigation(): AppRouteHistoryNavigation {
   }, [navigate]);
 
   const goForward = useCallback(() => {
-    const current = stateRef.current;
+    const current = historyState;
     const target = findForwardTargetIndex(current);
     if (target === null) {
       return;

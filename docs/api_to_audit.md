@@ -5,6 +5,101 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
+
+**What it does.** Lets one plugin package declare a singular `bb.host` Node
+entry, share a Standard Schema contract between its server and host entries,
+and call methods on an explicit enrolled host. A client may observe unexpected
+worker exits and typed, ephemeral host signals. The host context supplies
+request and generation abort signals, persistent plugin-scoped data and
+worker-scoped temporary directories, daemon-owned native file watches, and
+explicit worker-retention leases for independent background work. Calls and
+watches retain automatically; otherwise, the daemon gracefully evicts a worker
+after five idle minutes and starts it again on the next call. There is no global
+worker-count limit.
+
+The single-worker, idle-eviction, retention, and call-timeout rules above are
+specific to the host RPC consumer. Other daemon subsystems may attach the same
+`bb.host` artifact through a different bootstrap and own their own process
+lifecycle.
+
+The initial builtin proof is Keep Awake: it owns a host target, a worker-owned
+child process, desired-state reconciliation, and
+unexpected-exit recovery without feature-specific core hooks.
+
+**Audit before stabilizing.**
+
+1. **Contract shape.** Confirm Standard Schema values remain the right runtime
+   boundary and decide whether method-specific typed errors are necessary.
+2. **Targeting.** Confirm explicit host ids are enough for V1 and add an
+   environment-aware primitive only alongside a plugin that proves its
+   locking and workspace semantics.
+3. **Process lifetime.** Measure whether five idle minutes is the right timeout,
+   whether watches should continue retaining automatically, and whether leases
+   acquired only during active handlers are expressive enough. Confirm there is
+   no need for manifest lifetime flags, plugin-selected timeouts, a global
+   worker limit, or plugin-specific restart policy. Confirm unexpected-exit
+   notification is the right generic repair trigger, remains suppressed for
+   graceful and idle disposal, and does not create crash loops.
+   Verify reconnect generation reconciliation covers disable/uninstall during
+   an outage without stopping a still-current worker on every transient drop.
+4. **Signals and watches.** Confirm host signals should remain private,
+   ephemeral invalidations rather than a durable event log. Audit native-watch
+   coalescing, backpressure, rescan/error events, per-worker limits, and cleanup
+   against a plugin that watches real workspace state.
+5. **Paths.** Confirm the stable host data path layout and generation-temporary
+   cleanup behavior across crashes and daemon restarts.
+6. **Limits.** Audit the common call duration, startup/cancellation grace, 8
+   MiB JSON payload cap, 256 MiB artifact cap, and per-plugin admission limits
+   (256 active calls / 32 MiB of active inputs) against real plugins. Confirm
+   retaining only the most recently materialized artifact digest per plugin is
+   sufficient.
+7. **Environment.** Confirm executable discovery through normalized `PATH`
+   and stripping all daemon-owned `BB_*` variables.
+8. **Trust and dependencies.** V1 host plugins are trusted Node programs that
+   may use `child_process`, filesystem, and network APIs. Decide whether later
+   permissions, native artifacts, or an explicit dependency installer can be
+   layered on without changing the RPC contract. Confirm rejecting all private
+   `@bb/*` imports from host bundles is the correct permanent boundary, and
+   audit the builder-supplied public SDK runtime against future host exports.
+9. **Composition boundary.** Confirm host RPC methods and signals should remain
+   private to the owning plugin while allowing another daemon subsystem to
+   consume the same `bb.host` artifact through its own bootstrap and lifecycle.
+10. **Test harness.** Audit both layers: the server harness's
+    `experimental_callHostRpc` option, `experimental_hostRpcCalls` inspection
+    list, `experimental_emitHostWorkerExit`, and `experimental_emitHostSignal`
+    behavior drivers; and the host-entry harness's `experimental_call`,
+    `experimental_getSignals`, `experimental_getRetainedWorkerLeaseCount`,
+    `experimental_lifecycleSignal`, path/watch options, and
+    `experimental_dispose`. Confirm the host harness should
+    continue simulating validation, cancellation, lifecycle, JSON, and size
+    limits without pretending to model process startup, crashes, native watcher
+    recovery, or reconnect behavior.
+
+## `PluginNavPanelRegistration.experimental_fixedTabs`
+
+**What it does.** Lets a nav panel declare ordered, non-closable tabs in the
+host-owned right panel. The host owns tab selection, persistence, chrome,
+Browser and Terminal tools, and only mounts the active plugin component while
+the panel is open. A fixed tab receives the nav page's current `subPath`; `layout: "padded"` uses
+host padding and scrolling, while `layout: "flush"` gives the component the
+whole content region. On the first visit the first declared fixed tab opens on
+wide layouts. A later user close remains closed.
+
+**Audit before stabilizing.**
+
+1. Confirm first-visit opening and subsequent close persistence across plugin
+   reloads, app upgrades, wide/compact transitions, and page deep links.
+2. Exercise multiple fixed tabs and dynamic registration changes; selection
+   must remain stable when possible and fall back without mounting inactive
+   components.
+3. Confirm `subPath` is sufficient context and that fixed tabs should remain
+   page-scoped rather than gaining independent routes or plugin-owned state.
+4. Audit padded versus flush layout against Tasks, Docs, accessibility zoom,
+   and nested scrolling before freezing the presentation contract.
+5. Confirm named icon hints and the non-closable tab treatment remain the right
+   amount of plugin-controlled chrome.
+
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
 **What it does.** Lets a nav panel register a no-props, presentational React
@@ -80,7 +175,187 @@ Each label is capped at 80 characters and rendered as a truncating segment.
    only for non-MCP native plugin tools. Confirm that distinction stays sound
    as provider adapters and dynamic-tool provenance evolve.
 
-## `experimental_NewThreadComposer` (`@bb/plugin-sdk/app`)
+## `bb.agents.experimental_registerProvider`
+
+**What it does.** Lets a plugin declare an agent provider into the server's
+`ProviderRegistryService`. The declaration is metadata only — the
+implementation is the bridge the plugin exports from its `bb.host` artifact,
+and registering without one (and without being a daemon-bundled first-party id)
+fails the plugin load. The declaration is
+validated at call time by the shared host policy
+(`validatePluginProviderDeclaration`); registrations stage during the factory
+and commit when the plugin load commits, are replaced wholesale on reload, and
+are removed by the returned disposer or on unload/disable. Declarations are
+now the ONLY source of providers — the core catalog seed is deleted, so
+disabling a provider plugin removes its provider. A registered provider is
+mapped onto `ProviderInfo` + `ProviderServerCapabilities` and appears in the
+composed provider listing
+(`GET /system/providers` / execution options). The full declaration rides the
+registration record so fields without a registry consumer yet
+(`supportsManualCompaction`) are not dropped.
+
+**Audit before stabilizing.**
+
+1. **Listing order is a server-side table.** `PRODUCT_PROVIDER_ORDER` in
+   `provider-registry.ts` names the ids that lead the picker (and its head is
+   the product default provider); everything else follows by registration
+   order. Decide whether third-party providers ever need to influence their
+   own position — self-declared ranking is hostile, so any answer other than
+   "no" needs a design — before the ordering behavior freezes into clients.
+2. **Icon URL shape.** `icon` uses the `bb.branding.icon` grammar (a named host
+   glyph, or a `./`-prefixed plugin-relative SVG). A path is snapshotted at
+   registration and served from `/api/v1/system/providers/<id>/logo`; a glyph
+   name yields a null `logoUrl` and no server-side resolution at all. Decide
+   whether the host should resolve declared glyph names for providers the way
+   it does for plugin branding, and decide the logo route's cache policy,
+   before either freezes into clients.
+3. **Collision semantics.** Ids are first-come collision-rejected: a staged
+   collision fails the whole plugin load; a post-activation registration
+   throws to the plugin. First-party ids (`codex`, `claude-code`, `pi`, and
+   the whole `acp-` prefix) are additionally reserved to their official
+   plugin whether or not it is currently loaded. Confirm first-wins (vs.
+   deterministic priority) is right across plugin load order, that a plugin
+   re-declaring its own id on reload/settings change never races another
+   plugin's claim, and decide whether the reserved set should be a namespace
+   rule (e.g. plugin-scoped id prefixes) before third-party ids proliferate.
+4. **Bridge delivery.** A provider bridge is a second consumer of the
+   plugin's `bb.host` artifact: it is exported by name
+   (`experimental_providerBridge`), built into `dist/host.js`, recorded in the
+   one live-host-artifact registry, served by the one host artifact route, and
+   cached once per plugin on the daemon. Thread commands carry `bridgeLaunch
+{pluginId, source: {kind: "artifact", digest, byteLength}}`. Pi is the one
+   provider whose bridge stays daemon-bundled
+   (`DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS`); every other provider, first-party or
+   not, arrives as an artifact. Before stabilizing: confirm one artifact per
+   plugin survives (a plugin declaring several providers today ships one bridge
+   for all of them, and there is no way to name a second), confirm the
+   single-bundle shape survives per-platform needs, and decide whether a
+   router-kind declaration — a picker entry resolving to another provider at
+   submit time, removed from the contract because nothing ever resolved one —
+   returns as its own surface.
+5. **What a capability may be.** `supportsHostAiServices` was removed after
+   shipping: it declared that bb's voice-transcription and structured-inference
+   features could route through the provider, which is a fact about the daemon
+   bundle (it ships a codex ChatGPT client and answers
+   `codex.inference.complete` / `codex.voice.transcribe`) rather than about the
+   provider. A plugin declaring it true could not make the daemon grow a
+   client, so the flag could only ever be wrong. The routing now lives in the
+   AI-services module that consumes it; the future home for the real
+   capability is a bounded host RPC a plugin can offer (`bb.host`), once the
+   host-plugin foundation exists. Apply the same test to every remaining
+   capability before stabilizing: a declaration may assert what the provider
+   itself implements, never what bb or its daemon can do with it.
+
+## `@get-bb/plugin-sdk/provider-bridge` (the provider-bridge authoring surface)
+
+**What it does.** The published module a provider bridge compiles against. A
+bridge ships inside its plugin's `bb.host` artifact, and a host artifact may
+not import private `@bb/*` workspace packages, so everything a bridge needs is
+named here: `experimental_defineProviderBridge` (the export shape the
+daemon-side bootstrap looks for), the Provider Bridge Protocol's method
+vocabulary and param schemas, the bridge kit's authoring helpers (JSON-RPC
+framing, tool-call and interaction codecs, id scoping, visibility, translation
+helpers), and the `@bb/domain` event vocabulary those payloads are made of.
+Curated by hand — named exports only, never `export *`. Unlike
+`@get-bb/plugin-sdk` and `@get-bb/plugin-sdk/host`, it is NOT a build-time
+runtime stub: it is pure schema and helper code with no daemon-pinned
+behavior, so a provider plugin depends on the SDK for real and the artifact
+build inlines the SDK's published, self-contained bundle.
+
+**Audit before stabilizing.**
+
+1. **The event vocabulary's home.** The names in group (4) of
+   `src/provider-bridge.ts`
+   (`ThreadEvent`, `PromptInput`, `PendingInteractionPayload`, `turnScope`, …)
+   are `@bb/domain`'s — bb's persisted-thread vocabulary, shared by the server,
+   the app and the runtime. The SDK names them because a published surface
+   cannot reference a private package, not because it owns them; moving them
+   here would invert the dependency and hand the plugin SDK the product's core
+   domain. Decide, before third parties depend on the shapes, whether the
+   protocol should own a narrower event vocabulary of its own that `@bb/domain`
+   then derives from, or whether this facade is the permanent answer.
+2. **Surface size.** ~190 names is a large promise. Single-consumer
+   repatriation done (Aug 2026): `extractEnvOverrides` and
+   `getMessageContentTypes` moved into the claude-code plugin,
+   `normalizePendingInteractionRequestedPermissionProfile` (whole
+   `pending-interaction-normalization` module plus test) into the codex
+   plugin, and the `cloneReasoningEfforts` helper out of `@bb/domain` into
+   claude-code's model catalog. The other named candidates turned out not to
+   be movable: they are `@bb/domain`/protocol definitions with core consumers
+   — `claudeCodeMockCliTrafficConfigSchema` is the source of the
+   core-consumed `ClaudeCodeMockCliTrafficConfig`/default (agent-runtime,
+   server), the `claudeTaskTool*` schemas share their contract file with
+   thread-view, the `acp*Cli`/`acpNativeReasoning` schemas are parsed by
+   host-daemon-contract and config, and the workflow snapshot types are
+   rendered by the app. `buildEditDiff`, `completeStartedToolItem`, and
+   `decodeToolCallResponsePayload` are used inside the kit itself. The
+   surface is still large; any further shrink is a per-name product decision,
+   not a mechanical move.
+   A follow-up de-overfitting pass (Aug 2026) then unwound the kit's
+   over-general helpers: `buildToolUseItem`'s parser-callback router became
+   per-provider switches over plain constructors (`buildFileChangeItem`,
+   `buildGenericToolCallItem`); the generic session registry was split into
+   `createPendingToolCallTracker` plus consumer-owned session maps;
+   claude-code stopped borrowing codex's `shell_environment_policy` namespace
+   (`buildShellEnvironmentPolicyConfig` now lives in provider-codex,
+   `diffCumulativeText` in pi); the zero-consumer native tool-call decoder,
+   the `finishOpenProviderTurn` wrapper, and the per-consumer flags
+   (`completeWebItems`, `preserveUndefinedToolCallFields`) came off the
+   surface; and the shared accepted-user-message drain folded into the
+   turn-state registry core.
+3. **The ACP launch spec.** `hostDaemonAcpLaunchSpecSchema` is a
+   server↔daemon wire shape a bridge parses out of its provider-scoped static
+   options. It is the one core contract leaking into the published surface;
+   decide whether provider-scoped static options should be opaque to bb with
+   the schema owned by the ACP plugin, before the shape is a public promise.
+4. **`experimental_apiVersion` 1.** The bootstrap accepts version 1 only and
+   refuses anything else by name. Decide the deprecation window for a version
+   bump (a plugin's artifact and the daemon update independently) before the
+   first third-party bridge ships.
+
+## `app.slots.experimental_providerIcon` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Lets a plugin frontend supply the React component bb draws
+as one agent provider's icon: `{ providerId, icon }`, where `icon` receives
+only the host's `className` (sizing plus the provider color class). The
+component wins over the app's vendored brand map and over the provider's
+`logoUrl`; a file logo (manifest `branding.icon`, a path-shaped provider
+`icon`) stays
+the right home for static color logos, because it is fetched through `<img>`,
+a separate document where `currentColor` resolves to black — invisible on dark
+themes. Registrations are replaced wholesale with the rest of the plugin's
+slot set, so disable/uninstall/failed reload falls back to the vendored map,
+then `logoUrl`, then the generic glyph. The four first-party provider plugins
+register their own marks through this slot.
+
+**Audit before stabilizing.**
+
+1. **Id squatting and scoping.** `providerId` names a provider in a shared
+   namespace, not a per-plugin slot id, and nothing checks that the plugin
+   registering it also declared that provider. Today the host keeps the first
+   claim by sorted plugin id and warns. Before stabilizing, decide whether the
+   host should reject an icon for a provider the plugin does not own (the
+   frontend does not currently know the registry's provider→plugin mapping),
+   and whether the picker should surface a rejected claim to the user.
+2. **Bundle size and boot ordering.** An icon now costs a frontend bundle: a
+   provider plugin that previously shipped only a server entry pays esbuild +
+   Tailwind on install and an extra module fetch at boot, and the vendored map
+   covers the window before the bundle loads. Confirm the cost is acceptable
+   for icon-only plugins, or add a lighter delivery path (e.g. a declared
+   inline SVG string sanitized by the host) before freezing the shape.
+3. **Disposal and identity.** The icon component is resolved through a cached
+   host wrapper keyed by provider id and `logoUrl`; the wrapper subscribes to
+   the slot store so a disposed registration falls back mid-render. Audit that
+   a crashing plugin icon is contained the way other slot components are (it
+   renders inside host chrome, sometimes outside a slot error boundary), and
+   that no host surface caches the resolved component across a reload.
+4. **Rendering contract.** The host promises only `className` and expects
+   inline markup. Decide whether to enforce that (no fetches, no portals, no
+   interactive content) before plugins rely on richer components, and confirm
+   the accessible label story: the host derives `ariaLabel` from its own
+   provider data, falling back to the provider id, and the slot supplies none.
+
+## `experimental_NewThreadComposer` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** The host-owned new-thread compose surface, the create-side
 counterpart to `ThreadChat`. It renders bb's full control set — prompt editor
@@ -96,24 +371,14 @@ host's `useCreateThread` and the thread would look host-originated. So the
 rule is: the composer owns user selections; the plugin owns filing
 (`sectionId`, `parentThreadId`, `title`, `visibility`) and attribution.
 
-Implementation: `apps/app/src/components/plugin/PluginNewThreadComposer.tsx`,
-bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
+Implementation: the shared workflow is
+`apps/app/src/components/promptbox/NewThreadComposer.tsx`; the SDK adapter is
+`apps/app/src/components/plugin/PluginNewThreadComposer.tsx`, bound in
+`apps/app/src/lib/plugin-sdk-app-impl.tsx`.
 
 **Audit before stabilizing.**
 
-1. **Duplicated config assembly vs. `RootComposeView`.** The adapter builds
-   `environmentConfig`, `branchConfig`, `worktreeConfig`, `permissionConfig`,
-   `executionConfig`, `attachmentsConfig`, `typeaheadConfig`, `historyConfig`,
-   and `projectOptions` for `NewThreadPromptBox` a second time — the first
-   copy is the `useMemo` block in `apps/app/src/views/RootComposeView.tsx`.
-   This was chosen over refactoring that ~3700-line view (additive, zero
-   regression risk to the primary compose surface), mirroring how
-   `PluginThreadChat` adapts `EmbeddedThreadChat`. Only the pure resolvers are
-   shared (`apps/app/src/views/root-compose-environment-selection.ts`). Check
-   whether the two copies have drifted, and whether the shared surface should
-   grow to cover the config assembly itself before this is stable.
-
-2. **`NewThreadRequest` vs. what `threads.spawn` accepts.** The type mirrors
+1. **`NewThreadRequest` vs. what `threads.spawn` accepts.** The type mirrors
    the subset of `CreateThreadRequest` a composer can resolve. Confirm every
    field still round-trips through `bb.sdk.threads.spawn` unchanged, that
    `executionInputSources` still means the same thing to the server, and that
@@ -123,7 +388,7 @@ bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
    composer always sends an explicit `providerId`; decide whether that is
    correct before freezing the shape.
 
-3. **Page-level behavior the adapter skips.** Fork seeds,
+2. **Page-level behavior the adapter skips.** Fork seeds,
    quick-create-project, the guided machine-setup dialog, welcome/empty
    states, and codex-version submit blocking are all deliberately absent.
    Confirm none of them has become load-bearing for correctness (rather than
@@ -131,19 +396,19 @@ bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
    means a plugin can submit to a machine whose CLI the primary surface would
    have refused.
 
-4. **Draft and selection scoping.** Drafts persist under a
+3. **Draft and selection scoping.** Drafts persist under a
    `plugin-new-thread` scope keyed by `draftKey ?? pluginId`, and execution
    selections are component-local so a plugin panel never rewrites the user's
    persisted root-composer defaults. Confirm that is still the behavior
    plugin authors expect, and that `draftKey` is the right knob (versus, say,
    a per-instance ephemeral draft).
 
-5. **No plugin composer host binding.** The instance passes no
+4. **No plugin composer host binding.** The instance passes no
    `pluginComposerHost`, so plugin composer customizations, banners, and
    `useComposer()` writes do not reach it. Decide whether composers rendered
    by a plugin should participate in that surface before stabilizing.
 
-6. **Seeding props and the round-trip guarantee.** The `default*` props
+5. **Seeding props and the round-trip guarantee.** The `default*` props
    (`defaultProviderId`, `defaultModel`, `defaultReasoningLevel`,
    `defaultServiceTier`, `defaultPermissionMode`, `defaultEnvironment`) seed
    the composer from a stored `NewThreadRequest` so a plugin can re-open a
@@ -161,7 +426,15 @@ bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
    `PluginNewThreadComposer.test.tsx` guard this) and re-decide whether the
    re-seed-on-change rule should instead be an explicit reset nonce.
 
-## `app.slots.experimental_newThreadPanelAction` (`@bb/plugin-sdk/app`)
+6. **Projectless contract.** The picker always offers "Don't work in a
+   project", including when a plugin seeds a specific project. That choice
+   submits the personal-project id (not `null`) with a `personal` workspace;
+   plugin authors forward both fields unchanged and must opt into personal
+   project metadata with `projects.list({ includePersonal: true })`. Before
+   stabilizing, confirm unconditional project switching is right for embedded
+   plugin workflows, rather than adding an explicit project-locking policy.
+
+## `app.slots.experimental_newThreadPanelAction` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Adds a plugin row to the root New thread screen's
 right-panel Actions list. Activating it can open a closable panel tab whose
@@ -190,28 +463,31 @@ Before stabilization, audit:
    preferable to a unified discriminated context after external plugins have
    had time to adopt the root surface deliberately.
 
-## `app.slots.experimental_threadList` (`@bb/plugin-sdk/app`)
+## `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Replaces the sidebar's scrolling thread list with a plugin
 component. Unlike every other `app.slots.*` member this slot is **exclusive**:
-one list at a time fills the scroll area. The built-in list stays the default;
-the user picks a provider in Settings → Appearance → Sidebar, stored per client
-in `localStorage` under `bb.sidebar.threadListProvider`.
+one list at a time fills the scroll area. Automatic activation is the default.
+If several are registered, the first in the slot snapshot wins (plugin ids are
+sorted, then each plugin's registration order is preserved); removing the
+automatic winner reveals the next. The user can override that behavior under
+Settings → Appearance by pinning BB's list or a specific provider; the choice
+is stored per client. A plugin-owned enable/disable setting can also live in
+the component, which renders `experimental_Original` when disabled.
 
-Three fallbacks keep the sidebar usable: a preference naming an unregistered
-provider resolves to the built-in list without clearing the stored value; a
-crashing component renders the built-in list (not the usual "plugin crashed"
-chip, which in place of a whole sidebar would strand the user) plus one toast;
-and a disabled or uninstalled plugin gets its list back when it returns.
+Fallbacks keep the sidebar usable: no automatic provider renders BB's list; an
+unavailable pinned provider temporarily renders BB's list without erasing the
+choice; and a crashing component renders BB's list (not the usual "plugin
+crashed" chip, which in place of a whole sidebar would strand the user) plus
+one toast.
 
 **Audit before stabilizing.**
 
-1. **Arbitration.** Confirm a client-local single choice is right, versus a
-   per-project or per-workspace choice, and what a synced setting would mean
-   across devices where the plugin is not installed.
+1. **Arbitration.** Confirm automatic/pinned/built-in is the right long-term
+   selection model and alphabetical plugin-id order is an acceptable default
+   tie-breaker when multiple replacements are enabled.
 2. **Fallback discoverability.** Confirm one toast is the right signal when a
-   crash silently swaps the user's sidebar back, and whether the preference
-   should self-clear after repeated crashes.
+   crash silently swaps the user's sidebar back.
 3. **Region boundary.** The plugin gets the scrolling list and nothing else:
    the New-thread button, search field, plugin nav rows, and footer stay
    host-rendered, because they are shared surfaces (other plugins live in two
@@ -224,7 +500,45 @@ and a disabled or uninstalled plugin gets its list back when it returns.
    focus order, and the mobile close behavior when a plugin owns the markup —
    `onNavigate` is currently the plugin's responsibility to call.
 
-## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@bb/plugin-sdk/app`)
+## `PluginThreadListProps.experimental_Original` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Supplies the thread-list replacement with BB's list already
+bound to the current sidebar instance. Rendering it explicitly delegates to
+the owner without re-entering replacement resolution; the host also renders it
+when the plugin component crashes.
+
+**Audit before stabilizing.**
+
+1. Confirm a no-props, instance-bound component remains the smallest useful
+   delegation contract as thread-list context grows.
+2. Verify owner delegation preserves search state, mobile navigation, keyboard
+   shortcuts, split behavior, and all BB-owned row affordances.
+3. Confirm the owner renderer stays lazy enough that a plugin replacement
+   which never delegates does not eagerly load a second list implementation.
+4. Revisit whether the field should remain tied to the experimental thread-list
+   registration or stabilize together with the replacement primitive shared by
+   other surfaces.
+
+## `PluginFileOpenerProps.experimental_Original` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Supplies a file-opener replacement with BB's preview bound to
+the file named by `path` and `source`. A plugin can render it conditionally, and
+the host uses it as the crash and missing-provider fallback without resolving
+the same plugin again.
+
+**Audit before stabilizing.**
+
+1. Verify the bound preview preserves source-specific behavior for workspace,
+   host, project, and thread-storage files, including relative links, line
+   ranges, open-in-editor actions, and selection-to-composer actions.
+2. Confirm the no-props bound component is preferable to an owner component
+   which receives the existing `{ path, source }` props again.
+3. Confirm delegation and crash fallback retain the current file tab identity
+   and do not remount unrelated panel state.
+4. Verify the owner renderer remains independent of provider precedence and
+   cannot recurse through file-opener resolution.
+
+## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Gives a plugin component the sidebar's live thread view and
 the actions that mutate it. The read hook wraps the host's own
@@ -290,7 +604,7 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    exposing the full `panes` array does not leak more layout state than a row
    needs.
 
-## `app.slots.experimental_threadHeaderAction` (`@bb/plugin-sdk/app`)
+## `app.slots.experimental_threadHeaderAction` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Renders a plugin component in the thread header's action row.
 The frontend sibling of the backend `bb.ui.registerThreadAction`, which renders

@@ -444,7 +444,7 @@ describe("deleteHostSkill", () => {
     await deleteHostSkill(
       {
         type: "host.delete_skill",
-        scope: "claude-user",
+        scope: "provider-user",
         name: "notes",
         cwd: null,
         rootPath: providerRoot,

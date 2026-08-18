@@ -20,7 +20,7 @@ export type {
 } from "./rpc-contract.js";
 
 /**
- * `@bb/plugin-sdk/app` — typed facade over the BB app's plugin runtime.
+ * `@get-bb/plugin-sdk/app` — typed facade over the BB app's plugin runtime.
  *
  * This module's runtime is never bundled into plugins: `bb plugin build`
  * swaps the specifier for a shim reading

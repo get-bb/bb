@@ -1,4 +1,4 @@
-import type { PluginSidebarThreadIndicator } from "@bb/plugin-sdk";
+import type { PluginSidebarThreadIndicator } from "@get-bb/plugin-sdk";
 import { Icon } from "./components/Icon";
 import { cn } from "./lib/utils";
 

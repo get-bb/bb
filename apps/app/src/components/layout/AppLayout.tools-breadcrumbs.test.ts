@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   resolveAutomationBreadcrumbs,
+  resolveToolsAreaHeaderMeta,
   resolveToolsBreadcrumbs,
   TOOLS_NAV_ITEMS,
 } from "@/components/tools/tools-navigation";
@@ -19,43 +20,49 @@ describe("resolveToolsBreadcrumbs", () => {
         id: "plugins",
         label: "Plugins",
         icon: "ElectricPlugs",
-        to: "/tools/plugins",
+        to: "/extensions/plugins",
       },
-      { id: "skills", label: "Skills", icon: "Zap", to: "/tools/skills" },
+      { id: "skills", label: "Skills", icon: "Zap", to: "/extensions/skills" },
     ]);
   });
 
   it("includes the selected collection tab", () => {
-    expect(resolveToolsBreadcrumbs("/tools/skills")).toEqual([
-      { label: "Skills", to: "/tools/skills" },
+    expect(resolveToolsBreadcrumbs("/extensions/skills")).toEqual([
+      { label: "Skills", to: "/extensions/skills" },
       { label: "Browse" },
     ]);
-    expect(resolveToolsBreadcrumbs("/tools/skills", "?view=library")).toEqual([
-      { label: "Skills", to: "/tools/skills" },
-      { label: "Library" },
+    expect(resolveToolsBreadcrumbs("/extensions/skills", "?view=library")).toEqual([
+      { label: "Skills", to: "/extensions/skills" },
+      { label: "My skills" },
     ]);
-    expect(resolveToolsBreadcrumbs("/tools/plugins")).toEqual([
-      { label: "Plugins", to: "/tools/plugins" },
+    expect(resolveToolsBreadcrumbs("/extensions/plugins")).toEqual([
+      { label: "Plugins", to: "/extensions/plugins" },
       { label: "Browse" },
     ]);
     expect(
-      resolveToolsBreadcrumbs("/tools/plugins", "?view=installed"),
+      resolveToolsBreadcrumbs("/extensions/plugins", "?view=create"),
     ).toEqual([
-      { label: "Plugins", to: "/tools/plugins" },
+      { label: "Extensions", to: "/extensions/plugins" },
+      { label: "Create a plugin" },
+    ]);
+    expect(
+      resolveToolsBreadcrumbs("/extensions/plugins", "?view=installed"),
+    ).toEqual([
+      { label: "Plugins", to: "/extensions/plugins" },
       { label: "Installed" },
     ]);
   });
 
   it("resolves literal browse paths as Browse, not as a resource named browse", () => {
-    // /tools/plugins/:pluginId also matches /tools/plugins/browse, so if the
+    // /extensions/plugins/:pluginId also matches /extensions/plugins/browse, so if the
     // detail patterns are tested first this reads "Plugins / Installed /
     // browse" and the document title becomes "browse · Plugins".
-    expect(resolveToolsBreadcrumbs("/tools/plugins/browse")).toEqual([
-      { label: "Plugins", to: "/tools/plugins" },
+    expect(resolveToolsBreadcrumbs("/extensions/plugins/browse")).toEqual([
+      { label: "Plugins", to: "/extensions/plugins" },
       { label: "Browse" },
     ]);
-    expect(resolveToolsBreadcrumbs("/tools/skills/registry")).toEqual([
-      { label: "Skills", to: "/tools/skills" },
+    expect(resolveToolsBreadcrumbs("/extensions/skills/registry")).toEqual([
+      { label: "Skills", to: "/extensions/skills" },
       { label: "Browse" },
     ]);
   });
@@ -63,34 +70,38 @@ describe("resolveToolsBreadcrumbs", () => {
   it("makes every detail ancestor clickable and keeps the resource passive", () => {
     expect(
       resolveToolsBreadcrumbs(
-        "/tools/skills/library/skill_abc123",
+        "/extensions/skills/library/skill_abc123",
         "",
         "Example Skill",
       ),
     ).toEqual([
-      { label: "Skills", to: "/tools/skills" },
-      { label: "Library", to: "/tools/skills?view=library" },
+      { label: "Skills", to: "/extensions/skills" },
+      { label: "My skills", to: "/extensions/skills?view=library" },
       { label: "Example Skill" },
     ]);
     expect(
       resolveToolsBreadcrumbs(
-        "/tools/skills/registry/vercel-labs%2Fskills%2Ffind-skills",
+        "/extensions/skills/registry/vercel-labs%2Fskills%2Ffind-skills",
       ),
     ).toEqual([
-      { label: "Skills", to: "/tools/skills" },
-      { label: "Browse", to: "/tools/skills/registry" },
+      { label: "Skills", to: "/extensions/skills" },
+      { label: "Browse", to: "/extensions/skills/registry" },
       { label: "find-skills" },
     ]);
-    expect(resolveToolsBreadcrumbs("/tools/plugins/ui-patterns")).toEqual([
-      { label: "Plugins", to: "/tools/plugins" },
-      { label: "Installed", to: "/tools/plugins?view=installed" },
+    expect(resolveToolsBreadcrumbs("/extensions/plugins/ui-patterns")).toEqual([
+      { label: "Plugins", to: "/extensions/plugins" },
+      { label: "Browse", to: "/extensions/plugins" },
       { label: "ui-patterns" },
     ]);
     expect(
-      resolveToolsBreadcrumbs("/tools/plugins/ui-patterns", "", "UI Patterns"),
+      resolveToolsBreadcrumbs(
+        "/extensions/plugins/ui-patterns",
+        "?view=installed",
+        "UI Patterns",
+      ),
     ).toEqual([
-      { label: "Plugins", to: "/tools/plugins" },
-      { label: "Installed", to: "/tools/plugins?view=installed" },
+      { label: "Plugins", to: "/extensions/plugins" },
+      { label: "Installed", to: "/extensions/plugins?view=installed" },
       { label: "UI Patterns" },
     ]);
     expect(
@@ -176,5 +187,47 @@ describe("resolveAutomationBreadcrumbs", () => {
     expect(
       resolveAutomationBreadcrumbs("/plugins/simple-notes/simple-notes"),
     ).toBeNull();
+  });
+});
+
+describe("resolveToolsAreaHeaderMeta", () => {
+  it("shows the static Extensions title on tools routes when the hub is on", () => {
+    expect(
+      resolveToolsAreaHeaderMeta("/extensions/plugins?view=installed".split("?")[0]!, true),
+    ).toEqual({ kind: "extensions-title", title: "Extensions" });
+    expect(resolveToolsAreaHeaderMeta("/extensions/skills/registry", true)).toEqual({
+      kind: "extensions-title",
+      title: "Extensions",
+    });
+  });
+
+  it("shows established ancestor/current breadcrumbs during plugin creation", () => {
+    expect(
+      resolveToolsAreaHeaderMeta(
+        "/extensions/plugins",
+        true,
+        null,
+        "?view=create",
+      ),
+    ).toEqual({
+      kind: "breadcrumbs",
+      breadcrumbs: [
+        { label: "Extensions", to: "/extensions/plugins" },
+        { label: "Create a plugin" },
+      ],
+    });
+  });
+
+  it("keeps automation breadcrumbs, including the legacy /tools alias", () => {
+    const meta = resolveToolsAreaHeaderMeta(
+      "/plugins/automations/automations",
+      true,
+    );
+    expect(meta?.kind).toBe("breadcrumbs");
+  });
+
+  it("claims nothing when the hub is off or the route is unrelated", () => {
+    expect(resolveToolsAreaHeaderMeta("/extensions/plugins", false)).toBeNull();
+    expect(resolveToolsAreaHeaderMeta("/", true)).toBeNull();
   });
 });

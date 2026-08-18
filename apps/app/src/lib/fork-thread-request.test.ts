@@ -40,6 +40,7 @@ describe("buildForkThreadRequest", () => {
       permissionMode: "accept-edits",
       projectId: "proj_test",
       providerId: "codex",
+      providerSupportsFork: true,
       reasoningLevel: "high",
       serviceTier: "fast",
       sourceSeqEnd: 42,
@@ -71,6 +72,7 @@ describe("buildForkThreadRequest", () => {
       permissionMode: "auto",
       projectId: "proj_test",
       providerId: "codex",
+      providerSupportsFork: true,
       reasoningLevel: "medium",
       serviceTier: undefined,
       sourceSeqEnd: undefined,
@@ -81,7 +83,7 @@ describe("buildForkThreadRequest", () => {
     expect(request).not.toHaveProperty("serviceTier");
   });
 
-  it("returns null when the provider cannot fork sessions", () => {
+  it("builds a fork request for a generic ACP provider", () => {
     expect(
       buildForkThreadRequest({
         environmentId: "env_source",
@@ -89,7 +91,31 @@ describe("buildForkThreadRequest", () => {
         model: "gpt-5",
         permissionMode: "auto",
         projectId: "proj_test",
-        providerId: "acp-cursor",
+        providerId: "acp-amp",
+        providerSupportsFork: true,
+        reasoningLevel: "medium",
+        serviceTier: undefined,
+        sourceSeqEnd: undefined,
+        sourceThreadId: "thr_source",
+        sourceThreadTitle: "Investigate flaky test",
+      }),
+    ).toMatchObject({
+      originKind: "fork",
+      providerId: "acp-amp",
+      sourceThreadId: "thr_source",
+    });
+  });
+
+  it("returns null when the provider cannot fork sessions", () => {
+    expect(
+      buildForkThreadRequest({
+        environmentId: "env_source",
+        input: [{ type: "text", text: "Continue from here", mentions: [] }],
+        model: "unknown-model",
+        permissionMode: "auto",
+        projectId: "proj_test",
+        providerId: "not-a-provider",
+        providerSupportsFork: false,
         reasoningLevel: "medium",
         serviceTier: undefined,
         sourceSeqEnd: undefined,
@@ -101,17 +127,18 @@ describe("buildForkThreadRequest", () => {
 });
 
 describe("isThreadForkable", () => {
-  it("is true only when the source thread has an environment id and fork-capable provider", () => {
-    expect(isThreadForkable(makeThread({ environmentId: "env_source" }))).toBe(
-      true,
-    );
-    expect(isThreadForkable(makeThread({ environmentId: null }))).toBe(false);
-    expect(isThreadForkable(makeThread({ providerId: "acp-cursor" }))).toBe(
+  it("is true only with an environment id and a fork-capable provider", () => {
+    expect(
+      isThreadForkable(makeThread({ environmentId: "env_source" }), true),
+    ).toBe(true);
+    expect(isThreadForkable(makeThread({ environmentId: null }), true)).toBe(
       false,
     );
-    expect(isThreadForkable(makeThread({ providerId: "not-a-provider" }))).toBe(
-      false,
-    );
-    expect(isThreadForkable(null)).toBe(false);
+    // The capability now arrives from server-provided ProviderInfo; absence
+    // (unknown provider, data not loaded) reads as false.
+    expect(
+      isThreadForkable(makeThread({ providerId: "not-a-provider" }), false),
+    ).toBe(false);
+    expect(isThreadForkable(null, true)).toBe(false);
   });
 });

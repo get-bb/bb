@@ -30,6 +30,8 @@ import {
 
 /** Larger than any thread these tests build, so the budget never binds. */
 const LARGE_BUDGET = 1_000_000;
+/** Three or more byte windows without making loaded-suite timing dominate. */
+const BYTE_WINDOW_ITEM_COUNT = 250;
 
 const providerThreadId = "provider-root";
 const execution = {
@@ -598,7 +600,7 @@ describe("in-turn timeline windows", () => {
     seedTurns(db, thread, {
       commandChars: 25_000,
       completeLastTurn: true,
-      itemsPerTurn: [650],
+      itemsPerTurn: [BYTE_WINDOW_ITEM_COUNT],
     });
 
     const commandCallIds = new Set<string>();
@@ -626,7 +628,7 @@ describe("in-turn timeline windows", () => {
         const pageDetailCallIds = new Set<string>();
         collectCommandCallIds(details.rows, pageDetailCallIds);
         expect(pageDetailCallIds.size).toBeGreaterThan(0);
-        expect(pageDetailCallIds.size).toBeLessThan(650);
+        expect(pageDetailCallIds.size).toBeLessThan(BYTE_WINDOW_ITEM_COUNT);
         for (const callId of pageDetailCallIds) {
           expandedCommandCallIds.add(callId);
         }
@@ -643,9 +645,9 @@ describe("in-turn timeline windows", () => {
       expect(pages).toBeLessThan(10);
     }
 
-    expect(pages).toBeGreaterThan(1);
-    expect(commandCallIds.size).toBe(650);
-    expect(expandedCommandCallIds.size).toBe(650);
+    expect(pages).toBeGreaterThan(2);
+    expect(commandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
+    expect(expandedCommandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
     expect(turnRowIds.size).toBe(pages);
   }, 15_000);
 
@@ -744,7 +746,7 @@ describe("in-turn timeline windows", () => {
       commandChars: 25_000,
       completeLastTurn: true,
       delegateLastTurn: true,
-      itemsPerTurn: [650],
+      itemsPerTurn: [BYTE_WINDOW_ITEM_COUNT],
     });
 
     const commandCallIds = new Set<string>();
@@ -773,7 +775,7 @@ describe("in-turn timeline windows", () => {
         });
         const pageDetailCallIds = new Set<string>();
         collectCommandCallIds(details.rows, pageDetailCallIds);
-        expect(pageDetailCallIds.size).toBeLessThan(650);
+        expect(pageDetailCallIds.size).toBeLessThan(BYTE_WINDOW_ITEM_COUNT);
         for (const callId of pageDetailCallIds) {
           expandedCommandCallIds.add(callId);
         }
@@ -789,9 +791,9 @@ describe("in-turn timeline windows", () => {
       expect(pages).toBeLessThan(10);
     }
 
-    expect(pages).toBeGreaterThan(1);
-    expect(commandCallIds.size).toBe(650);
-    expect(expandedCommandCallIds.size).toBe(650);
+    expect(pages).toBeGreaterThan(2);
+    expect(commandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
+    expect(expandedCommandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
   }, 15_000);
 
   it("returns a placeholder when one event exceeds the byte limit", () => {
@@ -874,7 +876,7 @@ describe("in-turn timeline windows", () => {
     seedTurns(db, thread, {
       commandChars: 25_000,
       completeLastTurn: true,
-      itemsPerTurn: [650],
+      itemsPerTurn: [BYTE_WINDOW_ITEM_COUNT],
       longRunningItemIndexes: [0],
     });
 
@@ -913,7 +915,7 @@ describe("in-turn timeline windows", () => {
       expect(pages).toBeLessThan(10);
     }
 
-    expect(pages).toBeGreaterThan(1);
+    expect(pages).toBeGreaterThan(2);
     expect(straddlingDetailRows).toHaveLength(1);
     expect(straddlingDetailRows[0]).toEqual(
       expect.objectContaining({
@@ -1175,86 +1177,100 @@ describe("in-turn windows and items that only stream", () => {
     expect(matches[0]).toContain('"status":"completed"');
   });
 
-  it("keeps an unfinished assistant message whole as its deltas cross the cut", () => {
-    const { db, thread } = setup();
-    const itemId = "assistant-1";
-    const turnId = "turn-1";
-    seedTurns(db, thread, {
-      completeLastTurn: false,
-      itemsPerTurn: [100],
-    });
-    const events: EventInput[] = [
-      {
-        threadId: thread.id,
-        sequence: 204,
-        type: "item/started",
-        scope: turnScope(turnId),
-        providerThreadId,
-        itemId,
-        itemKind: "agentMessage",
-        data: JSON.stringify({
-          item: { type: "agentMessage", id: itemId, text: "" },
-          providerThreadId,
-        }),
-      },
-    ];
-    const chunks = Array.from({ length: 200 }, (_, index) => `[${index}]\n`);
-    chunks.forEach((delta, index) => {
-      events.push({
-        threadId: thread.id,
-        sequence: index + 205,
-        type: "item/agentMessage/delta",
-        scope: turnScope(turnId),
-        providerThreadId,
-        itemId,
-        itemKind: null,
-        data: JSON.stringify({
-          delta,
-          itemId,
-          providerThreadId,
-        }),
+  it.each([
+    { includeStartedEvent: false, providerShape: "without item/started" },
+    { includeStartedEvent: true, providerShape: "with item/started" },
+  ])(
+    "keeps an unfinished assistant message whole across the cut $providerShape",
+    ({ includeStartedEvent }) => {
+      const { db, thread } = setup();
+      const itemId = "assistant-1";
+      const turnId = "turn-1";
+      seedTurns(db, thread, {
+        completeLastTurn: false,
+        itemsPerTurn: [100],
       });
-    });
-    insertEvents(db, noopNotifier, events);
-
-    const budgeted = buildPage(db, thread, 100, null);
-    const assistant = budgeted.response.rows.find(
-      (row) => row.kind === "conversation" && row.role === "assistant",
-    );
-
-    expect(budgeted.response.timelinePage.hasOlderRows).toBe(true);
-    expect(assistant?.text).toBe(chunks.join(""));
-    const laterChunks = Array.from(
-      { length: 25 },
-      (_, index) => `[later-${index}]\n`,
-    );
-    insertEvents(
-      db,
-      noopNotifier,
-      laterChunks.map((delta, index) => ({
-        threadId: thread.id,
-        sequence: index + 405,
-        type: "item/agentMessage/delta",
-        scope: turnScope(turnId),
-        providerThreadId,
-        itemId,
-        itemKind: null,
-        data: JSON.stringify({
-          delta,
-          itemId,
+      // Pi, Claude, and ACP may begin an assistant item with its first delta,
+      // while other provider paths emit item/started first. Both shapes must
+      // preserve the buffered prefix when the event budget cuts through it.
+      const events: EventInput[] = includeStartedEvent
+        ? [
+            {
+              threadId: thread.id,
+              sequence: 204,
+              type: "item/started",
+              scope: turnScope(turnId),
+              providerThreadId,
+              itemId,
+              itemKind: "agentMessage",
+              data: JSON.stringify({
+                item: { type: "agentMessage", id: itemId, text: "" },
+                providerThreadId,
+              }),
+            },
+          ]
+        : [];
+      const firstDeltaSequence = includeStartedEvent ? 205 : 204;
+      const chunks = Array.from({ length: 200 }, (_, index) => `[${index}]\n`);
+      chunks.forEach((delta, index) => {
+        events.push({
+          threadId: thread.id,
+          sequence: index + firstDeltaSequence,
+          type: "item/agentMessage/delta",
+          scope: turnScope(turnId),
           providerThreadId,
-        }),
-      })),
-    );
+          itemId,
+          itemKind: null,
+          data: JSON.stringify({
+            delta,
+            itemId,
+            providerThreadId,
+          }),
+        });
+      });
+      insertEvents(db, noopNotifier, events);
 
-    const refreshed = buildPage(db, thread, 100, null);
-    const refreshedAssistant = refreshed.response.rows.find(
-      (row) => row.kind === "conversation" && row.role === "assistant",
-    );
-    expect(refreshedAssistant?.text).toBe([...chunks, ...laterChunks].join(""));
-    const unbudgeted = buildPage(db, thread, LARGE_BUDGET, null);
-    expect(walkAllPages(db, thread, 100).rows).toEqual(
-      unbudgeted.response.rows.map((row) => JSON.stringify(row)),
-    );
-  });
+      const budgeted = buildPage(db, thread, 100, null);
+      const assistant = budgeted.response.rows.find(
+        (row) => row.kind === "conversation" && row.role === "assistant",
+      );
+
+      expect(budgeted.response.timelinePage.hasOlderRows).toBe(true);
+      expect(assistant?.text).toBe(chunks.join(""));
+      const laterChunks = Array.from(
+        { length: 25 },
+        (_, index) => `[later-${index}]\n`,
+      );
+      insertEvents(
+        db,
+        noopNotifier,
+        laterChunks.map((delta, index) => ({
+          threadId: thread.id,
+          sequence: index + firstDeltaSequence + chunks.length,
+          type: "item/agentMessage/delta",
+          scope: turnScope(turnId),
+          providerThreadId,
+          itemId,
+          itemKind: null,
+          data: JSON.stringify({
+            delta,
+            itemId,
+            providerThreadId,
+          }),
+        })),
+      );
+
+      const refreshed = buildPage(db, thread, 100, null);
+      const refreshedAssistant = refreshed.response.rows.find(
+        (row) => row.kind === "conversation" && row.role === "assistant",
+      );
+      expect(refreshedAssistant?.text).toBe(
+        [...chunks, ...laterChunks].join(""),
+      );
+      const unbudgeted = buildPage(db, thread, LARGE_BUDGET, null);
+      expect(walkAllPages(db, thread, 100).rows).toEqual(
+        unbudgeted.response.rows.map((row) => JSON.stringify(row)),
+      );
+    },
+  );
 });

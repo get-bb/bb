@@ -68,6 +68,15 @@ export const HOST_PATH_EXISTENCE_QUERY_KEY = "hostPathExistence";
 export const PROJECT_SKILLS_QUERY_KEY = "projectSkills";
 export const SKILL_CONTENT_QUERY_KEY = "skillContent";
 export const SKILL_FILES_QUERY_KEY = "skillFiles";
+export const PLUGIN_LIST_QUERY_KEY = "plugin-list";
+export const PLUGIN_SETTINGS_VIEW_QUERY_KEY = "plugin-settings-view";
+export const PLUGIN_CONTRIBUTIONS_QUERY_KEY = "plugin-contributions";
+export const PLUGIN_SDK_SETTINGS_QUERY_KEY = "plugin-settings";
+export const PLUGIN_SOURCE_QUERY_KEY = "plugin-source";
+export const PLUGIN_CATALOG_SEARCH_QUERY_KEY = "plugin-catalog-search";
+export const PLUGIN_CATALOG_INSTALL_PLAN_QUERY_KEY =
+  "plugin-catalog-install-plan";
+export const PLUGIN_MARKETPLACES_QUERY_KEY = "plugin-marketplaces";
 export interface ThreadListQueryFilters {
   projectId?: string;
   hasParent?: ThreadListFilters["hasParent"];
@@ -1136,4 +1145,82 @@ export function skillContentQueryKey(
 
 export function skillFilesQueryKey(projectId: string, skillId: string) {
   return [SKILL_FILES_QUERY_KEY, projectId, skillId] as const;
+}
+
+/**
+ * Plugin management keys live here, away from the modules that fetch them.
+ * `realtime-cache-registry` runs on the boot path and needs only these
+ * prefixes; when it read them from `plugin-*-queries` it dragged the whole
+ * plugin query layer — client, catalog search, settings forms — into the
+ * boot payload for a handful of strings. Keep new plugin keys here too.
+ */
+export function pluginListQueryKey(enabled: boolean) {
+  return [PLUGIN_LIST_QUERY_KEY, enabled] as const;
+}
+
+export function allPluginListQueryKeyPrefix() {
+  return [PLUGIN_LIST_QUERY_KEY] as const;
+}
+
+export function pluginSettingsViewQueryKey(pluginId: string) {
+  return [PLUGIN_SETTINGS_VIEW_QUERY_KEY, pluginId] as const;
+}
+
+export function allPluginSettingsViewQueryKeyPrefix() {
+  return [PLUGIN_SETTINGS_VIEW_QUERY_KEY] as const;
+}
+
+export function pluginContributionsQueryKey() {
+  return [PLUGIN_CONTRIBUTIONS_QUERY_KEY] as const;
+}
+
+/**
+ * Prefix covering every contributions cache entry. The realtime
+ * `plugins-changed` broadcast invalidates it so `bb plugin
+ * reload/enable/disable` reaches open pages without waiting out the stale
+ * time.
+ */
+export function allPluginContributionsQueryKeyPrefix() {
+  return [PLUGIN_CONTRIBUTIONS_QUERY_KEY] as const;
+}
+
+/** Values a plugin frontend reads through the plugin SDK's `useSettings()`. */
+export function pluginSdkSettingsQueryKey(pluginId: string) {
+  return [PLUGIN_SDK_SETTINGS_QUERY_KEY, pluginId] as const;
+}
+
+/** Prefix the realtime `plugins-changed` broadcast invalidates. */
+export function allPluginSettingsQueryKeyPrefix() {
+  return [PLUGIN_SDK_SETTINGS_QUERY_KEY] as const;
+}
+
+export function pluginSourceQueryKey(pluginId: string) {
+  return [PLUGIN_SOURCE_QUERY_KEY, pluginId] as const;
+}
+
+export function allPluginSourceQueryKeyPrefix() {
+  return [PLUGIN_SOURCE_QUERY_KEY] as const;
+}
+
+export function pluginCatalogSearchQueryKey(query: string) {
+  return [PLUGIN_CATALOG_SEARCH_QUERY_KEY, query] as const;
+}
+
+export function allPluginCatalogSearchQueryKeyPrefix() {
+  return [PLUGIN_CATALOG_SEARCH_QUERY_KEY] as const;
+}
+
+export function pluginCatalogInstallPlanQueryKey(args: {
+  entryId: string;
+  marketplace?: string;
+}) {
+  return [
+    PLUGIN_CATALOG_INSTALL_PLAN_QUERY_KEY,
+    args.marketplace ?? "",
+    args.entryId,
+  ] as const;
+}
+
+export function pluginMarketplacesQueryKey() {
+  return [PLUGIN_MARKETPLACES_QUERY_KEY] as const;
 }

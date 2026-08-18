@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
-import { ResourcePagination } from "@bb/shared-ui/resource-pagination";
+import { ResourceInfiniteScrollSentinel } from "@bb/shared-ui/resource-pagination";
 import {
   ResourceDefinitionSection,
   ResourceDetailCollection,
@@ -18,8 +18,8 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
-import { appToast } from "@/components/ui/app-toast";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
+import { useClipboardCopy } from "@/lib/clipboard";
 
 export type SkillDetailTitleBadge = {
   label: string;
@@ -69,18 +69,11 @@ export function SkillOwnershipBadge({
 }
 
 function SkillPath({ path, href }: { path: string; href?: string }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useClipboardCopy({
+    text: path,
+    errorMessage: "Failed to copy path.",
+  });
   const displayPath = formatHomePathForDisplay(path);
-
-  async function copyPath() {
-    try {
-      await navigator.clipboard.writeText(path);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
-    } catch {
-      appToast.error("Failed to copy path.");
-    }
-  }
 
   return (
     <TooltipProvider delayDuration={250}>
@@ -105,7 +98,7 @@ function SkillPath({ path, href }: { path: string; href?: string }) {
             <button
               type="button"
               aria-label={`Copy skill path: ${path}`}
-              onClick={copyPath}
+              onClick={() => void copy()}
               className="group -ml-1.5 inline-flex max-w-full cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-subtle-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <span className="truncate font-mono">{displayPath}</span>
@@ -128,10 +121,6 @@ function SkillPath({ path, href }: { path: string; href?: string }) {
 function getSkillDirectoryPath(path: string): string {
   return path.replace(/[\\/]SKILL\.md$/i, "");
 }
-
-const SKILL_PAGE_WHEEL_THRESHOLD_PX = 40;
-const SKILL_PAGE_WHEEL_GESTURE_RESET_MS = 160;
-const WHEEL_LINE_HEIGHT_PX = 16;
 
 function SkillFileList({
   files,
@@ -161,7 +150,44 @@ function SkillFileList({
   );
 }
 
-function PagedSkillContent({
+/**
+ * Markdown renders progressively: fence-safe chunks of the source, with more
+ * appended as the panel scrolls — the same endless-scroll behavior the
+ * extension lists use, in place of the old page-flip footer. Chunking is what
+ * keeps big BB-official docs fast to open: the first chunk paints immediately
+ * instead of the whole document (dozens of viewport-heights of highlighted
+ * code fences) rendering up front.
+ */
+const SKILL_CONTENT_CHUNK_LINES = 120;
+
+export function splitMarkdownIntoChunks(content: string): string[] {
+  const lines = content.split("\n");
+  const chunks: string[] = [];
+  let current: string[] = [];
+  let inFence = false;
+  for (const line of lines) {
+    current.push(line);
+    if (/^\s*(```|~~~)/u.test(line)) {
+      inFence = !inFence;
+    }
+    // Split only at blank lines outside code fences, so a chunk boundary can
+    // never cut a fence, table, or list item in half.
+    if (
+      !inFence &&
+      current.length >= SKILL_CONTENT_CHUNK_LINES &&
+      line.trim() === ""
+    ) {
+      chunks.push(current.join("\n"));
+      current = [];
+    }
+  }
+  if (current.length > 0) {
+    chunks.push(current.join("\n"));
+  }
+  return chunks;
+}
+
+function ScrollingSkillContent({
   path,
   content,
   markdown,
@@ -170,174 +196,47 @@ function PagedSkillContent({
   content: string;
   markdown: boolean;
 }) {
-  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
-  const [pages, setPages] = useState<HTMLDivElement | null>(null);
-  const [page, setPage] = useState(0);
-  const [measurement, setMeasurement] = useState({
-    pageHeight: 0,
-    pageCount: 1,
-  });
-  const pageRef = useRef(page);
-  const pageCountRef = useRef(measurement.pageCount);
-  const wheelDeltaRef = useRef(0);
-  const wheelPageChangedRef = useRef(false);
-  const wheelResetTimeoutRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (viewport === null || pages === null) return;
-    const viewportElement = viewport;
-    const pagesElement = pages;
-
-    function measure() {
-      const pageHeight = viewportElement.clientHeight;
-      if (pageHeight <= 0) return;
-      const pageCount = Math.max(
-        1,
-        Math.ceil(pagesElement.scrollHeight / pageHeight),
-      );
-      setMeasurement((current) =>
-        current.pageHeight === pageHeight && current.pageCount === pageCount
-          ? current
-          : { pageHeight, pageCount },
-      );
-    }
-
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(measure);
-    resizeObserver?.observe(viewportElement);
-    resizeObserver?.observe(pagesElement);
-    window.addEventListener("resize", measure);
-    measure();
-
-    return () => {
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [pages, viewport]);
-
-  const safePage = Math.min(page, measurement.pageCount - 1);
-  pageRef.current = safePage;
-  pageCountRef.current = measurement.pageCount;
-
-  useEffect(() => {
-    if (viewport === null) return;
-    const viewportElement = viewport;
-
-    const resetWheelGesture = () => {
-      wheelDeltaRef.current = 0;
-      wheelPageChangedRef.current = false;
-      if (wheelResetTimeoutRef.current !== null) {
-        window.clearTimeout(wheelResetTimeoutRef.current);
-        wheelResetTimeoutRef.current = null;
-      }
-    };
-
-    const refreshWheelGestureReset = () => {
-      if (wheelResetTimeoutRef.current !== null) {
-        window.clearTimeout(wheelResetTimeoutRef.current);
-      }
-      wheelResetTimeoutRef.current = window.setTimeout(
-        resetWheelGesture,
-        SKILL_PAGE_WHEEL_GESTURE_RESET_MS,
-      );
-    };
-
-    const handleWheel = (event: WheelEvent) => {
-      if (
-        event.ctrlKey ||
-        event.deltaY === 0 ||
-        Math.abs(event.deltaX) >= Math.abs(event.deltaY)
-      ) {
-        return;
-      }
-
-      refreshWheelGestureReset();
-      const direction = event.deltaY > 0 ? 1 : -1;
-      const currentPage = pageRef.current;
-      const pageCount = pageCountRef.current;
-      const nextPage = currentPage + direction;
-      if (nextPage < 0 || nextPage >= pageCount) {
-        if (!wheelPageChangedRef.current) {
-          wheelDeltaRef.current = 0;
-        }
-        return;
-      }
-
-      event.preventDefault();
-      if (wheelPageChangedRef.current) return;
-      if (
-        wheelDeltaRef.current !== 0 &&
-        Math.sign(wheelDeltaRef.current) !== direction
-      ) {
-        wheelDeltaRef.current = 0;
-      }
-      const normalizedDelta =
-        event.deltaMode === 1
-          ? event.deltaY * WHEEL_LINE_HEIGHT_PX
-          : event.deltaMode === 2
-            ? event.deltaY * viewportElement.clientHeight
-            : event.deltaY;
-      wheelDeltaRef.current += normalizedDelta;
-      if (Math.abs(wheelDeltaRef.current) < SKILL_PAGE_WHEEL_THRESHOLD_PX) {
-        return;
-      }
-
-      wheelPageChangedRef.current = true;
-      wheelDeltaRef.current = 0;
-      pageRef.current = nextPage;
-      setPage(nextPage);
-    };
-
-    viewportElement.addEventListener("wheel", handleWheel, { passive: false });
-    return () => {
-      viewportElement.removeEventListener("wheel", handleWheel);
-      resetWheelGesture();
-    };
-  }, [viewport]);
-
+  // Non-markdown files render whole: they are code previews whose line
+  // numbering and header would restart at every chunk seam.
+  const chunks = useMemo(
+    () => (markdown ? splitMarkdownIntoChunks(content) : [content]),
+    [content, markdown],
+  );
+  const [visibleChunkCount, setVisibleChunkCount] = useState(1);
+  const shownChunks = chunks.slice(0, visibleChunkCount);
   return (
-    <div className="space-y-3">
-      <ResourceDetailPanel surface="recessed" className="shadow-none">
-        <div
-          ref={setViewport}
-          data-skill-content-viewport
-          className="max-h-[60dvh] overflow-hidden"
-        >
-          <div
-            ref={setPages}
-            data-skill-content-pages
-            style={{
-              transform: `translateY(-${safePage * measurement.pageHeight}px)`,
+    <ResourceDetailPanel surface="recessed" className="shadow-none">
+      <div
+        data-skill-content-viewport
+        data-infinite-scroll-root
+        className="max-h-[60dvh] overflow-y-auto overscroll-contain"
+      >
+        {shownChunks.map((chunk, index) => (
+          <FilePreview
+            key={index}
+            path={path}
+            headerMode="none"
+            state={{
+              kind: "ready",
+              file: {
+                name: path.split("/").at(-1) ?? path,
+                contents: chunk,
+              },
+              lineRange: null,
+              textPreviewKind: markdown ? "markdown" : null,
             }}
-          >
-            <FilePreview
-              path={path}
-              headerMode="none"
-              state={{
-                kind: "ready",
-                file: {
-                  name: path.split("/").at(-1) ?? path,
-                  contents: content,
-                },
-                lineRange: null,
-                textPreviewKind: markdown ? "markdown" : null,
-              }}
-            />
-          </div>
-        </div>
-      </ResourceDetailPanel>
-      <ResourcePagination
-        page={safePage}
-        pageSize={1}
-        total={measurement.pageCount}
-        visibleCount={1}
-        onPageChange={setPage}
-        summary={`${measurement.pageCount} pages`}
-        ariaLabel="Skill content pagination"
-      />
-    </div>
+          />
+        ))}
+        <ResourceInfiniteScrollSentinel
+          hasMore={visibleChunkCount < chunks.length}
+          onLoadMore={() =>
+            setVisibleChunkCount((current) =>
+              Math.min(current + 1, chunks.length),
+            )
+          }
+        />
+      </div>
+    </ResourceDetailPanel>
   );
 }
 
@@ -427,7 +326,7 @@ export function SkillDetailView({
                 </Button>
               </ResourceDetailPanel>
             ) : (
-              <PagedSkillContent
+              <ScrollingSkillContent
                 key={`${selectedPath}:${contentState.content}`}
                 path={selectedPath}
                 content={contentState.content}

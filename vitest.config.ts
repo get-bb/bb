@@ -6,7 +6,7 @@ const workspaceRoots = [
   "apps",
   "packages",
   "tests",
-  // Example plugins carry harness-based tests (@bb/plugin-sdk/testing).
+  // Example plugins carry harness-based tests (@get-bb/plugin-sdk/testing).
   "examples/plugins",
 ] as const;
 

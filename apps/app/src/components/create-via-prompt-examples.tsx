@@ -1,8 +1,15 @@
 import {
   ResourceCreateButton,
   type ResourceCreateMenuAction,
+  type ResourceCreateTemplateGroup,
 } from "@bb/shared-ui/resource-list";
 import type { IconName } from "@bb/shared-ui/icon";
+import {
+  BROWSE_ARCHETYPES,
+  UTILITY_EXAMPLES,
+  archetypePrompt,
+  utilityPrompt,
+} from "@/components/plugin/browse-hero/browse-hero-archetypes";
 import {
   CREATE_AUTOMATION_PROMPT,
   CREATE_PLUGIN_PROMPT,
@@ -16,6 +23,8 @@ interface Example {
   icon: IconName;
   /** Completes the "Create a new bb {kind} …" prompt; also shown on the card. */
   description: string;
+  /** Full prompt override when the description alone is not the brief. */
+  prompt?: string;
 }
 
 interface KindConfig {
@@ -57,32 +66,15 @@ const CONFIG: Record<CreateViaPromptKind, KindConfig> = {
     prefix: CREATE_PLUGIN_PROMPT,
     explainer:
       "Add app surfaces, commands, background work, or agent tools through a plugin.",
-    examples: [
-      {
-        label: "GitHub triage",
-        icon: "Github",
-        description:
-          "adds a GitHub panel that lists assigned PRs and lets agents open review threads",
-      },
-      {
-        label: "Slack notifier",
-        icon: "Sent",
-        description:
-          "adds a background service that posts thread failures to a configured Slack webhook",
-      },
-      {
-        label: "Project commands",
-        icon: "Terminal",
-        description:
-          "adds bb CLI commands for the team's deploy and rollback workflow",
-      },
-      {
-        label: "Issue mentions",
-        icon: "MessageSquarePlus",
-        description:
-          "connects Linear issues to the prompt box with searchable mentions and agent-ready context",
-      },
-    ],
+    // The Browse hero's use-case archetypes verbatim, so the New plugin menu
+    // and the Browse page can never show two divergent example lists. The
+    // one-line hook is the card text; the full brief rides in `prompt`.
+    examples: BROWSE_ARCHETYPES.map((archetype) => ({
+      label: archetype.title,
+      icon: archetype.icon,
+      description: archetype.hook,
+      prompt: archetypePrompt(archetype),
+    })),
   },
   automation: {
     prefix: CREATE_AUTOMATION_PROMPT,
@@ -141,7 +133,7 @@ export function getCreateExamples(kind: CreateViaPromptKind): {
       label: example.label,
       icon: example.icon,
       description: example.description,
-      prompt: `${config.prefix}${example.description}.`,
+      prompt: example.prompt ?? `${config.prefix}${example.description}.`,
     })),
   };
 }
@@ -167,10 +159,29 @@ export function CreateWithTemplatesButton({
   onCreate,
 }: CreateWithTemplatesButtonProps) {
   const { examples } = getCreateExamples(kind);
+  // Plugins carry a second tier: the per-capability briefs the Browse page
+  // shows under "Explore plugin capabilities". The menu mirrors both tiers so
+  // it never under-promises what the examples surface offers.
+  const templateGroups: readonly ResourceCreateTemplateGroup[] | undefined =
+    kind === "plugin"
+      ? [
+          { label: "Examples", templates: examples },
+          {
+            label: "Capabilities",
+            templates: UTILITY_EXAMPLES.map((example) => ({
+              label: example.label,
+              icon: example.icon,
+              description: example.brief,
+              prompt: utilityPrompt(example),
+            })),
+          },
+        ]
+      : undefined;
   return (
     <ResourceCreateButton
       label={label}
       templates={examples}
+      templateGroups={templateGroups}
       menuActions={menuActions}
       onCreate={onCreate}
     />

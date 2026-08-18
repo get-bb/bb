@@ -3,7 +3,7 @@
 // the panel's ThreadChat wiring (ReplyingTo header, send-to-main action).
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 // Load through the thunk so the test runtime is installed before app.tsx
 // binds `definePluginApp`; pull the pure helpers from the same evaluation.
@@ -245,7 +245,6 @@ describe("SideChatPanel", () => {
       ]);
     });
   });
-
 
   it("reports a missing thread reference for malformed params", () => {
     const slot = renderSlot(

@@ -22,8 +22,11 @@ import {
   waitForThreadAgentMessageText,
 } from "./test/runtime-test-harness.js";
 import { promptTextInput } from "./test/prompt-input.js";
-import type { AgentRuntimeOptions } from "./types.js";
-import type { ProviderRuntimeEvent } from "./runtime-json-rpc.js";
+import type {
+  AgentRuntimeBridgeLaunch,
+  AgentRuntimeOptions,
+} from "./types.js";
+import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
 
 interface CreateProviderProcessManagerArgs {
   adapterProcessEnv?: Record<string, string>;
@@ -38,6 +41,13 @@ interface CreateProviderProcessManagerArgs {
 interface WriteThreadScopedProviderScriptArgs {
   logPath: string;
   scriptPath: string;
+  /**
+   * Report restore support on `thread/start`, the way a graduated bridge does.
+   * Providers shipped as plugin artifacts are not in the runtime's restorable
+   * seed table at all, so this wire field is the only thing that makes their
+   * idle sessions eligible for release.
+   */
+  sessionRestorable?: boolean;
 }
 
 interface ProviderAccountErrorParams {
@@ -258,7 +268,7 @@ rl.on("line", (line) => {
     const providerThreadId = "prov-" + processId;
     fs.appendFileSync(logPath, "thread-start:" + processId + ":" + threadId + "\\n");
     threads.set(threadId, providerThreadId);
-    send({ jsonrpc: "2.0", id: message.id, result: { providerThreadId } });
+    send({ jsonrpc: "2.0", id: message.id, result: { providerThreadId${args.sessionRestorable === true ? ", sessionRestorable: true" : ""} } });
     send({
       jsonrpc: "2.0",
       method: "thread/identity",
@@ -325,6 +335,14 @@ rl.on("line", (line) => {
   if (message.method === "thread/stop") {
     const threadId = messageParams.threadId;
     fs.appendFileSync(logPath, "thread-stop:" + processId + ":" + threadId + "\\n");
+    if (threadId.includes("stopfail")) {
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        error: { code: -32000, message: "stop refused for " + threadId },
+      });
+      return;
+    }
     threads.delete(threadId);
     send({ jsonrpc: "2.0", id: message.id, result: { ok: true } });
   }
@@ -436,6 +454,142 @@ rl.on("line", (line) => {
       expect.objectContaining({ providerId: "fake", code: 42 }),
     );
     await runtime.shutdown();
+  });
+
+  // A plugin update changes the bridge artifact hash, which is part of the
+  // process key, so the new artifact spawns a fresh process. Nothing releases
+  // a threadless model-list/maintenance process, so without retirement every
+  // superseded artifact leaks a node process until daemon shutdown.
+  it("retires a threadless bridge process superseded by a new artifact hash", async () => {
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      scriptPath,
+      workspacePath: tmpDir,
+    });
+
+    const staleKey = "fake#bridge:aaaaaaaaaaaaaaaa";
+    const freshKey = "fake#bridge:bbbbbbbbbbbbbbbb";
+    await manager.ensureProvider({
+      processKey: staleKey,
+      providerId: "fake",
+    });
+    const staleProcess = manager.requireProviderProcess({
+      processKey: staleKey,
+      providerId: "fake",
+    });
+
+    await manager.ensureProvider({
+      processKey: freshKey,
+      providerId: "fake",
+    });
+
+    expect(staleProcess.child.killed).toBe(true);
+    expect(() =>
+      manager.requireProviderProcess({
+        processKey: staleKey,
+        providerId: "fake",
+      }),
+    ).toThrow();
+    expect(
+      manager.requireProviderProcess({
+        processKey: freshKey,
+        providerId: "fake",
+      }).child.killed,
+    ).toBe(false);
+
+    await manager.shutdown();
+  });
+
+  it("keeps an old-hash bridge process that still owns a thread", async () => {
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      scriptPath,
+      workspacePath: tmpDir,
+    });
+
+    const staleKey = "fake#bridge:aaaaaaaaaaaaaaaa";
+    await manager.ensureProvider({
+      processKey: staleKey,
+      providerId: "fake",
+    });
+    const staleProcess = manager.requireProviderProcess({
+      processKey: staleKey,
+      providerId: "fake",
+    });
+    staleProcess.identity.threadIds.add("thread-live");
+
+    await manager.ensureProvider({
+      processKey: "fake#bridge:bbbbbbbbbbbbbbbb",
+      providerId: "fake",
+    });
+
+    expect(staleProcess.child.killed).toBe(false);
+    expect(
+      manager.requireProviderProcess({
+        processKey: staleKey,
+        providerId: "fake",
+      }),
+    ).toBe(staleProcess);
+
+    await manager.shutdown();
+  });
+
+  // The sweep above only runs when a process is ensured, so the process kept
+  // alive by its threads is never revisited. Releasing its last thread is the
+  // one moment it becomes retirable.
+  it("retires an old-hash bridge process when it loses its last thread", async () => {
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      scriptPath,
+      workspacePath: tmpDir,
+    });
+
+    const staleKey = "fake#bridge:aaaaaaaaaaaaaaaa";
+    await manager.ensureProvider({ processKey: staleKey, providerId: "fake" });
+    const staleProcess = manager.requireProviderProcess({
+      processKey: staleKey,
+      providerId: "fake",
+    });
+    staleProcess.identity.threadIds.add("thread-live");
+
+    await manager.ensureProvider({
+      processKey: "fake#bridge:bbbbbbbbbbbbbbbb",
+      providerId: "fake",
+    });
+    expect(staleProcess.child.killed).toBe(false);
+
+    // Still owns the thread: releasing anything else changes nothing.
+    await manager.retireSupersededBridgeProcessIfIdle(staleProcess);
+    expect(staleProcess.child.killed).toBe(false);
+
+    staleProcess.identity.threadIds.delete("thread-live");
+    await manager.retireSupersededBridgeProcessIfIdle(staleProcess);
+    expect(staleProcess.child.killed).toBe(true);
+
+    await manager.shutdown();
+  });
+
+  it("keeps the current-hash bridge process when a thread is released", async () => {
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      scriptPath,
+      workspacePath: tmpDir,
+    });
+
+    const currentKey = "fake#bridge:aaaaaaaaaaaaaaaa";
+    await manager.ensureProvider({
+      processKey: currentKey,
+      providerId: "fake",
+    });
+    const providerProcess = manager.requireProviderProcess({
+      processKey: currentKey,
+      providerId: "fake",
+    });
+
+    await manager.retireSupersededBridgeProcessIfIdle(providerProcess);
+    expect(providerProcess.child.killed).toBe(false);
+
+    await manager.shutdown();
   });
 
   it("bounds provider stderr while data arrives without a newline", async () => {
@@ -906,6 +1060,85 @@ rl.on("line", (line) => {
     await runtime.shutdown();
   });
 
+  it("stops a thread-scoped codex process when session construction fails", async () => {
+    const processLogPath = join(tmpDir, "failing-start-provider.log");
+    const failingStartProviderScript = join(
+      tmpDir,
+      "failing-start-provider.cjs",
+    );
+    writeFileSync(
+      failingStartProviderScript,
+      `const fs = require("fs");
+const readline = require("readline");
+const logPath = ${JSON.stringify(processLogPath)};
+const processId = String(process.pid);
+fs.appendFileSync(logPath, "spawn:" + processId + "\\n");
+process.on("SIGTERM", () => {
+  fs.appendFileSync(logPath, "exit:" + processId + "\\n");
+  process.exit(0);
+});
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.id === undefined) return;
+  if (message.method === "thread/start") {
+    process.stdout.write(JSON.stringify({
+      jsonrpc: "2.0",
+      id: message.id,
+      error: { code: -32000, message: "no rollout found for thread id" },
+    }) + "\\n");
+    return;
+  }
+  process.stdout.write(JSON.stringify({
+    jsonrpc: "2.0",
+    id: message.id,
+    result: { ok: true },
+  }) + "\\n");
+});
+`,
+    );
+
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => {
+        const adapter = createFakeAdapter(failingStartProviderScript);
+        return {
+          ...adapter,
+          displayName: "Codex",
+          id: "codex",
+        };
+      },
+    });
+
+    await expect(
+      runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "codex",
+        options: fullRuntimeOptions,
+      }),
+    ).rejects.toThrow("no rollout found");
+
+    // The failed construction must not leak the thread-scoped process: it is
+    // shut down and the thread holds no provider session.
+    await waitForRuntimeState({
+      label: "thread-scoped provider process stopped after failed start",
+      predicate: () =>
+        readLogLines(processLogPath).filter((line) => line.startsWith("exit:"))
+          .length === 1,
+      runtime,
+    });
+    expect(runtime.getProviderSession("t1")).toBeNull();
+
+    await runtime.shutdown();
+  });
+
   it("restarts a codex thread process after a terminal account error before the next turn", async () => {
     const events: ThreadEvent[] = [];
     const processLogPath = join(tmpDir, "account-restart-provider.log");
@@ -1017,6 +1250,195 @@ rl.on("line", (line) => {
     }
   });
 
+  // A graduated provider's bridge only exists behind its launch spec, so the
+  // account restart must re-resume with the launch the session started with —
+  // otherwise the restart kills the process and fails to rebuild the adapter.
+  it("re-resumes the codex account restart with the thread's bridge launch", async () => {
+    const events: ThreadEvent[] = [];
+    const processLogPath = join(tmpDir, "account-restart-bridge-provider.log");
+    const threadScopedProviderScript = join(
+      tmpDir,
+      "account-restart-bridge-provider.cjs",
+    );
+    writeThreadScopedProviderScript({
+      logPath: processLogPath,
+      scriptPath: threadScopedProviderScript,
+    });
+    const bridgeLaunch: AgentRuntimeBridgeLaunch = {
+      pluginId: "provider-fixture",
+      dataDir: "/data/plugins/provider-fixture/bridge-data",
+      source: {
+        kind: "artifact",
+        digest: "c".repeat(64),
+        artifactPath: join(tmpDir, "codex-provider-bridge.mjs"),
+      },
+      capabilities: {
+        supportsServiceTier: true,
+        permissionModes: ["full"],
+        supportsThreadArchive: true,
+        supportsThreadRename: false,
+        fork: "none",
+      },
+    };
+    const capturedBridgeLaunches: Array<AgentRuntimeBridgeLaunch | undefined> =
+      [];
+
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: (event) => {
+        events.push(event);
+      },
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: (_providerId, options) => {
+        capturedBridgeLaunches.push(options.bridgeLaunch);
+        return createCodexAccountErrorAdapter(threadScopedProviderScript);
+      },
+    });
+
+    try {
+      await runtime.startThread({
+        bridgeLaunch,
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "codex",
+        options: fullRuntimeOptions,
+      });
+
+      await runtime.runTurn({
+        clientRequestId: "creq_2222222271",
+        threadId: "t1",
+        input: [promptTextInput({ text: "account_error" })],
+        options: fullRuntimeOptions,
+      });
+      await waitForRuntimeState({
+        label: "terminal codex account error turn",
+        predicate: () =>
+          events.some(
+            (event) =>
+              event.type === "turn/completed" &&
+              event.threadId === "t1" &&
+              event.status === "failed",
+          ),
+        runtime,
+      });
+      events.splice(0, events.length);
+
+      await runtime.runTurn({
+        clientRequestId: "creq_2222222272",
+        threadId: "t1",
+        input: [promptTextInput({ text: "after reauth" })],
+        options: fullRuntimeOptions,
+      });
+      await waitForThreadAgentMessageText({
+        events,
+        providerId: "codex",
+        runtime,
+        text: "after reauth",
+        threadId: "t1",
+      });
+
+      // Both the original session and the restart resolve the same bridge.
+      expect(capturedBridgeLaunches).toEqual([bridgeLaunch, bridgeLaunch]);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  // A plugin can change its declaration without rebuilding its bundle: same
+  // artifact hash, different capabilities or provider options. The adapter is
+  // built from those once, at spawn, so a process keyed only by the hash would
+  // serve the new declaration from the old adapter.
+  it("gives a changed declaration its own bridge process at the same artifact hash", async () => {
+    const capturedBridgeLaunches: Array<AgentRuntimeBridgeLaunch | undefined> =
+      [];
+    const bridgeLaunch: AgentRuntimeBridgeLaunch = {
+      pluginId: "provider-fixture",
+      dataDir: "/data/plugins/provider-fixture/bridge-data",
+      source: {
+        kind: "artifact",
+        digest: "d".repeat(64),
+        artifactPath: join(tmpDir, "declaration-provider-bridge.mjs"),
+      },
+      capabilities: {
+        supportsServiceTier: true,
+        permissionModes: ["full"],
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
+        fork: "none",
+      },
+    };
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: (_providerId, options) => {
+        capturedBridgeLaunches.push(options.bridgeLaunch);
+        return createFakeAdapter(scriptPath);
+      },
+    });
+
+    try {
+      await runtime.startThread({
+        bridgeLaunch,
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      // Same bundle, same declaration: one process, one adapter.
+      await runtime.startThread({
+        bridgeLaunch,
+        environmentId: "env-1",
+        threadId: "t2",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      expect(capturedBridgeLaunches).toHaveLength(1);
+
+      const updatedDeclaration: AgentRuntimeBridgeLaunch = {
+        ...bridgeLaunch,
+        capabilities: { ...bridgeLaunch.capabilities, supportsThreadArchive: true },
+      };
+      await runtime.startThread({
+        bridgeLaunch: updatedDeclaration,
+        environmentId: "env-1",
+        threadId: "t3",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      expect(capturedBridgeLaunches).toEqual([
+        bridgeLaunch,
+        updatedDeclaration,
+      ]);
+
+      const rewound: AgentRuntimeBridgeLaunch = {
+        ...updatedDeclaration,
+        capabilities: { ...updatedDeclaration.capabilities, fork: "tip" },
+      };
+      await runtime.startThread({
+        bridgeLaunch: rewound,
+        environmentId: "env-1",
+        threadId: "t4",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      expect(capturedBridgeLaunches).toHaveLength(3);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
   it("reaps a codex thread process after a terminal provider error before turn start", async () => {
     const events: ThreadEvent[] = [];
     const processLogPath = join(tmpDir, "prestart-error-reaper-provider.log");
@@ -1076,6 +1498,7 @@ rl.on("line", (line) => {
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now(),
+        providerSessionReapingEnabled: false,
       });
 
       expect(result.reapedSessions).toEqual([
@@ -1156,6 +1579,7 @@ rl.on("line", (line) => {
       const belowThresholdResult = await runtime.reapIdleProviderSessions({
         idleForMs: 30 * 60 * 1000,
         nowMs: Date.now() + 29 * 60 * 1000,
+        providerSessionReapingEnabled: false,
       });
       expect(belowThresholdResult.reapedSessions).toEqual([]);
       expect(runtime.hasThread("t1")).toBe(true);
@@ -1166,6 +1590,7 @@ rl.on("line", (line) => {
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 30 * 60 * 1000,
         nowMs: Date.now() + 31 * 60 * 1000,
+        providerSessionReapingEnabled: false,
       });
       const reapedSession = result.reapedSessions[0];
       if (!reapedSession) {
@@ -1281,10 +1706,12 @@ rl.on("line", (line) => {
       const firstResult = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now() + 60 * 60 * 1000,
+        providerSessionReapingEnabled: false,
       });
       const secondResult = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now() + 60 * 60 * 1000,
+        providerSessionReapingEnabled: false,
       });
 
       expect(firstResult.reapedSessions).toEqual([]);
@@ -1294,6 +1721,116 @@ rl.on("line", (line) => {
         readLogLines(processLogPath).filter((line) => line.startsWith("exit:")),
       ).toHaveLength(0);
       await runtime.stopThread({ threadId: "t1" });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  // claude-code ships its bridge as a plugin artifact, so it is absent from
+  // the runtime's restorable seed table: the only thing that makes its idle
+  // sessions reapable is the `sessionRestorable` its bridge reports on
+  // thread/start. If that wire field stopped being read, idle release would
+  // silently stop for every graduated provider.
+  it("reaps a restorable non-Codex session only when the experiment is on", async () => {
+    const providerScript = join(tmpDir, "claude-idle-reaper-provider.cjs");
+    writeThreadScopedProviderScript({
+      logPath: join(tmpDir, "claude-idle-reaper-provider.log"),
+      scriptPath: providerScript,
+      sessionRestorable: true,
+    });
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => ({
+        ...createFakeAdapter(providerScript),
+        displayName: "Claude Code",
+        id: "claude-code",
+      }),
+    });
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "claude-code",
+        options: fullRuntimeOptions,
+      });
+
+      await expect(
+        runtime.reapIdleProviderSessions({
+          idleForMs: 0,
+          nowMs: Date.now(),
+          providerSessionReapingEnabled: false,
+        }),
+      ).resolves.toEqual({ reapedSessions: [] });
+      expect(runtime.hasThread("t1")).toBe(true);
+
+      const result = await runtime.reapIdleProviderSessions({
+        idleForMs: 0,
+        nowMs: Date.now(),
+        providerSessionReapingEnabled: true,
+      });
+      expect(result.reapedSessions).toEqual([
+        expect.objectContaining({
+          providerId: "claude-code",
+          threadId: "t1",
+        }),
+      ]);
+      expect(runtime.hasThread("t1")).toBe(false);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("keeps releasing later sessions after one release fails", async () => {
+    const providerScript = join(tmpDir, "claude-stop-failure-provider.cjs");
+    writeThreadScopedProviderScript({
+      logPath: join(tmpDir, "claude-stop-failure-provider.log"),
+      scriptPath: providerScript,
+      sessionRestorable: true,
+    });
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => ({
+        ...createFakeAdapter(providerScript),
+        displayName: "Claude Code",
+        id: "claude-code",
+      }),
+    });
+
+    try {
+      // The provider refuses a stop for any thread whose id says "stopfail".
+      for (const threadId of ["t-stopfail-1", "t2"]) {
+        await runtime.startThread({
+          environmentId: "env-1",
+          threadId,
+          projectId: "p1",
+          providerId: "claude-code",
+          options: fullRuntimeOptions,
+        });
+      }
+
+      const result = await runtime.reapIdleProviderSessions({
+        idleForMs: 0,
+        nowMs: Date.now(),
+        providerSessionReapingEnabled: true,
+      });
+
+      expect(result.reapedSessions).toEqual([
+        expect.objectContaining({ threadId: "t2" }),
+      ]);
+      expect(runtime.hasThread("t-stopfail-1")).toBe(true);
+      expect(runtime.hasThread("t2")).toBe(false);
     } finally {
       await runtime.shutdown();
     }

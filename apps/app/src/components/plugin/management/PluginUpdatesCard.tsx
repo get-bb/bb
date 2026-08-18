@@ -9,7 +9,11 @@ import { applyPluginUpdate } from "@/hooks/queries/plugin-catalog-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { pluginUpdateAvailableVersion } from "./plugin-status";
-import { DetailsDisclosure, formatAbsoluteDate } from "./plugin-ui";
+import {
+  DetailsDisclosure,
+  displayPluginVersion,
+  formatAbsoluteDate,
+} from "./plugin-ui";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 
 /**
@@ -37,13 +41,13 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
         tone="destructive"
         icon="CircleX"
         testId="plugin-update-failure-banner"
-        title={`Update to ${failure.version} failed — rolled back${
+        title={`Update to ${displayPluginVersion(failure.version)} failed — rolled back${
           failure.at !== null ? ` on ${formatAbsoluteDate(failure.at)}` : ""
         }`}
         detail={
           failure.detail.length > 0
             ? failure.detail
-            : `Code and data were restored to ${plugin.version}.`
+            : `Code and data were restored to ${displayPluginVersion(plugin.version)}.`
         }
       />
     );
@@ -57,7 +61,7 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
         tone="success"
         icon="PackageReceive"
         testId="plugin-update-banner"
-        title={`Update to ${availableVersion}`}
+        title={`Update to ${displayPluginVersion(availableVersion)}`}
         detail="Compatible with your bb."
         action={
           <Button
@@ -71,7 +75,6 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
         }
       />
       <UpdatePluginDialog
-        failureStateLabel="Update failed"
         plugin={plugin}
         open={updateOpen}
         onOpenChange={setUpdateOpen}
@@ -120,14 +123,16 @@ export function PluginDetailReleaseControl({
       invalidatePluginList({ queryClient });
       if (result.outcome === "rolled-back") {
         appToast.error(`Updating ${name} failed`, {
-          description: result.detail ?? `${plugin.version} was restored.`,
+          description:
+            result.detail ??
+            `${displayPluginVersion(plugin.version)} was restored.`,
         });
       } else if (result.applied) {
         appToast.success(`${name} updated`, {
           description:
             result.to === null
               ? undefined
-              : `Now running ${result.to.display}.`,
+              : `Now running ${displayPluginVersion(result.to.display)}.`,
         });
       } else {
         appToast.message(`${name} is already up to date`);
@@ -152,7 +157,7 @@ export function PluginDetailReleaseControl({
         className="h-6 px-2 text-xs"
         disabled={retry.isPending}
         aria-busy={retry.isPending}
-        aria-label={`Retry update to ${availableVersion}`}
+        aria-label={`Retry update to ${displayPluginVersion(availableVersion)}`}
         onClick={() => retry.mutate()}
       >
         {retry.isPending ? (
@@ -172,14 +177,13 @@ export function PluginDetailReleaseControl({
         variant="outline"
         size="sm"
         className="h-6 px-2 text-xs"
-        aria-label={`Update ${plugin.name ?? plugin.id} to ${availableVersion}`}
+        aria-label={`Update ${plugin.name ?? plugin.id} to ${displayPluginVersion(availableVersion)}`}
         onClick={() => setDetailsOpen(true)}
       >
         <Icon name="PackageReceive" className="size-3.5" aria-hidden />
         Update
       </Button>
       <UpdatePluginDialog
-        failureStateLabel="Update failed"
         plugin={plugin}
         open={detailsOpen}
         onOpenChange={setDetailsOpen}
@@ -213,8 +217,30 @@ export function PluginDetailReleaseStatus({
           aria-hidden
         />
         <p className="min-w-0 text-xs leading-relaxed text-muted-foreground">
-          bb couldn&rsquo;t activate {failure.version}. It restored{" "}
-          {plugin.version} and its data.
+          bb couldn&rsquo;t activate {displayPluginVersion(failure.version)}. It
+          restored {displayPluginVersion(plugin.version)} and its data.
+        </p>
+      </div>
+    );
+  }
+
+  if (
+    plugin.updateState.outcome === "unavailable" &&
+    plugin.updateState.detail !== null
+  ) {
+    return (
+      <div
+        role="status"
+        aria-label="Update needs attention"
+        className="flex min-w-0 items-start gap-2.5"
+      >
+        <Icon
+          name="AlertTriangle"
+          className="mt-0.5 size-4 shrink-0 text-warning"
+          aria-hidden
+        />
+        <p className="min-w-0 text-xs leading-relaxed text-muted-foreground">
+          {plugin.updateState.detail}
         </p>
       </div>
     );
@@ -224,7 +250,7 @@ export function PluginDetailReleaseStatus({
     return (
       <div role="status" className="flex min-w-0 items-baseline gap-2">
         <span className="font-mono text-xs text-foreground">
-          {plugin.updateState.availableVersion}
+          {displayPluginVersion(plugin.updateState.availableVersion)}
         </span>
         <span className="text-xs text-muted-foreground">Available</span>
       </div>
@@ -246,10 +272,10 @@ export function PluginDetailReleaseStatus({
       <div className="min-w-0">
         <p className="text-xs leading-relaxed text-muted-foreground">
           {blockedReasons[0] === undefined
-            ? `${blockedVersion} isn’t compatible with this bb.`
+            ? `${displayPluginVersion(blockedVersion)} isn’t compatible with this bb.`
             : sentence(blockedReasons[0])}{" "}
-          {plugin.version} remains installed. Keep using it and check again when
-          a compatible plugin version is available.
+          {displayPluginVersion(plugin.version)} remains installed. Keep using
+          it and check again when a compatible plugin version is available.
         </p>
         {blockedReasons.length > 1 ? (
           <div className="mt-1.5">

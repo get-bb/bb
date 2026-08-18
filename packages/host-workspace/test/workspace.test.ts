@@ -79,10 +79,7 @@ function parseFirstIntegerMatch(text: string, pattern: RegExp): number {
 function parseShortstat(shortstat: string): DiffStats {
   return {
     filesCount: parseFirstIntegerMatch(shortstat, /(\d+)\s+files?\s+changed/u),
-    insertions: parseFirstIntegerMatch(
-      shortstat,
-      /(\d+)\s+insertions?\(\+\)/u,
-    ),
+    insertions: parseFirstIntegerMatch(shortstat, /(\d+)\s+insertions?\(\+\)/u),
     deletions: parseFirstIntegerMatch(shortstat, /(\d+)\s+deletions?\(-\)/u),
   };
 }
@@ -143,12 +140,13 @@ describe("Workspace", () => {
       {
         path: "notes.txt",
         status: "??",
-        insertions: 1,
-        deletions: 0,
+        insertions: null,
+        deletions: null,
       },
     ]);
-    expect(untrackedStatus.workingTree.insertions).toBe(1);
+    expect(untrackedStatus.workingTree.insertions).toBe(0);
     expect(untrackedStatus.workingTree.deletions).toBe(0);
+    expect(untrackedStatus.workingTree.lineStatsComplete).toBe(false);
 
     await fs.writeFile(
       path.join(repoPath, "README.md"),
@@ -252,6 +250,21 @@ describe("Workspace", () => {
     expect(branchFingerprint).not.toBe(dirtyFingerprint);
   });
 
+  it("fingerprints an untracked path without reading its contents", async () => {
+    const repoPath = await initRepo();
+    const workspace = new Workspace(repoPath);
+    const initialFingerprint = await workspace.getLocalStateFingerprint();
+
+    await fs.writeFile(path.join(repoPath, "notes.txt"), "one\n", "utf8");
+    const untrackedFingerprint = await workspace.getLocalStateFingerprint();
+    expect(untrackedFingerprint).not.toBe(initialFingerprint);
+
+    await fs.writeFile(path.join(repoPath, "notes.txt"), "one\ntwo\n", "utf8");
+    expect(await workspace.getLocalStateFingerprint()).toBe(
+      untrackedFingerprint,
+    );
+  });
+
   it("changes the shared git refs fingerprint only when refs change", async () => {
     const repoPath = await initRepo();
     const workspace = new Workspace(repoPath);
@@ -315,8 +328,8 @@ describe("Workspace", () => {
       {
         path: "notes.txt",
         status: "??",
-        insertions: 1,
-        deletions: 0,
+        insertions: null,
+        deletions: null,
       },
     ]);
     expect(status.mergeBase).toMatchObject({
@@ -531,12 +544,13 @@ describe("Workspace", () => {
       {
         path: "notes.txt",
         status: "??",
-        insertions: 1,
-        deletions: 0,
+        insertions: null,
+        deletions: null,
       },
     ]);
-    expect(status.workingTree.insertions).toBe(2);
+    expect(status.workingTree.insertions).toBe(1);
     expect(status.workingTree.deletions).toBe(0);
+    expect(status.workingTree.lineStatsComplete).toBe(false);
     expect(status.mergeBase).toEqual({
       mergeBaseBranch: "main",
       baseRef: null,
@@ -547,6 +561,7 @@ describe("Workspace", () => {
       files: [],
       insertions: 0,
       deletions: 0,
+      lineStatsComplete: true,
     });
   });
 
@@ -629,7 +644,7 @@ describe("Workspace", () => {
     expect(bannerStats).toEqual(parseShortstat(committedChanges.shortstat));
   });
 
-  it("aligns uncommitted-only status stats with all and uncommitted diffs", async () => {
+  it("marks status line stats incomplete when untracked content is omitted", async () => {
     const repoPath = await initRepo();
     await fs.writeFile(
       path.join(repoPath, "README.md"),
@@ -650,11 +665,163 @@ describe("Workspace", () => {
     });
     const bannerStats = tallyWorkspaceStats(status.workingTree);
 
-    expect(bannerStats).toEqual(parseShortstat(allChanges.shortstat));
-    expect(bannerStats).toEqual(parseShortstat(uncommittedChanges.shortstat));
+    expect(status.workingTree.lineStatsComplete).toBe(false);
+    expect(bannerStats).toEqual({
+      filesCount: 2,
+      insertions: 1,
+      deletions: 0,
+    });
+    expect(parseShortstat(allChanges.shortstat)).toEqual({
+      filesCount: 2,
+      insertions: 2,
+      deletions: 0,
+    });
+    expect(parseShortstat(uncommittedChanges.shortstat)).toEqual(
+      parseShortstat(allChanges.shortstat),
+    );
   });
 
-  it("aligns mixed status working-tree stats with uncommitted diffs", async () => {
+  it("enriches small untracked status snapshots within file and byte budgets", async () => {
+    const repoPath = await initRepo();
+    await fs.writeFile(
+      path.join(repoPath, "README.md"),
+      "hello\npending\n",
+      "utf8",
+    );
+    await fs.writeFile(path.join(repoPath, "notes.txt"), "one\ntwo\n", "utf8");
+    const statusBefore = await runGit(["status", "--porcelain=v1"], {
+      cwd: repoPath,
+    });
+
+    const status = await new Workspace(repoPath).getStatus({
+      maxUntrackedLineStatFiles: 10,
+      maxUntrackedLineStatBytes: 1024,
+    });
+
+    expect(status.workingTree.files).toEqual([
+      {
+        path: "README.md",
+        status: "M",
+        insertions: 1,
+        deletions: 0,
+      },
+      {
+        path: "notes.txt",
+        status: "??",
+        insertions: 2,
+        deletions: 0,
+      },
+    ]);
+    expect(status.workingTree).toMatchObject({
+      insertions: 3,
+      deletions: 0,
+      lineStatsComplete: true,
+    });
+    const statusAfter = await runGit(["status", "--porcelain=v1"], {
+      cwd: repoPath,
+    });
+    expect(statusAfter.stdout).toBe(statusBefore.stdout);
+  });
+
+  it("keeps tracked deletion stats separate from an untracked replacement at the same path", async () => {
+    const repoPath = await initRepo();
+    await fs.writeFile(
+      path.join(repoPath, "replacement.txt"),
+      "one\ntwo\nthree\n",
+      "utf8",
+    );
+    await runGit(["add", "replacement.txt"], { cwd: repoPath });
+    await runGit(["commit", "-m", "Add replacement target"], {
+      cwd: repoPath,
+    });
+    await runGit(["rm", "--cached", "replacement.txt"], { cwd: repoPath });
+
+    const status = await new Workspace(repoPath).getStatus({
+      maxUntrackedLineStatFiles: 10,
+      maxUntrackedLineStatBytes: 1024,
+    });
+
+    expect(status.workingTree.files).toEqual([
+      {
+        path: "replacement.txt",
+        status: "D",
+        insertions: 0,
+        deletions: 3,
+      },
+      {
+        path: "replacement.txt",
+        status: "??",
+        insertions: 3,
+        deletions: 0,
+      },
+    ]);
+    expect(status.workingTree).toMatchObject({
+      insertions: 3,
+      deletions: 3,
+      lineStatsComplete: true,
+    });
+  });
+
+  it("enriches eligible untracked files when another entry is a nested repository", async () => {
+    const repoPath = await initRepo();
+    await fs.writeFile(path.join(repoPath, "notes.txt"), "one\ntwo\n", "utf8");
+    const nestedRepoPath = path.join(repoPath, "vendor");
+    await fs.mkdir(nestedRepoPath);
+    await runGit(["init", "-b", "main"], { cwd: nestedRepoPath });
+    await fs.writeFile(path.join(nestedRepoPath, "inside.txt"), "inside\n");
+
+    const status = await new Workspace(repoPath).getStatus({
+      maxUntrackedLineStatFiles: 10,
+      maxUntrackedLineStatBytes: 1024,
+    });
+
+    expect(status.workingTree.files).toEqual([
+      {
+        path: "notes.txt",
+        status: "??",
+        insertions: 2,
+        deletions: 0,
+      },
+      {
+        path: "vendor/",
+        status: "??",
+        insertions: null,
+        deletions: null,
+      },
+    ]);
+    expect(status.workingTree).toMatchObject({
+      insertions: 2,
+      deletions: 0,
+      lineStatsComplete: false,
+    });
+  });
+
+  it("leaves untracked status stats unknown when either enrichment budget is exceeded", async () => {
+    const repoPath = await initRepo();
+    await fs.writeFile(path.join(repoPath, "one.txt"), "one\n", "utf8");
+    await fs.writeFile(path.join(repoPath, "two.txt"), "two\n", "utf8");
+    const workspace = new Workspace(repoPath);
+
+    const overFileBudget = await workspace.getStatus({
+      maxUntrackedLineStatFiles: 1,
+      maxUntrackedLineStatBytes: 1024,
+    });
+    const overByteBudget = await workspace.getStatus({
+      maxUntrackedLineStatFiles: 10,
+      maxUntrackedLineStatBytes: 1,
+    });
+
+    for (const status of [overFileBudget, overByteBudget]) {
+      expect(status.workingTree.lineStatsComplete).toBe(false);
+      expect(
+        status.workingTree.files
+          .filter((file) => file.status === "??")
+          .every((file) => file.insertions === null && file.deletions === null),
+      ).toBe(true);
+    }
+  });
+
+  it("keeps tracked status totals explicitly incomplete in a mixed workspace", async () => {
     const repoPath = await initRepo();
     await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
     await fs.writeFile(path.join(repoPath, "README.md"), "feature\n", "utf8");
@@ -679,7 +846,10 @@ describe("Workspace", () => {
     });
     const bannerStats = tallyWorkspaceStats(status.workingTree);
 
-    expect(bannerStats).toEqual(parseShortstat(uncommittedChanges.shortstat));
+    expect(status.workingTree.lineStatsComplete).toBe(false);
+    expect(bannerStats).not.toEqual(
+      parseShortstat(uncommittedChanges.shortstat),
+    );
     expect(bannerStats).not.toEqual(parseShortstat(allChanges.shortstat));
   });
 
@@ -707,7 +877,7 @@ describe("Workspace", () => {
     expect(diff.shortstat).toContain("1 file changed");
   });
 
-  it("includes untracked files across multiple diff batches", async () => {
+  it("includes untracked files in one combined diff", async () => {
     const repoPath = await initRepo();
     const workspace = new Workspace(repoPath);
 
@@ -728,6 +898,23 @@ describe("Workspace", () => {
     expect(diff.diff).toContain("untracked 11");
     expect(diff.files).toContain("note-11.txt");
     expect(diff.shortstat).toContain("12 files changed");
+  });
+
+  it("bounds full-diff untracked content and reports truncation", async () => {
+    const repoPath = await initRepo();
+    await fs.writeFile(path.join(repoPath, "a.txt"), "first\n", "utf8");
+    await fs.writeFile(path.join(repoPath, "b.txt"), "second\n", "utf8");
+
+    const diff = await new Workspace(repoPath).getDiff({
+      target: { type: "uncommitted" },
+      maxUntrackedFiles: 1,
+    });
+
+    expect(diff.truncated).toBe(true);
+    expect(diff.files).toContain("a.txt");
+    expect(diff.files).not.toContain("b.txt");
+    expect(diff.diff).toContain("first");
+    expect(diff.diff).not.toContain("second");
   });
 
   it("commits staged work and resets dirty changes", async () => {

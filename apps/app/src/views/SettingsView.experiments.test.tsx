@@ -7,7 +7,7 @@ afterEach(cleanup);
 
 function renderSection(overrides?: {
   onNewOnboardingEnabledChange?: (enabled: boolean) => void;
-  onToolsHubEnabledChange?: (enabled: boolean) => void;
+  onProviderSessionReapingEnabledChange?: (enabled: boolean) => void;
 }) {
   return render(
     <ExperimentsSettingsSection
@@ -15,13 +15,15 @@ function renderSection(overrides?: {
       disabled={false}
       editMessagesEnabled={false}
       newOnboardingEnabled={false}
+      providerSessionReapingEnabled={false}
       onClaudeCodeMockCliTrafficEnabledChange={vi.fn()}
       onEditMessagesEnabledChange={vi.fn()}
       onNewOnboardingEnabledChange={
         overrides?.onNewOnboardingEnabledChange ?? vi.fn()
       }
-      onToolsHubEnabledChange={overrides?.onToolsHubEnabledChange ?? vi.fn()}
-      toolsHubEnabled={false}
+      onProviderSessionReapingEnabledChange={
+        overrides?.onProviderSessionReapingEnabledChange ?? vi.fn()
+      }
     />,
   );
 }
@@ -34,12 +36,10 @@ describe("ExperimentsSettingsSection", () => {
     expect(onChange).toHaveBeenCalledWith(true);
   });
 
-  it("reports Extensions changes", () => {
+  it("reports idle provider session release changes", () => {
     const onChange = vi.fn();
-    renderSection({ onToolsHubEnabledChange: onChange });
-    const toggle = screen.getByLabelText("Extensions");
-    expect(toggle.hasAttribute("disabled")).toBe(false);
-    fireEvent.click(toggle);
+    renderSection({ onProviderSessionReapingEnabledChange: onChange });
+    fireEvent.click(screen.getByLabelText("Idle provider session release"));
     expect(onChange).toHaveBeenCalledWith(true);
   });
 });

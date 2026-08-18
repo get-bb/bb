@@ -32,6 +32,7 @@ import {
   withTestHarness,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
+import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
 
@@ -68,6 +69,7 @@ describe("bb.agents.registerTool", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-tools-test-"));
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -269,6 +271,59 @@ describe("bb.agents.registerTool", () => {
     ).toBe(1);
   });
 
+  it("rejects recursive tool schemas before they reach a provider", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-schema-refs",
+      serverSource: "export default function plugin() {}",
+    });
+    await service.installPath(rootDir);
+    const api = service.getApi("schema-refs")!;
+
+    expect(() =>
+      api.agents.registerTool({
+        name: "zod_recursive",
+        description: "Recursive zod schema",
+        parameters: z.object({ value: z.json() }),
+        execute: () => "unused",
+      }),
+    ).toThrow(/recursive JSON Schema \$ref/);
+
+    expect(() =>
+      api.agents.registerTool({
+        name: "raw_recursive",
+        description: "Recursive raw schema",
+        parameters: {
+          type: "object",
+          properties: { node: { $ref: "#node" } },
+          $defs: {
+            node: {
+              $anchor: "node",
+              type: "object",
+              properties: { next: { $ref: "#node" } },
+            },
+          },
+        },
+        execute: () => "unused",
+      }),
+    ).toThrow(
+      'tool "raw_recursive" parameters contains recursive JSON Schema $ref "#node"',
+    );
+
+    api.agents.registerTool({
+      name: "acyclic_ref",
+      description: "Acyclic local reference",
+      parameters: {
+        type: "object",
+        properties: { label: { $ref: "#/$defs/label" } },
+        $defs: { label: { type: "string" } },
+      },
+      execute: () => "ok",
+    });
+    expect(service.listAgentTools().map((tool) => tool.tool.name)).toEqual([
+      "acyclic_ref",
+    ]);
+  });
+
   it("keeps experimental status labels with a registered native tool", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-readable-tool",
@@ -409,6 +464,7 @@ describe("bb.agents.contributeInstructions", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-instr-test-"));
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -661,7 +717,16 @@ describe("plugin tools reach thread runtime config", () => {
             if (context.provider.id === "claude-code") {
               throw new Error("conditional failure");
             }
-            return { tools: ["unknown_tool"], skills: [] };
+            return {
+              tools: [{
+                name: "broken_tool",
+                parameters: {
+                  type: "object",
+                  properties: { nested: { $ref: "#" } },
+                },
+              }],
+              skills: [],
+            };
           });
         }
       `,

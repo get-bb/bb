@@ -1,4 +1,4 @@
-import type { PluginSidebarThread } from "@bb/plugin-sdk/app";
+import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { StatusGlyph, hasStatusGlyph } from "./StatusGlyph";
 import { relativeTimeLabel } from "./relative-time";
 

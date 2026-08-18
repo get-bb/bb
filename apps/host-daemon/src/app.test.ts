@@ -16,6 +16,10 @@ import {
 import type { HostWatcher } from "@bb/host-watcher";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  DISPATCH_TEST_BRIDGE_LAUNCH,
+  DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+} from "../test/command/dispatch-helpers.js";
+import {
   createHostDaemonApp,
   startIdleProviderSessionReaper,
   type HostDaemonApp,
@@ -343,9 +347,9 @@ function createToolCallRequest(): ToolCallRequest {
 }
 
 async function settleReaperPromiseChain(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let index = 0; index < 8; index += 1) {
+    await Promise.resolve();
+  }
 }
 
 afterEach(async () => {
@@ -458,6 +462,7 @@ describe("createHostDaemonApp", () => {
         command: {
           type: "provider.list_models",
           providerId: "cursor",
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         },
       });
 
@@ -480,7 +485,14 @@ describe("createHostDaemonApp", () => {
           },
         }),
       );
-      expect(listModels).toHaveBeenCalledWith({ providerId: "cursor" });
+      expect(listModels).toHaveBeenCalledWith({
+        providerId: "cursor",
+        bridgeLaunch: {
+          ...DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+          // Resolved against this test's own daemon data dir.
+          dataDir: path.join(dataDir, "plugins", "provider-pi", "bridge-data"),
+        },
+      });
 
       await expect(
         app.router.handleOnlineRpcRequest({
@@ -489,6 +501,7 @@ describe("createHostDaemonApp", () => {
           command: {
             type: "provider.list_models",
             providerId: "cursor",
+            bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           },
         }),
       ).resolves.toMatchObject({
@@ -557,6 +570,7 @@ describe("createHostDaemonApp", () => {
           command: {
             type: "provider.list_models",
             providerId: "codex",
+            bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           },
         }),
       ).resolves.toMatchObject({
@@ -628,6 +642,7 @@ describe("createHostDaemonApp", () => {
     const reaper = startIdleProviderSessionReaper({
       logger,
       nowMs: () => nowMs,
+      resolveProviderSessionReapingEnabled: async () => true,
       runtimeManager: {
         reapIdleProviderSessions,
       },
@@ -638,10 +653,12 @@ describe("createHostDaemonApp", () => {
     expect(timer.unref).toHaveBeenCalledTimes(1);
 
     triggerTick();
+    await settleReaperPromiseChain();
     expect(reapIdleProviderSessions).toHaveBeenCalledTimes(1);
     expect(reapIdleProviderSessions).toHaveBeenNthCalledWith(1, {
       idleForMs: 1_800_000,
       nowMs: 1_000,
+      providerSessionReapingEnabled: true,
     });
 
     nowMs = 2_000;
@@ -681,6 +698,7 @@ describe("createHostDaemonApp", () => {
     expect(reapIdleProviderSessions).toHaveBeenNthCalledWith(2, {
       idleForMs: 1_800_000,
       nowMs: 2_000,
+      providerSessionReapingEnabled: true,
     });
     expect(logger.warn).toHaveBeenCalledWith(
       {

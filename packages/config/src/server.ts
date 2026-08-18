@@ -16,6 +16,7 @@ import {
   BB_INHERITED_SKILLS_ROOTS_ENV,
   BB_INFERENCE_FALLBACK_ENV,
   BB_INFERENCE_ENV,
+  BB_MARKETPLACE_URL_ENV,
   BB_POSTHOG_API_KEY_ENV,
   BB_SERVER_BIND_HOST_ENV,
   BB_TELEMETRY_ENV,
@@ -26,6 +27,7 @@ import {
   DEFAULT_BB_EXTERNAL_URL,
   DEFAULT_BB_INFERENCE_FALLBACK,
   DEFAULT_BB_INFERENCE,
+  DEFAULT_BB_MARKETPLACE_URL,
   DEFAULT_BB_POSTHOG_API_KEY,
   DEFAULT_BB_SERVER_BIND_HOST,
   DEFAULT_BB_TELEMETRY,
@@ -52,6 +54,7 @@ export interface ServerConfig
   BB_INFERENCE: string;
   BB_INFERENCE_FALLBACK: string;
   BB_POSTHOG_API_KEY: string;
+  BB_MARKETPLACE_URL: string;
   BB_SERVER_BIND_HOST: ServerBindHost;
   BB_TELEMETRY: boolean;
   BB_TRANSCRIPTION: string;
@@ -142,6 +145,12 @@ export function loadServerConfig(
       context: loader.context,
       defaultValue: DEFAULT_BB_INFERENCE_FALLBACK,
       definition: BB_INFERENCE_FALLBACK_ENV,
+      env: loader.env,
+    }),
+    BB_MARKETPLACE_URL: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_MARKETPLACE_URL,
+      definition: BB_MARKETPLACE_URL_ENV,
       env: loader.env,
     }),
     BB_POSTHOG_API_KEY: readEnvVarWithDefault({

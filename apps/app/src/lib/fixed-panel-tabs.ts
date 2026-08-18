@@ -1,22 +1,33 @@
-import { useCallback, useEffect, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { atom } from "jotai";
 import { useAtomValue, useSetAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
+import type { TerminalCreateTarget } from "@bb/server-contract";
 import { createLocalStorageSyncStorage } from "./browser-storage";
 import { useThreadTabs } from "@/hooks/queries/thread-tabs-query";
+import { closeSecondaryPanelTabInState } from "@/components/secondary-panel/secondaryPanelTabState";
+import { reconcileFixedPanelViewTabsInState } from "@/components/secondary-panel/secondaryPanelTabState";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
   createGitDiffFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
+  ensureOpenFixedPanelHasActiveTab,
   getFixedPanelTabsStateStorageKey,
   parseFixedPanelTabsState,
   pruneFixedPanelTabsStorage,
   serializeFixedPanelTabsState,
   type FixedPanelTab,
   type FixedPanelTabsState,
+  type FixedPanelViewTab,
   type TerminalFixedPanelTab,
 } from "./fixed-panel-tabs-state";
 import { type ThreadSecondaryPanel } from "./thread-secondary-panel";
@@ -111,22 +122,31 @@ function findActiveTerminalTab(
   return activeTab?.kind === "terminal" ? activeTab : null;
 }
 
-function upsertTerminalTab(
+export function upsertTerminalTab(
   tabs: readonly FixedPanelTab[],
   terminalId: string,
+  target?: TerminalCreateTarget,
 ): readonly FixedPanelTab[] {
-  const nextTab = createTerminalFixedPanelTab({ terminalId });
+  const nextTab = createTerminalFixedPanelTab({ terminalId, target });
   const existingTab = tabs.find((tab) => tab.id === nextTab.id);
-  return existingTab ? tabs : [...tabs, nextTab];
+  if (existingTab === undefined) return [...tabs, nextTab];
+  if (
+    target === undefined ||
+    (existingTab.kind === "terminal" && existingTab.target === target)
+  ) {
+    return tabs;
+  }
+  return tabs.map((tab) => (tab.id === nextTab.id ? nextTab : tab));
 }
 
-function removeTerminalTab(
-  tabs: readonly FixedPanelTab[],
+export function removeFixedRightTerminalTabInState(
+  state: FixedPanelTabsState,
   terminalId: string,
-): readonly FixedPanelTab[] {
-  const terminalTab = createTerminalFixedPanelTab({ terminalId });
-  const nextTabs = tabs.filter((tab) => tab.id !== terminalTab.id);
-  return nextTabs.length === tabs.length ? tabs : nextTabs;
+): FixedPanelTabsState {
+  return closeSecondaryPanelTabInState(
+    state,
+    createTerminalFixedPanelTab({ terminalId }).id,
+  );
 }
 
 function ensureSecondaryPanelTab(
@@ -230,7 +250,9 @@ export function useFixedPanelTabsState(
       return;
     }
     setState((current) =>
-      reconcileFixedPanelTabsState(current, tabsQuery.data.tabs),
+      ensureOpenFixedPanelHasActiveTab(
+        reconcileFixedPanelTabsState(current, tabsQuery.data.tabs),
+      ),
     );
   }, [
     queryClient,
@@ -255,7 +277,7 @@ export function useUpdateFixedPanelTabsState(
       const now = Date.now();
       let tabsToPersist: readonly FixedPanelTab[] | null = null;
       setState((current) => {
-        const next = update(current);
+        const next = ensureOpenFixedPanelHasActiveTab(update(current));
         if (next === current) {
           return current;
         }
@@ -280,6 +302,62 @@ export function useUpdateFixedPanelTabsState(
     },
     [panelStateId, queryClient, setState, syncThreadId],
   );
+}
+
+export function useReconciledFixedPanelTabsState({
+  fixedTabs,
+  isAuthoritative = true,
+  openFirstFixedTabWhenEmpty = false,
+  panelStateId,
+  syncThreadId,
+}: {
+  fixedTabs: readonly FixedPanelViewTab[];
+  /**
+   * Whether `fixedTabs` is the settled eligibility result for this surface.
+   * While registrations or other eligibility inputs are still loading, keep
+   * persisted tabs untouched and render their existing state.
+   */
+  isAuthoritative?: boolean;
+  openFirstFixedTabWhenEmpty?: boolean;
+  panelStateId: FixedPanelTabsPanelStateId;
+  syncThreadId: FixedPanelTabsSyncThreadId;
+}): FixedPanelTabsState {
+  const state = useFixedPanelTabsState(panelStateId, syncThreadId);
+  const updateState = useUpdateFixedPanelTabsState(panelStateId, syncThreadId);
+  const reconciledState = useMemo(
+    () =>
+      isAuthoritative
+        ? reconcileFixedPanelViewTabsInState({
+            fixedTabs,
+            openFirstFixedTabWhenEmpty,
+            state,
+          })
+        : state,
+    [fixedTabs, isAuthoritative, openFirstFixedTabWhenEmpty, state],
+  );
+
+  // Render the reconciled model immediately so hydration never flashes a
+  // missing tab or animates from an invalid layout. Commit the same model in a
+  // layout effect so local/server persistence catches up before paint.
+  useLayoutEffect(() => {
+    if (!isAuthoritative || reconciledState === state) return;
+    updateState((current) =>
+      reconcileFixedPanelViewTabsInState({
+        fixedTabs,
+        openFirstFixedTabWhenEmpty,
+        state: current,
+      }),
+    );
+  }, [
+    fixedTabs,
+    isAuthoritative,
+    openFirstFixedTabWhenEmpty,
+    reconciledState,
+    state,
+    updateState,
+  ]);
+
+  return reconciledState;
 }
 
 export function useTouchFixedPanelTabsState(
@@ -375,6 +453,7 @@ export function useActiveFixedRightTerminalId(
 export function useSetFixedRightTerminalActiveTerminal(
   panelStateId: FixedPanelTabsPanelStateId,
   syncThreadId: FixedPanelTabsSyncThreadId,
+  target?: TerminalCreateTarget,
 ): FixedPanelTerminalIdSetter {
   const updateState = useUpdateFixedPanelTabsState(panelStateId, syncThreadId);
   return useCallback(
@@ -394,8 +473,15 @@ export function useSetFixedRightTerminalActiveTerminal(
           };
         }
 
-        const tabs = upsertTerminalTab(current.secondary.tabs, terminalId);
-        const activeTabId = createTerminalFixedPanelTab({ terminalId }).id;
+        const tabs = upsertTerminalTab(
+          current.secondary.tabs,
+          terminalId,
+          target,
+        );
+        const activeTabId = createTerminalFixedPanelTab({
+          terminalId,
+          target,
+        }).id;
         if (
           tabs === current.secondary.tabs &&
           current.secondary.activeTabId === activeTabId &&
@@ -413,7 +499,7 @@ export function useSetFixedRightTerminalActiveTerminal(
         };
       });
     },
-    [updateState],
+    [target, updateState],
   );
 }
 
@@ -424,25 +510,9 @@ export function useRemoveFixedRightTerminalTab(
   const updateState = useUpdateFixedPanelTabsState(panelStateId, syncThreadId);
   return useCallback(
     (terminalId: string) => {
-      updateState((current) => {
-        const tabs = removeTerminalTab(current.secondary.tabs, terminalId);
-        if (tabs === current.secondary.tabs) {
-          return current;
-        }
-        const removedActiveTabId =
-          current.secondary.activeTabId ===
-          createTerminalFixedPanelTab({ terminalId }).id;
-        return {
-          ...current,
-          secondary: {
-            ...current.secondary,
-            tabs,
-            activeTabId: removedActiveTabId
-              ? null
-              : current.secondary.activeTabId,
-          },
-        };
-      });
+      updateState((current) =>
+        removeFixedRightTerminalTabInState(current, terminalId),
+      );
     },
     [updateState],
   );

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
+import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { act } from "@testing-library/react";

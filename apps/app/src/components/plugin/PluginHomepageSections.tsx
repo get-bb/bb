@@ -3,6 +3,7 @@ import {
   type PluginHomepageSectionSlot,
 } from "@/lib/plugin-slots";
 import { useRouteState } from "@/hooks/useRouteState";
+import { getPluginHomepageSectionAnchor } from "@/lib/plugin-homepage-section";
 import { PluginSlotMount } from "./PluginSlotMount";
 
 /**
@@ -32,6 +33,7 @@ function PluginHomepageSectionList({
           // Generation in the key: a P3.4 reload remounts the slot (fresh
           // error-boundary state) instead of reusing a latched crash.
           key={`${section.pluginId}/${section.id}/${section.generation}`}
+          id={getPluginHomepageSectionAnchor(section.pluginId, section.id)}
           className="space-y-3"
         >
           <h2 className="text-sm font-semibold text-foreground">

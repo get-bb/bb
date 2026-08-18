@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PanelGroup } from "react-resizable-panels";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
+  createGitDiffFixedPanelTab,
   createThreadInfoFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
@@ -124,6 +125,111 @@ describe("ThreadSecondaryPanel compact file content", () => {
     view.rerender(renderDrawer(false));
 
     expect(screen.getByLabelText("Retained file content")).toBe(fileContent);
+  });
+});
+
+describe("ThreadSecondaryPanel fixed tab content", () => {
+  it("gives flush plugin content a full-height flex region", () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    render(
+      <Wrapper>
+        <TooltipProvider>
+          <PanelGroup direction="horizontal">
+            <ThreadSecondaryPanel
+              activeTab={createThreadInfoFixedPanelTab()}
+              canUseGitUi={false}
+              fixedTabContent={<div data-testid="flush-fixed-content" />}
+              fixedTabContentFillsRegion
+              isConversationCollapsed={false}
+              isOpen
+              metadataContent={null}
+              onClose={noop}
+              onCollapse={noop}
+              onFileTabReorder={noop}
+              onOpenNewTab={noop}
+              onPanelChange={noop}
+              onPanelFocus={noop}
+              onToggleConversationCollapse={noop}
+              renderAsDrawer={false}
+            />
+          </PanelGroup>
+        </TooltipProvider>
+      </Wrapper>,
+    );
+
+    expect(
+      screen.getByTestId("flush-fixed-content").parentElement?.className,
+    ).toContain("flex min-h-0 flex-1 flex-col overflow-hidden");
+  });
+});
+
+describe("ThreadSecondaryPanel Diff eligibility", () => {
+  it("falls back from an ineligible active Diff tab to Info", () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    render(
+      <Wrapper>
+        <TooltipProvider>
+          <PanelGroup direction="horizontal">
+            <ThreadSecondaryPanel
+              activeTab={createGitDiffFixedPanelTab()}
+              canUseGitUi={false}
+              isConversationCollapsed={false}
+              isOpen
+              metadataContent={<div>Thread metadata</div>}
+              onClose={noop}
+              onCollapse={noop}
+              onFileTabReorder={noop}
+              onOpenNewTab={noop}
+              onPanelChange={noop}
+              onPanelFocus={noop}
+              onToggleConversationCollapse={noop}
+              renderAsDrawer={false}
+            />
+          </PanelGroup>
+        </TooltipProvider>
+      </Wrapper>,
+    );
+
+    expect(screen.getByTestId("thread-info-tab")).toBeTruthy();
+    expect(screen.getByText("Thread metadata")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Show diff panel" }),
+    ).toBeNull();
+    expect(screen.queryByText("This panel view is unavailable.")).toBeNull();
+  });
+
+  it("keeps an active Diff tab visible while Git eligibility loads", () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    render(
+      <Wrapper>
+        <TooltipProvider>
+          <PanelGroup direction="horizontal">
+            <ThreadSecondaryPanel
+              activeTab={createGitDiffFixedPanelTab()}
+              canUseGitUi={false}
+              gitDiffTabStatus="loading"
+              isConversationCollapsed={false}
+              isOpen
+              metadataContent={null}
+              onClose={noop}
+              onCollapse={noop}
+              onFileTabReorder={noop}
+              onOpenNewTab={noop}
+              onPanelChange={noop}
+              onPanelFocus={noop}
+              onToggleConversationCollapse={noop}
+              renderAsDrawer={false}
+            />
+          </PanelGroup>
+        </TooltipProvider>
+      </Wrapper>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Show diff panel" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Checking Git support…")).toBeTruthy();
+    expect(screen.queryByText("This panel view is unavailable.")).toBeNull();
   });
 });
 

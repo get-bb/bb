@@ -1,4 +1,4 @@
-import type { BbPluginApi, PluginAgentToolResult } from "@bb/plugin-sdk";
+import type { BbPluginApi, PluginAgentToolResult } from "@get-bb/plugin-sdk";
 import { interactionResponseSchema, toolInputSchema } from "./contracts.js";
 import {
   TOOL_DESCRIPTION,
@@ -16,17 +16,6 @@ import {
 export const TOOL_NAME = "AskUserQuestion";
 export const RENDERER_ID = "ask-user-question";
 
-/**
- * Claude Code ships `AskUserQuestion` natively, and BB wires that native call
- * straight into the provider's own pending-interaction path. Registering a
- * second, plugin-owned tool of the same name for those threads would give the
- * model two ways to ask one question, so the tool is withheld there.
- */
-export const NATIVE_TOOL_PROVIDER_IDS: readonly string[] = ["claude-code"];
-
-export function providerHasNativeTool(providerId: string): boolean {
-  return NATIVE_TOOL_PROVIDER_IDS.includes(providerId);
-}
 
 function errorResult(message: string): PluginAgentToolResult {
   return { content: [{ type: "text", text: message }], isError: true };
@@ -96,7 +85,11 @@ export default function plugin(bb: BbPluginApi) {
   });
 
   bb.agents.configure((context) => {
-    if (providerHasNativeTool(context.provider.id)) {
+    // A provider that ships its own `AskUserQuestion` has it wired straight
+    // into bb's pending-interaction path; registering a second tool of the
+    // same name would give the model two ways to ask one question. The
+    // provider declares this, so no provider id list lives here.
+    if (context.provider.capabilities.supportsNativeUserQuestion) {
       return { tools: [], skills: [] };
     }
     return {

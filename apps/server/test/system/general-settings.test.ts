@@ -1,11 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
-import { getAppSettings, setAppSettings } from "@bb/db";
+import { describe, expect, it } from "vitest";
+import { getAppSettings } from "@bb/db";
 import { appSettingsSchema, defaultAppSettings } from "@bb/domain";
 import { systemConfigResponseSchema } from "@bb/server-contract";
-import { schedulePrimaryHostCaffeinateReconciliation } from "../../src/services/system/app-settings.js";
 import { readJson } from "../helpers/json.js";
-import { registerHostRpcResponder } from "../helpers/host-rpc.js";
-import { seedHostSession, seedPrimaryHost } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("general settings", () => {
@@ -20,31 +17,13 @@ describe("general settings", () => {
     });
   });
 
-  it("persists a PUT, reflects it in /system/config, and asks the daemon to reconcile", async () => {
+  it("persists a PUT and reflects it in /system/config", async () => {
     await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps);
-      seedPrimaryHost(harness.deps, host.id);
-      const responder = registerHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        handle: (request) => {
-          expect(request.command).toEqual({
-            type: "host.caffeinate",
-            enabled: true,
-          });
-          return {
-            ok: true,
-            result: { enabled: true, supported: true },
-          };
-        },
-      });
-
       const put = await harness.app.request("/api/v1/settings/general", {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           ...defaultAppSettings,
-          caffeinate: true,
           showKeyboardHints: false,
           steerActiveThreadOnEnter: true,
           codexMemoryEnabled: false,
@@ -53,14 +32,12 @@ describe("general settings", () => {
       expect(put.status).toBe(200);
       expect(appSettingsSchema.parse(await readJson(put))).toEqual({
         ...defaultAppSettings,
-        caffeinate: true,
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
         codexMemoryEnabled: false,
       });
       expect(getAppSettings(harness.db)).toEqual({
         ...defaultAppSettings,
-        caffeinate: true,
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
         codexMemoryEnabled: false,
@@ -72,45 +49,9 @@ describe("general settings", () => {
       );
       expect(parsedConfig.generalSettings).toEqual({
         ...defaultAppSettings,
-        caffeinate: true,
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
         codexMemoryEnabled: false,
-      });
-      expect(parsedConfig.primaryHostId).toBe(host.id);
-      expect(parsedConfig.primaryHostPlatform).toBe("darwin");
-      await vi.waitFor(() => {
-        expect(responder.requests).toHaveLength(1);
-      });
-    });
-  });
-
-  it("reconciles the saved caffeinate setting for a connected primary daemon", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps);
-      seedPrimaryHost(harness.deps, host.id);
-      setAppSettings(harness.db, { ...defaultAppSettings, caffeinate: true });
-
-      const responder = registerHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        handle: (request) => {
-          expect(request.command).toEqual({
-            type: "host.caffeinate",
-            enabled: true,
-          });
-          return {
-            ok: true,
-            result: { enabled: true, supported: true },
-          };
-        },
-      });
-      schedulePrimaryHostCaffeinateReconciliation(harness.deps, {
-        reason: "daemon-open",
-      });
-
-      await vi.waitFor(() => {
-        expect(responder.requests).toHaveLength(1);
       });
     });
   });
@@ -133,7 +74,6 @@ describe("general settings", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           ...defaultAppSettings,
-          caffeinate: true,
           unused: true,
         }),
       });

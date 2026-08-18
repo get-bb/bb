@@ -9,7 +9,7 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import type { PluginRowSignal } from "./plugin-status";
-import { UPDATE_TINT_STYLE } from "./plugin-ui";
+import { isReadablePluginVersion, UPDATE_ICON_STYLE } from "./plugin-ui";
 
 export function PluginSignalLogo({
   children,
@@ -50,14 +50,30 @@ export function PluginRowSignalView({
   statusPresentation?: "standalone" | "badge";
 }) {
   if (signal.kind === "update") {
+    // The row only ever says what is offered — a readable version when there
+    // is one — and the dialog carries the (shortened) hash detail.
+    const readableVersion = isReadablePluginVersion(signal.version)
+      ? signal.version
+      : null;
     return (
       <button
         type="button"
-        className="shrink-0 rounded-full border px-2.5 py-1 text-2xs font-medium"
-        style={UPDATE_TINT_STYLE}
+        className={cn(
+          "flex shrink-0 cursor-pointer items-center gap-1 rounded-md border border-border",
+          "bg-transparent px-2 py-1 text-2xs font-medium text-foreground",
+          "hover:bg-state-hover focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
+        )}
+        aria-label={`Update available${readableVersion === null ? "" : `: version ${readableVersion}`}`}
         onClick={onUpdateClick}
       >
-        Update {signal.version}
+        <span
+          className="flex shrink-0 items-center"
+          style={UPDATE_ICON_STYLE}
+          aria-hidden
+        >
+          <Icon name="ArrowUp" className="size-3.5" />
+        </span>
+        {readableVersion === null ? "Update" : `Update to ${readableVersion}`}
       </button>
     );
   }

@@ -60,7 +60,10 @@ import {
   type CompletedTurnSummaryItem,
 } from "./completed-turn-grouping.js";
 import { extractThreadContextWindowUsage } from "./thread-context-window-usage.js";
-import { extractThreadTimelineActivePromptMode } from "./active-prompt-mode-extraction.js";
+import {
+  extractThreadTimelineActivePromptMode,
+  type PlanCommand,
+} from "./active-prompt-mode-extraction.js";
 import { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
 import { extractThreadTimelineModelFallback } from "./model-fallback-extraction.js";
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
@@ -89,6 +92,12 @@ interface ThreadTimelineFromEventsBaseOptions {
    * providers that are not in thread-view's static provider table.
    */
   providerDisplayName?: string;
+  /**
+   * The provider's declared `plan` composer command, or null/absent when it
+   * declares none. Plan-mode eligibility and the command syntax both come from
+   * the declaration rather than from a provider id list in this package.
+   */
+  planCommand?: PlanCommand | null;
   threadStatus: Thread["status"];
   /**
    * Display name of the thread, used by operation rows that describe a
@@ -350,6 +359,7 @@ function buildWorkflowWorkRow(
     taskType: message.taskType,
     workflowName: message.workflowName,
     description: message.description,
+    model: message.model,
     taskStatus: message.taskStatus,
     workflow: message.workflow,
     usage: message.usage,
@@ -1335,6 +1345,7 @@ export function buildThreadTimelineFromEvents(
       ? null
       : extractThreadTimelineActivePromptMode({
           events: args.events,
+          planCommand: args.options.planCommand,
           providerId: args.options.providerId,
           threadStatus: args.options.threadStatus,
         }),

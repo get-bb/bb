@@ -1,4 +1,4 @@
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { getCall, getRunRequired, migrations } from "./data.js";
 import plugin from "./server.js";
@@ -61,6 +61,32 @@ describe("workflows plugin", () => {
     await harness.setSettings({ maxActiveRuns: "5" });
   });
 
+  it("registers tool schemas without recursive $refs", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "workflows",
+      agentSkillIds: ["workflows"],
+    });
+    hosts.push(harness);
+    await plugin(bb);
+
+    const tools = harness.registrations.agentTools;
+    expect(tools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining(["bb_workflow_run", "bb_workflow_result"]),
+    );
+    // A self-referential $ref makes some providers reject the whole tool list
+    // before the turn starts, so no tool may ship one.
+    for (const tool of tools) {
+      const schema = JSON.stringify(tool.inputSchema);
+      expect(schema, `tool ${tool.name}`).not.toContain("$ref");
+      expect(schema, `tool ${tool.name}`).not.toContain("$defs");
+    }
+
+    const run = tools.find((tool) => tool.name === "bb_workflow_run");
+    expect(
+      run?.parse({ name: "demo", args: { nested: [1, { deep: null }] } }),
+    ).toMatchObject({ ok: true });
+  });
+
   it("runs a structured workflow asynchronously and notifies its origin", async () => {
     let childCount = 0;
     const { bb, harness } = createFakePluginHost({
@@ -96,12 +122,12 @@ describe("workflows plugin", () => {
               logoUrl: null,
               available: true,
               capabilities: {
-                supportsArchive: true,
-                supportsRename: true,
+                supportsThreadArchive: true,
+                supportsThreadRename: true,
                 supportsServiceTier: true,
-                supportsUserQuestion: false,
+                supportsNativeUserQuestion: false,
                 supportsFork: true,
-                supportedPermissionModes: ["full"],
+                permissionModes: ["full"],
               },
               composerActions: [],
             },
@@ -235,7 +261,11 @@ describe("workflows plugin", () => {
         branchName: null,
       },
       host: { id: "host-1", name: "host" },
-      provider: { id: "codex", model: "gpt-test" },
+      provider: {
+      id: "codex",
+      model: "gpt-test",
+      capabilities: { supportsNativeUserQuestion: false },
+    },
       origin: { kind: null, pluginId: "workflows" },
     });
     expect(workerConfig.tools.map((tool) => tool.name)).toEqual([
@@ -275,7 +305,11 @@ describe("workflows plugin", () => {
         branchName: null,
       },
       host: { id: "host-1", name: "host" },
-      provider: { id: "codex", model: "gpt-test" },
+      provider: {
+      id: "codex",
+      model: "gpt-test",
+      capabilities: { supportsNativeUserQuestion: false },
+    },
       origin: { kind: null, pluginId: null },
     });
     expect(authorConfig.tools.map((tool) => tool.name)).toEqual([
@@ -817,12 +851,12 @@ describe("workflow resume cache integration", () => {
               logoUrl: null,
               available: true,
               capabilities: {
-                supportsArchive: true,
-                supportsRename: true,
+                supportsThreadArchive: true,
+                supportsThreadRename: true,
                 supportsServiceTier: true,
-                supportsUserQuestion: false,
+                supportsNativeUserQuestion: false,
                 supportsFork: true,
-                supportedPermissionModes: ["accept-edits", "auto", "full"],
+                permissionModes: ["accept-edits", "auto", "full"],
               },
               composerActions: [],
             },

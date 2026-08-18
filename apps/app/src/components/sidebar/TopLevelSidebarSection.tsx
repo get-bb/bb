@@ -32,6 +32,7 @@ import {
   type ThreadSplitIndicatorTarget,
 } from "./paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
+import { COARSE_POINTER_ROW_ACTION_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 
 const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];
 
@@ -43,6 +44,8 @@ export interface TopLevelSidebarSectionCollapseControl {
 export interface TopLevelSidebarSectionProps {
   label: string;
   children: ReactNode;
+  /** Stable identity for a persisted thread section. Built-in groups omit it. */
+  sectionId?: string;
   actions?: ReactNode;
   actionsAlwaysVisible?: boolean;
   actionsMobileAlways?: boolean;
@@ -64,6 +67,7 @@ export interface TopLevelSidebarSectionProps {
 export function TopLevelSidebarSection({
   label,
   children,
+  sectionId,
   actions,
   actionsAlwaysVisible = false,
   actionsMobileAlways = false,
@@ -123,6 +127,7 @@ export function TopLevelSidebarSection({
     <SidebarStickyGroup
       ref={sectionRef}
       style={sectionStyle}
+      data-sidebar-section-id={sectionId}
       className={cn(
         "group/sidebar-section min-w-0 rounded-md transition-colors",
         isDropTargetActive && "bg-sidebar-accent/60",
@@ -184,7 +189,8 @@ export function TopLevelSidebarSection({
             data-sidebar-collapsed-activity-edge=""
             data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
             className={cn(
-              "pointer-events-none absolute right-1 top-1/2 z-20 inline-flex -translate-y-1/2 items-center text-subtle-foreground max-md:pointer-coarse:relative max-md:pointer-coarse:right-auto max-md:pointer-coarse:top-auto max-md:pointer-coarse:shrink-0 max-md:pointer-coarse:translate-y-0",
+              "pointer-events-none absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center justify-center text-subtle-foreground max-md:pointer-coarse:relative max-md:pointer-coarse:right-auto max-md:pointer-coarse:top-auto max-md:pointer-coarse:shrink-0 max-md:pointer-coarse:translate-y-0",
+              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
               actions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
             )}
           >

@@ -13,6 +13,8 @@ import {
   type PluginComposerPlusMenuContribution,
   type PluginComposerPlusMenuSelection,
 } from "@/components/plugin/PluginComposerActions";
+import { useResolvedComposerPlusMenuItems } from "@/components/plugin/composer-slot-hooks";
+import { useOptionalPluginComposerView } from "@/components/plugin/plugin-composer-host";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CREATE_PLUGIN_PROMPT } from "@/lib/create-resource-prompts";
@@ -33,12 +35,25 @@ export interface PromptBoxAction {
   disabled?: boolean;
 }
 
-interface PromptBoxActionsMenuProps {
+export interface PromptBoxActionsMenuProps {
   actions?: readonly PromptBoxAction[];
   isAttaching?: boolean;
   onAttach?: () => void;
   onAction: (action: PromptBoxAction) => void;
   pluginItems?: readonly PluginComposerPlusMenuContribution[];
+}
+
+export function ComposerPlusMenuSlot({
+  includePluginContributions = true,
+  ...props
+}: Omit<PromptBoxActionsMenuProps, "pluginItems"> & {
+  includePluginContributions?: boolean;
+}) {
+  const view = useOptionalPluginComposerView();
+  const pluginItems = useResolvedComposerPlusMenuItems(
+    includePluginContributions ? (view?.scope.kind ?? null) : null,
+  );
+  return <PromptBoxActionsMenu {...props} pluginItems={pluginItems} />;
 }
 
 export const AUTOMATION_PROMPT_ACTION: PromptBoxAction = {
@@ -264,7 +279,7 @@ export function PromptBoxActionsMenu({
             previous?.pluginId !== contribution.pluginId;
           return (
             <PluginComposerPlusMenuEntry
-              key={`${contribution.pluginId}/${contribution.customizationId}/${contribution.item.id}/${contribution.generation}`}
+              key={contribution.key}
               contribution={contribution}
               showPluginLabel={startsPluginGroup}
               onSelected={(selection) => {

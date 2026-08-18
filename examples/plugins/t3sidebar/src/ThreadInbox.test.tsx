@@ -7,10 +7,10 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
-import type { PluginSidebarThread } from "@bb/plugin-sdk";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import type { PluginSidebarThread } from "@get-bb/plugin-sdk";
 
-// Load through the harness so the plugin's `@bb/plugin-sdk/app` import binds
+// Load through the harness so the plugin's `@get-bb/plugin-sdk/app` import binds
 // to the test runtime; importing the component directly would bind it to an
 // empty runtime first.
 const app = await loadPluginApp(() => import("../app"));
@@ -58,6 +58,7 @@ const listProps = {
   isCompactViewport: false,
   onNavigate: () => {},
   searchQuery: "",
+  experimental_Original: () => null,
 };
 
 function render(

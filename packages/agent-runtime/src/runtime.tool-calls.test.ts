@@ -10,7 +10,7 @@ import {
   parseJsonRpcLine,
   type JsonRpcMessage,
   type ProviderInboundRequest,
-} from "./runtime-json-rpc.js";
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import { promptTextInput } from "./test/prompt-input.js";
 import { fakeProviderScriptPath } from "./test/index.js";
 import {
@@ -216,7 +216,9 @@ describe("createAgentRuntime tool calls", () => {
         resolveThreadId: () => "t1",
       });
 
-      const parsed = parseJsonRpcLine((await readChildStdoutLine(child)).trim());
+      const parsed = parseJsonRpcLine(
+        (await readChildStdoutLine(child)).trim(),
+      );
       if (parsed.kind !== "response") {
         throw new Error(`Expected JSON-RPC response, got ${parsed.kind}`);
       }
@@ -284,7 +286,9 @@ describe("createAgentRuntime tool calls", () => {
         resolveThreadId: () => "t1",
       });
 
-      const parsed = parseJsonRpcLine((await readChildStdoutLine(child)).trim());
+      const parsed = parseJsonRpcLine(
+        (await readChildStdoutLine(child)).trim(),
+      );
       if (parsed.kind !== "response") {
         throw new Error(`Expected JSON-RPC response, got ${parsed.kind}`);
       }

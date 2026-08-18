@@ -1,4 +1,4 @@
-import type { BbPluginApi, PluginCliContext } from "@bb/plugin-sdk";
+import type { BbPluginApi, PluginCliContext } from "@get-bb/plugin-sdk";
 import type { ProviderRetryView } from "./contract.js";
 import type { ProviderRetryService } from "./service.js";
 
@@ -37,18 +37,43 @@ export function registerProviderRetryCli(
         summary: "Cancel a pending automatic provider retry",
         usage: "bb provider-retry cancel <thread-id> [--json]",
       },
+      {
+        name: "retry",
+        summary: "Manually continue a provider-limited turn",
+        usage: "bb provider-retry retry <thread-id> [--json]",
+      },
     ],
     async run(argv, context) {
       const [command, ...args] = argv;
-      if (command !== "status" && command !== "cancel") {
+      if (command !== "status" && command !== "cancel" && command !== "retry") {
         return {
           exitCode: 2,
           stderr:
-            "Usage: bb provider-retry <status|cancel> [thread-id] [--json]\n",
+            "Usage: bb provider-retry <status|cancel|retry> [thread-id] [--json]\n",
         };
       }
 
       const threadId = requestedThreadId(args, context);
+      if (command === "retry") {
+        if (threadId === null) {
+          return {
+            exitCode: 2,
+            stderr:
+              "A thread id is required: bb provider-retry retry <thread-id>\n",
+          };
+        }
+        const result = await service.retry(threadId);
+        if (args.includes("--json")) {
+          return {
+            exitCode: 0,
+            stdout: `${JSON.stringify({ threadId, ...result }, null, 2)}\n`,
+          };
+        }
+        return {
+          exitCode: 0,
+          stdout: `Thread ${threadId} provider rate limit retry requested manually.\n`,
+        };
+      }
       if (command === "cancel") {
         if (threadId === null) {
           return {

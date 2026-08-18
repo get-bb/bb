@@ -12,6 +12,7 @@ export function makeWorkspaceWorkingTree(
     state: "clean",
     insertions: 0,
     deletions: 0,
+    lineStatsComplete: true,
     files: [],
     ...overrides,
   };
@@ -30,6 +31,7 @@ export function makeWorkspaceMergeBase(
     files: [],
     insertions: 0,
     deletions: 0,
+    lineStatsComplete: true,
     ...overrides,
   };
 }

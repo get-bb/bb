@@ -47,6 +47,12 @@ export interface ProjectSelectorProps {
   createProject?: ProjectSelectorCreateProjectConfig;
   /** Render as a non-interactive label while preserving the selected project. */
   disabled?: boolean;
+  /**
+   * Keep the chevron visible while disabled. Use it when the picker is only
+   * transiently locked (submitting, uploading) so the trigger keeps the same
+   * width and the pickers beside it don't shift.
+   */
+  showChevronWhenDisabled?: boolean;
   className?: string;
   /** Render with the menu open on mount. Story-only escape hatch. */
   defaultOpen?: boolean;
@@ -61,6 +67,7 @@ export function ProjectSelector({
   allowNoProject = false,
   createProject,
   disabled = false,
+  showChevronWhenDisabled = false,
   className,
   defaultOpen,
   modal,
@@ -111,7 +118,7 @@ export function ProjectSelector({
               {compactTriggerLabel}
             </span>
           </span>
-          {disabled ? null : (
+          {disabled && !showChevronWhenDisabled ? null : (
             <Icon
               name="ChevronDown"
               className="size-3.5 shrink-0 text-muted-foreground"

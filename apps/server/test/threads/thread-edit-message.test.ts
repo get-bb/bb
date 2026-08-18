@@ -194,7 +194,7 @@ function seedEditableThread(
     firstProviderThreadId?: string;
     includeIdentity?: boolean;
     includeSecondTurn?: boolean;
-    providerId?: "claude-code" | "codex" | "pi";
+    providerId?: string;
     selectedCompletionStatus?: ThreadEventTurnStatus;
     threadStatus?: ThreadStatus;
   } = {},
@@ -1222,6 +1222,28 @@ describe("editThreadMessage", () => {
       expect(
         listQueuedThreadCommands(harness, "thread.start", thread.id),
       ).toHaveLength(0);
+    });
+  });
+
+  // The gate is the provider's declared rewind support, not an id list: ACP
+  // forks tip-only and cannot recreate a session at an earlier point.
+  it("rejects an edit on a provider that declares no session rewind", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedEditableThread(harness, {
+        providerId: "acp-cursor",
+      });
+
+      await expect(
+        editThreadMessage(harness.deps, {
+          environment,
+          thread,
+          payload: {
+            operationId: "edit-op-no-rewind",
+            expectedRequestSequence: 7,
+            input: [{ type: "text", text: "Replacement", mentions: [] }],
+          },
+        }),
+      ).rejects.toThrow("Editing messages is not supported for acp-cursor");
     });
   });
 

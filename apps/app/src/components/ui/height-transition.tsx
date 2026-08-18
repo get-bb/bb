@@ -1,6 +1,10 @@
 import { useStore } from "jotai";
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  isDocumentVisible,
+  subscribeToDocumentVisibility,
+} from "@/lib/document-visibility";
 import { layoutAnimationInFlightCountAtom } from "./layoutAnimationAtoms.js";
 
 // Shared animation tokens for height transitions across the timeline.
@@ -189,19 +193,21 @@ export function HeightTransition({
     // While a tab is hidden, ResizeObserver delivery is throttled and the CSS
     // height transition stays armed. If content grew during streaming, the
     // first observer fire after the user returns interpolates the full delta
-    // over 180ms — a visible "catch-up" animation. On `visibilitychange`,
-    // snap the wrapper to the inner's current height and arm the next
-    // observer fire (in case offsetHeight isn't yet reconciled) to snap too.
+    // over 180ms — a visible "catch-up" animation. On visibility return or a
+    // mobile page restore, snap the wrapper to the inner's current height and
+    // arm the next observer fire (in case offsetHeight isn't yet reconciled)
+    // to snap too.
     const onVisibility = () => {
-      if (document.visibilityState !== "visible") return;
+      if (!isDocumentVisible()) return;
       pendingVisibilitySnap = true;
       const nextHeight = visible ? `${inner.offsetHeight}px` : "0px";
       applyHeight(wrapper, nextHeight, true, snapState);
     };
-    document.addEventListener("visibilitychange", onVisibility);
+    const unsubscribeFromDocumentVisibility =
+      subscribeToDocumentVisibility(onVisibility);
     return () => {
       observer.disconnect();
-      document.removeEventListener("visibilitychange", onVisibility);
+      unsubscribeFromDocumentVisibility();
       cleanupSnapState(wrapper, snapState);
     };
   }, [visible, store]);
@@ -244,6 +250,11 @@ export interface AutoHeightContainerProps {
   children: ReactNode;
   className?: string;
   durationMs?: number;
+  /**
+   * A revision for authoritative layout replacements that should not animate
+   * through their intermediate height. Normal child growth still animates.
+   */
+  snapRevision?: string;
 }
 
 /**
@@ -274,9 +285,12 @@ export function AutoHeightContainer({
   children,
   className,
   durationMs = HEIGHT_TRANSITION_DURATION_MS,
+  snapRevision,
 }: AutoHeightContainerProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+  const snapToCurrentHeightRef = useRef<(() => void) | null>(null);
+  const previousSnapRevisionRef = useRef(snapRevision);
   const store = useStore();
   useLayoutEffect(() => {
     const wrapper = wrapperRef.current;
@@ -294,6 +308,12 @@ export function AutoHeightContainer({
       restoreTimerId: null,
       usingIntrinsicHeight: false,
     };
+    const snapToCurrentHeight = () => {
+      cancelIntrinsicHeightRestore(resizeState);
+      resizeState.usingIntrinsicHeight = false;
+      applyHeight(wrapper, `${inner.offsetHeight}px`, true, snapState);
+    };
+    snapToCurrentHeightRef.current = snapToCurrentHeight;
     const deferInitialSettleComplete = () => {
       if (initialSettleComplete) {
         return;
@@ -342,21 +362,30 @@ export function AutoHeightContainer({
     // — and the bottom-anchor scroll would chase the growing wrapper for the
     // full duration. Snap-sync on visibility return short-circuits that.
     const onVisibility = () => {
-      if (document.visibilityState !== "visible") return;
+      if (!isDocumentVisible()) return;
       pendingVisibilitySnap = true;
-      cancelIntrinsicHeightRestore(resizeState);
-      resizeState.usingIntrinsicHeight = false;
-      applyHeight(wrapper, `${inner.offsetHeight}px`, true, snapState);
+      snapToCurrentHeight();
     };
-    document.addEventListener("visibilitychange", onVisibility);
+    const unsubscribeFromDocumentVisibility =
+      subscribeToDocumentVisibility(onVisibility);
     return () => {
+      snapToCurrentHeightRef.current = null;
       observer.disconnect();
-      document.removeEventListener("visibilitychange", onVisibility);
+      unsubscribeFromDocumentVisibility();
       window.clearTimeout(initialSettleTimerId);
       cancelIntrinsicHeightRestore(resizeState);
       cleanupSnapState(wrapper, snapState);
     };
   }, [store]);
+  // Authoritative replacements (turn completion) must update before paint,
+  // but they must not reinstall the observer and reset its settle/resize state.
+  useLayoutEffect(() => {
+    if (previousSnapRevisionRef.current === snapRevision) {
+      return;
+    }
+    previousSnapRevisionRef.current = snapRevision;
+    snapToCurrentHeightRef.current?.();
+  }, [snapRevision]);
   return (
     <div
       ref={wrapperRef}

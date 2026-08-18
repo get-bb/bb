@@ -5,7 +5,7 @@ import type {
   PluginHosts,
   PluginKvStorage,
   PluginLogger,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import {
   ShareHostNotFoundError,
   type ShareHost,

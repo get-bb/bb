@@ -13,6 +13,7 @@ vi.mock("@earendil-works/pi-ai", () => ({
   getSupportedThinkingLevels,
 }));
 
+import { createPiModelContextWindowResolverFrom } from "../../event-translation.js";
 import {
   listPiBridgeModels,
   resetPiModelNetworkRefreshForTests,
@@ -241,6 +242,94 @@ describe("pi bridge model list", () => {
     await listPiBridgeModels(modelRuntime);
 
     expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  // #1033: an aggregator names a model after the vendor that serves it, so the
+  // id already contains a slash. Dropping the provider prefix in that case
+  // collapsed `openrouter/deepseek/deepseek-v4-flash-0731` to
+  // `deepseek/deepseek-v4-flash-0731`, which resolves against the *direct*
+  // DeepSeek provider — different credentials, different billing, and for the
+  // reported model no match at all (`thread.start` failed outright).
+  it("keeps the provider prefix on an aggregator model whose id has a slash", async () => {
+    getAvailable.mockResolvedValue([
+      {
+        id: "deepseek/deepseek-v4-flash-0731",
+        input: ["text"],
+        name: "DeepSeek V4 Flash",
+        provider: "openrouter",
+        reasoning: true,
+      },
+      {
+        id: "openai/gpt-5.1-codex",
+        input: ["text"],
+        name: "GPT-5.1 Codex",
+        provider: "openrouter",
+        reasoning: true,
+      },
+      {
+        id: "accounts/fireworks/models/deepseek-v4-flash",
+        input: ["text"],
+        name: "DeepSeek V4 Flash",
+        provider: "fireworks",
+        reasoning: false,
+      },
+    ]);
+    getSupportedThinkingLevels.mockReturnValue(["low", "medium", "high"]);
+
+    const result = await listPiBridgeModels(modelRuntime);
+
+    expect(result.models.map((model) => model.id)).toEqual([
+      "openrouter/deepseek/deepseek-v4-flash-0731",
+      "openrouter/openai/gpt-5.1-codex",
+      "fireworks/accounts/fireworks/models/deepseek-v4-flash",
+    ]);
+    // `routeProviderId` is what picks credentials and billing, so it must stay
+    // the aggregator rather than the vendor named inside the id.
+    expect(result.models[0]?.routeProviderId).toBe("openrouter");
+    // The per-provider default is itself a slashed id, so it only matches once
+    // the prefix survives.
+    expect(result.models.find((model) => model.isDefault)?.id).toBe(
+      "openrouter/openai/gpt-5.1-codex",
+    );
+  });
+
+  // The same #1033 collision seen from the context-window side: an aggregator
+  // and the direct vendor publish the same model under ids that differ only by
+  // prefix, and they disagree on the window. Compaction reads this number, so
+  // borrowing the other provider's figure silently mis-sizes every turn.
+  it("resolves the context window of the provider that served the message", () => {
+    const resolveContextWindow = createPiModelContextWindowResolverFrom([
+      {
+        id: "deepseek/deepseek-v4-flash",
+        provider: "openrouter",
+        contextWindow: 1_048_575,
+      },
+      {
+        id: "deepseek-v4-flash",
+        provider: "deepseek",
+        contextWindow: 1_000_000,
+      },
+    ]);
+    const assistant = (provider: string | undefined, model: string) => ({
+      role: "assistant" as const,
+      content: [],
+      ...(provider === undefined ? {} : { provider }),
+      model,
+    });
+
+    expect(
+      resolveContextWindow(
+        assistant("openrouter", "deepseek/deepseek-v4-flash"),
+      ),
+    ).toBe(1_048_575);
+    expect(
+      resolveContextWindow(assistant("deepseek", "deepseek-v4-flash")),
+    ).toBe(1_000_000);
+    // A known provider the catalog does not cover reports nothing rather than
+    // borrowing the window another provider published for the same bare id.
+    expect(
+      resolveContextWindow(assistant("openrouter", "deepseek-v4-flash")),
+    ).toBeNull();
   });
 
   it("does not reach the network when PI_OFFLINE is set", async () => {

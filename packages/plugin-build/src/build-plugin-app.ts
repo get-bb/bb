@@ -25,7 +25,7 @@ import { validatePluginBuildManifest } from "./plugin-manifest.js";
  * runtime-loadable frontend bundle:
  *
  * - `dist/app.js` — single ESM file, production jsx-runtime forced. The
- *   shared-runtime modules (react ×5, @bb/plugin-sdk/app, the portaling
+ *   shared-runtime modules (react ×5, @get-bb/plugin-sdk/app, the portaling
  *   radix families, sonner, vaul — see RUNTIME_SLOT_BY_SPECIFIER) are never
  *   bundled; an esbuild plugin swaps them for shims that read
  *   `globalThis.__bbPluginRuntime` — the host app provides one React, so a
@@ -50,13 +50,24 @@ import { validatePluginBuildManifest } from "./plugin-manifest.js";
  * tailwind-merge, lucide-react, form/calendar/chart libs) bundles from the
  * plugin's own node_modules.
  */
+/** The SDK app subpath plugin sources import. */
+const PLUGIN_SDK_APP_SPECIFIER = "@get-bb/plugin-sdk/app";
+
+/**
+ * Legacy alias for {@link PLUGIN_SDK_APP_SPECIFIER}, kept so pre-rename plugin
+ * sources still build. It resolves to the same runtime slot and the same
+ * export list; a later change removes it.
+ */
+const LEGACY_PLUGIN_SDK_APP_SPECIFIER = "@bb/plugin-sdk/app";
+
 export const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
   react: "react",
   "react-dom": "reactDom",
   "react-dom/client": "reactDomClient",
   "react/jsx-runtime": "jsxRuntime",
   "react/jsx-dev-runtime": "jsxDevRuntime",
-  "@bb/plugin-sdk/app": "pluginSdkApp",
+  [PLUGIN_SDK_APP_SPECIFIER]: "pluginSdkApp",
+  [LEGACY_PLUGIN_SDK_APP_SPECIFIER]: "pluginSdkApp",
   "@pierre/diffs": "pierreDiffs",
   "@pierre/diffs/react": "pierreDiffsReact",
   "@radix-ui/react-alert-dialog": "radixAlertDialog",
@@ -74,7 +85,7 @@ export const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
 };
 
 /**
- * Named exports of `@bb/plugin-sdk/app` are read from a fresh facade module on
+ * Named exports of `@get-bb/plugin-sdk/app` are read from a fresh facade module on
  * every app build. The dev server stays alive while the SDK source changes, so
  * retaining the first module namespace here would make newly-added exports
  * unavailable to every subsequent plugin rebuild until the server restarted.
@@ -96,16 +107,21 @@ async function freshModuleExports(moduleUrl: string): Promise<string[]> {
 }
 
 async function shimExportsOf(
-  specifier: string,
+  requestedSpecifier: string,
   pluginSdkAppModuleUrl: string | undefined,
 ): Promise<readonly string[]> {
-  if (specifier === "@bb/plugin-sdk/app") {
+  // The legacy SDK alias shares the new specifier's exports and manifest entry.
+  const specifier =
+    requestedSpecifier === LEGACY_PLUGIN_SDK_APP_SPECIFIER
+      ? PLUGIN_SDK_APP_SPECIFIER
+      : requestedSpecifier;
+  if (specifier === PLUGIN_SDK_APP_SPECIFIER) {
     if (pluginSdkAppModuleUrl !== undefined) {
       return freshModuleExports(pluginSdkAppModuleUrl);
     }
     let resolvedModuleUrl: string;
     try {
-      resolvedModuleUrl = import.meta.resolve("@bb/plugin-sdk/app");
+      resolvedModuleUrl = import.meta.resolve(PLUGIN_SDK_APP_SPECIFIER);
     } catch {
       // The built CLI bundles @bb/plugin-build but does not install
       // plugin-build's dependency as a directly resolvable package. Do not

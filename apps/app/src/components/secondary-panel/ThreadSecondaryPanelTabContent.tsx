@@ -136,9 +136,9 @@ function ThreadDiffSkeleton({
  * The diff tab body. Fetches the diff's table of contents
  * ({@link useEnvironmentDiffFiles}) and renders it through the virtualized
  * {@link DiffFilesPanel}, which fetches per-file patches on demand as rows
- * scroll into view. Handles the TOC's loading / empty / `not_applicable`
- * (`too_many_files`) / `unavailable` states; per-file patch errors surface as
- * retryable card errors inside the panel.
+ * scroll into view. Handles the TOC's loading / empty / `not_applicable` /
+ * `unavailable` states; per-file patch errors surface as retryable card errors
+ * inside the panel.
  */
 export function GitDiffTabContent({
   environmentId,
@@ -269,23 +269,34 @@ export function GitDiffTabContent({
   }
 
   return (
-    <DiffFilesPanel
-      environmentId={environmentId}
-      target={target}
-      diffIdentity={diffIdentity}
-      files={diffFilesResponse.files}
-      initialPatches={diffFilesResponse.initialPatches}
-      filesUpdatedAt={diffFilesUpdatedAt}
-      diffViewOptions={gitDiffViewOptions}
-      filePathRoot={workspaceRootPath}
-      isPlaceholderData={isDiffFilesPlaceholder}
-      scrollToPath={pendingGitDiffScrollPath}
-      onScrolledToPath={onClearPendingGitDiffIntent}
-      onOpenFileInEditor={onOpenFileInEditor}
-      onOpenFilePreview={onOpenFilePreview}
-      onRequestFileContents={onRequestFileContents}
-      onSelectionAddToChat={onSelectionAddToChat}
-    />
+    <div className="flex min-h-0 flex-1 flex-col">
+      {diffFilesResponse.truncated ? (
+        <div
+          role="status"
+          className="mx-4 mb-2 rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs text-muted-foreground"
+        >
+          Showing the first {diffFilesResponse.files.length} changed files.
+          Additional changes are omitted.
+        </div>
+      ) : null}
+      <DiffFilesPanel
+        environmentId={environmentId}
+        target={target}
+        diffIdentity={diffIdentity}
+        files={diffFilesResponse.files}
+        initialPatches={diffFilesResponse.initialPatches}
+        filesUpdatedAt={diffFilesUpdatedAt}
+        diffViewOptions={gitDiffViewOptions}
+        filePathRoot={workspaceRootPath}
+        isPlaceholderData={isDiffFilesPlaceholder}
+        scrollToPath={pendingGitDiffScrollPath}
+        onScrolledToPath={onClearPendingGitDiffIntent}
+        onOpenFileInEditor={onOpenFileInEditor}
+        onOpenFilePreview={onOpenFilePreview}
+        onRequestFileContents={onRequestFileContents}
+        onSelectionAddToChat={onSelectionAddToChat}
+      />
+    </div>
   );
 }
 

@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type {
   AgentRuntime,
+  AgentRuntimeBridgeLaunch,
   AgentRuntimeExecutionOptions,
   AgentRuntimeProviderSession,
 } from "@bb/agent-runtime";
@@ -15,7 +16,10 @@ import type {
   GitHostPullRequest,
   PromptInput,
 } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonAcpLaunchSpec,
+  HostDaemonBridgeLaunch,
+} from "@bb/host-daemon-contract";
 import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import type {
   HostWorkspace,
@@ -30,6 +34,12 @@ import type { FetchProjectAttachment } from "../../src/project-attachments.js";
 
 const tempDirs: string[] = [];
 const execFileAsync = promisify(execFile);
+/** Dispatch's diagnostic logger; tests that assert on logs pass their own. */
+export const silentLogger: CommandDispatchOptions["logger"] = {
+  debug: () => undefined,
+  warn: () => undefined,
+};
+
 export const unexpectedProjectAttachmentFetch: FetchProjectAttachment =
   async () => {
     throw new Error("Unexpected project attachment fetch");
@@ -75,6 +85,7 @@ export interface FakeRuntimeThreadControls {
 }
 
 interface FakeRuntimeState {
+  archivedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   archivedProviderId: string | undefined;
   archivedProviderThreadId: string | undefined;
   archivedThreadId: string | undefined;
@@ -89,6 +100,7 @@ interface FakeRuntimeState {
   renamedTitle: string | undefined;
   resumedDynamicTools: DynamicTool[] | undefined;
   resumedAcpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
+  resumedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   resumedEnvironmentId: string | undefined;
   resumedInstructions: string | undefined;
   resumedOptions: AgentRuntimeExecutionOptions | undefined;
@@ -98,6 +110,7 @@ interface FakeRuntimeState {
   shutdownCount: number;
   startedDynamicTools: DynamicTool[] | undefined;
   startedAcpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
+  startedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   startedEnvironmentId: string | undefined;
   startedInput: PromptInput[] | undefined;
   startedInputGroups: PromptInput[][] | undefined;
@@ -111,6 +124,7 @@ interface FakeRuntimeState {
   steeredTurnInstructions: string | undefined;
   steeredTurnOptions: AgentRuntimeExecutionOptions | undefined;
   stoppedThreadId: string | undefined;
+  unarchivedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   unarchivedProviderId: string | undefined;
   unarchivedProviderThreadId: string | undefined;
   unarchivedThreadId: string | undefined;
@@ -204,6 +218,7 @@ export function createFakeWorkspace(pathname: string) {
         files: [],
         shortstat: "",
         mergeBaseRef: null,
+        truncated: false,
       };
     },
     async diffPatch() {
@@ -261,6 +276,7 @@ export function createFakeWorkspace(pathname: string) {
 
 export function createFakeRuntime() {
   const state: FakeRuntimeState = {
+    archivedBridgeLaunch: undefined,
     archivedProviderId: undefined,
     archivedProviderThreadId: undefined,
     archivedThreadId: undefined,
@@ -275,6 +291,7 @@ export function createFakeRuntime() {
     renamedTitle: undefined,
     resumedDynamicTools: undefined,
     resumedAcpLaunchSpec: undefined,
+    resumedBridgeLaunch: undefined,
     resumedEnvironmentId: undefined,
     resumedInstructions: undefined,
     resumedOptions: undefined,
@@ -284,6 +301,7 @@ export function createFakeRuntime() {
     shutdownCount: 0,
     startedDynamicTools: undefined,
     startedAcpLaunchSpec: undefined,
+    startedBridgeLaunch: undefined,
     startedEnvironmentId: undefined,
     startedInput: undefined,
     startedInputGroups: undefined,
@@ -297,6 +315,7 @@ export function createFakeRuntime() {
     steeredTurnInstructions: undefined,
     steeredTurnOptions: undefined,
     stoppedThreadId: undefined,
+    unarchivedBridgeLaunch: undefined,
     unarchivedProviderId: undefined,
     unarchivedProviderThreadId: undefined,
     unarchivedThreadId: undefined,
@@ -333,6 +352,7 @@ export function createFakeRuntime() {
     async ensureProvider() {},
     async startThread(args) {
       state.startedAcpLaunchSpec = args.acpLaunchSpec;
+      state.startedBridgeLaunch = args.bridgeLaunch;
       state.startedEnvironmentId = args.environmentId;
       state.startedThreadId = args.threadId;
       state.startedDynamicTools = args.dynamicTools;
@@ -357,6 +377,7 @@ export function createFakeRuntime() {
     async discardThreadRewind() {},
     async resumeThread(args) {
       state.resumedAcpLaunchSpec = args.acpLaunchSpec;
+      state.resumedBridgeLaunch = args.bridgeLaunch;
       state.resumedEnvironmentId = args.environmentId;
       state.resumedThreadId = args.threadId;
       state.resumedDynamicTools = args.dynamicTools;
@@ -407,6 +428,7 @@ export function createFakeRuntime() {
       state.archivedThreadId = args.threadId;
       state.archivedProviderId = args.providerId;
       state.archivedProviderThreadId = args.providerThreadId;
+      state.archivedBridgeLaunch = args.bridgeLaunch;
       activeTurnsByThreadId.delete(args.threadId);
       providerSessionsByThreadId.delete(args.threadId);
     },
@@ -414,6 +436,7 @@ export function createFakeRuntime() {
       state.unarchivedThreadId = args.threadId;
       state.unarchivedProviderId = args.providerId;
       state.unarchivedProviderThreadId = args.providerThreadId;
+      state.unarchivedBridgeLaunch = args.bridgeLaunch;
     },
     listRunningProviders() {
       return state.runningProviders;
@@ -504,6 +527,7 @@ export function createHarness(
     ): CommandDispatchOptions {
       return {
         dataDir: overrides.dataDir ?? "/tmp/bb-test-data",
+        logger: silentLogger,
         eventSink: noopEventSink,
         fetchProjectAttachment: unexpectedProjectAttachmentFetch,
         runtimeManager: manager,
@@ -521,6 +545,7 @@ export function makeDispatchOptions(
 ): CommandDispatchOptions {
   return {
     dataDir: "/tmp/bb-test-data",
+    logger: silentLogger,
     eventSink: noopEventSink,
     fetchProjectAttachment: unexpectedProjectAttachmentFetch,
     threadStorageRootPath: "/tmp/bb-test-thread-storage",
@@ -548,3 +573,36 @@ export async function cleanupTempDirs(): Promise<void> {
       .map((dir) => fs.rm(dir, { recursive: true, force: true })),
   );
 }
+
+/**
+ * Every bridge-bound command now carries a `bridgeLaunch`. These tests
+ * exercise dispatch and runtime plumbing rather than bridge delivery, so they
+ * name the daemon's own bundled Pi bridge — no artifact fetch — with
+ * permissive capabilities, so no capability gate trips by accident.
+ */
+export const DISPATCH_TEST_BRIDGE_LAUNCH: HostDaemonBridgeLaunch = {
+  pluginId: "provider-pi",
+  source: { kind: "daemon-bundled", id: "pi" },
+  capabilities: {
+    supportsServiceTier: true,
+    permissionModes: ["accept-edits", "auto", "full"],
+    supportsThreadArchive: true,
+    supportsThreadRename: true,
+    fork: "checkpoint",
+  },
+};
+
+/**
+ * The same launch after {@link resolveRuntimeBridgeLaunch}, for tests that call
+ * runtime entry points directly: a daemon-bundled source needs no fetch, but
+ * the resolved shape additionally carries the plugin-scoped directory the
+ * bridge bootstrap hands its bridge.
+ */
+export const DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
+  pluginId: "provider-pi",
+  // Where `resolveRuntimeBridgeLaunch` puts a bridge's plugin-scoped
+  // directory under the helpers' own data dir.
+  dataDir: "/tmp/bb-test-data/plugins/provider-pi/bridge-data",
+  source: { kind: "daemon-bundled", id: "pi" },
+  capabilities: DISPATCH_TEST_BRIDGE_LAUNCH.capabilities,
+};

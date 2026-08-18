@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { Db } from "./data.js";
 import {
   automationOriginSchema,
@@ -146,10 +146,14 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
-function normalizeExecution(row: z.infer<typeof legacyAutomationRowSchema>): string {
+function normalizeExecution(
+  row: z.infer<typeof legacyAutomationRowSchema>,
+): string {
   const execution = legacyExecutionSchema.parse(JSON.parse(row.execution));
   if (execution.mode === "agent") {
-    const environment = agentEnvironmentSchema.parse(JSON.parse(row.environment));
+    const environment = agentEnvironmentSchema.parse(
+      JSON.parse(row.environment),
+    );
     const permissionMode =
       execution.permissionMode === "workspace-write" ||
       execution.permissionMode === "readonly"
@@ -161,10 +165,14 @@ function normalizeExecution(row: z.infer<typeof legacyAutomationRowSchema>): str
   return JSON.stringify(scriptExecution);
 }
 
-function validateTriggerConfig(row: z.infer<typeof legacyAutomationRowSchema>): void {
+function validateTriggerConfig(
+  row: z.infer<typeof legacyAutomationRowSchema>,
+): void {
   const trigger = automationTriggerSchema.parse(JSON.parse(row.triggerConfig));
   if (trigger.triggerType !== row.triggerType) {
-    throw new Error(`Automation ${row.id} triggerType does not match triggerConfig`);
+    throw new Error(
+      `Automation ${row.id} triggerType does not match triggerConfig`,
+    );
   }
 }
 
@@ -174,7 +182,11 @@ export async function ingestLegacyImport(args: {
   pluginDataDir: string;
 }): Promise<void> {
   const done = await args.bb.storage.kv.get<boolean>(LEGACY_IMPORT_DONE_KEY);
-  const importPath = join(args.pluginDataDir, "import", "legacy-automations.json");
+  const importPath = join(
+    args.pluginDataDir,
+    "import",
+    "legacy-automations.json",
+  );
   if (done === true || !(await fileExists(importPath))) return;
 
   const payload = legacyImportFileSchema.parse(
@@ -235,7 +247,9 @@ export async function ingestLegacyImport(args: {
   for (const [automationId, script] of Object.entries(payload.scripts)) {
     const dir = automationScriptDir(args.pluginDataDir, automationId);
     await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, script.fileName), script.content, { mode: 0o700 });
+    await writeFile(join(dir, script.fileName), script.content, {
+      mode: 0o700,
+    });
   }
 
   await args.bb.storage.kv.set(LEGACY_IMPORT_DONE_KEY, true);

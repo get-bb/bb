@@ -24,10 +24,7 @@ import {
 import {
   evaluatePopupRate,
   isAllowedBrowserUrl,
-  localRequestOriginKey,
-  resolveRequestingFrameLocalOriginKey,
   resolveWindowOpenAction,
-  shouldBlockBrowserRequest,
 } from "./desktop-browser-policy.js";
 
 // At most this many popup → in-panel tabs may be spawned per view in a sliding
@@ -65,7 +62,6 @@ const ERR_ABORTED = -3;
 interface BrowserViewEntry {
   view: WebContentsView;
   lastErrorText: string | null;
-  currentMainFrameLocalOriginKey: string | null;
   /**
    * The last renderer-measured panel rect. The renderer is the placement
    * authority — it re-measures and pushes whenever its layout actually moves
@@ -248,39 +244,6 @@ function setEntryDesiredBounds(args: SetEntryDesiredBoundsArgs): void {
   applyEntryDesiredBounds(args.entry, args.hostWindow);
 }
 
-function clearEntryLocalOriginState(entry: BrowserViewEntry): void {
-  entry.currentMainFrameLocalOriginKey = null;
-}
-
-function commitEntryMainFrameUrl(entry: BrowserViewEntry, url: string): void {
-  const committedOriginKey = localRequestOriginKey(url);
-  if (committedOriginKey !== null) {
-    entry.currentMainFrameLocalOriginKey = committedOriginKey;
-    return;
-  }
-  clearEntryLocalOriginState(entry);
-}
-
-function shouldBlockEntryTopLevelRequest(
-  entry: BrowserViewEntry,
-  url: string,
-): boolean {
-  if (!isAllowedBrowserUrl(url)) {
-    return true;
-  }
-  const webContentsId = entry.view.webContents.id;
-  return shouldBlockBrowserRequest({
-    url,
-    method: "GET",
-    resourceType: "mainFrame",
-    isMainFrame: true,
-    targetWebContentsId: webContentsId,
-    entryWebContentsId: webContentsId,
-    currentMainFrameLocalOriginKey: entry.currentMainFrameLocalOriginKey,
-    requestingFrameOriginKey: null,
-  });
-}
-
 function buildBrowserState(
   tabId: string,
   entry: BrowserViewEntry,
@@ -455,39 +418,6 @@ export function createDesktopBrowserViewManager(
     browserSession.on("will-download", (event) => {
       event.preventDefault();
     });
-    // Network firewall: untrusted pages must not invisibly reach bb's loopback
-    // services or the user's LAN. Top-level http(s) navigation remains allowed;
-    // subresources, fetch/XHR, iframes, and WebSockets are guarded here.
-    browserSession.webRequest.onBeforeRequest((details, callback) => {
-      const targetWebContentsId = details.webContentsId ?? null;
-      const entry =
-        targetWebContentsId === null
-          ? null
-          : (entriesByWebContentsId.get(targetWebContentsId) ?? null);
-      const attributedEntry =
-        entry === null || entry.view.webContents.isDestroyed() ? null : entry;
-      const isMainFrameRequest = details.resourceType === "mainFrame";
-      callback({
-        cancel: shouldBlockBrowserRequest({
-          url: details.url,
-          method: details.method,
-          resourceType: details.resourceType,
-          isMainFrame: isMainFrameRequest,
-          targetWebContentsId,
-          entryWebContentsId: attributedEntry?.view.webContents.id ?? null,
-          currentMainFrameLocalOriginKey:
-            attributedEntry?.currentMainFrameLocalOriginKey ?? null,
-          requestingFrameOriginKey: resolveRequestingFrameLocalOriginKey({
-            origin: details.frame?.origin,
-            url: details.frame?.url,
-            // Electron blanks `frame.origin` for a document's initial
-            // subresources; fall back to the top frame's URL so a same-origin
-            // SPA dev server (Vite, etc.) is not blocked into a blank page.
-            isTopFrame: details.frame?.parent === null,
-          }),
-        }),
-      });
-    });
     hardenedSession = browserSession;
     return browserSession;
   }
@@ -543,12 +473,12 @@ export function createDesktopBrowserViewManager(
       if (!event.isMainFrame) {
         return;
       }
-      if (shouldBlockEntryTopLevelRequest(entry, event.url)) {
+      if (!isAllowedBrowserUrl(event.url)) {
         event.preventDefault();
       }
     });
     webContents.on("will-navigate", (event, url) => {
-      if (shouldBlockEntryTopLevelRequest(entry, url)) {
+      if (!isAllowedBrowserUrl(url)) {
         event.preventDefault();
       }
     });
@@ -556,7 +486,7 @@ export function createDesktopBrowserViewManager(
       if (!isMainFrame) {
         return;
       }
-      if (shouldBlockEntryTopLevelRequest(entry, url)) {
+      if (!isAllowedBrowserUrl(url)) {
         event.preventDefault();
       }
     });
@@ -648,15 +578,11 @@ export function createDesktopBrowserViewManager(
     });
     webContents.on("did-start-loading", refresh);
     webContents.on("did-stop-loading", refresh);
-    webContents.on("did-navigate", (_event, url) => {
-      commitEntryMainFrameUrl(entry, url);
+    webContents.on("did-navigate", () => {
       entry.lastErrorText = null;
       refresh();
     });
-    webContents.on("did-navigate-in-page", (_event, url, isMainFrame) => {
-      if (isMainFrame) {
-        commitEntryMainFrameUrl(entry, url);
-      }
+    webContents.on("did-navigate-in-page", () => {
       refresh();
     });
     webContents.on("did-start-navigation", () => {
@@ -699,7 +625,6 @@ export function createDesktopBrowserViewManager(
     const entry: BrowserViewEntry = {
       view,
       lastErrorText: null,
-      currentMainFrameLocalOriginKey: null,
       desiredBounds: args.desiredBounds,
       popupTimestamps: [],
       rendererRecoveryAttempts: 0,
@@ -741,7 +666,6 @@ export function createDesktopBrowserViewManager(
     entries.delete(key);
     entriesByWebContentsId.delete(entry.view.webContents.id);
     clearEntryRendererRecoveryTimer(entry);
-    clearEntryLocalOriginState(entry);
     if (!hostWindow.isDestroyed()) {
       hostWindow.contentView.removeChildView(entry.view);
     }
@@ -899,7 +823,6 @@ export function createDesktopBrowserViewManager(
         entries.delete(key);
         entriesByWebContentsId.delete(entry.view.webContents.id);
         clearEntryRendererRecoveryTimer(entry);
-        clearEntryLocalOriginState(entry);
         if (!entry.view.webContents.isDestroyed()) {
           entry.view.webContents.close();
         }
@@ -911,7 +834,6 @@ export function createDesktopBrowserViewManager(
         entries.delete(key);
         entriesByWebContentsId.delete(entry.view.webContents.id);
         clearEntryRendererRecoveryTimer(entry);
-        clearEntryLocalOriginState(entry);
         if (!entry.view.webContents.isDestroyed()) {
           entry.view.webContents.close();
         }

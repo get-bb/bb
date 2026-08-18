@@ -227,6 +227,12 @@ interface ProviderErrorArgs extends ProviderTurnEventOptions {
   willRetry?: boolean;
 }
 
+interface ProviderWarningArgs extends ProviderTurnEventOptions {
+  category?: ThreadEventWarningCategory;
+  details?: string;
+  summary?: string;
+}
+
 interface SystemOperationArgs extends EventFactoryRowOptions {
   message: string;
   metadata?: Record<string, JsonValue>;
@@ -323,6 +329,9 @@ export interface TimelineEventFactory {
   providerUnhandled(
     args?: ProviderUnhandledArgs,
   ): ThreadEventRowOfType<"provider/unhandled">;
+  providerWarning(
+    args?: ProviderWarningArgs,
+  ): ThreadEventRowOfType<"provider/warning">;
   providerUserMessage(
     args: ProviderUserMessageArgs,
   ): ThreadEventRowOfType<"item/completed">;
@@ -810,6 +819,19 @@ export function createTimelineEventFactory(
           message: args.message,
           detail: args.detail,
           willRetry: args.willRetry,
+        },
+      };
+    },
+    providerWarning(args = {}) {
+      const base = nextProviderTurnScopedRowBase("provider-warning", args);
+      return {
+        ...base,
+        type: "provider/warning",
+        data: {
+          ...providerFields(args),
+          category: args.category ?? "general",
+          summary: args.summary,
+          details: args.details,
         },
       };
     },

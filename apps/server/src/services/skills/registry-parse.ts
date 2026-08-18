@@ -138,7 +138,12 @@ export function registrySkillUrl(id: string): string {
     .join("/")}`;
 }
 
-export function parsePublicHomepageSkills(html: string): RegistrySkill[] {
+/**
+ * Parses the skill records embedded in a skills.sh directory page. Both `/`
+ * and `/trending` serialize them identically; only the meaning of `installs`
+ * differs, which the caller carries as the page's ranking.
+ */
+export function parsePublicDirectorySkills(html: string): RegistrySkill[] {
   const byId = new Map<string, RegistrySkill>();
   const pattern =
     /\\"source\\":\\"([^"\\]+)\\",\\"skillId\\":\\"([^"\\]+)\\",\\"name\\":\\"([^"\\]+)\\",\\"installs\\":(\d+)/gu;

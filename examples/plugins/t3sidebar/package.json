@@ -6,7 +6,7 @@
   "description": "An inbox-style sidebar: one flat list of cards that never re-orders.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": "^0.4.1"
+    "bbPluginSdk": ">=0.4.3"
   },
   "bb": {
     "name": "t3sidebar",
@@ -32,7 +32,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@bb/plugin-sdk": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",

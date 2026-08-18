@@ -15,7 +15,6 @@ function fetchReturning(body: unknown, status = 200): typeof fetch {
     });
 }
 
-
 function recordingFetch(body: unknown, status = 200) {
   const calls: { url: string; init: RequestInit | undefined }[] = [];
   const impl = fetchReturning(body, status);
@@ -128,8 +127,15 @@ describe("plugin catalog queries", () => {
             displayName: "Todoist",
             description: "Personal task capture",
             icon: "CheckList",
+            iconUrl: null,
             category: "Project management",
             source: "npm:@bb-plugins/todoist",
+            marketplace: "acme-plugins",
+            marketplaceDisplayName: "Acme Plugins",
+            publisherKey: "acme-plugins",
+            publisherLabel: "Acme Plugins",
+            official: false,
+            author: { name: "Acme", url: "https://acme.dev" },
             installed: false,
             compatible: false,
             incompatibleReason: "requires bb >= 0.15",
@@ -145,8 +151,15 @@ describe("plugin catalog queries", () => {
         displayName: "Todoist",
         description: "Personal task capture",
         icon: "CheckList",
+        iconUrl: null,
         category: "Project management",
         source: "npm:@bb-plugins/todoist",
+        marketplace: "acme-plugins",
+        marketplaceDisplayName: "Acme Plugins",
+        publisherKey: "acme-plugins",
+        publisherLabel: "Acme Plugins",
+        official: false,
+        author: { name: "Acme", url: "https://acme.dev" },
         installed: false,
         compatible: false,
         incompatibleReason: "requires bb >= 0.15",

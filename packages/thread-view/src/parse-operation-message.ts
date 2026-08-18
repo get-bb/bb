@@ -54,22 +54,17 @@ type UserQuestionLifecycleEvent = Extract<
   { type: "system/userQuestion/lifecycle" }
 >;
 
+/**
+ * The server resolves the display name from the provider registry (or the
+ * dynamic ACP tier) and passes it in. A hardcoded four-provider table used to
+ * shadow it, which produced the same strings for those four and the raw id for
+ * everyone else.
+ */
 function providerDisplayName(
   providerId: string,
   projectedDisplayName: string | undefined,
 ): string {
-  switch (providerId) {
-    case "claude-code":
-      return "Claude Code";
-    case "codex":
-      return "Codex";
-    case "pi":
-      return "Pi";
-    case "acp-cursor":
-      return "Cursor";
-    default:
-      return projectedDisplayName?.trim() || providerId;
-  }
+  return projectedDisplayName?.trim() || providerId;
 }
 
 function normalizeThreadOperationKind(

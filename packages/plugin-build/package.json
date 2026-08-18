@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@bb/domain": "workspace:*",
-    "@bb/plugin-sdk": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
     "saxes": "^6.0.0"
   },
   "devDependencies": {

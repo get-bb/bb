@@ -18,10 +18,8 @@ import {
   AutomationRunStatusIndicator,
 } from "bb-plugin-automations/detail-view";
 import { AUTOMATION_CREATE_TEMPLATES } from "bb-plugin-automations/overview-view";
-import {
-  pluginSourceQueryKey,
-  type PluginCatalogSearchEntry,
-} from "@/hooks/queries/plugin-catalog-queries";
+import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
+import { pluginSourceQueryKey } from "@/hooks/queries/query-keys";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
@@ -54,7 +52,7 @@ import {
  * These are the whole Extensions detail story surface, deliberately. Anything a running
  * server would show you is better seen in the running app, and anything that
  * must not regress belongs in a test — `detail-page-recipes.test.tsx` pins
- * section order and labels, `SkillsView.test.tsx` and `ToolsSidebar.test.tsx`
+ * section order and labels, `SkillsView.test.tsx`
  * pin routing. What is left, and what these cover, is the states a healthy
  * local server will not produce on demand: loading, missing, failed, empty,
  * and disabled — plus content ugly enough to break a layout.
@@ -404,6 +402,7 @@ const PLUGIN: PluginListItem = {
   provenance: "direct",
   isOrphanedBuiltin: false,
   catalogEntryId: null,
+  publisherLabel: null,
   sourceDisplay: "npm · @bb-plugins/github",
   updateState: EMPTY_PLUGIN_UPDATE_STATE,
 };
@@ -560,12 +559,19 @@ const BUNDLED_PLUGIN: PluginListItem = {
 
 const UNINSTALLED_CATALOG_PLUGIN = {
   entryId: "github",
+  marketplace: "bb-community",
   pluginId: "github",
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests without leaving bb.",
   icon: "Github",
+  iconUrl: null,
   category: "Developer tools",
   source: "builtin:github",
+  marketplaceDisplayName: "BB Community",
+  publisherKey: "builtin",
+  publisherLabel: "BB Official",
+  official: true,
+  author: null,
   installed: false,
   compatible: true,
   incompatibleReason: null,
@@ -689,8 +695,12 @@ function CatalogPlugin({
         open={installOpen}
         initial={{
           entryId: entry.entryId,
+          marketplace: "bb-community",
+          publisherLabel: "BB Community",
           displayName: entry.displayName,
           icon: entry.icon,
+          iconUrl: entry.iconUrl,
+          source: entry.source,
         }}
         onOpenChange={setInstallOpen}
       />
@@ -1098,6 +1108,7 @@ const CATALOG_PLUGIN = {
   id: "github-official",
   provenance: "catalog",
   catalogEntryId: "github",
+  publisherLabel: "BB Community",
 } satisfies PluginListItem;
 
 const pluginUninstallItems = [
@@ -1109,10 +1120,18 @@ const pluginUninstallItems = [
   },
 ];
 
+const pluginCatalogItems = [
+  {
+    label: "Uninstall",
+    icon: "Trash2" as const,
+    tone: "destructive" as const,
+    onSelect: noop,
+  },
+];
+
 const pluginLocalItems = [
   { label: "Edit", icon: "Edit" as const, onSelect: noop },
   { label: "Open source", icon: "ExternalLink" as const, onSelect: noop },
-  { kind: "separator" as const },
   {
     label: "Remove from bb",
     icon: "Trash2" as const,
@@ -1315,14 +1334,24 @@ export function ResourceControlStates() {
             meaning="A plugin mutation is in flight, so the lifecycle switch cannot race it."
           />
           <ControlRow
-            state="Installed actions"
+            state="Direct installed actions"
             control={
               <ResourceOverflowMenu
                 label="Direct plugin actions"
                 items={pluginUninstallItems}
               />
             }
-            meaning="Direct and catalog installs can be uninstalled from the ownership menu."
+            meaning="Direct installs can be submitted to the marketplace or uninstalled."
+          />
+          <ControlRow
+            state="Catalog installed actions"
+            control={
+              <ResourceOverflowMenu
+                label="Catalog plugin actions"
+                items={pluginCatalogItems}
+              />
+            }
+            meaning="Official catalog installs are already published, so their ownership menu only offers uninstall."
           />
           <ControlRow
             state="Local actions"
@@ -1332,7 +1361,7 @@ export function ResourceControlStates() {
                 items={pluginLocalItems}
               />
             }
-            meaning="Local sources can be edited, opened, or removed from bb without deleting the source directory."
+            meaning="Local sources can be edited, opened, submitted to the marketplace, or removed from bb without deleting the source directory."
           />
           <ControlRow
             state="BB Official built-in actions"

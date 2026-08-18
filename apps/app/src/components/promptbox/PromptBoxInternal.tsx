@@ -4,10 +4,10 @@ import type {
   PromptMentionCommandTrigger,
   PromptTextMention,
 } from "@bb/domain";
-import type { ComposerView } from "@bb/plugin-sdk";
+import type { ComposerView } from "@get-bb/plugin-sdk";
 import type { Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
-import { EditorContent, useEditor, type Editor } from "@tiptap/react";
+import { useEditor, type Editor } from "@tiptap/react";
 import {
   useCallback,
   useEffect,
@@ -44,25 +44,25 @@ import { findActiveTrigger } from "@/components/promptbox/mentions/find-active-t
 import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import { ComposerActionsSlot } from "@/components/plugin/PluginComposerActions";
+import { useResolvedComposerEditor } from "@/components/plugin/composer-slot-hooks";
 import {
-  PluginComposerActions,
-  usePluginComposerPlusMenuContributions,
-} from "@/components/plugin/PluginComposerActions";
-import {
+  composerScopeIdentity,
   PluginComposerViewProvider,
   useOptionalPluginComposerView,
   usePluginComposerHost,
   usePluginComposerViewModel,
 } from "@/components/plugin/plugin-composer-host";
-import { composerCustomizationsForScope } from "@/components/plugin/composer-customizations";
 import { useComposerInputLock } from "@/lib/plugin-sdk-hooks";
-import { usePluginSlots } from "@/lib/plugin-slots";
 import {
   COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
   COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
-  COARSE_POINTER_TEXT_BASE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import {
+  getMediaQuerySnapshot,
+  REDUCED_MOTION_QUERY,
+} from "@bb/shared-ui/hooks/use-media-query";
 import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
 import {
@@ -80,13 +80,10 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { VoiceRecordingBar } from "./VoiceRecordingBar";
 import {
-  PromptBoxActionsMenu,
+  ComposerPlusMenuSlot,
   type PromptBoxAction,
 } from "./PromptBoxActionsMenu";
-import {
-  PromptMentionLinkContext,
-  type PromptMentionLinkResolver,
-} from "./editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "./editor/prompt-mention-link";
 import {
   refreshPromptDecorations,
   type PromptDecorationSource,
@@ -115,6 +112,7 @@ import { applyPromptListNewline } from "./editor/prompt-editor-list";
 import { applyPromptParagraphNewline } from "./editor/prompt-editor-paragraph";
 import { MentionMenu, type TypeaheadSuggestion } from "./mentions/MentionMenu";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
+import { ComposerEditorSlot } from "./ComposerEditorSlot";
 
 const PROMPTBOX_MIN_HEIGHT = 68;
 const PROMPTBOX_SELECTION_REVEAL_MARGIN = 12;
@@ -189,13 +187,25 @@ const ZEN_MODE_HEIGHT_CLASS: Record<ZenModeLayout, string> = {
   "root-compose": "h-[70dvh]",
 };
 
-const PROMPTBOX_MAX_HEIGHT_BY_LAYOUT: Record<ZenModeLayout, string> = {
-  thread: "50dvh",
-  "root-compose": "70dvh",
-};
-
 const COLLAPSING_GRID_CLASS =
   "grid transition-[grid-template-rows] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none";
+const VOICE_ACTION_TRANSITION_MS = 180;
+type VoiceActionTransition = "entering" | "active" | "exiting";
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+function shouldFinishVoiceCompletionTransitionImmediately(): boolean {
+  return (
+    prefersReducedMotion() ||
+    (typeof document !== "undefined" && document.visibilityState === "hidden")
+  );
+}
 
 export interface PromptBoxSubmissionConfig {
   isSubmitting?: boolean;
@@ -327,6 +337,8 @@ export interface PromptBoxHandle {
   insertTextAtCursor: (text: string) => void;
   /** Return the trimmed text before the cursor, used as voice transcript context. */
   getTextBeforeCursor: () => string | undefined;
+  /** Exit the voice controls before inserting a completed transcript. */
+  playVoiceCompletionTransition: () => Promise<void>;
 }
 
 export type { PromptBoxAction } from "./PromptBoxActionsMenu";
@@ -1230,6 +1242,9 @@ export function PromptBoxInternal({
     useState<PromptDraftState | null>(null);
   const [recalledHistoryDraft, setRecalledHistoryDraft] =
     useState<PromptDraftState | null>(null);
+  // Mark session transitions before dispatching state so overlapping React
+  // priorities cannot enqueue the same multi-state reset more than once.
+  const hasActiveHistorySessionRef = useRef(false);
   const resolvedZenModeStorageKey =
     zenModeStorageKey ?? ZEN_MODE_STORAGE_KEY[zenModeLayout];
   const zenModeAtom = useMemo(
@@ -1251,16 +1266,132 @@ export function PromptBoxInternal({
   const isVoiceProcessing = voice?.state === "transcribing";
   const showVoiceActionGroup = isVoiceRecording || isVoiceProcessing;
   const isVoiceBusy = showVoiceActionGroup;
-  // Zen styling is suppressed while the voice bar shows, since the box
-  // collapses to the pill instead.
-  const showZenLayout = isZenMode && !showVoiceActionGroup;
+  const voiceActionState = isVoiceRecording
+    ? "recording"
+    : isVoiceProcessing
+      ? "transcribing"
+      : null;
+  const lastVoiceActionStateRef = useRef<"recording" | "transcribing">(
+    voiceActionState ?? "recording",
+  );
+  const renderedVoiceActionState =
+    voiceActionState ?? lastVoiceActionStateRef.current;
+  useLayoutEffect(() => {
+    if (voiceActionState !== null) {
+      lastVoiceActionStateRef.current = voiceActionState;
+    }
+  }, [voiceActionState]);
+  const [isVoiceActionPresent, setIsVoiceActionPresent] =
+    useState(showVoiceActionGroup);
+  const [voiceActionTransition, setVoiceActionTransition] =
+    useState<VoiceActionTransition>(
+      showVoiceActionGroup ? "active" : "exiting",
+    );
+  const isVoiceActionVisible = voiceActionTransition === "active";
+  const wasVoiceActionShownRef = useRef(showVoiceActionGroup);
+  const voiceActionRevealFrameRef = useRef<number | null>(null);
+  const voiceActionRemovalTimeoutRef = useRef<number | null>(null);
+  const voiceCompletionTimeoutRef = useRef<number | null>(null);
+  const voiceCompletionPromiseRef = useRef<Promise<void> | null>(null);
+  const voiceCompletionResolveRef = useRef<(() => void) | null>(null);
+
+  useLayoutEffect(() => {
+    const wasVoiceActionShown = wasVoiceActionShownRef.current;
+    wasVoiceActionShownRef.current = showVoiceActionGroup;
+    if (voiceActionRevealFrameRef.current !== null) {
+      window.cancelAnimationFrame(voiceActionRevealFrameRef.current);
+      voiceActionRevealFrameRef.current = null;
+    }
+    if (voiceActionRemovalTimeoutRef.current !== null) {
+      window.clearTimeout(voiceActionRemovalTimeoutRef.current);
+      voiceActionRemovalTimeoutRef.current = null;
+    }
+
+    if (showVoiceActionGroup) {
+      setIsVoiceActionPresent(true);
+      if (wasVoiceActionShown || prefersReducedMotion()) {
+        setVoiceActionTransition("active");
+        return;
+      }
+      setVoiceActionTransition("entering");
+      voiceActionRevealFrameRef.current = window.requestAnimationFrame(() => {
+        voiceActionRevealFrameRef.current = null;
+        setVoiceActionTransition("active");
+      });
+      return;
+    }
+
+    setVoiceActionTransition("exiting");
+    if (!wasVoiceActionShown) {
+      setIsVoiceActionPresent(false);
+      return;
+    }
+    if (prefersReducedMotion()) {
+      setIsVoiceActionPresent(false);
+      return;
+    }
+    voiceActionRemovalTimeoutRef.current = window.setTimeout(() => {
+      voiceActionRemovalTimeoutRef.current = null;
+      setIsVoiceActionPresent(false);
+    }, VOICE_ACTION_TRANSITION_MS);
+  }, [showVoiceActionGroup]);
+
+  useEffect(
+    () => () => {
+      if (voiceActionRevealFrameRef.current !== null) {
+        window.cancelAnimationFrame(voiceActionRevealFrameRef.current);
+      }
+      if (voiceActionRemovalTimeoutRef.current !== null) {
+        window.clearTimeout(voiceActionRemovalTimeoutRef.current);
+      }
+      if (voiceCompletionTimeoutRef.current !== null) {
+        window.clearTimeout(voiceCompletionTimeoutRef.current);
+      }
+      voiceCompletionResolveRef.current?.();
+    },
+    [],
+  );
+
+  const playVoiceCompletionTransition = useCallback((): Promise<void> => {
+    if (voiceActionRevealFrameRef.current !== null) {
+      window.cancelAnimationFrame(voiceActionRevealFrameRef.current);
+      voiceActionRevealFrameRef.current = null;
+    }
+    setVoiceActionTransition("exiting");
+    if (shouldFinishVoiceCompletionTransitionImmediately()) {
+      if (voiceCompletionTimeoutRef.current !== null) {
+        window.clearTimeout(voiceCompletionTimeoutRef.current);
+        voiceCompletionTimeoutRef.current = null;
+      }
+      const resolvePendingTransition = voiceCompletionResolveRef.current;
+      voiceCompletionPromiseRef.current = null;
+      voiceCompletionResolveRef.current = null;
+      resolvePendingTransition?.();
+      return Promise.resolve();
+    }
+    if (voiceCompletionPromiseRef.current) {
+      return voiceCompletionPromiseRef.current;
+    }
+
+    const transition = new Promise<void>((resolve) => {
+      voiceCompletionResolveRef.current = resolve;
+      voiceCompletionTimeoutRef.current = window.setTimeout(() => {
+        voiceCompletionTimeoutRef.current = null;
+        voiceCompletionPromiseRef.current = null;
+        voiceCompletionResolveRef.current = null;
+        resolve();
+      }, VOICE_ACTION_TRANSITION_MS);
+    });
+    voiceCompletionPromiseRef.current = transition;
+    return transition;
+  }, []);
+  const showZenLayout = isZenMode;
   const showCompactLayout =
     compact?.isCompact === true && !showVoiceActionGroup && !isZenMode;
   const effectivePlaceholder = showCompactLayout
     ? (compact.placeholder ?? placeholder)
     : placeholder;
   const pluginComposerHost = usePluginComposerHost();
-  const { composerCustomizations } = usePluginSlots();
   const composerInputLocked = useComposerInputLock(
     pluginComposerHost?.textEffectKey ?? null,
   );
@@ -1283,41 +1414,30 @@ export function PromptBoxInternal({
   const composerView = useOptionalPluginComposerView() ?? localComposerView;
   const composerViewRef = useRef(composerView);
   composerViewRef.current = composerView;
+  const composerScopeKey = composerScopeIdentity(composerView.scope);
+  const resolvedComposerEditor = useResolvedComposerEditor(
+    suppressPluginComposerCustomizations ? null : composerView.scope.kind,
+  );
   useEffect(() => {
     onComposerLayoutChange?.(composerLayout);
   }, [composerLayout, onComposerLayoutChange]);
   const pluginRichTextContributions = useMemo(() => {
-    if (suppressPluginComposerCustomizations) {
-      return {
-        sources: [] as readonly PromptDecorationSource[],
-        observers: [] as readonly PromptDraftObserver[],
-      };
-    }
-
     const sources: PromptDecorationSource[] = [];
     const observers: PromptDraftObserver[] = [];
-    for (const customization of composerCustomizationsForScope(
-      composerCustomizations,
-      composerView.scope.kind,
-    )) {
-      const richText = customization.richText;
-      if (richText === undefined) continue;
-      const sourceId = `${customization.pluginId}/${customization.id}`;
-      if (richText.effects !== undefined && richText.effects.length > 0) {
-        sources.push({
-          id: sourceId,
-          generation: customization.generation,
-          pluginId: customization.pluginId,
-          effects: richText.effects,
-        });
-      }
-      if (richText.onDraftChange !== undefined) {
-        observers.push({
-          id: sourceId,
-          getView: () => composerViewRef.current,
-          onDraftChange: richText.onDraftChange,
-        });
-      }
+    for (const contribution of resolvedComposerEditor.effects) {
+      sources.push({
+        id: `${contribution.pluginId}/${contribution.customizationId}`,
+        generation: contribution.generation,
+        pluginId: contribution.pluginId,
+        effects: contribution.effects,
+      });
+    }
+    for (const contribution of resolvedComposerEditor.observers) {
+      observers.push({
+        id: `${contribution.pluginId}/${contribution.customizationId}`,
+        getView: () => composerViewRef.current,
+        onDraftChange: contribution.onDraftChange,
+      });
     }
     for (const effectSource of textEffects ?? []) {
       const className = effectSource.effect.className;
@@ -1337,20 +1457,13 @@ export function PromptBoxInternal({
       });
     }
     return { sources, observers };
-  }, [
-    composerCustomizations,
-    composerView.scope,
-    suppressPluginComposerCustomizations,
-    textEffects,
-  ]);
+  }, [resolvedComposerEditor, textEffects]);
   const pluginDecorationSourcesRef = useRef(
     pluginRichTextContributions.sources,
   );
   pluginDecorationSourcesRef.current = pluginRichTextContributions.sources;
   const pluginDraftObserversRef = useRef(pluginRichTextContributions.observers);
   pluginDraftObserversRef.current = pluginRichTextContributions.observers;
-  const pluginPlusMenuItems =
-    usePluginComposerPlusMenuContributions(composerView);
   const focusScopeKey = history?.resetKey;
   const onChangeRef = useRef(onChange);
 
@@ -1648,7 +1761,12 @@ export function PromptBoxInternal({
               promptEditorContentFromValue(pastedValue, {
                 richTextMarkdown: richTextEditing,
               }).content ?? [];
-            currentEditor?.chain().focus().insertContent(pastedContent).run();
+            currentEditor
+              ?.chain()
+              .focus()
+              .insertContent(pastedContent)
+              .setMeta("uiEvent", "paste")
+              .run();
             if (currentEditor && !currentEditor.isDestroyed) {
               const nextValue = trimTrailingPromptNewlines(
                 promptEditorValueFromDoc(currentEditor.state.doc),
@@ -1672,6 +1790,7 @@ export function PromptBoxInternal({
             ?.chain()
             .focus()
             .insertContent(promptEditorInlineContentFromValue(pastedValue))
+            .setMeta("uiEvent", "paste")
             .run();
           return true;
         },
@@ -1683,17 +1802,28 @@ export function PromptBoxInternal({
           mentions: mentionRanges,
         });
       },
-      onSelectionUpdate({ editor: updatedEditor }) {
+      onSelectionUpdate({ editor: updatedEditor, transaction }) {
+        // A typing transaction changes both the document and the selection, so
+        // TipTap emits selectionUpdate immediately before update. Let onUpdate
+        // handle that transaction once. The browser already reveals the caret
+        // for native contenteditable edits; measuring it here with coordsAtPos
+        // forces layout on every keystroke.
+        if (transaction.docChanged) return;
         syncTriggerStateRef.current(updatedEditor);
         scheduleRevealEditorSelection();
       },
-      onUpdate({ editor: updatedEditor }) {
+      onUpdate({ editor: updatedEditor, transaction }) {
         if (skipEditorChangeRef.current) return;
         const nextValue = promptEditorValueFromDoc(updatedEditor.state.doc);
         editorValueKeyRef.current = promptEditorValueKey(nextValue);
         onChangeRef.current(nextValue.text, nextValue.mentions);
         syncTriggerStateRef.current(updatedEditor);
-        scheduleRevealEditorSelection();
+        // Native typing already asks ProseMirror to scroll the selection into
+        // view. Clipboard and drop transactions still need the prompt's custom
+        // scroll-container reveal that originally fixed multiline paste.
+        if (transaction.getMeta("uiEvent") !== undefined) {
+          scheduleRevealEditorSelection();
+        }
       },
       // Rebuild the editor when the rich-text preference toggles so the schema
       // and input rules switch. The editor is otherwise created once; its
@@ -1704,9 +1834,15 @@ export function PromptBoxInternal({
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    const editable = !composerInputLocked;
+    const editable = !composerInputLocked && !isVoiceBusy;
     if (editor.isEditable !== editable) editor.setEditable(editable);
-  }, [composerInputLocked, editor]);
+    editor.view.dom.tabIndex = editable ? 0 : -1;
+    if (editable) {
+      editor.view.dom.removeAttribute("aria-readonly");
+    } else {
+      editor.view.dom.setAttribute("aria-readonly", "true");
+    }
+  }, [composerInputLocked, editor, isVoiceBusy]);
 
   useEffect(() => {
     editorRef.current = editor;
@@ -1715,7 +1851,7 @@ export function PromptBoxInternal({
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     refreshPromptDecorations(editor);
-  }, [editor, pluginRichTextContributions]);
+  }, [composerScopeKey, editor, pluginRichTextContributions]);
 
   useLayoutEffect(() => {
     if (!pendingFocusEndRef.current) return;
@@ -1847,6 +1983,8 @@ export function PromptBoxInternal({
   }, [isZenMode, minHeight, scheduleRevealEditorSelection]);
 
   const resetHistorySession = useCallback(() => {
+    if (!hasActiveHistorySessionRef.current) return;
+    hasActiveHistorySessionRef.current = false;
     setActiveHistoryIndex(null);
     setTemporaryHistoryDraft(null);
     setRecalledHistoryDraft(null);
@@ -1896,7 +2034,7 @@ export function PromptBoxInternal({
     const formElement = formRef.current;
     if (fromHeight === null || !formElement) return;
     heightAnimationFromRef.current = null;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (getMediaQuerySnapshot(REDUCED_MOTION_QUERY)) return;
 
     const previousTransition = formElement.style.transition;
     const previousWillChange = formElement.style.willChange;
@@ -2007,6 +2145,7 @@ export function PromptBoxInternal({
     activeTrigger.char !== DEFAULT_PLUGIN_MENTION_TRIGGER &&
     activeMentionQuery.length === 0;
   const showTypeaheadMenu =
+    !isVoiceBusy &&
     activeTrigger !== null &&
     !isCommandTriggerLiteral &&
     !isBareNonDefaultMentionTrigger;
@@ -2397,8 +2536,15 @@ export function PromptBoxInternal({
       focusEnd,
       insertTextAtCursor,
       getTextBeforeCursor,
+      playVoiceCompletionTransition,
     }),
-    [capturePromptBoxHeight, focusEnd, insertTextAtCursor, getTextBeforeCursor],
+    [
+      capturePromptBoxHeight,
+      focusEnd,
+      getTextBeforeCursor,
+      insertTextAtCursor,
+      playVoiceCompletionTransition,
+    ],
   );
 
   const canSubmit =
@@ -2432,6 +2578,14 @@ export function PromptBoxInternal({
     }
     void voice?.start();
   }, [isPointerCoarse, voice]);
+  const cancelVoiceInput = useCallback(() => {
+    if (voiceActionRevealFrameRef.current !== null) {
+      window.cancelAnimationFrame(voiceActionRevealFrameRef.current);
+      voiceActionRevealFrameRef.current = null;
+    }
+    setVoiceActionTransition("exiting");
+    voice?.cancel();
+  }, [voice]);
   const effectiveSubmitTitle = isZenMode
     ? submitTitle.replace(/^Submit\s+/, "")
     : submitTitle;
@@ -2755,6 +2909,7 @@ export function PromptBoxInternal({
             activeHistoryIndex === null
               ? 0
               : Math.min(activeHistoryIndex + 1, history.entries.length - 1);
+          hasActiveHistorySessionRef.current = true;
           if (activeHistoryIndex === null) {
             setTemporaryHistoryDraft(history.currentDraft);
           }
@@ -2892,16 +3047,15 @@ export function PromptBoxInternal({
   // whole box), instead of leaking to the collapsed editor.
   useEffect(() => {
     if (!showVoiceActionGroup || !voice) return;
-    const cancelVoice = voice.cancel;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopPropagation();
-      cancelVoice();
+      cancelVoiceInput();
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [showVoiceActionGroup, voice]);
+  }, [cancelVoiceInput, showVoiceActionGroup, voice]);
 
   return (
     <form
@@ -2925,8 +3079,6 @@ export function PromptBoxInternal({
       }}
       className={cn(
         "group/promptbox relative w-full rounded-xl border border-border bg-background shadow-lift",
-        "transition-[border-radius] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
-        showVoiceActionGroup && "rounded-3xl",
         showCompactLayout && "overflow-hidden",
         // Zen toggles only the *height* of the box; the inset padding stays
         // identical so the placeholder/text doesn't jump when toggling.
@@ -2946,7 +3098,7 @@ export function PromptBoxInternal({
       <div
         data-promptbox-layout=""
         className={cn(COLLAPSING_GRID_CLASS, showZenLayout && "min-h-0 flex-1")}
-        style={{ gridTemplateRows: showVoiceActionGroup ? "0fr" : "1fr" }}
+        style={{ gridTemplateRows: "1fr" }}
       >
         <div
           data-promptbox-main=""
@@ -2954,7 +3106,7 @@ export function PromptBoxInternal({
             "min-h-0 overflow-hidden transition-opacity duration-[180ms] motion-reduce:transition-none",
             isZenMode && "flex flex-col",
             showCompactLayout && "relative h-12",
-            showVoiceActionGroup && "pointer-events-none opacity-0",
+            showVoiceActionGroup && "pointer-events-none",
           )}
         >
           {header && !showCompactLayout ? (
@@ -2965,12 +3117,14 @@ export function PromptBoxInternal({
             // mode also gets more top room since the card fills the viewport.
             <div
               data-promptbox-expanded-only=""
+              inert={showVoiceActionGroup ? true : undefined}
               className={cn("pl-4 pr-14 pt-3", compact && "pr-14")}
             >
               {header}
             </div>
           ) : null}
           <div
+            data-promptbox-input-region=""
             className={cn(
               "relative",
               isZenMode && "min-h-0 flex flex-1 flex-col",
@@ -2986,6 +3140,8 @@ export function PromptBoxInternal({
                 </div>
                 <div
                   data-promptbox-expanded-only=""
+                  data-promptbox-standard-actions=""
+                  inert={showVoiceActionGroup ? true : undefined}
                   className="absolute right-2 top-2 z-20 flex items-center gap-0.5"
                 >
                   {isZenMode ? (
@@ -3027,87 +3183,17 @@ export function PromptBoxInternal({
                 </div>
               </>
             ) : null}
-            <div
-              ref={editorScrollContainerRef}
-              data-promptbox-editor-scroll=""
-              aria-busy={composerInputLocked || undefined}
-              className={cn(
-                "w-full overflow-y-auto bg-transparent px-4 pb-1 pr-14 pt-3 outline-none",
-                COARSE_POINTER_TEXT_BASE_CLASS,
-                // Keep line-height after the text-size class. tailwind-merge treats
-                // text size utilities as owning line-height and would otherwise
-                // drop this, making composer rows tighter than timeline messages.
-                "leading-relaxed",
-                // Zen mode only adds the flex-fill behavior so the editor
-                // stretches to the dvh-sized form. Inset padding (px / pt / pb)
-                // is identical between modes — toggling shouldn't shift the
-                // placeholder position.
-                isZenMode && "min-h-0 flex-1",
-                compact && !isZenMode && "pr-14",
-                showCompactLayout && "h-12 overflow-hidden pb-0 pr-14 pt-0",
-              )}
-              style={{
-                minHeight: isZenMode
-                  ? "0px"
-                  : showCompactLayout
-                    ? "48px"
-                    : `${minHeight}px`,
-                height: isZenMode
-                  ? "100%"
-                  : showCompactLayout
-                    ? "48px"
-                    : undefined,
-                maxHeight: isZenMode
-                  ? "none"
-                  : showCompactLayout
-                    ? "48px"
-                    : PROMPTBOX_MAX_HEIGHT_BY_LAYOUT[zenModeLayout],
-              }}
-            >
-              <PromptMentionLinkContext.Provider
-                value={mentionResolveLink ?? null}
-              >
-                <EditorContent
-                  editor={editor}
-                  // A plugin lock makes the editor non-editable, and
-                  // ProseMirror then skips its own key handlers — including the
-                  // Escape blur above. A lock applied to a focused composer
-                  // would otherwise strand focus there, so release it here.
-                  onKeyDown={(event) => {
-                    if (event.key !== "Escape") return;
-                    if (editor === null || editor.isEditable) return;
-                    event.preventDefault();
-                    blurPromptEditor(editor);
-                  }}
-                  data-promptbox-editor-content=""
-                  data-promptbox-compact-content={
-                    showCompactLayout ? "" : undefined
-                  }
-                  className={cn(
-                    "h-full min-h-full",
-                    showCompactLayout && "flex items-center",
-                    "[&_.ProseMirror]:min-h-full [&_.ProseMirror]:leading-[1.7] [&_.ProseMirror]:outline-none",
-                    "[&_.ProseMirror_p]:m-0",
-                    "[&_.ProseMirror_blockquote]:my-1 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-surface-selected-border [&_.ProseMirror_blockquote]:pl-3 [&_.ProseMirror_blockquote]:text-muted-foreground",
-                    // Markdown formatting styles (mirrors what the timeline renders).
-                    "[&_.ProseMirror_h1]:my-1 [&_.ProseMirror_h1]:text-lg [&_.ProseMirror_h1]:font-semibold",
-                    "[&_.ProseMirror_h2]:my-1 [&_.ProseMirror_h2]:text-base [&_.ProseMirror_h2]:font-semibold",
-                    "[&_.ProseMirror_h3]:my-1 [&_.ProseMirror_h3]:text-sm [&_.ProseMirror_h3]:font-semibold",
-                    "[&_.ProseMirror_h4]:my-1 [&_.ProseMirror_h4]:text-sm [&_.ProseMirror_h4]:font-semibold [&_.ProseMirror_h5]:font-semibold [&_.ProseMirror_h6]:font-semibold",
-                    "[&_.ProseMirror_ul]:my-1 [&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-5",
-                    "[&_.ProseMirror_ol]:my-1 [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-5",
-                    "[&_.ProseMirror_li]:my-0.5 [&_.ProseMirror_li>p]:m-0",
-                    "[&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:bg-surface-selected [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:py-0.5 [&_.ProseMirror_code]:font-mono [&_.ProseMirror_code]:text-[0.9em]",
-                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
-                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
-                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",
-                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-subtle-foreground",
-                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:font-light",
-                    "[&_.ProseMirror_p.is-editor-empty:first-child::before]:opacity-70",
-                  )}
-                />
-              </PromptMentionLinkContext.Provider>
-            </div>
+            <ComposerEditorSlot
+              editor={editor}
+              scrollContainerRef={editorScrollContainerRef}
+              inputLocked={composerInputLocked}
+              isZenMode={isZenMode}
+              hasCompactControls={compact !== undefined}
+              isCompactLayout={showCompactLayout}
+              minHeight={minHeight}
+              layout={zenModeLayout}
+              resolveMentionLink={mentionResolveLink}
+            />
           </div>
 
           {showTypeaheadMenu ? (
@@ -3142,7 +3228,10 @@ export function PromptBoxInternal({
 
           {!showCompactLayout ? (
             <>
-              <div data-promptbox-expanded-only="">
+              <div
+                data-promptbox-expanded-only=""
+                inert={showVoiceActionGroup ? true : undefined}
+              >
                 <AttachmentPreview
                   attachments={attachments}
                   attachmentProjectId={attachmentProjectId}
@@ -3164,17 +3253,45 @@ export function PromptBoxInternal({
             <div
               data-promptbox-action-row=""
               className={cn(
-                "flex shrink-0 flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5",
+                "relative flex shrink-0 flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5",
                 showCompactLayout && "absolute inset-y-0 right-2 gap-0 p-0",
               )}
             >
+              {voice && isVoiceActionPresent ? (
+                <div
+                  data-promptbox-voice-controls=""
+                  data-voice-transition={voiceActionTransition}
+                  inert={isVoiceActionVisible ? undefined : true}
+                  aria-hidden={isVoiceActionVisible ? undefined : true}
+                  className={cn(
+                    "absolute inset-0 z-10 min-w-0 origin-center transition-[opacity,transform] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[opacity,transform] motion-reduce:transition-none",
+                    isVoiceActionVisible
+                      ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
+                      : "pointer-events-none translate-y-1 scale-[0.985] opacity-0",
+                  )}
+                >
+                  <VoiceRecordingBar
+                    state={renderedVoiceActionState}
+                    stream={voice.stream}
+                    onConfirm={voice.stop}
+                    onCancel={cancelVoiceInput}
+                  />
+                </div>
+              ) : null}
               {!showCompactLayout ? (
                 <div
                   data-promptbox-expanded-only=""
-                  className="flex min-w-0 flex-1 flex-row items-center gap-1"
+                  data-promptbox-standard-actions=""
+                  className={cn(
+                    "flex min-w-0 flex-1 flex-row items-center gap-1 transition-[opacity,transform] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+                    showVoiceActionGroup
+                      ? "pointer-events-none translate-y-1 opacity-0"
+                      : "translate-y-0 opacity-100",
+                  )}
+                  inert={showVoiceActionGroup ? true : undefined}
                   aria-live="polite"
                 >
-                  <PromptBoxActionsMenu
+                  <ComposerPlusMenuSlot
                     actions={promptActions}
                     isAttaching={isAttaching}
                     onAttach={
@@ -3183,136 +3300,140 @@ export function PromptBoxInternal({
                         : undefined
                     }
                     onAction={applyPromptAction}
-                    pluginItems={
-                      suppressPluginComposerCustomizations
-                        ? []
-                        : pluginPlusMenuItems
+                    includePluginContributions={
+                      !suppressPluginComposerCustomizations
                     }
                   />
                   {footerStart}
                 </div>
               ) : null}
-              <div className="flex shrink-0 flex-row items-center gap-1">
-                {!showCompactLayout ? (
-                  <>
-                    {!suppressPluginComposerCustomizations ? (
-                      <PluginComposerActions />
-                    ) : null}
-                    {voice &&
-                    !showVoiceActionGroup &&
-                    !showVoiceAsPrimaryAction ? (
+              <div
+                data-promptbox-standard-actions=""
+                className={cn(
+                  "flex shrink-0 flex-row items-center gap-1 transition-[opacity,transform] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+                  showVoiceActionGroup
+                    ? "pointer-events-none translate-y-1 opacity-0"
+                    : "translate-y-0 opacity-100",
+                )}
+                inert={showVoiceActionGroup ? true : undefined}
+              >
+                <ComposerActionsSlot
+                  includePluginContributions={
+                    !showCompactLayout && !suppressPluginComposerCustomizations
+                  }
+                >
+                  {!showCompactLayout ? (
+                    <>
+                      {voice &&
+                      !showVoiceActionGroup &&
+                      (!showVoiceAsPrimaryAction || showStop) ? (
+                        <Button
+                          data-promptbox-expanded-only=""
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          aria-label={
+                            !voice.isSupported
+                              ? "Voice input is not supported in this browser"
+                              : "Start voice input"
+                          }
+                          disabled={!canStartVoiceInput}
+                          onPointerDown={handleVoicePointerDown}
+                          onClick={startVoiceInput}
+                          className={
+                            COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
+                          }
+                        >
+                          <Icon name="Mic" className="size-4" />
+                        </Button>
+                      ) : null}
+                    </>
+                  ) : null}
+                  <div
+                    data-promptbox-submit-group=""
+                    className="flex shrink-0 flex-row items-center"
+                  >
+                    {showStop ? (
                       <Button
-                        data-promptbox-expanded-only=""
+                        data-promptbox-submit-action=""
                         type="button"
                         size="icon"
-                        variant="ghost"
-                        aria-label={
-                          !voice.isSupported
-                            ? "Voice input is not supported in this browser"
-                            : "Start voice input"
+                        variant="secondary"
+                        aria-label="Stop run"
+                        onClick={onStop}
+                        className={
+                          showCompactLayout
+                            ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
+                            : COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
                         }
-                        disabled={!canStartVoiceInput}
+                      >
+                        <Icon
+                          name="Square"
+                          className="size-3.5 fill-current [&_*]:stroke-0"
+                        />
+                      </Button>
+                    ) : showVoiceAsPrimaryAction ? (
+                      <Button
+                        data-promptbox-submit-action=""
+                        type="button"
+                        size={showCompactLayout ? "icon" : "sm"}
+                        variant="default"
+                        aria-label="Start voice input"
                         onPointerDown={handleVoicePointerDown}
                         onClick={startVoiceInput}
-                        className={
-                          COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
-                        }
+                        className={cn(
+                          showCompactLayout
+                            ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
+                            : [
+                                "ml-1",
+                                COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
+                              ],
+                          "transition-colors",
+                        )}
                       >
                         <Icon name="Mic" className="size-4" />
                       </Button>
-                    ) : null}
-                  </>
-                ) : null}
-                <div
-                  data-promptbox-submit-group=""
-                  className="flex shrink-0 flex-row items-center"
-                >
-                  {showStop ? (
-                    <Button
-                      data-promptbox-submit-action=""
-                      type="button"
-                      size="icon"
-                      variant="secondary"
-                      aria-label="Stop run"
-                      onClick={onStop}
-                      className={
-                        showCompactLayout
-                          ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
-                          : COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
-                      }
-                    >
-                      <Icon
-                        name="Square"
-                        className="size-3.5 fill-current [&_*]:stroke-0"
-                      />
-                    </Button>
-                  ) : showVoiceAsPrimaryAction ? (
-                    <Button
-                      data-promptbox-submit-action=""
-                      type="button"
-                      size={showCompactLayout ? "icon" : "sm"}
-                      variant="default"
-                      aria-label="Start voice input"
-                      onPointerDown={handleVoicePointerDown}
-                      onClick={startVoiceInput}
-                      className={cn(
-                        showCompactLayout
-                          ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
-                          : ["ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS],
-                        "transition-colors",
-                      )}
-                    >
-                      <Icon name="Mic" className="size-4" />
-                    </Button>
-                  ) : (
-                    <Button
-                      data-promptbox-submit-action=""
-                      type="submit"
-                      size={showCompactLayout ? "icon" : "sm"}
-                      variant="default"
-                      aria-label={effectiveSubmitTitle}
-                      disabled={!canSubmit}
-                      onPointerDown={handleSubmitPointerDown}
-                      onClick={handleSubmitClick}
-                      className={cn(
-                        showCompactLayout
-                          ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
-                          : ["ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS],
-                        // Container-driven compact layouts change the button's
-                        // width, padding, and margin at the breakpoint. Keep
-                        // those geometry changes instantaneous so the action
-                        // stays pinned while the prompt height animates.
-                        "transition-colors",
-                      )}
-                    >
-                      {isSubmitting ? (
-                        <Icon name="Spinner" className="size-4 animate-spin" />
-                      ) : isZenMode ? (
-                        <Icon name="ArrowUp" className="size-4" />
-                      ) : (
-                        <Icon name="CornerDownLeft" className="size-4" />
-                      )}
-                    </Button>
-                  )}
-                </div>
+                    ) : (
+                      <Button
+                        data-promptbox-submit-action=""
+                        type="submit"
+                        size={showCompactLayout ? "icon" : "sm"}
+                        variant="default"
+                        aria-label={effectiveSubmitTitle}
+                        disabled={!canSubmit}
+                        onPointerDown={handleSubmitPointerDown}
+                        onClick={handleSubmitClick}
+                        className={cn(
+                          showCompactLayout
+                            ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
+                            : [
+                                "ml-1",
+                                COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
+                              ],
+                          // Container-driven compact layouts change the button's
+                          // width, padding, and margin at the breakpoint. Keep
+                          // those geometry changes instantaneous so the action
+                          // stays pinned while the prompt height animates.
+                          "transition-colors",
+                        )}
+                      >
+                        {isSubmitting ? (
+                          <Icon
+                            name="Spinner"
+                            className="size-4 animate-spin"
+                          />
+                        ) : isZenMode ? (
+                          <Icon name="ArrowUp" className="size-4" />
+                        ) : (
+                          <Icon name="CornerDownLeft" className="size-4" />
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </ComposerActionsSlot>
               </div>
             </div>
           </PluginComposerViewProvider>
-        </div>
-      </div>
-      <div
-        className={COLLAPSING_GRID_CLASS}
-        style={{ gridTemplateRows: showVoiceActionGroup ? "1fr" : "0fr" }}
-      >
-        <div className="min-h-0 overflow-hidden">
-          {voice && showVoiceActionGroup ? (
-            <VoiceRecordingBar
-              state={isVoiceRecording ? "recording" : "transcribing"}
-              stream={voice.stream}
-              onConfirm={voice.stop}
-              onCancel={voice.cancel}
-            />
-          ) : null}
         </div>
       </div>
     </form>

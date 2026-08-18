@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRealtime, useRealtimeConnectionState } from "@bb/plugin-sdk/app";
+import {
+  useRealtime,
+  useRealtimeConnectionState,
+} from "@get-bb/plugin-sdk/app";
 import { useTasksRpc } from "./data.js";
 
 /** Live count of non-terminal tasks for the host sidebar row. */

@@ -18,14 +18,13 @@
     "test": "node scripts/generate-pwa-icons.mjs --check && vitest run --config vitest.config.ts"
   },
   "dependencies": {
-    "@bb/agent-providers": "workspace:*",
     "@bb/config": "workspace:*",
     "@bb/core-ui": "workspace:*",
     "@bb/desktop-contract": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/fuzzy-match": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
-    "@bb/plugin-sdk": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/shared-ui": "workspace:*",

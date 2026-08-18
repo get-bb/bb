@@ -20,6 +20,7 @@ import {
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import {
   DetailsDisclosure,
+  displayPluginVersion,
   formatAbsoluteDate,
   KeyValueGrid,
   RollbackNote,
@@ -30,13 +31,6 @@ export interface UpdatePluginDialogProps {
   plugin: PluginListItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /**
-   * Copy naming the row state a failed update lands in. Required because the
-   * two surfaces disagree — the Tools Hub row says "Update failed", the legacy
-   * Settings row says "Needs attention" — and a default would let a call site
-   * silently point the user at copy that surface never shows.
-   */
-  failureStateLabel: string;
 }
 
 /**
@@ -50,7 +44,6 @@ export function UpdatePluginDialog({
   plugin,
   open,
   onOpenChange,
-  failureStateLabel,
 }: UpdatePluginDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -59,7 +52,6 @@ export function UpdatePluginDialog({
           <UpdatePluginDialogContent
             plugin={plugin}
             onOpenChange={onOpenChange}
-            failureStateLabel={failureStateLabel}
           />
         ) : null}
       </DialogContent>
@@ -70,11 +62,9 @@ export function UpdatePluginDialog({
 function UpdatePluginDialogContent({
   plugin,
   onOpenChange,
-  failureStateLabel,
 }: {
   plugin: PluginListItem;
   onOpenChange: (open: boolean) => void;
-  failureStateLabel: string;
 }) {
   const queryClient = useQueryClient();
   const name = plugin.name ?? plugin.id;
@@ -93,7 +83,7 @@ function UpdatePluginDialogContent({
         appToast.success(`${name} updated`, {
           description:
             result.to !== null
-              ? `Now running ${result.to.display}.`
+              ? `Now running ${displayPluginVersion(result.to.display)}.`
               : undefined,
         });
       } else {
@@ -108,7 +98,7 @@ function UpdatePluginDialogContent({
     },
   });
 
-  const fromLine = `Currently ${plugin.version}`;
+  const fromLine = `Currently ${displayPluginVersion(plugin.version)}`;
   const persistedFailure = state.lastFailure;
   const failure =
     rolledBack !== null
@@ -144,8 +134,8 @@ function UpdatePluginDialogContent({
               aria-hidden
             />
             <span>
-              bb couldn&rsquo;t activate {failure.version}. It restored{" "}
-              {plugin.version} and its data.
+              bb couldn&rsquo;t activate {displayPluginVersion(failure.version)}
+              . It restored {displayPluginVersion(plugin.version)} and its data.
             </span>
           </div>
           {failure.detail.length > 0 ? (
@@ -162,12 +152,12 @@ function UpdatePluginDialogContent({
           <p className="text-xs text-muted-foreground">
             {retryVersion === null
               ? `The restored version can keep running. Try again when a compatible update becomes available.`
-              : `A compatible update to ${retryVersion} is still available. Retry when you’re ready.`}
+              : `A compatible update to ${displayPluginVersion(retryVersion)} is still available. Retry when you’re ready.`}
           </p>
           {rolledBack === null ? null : (
             <p className="text-xs text-subtle-foreground">
-              The plugin is marked &ldquo;{failureStateLabel}&rdquo; in the
-              installed list until an update succeeds.
+              The plugin is marked &ldquo;Update failed&rdquo; in the installed
+              list until an update succeeds.
             </p>
           )}
         </div>
@@ -204,7 +194,8 @@ function UpdatePluginDialogContent({
       <>
         <DialogHeader>
           <DialogTitle>
-            Update {name} to {candidate}?
+            {/* Hashes shorten here; the details grid keeps the full value. */}
+            Update {name} to {displayPluginVersion(candidate)}?
           </DialogTitle>
           <DialogDescription>{fromLine}</DialogDescription>
         </DialogHeader>
@@ -224,7 +215,10 @@ function UpdatePluginDialogContent({
               ]}
             />
           </DetailsDisclosure>
-          <RollbackNote fromVersion={plugin.version} toVersion={candidate} />
+          <RollbackNote
+            fromVersion={displayPluginVersion(plugin.version)}
+            toVersion={displayPluginVersion(candidate)}
+          />
         </div>
         <DialogFooter>
           <Button
@@ -257,7 +251,7 @@ function UpdatePluginDialogContent({
       <>
         <DialogHeader>
           <DialogTitle>
-            Update {name} to {blocked}?
+            Update {name} to {displayPluginVersion(blocked)}?
           </DialogTitle>
           <DialogDescription>{fromLine}</DialogDescription>
         </DialogHeader>
@@ -268,7 +262,10 @@ function UpdatePluginDialogContent({
               className="size-4 shrink-0 text-warning"
               aria-hidden
             />
-            <span>{blocked} isn&rsquo;t compatible with this bb</span>
+            <span>
+              {displayPluginVersion(blocked)} isn&rsquo;t compatible with this
+              bb
+            </span>
           </div>
           {/* Failure case: the details ARE the story, so they arrive open. */}
           <DetailsDisclosure summary="Details" defaultExpanded>

@@ -7,10 +7,17 @@ import {
 import type { Nodes, Parent, RootContent } from "mdast";
 // Side-effect import: augments mdast's `Data` with `hName`/`hProperties`.
 import type {} from "mdast-util-to-hast";
-import type { BbNavigate, PluginMessageDirectiveProps } from "@bb/plugin-sdk";
+import type {
+  BbNavigate,
+  PluginMessageDirectiveProps,
+} from "@get-bb/plugin-sdk";
 import { visit } from "unist-util-visit";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount.js";
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation.js";
+import {
+  resolveMessageDirectiveRegistry,
+  type ResolvedMessageDirective,
+} from "@/lib/plugin-slot-resolvers.js";
 import type { PluginMessageDirectiveSlot } from "@/lib/plugin-slots.js";
 
 /**
@@ -33,9 +40,7 @@ const MESSAGE_DIRECTIVE_HAST_NAME = "bb-message-directive";
 // `data-directive-index` for the component to read back.
 const MESSAGE_DIRECTIVE_INDEX_PROPERTY = "dataDirectiveIndex";
 
-export type MessageDirectiveRegistryEntry =
-  | { status: "ok"; slot: PluginMessageDirectiveSlot }
-  | { status: "collision"; pluginIds: readonly string[] };
+export type MessageDirectiveRegistryEntry = ResolvedMessageDirective;
 
 /** Directive name → unique registration, or an explicit cross-plugin collision. */
 export type MessageDirectiveRegistry = ReadonlyMap<
@@ -130,35 +135,11 @@ export function buildMessageDirectiveRegistry(
   options?: { warn?: (message: string) => void },
 ): MessageDirectiveRegistry {
   const warn = options?.warn ?? defaultCollisionWarn;
-  const byId = new Map<string, PluginMessageDirectiveSlot[]>();
-  for (const slot of slots) {
-    const existing = byId.get(slot.id);
-    if (existing === undefined) {
-      byId.set(slot.id, [slot]);
-    } else {
-      existing.push(slot);
-    }
-  }
-
-  const registry = new Map<string, MessageDirectiveRegistryEntry>();
-  for (const [id, claimants] of byId) {
-    if (claimants.length === 1) {
-      const slot = claimants[0];
-      if (slot === undefined) continue;
-      registry.set(id, { status: "ok", slot });
-      continue;
-    }
-    // Unique plugin ids, sorted for a stable warning message.
-    const pluginIds = [
-      ...new Set(claimants.map((claimant) => claimant.pluginId)),
-    ].sort();
-    // Same plugin registered twice should already be rejected at collection
-    // time; if it still appears, treat multi-plugin (or multi-entry) as a
-    // collision so no component wins.
-    if (pluginIds.length >= 2 || claimants.length >= 2) {
-      registry.set(id, { status: "collision", pluginIds });
+  const registry = resolveMessageDirectiveRegistry(slots);
+  for (const [id, directive] of registry) {
+    if (directive.status === "collision") {
       warn(
-        `[plugin] message directive "${id}" claimed by multiple plugins (${pluginIds.join(", ")}); rendering as literal text`,
+        `[plugin] message directive "${id}" claimed by multiple plugins (${directive.pluginIds.join(", ")}); rendering as literal text`,
       );
     }
   }

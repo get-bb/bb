@@ -821,6 +821,7 @@ function InteractiveDiffPanel({
         onSelectionChange={setSelection}
         isSelectorDisabled={false}
         stats={aggregateStats}
+        isTruncated={false}
         areAllFilesCollapsed={allCollapsed}
         isCollapseAllDisabled={parsed.length === 0}
         onToggleAllCollapsed={toggleAllCollapsed}

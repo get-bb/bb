@@ -1,4 +1,4 @@
-import type { PluginSidebarThread } from "@bb/plugin-sdk";
+import type { PluginSidebarThread } from "@get-bb/plugin-sdk";
 
 /**
  * The sort that defines this sidebar: newest thread on top, and NOTHING moves

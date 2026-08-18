@@ -16,6 +16,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as DownloadMacosRouteImport } from './routes/download.macos'
 import { Route as BlogSlugRouteImport } from './routes/blog_.$slug'
 import { Route as ApiSubscribeRouteImport } from './routes/api.subscribe'
+import { Route as MarketplaceV1SplatRouteImport } from './routes/marketplace.v1.$'
 import { Route as ApiConnectRevokeMachineRouteImport } from './routes/api.connect.revoke-machine'
 import { Route as ApiConnectRedeemMachineRouteImport } from './routes/api.connect.redeem-machine'
 import { Route as ApiConnectRedeemRouteImport } from './routes/api.connect.redeem'
@@ -57,6 +58,11 @@ const ApiSubscribeRoute = ApiSubscribeRouteImport.update({
   path: '/api/subscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MarketplaceV1SplatRoute = MarketplaceV1SplatRouteImport.update({
+  id: '/marketplace/v1/$',
+  path: '/marketplace/v1/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiConnectRevokeMachineRoute = ApiConnectRevokeMachineRouteImport.update({
   id: '/api/connect/revoke-machine',
   path: '/api/connect/revoke-machine',
@@ -96,6 +102,7 @@ export interface FileRoutesByFullPath {
   '/api/connect/redeem': typeof ApiConnectRedeemRoute
   '/api/connect/redeem-machine': typeof ApiConnectRedeemMachineRoute
   '/api/connect/revoke-machine': typeof ApiConnectRevokeMachineRoute
+  '/marketplace/v1/$': typeof MarketplaceV1SplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/api/connect/redeem': typeof ApiConnectRedeemRoute
   '/api/connect/redeem-machine': typeof ApiConnectRedeemMachineRoute
   '/api/connect/revoke-machine': typeof ApiConnectRevokeMachineRoute
+  '/marketplace/v1/$': typeof MarketplaceV1SplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -125,6 +133,7 @@ export interface FileRoutesById {
   '/api/connect/redeem': typeof ApiConnectRedeemRoute
   '/api/connect/redeem-machine': typeof ApiConnectRedeemMachineRoute
   '/api/connect/revoke-machine': typeof ApiConnectRevokeMachineRoute
+  '/marketplace/v1/$': typeof MarketplaceV1SplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -141,6 +150,7 @@ export interface FileRouteTypes {
     | '/api/connect/redeem'
     | '/api/connect/redeem-machine'
     | '/api/connect/revoke-machine'
+    | '/marketplace/v1/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -155,6 +165,7 @@ export interface FileRouteTypes {
     | '/api/connect/redeem'
     | '/api/connect/redeem-machine'
     | '/api/connect/revoke-machine'
+    | '/marketplace/v1/$'
   id:
     | '__root__'
     | '/'
@@ -169,6 +180,7 @@ export interface FileRouteTypes {
     | '/api/connect/redeem'
     | '/api/connect/redeem-machine'
     | '/api/connect/revoke-machine'
+    | '/marketplace/v1/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -184,6 +196,7 @@ export interface RootRouteChildren {
   ApiConnectRedeemRoute: typeof ApiConnectRedeemRoute
   ApiConnectRedeemMachineRoute: typeof ApiConnectRedeemMachineRoute
   ApiConnectRevokeMachineRoute: typeof ApiConnectRevokeMachineRoute
+  MarketplaceV1SplatRoute: typeof MarketplaceV1SplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -237,6 +250,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/marketplace/v1/$': {
+      id: '/marketplace/v1/$'
+      path: '/marketplace/v1/$'
+      fullPath: '/marketplace/v1/$'
+      preLoaderRoute: typeof MarketplaceV1SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/connect/revoke-machine': {
       id: '/api/connect/revoke-machine'
       path: '/api/connect/revoke-machine'
@@ -288,6 +308,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiConnectRedeemRoute: ApiConnectRedeemRoute,
   ApiConnectRedeemMachineRoute: ApiConnectRedeemMachineRoute,
   ApiConnectRevokeMachineRoute: ApiConnectRevokeMachineRoute,
+  MarketplaceV1SplatRoute: MarketplaceV1SplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

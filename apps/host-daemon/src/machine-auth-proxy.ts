@@ -21,16 +21,95 @@ export interface MachineAuthProxy {
   close(): Promise<void>;
 }
 
+// Headers no non-browser client sends. `Origin` rides every browser write and
+// WebSocket handshake; `Sec-Fetch-Site` rides every browser fetch, including a
+// blind `no-cors` GET that carries no `Origin`. `Sec-Fetch-Mode` is NOT a
+// discriminator: Node's own `fetch` sends `sec-fetch-mode: cors`, so keying on
+// it would reject the runtime processes this proxy exists to serve.
+const BROWSER_REQUEST_HEADERS = ["origin", "sec-fetch-site"] as const;
+
+const REJECTED_SOCKET_MESSAGES = {
+  400: "Bad Request",
+  403: "Forbidden",
+  405: "Method Not Allowed",
+} as const;
+
+type RejectedSocketStatus = keyof typeof REJECTED_SOCKET_MESSAGES;
+
+/**
+ * Whether a web page made this request. This proxy exists for the Node runtime
+ * processes it hands `BB_SERVER_URL` to, and it stamps every forwarded request
+ * with a machine credential. A page can reach any loopback port it can guess,
+ * and a `no-cors` request still acts even though its response stays hidden, so
+ * a browsed page must never borrow that credential.
+ */
+export function isBrowserRequest(headers: IncomingHttpHeaders): boolean {
+  return BROWSER_REQUEST_HEADERS.some((name) => headers[name] !== undefined);
+}
+
+// The only authorities that reach this proxy legitimately. It binds 127.0.0.1
+// and hands out `http://127.0.0.1:<port>`, so every real caller sends one of
+// these.
+const LOOPBACK_AUTHORITY_HOSTNAMES = new Set([
+  "127.0.0.1",
+  "localhost",
+  "[::1]",
+]);
+
+function parseHostAuthority(
+  host: string,
+): { hostname: string; port: string } | null {
+  try {
+    const url = new URL(`http://${host}`);
+    return url.username.length === 0 &&
+      url.password.length === 0 &&
+      url.pathname === "/" &&
+      url.search.length === 0 &&
+      url.hash.length === 0
+      ? { hostname: url.hostname, port: url.port }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether the request's `Host` is this proxy's own loopback authority.
+ *
+ * A page on a public hostname that DNS-rebinds to 127.0.0.1 reaches this socket
+ * carrying that public name in `Host`. {@link isBrowserRequest} cannot see it:
+ * `http://rebind.example` is not a potentially trustworthy URL, so Chromium
+ * sends no `Sec-Fetch-*`, and a `no-cors` GET sends no `Origin` either.
+ */
+export function isProxyLoopbackAuthority(
+  host: string | undefined,
+  boundPort: number,
+): boolean {
+  if (host === undefined) {
+    return false;
+  }
+  const parsed = parseHostAuthority(host);
+  if (parsed === null) {
+    return false;
+  }
+  const hostPort = parsed.port.length > 0 ? Number(parsed.port) : 80;
+  return (
+    hostPort === boundPort && LOOPBACK_AUTHORITY_HOSTNAMES.has(parsed.hostname)
+  );
+}
+
 function isOriginFormTarget(target: string | undefined): target is string {
   return (
     target !== undefined && target.startsWith("/") && !target.startsWith("//")
   );
 }
 
-function writeRejectedSocket(socket: Duplex, status: 400 | 405): void {
-  const message = status === 405 ? "Method Not Allowed" : "Bad Request";
+function writeRejectedSocket(
+  socket: Duplex,
+  status: RejectedSocketStatus,
+): void {
   socket.end(
-    `HTTP/1.1 ${status} ${message}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
+    `HTTP/1.1 ${status} ${REJECTED_SOCKET_MESSAGES[status]}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
   );
 }
 
@@ -47,11 +126,20 @@ function upstreamHeaders(
 }
 
 function proxyRequest(args: {
+  boundPort: number | null;
   machineCredential: string;
   request: IncomingMessage;
   response: ServerResponse;
   target: URL;
 }): void {
+  if (
+    args.boundPort === null ||
+    isBrowserRequest(args.request.headers) ||
+    !isProxyLoopbackAuthority(args.request.headers.host, args.boundPort)
+  ) {
+    args.response.writeHead(403).end();
+    return;
+  }
   if (!isOriginFormTarget(args.request.url)) {
     args.response.writeHead(400).end();
     return;
@@ -91,12 +179,21 @@ function proxyRequest(args: {
 }
 
 function proxyUpgrade(args: {
+  boundPort: number | null;
   clientSocket: Duplex;
   head: Buffer;
   machineCredential: string;
   request: IncomingMessage;
   target: URL;
 }): void {
+  if (
+    args.boundPort === null ||
+    isBrowserRequest(args.request.headers) ||
+    !isProxyLoopbackAuthority(args.request.headers.host, args.boundPort)
+  ) {
+    writeRejectedSocket(args.clientSocket, 403);
+    return;
+  }
   if (!isOriginFormTarget(args.request.url)) {
     writeRejectedSocket(args.clientSocket, 400);
     return;
@@ -147,8 +244,12 @@ export async function startMachineAuthProxy(
     );
   }
   const sockets = new Set<Socket>();
+  // Read at request time, so the handlers see the port the socket actually
+  // bound rather than the (possibly zero) requested one.
+  let boundPort: number | null = null;
   const server = http.createServer((request, response) =>
     proxyRequest({
+      boundPort,
       machineCredential: options.machineCredential,
       request,
       response,
@@ -158,6 +259,7 @@ export async function startMachineAuthProxy(
   server.on("connect", (_request, socket) => writeRejectedSocket(socket, 405));
   server.on("upgrade", (request, socket, head) =>
     proxyUpgrade({
+      boundPort,
       clientSocket: socket,
       head,
       machineCredential: options.machineCredential,
@@ -184,10 +286,12 @@ export async function startMachineAuthProxy(
     // Accepted trade-off: any same-user local process can use this proxy while
     // the daemon runs. It is restricted to one server origin and exposes no
     // durable credential that can be exfiltrated from an agent environment.
+    // Browsed pages are NOT included in that trade: they are rejected above.
     server.listen(options.port ?? 0, LOOPBACK_HOST);
   });
 
   const address = server.address() as AddressInfo;
+  boundPort = address.port;
   return {
     serverUrl: `http://${LOOPBACK_HOST}:${address.port}`,
     async close(): Promise<void> {

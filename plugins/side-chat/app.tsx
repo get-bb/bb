@@ -17,7 +17,7 @@ import {
   type PluginThreadPanelActionContext,
   type PluginThreadPanelProps,
   type ThreadChatMessageAction,
-} from "@bb/plugin-sdk/app";
+} from "@get-bb/plugin-sdk/app";
 import type { sideChatRpcContract } from "./server.js";
 
 const PLUGIN_ID = "side-chat";
@@ -66,7 +66,10 @@ export function parsePanelParams(value: unknown): SideChatPanelParams | null {
  * callbacks are host chrome (not components), so the `useRpc` hook is
  * unavailable there. Same route, envelope, and "local" auth the hook uses.
  */
-async function callBackendRpc(method: string, input: unknown): Promise<unknown> {
+async function callBackendRpc(
+  method: string,
+  input: unknown,
+): Promise<unknown> {
   const response = await fetch(
     `/api/v1/plugins/${PLUGIN_ID}/rpc/${encodeURIComponent(method)}`,
     {

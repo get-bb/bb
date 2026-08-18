@@ -1,4 +1,4 @@
-import type { ThreadChatMessageReference } from "@bb/plugin-sdk";
+import type { ThreadChatMessageReference } from "@get-bb/plugin-sdk";
 import type { PromptInput } from "@bb/domain";
 import type {
   MarkdownPreviewLocalFileLink,

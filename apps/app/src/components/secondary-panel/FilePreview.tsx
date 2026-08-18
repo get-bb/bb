@@ -8,7 +8,11 @@ import {
 } from "react";
 import { File as PierreFile, useWorkerPool } from "@pierre/diffs/react";
 import type { FileOptions } from "@pierre/diffs/react";
-import type { SelectedLineRange, SupportedLanguages } from "@pierre/diffs";
+import {
+  DIFFS_TAG_NAME,
+  type SelectedLineRange,
+  type SupportedLanguages,
+} from "@pierre/diffs";
 import type { UrlTransform } from "react-markdown";
 import { Button } from "@bb/shared-ui/button";
 import { usePierreLineSelectionActions } from "@/components/git-diff/PierreLineSelectionActions.js";
@@ -230,6 +234,10 @@ const HTML_FILE_PREVIEW_IFRAME_STYLE = {
 const IFRAME_LOADING_INDICATOR_DELAY_MS = 160;
 const FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS =
   "h-5 w-5 rounded-sm p-0 [&_svg]:size-3 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_svg]:size-5";
+// The toggle adds 2px padding and a 1px border around these buttons. Keep its
+// coarse-pointer tabs at 30px so the complete control fits the 36px header.
+const FILE_PREVIEW_VIEW_MODE_BUTTON_CLASS =
+  "h-5 rounded-sm px-2 text-muted-foreground max-md:pointer-coarse:h-[30px]";
 
 function getFilePreviewToggleKind(
   state: FilePreviewState,
@@ -291,7 +299,11 @@ function getInitialFilePreviewViewMode({
   lineRange,
   toggleKind,
 }: GetInitialFilePreviewViewModeArgs): FilePreviewViewMode {
-  if (toggleKind === "csv" || toggleKind === "markdown") {
+  if (
+    toggleKind === "csv" ||
+    toggleKind === "html" ||
+    toggleKind === "markdown"
+  ) {
     return "preview";
   }
   return lineRange === null ? "preview" : "source";
@@ -740,7 +752,7 @@ function FilePreviewHeader({
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-5 rounded-sm px-2 text-muted-foreground max-md:pointer-coarse:h-9",
+                    FILE_PREVIEW_VIEW_MODE_BUTTON_CLASS,
                     COARSE_POINTER_TEXT_SM_CLASS,
                   )}
                   onClick={() => onViewModeChange("preview")}
@@ -753,7 +765,7 @@ function FilePreviewHeader({
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-5 rounded-sm px-2 text-muted-foreground max-md:pointer-coarse:h-9",
+                    FILE_PREVIEW_VIEW_MODE_BUTTON_CLASS,
                     COARSE_POINTER_TEXT_SM_CLASS,
                   )}
                   onClick={() => onViewModeChange("source")}
@@ -859,6 +871,11 @@ function HtmlFilePreviewBody({
         aria-hidden={isPreviewVisible ? undefined : true}
       >
         <IframeFilePreview
+          // The raw HTML route is stable across file revisions. Remount the
+          // frame when the fetched source changes so it navigates again and
+          // renders the updated document, while unrelated parent renders keep
+          // the current frame (and its in-document state) intact.
+          key={state.file.cacheKey}
           sandbox={state.iframe.sandbox}
           title={state.iframe.title}
           url={state.iframe.url}
@@ -1085,13 +1102,29 @@ function IframeFilePreview({ sandbox, title, url }: IframeFilePreviewTarget) {
   );
 }
 
+function getPreviewTargetRoots(container: HTMLElement): ParentNode[] {
+  const roots: ParentNode[] = [container];
+  // Pierre owns its rendered line elements inside an open shadow root, which
+  // normal descendant queries on the React wrapper cannot cross.
+  for (const pierreContainer of container.querySelectorAll<HTMLElement>(
+    DIFFS_TAG_NAME,
+  )) {
+    if (pierreContainer.shadowRoot !== null) {
+      roots.push(pierreContainer.shadowRoot);
+    }
+  }
+  return roots;
+}
+
 function clearPreviewTargetLine(container: HTMLElement) {
-  const targetLines = container.querySelectorAll(
-    "[data-file-preview-target-line]",
-  );
-  for (const targetLine of targetLines) {
-    targetLine.removeAttribute("data-file-preview-target-line");
-    targetLine.removeAttribute("data-selected-line");
+  for (const root of getPreviewTargetRoots(container)) {
+    const targetLines = root.querySelectorAll(
+      "[data-file-preview-target-line]",
+    );
+    for (const targetLine of targetLines) {
+      targetLine.removeAttribute("data-file-preview-target-line");
+      targetLine.removeAttribute("data-selected-line");
+    }
   }
 }
 
@@ -1099,18 +1132,59 @@ function findPreviewTargetLine(
   container: HTMLElement,
   lineNumber: number,
 ): HTMLElement | null {
-  const lines = container.querySelectorAll(`[data-line="${lineNumber}"]`);
-  for (const line of lines) {
-    if (line instanceof HTMLElement && line.dataset.lineIndex !== undefined) {
-      return line;
+  const roots = getPreviewTargetRoots(container);
+  for (const root of roots) {
+    const lines = root.querySelectorAll(`[data-line="${lineNumber}"]`);
+    for (const line of lines) {
+      if (line instanceof HTMLElement && line.dataset.lineIndex !== undefined) {
+        return line;
+      }
     }
   }
-  for (const line of lines) {
-    if (line instanceof HTMLElement) {
-      return line;
+  for (const root of roots) {
+    const lines = root.querySelectorAll(`[data-line="${lineNumber}"]`);
+    for (const line of lines) {
+      if (line instanceof HTMLElement) {
+        return line;
+      }
     }
   }
   return null;
+}
+
+function findPreviewScrollViewport(container: HTMLElement): HTMLElement | null {
+  const view = container.ownerDocument.defaultView;
+  if (view === null) return null;
+
+  let candidate = container.parentElement;
+  while (candidate !== null) {
+    const overflowY = view.getComputedStyle(candidate).overflowY;
+    if (
+      overflowY === "auto" ||
+      overflowY === "scroll" ||
+      overflowY === "overlay"
+    ) {
+      return candidate;
+    }
+    candidate = candidate.parentElement;
+  }
+  return null;
+}
+
+function scrollPreviewTargetLine(
+  container: HTMLElement,
+  line: HTMLElement,
+) {
+  const viewport = findPreviewScrollViewport(container);
+  if (viewport === null) return;
+
+  const lineRect = line.getBoundingClientRect();
+  const viewportRect = viewport.getBoundingClientRect();
+  const lineCenter = lineRect.top + lineRect.height / 2;
+  const viewportCenter = viewportRect.top + viewportRect.height / 2;
+  // Adjust only the vertical scroll offset. `scrollIntoView()` can also move
+  // the horizontal axis when a long source line extends beyond the viewport.
+  viewport.scrollTop += lineCenter - viewportCenter;
 }
 
 function formatLineRange(startLineNumber: number, endLineNumber: number) {
@@ -1296,16 +1370,13 @@ function FilePreviewCode({
       const container = containerRef.current;
       if (!container) return;
       clearPreviewTargetLine(container);
-      clearPreviewTargetLine(container.ownerDocument.body);
       if (targetLineNumber === null) return;
 
-      const line =
-        findPreviewTargetLine(container, targetLineNumber) ??
-        findPreviewTargetLine(container.ownerDocument.body, targetLineNumber);
+      const line = findPreviewTargetLine(container, targetLineNumber);
       if (line) {
         line.setAttribute("data-file-preview-target-line", "");
         line.setAttribute("data-selected-line", "single");
-        line.scrollIntoView?.({ block: "center" });
+        scrollPreviewTargetLine(container, line);
         return;
       }
 
@@ -1319,13 +1390,18 @@ function FilePreviewCode({
     return () => {
       if (cleanupContainer) {
         clearPreviewTargetLine(cleanupContainer);
-        clearPreviewTargetLine(cleanupContainer.ownerDocument.body);
       }
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
       }
     };
-  }, [file.contents, file.name, targetLineNumber]);
+  }, [
+    file.contents,
+    file.name,
+    shouldWaitForWorkerPool,
+    targetLineNumber,
+    workerHighlightCacheState,
+  ]);
 
   if (shouldWaitForWorkerPool) {
     return <FilePreviewLoading />;

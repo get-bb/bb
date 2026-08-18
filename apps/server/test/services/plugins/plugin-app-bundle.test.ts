@@ -266,7 +266,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     await writeAppPluginFixture(rootDir, {
       name: "bb-plugin-typed-rpc",
       serverSource: `
-        import { defineRpcContract } from "@bb/plugin-sdk";
+        import { defineRpcContract } from "@get-bb/plugin-sdk";
         import { z } from "zod";
         const BACKEND_ONLY_SENTINEL = "backend-contract-must-not-bundle";
         export const rpcContract = defineRpcContract({
@@ -281,7 +281,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
         }
       `,
       appSource: `
-        import { definePluginApp, useRpc } from "@bb/plugin-sdk/app";
+        import { definePluginApp, useRpc } from "@get-bb/plugin-sdk/app";
         import type { rpcContract } from "./server";
         function Panel() {
           const rpc = useRpc<typeof rpcContract>();
@@ -739,7 +739,9 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
         process.env.npm_config_cache = join(workDir, "npm-cache");
         try {
           await expect(
-            harness.pluginService.install("npm:bb-plugin-nodist@0.1.0"),
+            harness.pluginService.install("npm:bb-plugin-nodist@0.1.0", {
+              kind: "root",
+            }),
           ).rejects.toThrowError(/must publish a prebuilt bundle/);
           // The refused install cleaned up its managed prefix and row.
           expect(harness.pluginService.list()).toHaveLength(0);
@@ -752,7 +754,9 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
           await expect(stat(prefix)).rejects.toThrowError();
 
           await expect(
-            harness.pluginService.install("npm:bb-plugin-partial@0.1.0"),
+            harness.pluginService.install("npm:bb-plugin-partial@0.1.0", {
+              kind: "root",
+            }),
           ).rejects.toThrowError(
             /app artifact.*SDK major.*rebuild the app artifact/,
           );
@@ -768,6 +772,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
 
           const entry = await harness.pluginService.install(
             "npm:bb-plugin-prebuilt@0.1.0",
+            { kind: "root" },
           );
           expect(entry.status).toBe("running");
           expect(entry.app.hasApp).toBe(true);

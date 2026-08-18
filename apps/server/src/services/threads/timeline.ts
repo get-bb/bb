@@ -6,7 +6,11 @@ import {
   type AcceptedClientRequestContext,
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
-import type { ClientTurnRequestId, Thread } from "@bb/domain";
+import type {
+  ClientTurnRequestId,
+  ProviderComposerCommand,
+  Thread,
+} from "@bb/domain";
 import type {
   ThreadConversationOutlineItem,
   ThreadConversationOutlineResponse,
@@ -149,6 +153,12 @@ interface BuildThreadTimelineOptions {
    */
   summaryOnly?: boolean;
   providerDisplayName?: string;
+  /**
+   * The provider's declared `plan` composer command; null when it declares
+   * none. Gates plan-mode extraction — see
+   * `services/providers/provider-plan-command.ts`.
+   */
+  planCommand?: ProviderComposerCommand | null;
 }
 
 interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySelection {
@@ -793,6 +803,22 @@ interface SequenceWindowItemRowsArgs extends TimelineWindowRowsArgs {
   sequenceStart: number;
 }
 
+function rowIdentifiesBufferedTextItem(row: StoredEventRow): boolean {
+  if (row.type === "item/started") {
+    return (
+      row.itemKind === "agentMessage" ||
+      row.itemKind === "plan" ||
+      row.itemKind === "reasoning"
+    );
+  }
+  return (
+    row.type === "item/agentMessage/delta" ||
+    row.type === "item/plan/delta" ||
+    row.type === "item/reasoning/summaryTextDelta" ||
+    row.type === "item/reasoning/textDelta"
+  );
+}
+
 /**
  * Makes a sequence-cut window own whole items rather than halves of them.
  *
@@ -893,22 +919,18 @@ function ensureSequenceWindowWholeItemRows(
       completedItemKeys.add(scopedItemRefKey(storedEventRowItemRef(row)));
     }
   }
-  // Delta rows are stored with a null itemKind, and an item that started below
-  // the cut has only delta rows inside the window — so the kind must be read
-  // from the backfilled item/started row, never from the in-window rows.
+  // Delta rows are stored with a null itemKind, and providers may begin an
+  // assistant, plan, or reasoning item with its first delta rather than an
+  // item/started event. Classify from either the backfilled lifecycle row or
+  // the in-window delta type so those delta-only items keep their prefix too.
   const bufferedTextItems = new Map<string, ScopedItemRef>();
-  for (const row of backfillRows) {
-    if (row.type !== "item/started" || row.itemId === null) {
+  for (const row of [...backfillRows, ...rows]) {
+    if (row.itemId === null || !rowIdentifiesBufferedTextItem(row)) {
       continue;
     }
     const ref = storedEventRowItemRef(row);
     const key = scopedItemRefKey(ref);
-    if (
-      !completedItemKeys.has(key) &&
-      (row.itemKind === "agentMessage" ||
-        row.itemKind === "plan" ||
-        row.itemKind === "reasoning")
-    ) {
+    if (!completedItemKeys.has(key) && itemsStartingBeforeWindow.has(key)) {
       bufferedTextItems.set(key, ref);
     }
   }
@@ -1680,6 +1702,7 @@ function buildThreadTimelineInternal(
     includeProviderUnhandledOperations,
     isLatestPage: options.page.kind === "latest",
     providerDisplayName: options.providerDisplayName,
+    planCommand: options.planCommand,
     threadStatus: thread.status,
     threadName: thread.title ?? thread.titleFallback ?? "",
     workspaceRoot: resolveThreadWorkspaceRoot(db, thread),

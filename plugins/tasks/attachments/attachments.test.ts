@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import { createTasksStore } from "../db";
 import {
@@ -159,6 +159,101 @@ describe("task attachments", () => {
       );
       expect(response.headers.get("x-content-type-options")).toBe("nosniff");
       await expect(response.text()).resolves.toBe("image");
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("downloads a non-Latin-1 file name with an ASCII fallback in filename= (issue #1621)", async () => {
+    const { harness, store, task } = setup();
+    try {
+      const emDashName = "report \u2014 final.txt";
+      const uploaded = await upload(
+        harness,
+        task.id,
+        new TextEncoder().encode("hello"),
+        emDashName,
+        "text/plain",
+      );
+      expect(uploaded.status).toBe(201);
+      const { attachmentId } = (await uploaded.json()) as {
+        attachmentId: string;
+      };
+      // sanitizeFileName keeps the em dash, so the stored name is unchanged.
+      expect(store.getAttachment(attachmentId)?.fileName).toBe(emDashName);
+
+      const response = await harness.fetchHttp(
+        "GET",
+        `/attachments/download?attachmentId=${attachmentId}`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-disposition")).toBe(
+        `attachment; filename="report - final.txt"; filename*=UTF-8''report%20%E2%80%94%20final.txt`,
+      );
+      await expect(response.text()).resolves.toBe("hello");
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("percent-encodes every non attr-char in filename* (RFC 5987)", async () => {
+    const { harness, task } = setup();
+    try {
+      // encodeURIComponent keeps ( ) and ', which RFC 5987 excludes from attr-char.
+      const name = "\u5831\u544a (final)'.txt";
+      const uploaded = await upload(
+        harness,
+        task.id,
+        new TextEncoder().encode("hello"),
+        name,
+        "text/plain",
+      );
+      const { attachmentId } = (await uploaded.json()) as {
+        attachmentId: string;
+      };
+      const response = await harness.fetchHttp(
+        "GET",
+        `/attachments/download?attachmentId=${attachmentId}`,
+      );
+
+      expect(response.status).toBe(200);
+      const disposition = response.headers.get("content-disposition");
+      expect(disposition).toBe(
+        `attachment; filename="-- (final)'.txt"; filename*=UTF-8''%E5%A0%B1%E5%91%8A%20%28final%29%27.txt`,
+      );
+      const extValue = disposition?.split("filename*=UTF-8''")[1] ?? "";
+      expect(extValue).toMatch(/^(?:[A-Za-z0-9!#$&+\-.^_`|~]|%[0-9A-F]{2})*$/);
+      expect(decodeURIComponent(extValue)).toBe(name);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("strips Unicode bidirectional controls that could spoof the extension", async () => {
+    const { harness, store, task } = setup();
+    try {
+      // RIGHT-TO-LEFT OVERRIDE makes "photo<RLO>gnp.exe" render as "photoexe.png".
+      const uploaded = await upload(
+        harness,
+        task.id,
+        new TextEncoder().encode("hello"),
+        "photo\u202egnp.exe",
+        "application/octet-stream",
+      );
+      const { attachmentId } = (await uploaded.json()) as {
+        attachmentId: string;
+      };
+      expect(store.getAttachment(attachmentId)?.fileName).toBe("photo_gnp.exe");
+      const response = await harness.fetchHttp(
+        "GET",
+        `/attachments/download?attachmentId=${attachmentId}`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-disposition")).toBe(
+        `attachment; filename="photo_gnp.exe"; filename*=UTF-8''photo_gnp.exe`,
+      );
     } finally {
       await harness.dispose();
     }

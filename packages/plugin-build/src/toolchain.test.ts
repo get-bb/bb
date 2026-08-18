@@ -109,7 +109,7 @@ describe("plugin build toolchain", () => {
         );
         await writeFile(
           join(pluginDir, "app.tsx"),
-          `import { definePluginApp } from "@bb/plugin-sdk/app";\n` +
+          `import { definePluginApp } from "@get-bb/plugin-sdk/app";\n` +
             `export default definePluginApp({});\n`,
         );
 

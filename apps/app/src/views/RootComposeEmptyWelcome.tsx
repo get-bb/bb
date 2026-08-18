@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { usePrefersReducedMotion } from "@bb/shared-ui/hooks/use-media-query";
 import bbLogoUrl from "../../../../assets/bb-logo.svg";
 
 interface RootComposeEmptyWelcomeProps {
@@ -21,19 +21,6 @@ interface WelcomeActionProps {
   description: string;
   onClick: () => void;
   disabled?: boolean;
-}
-
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-  return reduced;
 }
 
 function WelcomeAction({

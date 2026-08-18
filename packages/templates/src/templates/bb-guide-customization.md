@@ -65,12 +65,12 @@ service-unavailable failure. Their defaults are `codex/gpt-5.6-luna` and
 Server-backed General settings
 
 Settings → General includes app-wide preferences stored server-side so every
-window and restart sees the same value. On macOS, the Caffeinate toggle asks the
-primary host daemon to run `/usr/bin/caffeinate -i -w <daemon-pid>`, preventing
-system idle sleep while bb is running; turning it off stops that process. It
-only blocks idle sleep: closing a laptop lid or choosing Sleep manually still
-sleeps the Mac. This setting is only shown when the connected primary host
-daemon reports macOS.
+window and restart sees the same value. Keep Awake is instead owned by its
+builtin plugin: use its autosaving page under Extensions → Plugins or run
+`bb keep-awake enable` or `bb keep-awake disable`. Choose every host with `bb
+keep-awake hosts all`, or name individual host ids after `bb keep-awake hosts`.
+On macOS it prevents system idle sleep while bb is running; closing the lid or
+choosing Sleep still sleeps the Mac.
 
 Settings → Keyboard also includes `showKeyboardHints`, which defaults to true.
 Turn it off to hide the delayed shortcut badges shown while holding Command or
@@ -104,16 +104,18 @@ while the experiment is on.
 
 The `newOnboarding` experiment exposes the first-run agent and project setup
 guide.
-The `toolsHub` experiment exposes Extensions for managing skills and plugins.
-Automations stays in the Plugins section beside threads. It does not enable or
-disable installed skills, automation execution, plugin runtimes, CLI commands,
-or backend APIs.
 The default-on `editMessages` experiment enables editing eligible, accepted
 root user messages in Codex, Claude Code, and Pi threads, including failed or
 incomplete turns; turn it off to hide the editor. Opening the editor is
 client-local; submitting stops and settles a running thread, then replaces the
 selected turn and all later conversation history while retaining workspace side
 effects. Grouped multi-message requests are not yet editable.
+
+The default-off `providerSessionReaping` experiment extends idle release to
+every restorable provider. BB releases those sessions after 30 idle minutes.
+The daemon applies a changed value within five minutes. Active turns, commands,
+agents, workflows, and monitors keep their sessions loaded. BB releases idle
+Codex sessions with the experiment off as well.
 
 Thread timeline windows are bounded by event count as well as user-message
 count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), so a long thread

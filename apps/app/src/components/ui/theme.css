@@ -259,6 +259,34 @@
     opacity: 1;
   }
 
+  /* Sidebar row glyph that swaps on hover (the Extensions row's toolbox ->
+   * tool case). Both glyphs share one grid cell and only opacity changes, so
+   * the row can never reflow mid-swap. Driven by the same
+   * :is(:hover, :has(:focus-visible)) row selector as the hover actions above,
+   * so a keyboard focus swaps the glyph exactly like a pointer hover. */
+  .bb-sidebar-row-icon-swap {
+    display: grid;
+    grid-template-areas: "glyph";
+  }
+
+  .bb-sidebar-row-icon-swap > * {
+    grid-area: glyph;
+  }
+
+  .bb-sidebar-row-icon-hover {
+    opacity: 0;
+  }
+
+  .bb-sidebar-hover-actions-row:is(:hover, :has(:focus-visible))
+    .bb-sidebar-row-icon-rest {
+    opacity: 0;
+  }
+
+  .bb-sidebar-hover-actions-row:is(:hover, :has(:focus-visible))
+    .bb-sidebar-row-icon-hover {
+    opacity: 1;
+  }
+
   .bb-sidebar-hover-actions-fade {
     opacity: 1;
     transition-property: opacity;

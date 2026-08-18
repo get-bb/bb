@@ -20,6 +20,22 @@ Use `script` when the output is fully determined by code: watchdogs, threshold a
 
 Design the script to print nothing when there is nothing to report: an exit-0 run with empty stdout/stderr, or a last non-empty line of `{"wakeAgent": false}`, is recorded as a skipped silent tick. Any other output is captured; non-zero exit or timeout is recorded as a failed run.
 
+Execution safety is fail-closed:
+
+- An automation has at most one running execution. A duplicate scheduled tick or
+  manual run reuses the existing run instead of starting another process tree.
+- Failed recurring runs retry after exponential delays (30 seconds, then 60
+  seconds). The third consecutive failure pauses the automation and clears its
+  next run. A successful or skipped run resets the failure count; explicitly
+  resuming an automation also resets it.
+- Script timeout and output-limit termination applies to the whole spawned
+  process group, including descendant processes (on Windows, to the direct
+  child).
+- A run interrupted by a server restart or plugin reload is settled on
+  startup: script runs and agent runs that never got a thread are recorded as
+  skipped, and agent runs follow their thread's state. Nothing stays "running"
+  without a process behind it.
+
 Use `agent` when the run needs reasoning: summarize a feed, pick interesting items, draft a human-friendly message, or branch on content.
 
 Creating:
@@ -58,11 +74,23 @@ Script mode flags:
 
 ```text
 --script <inline>              Inline script content
---script-file <path>           Read script content from a local file
+--script-file <path>           Copy script content from a file on a host
+--host <name-or-id>            Host that owns --script-file (default: thread host or server)
 --interpreter <name>           bash, sh, node, or python3
 --timeout <ms>                 Timeout in milliseconds, default 120000, max 900000
 --env-json <json>              Script variables as a string-to-string JSON object
 ```
+
+`--script-file` reads the file through the host file API, relative to your
+current directory. Inside a thread it reads from the thread's environment host;
+outside a thread it reads from the server host. Pass `--host <name-or-id>` to
+read from another machine. The plugin stores a private copy under
+`<data dir>/plugins/automations/scripts/<automationId>/`. Runs execute that
+copy. The copy is a snapshot: edits to the source file do not apply until you
+run `update <automationId> --script-file <path>` again. `create` and `update`
+print the exact refresh command with the current interpreter, timeout, env, and
+host. `create`, `update`, and `show` print the stored copy path on the
+`Script:` line; `--json` returns it as `execution.storedScriptPath`.
 
 Script environment variables:
 

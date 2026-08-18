@@ -7,17 +7,8 @@
 // shared ports + isolated disconnect), reconnecting (amber wash + dimmed
 // body). Disconnect confirms in a dialog, then lands on the unpaired card
 // with a transient receipt.
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import {
-  definePluginApp,
-  useRealtime,
-  useRpc,
-} from "@bb/plugin-sdk/app";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { definePluginApp, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import type { connectRpcContract } from "./src/rpc.js";
 import QRCode from "qrcode";
 import { Button } from "@bb/shared-ui/button";
@@ -31,10 +22,7 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
-import {
-  CONNECT_REALTIME_CHANNEL,
-  type ConnectStatus,
-} from "@/src/types";
+import { CONNECT_REALTIME_CHANNEL, type ConnectStatus } from "@/src/types";
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -215,8 +203,13 @@ function hostOf(url: string): string {
  * complete-code check that drives auto-submit).
  */
 function formatConnectCode(raw: string): string {
-  const cleaned = raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
-  return cleaned.length > 4 ? `${cleaned.slice(0, 4)}-${cleaned.slice(4)}` : cleaned;
+  const cleaned = raw
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 8);
+  return cleaned.length > 4
+    ? `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`
+    : cleaned;
 }
 
 function isCompleteCode(formatted: string): boolean {
@@ -344,7 +337,10 @@ function UrlHero({ url, showOpen }: { url: string; showOpen: boolean }) {
         onClick={copy}
         aria-label="Copy URL"
       >
-        <Icon name={copyState === "copied" ? "Check" : "Copy"} className="size-4" />
+        <Icon
+          name={copyState === "copied" ? "Check" : "Copy"}
+          className="size-4"
+        />
         {copyState === "copied"
           ? "Copied"
           : copyState === "manual"
@@ -476,8 +472,7 @@ function PairForm({
           aria-invalid={errorCode !== null}
           className={cn(
             "font-mono tracking-widest",
-            errorCode !== null &&
-              "border-destructive ring-1 ring-destructive",
+            errorCode !== null && "border-destructive ring-1 ring-destructive",
           )}
         />
         <Button type="submit" disabled={pending || !complete}>
@@ -640,7 +635,9 @@ function SharedPortsSection({
                       <span
                         className={cn(
                           "shrink-0 font-mono text-xs tabular-nums",
-                          share.url ? "text-foreground" : "text-muted-foreground",
+                          share.url
+                            ? "text-foreground"
+                            : "text-muted-foreground",
                         )}
                       >
                         :{share.port}
@@ -680,7 +677,10 @@ function SharedPortsSection({
                         onClick={() => unexpose(share.hostId, share.port)}
                       >
                         {revokingShare === `${share.hostId}:${share.port}` ? (
-                          <Icon name="Spinner" className="size-4 animate-spin" />
+                          <Icon
+                            name="Spinner"
+                            className="size-4 animate-spin"
+                          />
                         ) : null}
                         Revoke
                       </Button>
@@ -727,8 +727,8 @@ function SharedPortsSection({
       ) : null}
 
       <p className="text-xs text-subtle-foreground/75">
-        Agents can expose their dev servers too — same owner sign-in required
-        to view.
+        Agents can expose their dev servers too — same owner sign-in required to
+        view.
       </p>
       {error !== null ? (
         <p className="text-xs text-destructive-text">{error}</p>
@@ -766,8 +766,8 @@ function DisconnectDialog({
             </DialogHeader>
             <p className="text-sm text-muted-foreground">
               <span className="font-medium text-foreground">{host}</span> will
-              stop working on all devices. Re-pairing needs a new code from
-              your {dashboardHost} dashboard.
+              stop working on all devices. Re-pairing needs a new code from your{" "}
+              {dashboardHost} dashboard.
             </p>
             <DialogFooter>
               <Button

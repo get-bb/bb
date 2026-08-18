@@ -60,8 +60,10 @@ describe("system provider host routing", () => {
       const remote = seedHostSession(harness.deps, {
         id: "host-provider-remote",
       });
-      const remoteModelCommands: HostDaemonOnlineRpcRequestMessage["command"][] =
-        [];
+      const remoteModelCommands: Extract<
+        HostDaemonOnlineRpcRequestMessage["command"],
+        { type: "provider.list_models" }
+      >[] = [];
       seedPrimaryHost(harness.deps, primary.host.id);
 
       registerHostRpcResponder(harness, {
@@ -143,7 +145,11 @@ describe("system provider host routing", () => {
       expect(environmentModels.models.map((model) => model.model)).toEqual([
         "remote-model",
       ]);
-      expect(remoteModelCommands).toEqual([
+      // Only the routing facts matter here; `bridgeLaunch` rides every
+      // command and has its own tests.
+      expect(
+        remoteModelCommands.map(({ bridgeLaunch: _ignored, ...rest }) => rest),
+      ).toEqual([
         { type: "provider.list_models", providerId: "codex" },
         {
           type: "provider.list_models",

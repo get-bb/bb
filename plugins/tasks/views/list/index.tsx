@@ -5,6 +5,7 @@ import { useTasksNavigation } from "../../shell/routes.js";
 import { NewTaskDialog } from "../manage/index.js";
 import { DetailToasts, useDetailToasts } from "../detail/toast.js";
 import { Button } from "@bb/shared-ui/button";
+import { DelayedLoading } from "../../components/delayed-loading.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { useLabels, useListTasks, useTaskListMeta } from "./data.js";
@@ -72,20 +73,22 @@ function EmptyState({
 
 function LoadingRows() {
   return (
-    <div className="px-3.5 pt-3">
-      <Skeleton className="mb-3 h-4 w-28" />
-      {Array.from({ length: 7 }, (_, index) => (
-        <div
-          key={index}
-          className="flex h-[34px] items-center gap-2 border-b border-border-hairline"
-        >
-          <Skeleton className="size-3.5 rounded-full" />
-          <Skeleton className="h-3 w-12" />
-          <Skeleton className="size-3.5 rounded-full" />
-          <Skeleton className="h-3 w-3/5" />
-        </div>
-      ))}
-    </div>
+    <DelayedLoading>
+      <div className="px-3.5 pt-3">
+        <Skeleton className="mb-3 h-4 w-28" />
+        {Array.from({ length: 7 }, (_, index) => (
+          <div
+            key={index}
+            className="flex h-[34px] items-center gap-2 border-b border-border-hairline"
+          >
+            <Skeleton className="size-3.5 rounded-full" />
+            <Skeleton className="h-3 w-12" />
+            <Skeleton className="size-3.5 rounded-full" />
+            <Skeleton className="h-3 w-3/5" />
+          </div>
+        ))}
+      </div>
+    </DelayedLoading>
   );
 }
 

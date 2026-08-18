@@ -1,5 +1,6 @@
 import {
   getLatestSessionForHost,
+  getExperiments,
   listRetiredLoadedEnvironmentIdsOnHost,
   openSession,
   upsertHost,
@@ -25,10 +26,22 @@ import { requireAuthenticatedDaemonSession } from "./session-state.js";
 import { readAttachment } from "../services/projects/attachments.js";
 import { handleHostSessionOpened } from "./session-owner-side-effects.js";
 import { resolveReportedConnectMachineId } from "./hosts.js";
+import type { PluginService } from "../services/plugins/plugin-service.js";
 
-export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
+export function registerInternalSessionRoutes(
+  app: Hono,
+  deps: AppDeps,
+  plugins: PluginService,
+): void {
   const { get, post } = typedRoutes<HostDaemonInternalSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
+  });
+
+  get("/runtime-policy", (context) => {
+    getAuthenticatedDaemon(context);
+    return context.json({
+      providerSessionReaping: getExperiments(deps.db).providerSessionReaping,
+    });
   });
 
   post(
@@ -131,6 +144,7 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
           connectShares: deps.sharedPorts.reconcileSharedPortsForHost(
             daemon.hostId,
           ),
+          pluginHostGenerations: plugins.listHostArtifactGenerations(),
           retiredEnvironmentIds,
         },
         201,

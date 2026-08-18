@@ -1,9 +1,5 @@
-import { useMemo, useState } from "react";
-import type {
-  ComposerCustomization,
-  ComposerPlusMenuItem,
-  ComposerView,
-} from "@bb/plugin-sdk";
+import { useMemo, useState, type ReactNode } from "react";
+import type { ComposerPlusMenuItem, ComposerView } from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
@@ -18,25 +14,23 @@ import {
   recordPluginComposerActionUse,
   usePluginComposerActionUsage,
 } from "@/lib/plugin-composer-action-usage";
+import type {
+  ResolvedComposerAction,
+  ResolvedComposerPlusMenuItem,
+} from "@/lib/plugin-slot-resolvers";
 import { useComposer, useComposerView } from "@/lib/plugin-sdk-hooks";
-import { usePluginSlots } from "@/lib/plugin-slots";
 import { usePluginDisplayName } from "@/lib/plugin-logos";
+import { useResolvedComposerActions } from "./composer-slot-hooks";
 import { PluginIcon } from "./PluginIcon";
 import { PluginSlotMount } from "./PluginSlotMount";
 import {
   composerScopeIdentity,
   useOptionalPluginComposerView,
 } from "./plugin-composer-host";
-import { composerCustomizationsForScope } from "./composer-customizations";
 
 export const PLUGIN_COMPOSER_INLINE_PLUGIN_LIMIT = 3;
 
-interface PluginComposerActionContribution {
-  pluginId: string;
-  customizationId: string;
-  generation: number;
-  action: NonNullable<ComposerCustomization["actions"]>[number];
-}
+type PluginComposerActionContribution = ResolvedComposerAction;
 
 interface PluginComposerActionGroup {
   pluginId: string;
@@ -44,60 +38,40 @@ interface PluginComposerActionGroup {
   registrationIndex: number;
 }
 
-export interface PluginComposerPlusMenuContribution {
-  pluginId: string;
-  customizationId: string;
-  generation: number;
-  item: ComposerPlusMenuItem;
-}
+export type PluginComposerPlusMenuContribution = ResolvedComposerPlusMenuItem;
 
 export interface PluginComposerPlusMenuSelection {
   restoreComposerFocus(): void;
   selectedElement: Element | null;
 }
 
-export function usePluginComposerPlusMenuContributions(
-  view: ComposerView,
-): readonly PluginComposerPlusMenuContribution[] {
-  const { composerCustomizations } = usePluginSlots();
-  return useMemo(
-    () =>
-      composerCustomizationsForScope(
-        composerCustomizations,
-        view.scope.kind,
-      ).flatMap((customization) =>
-        (customization.plusMenu ?? []).map((item) => ({
-          pluginId: customization.pluginId,
-          customizationId: customization.id,
-          generation: customization.generation,
-          item,
-        })),
-      ),
-    [composerCustomizations, view.scope.kind],
-  );
-}
-
-export function PluginComposerActions({ view }: { view?: ComposerView }) {
+export function ComposerActionsSlot({
+  view,
+  children,
+  includePluginContributions = true,
+}: {
+  view?: ComposerView;
+  children?: ReactNode;
+  includePluginContributions?: boolean;
+}) {
   const providedView = useOptionalPluginComposerView();
-  const { composerCustomizations } = usePluginSlots();
   const composerView = view ?? providedView;
-  if (composerView === undefined) return null;
-  const scopeKey = composerScopeIdentity(composerView.scope);
-  const actions: PluginComposerActionContribution[] =
-    composerCustomizationsForScope(
-      composerCustomizations,
-      composerView.scope.kind,
-    ).flatMap((customization) =>
-      (customization.actions ?? []).map((action) => ({
-        pluginId: customization.pluginId,
-        customizationId: customization.id,
-        generation: customization.generation,
-        action,
-      })),
-    );
+  const actions = useResolvedComposerActions(
+    includePluginContributions ? (composerView?.scope.kind ?? null) : null,
+  );
+  const scopeKey =
+    composerView === undefined
+      ? null
+      : composerScopeIdentity(composerView.scope);
 
-  if (actions.length === 0) return null;
-  return <PluginComposerActionList actions={actions} scopeKey={scopeKey} />;
+  return (
+    <>
+      {actions.length > 0 && scopeKey !== null ? (
+        <PluginComposerActionList actions={actions} scopeKey={scopeKey} />
+      ) : null}
+      {children}
+    </>
+  );
 }
 
 function PluginComposerActionList({
@@ -211,24 +185,22 @@ function PluginComposerActionGroupMount({
       }
       onClickCapture={() => recordPluginComposerActionUse(group.pluginId)}
     >
-      {group.actions.map(
-        ({ pluginId, customizationId, generation, action }) => (
-          <div
-            key={`${pluginId}/${customizationId}/${action.id}/${generation}/${scopeKey}`}
-            data-plugin-composer-action=""
-            className="flex h-9 max-h-9 shrink-0 items-center overflow-hidden"
+      {group.actions.map(({ key, pluginId, customizationId, action }) => (
+        <div
+          key={`${key}/${scopeKey}`}
+          data-plugin-composer-action=""
+          className="flex h-9 max-h-9 shrink-0 items-center overflow-hidden"
+        >
+          <PluginSlotMount
+            pluginId={pluginId}
+            slotKind="composerAction"
+            slotId={`${customizationId}/${action.id}`}
+            crashFallback={<></>}
           >
-            <PluginSlotMount
-              pluginId={pluginId}
-              slotKind="composerAction"
-              slotId={`${customizationId}/${action.id}`}
-              crashFallback={<></>}
-            >
-              <action.component />
-            </PluginSlotMount>
-          </div>
-        ),
-      )}
+            <action.component />
+          </PluginSlotMount>
+        </div>
+      ))}
     </div>
   );
 }
@@ -284,10 +256,10 @@ export function PluginComposerPlusMenuEntry({
   showPluginLabel: boolean;
   onSelected(selection: PluginComposerPlusMenuSelection): void;
 }) {
-  const { pluginId, customizationId, generation, item } = contribution;
+  const { key, pluginId, customizationId, item } = contribution;
   return (
     <PluginSlotMount
-      key={`${pluginId}/${customizationId}/${item.id}/${generation}`}
+      key={key}
       pluginId={pluginId}
       slotKind="composerPlusMenuItem"
       slotId={`${customizationId}/${item.id}`}

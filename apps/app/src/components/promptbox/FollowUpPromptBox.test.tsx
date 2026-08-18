@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => {
     isPointerCoarse: false,
     scrollToBottom: vi.fn(),
     permissionModePicker: vi.fn(),
+    voiceState: "idle" as "idle" | "recording" | "transcribing" | "error",
   };
   return Object.assign(values, {});
 });
@@ -62,6 +63,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     zenMode,
     heightAnimationKey,
     minHeight,
+    voice,
   }: {
     footerStart?: ReactNode;
     compact?: {
@@ -81,6 +83,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     zenMode?: { resetKey: string | number };
     heightAnimationKey?: string | number;
     minHeight?: number;
+    voice?: { state: "idle" | "recording" | "transcribing" | "error" };
   }) => (
     <div
       data-testid="prompt-box"
@@ -88,6 +91,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       data-zen-reset-key={zenMode?.resetKey}
       data-height-animation-key={heightAnimationKey}
       data-min-height={minHeight}
+      data-voice-state={voice?.state}
       data-plugin-customizations-suppressed={
         suppressPluginComposerCustomizations ? "true" : "false"
       }
@@ -133,7 +137,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
 
 vi.mock("@/components/promptbox/usePromptVoice", () => ({
   usePromptVoice: () => ({
-    state: "idle",
+    state: mocks.voiceState,
     isSupported: false,
     stream: null,
     start: vi.fn(),
@@ -259,6 +263,7 @@ afterEach(() => {
 beforeEach(() => {
   mocks.isCompactViewport = false;
   mocks.isPointerCoarse = false;
+  mocks.voiceState = "idle";
   resizeObserverCallback = null;
   vi.stubGlobal(
     "ResizeObserver",
@@ -976,6 +981,23 @@ describe("FollowUpPromptBox", () => {
     );
     expect(screen.getByText("Local environment")).toBeTruthy();
   });
+
+  it.each(["recording", "transcribing"] as const)(
+    "keeps the status footer while the prompt box handles voice controls during %s",
+    (state) => {
+      mocks.voiceState = state;
+      const props = createFollowUpPromptBoxProps({ kind: "ready" });
+      props.environmentSummary = <span>Local environment</span>;
+
+      render(<FollowUpPromptBox {...props} />);
+
+      expect(screen.getByTestId("prompt-box").dataset.voiceState).toBe(state);
+      expect(
+        document.querySelector("[data-follow-up-composer-footer]"),
+      ).toBeTruthy();
+      expect(screen.getByText("Local environment")).toBeTruthy();
+    },
+  );
 
   it("exposes focus state so narrow prompt containers can expand", async () => {
     render(

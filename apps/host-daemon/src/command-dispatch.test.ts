@@ -13,6 +13,10 @@ import {
   dispatchCommand,
   dispatchOnlineRpcCommand,
 } from "./command-dispatch.js";
+import {
+  DISPATCH_TEST_BRIDGE_LAUNCH,
+  silentLogger,
+} from "../test/command/dispatch-helpers.js";
 import type { CommandOf } from "./command-dispatch-support.js";
 import { RuntimeManager } from "./runtime-manager.js";
 
@@ -202,8 +206,9 @@ function createRuntime(): FakeDispatchRuntime {
     })),
     listRunningProviders: vi.fn(() => ["fake"]),
     getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
-    waitForActiveTurn: async (threadId) =>
-      activeTurnsByThreadId.get(threadId) ?? null,
+    waitForActiveTurn: vi.fn(
+      async (threadId: string) => activeTurnsByThreadId.get(threadId) ?? null,
+    ),
     getProviderSession: (threadId) =>
       hostedThreadIds.has(threadId)
         ? { providerId: "fake", providerThreadId: "provider-thread-1" }
@@ -301,6 +306,7 @@ async function runSuccessfulClaudeCodeUpdateVerification(args: {
     },
     {
       dataDir,
+      logger: silentLogger,
       eventSink: {
         emit: vi.fn(),
         flush: vi.fn(async () => undefined),
@@ -335,12 +341,14 @@ describe("dispatchCommand", () => {
     const flush = vi.fn(async () => flushDeferred.promise);
     const command: CommandOf<"thread.stop"> = {
       type: "thread.stop",
+      intent: "interrupt",
       environmentId: "env-1",
       threadId: "thread-1",
     };
     let resolved = false;
     const dispatchPromise = dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: {
         emit: vi.fn(),
         flush,
@@ -392,6 +400,7 @@ describe("dispatchCommand", () => {
       },
       {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: { emit: vi.fn(), flush },
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
@@ -428,6 +437,7 @@ describe("dispatchCommand", () => {
       },
       {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: { emit: vi.fn(), flush },
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
@@ -464,6 +474,7 @@ describe("dispatchCommand", () => {
       },
       {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: { emit: vi.fn(), flush },
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
@@ -487,6 +498,7 @@ describe("dispatchCommand", () => {
     });
     const flush = vi.fn(async () => undefined);
     const command: CommandOf<"thread.goal.clear"> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "thread.goal.clear",
       environmentId: "env-1",
       threadId: "thread-1",
@@ -501,6 +513,7 @@ describe("dispatchCommand", () => {
         permissionEscalation: null,
       },
       resumeContext: {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: WORKSPACE_PATH,
           workspaceProvisionType: "unmanaged",
@@ -517,6 +530,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: { emit: vi.fn(), flush },
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
@@ -558,6 +572,7 @@ describe("dispatchCommand", () => {
     oldRuntime.setIdle("thread-1");
 
     const command: CommandOf<"turn.submit"> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "turn.submit",
       environmentId: "env-new",
       threadId: "thread-1",
@@ -574,6 +589,7 @@ describe("dispatchCommand", () => {
         permissionEscalation: null,
       },
       resumeContext: {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: "/tmp/bb-command-dispatch-new",
           workspaceProvisionType: "unmanaged",
@@ -591,6 +607,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: {
         emit: vi.fn(),
         flush: vi.fn(async () => undefined),
@@ -644,6 +661,7 @@ describe("dispatchCommand", () => {
     // never loaded. The stop must still reach the turn in the old runtime.
     const command: CommandOf<"thread.stop"> = {
       type: "thread.stop",
+      intent: "interrupt",
       environmentId: "env-new",
       threadId: "thread-1",
     };
@@ -651,6 +669,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: { emit: vi.fn(), flush },
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
@@ -666,13 +685,108 @@ describe("dispatchCommand", () => {
     expect(flush).toHaveBeenCalledOnce();
   });
 
-  it("rejects thread.stop when no runtime holds the thread", async () => {
+  it("releases an idle runtime without the active-turn wait", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace("/tmp/bb-release"),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-release",
+      workspacePath: "/tmp/bb-release",
+    });
+    runtime.setIdle("thread-1");
+
+    const options = {
+      dataDir: "/tmp/bb-data",
+      logger: silentLogger,
+      eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
+      },
+      runtimeManager: manager,
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+    };
+
+    // The server already settled this thread as idle. Waiting for an active
+    // turn would burn the full stop timeout on every runtime released.
+    await dispatchCommand(
+      {
+        type: "thread.stop",
+        intent: "release",
+        environmentId: "env-release",
+        threadId: "thread-1",
+      },
+      options,
+    );
+    expect(runtime.waitForActiveTurn).not.toHaveBeenCalled();
+    expect(runtime.stopThread).toHaveBeenCalledWith({ threadId: "thread-1" });
+
+    // An interrupt keeps the wait: the stop can race a start whose
+    // turn/started event the runtime has not observed yet.
+    runtime.setIdle("thread-1");
+    await dispatchCommand(
+      {
+        type: "thread.stop",
+        intent: "interrupt",
+        environmentId: "env-release",
+        threadId: "thread-1",
+      },
+      options,
+    );
+    expect(runtime.waitForActiveTurn).toHaveBeenCalledWith("thread-1", {
+      timeoutMs: expect.any(Number),
+    });
+  });
+
+  it("skips a release when a turn started after the server read the thread", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace("/tmp/bb-release-race"),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-release-race",
+      workspacePath: "/tmp/bb-release-race",
+    });
+    // The server chose a release from an idle read. A send won the race and
+    // started a turn before this command reached the daemon.
+    runtime.setActiveTurn("thread-1", "turn-new");
+
+    const result = await dispatchCommand(
+      {
+        type: "thread.stop",
+        intent: "release",
+        environmentId: "env-release-race",
+        threadId: "thread-1",
+      },
+      {
+        dataDir: "/tmp/bb-data",
+        logger: silentLogger,
+        eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    // Stopping here would end accepted work and leave the server holding an
+    // active thread with no runtime.
+    expect(runtime.stopThread).not.toHaveBeenCalled();
+    expect(runtime.getActiveTurnId("thread-1")).toBe("turn-new");
+    expect(result).toEqual({ providerCheckpointId: null });
+  });
+
+  it("treats thread.stop as successful when no runtime holds the thread", async () => {
     const manager = new RuntimeManager({
       createRuntime: () => createRuntime(),
       provisionWorkspace: async () => createWorkspace(),
     });
     const command: CommandOf<"thread.stop"> = {
       type: "thread.stop",
+      intent: "interrupt",
       environmentId: "env-missing-runtime",
       threadId: "thread-1",
     };
@@ -680,6 +794,7 @@ describe("dispatchCommand", () => {
     await expect(
       dispatchCommand(command, {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
@@ -687,7 +802,7 @@ describe("dispatchCommand", () => {
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       }),
-    ).rejects.toMatchObject({ code: "unknown_environment" });
+    ).resolves.toEqual({ providerCheckpointId: null });
   });
 
   it("cancels a plan in the environment the thread moved away from", async () => {
@@ -711,6 +826,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
@@ -746,6 +862,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
@@ -791,6 +908,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
@@ -827,6 +945,7 @@ describe("dispatchCommand", () => {
     oldRuntime.setActiveTurn("thread-1", "turn-old");
 
     const command: CommandOf<"thread.goal.clear"> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "thread.goal.clear",
       environmentId: "env-new",
       threadId: "thread-1",
@@ -841,6 +960,7 @@ describe("dispatchCommand", () => {
         permissionEscalation: null,
       },
       resumeContext: {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: "/tmp/bb-goal-new",
           workspaceProvisionType: "unmanaged",
@@ -858,6 +978,7 @@ describe("dispatchCommand", () => {
     await expect(
       dispatchCommand(command, {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
@@ -885,6 +1006,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: {
         emit: vi.fn(),
         flush: vi.fn(async () => undefined),
@@ -907,6 +1029,7 @@ describe("dispatchCommand", () => {
       provisionWorkspace: async () => createWorkspace(),
     });
     const command: CommandOf<"thread.start"> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "thread.start",
       environmentId: "env-1",
       threadId: "thread-1",
@@ -958,6 +1081,7 @@ describe("dispatchCommand", () => {
     await expect(
       dispatchCommand(command, {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: {
           emit: vi.fn(),
           flush: vi.fn(async () => undefined),
@@ -983,6 +1107,7 @@ describe("dispatchCommand", () => {
       provisionWorkspace: async () => createWorkspace(),
     });
     const command: CommandOf<"thread.start"> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "thread.start",
       environmentId: "env-1",
       threadId: "thread-1",
@@ -1015,6 +1140,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: "/tmp/bb-data",
+      logger: silentLogger,
       eventSink: {
         emit: vi.fn(),
         flush: vi.fn(async () => undefined),
@@ -1039,6 +1165,7 @@ describe("dispatchCommand", () => {
       provisionWorkspace: async () => createWorkspace(),
     });
     const command: CommandOf<"thread.rewind.prepare"> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "thread.rewind.prepare",
       environmentId: "env-1",
       threadId: "thread-1",
@@ -1085,6 +1212,7 @@ describe("dispatchCommand", () => {
     await expect(
       dispatchCommand(command, {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: {
           emit: vi.fn(),
           flush: vi.fn(async () => undefined),
@@ -1110,6 +1238,7 @@ describe("dispatchCommand", () => {
         { ...command, leaseId: "lease-old-codex" },
         {
           dataDir: "/tmp/bb-data",
+          logger: silentLogger,
           eventSink: {
             emit: vi.fn(),
             flush: vi.fn(async () => undefined),
@@ -1139,6 +1268,7 @@ describe("dispatchCommand", () => {
         },
         {
           dataDir: "/tmp/bb-data",
+          logger: silentLogger,
           eventSink: {
             emit: vi.fn(),
             flush: vi.fn(async () => undefined),
@@ -1195,6 +1325,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchOnlineRpcCommand(command, {
       dataDir,
+      logger: silentLogger,
       eventSink: {
         emit: vi.fn(),
         flush: vi.fn(async () => undefined),
@@ -1294,6 +1425,7 @@ describe("dispatchCommand", () => {
         },
         {
           dataDir,
+          logger: silentLogger,
           eventSink: {
             emit: vi.fn(),
             flush: vi.fn(async () => undefined),
@@ -1350,6 +1482,7 @@ describe("dispatchCommand", () => {
       },
       {
         dataDir,
+        logger: silentLogger,
         eventSink: {
           emit: vi.fn(),
           flush: vi.fn(async () => undefined),
@@ -1430,6 +1563,7 @@ describe("dispatchCommand", () => {
       },
       {
         dataDir,
+        logger: silentLogger,
         eventSink: {
           emit: vi.fn(),
           flush: vi.fn(async () => undefined),
@@ -1537,6 +1671,7 @@ describe("dispatchCommand", () => {
       activeThreadId: "sibling-thread",
     });
     const command: CommandOf<"thread.start"> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "thread.start",
       environmentId: "env-1",
       threadId: "thread-1",
@@ -1566,6 +1701,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: fixture.dataDir,
+      logger: silentLogger,
       eventSink: {
         emit: vi.fn(),
         flush: vi.fn(async () => undefined),
@@ -1596,6 +1732,7 @@ describe("dispatchCommand", () => {
       activeThreadId: "thread-1",
     });
     const command: CommandOf<"turn.submit"> = {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       type: "turn.submit",
       environmentId: "env-1",
       threadId: "thread-1",
@@ -1612,6 +1749,7 @@ describe("dispatchCommand", () => {
         permissionEscalation: null,
       },
       resumeContext: {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: WORKSPACE_PATH,
           workspaceProvisionType: "unmanaged",
@@ -1629,6 +1767,7 @@ describe("dispatchCommand", () => {
 
     const result = await dispatchCommand(command, {
       dataDir: fixture.dataDir,
+      logger: silentLogger,
       eventSink: {
         emit: vi.fn(),
         flush: vi.fn(async () => undefined),
@@ -1681,6 +1820,7 @@ describe("dispatchCommand", () => {
       },
       {
         dataDir: "/tmp/bb-data",
+        logger: silentLogger,
         eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");

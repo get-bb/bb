@@ -28,6 +28,7 @@ import {
   testLogger,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
+import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 // The harness config uses serverPort 3334, so this host is on the local-app
 // origin allowlist the "local" auth mode enforces.
@@ -628,6 +629,7 @@ describe("mention search time box", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-mention-timeout-"));
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -706,6 +708,7 @@ describe("mention resolve time box", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-resolve-timeout-"));
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,

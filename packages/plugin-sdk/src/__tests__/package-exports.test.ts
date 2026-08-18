@@ -23,11 +23,16 @@ describe("packed plugin SDK exports", () => {
     expect(packageJson.files).toEqual(["bundled-types", "dist", "README.md"]);
     expect(Object.keys(packageJson.exports)).toEqual([
       ".",
+      "./provider-bridge",
       "./app",
+      "./host",
       "./internal/composer-customization-validation",
       "./internal/composer-view",
+      "./internal/host-policy",
+      "./internal/plugin-app-collector",
       "./testing",
       "./testing/app",
+      "./testing/host",
     ]);
 
     for (const entry of Object.values(packageJson.exports)) {

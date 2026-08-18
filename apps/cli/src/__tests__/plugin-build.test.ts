@@ -28,7 +28,6 @@ function testToolchain() {
   return resolvePluginBuildToolchain(join(tmpdir(), "bb-toolchain-unused"));
 }
 
-
 const TEST_BB_VERSION = "0.9.0-test";
 
 /**
@@ -76,7 +75,7 @@ const FIXTURE_PACKAGE_JSON = JSON.stringify(
 const FIXTURE_APP_TSX = `
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { definePluginApp } from "@bb/plugin-sdk/app";
+import { definePluginApp } from "@get-bb/plugin-sdk/app";
 
 void createRoot;
 
@@ -111,7 +110,11 @@ describe("buildPluginApp", () => {
 
   it("builds an ESM bundle with runtime shims, plugin-scoped CSS, and the SDK meta sidecar", async () => {
     await writeFixture();
-    const result = await buildPluginApp(root, TEST_BB_VERSION, await testToolchain());
+    const result = await buildPluginApp(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
 
     const js = await readFile(result.jsPath, "utf8");
     // ESM output.
@@ -182,7 +185,11 @@ describe("buildPluginApp", () => {
       `import "./app.css";\n${FIXTURE_APP_TSX}`,
     );
 
-    const { cssPath } = await buildPluginApp(root, TEST_BB_VERSION, await testToolchain());
+    const { cssPath } = await buildPluginApp(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
     const css = await readFile(cssPath, "utf8");
 
     expect(css).toContain(".fixture-highlight");
@@ -193,7 +200,11 @@ describe("buildPluginApp", () => {
 
   it("throws at import time without the BB runtime and loads once slots are set", async () => {
     await writeFixture();
-    const { jsPath } = await buildPluginApp(root, TEST_BB_VERSION, await testToolchain());
+    const { jsPath } = await buildPluginApp(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
     const url = pathToFileURL(jsPath).href;
 
     await expect(import(/* @vite-ignore */ url)).rejects.toThrow(
@@ -229,7 +240,11 @@ describe("buildPluginApp", () => {
         `export default () => [Dialog, AlertDialog, toast, Drawer, parsePatchFiles, FileDiff];`,
       ].join("\n"),
     );
-    const { jsPath } = await buildPluginApp(root, TEST_BB_VERSION, await testToolchain());
+    const { jsPath } = await buildPluginApp(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
     const js = await readFile(jsPath, "utf8");
     for (const slot of [
       "radixDialog",
@@ -255,7 +270,11 @@ describe("buildPluginApp", () => {
       `import { jsxDEV } from "react/jsx-dev-runtime";\n` +
         `export default () => jsxDEV("div", { children: "x" }, undefined, false, undefined, undefined);\n`,
     );
-    const { jsPath } = await buildPluginApp(root, TEST_BB_VERSION, await testToolchain());
+    const { jsPath } = await buildPluginApp(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
     const js = await readFile(jsPath, "utf8");
     expect(js).toContain(".jsxDevRuntime");
     expect(js).not.toMatch(/from\s*["']react/);
@@ -263,7 +282,11 @@ describe("buildPluginApp", () => {
 
   it("keeps the previous dist artifacts intact when a rebuild fails after esbuild", async () => {
     await writeFixture();
-    const first = await buildPluginApp(root, TEST_BB_VERSION, await testToolchain());
+    const first = await buildPluginApp(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
     const originalJs = await readFile(first.jsPath, "utf8");
     const originalCss = await readFile(first.cssPath, "utf8");
     const originalMeta = await readFile(first.metaPath, "utf8");
@@ -308,16 +331,16 @@ describe("buildPluginApp", () => {
         },
       }),
     );
-    await expect(buildPluginApp(root, TEST_BB_VERSION, await testToolchain())).rejects.toThrow(
-      /no frontend entry/,
-    );
+    await expect(
+      buildPluginApp(root, TEST_BB_VERSION, await testToolchain()),
+    ).rejects.toThrow(/no frontend entry/);
   });
 
   it("errors when bb.app points at a missing file", async () => {
     await writeFile(join(root, "package.json"), FIXTURE_PACKAGE_JSON);
-    await expect(buildPluginApp(root, TEST_BB_VERSION, await testToolchain())).rejects.toThrow(
-      /missing file/,
-    );
+    await expect(
+      buildPluginApp(root, TEST_BB_VERSION, await testToolchain()),
+    ).rejects.toThrow(/missing file/);
   });
 
   it("validates a path-shaped branding.icon before building", async () => {
@@ -331,13 +354,17 @@ describe("buildPluginApp", () => {
       JSON.stringify(packageJson, null, 2),
     );
 
-    await expect(buildPluginApp(root, TEST_BB_VERSION, await testToolchain())).rejects.toThrow(
-      /bb\.branding\.icon points at a missing file/,
-    );
+    await expect(
+      buildPluginApp(root, TEST_BB_VERSION, await testToolchain()),
+    ).rejects.toThrow(/bb\.branding\.icon points at a missing file/);
 
     await mkdir(join(root, "assets"));
     await writeFile(join(root, "assets", "icon.svg"), "<svg/>");
-    const result = await buildPluginApp(root, TEST_BB_VERSION, await testToolchain());
+    const result = await buildPluginApp(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
     expect(result.jsPath).toBe(join(root, "dist", "app.js"));
   });
 
@@ -360,7 +387,11 @@ describe("buildPluginApp", () => {
       "@hugeicons/react",
       "@hugeicons/core-free-icons",
     ]);
-    const result = await buildPluginApp(targetDir, TEST_BB_VERSION, await testToolchain());
+    const result = await buildPluginApp(
+      targetDir,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
     const js = await readFile(result.jsPath, "utf8");
     expect(js).toContain("globalThis.__bbPluginRuntime");
     const css = await readFile(result.cssPath, "utf8");

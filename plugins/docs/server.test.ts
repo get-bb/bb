@@ -3,9 +3,9 @@ import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
-import { defineRpcContract } from "@bb/plugin-sdk";
-import type { PluginRpcClient, PluginRpcHandlers } from "@bb/plugin-sdk";
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import { defineRpcContract } from "@get-bb/plugin-sdk";
+import type { PluginRpcClient, PluginRpcHandlers } from "@get-bb/plugin-sdk";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import simpleNotes, { docsRpcContract } from "./server";
 
 const temporaryDirectories: string[] = [];

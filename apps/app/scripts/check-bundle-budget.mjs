@@ -32,6 +32,7 @@ const budget = JSON.parse(fs.readFileSync(budgetPath, "utf8"));
 
 const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
 const failures = [];
+const MIN_PRECOMPRESS_BYTES = 1024;
 
 // A boot chunk with no .br file would otherwise weigh zero against the
 // compressed budget, so an unrun precompression step could hide real growth.
@@ -44,6 +45,10 @@ for (const chunk of stats.bootChunks) {
   const brotliPath = path.join(distDir, `${chunk.fileName}.br`);
   if (fs.existsSync(brotliPath)) {
     bootBrotliBytes += fs.statSync(brotliPath).size;
+  } else if (chunk.bytes < MIN_PRECOMPRESS_BYTES) {
+    // precompress-app-dist intentionally skips sub-1 KiB assets. Counting the
+    // raw bytes is a conservative upper bound for those tiny boot chunks.
+    bootBrotliBytes += chunk.bytes;
   } else {
     missingBrotli.push(chunk.fileName);
   }

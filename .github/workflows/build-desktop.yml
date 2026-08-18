@@ -31,8 +31,8 @@ concurrency:
 
 jobs:
   macos:
-    name: macOS arm64 + x64 desktop artifacts
-    runs-on: macos-15-intel
+    name: macOS arm64 desktop artifacts
+    runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 45
     outputs:
       has_signing_secrets: ${{ steps.signing.outputs.has_signing_secrets }}
@@ -53,8 +53,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
-      - name: Verify Intel runner
-        run: test "$(uname -m)" = "x86_64"
+      - name: Verify arm64 runner
+        run: test "$(uname -m)" = "arm64"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
@@ -110,7 +110,7 @@ jobs:
 
           echo "has_signing_secrets=$HAS_SIGNING_SECRETS" >> "$GITHUB_OUTPUT"
 
-      - name: Package arm64 and x64 desktop artifacts
+      - name: Package arm64 desktop artifacts
         env:
           CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -129,7 +129,7 @@ jobs:
       - name: Upload desktop workflow artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: bb-desktop-macos-arm64-x64
+          name: bb-desktop-macos-arm64
           path: |
             apps/desktop/release/*.dmg
             apps/desktop/release/*.zip
@@ -143,7 +143,7 @@ jobs:
     # Pinned rather than ubuntu-latest so the glibc the AppImage links against
     # changes only when we choose it: the build machine's glibc sets the
     # minimum distro version users need.
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 45
 
     steps:
@@ -203,7 +203,7 @@ jobs:
     needs:
       - macos
       - linux
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
     permissions:
       contents: write
@@ -254,7 +254,7 @@ jobs:
         if: steps.release_plan.outputs.should_publish == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: bb-desktop-macos-arm64-x64
+          name: bb-desktop-macos-arm64
           path: release/macos
 
       - name: Download Linux desktop artifacts
@@ -368,7 +368,7 @@ jobs:
           {
             echo "## bb desktop artifacts"
             echo
-            echo "- arm64 and x64 macOS .dmg/.zip artifacts, latest-mac.yml, and desktop-version.json uploaded as workflow artifacts"
+            echo "- arm64 macOS .dmg, .zip, latest-mac.yml, and desktop-version.json uploaded as workflow artifacts"
             echo "- x64 Linux .AppImage, latest-linux.yml, and desktop-version-linux.json uploaded as workflow artifacts"
             echo "- version: ${VERSION}"
             echo "- prerelease version: ${IS_PRERELEASE}"

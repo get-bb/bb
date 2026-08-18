@@ -26,12 +26,18 @@ export const availableModelSchema = z.object({
 export type AvailableModel = z.infer<typeof availableModelSchema>;
 
 export const providerCapabilitiesSchema = z.object({
-  supportsArchive: z.boolean(),
-  supportsRename: z.boolean(),
+  supportsThreadArchive: z.boolean(),
+  supportsThreadRename: z.boolean(),
   supportsServiceTier: z.boolean(),
-  supportsUserQuestion: z.boolean(),
+  supportsNativeUserQuestion: z.boolean(),
   supportsFork: z.boolean(),
-  supportedPermissionModes: z.array(permissionModeSchema).min(1),
+  /**
+   * The provider can recreate a session at an earlier point, which is what
+   * edit-past-message rewind needs. Separate from `supportsFork`: ACP clones
+   * whole sessions (tip-only) and cannot stop at a checkpoint.
+   */
+  supportsSessionRewind: z.boolean(),
+  permissionModes: z.array(permissionModeSchema).min(1),
 });
 export type ProviderCapabilities = z.infer<typeof providerCapabilitiesSchema>;
 

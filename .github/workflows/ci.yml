@@ -18,7 +18,7 @@ concurrency:
 jobs:
   checks:
     name: Checks (ubuntu-latest, Node 22.x)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
 
     steps:
@@ -35,6 +35,25 @@ jobs:
       - name: Build, typecheck, and lint
         run: pnpm exec turbo run build typecheck lint --cache-dir=.turbo/cache --output-logs=new-only
 
+      # Runs after build and typecheck, so the guard's own turbo build is a
+      # cache hit and the package it packs is the one this commit really ships.
+      # A published version whose packed files or consumer-facing manifest
+      # fields changed is a hard failure; an unreachable registry or a failed
+      # local pack (exit 2) is infrastructure, not a finding.
+      - name: Check plugin SDK npm version guard
+        run: |
+          # +e so the exit code can be inspected: GitHub's default shell runs
+          # with -e, which would abort the step before the exit-2 check.
+          set +e
+          node packages/plugin-sdk/scripts/check-npm-version-guard.mjs
+          guard_exit=$?
+          set -e
+          if [[ "$guard_exit" -eq 2 ]]; then
+            echo "::warning::Skipping the plugin SDK npm version guard: the npm registry was unreachable."
+            exit 0
+          fi
+          exit "$guard_exit"
+
       # Guards the JavaScript that blocks first paint in the web app. Heavy
       # editor, diff and math code reaches that path through barrel re-exports,
       # which typecheck and lint cannot see.
@@ -46,7 +65,7 @@ jobs:
   # the same 4 vCPUs, which made tests the critical path of every run.
   tests:
     name: Tests (${{ matrix.shard }}, ubuntu-latest, Node 22.x)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
 
     strategy:
@@ -85,7 +104,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: blacksmith-4vcpu-ubuntu-2404
             node-version: "22.x"
           - os: macos-latest
             node-version: "22.x"
@@ -113,9 +132,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: blacksmith-4vcpu-ubuntu-2404
             node-version: "24.x"
-          - os: ubuntu-latest
+          - os: blacksmith-4vcpu-ubuntu-2404
             node-version: "26.x"
           - os: macos-latest
             node-version: "24.x"

@@ -89,6 +89,12 @@ class FakeChild {
   readonly channel: ChildChannel;
   exited = false;
   responsive = true;
+  /**
+   * Report the child gone from inside `send`, the way the real fork channel
+   * does when the IPC pipe breaks: it catches the EPIPE and runs its exit
+   * listeners synchronously, before `send` returns.
+   */
+  dieOnSend = false;
 
   private readonly handler;
   private parentListener: ((message: ChildToParentMessage) => void) | null =
@@ -104,6 +110,10 @@ class FakeChild {
     this.channel = {
       send: (message: ParentToChildMessage) => {
         if (this.exited || !this.responsive) {
+          return;
+        }
+        if (this.dieOnSend) {
+          this.exit();
           return;
         }
         this.handler.handleMessage(message);
@@ -396,6 +406,42 @@ describe("createParcelWatcherProxy", () => {
 
       // The proxy keeps recovering — it never surfaces a permanent give-up error.
       expect(terminalError).toBeNull();
+      proxy.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("recovers when a replacement child's pipe breaks mid-replay", async () => {
+    vi.useFakeTimers();
+    try {
+      const { proxy, children, current } = createHarness({
+        baseRestartDelayMs: 1_000,
+        pingIntervalMs: 100_000, // keep pings out of this test
+      });
+      await proxy.subscribe("/root", () => {});
+      await proxy.subscribe("/other", () => {});
+      await flush();
+      expect(children).toHaveLength(1);
+
+      // Crash once. This heals immediately, which arms the backoff counter — so
+      // the NEXT failure schedules its respawn instead of spawning inline.
+      current().exit();
+      expect(children).toHaveLength(2);
+
+      // Break the replacement's pipe before it announces readiness, so the
+      // first replayed subscribe reports the child gone from inside `send`.
+      // That detaches the channel mid-loop; the replay must not follow it.
+      current().dieOnSend = true;
+      await flush();
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      await flush();
+
+      // A third child came up with BOTH watches re-armed — the replay survived
+      // the death instead of taking the daemon down with a null dereference.
+      expect(children).toHaveLength(3);
+      expect(current().parcel.activeDirs().sort()).toEqual(["/other", "/root"]);
       proxy.dispose();
     } finally {
       vi.useRealTimers();

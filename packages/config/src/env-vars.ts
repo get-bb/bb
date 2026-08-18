@@ -213,6 +213,13 @@ export const BB_EXTERNAL_URL_ENV = defineEnvVar<string>({
   parse: parseOptionalUrlEnvValue,
 });
 
+export const BB_MARKETPLACE_URL_ENV = defineEnvVar<string>({
+  description:
+    "Manifest URL of the reserved bb-community plugin marketplace, which lists as BB Community. Point it at a local file server to test catalog refreshes.",
+  name: "BB_MARKETPLACE_URL",
+  parse: parseOptionalUrlEnvValue,
+});
+
 export const BB_INFERENCE_ENV = defineEnvVar<string>({
   description: "Inference model used for server-side completions",
   name: "BB_INFERENCE",
@@ -248,7 +255,7 @@ export const BB_POSTHOG_API_KEY_ENV = defineEnvVar<string>({
 
 export const BB_TELEMETRY_ENV = defineEnvVar<boolean>({
   description:
-    "Anonymous usage telemetry (app starts, thread creation counts, and user message counts). Set to false to opt out.",
+    "Anonymous usage telemetry (app starts, thread creation counts, user message counts, and plugin installs). Set to false to opt out.",
   name: "BB_TELEMETRY",
   parse: parseBooleanEnvValue,
 });
@@ -363,6 +370,9 @@ export const DEFAULT_BB_POSTHOG_API_KEY =
   "phc_tejoYoNLV6vG8QAd5eYXXvcsENFYnP4brpZDGqG7zvpy";
 export const DEFAULT_BB_TELEMETRY = true;
 export const DEFAULT_BB_DEV_APP_HOST = "";
+/** Published by the registry repository through the getbb.app worker's R2 route. */
+export const DEFAULT_BB_MARKETPLACE_URL =
+  "https://getbb.app/marketplace/v1/marketplace.json";
 export const DEFAULT_BB_INFERENCE = DEFAULTS.inferenceModel;
 export const DEFAULT_BB_INFERENCE_FALLBACK = DEFAULTS.inferenceFallbackModel;
 export const DEFAULT_BB_TRANSCRIPTION = DEFAULTS.transcriptionModel;

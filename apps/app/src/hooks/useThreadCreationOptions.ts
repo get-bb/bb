@@ -159,6 +159,9 @@ export function useThreadCreationOptions(
   options?: UseNewThreadCreationOptions,
 ): UseThreadCreationOptionsResult<CreateExecutionInputSources>;
 export function useThreadCreationOptions(
+  options: UsePromptModelReasoningOptions,
+): UseThreadCreationOptionsResult<ScopedExecutionInputSources>;
+export function useThreadCreationOptions(
   options?: UsePromptModelReasoningOptions,
 ): UseThreadCreationOptionsResult<ScopedExecutionInputSources> {
   const {
@@ -312,7 +315,10 @@ export function useThreadCreationOptions(
   const systemConfig = useSystemConfig();
   const providers = executionOptionsQuery.data?.providers ?? EMPTY_PROVIDERS;
   const isLoadingModels =
-    executionOptionsQueryEnabled && executionOptionsQuery.isLoading;
+    executionOptionsQueryEnabled &&
+    (executionOptionsQuery.isLoading ||
+      (executionOptionsQuery.isPlaceholderData &&
+        (executionOptionsQuery.data?.models.length ?? 0) === 0));
   const isResolvingInitialProvider =
     shouldResolveConnectedProvider && connectedAgentsQuery.isPending;
   const modelLoadError =
@@ -383,10 +389,10 @@ export function useThreadCreationOptions(
 
   const supportsServiceTier =
     activeProviderCapabilities?.supportsServiceTier ?? false;
-  const supportedPermissionModes: readonly PermissionMode[] =
-    activeProviderCapabilities?.supportedPermissionModes ??
+  const permissionModes: readonly PermissionMode[] =
+    activeProviderCapabilities?.permissionModes ??
     DEFAULT_SUPPORTED_PERMISSION_MODES;
-  const supportsPermissionModeSelection = supportedPermissionModes.length > 1;
+  const supportsPermissionModeSelection = permissionModes.length > 1;
   // The machine's permission limit (Settings → Machines). Modes above it stay
   // listed but unselectable, so the picker never offers a mode the server
   // would resolve back down. Before the routed answer lands (cold load, or the
@@ -415,16 +421,16 @@ export function useThreadCreationOptions(
     routedCeiling ?? routedHostCeiling ?? "full";
   const allowedPermissionModes = useMemo(
     () =>
-      supportedPermissionModes.filter(
+      permissionModes.filter(
         (mode) =>
           permissionModeRank(mode) <= permissionModeRank(permissionCeiling),
       ),
-    [permissionCeiling, supportedPermissionModes],
+    [permissionCeiling, permissionModes],
   );
   const permissionModeOptions = useMemo(
     () =>
       PERMISSION_MODE_OPTIONS.filter((option) =>
-        supportedPermissionModes.includes(option.value),
+        permissionModes.includes(option.value),
       ).map((option) =>
         permissionModeRank(option.value) > permissionModeRank(permissionCeiling)
           ? {
@@ -434,7 +440,7 @@ export function useThreadCreationOptions(
             }
           : option,
       ),
-    [permissionCeiling, supportedPermissionModes],
+    [permissionCeiling, permissionModes],
   );
 
   const serviceTierSupportByProvider = useMemo(() => {
@@ -610,10 +616,10 @@ export function useThreadCreationOptions(
     rawPermissionMode,
     // A stored preference above the machine's limit shows as the mode that
     // will actually run, not the one that would be resolved away.
-    supportedPermissionModes:
+    permissionModes:
       allowedPermissionModes.length > 0
         ? allowedPermissionModes
-        : supportedPermissionModes,
+        : permissionModes,
   });
   const environmentSelectionValue = rawEnvironmentSelectionValue;
   // A resetKey change clears touched fields in a layout effect, which runs
@@ -930,8 +936,9 @@ export function useThreadCreationOptions(
   // host-mode default is — no localStorage write needed, just clear the
   // transient override.
   const clearReuseEnvironment = useCallback(() => {
+    if (scope !== "new-thread") return;
     setRootComposeReuseValue(null);
-  }, [setRootComposeReuseValue]);
+  }, [scope, setRootComposeReuseValue]);
 
   return {
     executionOptionsRouting,

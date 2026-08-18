@@ -81,6 +81,7 @@ import {
   type ThreadStopCommandArgs,
 } from "./thread-commands.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import { isHostUnavailableApiError } from "../hosts/online-rpc.js";
 import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
@@ -97,6 +98,7 @@ import {
 } from "./thread-provisioning-active-context.js";
 import { hasProvisioningTimelineRow } from "./thread-provisioning-context.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
+import { settleDanglingBackgroundTasksForStoppedThreadInTransaction } from "./background-task-reconciliation.js";
 
 type ReadyThreadTurnDispatchKind = "thread.start" | "turn.submit";
 type ThreadStartCommand = Awaited<ReturnType<typeof buildThreadStartCommand>>;
@@ -141,6 +143,9 @@ export interface PrepareReadyThreadTurnDispatchArgs {
 }
 
 const threadStartRequestDeduper = createAsyncDeduper<string, void>();
+// Concurrent awaited stops for one thread share a single RPC and a single
+// result, so no caller returns before the runtime release it asked for ends.
+const threadStopRequestDeduper = createAsyncDeduper<string, void>();
 
 type InFlightThreadRpcKind =
   | "thread.start"
@@ -212,9 +217,24 @@ interface HasProviderTurnCompletedEventAtOrAfterArgs {
   threadId: string;
 }
 
-export interface RequestThreadStopArgs extends ThreadStopCommandArgs {
+/**
+ * A requested stop always interrupts: it records a stop intent and an
+ * interruption reason on the thread. The release intent has no caller here, so
+ * it is not part of these args.
+ */
+export interface RequestThreadStopArgs extends Omit<
+  ThreadStopCommandArgs,
+  "intent"
+> {
   interruptionReason: SystemThreadInterruptedReason;
 }
+
+/**
+ * A caller awaits this stop, so it cannot use the day-long fire-and-forget
+ * command timeout. A stop that outlives this bound leaves the thread
+ * `stopping`, and the documented backstops below settle it.
+ */
+const AWAITED_THREAD_STOP_TIMEOUT_MS = 60_000;
 
 interface RequestThreadStopForCurrentStateEnvironment {
   hostId: string;
@@ -1017,6 +1037,20 @@ export function completeThreadStart(
 export function settleThreadStopCommandResult(
   args: SettleThreadStopCommandResultArgs,
 ): CommandResultSideEffectsResult {
+  // A release unloads the runtime of an already idle thread. Finalize would
+  // append `system/thread/interrupted` and interrupt the pending interactions
+  // of a thread that nobody interrupted, so a release settles as a no-op and
+  // leaves the thread resumable.
+  if (args.report.ok) {
+    settleDanglingBackgroundTasksForStoppedThreadInTransaction(args.deps, {
+      threadId: args.command.threadId,
+    });
+  }
+
+  if (args.command.intent === "release") {
+    return emptyCommandResultSideEffects();
+  }
+
   if (!args.report.ok) {
     if (args.report.errorCode !== "unknown_environment") {
       return emptyCommandResultSideEffects();
@@ -1228,6 +1262,20 @@ export function requestThreadStop(
   deps: CommandResultSideEffectsDeps,
   args: RequestThreadStopArgs,
 ): void {
+  if (!markThreadStopRequested(deps, args)) {
+    return;
+  }
+  if (!inFlightThreadRpcGuard.claim(args.threadId, "thread.stop")) {
+    return;
+  }
+
+  dispatchThreadStopCommand(deps, args);
+}
+
+function markThreadStopRequested(
+  deps: CommandResultSideEffectsDeps,
+  args: RequestThreadStopArgs,
+): boolean {
   const notificationBuffer = new NotificationBuffer();
   deps.db.transaction(
     (tx) => {
@@ -1248,14 +1296,7 @@ export function requestThreadStop(
   notificationBuffer.flushInto(deps.hub);
 
   const currentThread = getThread(deps.db, args.threadId);
-  if (!currentThread || currentThread.status !== "stopping") {
-    return;
-  }
-  if (!inFlightThreadRpcGuard.claim(args.threadId, "thread.stop")) {
-    return;
-  }
-
-  dispatchThreadStopCommand(deps, args);
+  return currentThread?.status === "stopping";
 }
 
 // The stop command is dispatched once — no inline retry, no durable timer.
@@ -1275,7 +1316,7 @@ function dispatchThreadStopCommand(
   args: RequestThreadStopArgs,
 ): void {
   void runLiveHostCommand(deps, {
-    command: buildThreadStopCommand(args),
+    command: buildThreadStopCommand({ ...args, intent: "interrupt" }),
     hostId: args.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   })
@@ -1427,6 +1468,136 @@ export function requestThreadStopForCurrentState(
   ) {
     requestPreStartThreadStop(deps, thread);
   }
+}
+
+/**
+ * Awaits a stop for the thread's current state. An active thread stops its
+ * live turn; an idle thread only releases its runtime. The caller's request
+ * ends when the daemon reports the release, so a caller that stops a worker
+ * knows the provider process is gone.
+ */
+export async function stopThreadForCurrentState(
+  deps: RequestThreadStopForCurrentStateDeps,
+  thread: RequestThreadStopForCurrentStateThread,
+  environment: RequestThreadStopForCurrentStateEnvironment | null,
+): Promise<void> {
+  const hasLiveRuntime =
+    thread.status === "active" ||
+    hasLiveThreadStartInFlight(thread.id) ||
+    (thread.status === "stopping" && getActiveTurnId(deps, thread.id) !== null);
+  if (hasLiveRuntime) {
+    if (environment === null) {
+      return;
+    }
+    const args: RequestThreadStopArgs = {
+      environmentId: environment.id,
+      hostId: environment.hostId,
+      interruptionReason: "manual-stop",
+      threadId: thread.id,
+    };
+    if (markThreadStopRequested(deps, args)) {
+      await runAwaitedThreadStopCommand(deps, {
+        command: buildThreadStopCommand({ ...args, intent: "interrupt" }),
+        hostId: args.hostId,
+        threadId: thread.id,
+      });
+      return;
+    }
+    // The mark did not apply. Either the turn ended between the caller's read
+    // and this transaction — `stop.requested` is a no-op on an idle thread —
+    // or another stop already moved the thread to `stopping`. Only the first
+    // case still owns a runtime to release, so re-read the settled status.
+    const settledThread = getThread(deps.db, thread.id);
+    if (
+      settledThread === null ||
+      (settledThread.status !== "idle" && settledThread.status !== "error")
+    ) {
+      return;
+    }
+    await releaseIdleThreadRuntime(deps, thread.id, environment);
+    return;
+  }
+
+  if (
+    isPreStartThreadStatus(thread.status) ||
+    thread.status === "stopping" ||
+    hasActiveThreadProvisioningContext(thread.id)
+  ) {
+    requestPreStartThreadStop(deps, thread);
+    return;
+  }
+
+  await releaseIdleThreadRuntime(deps, thread.id, environment);
+}
+
+/**
+ * Unloads the runtime of a thread the server already settled as idle. The
+ * release carries no interruption: settlement leaves the thread status, its
+ * timeline, and its pending interactions untouched, so the caller can resume
+ * the same thread later.
+ */
+async function releaseIdleThreadRuntime(
+  deps: RequestThreadStopForCurrentStateDeps,
+  threadId: string,
+  environment: RequestThreadStopForCurrentStateEnvironment | null,
+): Promise<void> {
+  if (environment === null) {
+    return;
+  }
+  await runAwaitedThreadStopCommand(deps, {
+    command: buildThreadStopCommand({
+      environmentId: environment.id,
+      hostId: environment.hostId,
+      intent: "release",
+      threadId,
+    }),
+    hostId: environment.hostId,
+    threadId,
+  });
+}
+
+/**
+ * Runs one awaited stop RPC per thread. A caller that races a second stop
+ * awaits the first stop's result rather than sending a duplicate RPC, so every
+ * caller's request ends only when the runtime release ends.
+ *
+ * An interrupt swallows a failure: its `stopping` status is durable, and the
+ * documented backstops settle a thread whose stop never reached its host. A
+ * release has no durable record, so it reports its failure to the caller. An
+ * unreachable host is the one exception — it holds no runtime to release, so
+ * the release already reached its goal.
+ */
+async function runAwaitedThreadStopCommand(
+  deps: RequestThreadStopForCurrentStateDeps,
+  args: {
+    command: ThreadStopCommand;
+    hostId: string;
+    threadId: string;
+  },
+): Promise<void> {
+  await threadStopRequestDeduper.run(args.threadId, async () => {
+    inFlightThreadRpcGuard.claim(args.threadId, "thread.stop");
+    try {
+      await runLiveHostCommand(deps, {
+        command: args.command,
+        hostId: args.hostId,
+        timeoutMs: AWAITED_THREAD_STOP_TIMEOUT_MS,
+      });
+    } catch (error) {
+      deps.logger.warn(
+        { err: error, intent: args.command.intent, threadId: args.threadId },
+        "Awaited thread stop command failed",
+      );
+      if (
+        args.command.intent === "release" &&
+        !isHostUnavailableApiError(error)
+      ) {
+        throw error;
+      }
+    } finally {
+      inFlightThreadRpcGuard.release(args.threadId, "thread.stop");
+    }
+  });
 }
 
 /**

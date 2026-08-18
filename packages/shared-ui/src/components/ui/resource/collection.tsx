@@ -20,6 +20,19 @@ export interface ResourceCollectionMode<Mode extends string> {
  * Modes are views, not new resources: the active view owns the body and its
  * contextual actions while collection identity and description stay stable.
  */
+/**
+ * Either a tabbed collection (all three mode props together) or a single-view
+ * one (none of them) — the two shapes are the only constructible states, so a
+ * tablist can never render keyboard-dead (no active tab) or with no-op tabs.
+ */
+type ResourceCollectionModeProps<Mode extends string> =
+  | { modes?: undefined; activeMode?: undefined; onModeChange?: undefined }
+  | {
+      modes: readonly ResourceCollectionMode<Mode>[];
+      activeMode: Mode;
+      onModeChange: (mode: Mode) => void;
+    };
+
 export function ResourceCollectionPage<Mode extends string>({
   id,
   description,
@@ -29,86 +42,117 @@ export function ResourceCollectionPage<Mode extends string>({
   actions,
   children,
   className,
+  bandClassName,
 }: {
   id: string;
   description: ReactNode;
-  modes: readonly ResourceCollectionMode<Mode>[];
-  activeMode: Mode;
-  onModeChange: (mode: Mode) => void;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
-}) {
-  const activeTabId = `${id}-${activeMode}-tab`;
-  const activePanelId = `${id}-${activeMode}-panel`;
+  /**
+   * Applied inside each header band (description, tabs/actions). Full-bleed
+   * pages use it to re-center the bands onto the content column while the
+   * scrolling child spans the whole pane.
+   */
+  bandClassName?: string;
+} & ResourceCollectionModeProps<Mode>) {
+  const modeList = modes ?? [];
+  const hasModes = modeList.length > 0;
+  // The union ties onModeChange to modes, but destructuring drops that link
+  // for the narrower; the fallback is unreachable by construction.
+  const changeMode = onModeChange ?? (() => {});
+  const activeTabId = hasModes ? `${id}-${activeMode}-tab` : undefined;
+  const activePanelId = hasModes ? `${id}-${activeMode}-panel` : undefined;
   return (
-    <div className={cn("flex h-full min-h-0 flex-col gap-4", className)}>
-      {/* Every band in the collection carries the same pr-1 scrollbar gutter as
+    <div className={cn("flex h-full min-h-0 flex-col gap-5", className)}>
+      {/* Every band in the collection carries the same pr-3 scrollbar gutter as
           the results below, so description, tabs, toolbar, and rows all share
-          one content width. */}
-      <div className="pr-1">
-        <ResourceTabDescription>{description}</ResourceTabDescription>
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 pr-1">
-        <div className="flex items-center gap-1" role="tablist">
-          {modes.map((mode) => {
-            const active = mode.id === activeMode;
-            const modeIndex = modes.indexOf(mode);
-            return (
-              <button
-                key={mode.id}
-                id={`${id}-${mode.id}-tab`}
-                type="button"
-                role="tab"
-                aria-label={mode.accessibleLabel}
-                aria-selected={active}
-                aria-controls={`${id}-${mode.id}-panel`}
-                tabIndex={active ? 0 : -1}
-                className={cn(
-                  "inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium",
-                  active
-                    ? "bg-accent text-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => onModeChange(mode.id)}
-                onKeyDown={(event) => {
-                  let nextIndex: number | null = null;
-                  if (event.key === "ArrowRight") {
-                    nextIndex = (modeIndex + 1) % modes.length;
-                  } else if (event.key === "ArrowLeft") {
-                    nextIndex = (modeIndex - 1 + modes.length) % modes.length;
-                  } else if (event.key === "Home") {
-                    nextIndex = 0;
-                  } else if (event.key === "End") {
-                    nextIndex = modes.length - 1;
-                  }
-                  if (nextIndex === null) return;
-                  event.preventDefault();
-                  const nextMode = modes[nextIndex];
-                  if (nextMode === undefined) return;
-                  onModeChange(nextMode.id);
-                  document.getElementById(`${id}-${nextMode.id}-tab`)?.focus();
-                }}
-              >
-                {mode.label}
-                {mode.count !== undefined ? (
-                  <span className="text-2xs text-subtle-foreground">
-                    {mode.count}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
+          one content width. The description keeps its own line; pages without
+          mode tabs put their create control in the toolbar row instead of
+          spending a band on it. */}
+      <div className="pr-3">
+        <div className={bandClassName}>
+          <ResourceTabDescription>{description}</ResourceTabDescription>
         </div>
-        {actions ? (
-          <div className="flex shrink-0 items-center gap-1.5">{actions}</div>
-        ) : null}
       </div>
+      {hasModes || actions !== undefined ? (
+        <div className="pr-3">
+          <div
+            className={cn(
+              "flex flex-wrap items-center justify-between gap-2",
+              bandClassName,
+            )}
+          >
+            <div
+              className="flex items-center gap-1"
+              role={hasModes ? "tablist" : undefined}
+            >
+              {modeList.map((mode) => {
+                const active = mode.id === activeMode;
+                const modeIndex = modeList.indexOf(mode);
+                return (
+                  <button
+                    key={mode.id}
+                    id={`${id}-${mode.id}-tab`}
+                    type="button"
+                    role="tab"
+                    aria-label={mode.accessibleLabel}
+                    aria-selected={active}
+                    aria-controls={`${id}-${mode.id}-panel`}
+                    tabIndex={active ? 0 : -1}
+                    className={cn(
+                      "inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium",
+                      active
+                        ? "bg-accent text-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() => changeMode(mode.id)}
+                    onKeyDown={(event) => {
+                      let nextIndex: number | null = null;
+                      if (event.key === "ArrowRight") {
+                        nextIndex = (modeIndex + 1) % modeList.length;
+                      } else if (event.key === "ArrowLeft") {
+                        nextIndex =
+                          (modeIndex - 1 + (modes?.length ?? 1)) %
+                          (modes?.length ?? 1);
+                      } else if (event.key === "Home") {
+                        nextIndex = 0;
+                      } else if (event.key === "End") {
+                        nextIndex = modeList.length - 1;
+                      }
+                      if (nextIndex === null) return;
+                      event.preventDefault();
+                      const nextMode = modeList[nextIndex];
+                      if (nextMode === undefined) return;
+                      changeMode(nextMode.id);
+                      document
+                        .getElementById(`${id}-${nextMode.id}-tab`)
+                        ?.focus();
+                    }}
+                  >
+                    {mode.label}
+                    {mode.count !== undefined ? (
+                      <span className="text-2xs text-subtle-foreground">
+                        {mode.count}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+            {actions ? (
+              <div className="flex shrink-0 items-center gap-1.5">
+                {actions}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <div
         id={activePanelId}
-        role="tabpanel"
+        role={hasModes ? "tabpanel" : undefined}
         aria-labelledby={activeTabId}
-        tabIndex={0}
+        tabIndex={hasModes ? 0 : undefined}
         className="min-h-0 flex-1 focus-visible:outline-none"
       >
         {children}
@@ -130,6 +174,7 @@ export function ResourceCollectionViewport({
   viewportRef,
   className,
   contentClassName,
+  bandClassName,
 }: {
   toolbar?: ReactNode;
   children: ReactNode;
@@ -138,15 +183,26 @@ export function ResourceCollectionViewport({
   viewportRef?: Ref<HTMLDivElement>;
   className?: string;
   contentClassName?: string;
+  /**
+   * Applied inside the toolbar and footer bands (and by callers to their
+   * scrolled content). Full-bleed pages use it to re-center each band onto
+   * the content column while the scroller itself spans the whole pane.
+   */
+  bandClassName?: string;
 }) {
   return (
     <div
-      className={cn("flex h-full min-h-0 flex-col gap-3", className)}
+      className={cn("flex h-full min-h-0 flex-col gap-5", className)}
       data-resource-collection-viewport
     >
-      {/* pr-1 matches the scroll viewport's scrollbar gutter below, so the
-          toolbar, results, and footer all end on the same content edge. */}
-      {toolbar ? <div className="shrink-0 pr-1">{toolbar}</div> : null}
+      {/* Every band carries the same pr-3 right gutter as the scroll viewport
+          below (12px gutter, 8px scrollbar, 4px clearance), so the toolbar,
+          results, and footer all end on the same content edge. */}
+      {toolbar ? (
+        <div className="shrink-0 pr-3">
+          <div className={bandClassName}>{toolbar}</div>
+        </div>
+      ) : null}
       <ScrollArea
         type="scroll"
         scrollHideDelay={600}
@@ -155,7 +211,7 @@ export function ResourceCollectionViewport({
         viewportRef={viewportRef}
         viewportProps={{
           id: scrollId,
-          className: cn("overscroll-contain pr-1", contentClassName),
+          className: cn("overscroll-contain pr-3", contentClassName),
           "data-resource-collection-scroll": true,
         }}
       >
@@ -163,10 +219,10 @@ export function ResourceCollectionViewport({
       </ScrollArea>
       {footer ? (
         <div
-          className="sticky bottom-0 z-10 shrink-0 border-t border-border/70 bg-background pt-3"
+          className="sticky bottom-0 z-10 shrink-0 border-t border-border/70 bg-background pt-3 pr-3"
           data-resource-collection-footer
         >
-          {footer}
+          <div className={bandClassName}>{footer}</div>
         </div>
       ) : null}
     </div>

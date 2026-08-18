@@ -369,9 +369,10 @@ export interface DiscoverReposArgs {
   maxDepth: number;
   sinceDays: number;
   limit: number;
-  /** Injectable for tests. */
+  /** Injectable root for tests. */
   home?: string;
   env?: NodeJS.ProcessEnv;
+  /** Injectable recency reference for tests; operation budgets use wall time. */
   now?: number;
 }
 
@@ -385,7 +386,7 @@ export async function discoverRepos(
   const { repos, truncated } = await walkForRepos(
     home,
     args.maxDepth,
-    now + WALK_BUDGET_MS,
+    Date.now() + WALK_BUDGET_MS,
   );
 
   // Ranking hints are best-effort in every direction: a missing file, an

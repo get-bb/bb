@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import {
   createFakePluginHost,
   makeThreadResponse,
-} from "@bb/plugin-sdk/testing";
+} from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
 import { buildAttachmentUrl, registerAttachments } from "../attachments";
 import { tasksRpcContract } from "../shared/contract";
@@ -443,14 +443,14 @@ describe("Tasks RPC domain API", () => {
               id: "codex",
               displayName: "Codex",
               capabilities: {
-                supportedPermissionModes: ["accept-edits", "auto", "full"],
+                permissionModes: ["accept-edits", "auto", "full"],
               },
             },
             {
               id: "claude-code",
               displayName: "Claude Code",
               capabilities: {
-                supportedPermissionModes: ["accept-edits", "auto", "full"],
+                permissionModes: ["accept-edits", "auto", "full"],
               },
             },
           ],
@@ -486,12 +486,12 @@ describe("Tasks RPC domain API", () => {
         {
           id: "codex",
           name: "Codex",
-          supportedPermissionModes: ["accept-edits", "auto", "full"],
+          permissionModes: ["accept-edits", "auto", "full"],
         },
         {
           id: "claude-code",
           name: "Claude Code",
-          supportedPermissionModes: ["accept-edits", "auto", "full"],
+          permissionModes: ["accept-edits", "auto", "full"],
         },
       ],
     });

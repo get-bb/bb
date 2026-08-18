@@ -1,7 +1,9 @@
 import {
   createAgentRuntime,
   fingerprintAcpLaunchSpec,
+  bridgeLaunchProcessKey,
   type AgentRuntime,
+  type AgentRuntimeBridgeLaunch,
   type AgentRuntimeOptions,
 } from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
@@ -9,6 +11,7 @@ import type { EventSinkInput } from "./event-sink.js";
 import type {
   HostDaemonCommand,
   HostDaemonAcpLaunchSpec,
+  HostDaemonBridgeLaunch,
   HostDaemonInjectedSkillSource,
   HostDaemonOnlineRpcCommand,
   HostDaemonConnectTunnelIdentity,
@@ -17,12 +20,17 @@ import type {
   WorkspaceContext,
 } from "@bb/host-daemon-contract";
 import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
+import { ensurePluginProcessDataDir } from "@bb/process-utils";
 import type { InteractiveResolveCommandInput } from "./interactive-request-registry.js";
 import { RuntimeManager, type RuntimeEntry } from "./runtime-manager.js";
 import type { TerminalManager } from "./terminals/terminal-manager.js";
 import type { FetchProjectAttachment } from "./project-attachments.js";
 import type { FetchSkillTree } from "./skill-trees.js";
-import type { CaffeinateManager } from "./command-handlers/caffeinate.js";
+import type { HostDaemonLogger } from "./logger.js";
+import {
+  ensureCachedPluginHostArtifact,
+  type FetchPluginHostArtifact,
+} from "./plugin-host-artifact-cache.js";
 
 type DispatchCommand = HostDaemonCommand | HostDaemonOnlineRpcCommand;
 
@@ -43,14 +51,17 @@ export const noopEventSink: EventSink = {
 
 export interface CommandDispatchOptions {
   dataDir: string;
+  logger: Pick<HostDaemonLogger, "debug" | "warn">;
   fetchProjectAttachment: FetchProjectAttachment;
   fetchSkillTree?: FetchSkillTree;
+  fetchPluginHostArtifact?: FetchPluginHostArtifact;
   runtimeManager: RuntimeManager;
   terminalManager?: Pick<TerminalManager, "closeEnvironmentTerminals">;
   eventSink: EventSink;
   listModels?: (args: {
     providerId: string;
     acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
   }) => Promise<{
     models: AvailableModel[];
@@ -65,7 +76,6 @@ export interface CommandDispatchOptions {
   resolveInteractiveRequest?: (
     request: InteractiveResolveCommandInput,
   ) => Promise<void>;
-  caffeinateManager?: CaffeinateManager;
   ensureConnectTunnelIdentity?: () => Promise<HostDaemonConnectTunnelIdentity>;
   threadStorageRootPath: string;
 }
@@ -110,6 +120,68 @@ const SPAWN_PATTERN = /\bspawn\b/;
 const ACP_AUTH_REQUIRED_PATTERN =
   /ACP agent is (?:installed but )?not authenticated|Authentication required.*(?:agent login|CURSOR_API_KEY|CURSOR_AUTH_TOKEN|api key|auth token|login)/is;
 
+/**
+ * Turn a wire `bridgeLaunch` into the runtime shape. An `artifact` source is
+ * resolved to a verified local path (downloading + hash-verifying if needed);
+ * a `daemon-bundled` source names a bridge inside this daemon's own bundle and
+ * needs no fetch. The source travels through, so the runtime routes on the
+ * server's explicit answer rather than re-deriving it from the provider id.
+ */
+export async function resolveRuntimeBridgeLaunch(
+  bridgeLaunch: HostDaemonBridgeLaunch,
+  options: Pick<
+    CommandDispatchOptions,
+    "dataDir" | "fetchPluginHostArtifact" | "logger"
+  >,
+): Promise<AgentRuntimeBridgeLaunch> {
+  // Wire and runtime shapes share one noun set, so the block carries over
+  // whole; only the mutable permission-mode array is copied.
+  const capabilities = {
+    ...bridgeLaunch.capabilities,
+    permissionModes: [...bridgeLaunch.capabilities.permissionModes],
+  };
+  // Every bridge, artifact or bundled, is scoped to the plugin that ships it:
+  // it gets that plugin's own persistent directory, the same one the plugin's
+  // host worker would get, under its own `bridge-data` kind.
+  const dataDir = await ensurePluginProcessDataDir({
+    daemonDataDir: options.dataDir,
+    pluginId: bridgeLaunch.pluginId,
+    kind: "bridge-data",
+  });
+  if (bridgeLaunch.source.kind === "daemon-bundled") {
+    return {
+      pluginId: bridgeLaunch.pluginId,
+      dataDir,
+      source: { ...bridgeLaunch.source },
+      capabilities,
+    };
+  }
+  if (options.fetchPluginHostArtifact === undefined) {
+    throw new CommandDispatchError(
+      "provider_bridge_unavailable",
+      "This daemon has no plugin host artifact fetcher configured",
+    );
+  }
+  const artifactPath = await ensureCachedPluginHostArtifact({
+    dataDir: options.dataDir,
+    pluginId: bridgeLaunch.pluginId,
+    fetchArtifact: options.fetchPluginHostArtifact,
+    digest: bridgeLaunch.source.digest,
+    byteLength: bridgeLaunch.source.byteLength,
+    logger: options.logger,
+  });
+  return {
+    pluginId: bridgeLaunch.pluginId,
+    dataDir,
+    source: {
+      kind: "artifact",
+      digest: bridgeLaunch.source.digest,
+      artifactPath,
+    },
+    capabilities,
+  };
+}
+
 const defaultModelListRuntimes = new Map<string, AgentRuntime>();
 
 export async function shutdownDefaultListModelsRuntimes(): Promise<void> {
@@ -119,7 +191,11 @@ export async function shutdownDefaultListModelsRuntimes(): Promise<void> {
 }
 
 export async function defaultListModels(
-  args: { providerId: string; acpLaunchSpec?: HostDaemonAcpLaunchSpec },
+  args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+  },
   options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
 ): Promise<{
   models: AvailableModel[];
@@ -127,6 +203,7 @@ export async function defaultListModels(
 }> {
   const runtimeKey =
     `${options.bridgeBundleDir ?? ""}` +
+    `#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}` +
     (args.acpLaunchSpec !== undefined
       ? `#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`
       : "");

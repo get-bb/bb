@@ -52,10 +52,6 @@ vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => false,
 }));
 
-vi.mock("./SplitDimmingButton", () => ({
-  SplitDimmingButton: () => null,
-}));
-
 const THREAD_ID = "thr_header";
 
 const PANE_CONTEXT: PaneContextValue = {
@@ -530,7 +526,10 @@ describe("ThreadDetailHeader", () => {
     fireEvent.change(input, { target: { value: "Renamed thread" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mocks.renameThread).toHaveBeenCalledWith(THREAD_ID, "Renamed thread");
+    expect(mocks.renameThread).toHaveBeenCalledWith(
+      THREAD_ID,
+      "Renamed thread",
+    );
     expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
     expect(screen.getByText("Focused thread")).not.toBeNull();
   });

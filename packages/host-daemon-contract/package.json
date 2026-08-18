@@ -12,6 +12,16 @@
       "source": "./src/local.ts",
       "types": "./src/local.ts",
       "default": "./src/local.ts"
+    },
+    "./protocol": {
+      "source": "./src/protocol.ts",
+      "types": "./src/protocol.ts",
+      "default": "./src/protocol.ts"
+    },
+    "./workspace": {
+      "source": "./src/workspace.ts",
+      "types": "./src/workspace.ts",
+      "default": "./src/workspace.ts"
     }
   },
   "types": "./src/index.ts",

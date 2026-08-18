@@ -28,7 +28,7 @@ import type {
 import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
-import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
+import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
 import {
   PluginComposerHostProvider,
   type PluginComposerHost,
@@ -1421,9 +1421,7 @@ export function ThreadDetailPromptArea({
             >
               From child thread: {item.childTitle}
             </NavLink>
-            <PluginPendingInteractionComposer
-              interaction={item.interaction}
-            />
+            <PluginPendingInteractionComposer interaction={item.interaction} />
           </div>
         ) : (
           <ThreadPendingInteractionBanner
@@ -1580,7 +1578,7 @@ export function ThreadDetailPromptArea({
         {activePromptMode ? activePromptModeCard : null}
         {goal ? activeGoalCard : null}
         <PluginComposerHostProvider value={normalPluginComposerHost}>
-          <PluginComposerBanners
+          <ComposerBannersSlot
             view={{
               scope: normalPluginComposerHost.scope,
               layout: "expanded",

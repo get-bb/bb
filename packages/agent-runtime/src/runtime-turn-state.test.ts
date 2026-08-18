@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { turnScope } from "@bb/domain";
-import { RuntimeTurnReplayFilter } from "./runtime-turn-replay-filter.js";
 import { RuntimeTurnState } from "./runtime-turn-state.js";
 
 function turnStarted(
@@ -169,17 +168,3 @@ describe("RuntimeTurnState", () => {
   });
 });
 
-describe("RuntimeTurnReplayFilter", () => {
-  it("marks replayed turn starts as drops", () => {
-    const filter = new RuntimeTurnReplayFilter();
-
-    expect(filter.observe(turnStarted("turn-1")).kind).toBe("emit");
-    expect(filter.observe(turnCompleted("turn-1")).kind).toBe("emit");
-
-    expect(filter.observe(turnStarted("turn-1"))).toEqual({
-      kind: "drop-replayed-turn-start",
-      threadId: "t1",
-      turnId: "turn-1",
-    });
-  });
-});

@@ -1,6 +1,9 @@
 import { useCallback, useContext, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import type { ThreadChatMessageAction, ThreadChatProps } from "@bb/plugin-sdk";
+import type {
+  ThreadChatMessageAction,
+  ThreadChatProps,
+} from "@get-bb/plugin-sdk";
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,

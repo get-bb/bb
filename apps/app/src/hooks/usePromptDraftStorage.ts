@@ -224,6 +224,26 @@ function restorePromptDraftIfEmpty(
   return true;
 }
 
+function addQuoteToPromptDraft(
+  storageKey: string,
+  text: string,
+  attachments: readonly PromptDraftAttachment[] = [],
+): void {
+  const currentDraft = readPromptDraft(storageKey);
+  const nextDraft = appendQuoteAndAttachmentsToDraft(
+    currentDraft,
+    text,
+    attachments,
+  );
+  // Whitespace-only text with no new attachments is a no-op; skip the write
+  // so an empty selection can't mark an otherwise-empty draft dirty.
+  if (nextDraft === currentDraft) {
+    return;
+  }
+
+  writePromptDraft(storageKey, nextDraft);
+}
+
 function getPromptDraftStorageKey(scope: PromptDraftScope): string {
   if (scope.kind === "automation-edit") {
     const normalizedAutomationId = normalizeStorageSegment(scope.automationId);
@@ -239,6 +259,34 @@ function getPromptDraftStorageKey(scope: PromptDraftScope): string {
   const normalizedProjectId = normalizeStorageSegment(scope.projectId);
   const normalizedThreadId = normalizeStorageSegment(scope.threadId);
   return `${PROMPT_DRAFT_STORAGE_PREFIX}-${normalizedProjectId}-${normalizedThreadId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
+}
+
+/**
+ * Imperative access to a scope's stored draft without subscribing to it.
+ *
+ * For components that only need to read or replace the draft at event time
+ * (e.g. the browse hero seeding the composer): `usePromptDraftStorage` is a
+ * `useSyncExternalStore` subscription, so it re-renders its caller on every
+ * keystroke a mounted composer writes — pure waste when the caller never
+ * renders the draft.
+ */
+export function getPromptDraftAccessor(scope: PromptDraftScope): {
+  storageKey: string;
+  getCurrent: () => PromptDraftState;
+  setDraft: (draft: PromptDraftState) => void;
+  addQuote: (
+    text: string,
+    attachments?: readonly PromptDraftAttachment[],
+  ) => void;
+} {
+  const storageKey = getPromptDraftStorageKey(scope);
+  return {
+    storageKey,
+    getCurrent: () => readPromptDraft(storageKey),
+    setDraft: (draft) => writePromptDraft(storageKey, draft),
+    addQuote: (text, attachments) =>
+      addQuoteToPromptDraft(storageKey, text, attachments),
+  };
 }
 
 export function usePromptDraftStorage(scope: PromptDraftScope) {
@@ -313,21 +361,8 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
   );
 
   const addQuote = useCallback(
-    (text: string, attachments: readonly PromptDraftAttachment[] = []) => {
-      const currentDraft = readPromptDraft(storageKey);
-      const nextDraft = appendQuoteAndAttachmentsToDraft(
-        currentDraft,
-        text,
-        attachments,
-      );
-      // Whitespace-only text with no new attachments is a no-op; skip the write
-      // so an empty selection can't mark an otherwise-empty draft dirty.
-      if (nextDraft === currentDraft) {
-        return;
-      }
-
-      writePromptDraft(storageKey, nextDraft);
-    },
+    (text: string, attachments?: readonly PromptDraftAttachment[]) =>
+      addQuoteToPromptDraft(storageKey, text, attachments),
     [storageKey],
   );
 

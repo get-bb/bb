@@ -43,7 +43,7 @@ Spawning:
   accept-edits uses workspace sandboxing with user-reviewed escalation. auto uses
   the same workspace sandbox with provider-native automatic review. full is the
   explicit sandbox and approval bypass. Plan mode is separate from permissions.
-  Subagents inherit the parent's permission mode by default; pass --permission-mode full only when the user or task needs unsandboxed execution.
+  Subagents inherit the parent's permission mode by default, and the parent's mode is a hard ceiling: a child's requested mode can lower it but never exceed it, so a sandboxed parent cannot spawn a full-access child.
   Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
   Hidden threads are for plugin/background workers. They remain addressable by
   ID while staying out of sidebar organization and unread/pending favicon
@@ -101,6 +101,11 @@ Listing:
     --section <id>                         Filter by section
     --unsectioned                          Show only threads outside sections
     --include-hidden                       Include hidden threads
+
+  The table prints ID, Title, Project, and Status. Title uses the thread
+  title, then the fallback title from the first prompt, then "-". Long
+  titles are cut at 60 characters. Project shows the project name; the
+  personal project shows "-". Use --json for the full thread records.
 
   bb thread search <query>                 Search threads and messages
   bb thread history <id>                   List prompt history
@@ -175,10 +180,7 @@ Messaging:
   turn. Use --mode queue for non-urgent follow-ups that can wait until the agent
   is free.
 
-  bb thread stop [id]                      Stop an active or provisioning thread
-  bb thread retry [id]                     Continue a subscription-limited turn
-    --self                                 Target current thread
-    --request-id <id>                      Require an exact failed request id
+  bb thread stop [id]                      Stop work and release the agent runtime
   bb thread compact [id]                   Request compaction of an idle or errored thread's context
   bb thread cancel-plan [id]               Exit the provider's active Plan mode
   bb thread clear-goal [id]                Clear the provider's active Goal
@@ -186,14 +188,6 @@ Messaging:
 
   `thread compact` enqueues the same structured /compact turn used by the
   composer. Follow the thread timeline for the eventual compaction result.
-
-  `thread retry` is only for a terminal provider subscription-limit failure.
-  The server requires accepted input, available execution settings, no newer
-  request, and no provider-owned retry. Prior output or tool activity does not
-  disqualify the turn. It starts an agent-only system turn containing `Please
-  continue.` on the existing provider conversation; it does not resend the
-  original prompt or create another user message. When enabled, the Provider
-  retry plugin invokes this continuation automatically for timed limits.
 
 Ownership:
 
@@ -204,7 +198,13 @@ Ownership:
     --clear-parent-thread                  Remove parent assignment
     --section <id>                         Move into a section
     --clear-section                        Remove section assignment
+    --model <model>                        Set the sticky model for the next and later turns
+    --reasoning-level <level>              Set the sticky reasoning level (provider-dependent)
     --visibility <visibility>              Set visible or hidden
+
+  Model and reasoning updates stay within the thread's current provider. BB
+  validates them against that provider's current model catalog, applies them on
+  the next turn, and keeps using them on later turns until changed.
 
   bb thread read [id]                      Mark read
   bb thread unread [id]                    Mark unread
@@ -229,6 +229,13 @@ Lifecycle:
 
   bb thread archive [id]                   Archive a thread (and children/hidden forks)
     --self                                 Archive current thread
+
+  `thread stop` preserves the thread history, metadata, environment, and future
+  resume behavior. It stops active work and releases an idle agent runtime.
+  The command succeeds when no runtime is loaded. Archive a finished hidden
+  worker first, then stop it to release memory promptly. A stop that only
+  releases an idle runtime adds no interruption: it leaves the timeline and any
+  pending interaction of that thread untouched.
 
   bb thread unarchive [id]                 Unarchive a thread
     --self                                 Unarchive current thread

@@ -301,6 +301,29 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     expect(restoredShowIndex).toBeGreaterThan(restoredBoundsIndex);
   });
 
+  it("destroys the persisted native view when the final Browser tab is removed", async () => {
+    const { api, attachments } = createRecordingBrowserApi();
+    const detach = vi.fn();
+    api.detach = detach;
+    installDesktopBrowser(api);
+    const view = renderBrowserDeck({ canShowNativeBrowserView: true });
+
+    await waitFor(() => expect(attachments).toHaveLength(1));
+
+    view.rerender(
+      <BrowserTabDeck
+        browserTabs={[]}
+        activeBrowserTabId={null}
+        environmentId="env-1"
+        canShowNativeBrowserView={false}
+        threadId="thread-1"
+        onUpdate={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(detach).toHaveBeenCalledWith("tab-url"));
+  });
+
   it("focuses the address bar when an empty browser tab requests focus", () => {
     const { api } = createRecordingBrowserApi();
     installDesktopBrowser(api);

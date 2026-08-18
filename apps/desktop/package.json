@@ -1,6 +1,6 @@
 {
   "name": "@bb/desktop",
-  "version": "0.37.0",
+  "version": "0.38.0",
   "private": true,
   "description": "macOS and Linux Electron shell for bb",
   "main": "dist/main.js",
@@ -11,13 +11,13 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "clean": "rimraf dist release",
-    "desktop:build": "pnpm run build && node scripts/run-electron-builder.mjs --mac --publish always",
+    "desktop:build": "pnpm run build && node scripts/run-electron-builder.mjs --mac --arm64 --publish always",
     "desktop:build:linux": "pnpm run build && node scripts/run-electron-builder.mjs --linux --x64 --publish never",
     "desktop:version-feed": "tsx scripts/generate-version-feed.mts",
     "dev": "pnpm run prepare-runtime && pnpm run build && node --conditions=source --import tsx scripts/run-electron-dev.mjs",
     "dist": "pnpm run prepare-runtime && pnpm run desktop:build",
     "dist:linux": "pnpm run prepare-runtime && pnpm run desktop:build:linux",
-    "package": "pnpm run prepare-runtime && pnpm run build && node scripts/run-electron-builder.mjs --mac --dir",
+    "package": "pnpm run prepare-runtime && pnpm run build && node scripts/run-electron-builder.mjs --mac --dir --arm64",
     "package:linux": "pnpm run prepare-runtime && pnpm run build && node scripts/run-electron-builder.mjs --linux --dir --x64",
     "prepare-runtime": "pnpm exec turbo run build --filter=bb-app --output-logs=new-only",
     "smoke:packaged": "node scripts/smoke-packaged-app.mjs",

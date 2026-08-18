@@ -124,6 +124,7 @@ const representativeWorkspaceStatus = makeWorkspaceStatus({
     state: "dirty_and_committed_unmerged",
     insertions: 41,
     deletions: 12,
+    lineStatsComplete: true,
     files: [
       {
         path: "apps/app/src/components/secondary-panel/ThreadSecondaryPanel.stories.tsx",
@@ -148,6 +149,7 @@ const representativeWorkspaceStatus = makeWorkspaceStatus({
     commits: INFO_COMMITS,
     insertions: 86,
     deletions: 19,
+    lineStatsComplete: true,
     files: [
       {
         path: "apps/app/src/components/secondary-panel/ThreadSecondaryPanel.tsx",

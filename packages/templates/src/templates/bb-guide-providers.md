@@ -60,12 +60,12 @@ settings, or run:
 
   bb provider-retry status [thread-id] [--json]    Inspect in-memory waits
   bb provider-retry cancel <thread-id> [--json]    Cancel an automatic retry
-  bb thread retry [id] [--request-id <id>]         Core continuation
+  bb provider-retry retry <thread-id> [--json]     Request a manual retry
 
 Timed waits exist only while the current bb server/plugin process remains
 running. Disabling/reloading the plugin or restarting the server clears them;
-the original failed thread remains available for `bb thread retry`. Credit and
-spend-control exhaustion without a reset time is ignored by the plugin.
+the original failed thread remains available for `bb provider-retry retry`.
+Credit and spend-control exhaustion without a reset time is manual-only.
 
 Claude Code's native Workflow tool can be disabled separately on its provider
 page. This preference also defaults off and applies to newly started, resumed,
@@ -119,12 +119,15 @@ nativeReasoning for ACP session/set_config_option reasoning. Optional logo
 accepts an SVG, PNG, or WebP path; relative paths resolve from the bb data dir.
 Use nativeSkillRoots to add native skills to the composer. User roots resolve
 from the target host home directory. Project roots resolve from the selected
-workspace. Each root must use a relative path without dot segments.
+workspace. Each root must use a relative path without dot segments. Set
+supportsManualCompaction to true only if the agent accepts an explicit
+compaction request; it defaults to false, and bb hides the /compact command
+for agents that do not declare it.
 
 Use top-level sharedSkillRoots for one provider-neutral skill collection. The
 user and project paths use the same relative-path rules. bb indexes these roots
 as read-only sources. It then injects the selected skills into all providers.
 The bb user and project roots keep higher precedence than matching shared roots.
 
-OpenCode ACP supports the built-in /compact command. Cursor ACP does not expose
-compatible manual compaction through ACP.
+OpenCode ACP declares support for the built-in /compact command. Cursor ACP does
+not expose compatible manual compaction through ACP.

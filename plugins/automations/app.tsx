@@ -15,7 +15,7 @@ import {
   useRealtime,
   useRpc,
   type PluginNavPanelProps,
-} from "@bb/plugin-sdk/app";
+} from "@get-bb/plugin-sdk/app";
 import type { automationRpcContract } from "./src/rpc.js";
 import { toast } from "sonner";
 import type {
@@ -34,6 +34,7 @@ import {
   type AutomationCollectionMode,
 } from "./overview-view";
 import { Button } from "@bb/shared-ui/button";
+import { DelayedLoading } from "./delayed-loading.js";
 import {
   Dialog,
   DialogContent,
@@ -733,11 +734,13 @@ function DetailView({
 
   if (automation === null) {
     return (
-      <ResourceListState
-        state="loading"
-        message="Loading automation"
-        layout="detail"
-      />
+      <DelayedLoading>
+        <ResourceListState
+          state="loading"
+          message="Loading automation"
+          layout="detail"
+        />
+      </DelayedLoading>
     );
   }
 

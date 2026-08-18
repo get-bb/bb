@@ -18,7 +18,7 @@ You are one of several agents building this plugin in a SHARED worktree on branc
    - Theme: bb tokens only (`bg-background`, `text-muted-foreground`, `border-border`, semantic `--success`/`--attention`/`--timeline-accent`/`--warning`/`--destructive` via their utilities). NO hex/oklch literals, no `text-[Npx]` (AGENTS.md).
    - Icons: **Hugeicons** (`@hugeicons/react` + `@hugeicons/core-free-icons`) — see `packages/shared-ui/src/components/ui/icon.tsx` for the pattern. No Lucide, no emoji.
    - Typography: text-sm is 13px here; match the app's density.
-4. **Tests**: vitest in this package; plugin testing harness for backend (`@bb/plugin-sdk/testing`, see `server.test.ts`). High-value tests only; never mock sqlite (the harness gives a real one).
+4. **Tests**: vitest in this package; plugin testing harness for backend (`@get-bb/plugin-sdk/testing`, see `server.test.ts`). High-value tests only; never mock sqlite (the harness gives a real one).
 5. **Gates before you report done**:
    - `pnpm exec turbo run typecheck --filter=bb-plugin-tasks`
    - `pnpm exec turbo run test --filter=bb-plugin-tasks`

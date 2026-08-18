@@ -14,9 +14,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   PluginComposerApi,
+  PluginFileOpenerProps,
   PluginNewThreadPanelProps,
   PluginThreadPanelProps,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import { createPluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   resetPluginSlotStoreForTest,
@@ -29,14 +30,13 @@ import {
   PLUGIN_PANEL_ROUTE_PATH,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
 } from "@/lib/route-paths";
-import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 import { PluginPanelView } from "@/views/PluginPanelView";
 import {
   PluginPanelHeaderActions,
   PluginPanelHeaderCenter,
 } from "./PluginPanelHeader";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
-import { PluginComposerActions } from "./PluginComposerActions";
+import { ComposerActionsSlot } from "./PluginComposerActions";
 import { PluginContext } from "./plugin-context";
 import {
   PluginComposerHostProvider,
@@ -61,6 +61,7 @@ import {
   type OpenPluginPanelArgs,
 } from "./PluginPanelActions";
 import { NewTabActions } from "@/components/secondary-panel/NewTabFileSearch";
+import { buildFileOpenerPanelTab } from "./file-opener-tabs";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { PromptDraftState } from "@/lib/prompt-draft";
 
@@ -337,7 +338,7 @@ describe("useComposer", () => {
 
   function ComposerCustomizationMount() {
     const view = useComposerView();
-    return <PluginComposerActions view={view} />;
+    return <ComposerActionsSlot view={view} />;
   }
 
   it("writes quotes into the thread draft and fires the focus bus", () => {
@@ -1263,22 +1264,17 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     );
   }
 
-  it.each([true, false])(
-    "keeps the Automations row in the nav list when Extensions is enabled=%s",
-    (enabled) => {
-      registerAutomationsPanel();
+  it("keeps the Automations row in the nav list", () => {
+    registerAutomationsPanel();
 
-      render(
-        <ToolsHubExperimentProvider enabled={enabled}>
-          <MemoryRouter>
-            <PluginNavSidebarItems />
-          </MemoryRouter>
-        </ToolsHubExperimentProvider>,
-      );
+    render(
+      <MemoryRouter>
+        <PluginNavSidebarItems />
+      </MemoryRouter>,
+    );
 
-      expect(screen.getByRole("button", { name: "Automations" })).toBeDefined();
-    },
-  );
+    expect(screen.getByRole("button", { name: "Automations" })).toBeDefined();
+  });
 
   it("renders a sidebar entry that routes to the plugin panel", () => {
     setPluginSlotRegistrations(
@@ -1478,6 +1474,19 @@ describe("plugin panel shared title bar and full-bleed body", () => {
     expect(
       screen.getByRole("button", { name: "Toggle sidebar" }),
     ).toBeDefined();
+  });
+
+  it("keys the right-panel toggle target to its owning pane", () => {
+    const panel = panelSlot({});
+    render(
+      <PluginPanelHeaderActions panel={panel} paneId="pane-docs" subPath="" />,
+    );
+
+    expect(
+      document
+        .querySelector("[data-plugin-right-panel-toggle-portal]")
+        ?.getAttribute("data-plugin-right-panel-toggle-portal"),
+    ).toBe("plugin-panel:demo:board:pane-docs");
   });
 
   it("gives the component a zero-padding full-bleed body", () => {
@@ -1787,25 +1796,40 @@ describe("plugin file opener tabs", () => {
         ],
       }),
     );
-    const tab = createPluginPanelFixedPanelTab({
-      actionId: "file-opener:editor",
-      paramsJson: JSON.stringify({
-        path: "notes/todo.md",
-        source: {
-          kind: "workspace",
-          threadId: null,
-          environmentId: "env_1",
-          projectId: null,
-        },
+    const tab = {
+      ...createPluginPanelFixedPanelTab({
+        actionId: "file-opener:editor",
+        paramsJson: JSON.stringify({
+          path: "notes/todo.md",
+          source: {
+            kind: "workspace",
+            threadId: null,
+            environmentId: "env_1",
+            projectId: null,
+          },
+        }),
+        pluginId: "notes",
+        title: "todo.md",
       }),
-      pluginId: "notes",
-      title: "todo.md",
-    });
+      fileOpenerOwner: {
+        kind: "workspace-file-preview" as const,
+        environmentId: "env_1",
+        projectId: null,
+        tab: {
+          lineRange: { startLineNumber: 7, endLineNumber: 9 },
+          path: "notes/todo.md",
+          source: { kind: "working-tree" as const },
+          statusLabel: null,
+        },
+        threadId: null,
+      },
+    };
 
     render(
       <PluginPanelTabContent
         tab={tab}
         context={{ kind: "new-thread", projectId: null }}
+        fileOpenerOriginal={<div>native preview</div>}
       />,
     );
 
@@ -1814,23 +1838,106 @@ describe("plugin file opener tabs", () => {
     ).toBeDefined();
   });
 
-  it("degrades to a placeholder when the opener is gone or params are junk", () => {
-    const orphanTab = createPluginPanelFixedPanelTab({
-      actionId: "file-opener:gone",
-      paramsJson: JSON.stringify({
-        path: "a.md",
-        source: { kind: "workspace" },
+  it("lets an opener delegate to the exact native preview node", () => {
+    function DelegatingEditor({
+      experimental_Original: Original,
+    }: PluginFileOpenerProps) {
+      return <Original />;
+    }
+    setPluginSlotRegistrations(
+      "notes",
+      registrationSet({
+        fileOpeners: [
+          {
+            id: "editor",
+            title: "Notes editor",
+            extensions: ["md"],
+            component: DelegatingEditor,
+          },
+        ],
       }),
-      pluginId: "ghost",
-      title: "a.md",
-    });
+    );
+    const tab = buildFileOpenerPanelTab(
+      { id: "editor", pluginId: "notes" },
+      {
+        path: "notes/todo.md",
+        source: {
+          kind: "workspace",
+          environmentId: "env_1",
+          projectId: null,
+          threadId: "thr_1",
+        },
+      },
+      {
+        kind: "workspace-file-preview",
+        environmentId: "env_1",
+        projectId: null,
+        tab: {
+          lineRange: { startLineNumber: 7, endLineNumber: 9 },
+          path: "notes/todo.md",
+          source: { kind: "working-tree" },
+          statusLabel: null,
+        },
+        threadId: "thr_1",
+      },
+    );
+
+    render(
+      <PluginPanelTabContent
+        tab={tab}
+        context={{ kind: "thread", threadId: "thr_1" }}
+        fileOpenerOriginal={
+          <button type="button">Native line 7 and editor actions</button>
+        }
+      />,
+    );
+
+    expect(screen.getByRole("button").textContent).toBe(
+      "Native line 7 and editor actions",
+    );
+  });
+
+  it("uses the owner when the opener is gone and a placeholder for junk params", () => {
+    const orphanTab = {
+      ...createPluginPanelFixedPanelTab({
+        actionId: "file-opener:gone",
+        paramsJson: JSON.stringify({
+          path: "a.md",
+          source: {
+            kind: "workspace",
+            threadId: null,
+            environmentId: "env_1",
+            projectId: null,
+          },
+        }),
+        pluginId: "ghost",
+        title: "a.md",
+      }),
+      fileOpenerOwner: {
+        kind: "workspace-file-preview" as const,
+        environmentId: "env_1",
+        projectId: null,
+        tab: {
+          lineRange: { startLineNumber: 3, endLineNumber: 4 },
+          path: "a.md",
+          source: { kind: "working-tree" as const },
+          statusLabel: null,
+        },
+        threadId: null,
+      },
+    };
     const { unmount } = render(
       <PluginPanelTabContent
         tab={orphanTab}
         context={{ kind: "new-thread", projectId: null }}
+        fileOpenerOriginal={
+          <button type="button">Native preview actions for a.md</button>
+        }
       />,
     );
-    expect(screen.getByText(/file opener is not available/)).toBeDefined();
+    expect(screen.getByRole("button").textContent).toBe(
+      "Native preview actions for a.md",
+    );
     unmount();
 
     setPluginSlotRegistrations(
@@ -1856,8 +1963,72 @@ describe("plugin file opener tabs", () => {
       <PluginPanelTabContent
         tab={junkParamsTab}
         context={{ kind: "new-thread", projectId: null }}
+        fileOpenerOriginal={<div>must not render</div>}
       />,
     );
     expect(screen.getByText(/file opener is not available/)).toBeDefined();
+  });
+
+  it("restores the exact native preview node when the opener crashes", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    function CrashingEditor(): never {
+      throw new Error("editor crashed");
+    }
+    setPluginSlotRegistrations(
+      "notes",
+      registrationSet({
+        fileOpeners: [
+          {
+            id: "editor",
+            title: "Notes editor",
+            extensions: ["md"],
+            component: CrashingEditor,
+          },
+        ],
+      }),
+    );
+    const tab = {
+      ...createPluginPanelFixedPanelTab({
+        actionId: "file-opener:editor",
+        paramsJson: JSON.stringify({
+          path: "notes/todo.md",
+          source: {
+            kind: "workspace",
+            threadId: "thr_1",
+            environmentId: "env_1",
+            projectId: null,
+          },
+        }),
+        pluginId: "notes",
+        title: "todo.md",
+      }),
+      fileOpenerOwner: {
+        kind: "workspace-file-preview" as const,
+        environmentId: "env_1",
+        projectId: null,
+        tab: {
+          lineRange: { startLineNumber: 7, endLineNumber: 9 },
+          path: "notes/todo.md",
+          source: { kind: "working-tree" as const },
+          statusLabel: null,
+        },
+        threadId: "thr_1",
+      },
+    };
+
+    render(
+      <PluginPanelTabContent
+        tab={tab}
+        context={{ kind: "thread", threadId: "thr_1" }}
+        fileOpenerOriginal={
+          <button type="button">Native selection and editor actions</button>
+        }
+      />,
+    );
+
+    expect(screen.getByRole("button").textContent).toBe(
+      "Native selection and editor actions",
+    );
   });
 });

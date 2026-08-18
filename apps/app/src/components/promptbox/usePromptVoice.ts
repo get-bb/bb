@@ -16,6 +16,10 @@ async function requestVoiceTranscription({
   return transcription.text;
 }
 
+function createVoiceAbortError(): DOMException {
+  return new DOMException("Voice transcription was cancelled", "AbortError");
+}
+
 export function usePromptVoice(
   promptBoxRef: RefObject<PromptBoxHandle | null>,
 ): PromptVoiceConfig {
@@ -31,9 +35,21 @@ export function usePromptVoice(
     [promptBoxRef],
   );
 
+  const transcribeAfterCompletionTransition = useCallback(
+    async (args: Parameters<typeof requestVoiceTranscription>[0]) => {
+      const text = await requestVoiceTranscription(args);
+      await promptBoxRef.current?.playVoiceCompletionTransition();
+      if (args.signal?.aborted) {
+        throw createVoiceAbortError();
+      }
+      return text;
+    },
+    [promptBoxRef],
+  );
+
   const voiceInput = useVoiceInput({
     onTranscript,
-    onTranscribe: requestVoiceTranscription,
+    onTranscribe: transcribeAfterCompletionTransition,
     getPromptContext,
   });
 

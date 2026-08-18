@@ -1,4 +1,3 @@
-import { resolvePiDefaultModelId } from "@bb/agent-providers";
 import {
   HIGH_REASONING_EFFORT,
   LOW_REASONING_EFFORT,
@@ -145,6 +144,29 @@ function describePiModel(model: PiCatalogModel): string {
       ? model.provider[0].toUpperCase() + model.provider.slice(1)
       : model.provider;
   return `${provider} ${capabilities.join(", ")} model via Pi`;
+}
+
+/**
+ * Best default model per upstream provider. Subset of Pi's
+ * `defaultModelPerProvider`:
+ * https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/model-resolver.ts
+ */
+const PI_DEFAULT_MODEL_PER_PROVIDER: Partial<Record<string, string>> = {
+  anthropic: "claude-opus-4-8",
+  openai: "gpt-5.4",
+  "openai-codex": "gpt-5.6-sol",
+  "amazon-bedrock": "us.anthropic.claude-opus-4-8",
+  google: "gemini-2.5-pro",
+  "google-gemini-cli": "gemini-2.5-pro",
+  "google-vertex": "gemini-3-pro-preview",
+  openrouter: "openai/gpt-5.1-codex",
+  "vercel-ai-gateway": "anthropic/claude-opus-4.8",
+  xai: "grok-4-fast-non-reasoning",
+  mistral: "devstral-medium-latest",
+};
+
+function resolvePiDefaultModelId(providerId: string): string | undefined {
+  return PI_DEFAULT_MODEL_PER_PROVIDER[providerId];
 }
 
 function resolveDefaultPiModelId(models: AvailableModel[]): string | undefined {

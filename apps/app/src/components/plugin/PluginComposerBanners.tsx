@@ -1,62 +1,76 @@
-import type { ComposerView } from "@bb/plugin-sdk";
+import type { ReactNode } from "react";
+import type { ComposerView } from "@get-bb/plugin-sdk";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { useResolvedComposerBanners } from "./composer-slot-hooks";
 import { PluginSlotMount } from "./PluginSlotMount";
 import {
   composerScopeIdentity,
   PluginComposerViewProvider,
   useOptionalPluginComposerView,
 } from "./plugin-composer-host";
-import { composerCustomizationsForScope } from "./composer-customizations";
 
-/** Plugin banner rows rendered above a composer's native measured stack. */
-export function PluginComposerBanners({ view }: { view?: ComposerView }) {
+/** All preservable banner rows for one Composer instance. */
+export function ComposerBannersSlot({
+  view,
+  children,
+  ownerPlacement = "after",
+}: {
+  view?: ComposerView;
+  children?: ReactNode;
+  ownerPlacement?: "before" | "after";
+}) {
   return view === undefined ? (
-    <PluginComposerBannerRows />
+    <ComposerBannerRows ownerPlacement={ownerPlacement}>
+      {children}
+    </ComposerBannerRows>
   ) : (
     <PluginComposerViewProvider value={view}>
-      <PluginComposerBannerRows />
+      <ComposerBannerRows ownerPlacement={ownerPlacement}>
+        {children}
+      </ComposerBannerRows>
     </PluginComposerViewProvider>
   );
 }
 
-function PluginComposerBannerRows() {
+function ComposerBannerRows({
+  children,
+  ownerPlacement,
+}: {
+  children?: ReactNode;
+  ownerPlacement: "before" | "after";
+}) {
   const view = useOptionalPluginComposerView();
-  const { composerCustomizations } = usePluginSlots();
-  if (view === undefined) return null;
-  const scopeKey = composerScopeIdentity(view.scope);
-  const scopedCustomizations = composerCustomizationsForScope(
-    composerCustomizations,
-    view.scope.kind,
+  const banners = useResolvedComposerBanners(view?.scope.kind ?? null);
+  const scopeKey =
+    view === undefined ? null : composerScopeIdentity(view.scope);
+  const pluginRows = banners.map(
+    ({ key, pluginId, customizationId, banner }) => {
+      const slotId = `${customizationId}/${banner.id}`;
+      return (
+        <PluginSlotMount
+          key={`${key}/${scopeKey ?? "unbound"}`}
+          pluginId={pluginId}
+          slotKind="composerBanner"
+          slotId={slotId}
+          crashFallback={<></>}
+        >
+          {banner.chrome === "bare" ? (
+            <banner.component />
+          ) : (
+            <PromptStackCard ariaLabel={pluginId} className="empty:hidden">
+              <banner.component />
+            </PromptStackCard>
+          )}
+        </PluginSlotMount>
+      );
+    },
   );
 
   return (
     <>
-      {scopedCustomizations.map((customization) => {
-        return customization.banners?.map((banner) => {
-          const slotId = `${customization.id}/${banner.id}`;
-          return (
-            <PluginSlotMount
-              key={`${customization.pluginId}/${slotId}/${customization.generation}/${scopeKey}`}
-              pluginId={customization.pluginId}
-              slotKind="composerBanner"
-              slotId={slotId}
-              crashFallback={<></>}
-            >
-              {banner.chrome === "bare" ? (
-                <banner.component />
-              ) : (
-                <PromptStackCard
-                  ariaLabel={customization.pluginId}
-                  className="empty:hidden"
-                >
-                  <banner.component />
-                </PromptStackCard>
-              )}
-            </PluginSlotMount>
-          );
-        });
-      })}
+      {ownerPlacement === "before" ? children : null}
+      {pluginRows}
+      {ownerPlacement === "after" ? children : null}
     </>
   );
 }

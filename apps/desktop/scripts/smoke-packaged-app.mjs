@@ -146,14 +146,12 @@ async function startSmokeServer({
         experiments: {
           claudeCodeMockCliTraffic: false,
           newOnboarding: false,
-          toolsHub: false,
+          providerSessionReaping: false,
         },
         featureFlags: {
           placeholder: false,
         },
-        generalSettings: {
-          caffeinate: false,
-        },
+        generalSettings: {},
         hostDaemonPort: 38887,
         primaryHostPlatform: null,
         voiceTranscriptionEnabled: false,

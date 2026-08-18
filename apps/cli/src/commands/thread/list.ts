@@ -61,24 +61,35 @@ export function registerListCommand(
           console.log("No threads found");
           return;
         }
-        printThreadTable(threads);
+        const projects = await sdk.projects.list({ includePersonal: false });
+        const projectNames = new Map(
+          projects.map((project) => [project.id, project.name]),
+        );
+        printThreadTable(threads, projectNames);
       }),
     );
 }
 
-function printThreadTable(threads: Thread[]): void {
+const MAX_TITLE_WIDTH = 60;
+
+function printThreadTable(
+  threads: Thread[],
+  projectNames: ReadonlyMap<string, string>,
+): void {
   const rows = threads.map((thread) => [
     thread.id,
-    thread.projectId === PERSONAL_PROJECT_ID ? "-" : thread.projectId,
+    truncateCell(formatThreadListTitle(thread), MAX_TITLE_WIDTH),
+    formatThreadListProject(thread, projectNames),
     formatThreadListStatus(thread),
   ]);
   const idWidth = Math.max(4, ...rows.map((row) => row[0].length));
-  const projectWidth = Math.max(7, ...rows.map((row) => row[1].length));
-  const statusWidth = Math.max(12, ...rows.map((row) => row[2].length));
+  const titleWidth = Math.max(5, ...rows.map((row) => row[1].length));
+  const projectWidth = Math.max(7, ...rows.map((row) => row[2].length));
+  const statusWidth = Math.max(12, ...rows.map((row) => row[3].length));
   const table = renderBorderlessTable(
     {
-      head: ["ID", "Project", "Status"],
-      colWidths: [idWidth, projectWidth, statusWidth],
+      head: ["ID", "Title", "Project", "Status"],
+      colWidths: [idWidth, titleWidth, projectWidth, statusWidth],
     },
     rows,
   );
@@ -86,6 +97,28 @@ function printThreadTable(threads: Thread[]): void {
   console.log("");
   console.log(table);
   console.log("");
+}
+
+function formatThreadListTitle(thread: Thread): string {
+  const title = thread.title?.trim();
+  if (title) return title;
+  const fallback = thread.titleFallback?.trim();
+  if (fallback) return fallback;
+  return "-";
+}
+
+function formatThreadListProject(
+  thread: Thread,
+  projectNames: ReadonlyMap<string, string>,
+): string {
+  if (thread.projectId === PERSONAL_PROJECT_ID) return "-";
+  return projectNames.get(thread.projectId) ?? thread.projectId;
+}
+
+function truncateCell(value: string, maxWidth: number): string {
+  const singleLine = value.replace(/\s+/g, " ");
+  if (singleLine.length <= maxWidth) return singleLine;
+  return `${singleLine.slice(0, maxWidth - 1)}…`;
 }
 
 function formatThreadListStatus(thread: Thread): string {

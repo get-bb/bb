@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  getPromptDraftAccessor,
   usePromptDraftInputThreadIds,
   usePromptDraftStorage,
 } from "./usePromptDraftStorage";
@@ -128,6 +129,36 @@ describe("usePromptDraftStorage", () => {
 });
 
 describe("usePromptDraftStorage addQuote", () => {
+  it("keeps an imperative draft-action consumer unsubscribed from composer writes", () => {
+    const scope = uniqueScope();
+    let consumerRenders = 0;
+    let draftActions: ReturnType<typeof getPromptDraftAccessor> | undefined;
+
+    function DraftActionConsumer() {
+      consumerRenders += 1;
+      draftActions = getPromptDraftAccessor(scope);
+      return null;
+    }
+
+    render(<DraftActionConsumer />);
+    const rendersBeforeTyping = consumerRenders;
+    const composer = renderHook(() => usePromptDraftStorage(scope));
+
+    act(() => {
+      composer.result.current.setTextAndMentions("typed reply", []);
+    });
+
+    expect(consumerRenders).toBe(rendersBeforeTyping);
+    expect(draftActions?.storageKey).toBe(composer.result.current.storageKey);
+
+    act(() => {
+      draftActions?.addQuote("selected text");
+    });
+
+    expect(composer.result.current.text).toBe("typed reply\n> selected text\n");
+    expect(consumerRenders).toBe(rendersBeforeTyping);
+  });
+
   it("appends a trimmed quote as a '> ' block to the draft text and persists", () => {
     const scope = uniqueScope();
     const { result } = renderHook(() => usePromptDraftStorage(scope));

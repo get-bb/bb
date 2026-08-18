@@ -15,6 +15,21 @@ export const DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS = LEASE_TIMEOUT_MS;
 export const MANAGED_ENVIRONMENT_RETIRE_GRACE_MS = 5 * 60_000;
 export const WORKSPACE_DIFF_MAX_DIFF_BYTES = 2 * 1024 * 1024;
 export const WORKSPACE_DIFF_MAX_FILE_LIST_BYTES = 256 * 1024;
+/**
+ * User-facing status enriches ordinary untracked changes with exact line
+ * counts. Both limits must admit the snapshot; larger sets keep their paths
+ * and statuses but report incomplete line stats without reading contents.
+ */
+export const WORKSPACE_STATUS_MAX_UNTRACKED_LINE_STAT_FILES = 50;
+export const WORKSPACE_STATUS_MAX_UNTRACKED_LINE_STAT_BYTES = 8 * 1024 * 1024;
+/**
+ * Shared hard ceiling for rich diff-file slices and untracked content reads.
+ * At 500 files the daemon's conservative 16 KiB-per-file numstat budget stays
+ * near 8 MiB; larger diffs return an exact leading slice without running stats
+ * or content work beyond it. Keeping one policy also bounds alternate-index
+ * work and the returned table of contents.
+ */
+export const WORKSPACE_DIFF_MAX_FILES = 500;
 
 /**
  * Per-file diff tiering thresholds (in changed lines = additions + deletions).
@@ -27,8 +42,6 @@ export const DIFF_FILE_AUTO_LOAD_MAX_CHANGED_LINES = 500;
 export const DIFF_FILE_TOO_LARGE_CHANGED_LINES = 20_000;
 /** Per-file byte budget for an on-demand patch; the daemon tail-cuts beyond it. */
 export const DIFF_FILE_PATCH_MAX_BYTES = 512 * 1024;
-/** Hard ceiling on table-of-contents entries; beyond this the TOC is not_applicable. */
-export const DIFF_FILES_MAX_COUNT = 5000;
 /**
  * Diffs with at most this many files get ALL their `auto`-tier patches shipped
  * inline with the TOC (`/diff/files` → `initialPatches`), so a small diff paints

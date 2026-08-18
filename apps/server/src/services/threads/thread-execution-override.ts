@@ -1,9 +1,4 @@
 import {
-  getBuiltInAgentProviderServerCapabilities,
-  isAgentProviderId,
-  listBuiltInAgentProviderInfos,
-} from "@bb/agent-providers";
-import {
   getProjectExecutionDefaults,
   getThreadExecutionOverride,
   setThreadExecutionOverride,
@@ -18,32 +13,10 @@ import {
 } from "@bb/domain";
 import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
+import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { resolveSystemExecutionOptions } from "../system/execution-options.js";
 import { getLastExecutionOptions } from "./thread-events.js";
 import { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
-
-/**
- * Whether the thread's provider applies an in-place execution override on
- * `thread/resume` while preserving context. Reads the provider's
- * `supportsExecutionOverride` capability fact from the catalog; cross-provider
- * changes always require respawning the thread.
- */
-function providerSupportsExecutionOverride(providerId: string): boolean {
-  if (!isAgentProviderId(providerId)) {
-    return false;
-  }
-  return getBuiltInAgentProviderServerCapabilities(providerId)
-    .supportsExecutionOverride;
-}
-
-function listExecutionOverrideProviderIds(): string[] {
-  return listBuiltInAgentProviderInfos()
-    .filter((info) =>
-      getBuiltInAgentProviderServerCapabilities(info.id)
-        .supportsExecutionOverride,
-    )
-    .map((info) => info.id);
-}
 
 /**
  * Presence-sensitive patch for the thread execution override. A field that is
@@ -89,6 +62,7 @@ export interface RecoverThreadModelOverrideArgs {
  * changes. Throws `ApiError(400)` for incompatible input. No IO.
  */
 export function resolveThreadExecutionOverrideUpdate(
+  registry: ProviderRegistryService,
   args: ResolveThreadExecutionOverrideUpdateArgs,
 ): ThreadExecutionOverride {
   const { existing, patch, models, providerId, fallbackModel } = args;
@@ -99,12 +73,14 @@ export function resolveThreadExecutionOverrideUpdate(
     if (patch.model === null || patch.model === undefined) {
       nextModel = null;
     } else {
-      const target = models.find((candidate) => candidate.model === patch.model);
+      const target = models.find(
+        (candidate) => candidate.model === patch.model,
+      );
       if (!target) {
         throw new ApiError(
           400,
           "invalid_request",
-          `Model "${patch.model}" is not available for provider ${providerId}. Cross-provider switches require respawning the thread.`,
+          `Model "${patch.model}" is not available in this thread's ${providerId} model catalog. Choose a model offered by ${providerId}; changing providers requires starting a new thread.`,
         );
       }
       nextModel = patch.model;
@@ -121,7 +97,7 @@ export function resolveThreadExecutionOverrideUpdate(
     ? effectiveModelEntry.supportedReasoningEfforts.map(
         (effort) => effort.reasoningEffort,
       )
-    : getSupportedReasoningLevelsForProvider(providerId);
+    : getSupportedReasoningLevelsForProvider(registry, providerId);
 
   let nextReasoning = existing.reasoningLevelOverride;
   if ("reasoningLevel" in patch) {
@@ -136,7 +112,9 @@ export function resolveThreadExecutionOverrideUpdate(
           400,
           "invalid_request",
           `Reasoning level "${patch.reasoningLevel}" is not supported by ${
-            effectiveModel ? `model "${effectiveModel}"` : `provider ${providerId}`
+            effectiveModel
+              ? `model "${effectiveModel}"`
+              : `provider ${providerId}`
           }. Supported reasoning levels: ${supportedReasoning.join(", ")}.`,
         );
       }
@@ -170,21 +148,13 @@ export async function applyThreadExecutionOverride(
 ): Promise<void> {
   const { thread, patch } = args;
 
-  if (!providerSupportsExecutionOverride(thread.providerId)) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      `Changing the model or reasoning level of a running thread is only supported for ${listExecutionOverrideProviderIds().join(", ")} threads (this thread uses ${thread.providerId}). Cross-provider changes require respawning the thread.`,
-    );
-  }
-
   const models = await loadThreadProviderModels(deps, thread);
   const existing = getThreadExecutionOverride(deps.db, thread.id) ?? {
     modelOverride: null,
     reasoningLevelOverride: null,
   };
 
-  const next = resolveThreadExecutionOverrideUpdate({
+  const next = resolveThreadExecutionOverrideUpdate(deps.providerRegistry, {
     existing,
     patch,
     models,

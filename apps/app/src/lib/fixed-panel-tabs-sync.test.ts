@@ -127,7 +127,39 @@ describe("fixed panel tab server sync", () => {
     });
     expect(result.current).toMatchObject({
       lastUsedAt,
-      secondary: { activeTabId: null, isOpen: true },
+      secondary: { activeTabId: remoteTab.id, isOpen: true },
+    });
+  });
+
+  it("closes an open thread panel when hydration leaves no tabs", async () => {
+    const threadId = "sync-open-empty-panel";
+    const lastUsedAt = Date.now();
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId }),
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({
+          lastUsedAt,
+          secondary: {
+            activeTabId: null,
+            isOpen: true,
+            tabs: [],
+          },
+        }),
+      }),
+    );
+    apiMocks.getThreadTabs.mockResolvedValue({ revision: 2, tabs: [] });
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(
+      () => useFixedPanelTabsState(threadId, threadId),
+      { wrapper: createQueryWrapper(queryClient) },
+    );
+
+    await waitFor(() => expect(apiMocks.getThreadTabs).toHaveBeenCalled());
+
+    expect(result.current.secondary).toEqual({
+      activeTabId: null,
+      isOpen: false,
+      tabs: [],
     });
   });
 

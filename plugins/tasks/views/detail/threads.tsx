@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useBbNavigate, useRpc } from "@bb/plugin-sdk/app";
+import { useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
 import type { DelegationRpcContract } from "../../delegate/contract.js";
 import type {
   Preset,
@@ -12,10 +12,7 @@ import {
   formatRelativeTime,
   isActiveThread,
 } from "./meta.js";
-import {
-  PresetDialog,
-  savePresetDraft,
-} from "../manage/preset-dialog.js";
+import { PresetDialog, savePresetDraft } from "../manage/preset-dialog.js";
 import { useTasksRpc } from "../../shell/data.js";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -53,8 +50,8 @@ function ThreadPullRequestPill({
         // color, the text stays the normal foreground.
         className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-secondary px-2 py-0.5 text-xs font-medium shadow-2xs hover:border-input"
       >
-        <Icon name={meta.icon} className={cn("size-3", meta.textClassName)} />
-        #{pullRequest.number}
+        <Icon name={meta.icon} className={cn("size-3", meta.textClassName)} />#
+        {pullRequest.number}
       </a>
     );
   }
@@ -239,9 +236,7 @@ export function DispatchControl({
           }}
         >
           <span className="truncate">
-            {dispatching
-              ? "Dispatching…"
-              : (current?.name ?? "Dispatch")}
+            {dispatching ? "Dispatching…" : (current?.name ?? "Dispatch")}
           </span>
         </Button>
         <DropdownMenu>

@@ -1,24 +1,25 @@
 import { atomWithStorage } from "jotai/utils";
 import { useAtomValue } from "jotai";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
+import { resolveThreadListReplacement } from "@/lib/plugin-slot-resolvers";
+import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import { usePluginSlots, type PluginThreadListSlot } from "@/lib/plugin-slots";
 
 const THREAD_LIST_PROVIDER_STORAGE_KEY = "bb.sidebar.threadListProvider";
 
-/** The built-in list; also the value stored when the user picks it back. */
+/** Follow deterministic slot order and activate the first provider. */
+export const AUTOMATIC_THREAD_LIST_PROVIDER = "__automatic__";
+
+/** Always use BB's own thread list. */
 export const BUILT_IN_THREAD_LIST_PROVIDER = "__builtin__";
 
 /**
- * Which thread list fills the sidebar's scroll area, as
- * `<pluginId>/<slotId>` — or {@link BUILT_IN_THREAD_LIST_PROVIDER}.
- *
- * Client-local, like the sidebar's other layout preferences: a plugin the
- * user has not installed on this device must not blank their sidebar, and the
- * preference is about this screen, not this account.
+ * Automatic by default, with an explicit per-client override available in
+ * Appearance. Existing stored built-in and plugin selections remain valid.
  */
 export const threadListProviderAtom = atomWithStorage<string>(
   THREAD_LIST_PROVIDER_STORAGE_KEY,
-  BUILT_IN_THREAD_LIST_PROVIDER,
+  AUTOMATIC_THREAD_LIST_PROVIDER,
   createJsonLocalStorage<string>(),
   { getOnInit: true },
 );
@@ -30,26 +31,34 @@ export function threadListProviderKey(
 }
 
 /**
- * The slot the preference names, or null for the built-in list.
- *
- * A preference naming a provider that is not registered right now resolves to
- * null WITHOUT clearing the stored value: a disabled, reloading, or
- * not-yet-interpreted plugin must fall back to the built-in list and get its
- * sidebar back when it returns.
+ * Resolve automatic, BB-owned, and explicit-provider modes. An unavailable
+ * explicit provider falls back to BB without erasing the stored selection, so
+ * a temporarily disabled plugin gets its list back when it returns.
  */
 export function resolveThreadListProvider(
   slots: readonly PluginThreadListSlot[],
-  preference: string,
+  preference: string = AUTOMATIC_THREAD_LIST_PROVIDER,
 ): PluginThreadListSlot | null {
-  if (preference === BUILT_IN_THREAD_LIST_PROVIDER) return null;
-  return (
-    slots.find((slot) => threadListProviderKey(slot) === preference) ?? null
+  const resolved = resolveThreadListProviderReplacement(slots, preference);
+  return resolved.kind === "plugin" ? resolved.registration : null;
+}
+
+function resolveThreadListProviderReplacement(
+  slots: readonly PluginThreadListSlot[],
+  preference: string,
+): ResolvedReplacement<PluginThreadListSlot> {
+  if (preference === BUILT_IN_THREAD_LIST_PROVIDER) return { kind: "owner" };
+  return resolveThreadListReplacement(
+    slots,
+    preference === AUTOMATIC_THREAD_LIST_PROVIDER
+      ? undefined
+      : (candidate) => threadListProviderKey(candidate) === preference,
   );
 }
 
-/** The resolved thread-list slot for the sidebar, or null for the built-in. */
-export function useThreadListProvider(): PluginThreadListSlot | null {
+/** The active replacement, or the owner when none is registered. */
+export function useThreadListReplacement(): ResolvedReplacement<PluginThreadListSlot> {
   const { threadLists } = usePluginSlots();
   const preference = useAtomValue(threadListProviderAtom);
-  return resolveThreadListProvider(threadLists, preference);
+  return resolveThreadListProviderReplacement(threadLists, preference);
 }

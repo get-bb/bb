@@ -6,7 +6,10 @@ import path from "node:path";
 import { spawn as spawnPty } from "node-pty";
 import type { TerminalSessionCloseReason } from "@bb/domain";
 import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
+import {
+  killProcessGroup,
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 import type { HostDaemonServerTerminalMessage } from "../server-connection-support.js";
 import type { HostDaemonLogger } from "../logger.js";
 import { RuntimeManager } from "../runtime-manager.js";
@@ -19,6 +22,21 @@ const DEFAULT_SCROLLBACK_MAX_CHUNKS = 10_000;
 const MAX_OUTPUT_CHUNK_BYTES = 64 * 1024;
 const DEFAULT_OUTPUT_BATCH_DELAY_MS = 4;
 const DEFAULT_TERMINAL_CLOSE_GRACE_PERIOD_MS = 2_000;
+// The PTY starts before browser xterm can attach, so a shell can send its
+// required DA1 startup query while no terminal emulator is present. Although
+// browser xterm supports DA1, bb suppresses replies generated from replayed
+// output because the same output may have been processed before a reconnect.
+// Answer DA1 at the always-present PTY boundary and remove the query from
+// output so a later browser cannot send a duplicate response. If detached
+// query support grows beyond DA1, use one authoritative headless emulator
+// instead of adding more protocol-specific handlers here.
+const PRIMARY_DEVICE_ATTRIBUTES_QUERY_PATTERN = /\u001b\[(?:0)?c/g;
+const PRIMARY_DEVICE_ATTRIBUTES_RESPONSE = "\u001b[?1;2c";
+// One 64 KiB output chunk can hold more than 20,000 DA1 queries. node-pty
+// copies each reply into an unbounded write queue, so a terminal process could
+// exhaust host daemon memory. Send one bounded write for each output chunk.
+// A shell needs only one answer for each startup query.
+const MAX_PRIMARY_DEVICE_ATTRIBUTES_REPLIES_PER_CHUNK = 8;
 const NODE_PTY_NATIVE_DIRS: readonly string[] = [
   path.join("build", "Release"),
   path.join("build", "Debug"),
@@ -39,7 +57,7 @@ export interface TerminalPtyExit {
 }
 
 export interface TerminalPtyProcess {
-  kill(signal?: string): void;
+  kill(signal?: NodeJS.Signals): void;
   onData(listener: (data: string) => void): TerminalPtyDisposable;
   onExit(listener: (event: TerminalPtyExit) => void): TerminalPtyDisposable;
   resize(cols: number, rows: number): void;
@@ -102,11 +120,24 @@ interface TerminalSession {
   outputBuffers: Buffer[];
   outputBytes: number;
   outputFlushTimeout: ReturnType<typeof setTimeout> | null;
+  pendingPrimaryDeviceAttributesQuery: PendingPrimaryDeviceAttributesQuery;
   pty: TerminalPtyProcess;
   rows: number;
   scrollback: ScrollbackEntry[];
   scrollbackBytes: number;
   terminalId: string;
+}
+
+type PendingPrimaryDeviceAttributesQuery =
+  | ""
+  | "\u001b"
+  | "\u001b["
+  | "\u001b[0";
+
+interface PrimaryDeviceAttributesQueryResult {
+  output: string;
+  pendingQuery: PendingPrimaryDeviceAttributesQuery;
+  queryCount: number;
 }
 
 interface SendTerminalErrorArgs {
@@ -181,7 +212,14 @@ export const nodePtyAdapter: TerminalPtyAdapter = {
       rows: args.rows,
     });
     return {
-      kill: (signal) => pty.kill(signal),
+      // The pty child is a session leader, so its pid is also its process
+      // group id. Signal the whole group so background jobs die with the
+      // shell instead of surviving with a cwd in a removed workspace.
+      kill: (signal) =>
+        killProcessGroup({
+          child: { pid: pty.pid, kill: (groupSignal) => pty.kill(groupSignal) },
+          signal: signal ?? "SIGHUP",
+        }),
       onData: (listener) => pty.onData(listener),
       onExit: (listener) =>
         pty.onExit((event) =>
@@ -391,6 +429,38 @@ function createTerminalOperationCompletion(): TerminalOperationCompletion {
   return { promise, resolve: resolveCompletion };
 }
 
+function consumePrimaryDeviceAttributesQueries(
+  pendingQuery: PendingPrimaryDeviceAttributesQuery,
+  data: string,
+): PrimaryDeviceAttributesQueryResult {
+  const input = pendingQuery + data;
+  // Hold only a suffix that can become a complete DA1 query in the next PTY
+  // output chunk. finishTerminalSession flushes it unchanged if the PTY exits.
+  const nextPendingQuery: PendingPrimaryDeviceAttributesQuery = input.endsWith(
+    "\u001b[0",
+  )
+    ? "\u001b[0"
+    : input.endsWith("\u001b[")
+      ? "\u001b["
+      : input.endsWith("\u001b")
+        ? "\u001b"
+        : "";
+  const completeInput = input.slice(0, input.length - nextPendingQuery.length);
+  let queryCount = 0;
+  const output = completeInput.replace(
+    PRIMARY_DEVICE_ATTRIBUTES_QUERY_PATTERN,
+    () => {
+      queryCount += 1;
+      return "";
+    },
+  );
+  return {
+    output,
+    pendingQuery: nextPendingQuery,
+    queryCount,
+  };
+}
+
 export class TerminalManager {
   private readonly closeGracePeriodMs: number;
   private readonly outputBatchDelayMs: number;
@@ -553,6 +623,7 @@ export class TerminalManager {
         outputBuffers: [],
         outputBytes: 0,
         outputFlushTimeout: null,
+        pendingPrimaryDeviceAttributesQuery: "",
         pty,
         rows: message.rows,
         scrollback: [],
@@ -801,6 +872,22 @@ export class TerminalManager {
       return;
     }
 
+    const result = consumePrimaryDeviceAttributesQueries(
+      session.pendingPrimaryDeviceAttributesQuery,
+      data,
+    );
+    session.pendingPrimaryDeviceAttributesQuery = result.pendingQuery;
+    if (result.queryCount > 0) {
+      const replyCount = Math.min(
+        result.queryCount,
+        MAX_PRIMARY_DEVICE_ATTRIBUTES_REPLIES_PER_CHUNK,
+      );
+      session.pty.write(PRIMARY_DEVICE_ATTRIBUTES_RESPONSE.repeat(replyCount));
+    }
+    this.bufferTerminalOutput(session, result.output);
+  }
+
+  private bufferTerminalOutput(session: TerminalSession, data: string): void {
     const buffer = Buffer.from(data, "utf8");
     if (buffer.byteLength === 0) {
       return;
@@ -883,6 +970,13 @@ export class TerminalManager {
   private finishTerminalSession(args: FinishTerminalSessionArgs): void {
     if (this.sessions.get(args.session.terminalId) !== args.session) {
       return;
+    }
+    if (args.session.pendingPrimaryDeviceAttributesQuery.length > 0) {
+      this.bufferTerminalOutput(
+        args.session,
+        args.session.pendingPrimaryDeviceAttributesQuery,
+      );
+      args.session.pendingPrimaryDeviceAttributesQuery = "";
     }
     this.flushTerminalOutput(args.session);
     if (args.session.closeTimeout !== null) {

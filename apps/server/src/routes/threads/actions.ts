@@ -30,7 +30,6 @@ import {
   type Thread,
   type ThreadQueuedMessage,
 } from "@bb/domain";
-import { supportsManualCompaction } from "@bb/agent-providers";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
@@ -56,7 +55,6 @@ import {
 import { editThreadMessage } from "../../services/threads/thread-edit-message.js";
 import {
   buildExecutionOptions,
-  buildThreadStopCommand,
   dispatchThreadUnarchiveCommand,
   prepareTurnSubmitCommandPayload,
 } from "../../services/threads/thread-commands.js";
@@ -64,7 +62,7 @@ import {
   getLastProviderThreadId,
   isManualCompactionActive,
 } from "../../services/threads/thread-events.js";
-import { requestThreadStopForCurrentState } from "../../services/threads/thread-lifecycle.js";
+import { stopThreadForCurrentState } from "../../services/threads/thread-lifecycle.js";
 import {
   getThreadPromptBannerActivity,
   toThreadListEntryResponses,
@@ -82,10 +80,6 @@ import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
 } from "../../services/hosts/live-command.js";
-import {
-  continueThreadAfterProviderRateLimit,
-  getProviderRateLimitRecoveryStatus,
-} from "../../services/threads/provider-rate-limit-recovery.js";
 
 function toQueuedMessageOrderResponse(
   result: ReorderQueuedThreadMessageResult,
@@ -134,7 +128,7 @@ async function compactThreadContext(
   thread: Thread,
 ): Promise<void> {
   ensureThreadIsWritable(thread);
-  if (!supportsManualCompaction(thread.providerId)) {
+  if (!deps.providerRegistry.supportsManualCompaction(thread.providerId)) {
     throw new ApiError(
       409,
       "invalid_request",
@@ -313,7 +307,7 @@ async function createQueuedMessageForThread(
 }
 
 export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
-  const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
+  const { post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.threads;
@@ -342,31 +336,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       trigger: "user",
     });
     return context.json({ ok: true });
-  });
-
-  get(routes.rateLimitRecovery, async (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const environment = await requireThreadCommandEnvironment(deps, {
-      thread,
-    });
-    return context.json(
-      getProviderRateLimitRecoveryStatus(deps, { environment, thread }),
-    );
-  });
-
-  post(routes.continueAfterRateLimit, async (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const environment = await requireThreadCommandEnvironment(deps, {
-      thread,
-    });
-    return context.json(
-      await continueThreadAfterProviderRateLimit(deps, {
-        environment,
-        failedRequestId: payload.failedRequestId,
-        mode: payload.mode ?? "manual",
-        thread,
-      }),
-    );
   });
 
   post(routes.editMessage, async (context, payload) => {
@@ -500,7 +469,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
             db: deps.db,
             thread,
           });
-    requestThreadStopForCurrentState(deps, thread, environment);
+    await stopThreadForCurrentState(deps, thread, environment);
     return context.json({ ok: true });
   });
 
@@ -529,12 +498,9 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     });
     await runLiveHostCommand(deps, {
       command: {
-        ...buildThreadStopCommand({
-          environmentId: environment.id,
-          hostId: environment.hostId,
-          threadId: thread.id,
-        }),
         type: "thread.plan.cancel",
+        environmentId: environment.id,
+        threadId: thread.id,
         expectedTurnId: activity.activePlanTurnId,
       },
       hostId: environment.hostId,
@@ -593,6 +559,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         ...(preparedRuntimeCommand.acpLaunchSpec !== undefined
           ? { acpLaunchSpec: preparedRuntimeCommand.acpLaunchSpec }
           : {}),
+        bridgeLaunch: preparedRuntimeCommand.bridgeLaunch,
       },
       hostId: environment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,

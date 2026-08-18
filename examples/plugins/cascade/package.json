@@ -5,7 +5,7 @@
   "type": "module",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": "^0.4.1"
+    "bbPluginSdk": ">=0.4.3"
   },
   "bb": {
     "name": "Cascade",
@@ -27,7 +27,7 @@
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
-    "@bb/plugin-sdk": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
     "@types/react": "^19.0.0",
     "react": "^19.0.0",
     "sonner": "^2.0.7",

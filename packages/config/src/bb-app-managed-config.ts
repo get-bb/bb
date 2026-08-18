@@ -1,11 +1,25 @@
 import { join } from "node:path";
-import { agentProviderIdSchema, isAgentProviderId } from "@bb/agent-providers";
 import {
   acpNativeReasoningSchema,
   acpReasoningCliSchema,
   providerNativeSkillRootsSchema,
 } from "@bb/domain";
 import { z } from "zod";
+
+/**
+ * The provider ids that ship with bb. A custom ACP agent id always formats to
+ * `acp-<slug>`, so only the bundled ACP entry can be shadowed by one.
+ */
+const BUNDLED_PROVIDER_IDS = [
+  "codex",
+  "claude-code",
+  "pi",
+  "acp-cursor",
+] as const;
+
+const RESERVED_ACP_PROVIDER_IDS: ReadonlySet<string> = new Set(
+  BUNDLED_PROVIDER_IDS,
+);
 
 export const BB_APP_CONFIG_FILE_NAME = "config.json";
 export const BB_APP_ENV_FILE_NAME = "env.json";
@@ -47,13 +61,20 @@ export const bbAppManagedConfigValuesSchema = z
   })
   .strict();
 
-// ACP provider ids are dynamic: known agents (acp-opencode, acp-omp, …) and
-// custom agents (acp-<slug>) both live outside the built-in provider enum, so
-// customModels accepts any well-formed acp-* id alongside the enum.
+/**
+ * ACP provider ids are dynamic: known agents (acp-opencode, acp-omp, …) and
+ * custom agents (acp-<slug>) both live outside the bundled provider list, so
+ * customModels accepts any well-formed acp-* id alongside it.
+ *
+ * DEBT: config is parsed before plugins load, so it cannot consult the live
+ * registry; the bundled ids are restated here. A third-party plugin provider
+ * therefore still cannot carry custom models — unchanged from before, and
+ * fixed by moving this check to where the provider listing is composed.
+ */
 const ACP_PROVIDER_ID_PATTERN = /^acp-[a-z0-9][a-z0-9-]*$/u;
 
 const customModelProviderIdSchema = z.union([
-  agentProviderIdSchema,
+  z.enum(BUNDLED_PROVIDER_IDS),
   z.string().regex(ACP_PROVIDER_ID_PATTERN),
 ]);
 
@@ -114,11 +135,16 @@ export const customAcpAgentSchema = z
     reasoningCli: acpReasoningCliSchema.optional(),
     nativeReasoning: acpNativeReasoningSchema.optional(),
     nativeSkillRoots: providerNativeSkillRootsSchema.optional(),
+    // Whether the agent accepts an explicit compaction request. The ACP
+    // protocol has no capability for it, so the agent definition declares it:
+    // OpenCode implements /compact, Cursor does not, and a custom agent says
+    // so here rather than being enumerated in a BB-side id list.
+    supportsManualCompaction: z.boolean().default(false),
   })
   .strict()
   .superRefine((agent, context) => {
     const providerId = formatCustomAcpAgentProviderId(agent.id);
-    if (isAgentProviderId(providerId)) {
+    if (RESERVED_ACP_PROVIDER_IDS.has(providerId)) {
       context.addIssue({
         code: "custom",
         message: `Custom ACP agent id "${agent.id}" resolves to built-in provider "${providerId}".`,

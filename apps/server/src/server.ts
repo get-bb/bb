@@ -33,6 +33,7 @@ import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-ev
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
+import { registerInternalPluginHostArtifactRoutes } from "./internal/plugin-host-artifacts.js";
 import { registerInternalSessionRoutes } from "./internal/session.js";
 import { registerInternalSkillRoutes } from "./internal/skills.js";
 import { registerInternalToolCallRoutes } from "./internal/tool-calls.js";
@@ -72,8 +73,19 @@ import {
   createPluginCatalogService,
   type PluginCatalogService,
 } from "./services/plugin-catalog/plugin-catalog-service.js";
+import type { ProviderRegistryService } from "./services/providers/provider-registry.js";
 import { callHostRetryableOnlineRpc } from "./services/hosts/online-rpc.js";
 import { browserRequestProblem } from "./browser-request-guard.js";
+import {
+  callPluginHostRpc,
+  disposePluginHostWorkers,
+} from "./services/plugins/plugin-host-rpc.js";
+
+/**
+ * `/api/v1/plugins/<id>/http/...` — the plugin-owned wire, whose auth mode is
+ * declared per route by the plugin itself.
+ */
+const PLUGIN_WIRE_HTTP_PATH = /^\/api\/v1\/plugins\/[^/]+\/http(?:\/|$)/u;
 import { rankAcceptedAssetEncodings } from "./asset-content-encoding.js";
 
 export type CloseWebSockets = () => Promise<void>;
@@ -86,6 +98,7 @@ export interface ServerApp {
   injectWebSocket: ReturnType<typeof createNodeWebSocket>["injectWebSocket"];
   pluginService: PluginService;
   pluginCatalogService: PluginCatalogService;
+  providerRegistry: ProviderRegistryService;
 }
 
 interface CloseWebSocketServerArgs {
@@ -398,10 +411,13 @@ export function createApp(
     db: deps.db,
     hub: deps.hub,
     logger: deps.logger,
+    telemetry: deps.telemetry,
     pendingInteractions: deps.pendingInteractions,
     dataDir: deps.config.dataDir,
     appVersion: deps.config.appVersion,
     sharedPorts: deps.sharedPorts,
+    providerRegistry: deps.providerRegistry,
+    pluginHostArtifacts: deps.pluginHostArtifacts,
     ensureSharedPortTunnel: (hostId) =>
       deps.sharedPorts.ensureTunnelIdentity(hostId, () =>
         callHostRetryableOnlineRpc(deps, {
@@ -410,6 +426,8 @@ export function createApp(
           timeoutMs: 30_000,
         }),
       ),
+    callPluginHost: (args) => callPluginHostRpc(deps, args),
+    disposePluginHost: (args) => disposePluginHostWorkers(deps, args),
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
   });
@@ -418,10 +436,40 @@ export function createApp(
   // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);
   const publicApi = new Hono();
+  // CORS decides whether a browser may *read* a response; it does not stop the
+  // request being sent and acted on. A `no-cors` POST with a simple content
+  // type skips the preflight entirely, and the typed route parser reads the
+  // body with `c.req.json()` regardless of content type — so a page on any
+  // origin could drive this API blind. Reject a foreign browser origin here
+  // instead. `requireJsonForMutation` is deliberately NOT set: it answers 415
+  // to any mutation without `application/json`, which would break every
+  // existing `curl -d` caller. The origin check alone stops browser CSRF,
+  // because a browser always sends `Origin` on a cross-origin mutation.
+  // Non-browser callers (curl, the `bb` CLI, the SDK) send no `Origin` and pass
+  // through untouched.
+  publicApi.use("*", async (context, next) => {
+    // A plugin's own HTTP routes declare their auth mode (`local` | `token` |
+    // `none`). `none` is deliberately reachable from any origin, and `token`
+    // authenticates with a secret rather than an origin, so this blanket check
+    // must not pre-empt the per-route one `registerPluginRoutes` applies.
+    if (PLUGIN_WIRE_HTTP_PATH.test(context.req.path)) {
+      return next();
+    }
+    const problem = browserRequestProblem(context, deps);
+    if (problem !== null) {
+      throw new ApiError(problem.status, "forbidden_origin", problem.error);
+    }
+    return next();
+  });
   const pluginCatalogService = createPluginCatalogService({
     db: deps.db,
     appVersion: deps.config.appVersion,
+    marketplaceUrl: deps.config.marketplaceUrl,
+    dataDir: deps.config.dataDir,
     plugins: pluginService,
+    // The store's installed/compatible flags ride the plugin-list broadcast,
+    // so a refreshed catalog reaches open windows without polling.
+    notifyCatalogChanged: () => deps.hub.notifySystem(["plugins-changed"]),
     warn: (message) => deps.logger.warn(message),
   });
   registerProjectRoutes(publicApi, deps);
@@ -442,8 +490,9 @@ export function createApp(
 
   const internalApi = new Hono();
   registerInternalHostRoutes(internalApi, deps);
-  registerInternalSessionRoutes(internalApi, deps);
+  registerInternalSessionRoutes(internalApi, deps, pluginService);
   registerInternalSkillRoutes(internalApi, deps);
+  registerInternalPluginHostArtifactRoutes(internalApi, deps);
   registerInternalEventRoutes(internalApi, deps);
   registerInternalToolCallRoutes(internalApi, deps);
   registerInternalInteractiveRequestRoutes(internalApi, deps);
@@ -532,12 +581,16 @@ export function createApp(
             socket,
           }),
         onMessage: (event, socket) =>
-          onDaemonSocketMessage(deps, {
-            hostId: websocketContext.hostId,
-            raw: event.data,
-            sessionId: websocketContext.sessionId,
-            socket,
-          }),
+          onDaemonSocketMessage(
+            deps,
+            {
+              hostId: websocketContext.hostId,
+              raw: event.data,
+              sessionId: websocketContext.sessionId,
+              socket,
+            },
+            pluginService,
+          ),
         onClose: () => onDaemonSocketClose(deps, websocketContext.sessionId),
       };
     }),
@@ -630,5 +683,6 @@ export function createApp(
     injectWebSocket,
     pluginService,
     pluginCatalogService,
+    providerRegistry: deps.providerRegistry,
   };
 }

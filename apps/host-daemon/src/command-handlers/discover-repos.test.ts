@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { discoverRepos } from "./discover-repos.js";
 
 /**
@@ -65,18 +65,28 @@ describe("discoverRepos", () => {
 
   it("drops repos older than the recency window", async () => {
     await makeRepo("projects/app");
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
 
-    const { repos } = await discoverRepos({
-      maxDepth: 5,
-      sinceDays: 30,
-      limit: 50,
-      home,
-      env: { PATH: "/nonexistent" },
-      // A "now" far in the future puts the fixture outside the window.
-      now: Date.now() + 400 * 86_400_000,
-    });
+    try {
+      const { repos } = await discoverRepos({
+        maxDepth: 5,
+        sinceDays: 30,
+        limit: 50,
+        home,
+        env: { PATH: "/nonexistent" },
+        // A "now" far in the future puts the fixture outside the window.
+        now: Date.now() + 400 * 86_400_000,
+      });
 
-    expect(repos).toEqual([]);
+      expect(repos).toEqual([]);
+      const timerDelays = setTimeoutSpy.mock.calls.flatMap(([, delay]) =>
+        typeof delay === "number" ? [delay] : [],
+      );
+      expect(timerDelays.length).toBeGreaterThan(0);
+      expect(Math.max(...timerDelays)).toBeLessThanOrEqual(3_000);
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
   });
 
   it("detects linked worktrees, whose .git is a file rather than a directory", async () => {

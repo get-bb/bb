@@ -28,7 +28,6 @@ describe("app settings data", () => {
     ];
     setAppSettings(db, {
       ...defaultAppSettings,
-      caffeinate: true,
       showKeyboardHints: false,
       steerActiveThreadOnEnter: true,
       codexMemoryEnabled: false,
@@ -37,7 +36,6 @@ describe("app settings data", () => {
 
     expect(getAppSettings(db)).toEqual({
       ...defaultAppSettings,
-      caffeinate: true,
       showKeyboardHints: false,
       steerActiveThreadOnEnter: true,
       codexMemoryEnabled: false,

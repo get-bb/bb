@@ -1,13 +1,15 @@
-import type { BbPluginApi, PluginAgentToolResult } from "@bb/plugin-sdk";
+import type { BbPluginApi, PluginAgentToolResult } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { registerWorkflowCli } from "./cli.js";
 import { migrations } from "./data.js";
+import { toJsonValue } from "./json-value.js";
 import { executeWorkflowScript } from "./runtime.js";
 import { createWorkflowService } from "./service.js";
 import {
   DEFAULT_WORKFLOW_SETTINGS,
   registerWorkflowSettings,
 } from "./settings.js";
+import type { JsonValue } from "./types.js";
 import { prepareWorkflowSource } from "./workflow-input.js";
 import { workflowUiRpcContract } from "./ui-contract.js";
 import { buildWorkflowRunView } from "./ui-view.js";
@@ -44,11 +46,16 @@ const sourceInputFields = {
     )
     .optional(),
 } as const;
+// zod 4's `z.json()` compiles to a self-referential `$defs` entry, and some
+// model providers reject an entire tool list that contains a recursive `$ref`
+// before the turn starts. Declare freeform JSON as `unknown` so the wire schema
+// stays flat, then narrow with `toJsonValue` at each call site.
+const freeformJson = z.unknown();
+
 const runInputSchema = z
   .object({
     ...sourceInputFields,
-    args: z
-      .json()
+    args: freeformJson
       .describe(
         "Optional input value exposed to the script as the global `args`, verbatim. Pass arrays/objects as actual JSON values, NOT as a JSON-encoded string — a stringified list breaks `args.filter`/`args.map` in the script. Use for parameterized named workflows (e.g. a research question).",
       )
@@ -65,9 +72,9 @@ const runInputSchema = z
   .strict();
 const resultInputSchema = z
   .object({
-    value: z
-      .json()
-      .describe("The final value matching the requested JSON Schema."),
+    value: freeformJson.describe(
+      "The final value matching the requested JSON Schema.",
+    ),
   })
   .strict();
 
@@ -147,7 +154,7 @@ export default async function plugin(bb: BbPluginApi) {
           projectId: ctx.projectId,
           originThreadId: ctx.threadId,
           source: prepared.source,
-          args: input.args,
+          args: toJsonValue(input.args, "args"),
           resumedFromRunId: input.resumeRunId,
         });
         const previewDirective = `::workflow-preview{run="${run.id}"}`;
@@ -171,7 +178,15 @@ export default async function plugin(bb: BbPluginApi) {
       'Use this tool to return your final response in the requested structured format. You MUST call this tool exactly once at the end of your response with {"value": ...} to provide the structured output.',
     parameters: resultInputSchema,
     async execute({ value }, ctx) {
-      const result = await service.submitStructuredResult(ctx.threadId, value);
+      let parsed: JsonValue;
+      try {
+        parsed = toJsonValue(value, "value");
+      } catch (error) {
+        return errorResult(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      const result = await service.submitStructuredResult(ctx.threadId, parsed);
       if (result.ok) return jsonResult({ accepted: true });
       return errorResult(result.error);
     },

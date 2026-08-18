@@ -134,6 +134,7 @@ describe("bbAppManagedConfigSchema", () => {
         command: "my-agent",
         args: [],
         env: {},
+        supportsManualCompaction: false,
       },
     ]);
     expect(formatCustomAcpAgentProviderId("my-agent")).toBe("acp-my-agent");
@@ -161,6 +162,7 @@ describe("bbAppManagedConfigSchema", () => {
       command: "my-agent",
       args: [],
       env: {},
+      supportsManualCompaction: false,
       modelCli: {
         listArgs: ["models"],
         selectFlag: "--model",
@@ -222,6 +224,7 @@ describe("bbAppManagedConfigSchema", () => {
       command: "my-agent",
       args: [],
       env: {},
+      supportsManualCompaction: false,
       reasoningCli: {
         flag: "--reasoning-effort",
         supportedLevels: ["low", "medium", "high"],
@@ -253,6 +256,7 @@ describe("bbAppManagedConfigSchema", () => {
       command: "my-agent",
       args: [],
       env: {},
+      supportsManualCompaction: false,
       nativeReasoning: {
         configId: "reasoning_effort",
         supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
@@ -375,6 +379,7 @@ describe("bbAppManagedConfigSchema", () => {
         command: "good",
         args: [],
         env: {},
+        supportsManualCompaction: false,
       },
     ]);
     expect(warnings).toHaveLength(3);

@@ -1,6 +1,6 @@
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { Attachment, TasksStore } from "../db";
 
 export const MAX_ATTACHMENT_SIZE_BYTES = 25 * 1024 * 1024;
@@ -151,6 +151,47 @@ export async function removeAttachmentBlobs(
   }
 }
 
+/**
+ * RFC 6266 Content-Disposition. Header values must be ByteStrings, so the
+ * legacy `filename=` parameter carries an ASCII-only fallback and the real
+ * name travels percent-encoded in `filename*`. A raw name with an em dash,
+ * CJK, or emoji in `filename=` makes the Response constructor throw and turns
+ * every download of that attachment into a 500 (issue #1621).
+ */
+function buildContentDisposition(
+  disposition: "inline" | "attachment",
+  fileName: string,
+): string {
+  const visibleName = fileName.replace(BIDI_CONTROL_PATTERN, "_");
+  const asciiFallback = visibleName
+    .replace(/[^\x20-\x7e]/g, "-")
+    .replace(/["\\]/g, "_");
+  return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encodeExtValue(visibleName)}`;
+}
+
+/**
+ * RFC 5987 `attr-char`: ALPHA / DIGIT / ! # $ & + - . ^ _ ` | ~. Every other
+ * byte of the UTF-8 encoding is percent-encoded. `encodeURIComponent` alone
+ * keeps `* ' ( )`, which strict parsers reject inside `filename*`.
+ */
+function encodeExtValue(value: string): string {
+  let encoded = "";
+  for (const byte of Buffer.from(value, "utf8")) {
+    const char = String.fromCharCode(byte);
+    encoded += /[A-Za-z0-9!#$&+\-.^_`|~]/.test(char)
+      ? char
+      : `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+  }
+  return encoded;
+}
+
+/**
+ * Unicode bidirectional controls (LRM/RLM, ALM, LRE..RLO, LRI..PDI) can make a
+ * name such as `photo<RLO>gnp.exe` render as `photoexe.png` and hide the real
+ * extension. They become `_` in stored names and in download headers.
+ */
+const BIDI_CONTROL_PATTERN = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+
 function sanitizeFileName(fileName: string): string {
   const baseName = fileName
     .normalize("NFC")
@@ -160,6 +201,7 @@ function sanitizeFileName(fileName: string): string {
     ?.trim();
   let sanitized = (baseName ?? "")
     .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, "_")
+    .replace(BIDI_CONTROL_PATTERN, "_")
     .replace(/^\.+/, "")
     .trim();
   while (Buffer.byteLength(sanitized, "utf8") > 180) {
@@ -531,15 +573,14 @@ export function registerAttachments(
     const disposition = isInlineRasterMime(attachment.mime)
       ? "inline"
       : "attachment";
-    const encodedName = encodeURIComponent(attachment.fileName).replaceAll(
-      "'",
-      "%27",
-    );
     return new Response(new Uint8Array(await readFile(absolutePath)), {
       headers: {
         "Content-Type": attachment.mime,
         "Content-Length": String(attachment.sizeBytes),
-        "Content-Disposition": `${disposition}; filename="${attachment.fileName}"; filename*=UTF-8''${encodedName}`,
+        "Content-Disposition": buildContentDisposition(
+          disposition,
+          attachment.fileName,
+        ),
         "X-Content-Type-Options": "nosniff",
       },
     });
@@ -549,16 +590,11 @@ export function registerAttachments(
     const attachmentId = context.req.query("attachmentId")?.trim();
     try {
       const attachment = attachmentId
-        ? await deleteAttachmentById(
-            bb,
-            store,
-            attachmentId,
-            {
-              removeBlobs: options.removeBlobs,
-              removeDescriptionReferences:
-                context.req.query("removeDescriptionReferences") === "true",
-            },
-          )
+        ? await deleteAttachmentById(bb, store, attachmentId, {
+            removeBlobs: options.removeBlobs,
+            removeDescriptionReferences:
+              context.req.query("removeDescriptionReferences") === "true",
+          })
         : null;
       if (!attachment)
         return context.json({ error: "attachment not found" }, 404);

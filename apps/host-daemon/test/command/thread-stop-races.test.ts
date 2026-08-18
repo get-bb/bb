@@ -31,6 +31,7 @@ import {
   makeDispatchOptions,
   makeTempDir,
   unexpectedProjectAttachmentFetch,
+  DISPATCH_TEST_BRIDGE_LAUNCH,
 } from "./dispatch-helpers.js";
 
 /**
@@ -206,6 +207,7 @@ function threadStartCommand(
   args: ThreadStartArgs,
 ): CommandOf<"thread.start"> {
   return {
+    bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
     type: "thread.start",
     environmentId: ENVIRONMENT_ID,
     threadId: args.threadId,
@@ -242,6 +244,7 @@ function turnSubmitCommand(
   args: TurnSubmitArgs,
 ): CommandOf<"turn.submit"> {
   return {
+    bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
     type: "turn.submit",
     environmentId: ENVIRONMENT_ID,
     threadId: args.threadId,
@@ -258,6 +261,7 @@ function turnSubmitCommand(
       permissionEscalation: null,
     },
     resumeContext: {
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       workspaceContext: {
         workspacePath: harness.workspacePath,
         workspaceProvisionType: "unmanaged",
@@ -277,6 +281,7 @@ function turnSubmitCommand(
 function threadStopCommand(threadId: string): CommandOf<"thread.stop"> {
   return {
     type: "thread.stop",
+    intent: "interrupt",
     environmentId: ENVIRONMENT_ID,
     threadId,
   };

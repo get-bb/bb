@@ -2,8 +2,11 @@ import { randomUUID } from "node:crypto";
 import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { compareSemver, resolveVersionArgument } from "./lib/semver.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
+const USAGE =
+  "Usage: node scripts/bump-version.mjs <new-version>|--patch|--minor|--major";
 const defaultRepoRoot = resolve(dirname(scriptPath), "..");
 const packageTargets = [
   {
@@ -15,182 +18,12 @@ const packageTargets = [
     path: "apps/desktop/package.json",
   },
 ];
-const semverPattern =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/u;
-const numericIdentifierPattern = /^\d+$/u;
 const defaultFileSystem = {
   readFile,
   rename,
   unlink,
   writeFile,
 };
-
-function parseSemver(version) {
-  const match = semverPattern.exec(version);
-
-  if (match === null) {
-    return null;
-  }
-
-  const [, major, minor, patch, prerelease] = match;
-
-  return {
-    major: BigInt(major),
-    minor: BigInt(minor),
-    patch: BigInt(patch),
-    prerelease: prerelease === undefined ? [] : prerelease.split("."),
-    version,
-  };
-}
-
-function compareCoreVersions(left, right) {
-  for (const key of ["major", "minor", "patch"]) {
-    if (left[key] > right[key]) {
-      return 1;
-    }
-
-    if (left[key] < right[key]) {
-      return -1;
-    }
-  }
-
-  return 0;
-}
-
-function comparePrereleaseIdentifier(left, right) {
-  if (left === right) {
-    return 0;
-  }
-
-  const leftIsNumeric = numericIdentifierPattern.test(left);
-  const rightIsNumeric = numericIdentifierPattern.test(right);
-
-  if (leftIsNumeric && rightIsNumeric) {
-    return BigInt(left) > BigInt(right) ? 1 : -1;
-  }
-
-  if (leftIsNumeric) {
-    return -1;
-  }
-
-  if (rightIsNumeric) {
-    return 1;
-  }
-
-  return left > right ? 1 : -1;
-}
-
-function comparePrereleaseVersions(left, right) {
-  if (left.prerelease.length === 0 && right.prerelease.length === 0) {
-    return 0;
-  }
-
-  if (left.prerelease.length === 0) {
-    return 1;
-  }
-
-  if (right.prerelease.length === 0) {
-    return -1;
-  }
-
-  const identifierCount = Math.max(
-    left.prerelease.length,
-    right.prerelease.length,
-  );
-
-  for (let index = 0; index < identifierCount; index += 1) {
-    const leftIdentifier = left.prerelease[index];
-    const rightIdentifier = right.prerelease[index];
-
-    if (leftIdentifier === undefined) {
-      return -1;
-    }
-
-    if (rightIdentifier === undefined) {
-      return 1;
-    }
-
-    const comparison = comparePrereleaseIdentifier(
-      leftIdentifier,
-      rightIdentifier,
-    );
-
-    if (comparison !== 0) {
-      return comparison;
-    }
-  }
-
-  return 0;
-}
-
-export function compareSemver(leftVersion, rightVersion) {
-  const left = parseSemver(leftVersion);
-  const right = parseSemver(rightVersion);
-
-  if (left === null) {
-    throw new Error(`Invalid semver string: ${leftVersion}`);
-  }
-
-  if (right === null) {
-    throw new Error(`Invalid semver string: ${rightVersion}`);
-  }
-
-  const coreComparison = compareCoreVersions(left, right);
-
-  if (coreComparison !== 0) {
-    return coreComparison;
-  }
-
-  return comparePrereleaseVersions(left, right);
-}
-
-function deriveVersion(currentVersion, bumpType) {
-  const current = parseSemver(currentVersion);
-
-  if (current === null) {
-    throw new Error(`Invalid current version: ${currentVersion}`);
-  }
-
-  if (bumpType === "--major") {
-    return `${current.major + 1n}.0.0`;
-  }
-
-  if (bumpType === "--minor") {
-    return `${current.major}.${current.minor + 1n}.0`;
-  }
-
-  if (bumpType === "--patch") {
-    if (current.prerelease.length > 0) {
-      return `${current.major}.${current.minor}.${current.patch}`;
-    }
-
-    return `${current.major}.${current.minor}.${current.patch + 1n}`;
-  }
-
-  throw new Error(`Unsupported bump flag: ${bumpType}`);
-}
-
-function resolveVersionArgument(argument, currentVersion) {
-  if (
-    argument === "--major" ||
-    argument === "--minor" ||
-    argument === "--patch"
-  ) {
-    return deriveVersion(currentVersion, argument);
-  }
-
-  if (argument.startsWith("--")) {
-    throw new Error(
-      "Usage: node scripts/bump-version.mjs <new-version>|--patch|--minor|--major",
-    );
-  }
-
-  if (parseSemver(argument) === null) {
-    throw new Error(`Invalid version: ${argument}`);
-  }
-
-  return argument;
-}
 
 function parsePackageJson({ content, packagePath }) {
   const packageJson = JSON.parse(content);
@@ -303,9 +136,7 @@ export async function bumpVersion(options) {
   const fileSystem = options.fileSystem ?? defaultFileSystem;
 
   if (args.length !== 1) {
-    throw new Error(
-      "Usage: node scripts/bump-version.mjs <new-version>|--patch|--minor|--major",
-    );
+    throw new Error(USAGE);
   }
 
   const packageReads = await Promise.all(
@@ -314,7 +145,11 @@ export async function bumpVersion(options) {
     ),
   );
   const maxCurrentVersion = findMaxCurrentVersion(packageReads);
-  const newVersion = resolveVersionArgument(args[0], maxCurrentVersion);
+  const newVersion = resolveVersionArgument({
+    argument: args[0],
+    currentVersion: maxCurrentVersion,
+    usage: USAGE,
+  });
 
   if (compareSemver(newVersion, maxCurrentVersion) <= 0) {
     throw new Error(

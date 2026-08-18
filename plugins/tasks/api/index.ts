@@ -1,4 +1,4 @@
-import type { BbPluginApi, PluginRpcHandlers } from "@bb/plugin-sdk";
+import type { BbPluginApi, PluginRpcHandlers } from "@get-bb/plugin-sdk";
 import {
   createTasksStore,
   type Attachment as StoredAttachment,
@@ -1023,8 +1023,8 @@ export function registerHandlers(
         providers: providers.map((provider) => ({
           id: provider.id,
           name: provider.displayName,
-          supportedPermissionModes:
-            provider.capabilities.supportedPermissionModes,
+          permissionModes:
+            provider.capabilities.permissionModes,
         })),
       };
     },

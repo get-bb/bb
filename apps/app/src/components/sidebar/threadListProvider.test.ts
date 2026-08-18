@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PluginThreadListSlot } from "@/lib/plugin-slots";
 import {
+  AUTOMATIC_THREAD_LIST_PROVIDER,
   BUILT_IN_THREAD_LIST_PROVIDER,
   resolveThreadListProvider,
   threadListProviderKey,
@@ -17,37 +18,52 @@ function slot(pluginId: string, id: string): PluginThreadListSlot {
 }
 
 describe("resolveThreadListProvider", () => {
-  it("resolves the built-in list when nothing is chosen", () => {
+  it("uses the built-in list when no replacement is registered", () => {
+    expect(resolveThreadListProvider([])).toBeNull();
+  });
+
+  it("activates the first registered replacement", () => {
+    const first = slot("alpha", "inbox");
     expect(
       resolveThreadListProvider(
-        [slot("t3sidebar", "inbox")],
+        [first, slot("beta", "inbox")],
+        AUTOMATIC_THREAD_LIST_PROVIDER,
+      ),
+    ).toBe(first);
+  });
+
+  it("lets the user keep BB's list", () => {
+    expect(
+      resolveThreadListProvider(
+        [slot("alpha", "inbox")],
         BUILT_IN_THREAD_LIST_PROVIDER,
       ),
     ).toBeNull();
   });
 
-  it("matches a registered provider by plugin and slot id", () => {
-    const registered = slot("t3sidebar", "inbox");
+  it("lets the user pin a specific provider", () => {
+    const first = slot("alpha", "inbox");
+    const second = slot("beta", "inbox");
+    expect(
+      resolveThreadListProvider([first, second], threadListProviderKey(second)),
+    ).toBe(second);
+  });
+
+  it("uses BB while an explicitly selected provider is unavailable", () => {
+    expect(resolveThreadListProvider([], "alpha/inbox")).toBeNull();
+  });
+
+  it("reveals the next replacement when the first is removed", () => {
+    const first = slot("alpha", "inbox");
+    const second = slot("beta", "inbox");
     expect(
       resolveThreadListProvider(
-        [slot("other", "inbox"), registered],
-        threadListProviderKey(registered),
+        [first, second],
+        AUTOMATIC_THREAD_LIST_PROVIDER,
       ),
-    ).toBe(registered);
-  });
-
-  // The whole point of the fallback: a disabled or still-loading plugin must
-  // leave the user with bb's list, not an empty sidebar.
-  it("falls back to the built-in list when the chosen plugin is gone", () => {
-    expect(resolveThreadListProvider([], "t3sidebar/inbox")).toBeNull();
-  });
-
-  // Two plugins can each register an "inbox"; the plugin id disambiguates.
-  it("does not confuse same-named slots from different plugins", () => {
-    const mine = slot("mine", "inbox");
-    const theirs = slot("theirs", "inbox");
+    ).toBe(first);
     expect(
-      resolveThreadListProvider([mine, theirs], threadListProviderKey(theirs)),
-    ).toBe(theirs);
+      resolveThreadListProvider([second], AUTOMATIC_THREAD_LIST_PROVIDER),
+    ).toBe(second);
   });
 });

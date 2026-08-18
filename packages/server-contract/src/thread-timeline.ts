@@ -441,7 +441,9 @@ export const timelineDelegationWorkRowSchema: z.ZodType<TimelineDelegationWorkRo
  * arrive via thread-scoped events folded into this single row. `workflow` is
  * the merged phase/agent tree, present only for workflows; null for shell
  * commands and for workflows the provider reported no progress records for
- * (degraded rendering falls back to description + summary).
+ * (degraded rendering falls back to description + summary). `model` is the
+ * spawning delegation's requested model for background agents; null for
+ * commands, workflows, legacy events, and providers that do not expose it.
  */
 export const timelineWorkflowWorkRowSchema = timelineWorkRowBaseSchema.extend({
   workKind: z.literal("workflow"),
@@ -449,6 +451,7 @@ export const timelineWorkflowWorkRowSchema = timelineWorkRowBaseSchema.extend({
   taskType: z.string(),
   workflowName: z.string().nullable(),
   description: z.string(),
+  model: z.string().nullable(),
   taskStatus: backgroundTaskStatusSchema,
   workflow: workflowProgressSnapshotSchema.nullable(),
   usage: backgroundTaskUsageSchema.nullable(),

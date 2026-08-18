@@ -1,15 +1,14 @@
 import {
   buildAcpProviderInfo,
-  getBuiltInAgentProviderInfo,
   isAcpProviderId,
-  isAgentProviderId,
-} from "@bb/agent-providers";
+} from "../providers/acp-provider-tier.js";
 import {
   providerCommandSectionRank,
   type CommandListResponse,
   type ProviderCommand,
 } from "@bb/server-contract";
 import type { HostProviderCommand } from "@bb/host-daemon-contract";
+import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import type { ResolvedSkillCatalogEntry } from "../skills/injected-skills.js";
 
 const BUILT_IN_PROVIDER_COMMANDS: ProviderCommand[] = [
@@ -30,13 +29,18 @@ function providerComposerHasSkillsAction(
 
 /**
  * Whether the provider declares a skills composer action (slash-command
- * typeahead). Built-in providers are looked up in the catalog; dynamic ACP
- * providers (`acp-*`) share the ACP catalog template via `buildAcpProviderInfo`.
+ * typeahead). Registered providers (core seed + plugin registrations) are
+ * looked up in the registry; dynamic ACP providers (`acp-*`) share the ACP
+ * catalog template via `buildAcpProviderInfo`.
  */
-export function providerHasCommandSurface(providerId: string): boolean {
-  if (isAgentProviderId(providerId)) {
+export function providerHasCommandSurface(
+  registry: ProviderRegistryService,
+  providerId: string,
+): boolean {
+  const registration = registry.get(providerId);
+  if (registration) {
     return providerComposerHasSkillsAction(
-      getBuiltInAgentProviderInfo(providerId).composerActions,
+      registration.info.composerActions,
     );
   }
   if (isAcpProviderId(providerId)) {

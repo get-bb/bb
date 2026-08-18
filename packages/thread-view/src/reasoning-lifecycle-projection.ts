@@ -33,8 +33,7 @@ export interface ReasoningProjectionState {
 }
 
 interface ReasoningLifecycleHostState
-  extends ReasoningProjectionState,
-    ReasoningTurnLifecycleState {}
+  extends ReasoningProjectionState, ReasoningTurnLifecycleState {}
 
 interface UpsertReasoningLifecycleArgs {
   identity: BufferedTextInstanceIdentity | null;
@@ -171,6 +170,19 @@ export function finalizeOpenReasoningLifecycles(
     state.finalizedReasoningKeys.add(messageKey);
   }
   state.openReasoningLifecyclesByKey.clear();
+}
+
+export function finalizeOpenReasoningLifecyclesForTurn(
+  state: ReasoningProjectionState,
+  turnId: string,
+): void {
+  for (const [messageKey, lifecycle] of state.openReasoningLifecyclesByKey) {
+    if (lifecycle.turnId !== turnId) {
+      continue;
+    }
+    state.finalizedReasoningKeys.add(messageKey);
+    state.openReasoningLifecyclesByKey.delete(messageKey);
+  }
 }
 
 export function getReasoningTextBuffer(

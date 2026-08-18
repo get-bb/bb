@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type TouchEvent as ReactTouchEvent,
 } from "react";
 import "@xterm/xterm/css/xterm.css";
 import type {
@@ -35,6 +36,8 @@ export const TERMINAL_FONT_FAMILY =
 export const TERMINAL_UNICODE_VERSION = "11";
 export const TERMINAL_ALLOW_PROPOSED_API = true;
 const TERMINAL_SELECTION_DRAG_DIRECTION_THRESHOLD_PX = 4;
+const TERMINAL_TOUCH_FOCUS_MAX_DURATION_MS = 700;
+const TERMINAL_TOUCH_FOCUS_MOVEMENT_THRESHOLD_PX = 10;
 
 type TerminalFitScheduler = () => void;
 
@@ -104,6 +107,112 @@ export function loadTerminalWebglRenderer(
 interface TerminalSelectionAnchorPoint {
   x: number;
   y: number;
+}
+
+interface TerminalTouchPoint extends TerminalSelectionAnchorPoint {
+  identifier: number;
+}
+
+interface TerminalTouchFocusGesture {
+  identifier: number;
+  maximumMovementPx: number;
+  startedAt: number;
+  startPoint: TerminalSelectionAnchorPoint;
+}
+
+interface FocusTerminalFromTouchReleaseArgs {
+  changedTouches: readonly TerminalTouchPoint[];
+  focus: () => void;
+  gesture: TerminalTouchFocusGesture | null;
+  releasedAt: number;
+  remainingTouchCount: number;
+}
+
+function terminalTouchMovement(
+  startPoint: TerminalSelectionAnchorPoint,
+  currentPoint: TerminalSelectionAnchorPoint,
+): number {
+  return Math.hypot(
+    currentPoint.x - startPoint.x,
+    currentPoint.y - startPoint.y,
+  );
+}
+
+export function startTerminalTouchFocusGesture(
+  touches: readonly TerminalTouchPoint[],
+  startedAt: number,
+): TerminalTouchFocusGesture | null {
+  const touch = touches.length === 1 ? touches[0] : undefined;
+  if (touch === undefined) {
+    return null;
+  }
+  return {
+    identifier: touch.identifier,
+    maximumMovementPx: 0,
+    startedAt,
+    startPoint: { x: touch.x, y: touch.y },
+  };
+}
+
+export function updateTerminalTouchFocusGesture(
+  gesture: TerminalTouchFocusGesture | null,
+  touches: readonly TerminalTouchPoint[],
+): TerminalTouchFocusGesture | null {
+  const touch = touches.length === 1 ? touches[0] : undefined;
+  if (
+    gesture === null ||
+    touch === undefined ||
+    touch.identifier !== gesture.identifier
+  ) {
+    return null;
+  }
+  return {
+    ...gesture,
+    maximumMovementPx: Math.max(
+      gesture.maximumMovementPx,
+      terminalTouchMovement(gesture.startPoint, touch),
+    ),
+  };
+}
+
+export function focusTerminalFromTouchRelease({
+  changedTouches,
+  focus,
+  gesture,
+  releasedAt,
+  remainingTouchCount,
+}: FocusTerminalFromTouchReleaseArgs): boolean {
+  if (remainingTouchCount !== 0) {
+    return false;
+  }
+  const completedGesture = updateTerminalTouchFocusGesture(
+    gesture,
+    changedTouches,
+  );
+  if (completedGesture === null) {
+    return false;
+  }
+  const duration = releasedAt - completedGesture.startedAt;
+  if (
+    duration < 0 ||
+    duration >= TERMINAL_TOUCH_FOCUS_MAX_DURATION_MS ||
+    completedGesture.maximumMovementPx >
+      TERMINAL_TOUCH_FOCUS_MOVEMENT_THRESHOLD_PX
+  ) {
+    return false;
+  }
+  focus();
+  return true;
+}
+
+function terminalTouchPoints(
+  touches: ReactTouchEvent<HTMLDivElement>["touches"],
+): TerminalTouchPoint[] {
+  return Array.from(touches, (touch) => ({
+    identifier: touch.identifier,
+    x: touch.clientX,
+    y: touch.clientY,
+  }));
 }
 
 interface TerminalSelectionAnchor {
@@ -500,6 +609,7 @@ export function ThreadTerminalView({
   const pointerStartPointRef = useRef<TerminalSelectionAnchorPoint | null>(
     null,
   );
+  const touchFocusGestureRef = useRef<TerminalTouchFocusGesture | null>(null);
   const lastPointerReleaseAnchorRef = useRef<TerminalSelectionAnchor | null>(
     null,
   );
@@ -606,7 +716,49 @@ export function ThreadTerminalView({
     });
   }, [reportTerminalSelection]);
 
+  const handleTerminalTouchStart = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      touchFocusGestureRef.current = startTerminalTouchFocusGesture(
+        terminalTouchPoints(event.touches),
+        event.timeStamp,
+      );
+    },
+    [],
+  );
+
+  const handleTerminalTouchMove = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      touchFocusGestureRef.current = updateTerminalTouchFocusGesture(
+        touchFocusGestureRef.current,
+        terminalTouchPoints(event.touches),
+      );
+    },
+    [],
+  );
+
+  const handleTerminalTouchEnd = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      const gesture = touchFocusGestureRef.current;
+      touchFocusGestureRef.current = null;
+      // xterm cancels the synthetic mouse event on touch devices.
+      // Focus during the touch event so iOS can open its software keyboard.
+      focusTerminalFromTouchRelease({
+        changedTouches: terminalTouchPoints(event.changedTouches),
+        focus: () => terminalRef.current?.focus(),
+        gesture,
+        releasedAt: event.timeStamp,
+        remainingTouchCount: event.touches.length,
+      });
+    },
+    [],
+  );
+
+  const handleTerminalTouchCancel = useCallback(() => {
+    touchFocusGestureRef.current = null;
+  }, []);
+
   useEffect(() => {
+    touchFocusGestureRef.current = null;
     setActiveSelection(null);
   }, [session.id]);
 
@@ -902,6 +1054,10 @@ export function ThreadTerminalView({
       onPointerDown={handleTerminalPointerDown}
       onPointerUp={handleTerminalPointerRelease}
       onPointerCancel={handleTerminalPointerCancel}
+      onTouchStart={handleTerminalTouchStart}
+      onTouchMove={handleTerminalTouchMove}
+      onTouchEnd={handleTerminalTouchEnd}
+      onTouchCancel={handleTerminalTouchCancel}
     >
       <div
         ref={containerRef}
