@@ -101,6 +101,16 @@ Running an AppImage normally requires FUSE and, on some distributions, the
 `libfuse2` compatibility package. If FUSE is unavailable, launch it with
 `--appimage-extract-and-run` instead.
 
+Linux users whose window manager supplies all window controls can remove the
+native Electron title bar with `--no-window-frame`:
+
+```bash
+./bb-x86_64.AppImage --no-window-frame
+```
+
+The native frame remains the default. Changing this startup option requires a
+full desktop app restart.
+
 CI builds Linux artifacts on the pinned `ubuntu-22.04` runner. The AppImage
 links against the build machine's glibc, so that pin sets the oldest
 distribution that can run a published build. Raise it deliberately.

@@ -240,6 +240,7 @@ describe("desktop window factory", () => {
       ],
       icon: undefined,
       isMac: true,
+      isLinuxFrameless: false,
       isQuitting() {
         return false;
       },
@@ -335,6 +336,7 @@ describe("desktop window factory", () => {
       ],
       icon: undefined,
       isMac: true,
+      isLinuxFrameless: false,
       isQuitting() {
         return false;
       },
@@ -393,6 +395,7 @@ describe("desktop window factory", () => {
       ],
       icon: undefined,
       isMac: true,
+      isLinuxFrameless: false,
       isQuitting() {
         return false;
       },
@@ -448,6 +451,7 @@ describe("desktop window factory", () => {
       ],
       icon: undefined,
       isMac: true,
+      isLinuxFrameless: false,
       isQuitting() {
         return false;
       },
@@ -505,6 +509,7 @@ describe("desktop window factory", () => {
       ],
       icon: undefined,
       isMac: true,
+      isLinuxFrameless: false,
       isQuitting() {
         return false;
       },
@@ -565,6 +570,7 @@ describe("desktop window factory", () => {
       ],
       icon: undefined,
       isMac: true,
+      isLinuxFrameless: false,
       isQuitting() {
         return false;
       },
@@ -623,6 +629,7 @@ describe("desktop window factory", () => {
       ],
       icon: undefined,
       isMac: false,
+      isLinuxFrameless: false,
       isQuitting() {
         return false;
       },
@@ -634,6 +641,49 @@ describe("desktop window factory", () => {
     await factory.createWindow({ initialUrl: null, stateKey: null });
 
     expect(createdWindows[0]?.options).not.toHaveProperty("frame");
+    expect(createdWindows[0]?.options).not.toHaveProperty("titleBarStyle");
+    expect(createdWindows[0]?.options).not.toHaveProperty(
+      "trafficLightPosition",
+    );
+  });
+
+  it("removes the native window frame when requested on Linux", async () => {
+    const tempDir = await createTempDir();
+    const createdWindows: FakeDesktopWindow[] = [];
+    const browserWindowCreator: DesktopBrowserWindowCreator = {
+      create(options) {
+        const browserWindow = new FakeDesktopWindow({ options });
+        createdWindows.push(browserWindow);
+        return browserWindow;
+      },
+    };
+    const factory = createDesktopWindowFactory({
+      browserWindowCreator,
+      createWindowStateKey() {
+        return "frameless-linux-window";
+      },
+      displayWorkAreas: [
+        {
+          height: 900,
+          width: 1440,
+          x: 0,
+          y: 0,
+        },
+      ],
+      icon: undefined,
+      isMac: false,
+      isLinuxFrameless: true,
+      isQuitting() {
+        return false;
+      },
+      openExternalUrl() {},
+      preloadPath: "/tmp/preload.cjs",
+      userDataPath: tempDir.path,
+    });
+
+    await factory.createWindow({ initialUrl: null, stateKey: null });
+
+    expect(createdWindows[0]?.options.frame).toBe(false);
     expect(createdWindows[0]?.options).not.toHaveProperty("titleBarStyle");
     expect(createdWindows[0]?.options).not.toHaveProperty(
       "trafficLightPosition",

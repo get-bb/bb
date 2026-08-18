@@ -88,6 +88,7 @@ interface CreateDesktopWindowFactoryArgs {
   displayWorkAreas: DisplayWorkArea[] | null;
   icon: DesktopWindowIcon;
   isMac: boolean;
+  isLinuxFrameless: boolean;
   isQuitting(): boolean;
   openExternalUrl(args: OpenExternalUrlArgs): void;
   preloadPath: string;
@@ -138,6 +139,7 @@ interface CreateWindowOptionsArgs {
   bounds: WindowBounds;
   icon: DesktopWindowIcon;
   isMac: boolean;
+  isLinuxFrameless: boolean;
   preloadPath: string;
 }
 
@@ -168,6 +170,7 @@ function createWindowOptions(
   args: CreateWindowOptionsArgs,
 ): BrowserWindowConstructorOptions {
   return {
+    ...(args.isLinuxFrameless ? { frame: false } : {}),
     ...(args.isMac
       ? {
           frame: false,
@@ -238,6 +241,7 @@ export function createDesktopWindowFactory(
           bounds: restoredState.bounds,
           icon: args.icon,
           isMac: args.isMac,
+          isLinuxFrameless: args.isLinuxFrameless,
           preloadPath: args.preloadPath,
         }),
       );
