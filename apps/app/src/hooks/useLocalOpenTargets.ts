@@ -211,9 +211,25 @@ function useOpenTargetResolution(
 export function useLocalOpenTargets(
   args: UseLocalOpenTargetsArgs,
 ): UseLocalOpenTargetsResult {
+  const openContextKind = args.openContext?.kind ?? "local";
+  const openContextHostId =
+    args.openContext?.kind === "remote-ssh" ? args.openContext.hostId : null;
+  const openContextServerOrigin =
+    args.openContext?.kind === "remote-ssh"
+      ? args.openContext.serverOrigin
+      : null;
   const openContext = useMemo<OpenInTargetContext>(
-    () => args.openContext ?? { kind: "local" },
-    [args.openContext],
+    () =>
+      openContextKind === "remote-ssh" &&
+      openContextHostId !== null &&
+      openContextServerOrigin !== null
+        ? {
+            kind: "remote-ssh",
+            hostId: openContextHostId,
+            serverOrigin: openContextServerOrigin,
+          }
+        : { kind: "local" },
+    [openContextHostId, openContextKind, openContextServerOrigin],
   );
   const contextKind = openContext.kind;
   const { hasDaemon } = useHostDaemon();

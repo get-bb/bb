@@ -1761,7 +1761,12 @@ export function PromptBoxInternal({
               promptEditorContentFromValue(pastedValue, {
                 richTextMarkdown: richTextEditing,
               }).content ?? [];
-            currentEditor?.chain().focus().insertContent(pastedContent).run();
+            currentEditor
+              ?.chain()
+              .focus()
+              .insertContent(pastedContent)
+              .setMeta("uiEvent", "paste")
+              .run();
             if (currentEditor && !currentEditor.isDestroyed) {
               const nextValue = trimTrailingPromptNewlines(
                 promptEditorValueFromDoc(currentEditor.state.doc),
@@ -1785,6 +1790,7 @@ export function PromptBoxInternal({
             ?.chain()
             .focus()
             .insertContent(promptEditorInlineContentFromValue(pastedValue))
+            .setMeta("uiEvent", "paste")
             .run();
           return true;
         },
