@@ -93,12 +93,26 @@ jobs:
         include:
           - shard: server
             filter: --filter=@bb/server
-          - shard: app
+            args: ""
+          # @bb/app is by far the largest suite (365 files) and was the critical
+          # path once the macOS smoke leg was fixed. Vitest splits by file, and
+          # Turbo hashes passthrough args, so each leg is a distinct cache entry
+          # rather than three jobs racing to reuse one.
+          - shard: app-1
             filter: --filter=@bb/app
+            args: -- --shard=1/3
+          - shard: app-2
+            filter: --filter=@bb/app
+            args: -- --shard=2/3
+          - shard: app-3
+            filter: --filter=@bb/app
+            args: -- --shard=3/3
           - shard: integration
             filter: --filter=@bb/integration-tests
+            args: ""
           - shard: packages
             filter: --filter='!@bb/server' --filter='!@bb/app' --filter='!@bb/integration-tests'
+            args: ""
 
     steps:
       - name: Checkout repository
@@ -112,7 +126,7 @@ jobs:
           cache-prefix: test-${{ matrix.shard }}
 
       - name: Test
-        run: pnpm exec turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only
+        run: pnpm exec turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only ${{ matrix.args }}
 
   # The macOS legs run without the Turbo cache. Blacksmith's transparent cache
   # only backs their Linux runners, so on macOS the cache moves over GitHub's
