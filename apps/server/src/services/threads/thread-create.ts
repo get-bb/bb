@@ -3,6 +3,8 @@ import {
   findProjectEnvironmentByHostPath,
   getEnvironment,
   getThread,
+  getWorkTogetherRoomResourceReservationByEnvironment,
+  inheritWorkTogetherRoomContextForChild,
 } from "@bb/db";
 import type {
   ProjectExecutionDefaults,
@@ -98,6 +100,7 @@ interface CreateProvisioningThreadArgs {
   fork: ThreadForkDescriptor | null;
   request: ThreadCreateServiceRequest;
   providerInput?: ThreadCreateServiceRequestInput["input"];
+  roomContextBindingId?: string;
   threadId?: string;
 }
 
@@ -589,6 +592,13 @@ async function createProvisioningThread(
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
   let context: ThreadProvisionContext;
   try {
+    if (args.roomContextBindingId !== undefined) {
+      inheritWorkTogetherRoomContextForChild(deps.db, {
+        bindingId: args.roomContextBindingId,
+        threadId: thread.id,
+        nowMs: Date.now(),
+      });
+    }
     execution = await buildExecutionOptions(
       deps,
       args.request,
@@ -1071,6 +1081,19 @@ export async function createThreadFromRequest(
       : {}),
     ...(resourceReservation !== undefined
       ? { threadId: resourceReservation.threadId }
+      : {}),
+    ...(parentThread?.environmentId !== null &&
+    parentThread?.environmentId !== undefined
+      ? (() => {
+          const room = getWorkTogetherRoomResourceReservationByEnvironment(
+            deps.db,
+            {
+              environmentId: parentThread.environmentId,
+              projectId: parentThread.projectId,
+            },
+          );
+          return room === null ? {} : { roomContextBindingId: room.bindingId };
+        })()
       : {}),
     request,
   });

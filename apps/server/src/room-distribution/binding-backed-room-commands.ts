@@ -1,4 +1,7 @@
+import { createHash } from "node:crypto";
+
 import {
+  admitWorkTogetherRoomContext,
   getEnvironment,
   getActiveStoredTurnId,
   getThreadCommandAdmission,
@@ -66,6 +69,7 @@ import {
 } from "./room-distribution-port.js";
 
 const MAX_COMMAND_TEXT_BYTES = 65_536;
+const MAX_CONTEXT_BYTES = 131_072;
 const MAX_INTERACTION_PAYLOAD_BYTES = 64 * 1024;
 /** Opaque Room cursor grammar shared with child-stream selector validation. */
 const ROOM_EVENT_CURSOR_PATTERN = /^[A-Za-z0-9._~:%+-]{1,512}$/u;
@@ -148,6 +152,14 @@ type RoomResultPublishCommand = Readonly<{
   submission: JsonObject;
 }>;
 
+type RoomContextApplyCommand = Readonly<{
+  kind: "context.apply";
+  requestId: ClientTurnRequestId;
+  contextVersion: number;
+  digest: string;
+  bytes: Buffer;
+}>;
+
 type SupportedRoomCommand =
   | RoomMessageSendCommand
   | RoomMessageSteerCommand
@@ -156,7 +168,8 @@ type SupportedRoomCommand =
   | RoomInteractionApproveCommand
   | RoomReadMarkCommand
   | RoomBranchPublishCommand
-  | RoomResultPublishCommand;
+  | RoomResultPublishCommand
+  | RoomContextApplyCommand;
 
 type RoomCommandScope = Readonly<{
   bindingId: string;
@@ -187,6 +200,10 @@ type RoomTaskTitleSource = {
 
 function unavailable(): never {
   throw new RoomDistributionUnavailableError("not_found");
+}
+
+function invalidRequest(): never {
+  throw new ApiError(400, "invalid_request", "Invalid request");
 }
 
 function exactKeys(
@@ -301,6 +318,36 @@ function requestId(value: RoomJsonValue | undefined): ClientTurnRequestId {
   return parsed.data;
 }
 
+function contextVersion(value: RoomJsonValue | undefined): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 1
+  ) {
+    invalidRequest();
+  }
+  return value;
+}
+
+function contextDigest(value: RoomJsonValue | undefined): string {
+  if (typeof value !== "string" || !/^[a-f0-9]{64}$/u.test(value)) {
+    invalidRequest();
+  }
+  return value;
+}
+
+function contextBytes(value: RoomJsonValue | undefined): Buffer {
+  if (typeof value !== "string") invalidRequest();
+  const bytes = Buffer.from(value, "base64");
+  if (
+    bytes.byteLength > MAX_CONTEXT_BYTES ||
+    bytes.toString("base64") !== value
+  ) {
+    invalidRequest();
+  }
+  return bytes;
+}
+
 function expectedTurnId(value: RoomJsonValue | undefined): string {
   if (typeof value !== "string" || !PUBLIC_TURN_ID_PATTERN.test(value)) {
     unavailable();
@@ -376,6 +423,7 @@ function replayCommand(
     case "read.mark":
     case "branch.publish":
     case "result.publish":
+    case "context.apply":
       return command;
   }
 }
@@ -490,6 +538,34 @@ function approvalResolution(
 function decodeCommand(command: RoomJsonObject): SupportedRoomCommand {
   parseRoomCommandStreamV2(command.stream);
   switch (command.kind) {
+    case "context.apply": {
+      const stream = parseRoomCommandStreamV2(command.stream);
+      if (stream.kind !== "primary") unavailable();
+      if (
+        !exactKeys(command, [
+          "bytesBase64",
+          "contextVersion",
+          "digest",
+          "kind",
+          "requestId",
+          "stream",
+        ])
+      ) {
+        invalidRequest();
+      }
+      const bytes = contextBytes(command.bytesBase64);
+      const digest = contextDigest(command.digest);
+      if (createHash("sha256").update(bytes).digest("hex") !== digest) {
+        invalidRequest();
+      }
+      return Object.freeze({
+        kind: "context.apply",
+        requestId: requestId(command.requestId),
+        contextVersion: contextVersion(command.contextVersion),
+        digest,
+        bytes,
+      });
+    }
     case "message.send":
       if (!exactKeys(command, ["kind", "requestId", "stream", "text"])) {
         unavailable();
@@ -726,6 +802,9 @@ function commandFingerprint(command: SupportedRoomCommand) {
       });
     case "result.publish":
       return hashCanonicalJsonFingerprint(command.submission, "result.publish");
+    case "context.apply":
+      // Context apply uses the binding-scoped ledger, not thread admissions.
+      throw new Error("context.apply has no thread-command fingerprint");
   }
 }
 
@@ -882,6 +961,8 @@ function commandAvailable(
       );
     case "result.publish":
       return true;
+    case "context.apply":
+      return scope.thread.status !== "error";
   }
 }
 
@@ -1040,6 +1121,7 @@ export function createBindingBackedRoomCommandHandler(
       }
       if (scope.publicStream.kind === "primary") {
         capabilities.push("result.publish");
+        if (scope.thread.status !== "error") capabilities.push("context.apply");
       }
       capabilities.push("read.mark");
       return capabilities;
@@ -1055,6 +1137,42 @@ export function createBindingBackedRoomCommandHandler(
         decodeCommand(rawCommand),
       );
       const stream = scope.publicStream;
+      if (publicCommand.kind === "context.apply") {
+        if (scope.thread.status === "error") {
+          return Object.freeze({ status: 409, body: { code: "room_failed" } });
+        }
+        const outcome = admitWorkTogetherRoomContext(deps.db, {
+          bindingId: scope.bindingId,
+          requestId: publicCommand.requestId,
+          contextVersion: publicCommand.contextVersion,
+          digest: publicCommand.digest,
+          bytes: publicCommand.bytes,
+          nowMs: Date.now(),
+        });
+        if (outcome.kind === "conflict") {
+          return Object.freeze({ status: 409, body: { code: "conflict" } });
+        }
+        const apply = outcome.apply;
+        return Object.freeze({
+          status: outcome.kind === "accepted" ? 202 : 200,
+          body: {
+            schemaVersion: 2,
+            outcome:
+              outcome.kind === "accepted" ? "accepted" : "already-accepted",
+            requestId: apply.requestId,
+            commandKind: "context.apply",
+            admissionSequence: apply.admissionSequence,
+            stream: { kind: "primary" },
+            result: {
+              disposition: "context-applied",
+              contextVersion: apply.contextVersion,
+              digest: apply.digest,
+            },
+            createdAt: new Date(apply.createdAt).toISOString(),
+            completedAt: new Date(apply.completedAt).toISOString(),
+          },
+        });
+      }
       // Exact replay / identity conflict are decided from the durable ledger
       // before capability availability, so a resolved interaction or post-
       // interrupt thread status cannot suppress already-accepted receipts.

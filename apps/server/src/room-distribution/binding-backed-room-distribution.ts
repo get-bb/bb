@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   getActiveStoredTurnId,
   getEnvironment,
+  getWorkTogetherRoomContext,
   getLatestThreadSequence,
   getThread,
   getWorkTogetherRoomResourceReservation,
@@ -946,6 +947,10 @@ export function createBindingBackedRoomDistributionV1(
         attachedStreams,
       );
       const subagents = copyPublicSubagents(currentList.subagents);
+      const roomContext = getWorkTogetherRoomContext(
+        deps.db,
+        context.bindingId,
+      );
       return Object.freeze({
         schemaVersion: 2,
         binding: { id: context.bindingId, state: "active" },
@@ -963,6 +968,7 @@ export function createBindingBackedRoomDistributionV1(
           status: environment.status,
         },
         primaryRun: primaryRun(thread.status),
+        context: roomContext,
         capabilities,
         subagents,
         collaboration: collaborationState(presence.count(context.bindingId)),

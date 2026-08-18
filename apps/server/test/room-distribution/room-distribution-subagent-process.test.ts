@@ -60,6 +60,7 @@ const BOOTSTRAP_KEYS = [
   "repository",
   "environment",
   "primaryRun",
+  "context",
   "capabilities",
   "subagents",
   "collaboration",

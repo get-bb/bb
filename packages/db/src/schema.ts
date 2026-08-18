@@ -1198,6 +1198,62 @@ export const workTogetherRoomResourceReservations = sqliteTable(
 );
 
 /**
+ * Opaque Room context is deliberately binding-scoped. A Goal cell may be
+ * reused by more than one binding, but its compiled context must not leak
+ * across those bindings.
+ */
+export const workTogetherRoomContextApplies = sqliteTable(
+  "work_together_room_context_applies",
+  {
+    bindingId: text("binding_id")
+      .notNull()
+      .references(() => workTogetherRoomResourceReservations.bindingId, {
+        onDelete: "cascade",
+      }),
+    requestId: text("request_id").notNull(),
+    contextVersion: integer("context_version").notNull(),
+    digest: text("digest").notNull(),
+    bytes: blob("bytes", { mode: "buffer" }).notNull(),
+    admissionSequence: integer("admission_sequence").notNull(),
+    createdAt: integer("created_at").notNull(),
+    completedAt: integer("completed_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.bindingId, table.requestId] }),
+    uniqueIndex("wt_room_context_binding_version_idx").on(
+      table.bindingId,
+      table.contextVersion,
+    ),
+    uniqueIndex("wt_room_context_binding_sequence_idx").on(
+      table.bindingId,
+      table.admissionSequence,
+    ),
+  ],
+);
+
+/** The immutable Room context pair captured for a child before its first turn. */
+export const workTogetherRoomStreamContexts = sqliteTable(
+  "work_together_room_stream_contexts",
+  {
+    bindingId: text("binding_id")
+      .notNull()
+      .references(() => workTogetherRoomResourceReservations.bindingId, {
+        onDelete: "cascade",
+      }),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    contextVersion: integer("context_version").notNull(),
+    digest: text("digest").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.bindingId, table.threadId] }),
+    uniqueIndex("wt_room_stream_context_thread_idx").on(table.threadId),
+  ],
+);
+
+/**
  * Per-principal durable thread read state for multiplayer. The stock
  * `local-owner` Principal continues to treat `threads.last_read_at` as the
  * compatibility authority; signed principals project only their own row.

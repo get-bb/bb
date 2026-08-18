@@ -35,6 +35,17 @@ export type {
   WorkTogetherRoomResourceReservation,
 } from "./work-together-room-resource-reservations.js";
 
+export {
+  admitWorkTogetherRoomContext,
+  getWorkTogetherRoomContext,
+  inheritWorkTogetherRoomContextForChild,
+} from "./work-together-room-context.js";
+export type {
+  AdmitWorkTogetherRoomContextOutcome,
+  PersistedWorkTogetherRoomContextApply,
+  WorkTogetherRoomContext,
+} from "./work-together-room-context.js";
+
 export { listLatestRootTurnTerminalOutcomesByThreadIds } from "./work-together-room-root-turn-outcomes.js";
 export type {
   LatestRootTurnTerminalOutcomeRow,
