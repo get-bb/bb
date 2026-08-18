@@ -71,7 +71,7 @@ export function createOperationProjectionState(
 
 export type CompactionTurnFinalizationStatus = Extract<
   EventProjectionOperationMessage["status"],
-  "error" | "interrupted"
+  "completed" | "error" | "interrupted"
 >;
 
 interface FinalizeOpenCompactionsForTurnArgs {
@@ -921,15 +921,22 @@ function finalizeOpenCompaction(
   message.title =
     status === "error"
       ? "Context compaction failed"
-      : "Context compaction interrupted";
+      : status === "completed"
+        ? "Context compaction skipped"
+        : "Context compaction interrupted";
   message.detail = detail ?? message.detail;
 }
 
+/**
+ * Returns true when at least one still-pending compaction row was settled, so
+ * the caller knows the finalizing event now belongs to that row.
+ */
 export function finalizeOpenCompactionsForTurn(
   args: FinalizeOpenCompactionsForTurnArgs,
-): void {
-  if (!args.turnId) return;
+): boolean {
+  if (!args.turnId) return false;
 
+  let settledPending = false;
   for (const message of args.state.openCompactionsByKey.values()) {
     if (
       message.threadId !== args.threadId ||
@@ -939,8 +946,12 @@ export function finalizeOpenCompactionsForTurn(
       continue;
     }
 
+    if (message.status === "pending") {
+      settledPending = true;
+    }
     finalizeOpenCompaction(message, args.meta, args.status, args.detail);
   }
+  return settledPending;
 }
 
 /** Settle only compactions that are pending when this interruption is seen. */

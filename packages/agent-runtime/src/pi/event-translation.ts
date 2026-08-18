@@ -212,6 +212,21 @@ const piCompactionEndEventSchema = z
   })
   .passthrough();
 
+/**
+ * Pi refuses a manual compaction before it calls the model when the session
+ * has nothing to summarize. Pi reports the refusal through the same
+ * `compaction_end.errorMessage` field as a real failure, so bb must tell them
+ * apart: a refusal is a no-op, not a failed turn.
+ */
+const piCompactionNoopMessages = new Set([
+  "Compaction failed: Nothing to compact (session too small)",
+  "Compaction failed: Already compacted",
+]);
+
+function isPiCompactionNoop(errorMessage: string): boolean {
+  return piCompactionNoopMessages.has(errorMessage.trim());
+}
+
 const piMessageUpdateEventSchema = z
   .object({
     type: z.literal("message_update"),
@@ -747,12 +762,29 @@ export function createPiEventTranslator(
         if (turnId.length === 0) {
           return buildUnexpectedEvent(event);
         }
+        const compactionNoopDetail =
+          parsed.data.reason === "manual" &&
+          !parsed.data.aborted &&
+          parsed.data.errorMessage !== undefined &&
+          isPiCompactionNoop(parsed.data.errorMessage)
+            ? parsed.data.errorMessage
+            : undefined;
         if (!parsed.data.aborted && !parsed.data.errorMessage) {
           events.push({
             type: "thread/compacted",
             threadId,
             providerThreadId: "",
             scope: turnScope(turnId),
+          });
+        } else if (compactionNoopDetail !== undefined) {
+          events.push({
+            type: "provider/warning",
+            threadId,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+            category: "general",
+            summary: "Context compaction skipped",
+            details: compactionNoopDetail,
           });
         } else if (parsed.data.reason !== "manual") {
           events.push({
@@ -776,10 +808,10 @@ export function createPiEventTranslator(
             scope: turnScope(turnId),
             status: parsed.data.aborted
               ? "interrupted"
-              : parsed.data.errorMessage
+              : parsed.data.errorMessage && compactionNoopDetail === undefined
                 ? "failed"
                 : "completed",
-            ...(parsed.data.errorMessage
+            ...(parsed.data.errorMessage && compactionNoopDetail === undefined
               ? { error: { message: parsed.data.errorMessage } }
               : {}),
           });

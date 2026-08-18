@@ -98,6 +98,37 @@ describe("timeline interruption projection", () => {
     );
   });
 
+  it("settles a skipped manual compaction from the provider warning", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderIdleTimeline([
+      event.turnStarted({ createdAt: 0 }),
+      event.contextCompactionStarted({ createdAt: 1_000 }),
+      event.providerWarning({
+        summary: "Context compaction skipped",
+        details: "Compaction failed: Nothing to compact (session too small)",
+        createdAt: 2_000,
+      }),
+      event.turnCompleted({ createdAt: 3_000 }),
+    ]);
+
+    expect(timeline.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "operation",
+        opType: "compaction",
+        status: "completed",
+        title: "Context compaction skipped",
+        detail: "Compaction failed: Nothing to compact (session too small)",
+        completedAt: 2_000,
+      }),
+    );
+    expect(
+      timeline.messages.some(
+        (message) =>
+          message.kind === "operation" && message.opType === "warning",
+      ),
+    ).toBe(false);
+  });
+
   it("interrupts post-turn compaction when the thread is explicitly interrupted", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderIdleTimeline([

@@ -506,17 +506,49 @@ describe("pi event translation", () => {
   });
 
   it.each([
+    "Compaction failed: Nothing to compact (session too small)",
+    "Compaction failed: Already compacted",
+  ])(
+    "translateEvent manual compaction refusal %j completes the turn as a no-op",
+    (errorMessage) => {
+      const { completed } = translateManualCompaction({
+        aborted: false,
+        errorMessage,
+      });
+
+      expect(completed).toEqual([
+        expect.objectContaining({
+          type: "provider/warning",
+          scope: turnScope("turn-1"),
+          category: "general",
+          summary: "Context compaction skipped",
+          details: errorMessage,
+        }),
+        {
+          type: "turn/completed",
+          threadId: "",
+          providerThreadId: "",
+          scope: turnScope("turn-1"),
+          status: "completed",
+        },
+      ]);
+      expect(completed.some((event) => event.type === "thread/compacted")).toBe(
+        false,
+      );
+    },
+  );
+
+  it.each([
     {
       label: "failed",
       args: {
         aborted: false,
-        errorMessage:
-          "Compaction failed: Nothing to compact (session too small)",
+        errorMessage: "Compaction failed: Summarization failed: 500",
       },
       expected: {
         status: "failed",
         error: {
-          message: "Compaction failed: Nothing to compact (session too small)",
+          message: "Compaction failed: Summarization failed: 500",
         },
       },
     },
