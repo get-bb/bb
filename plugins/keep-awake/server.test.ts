@@ -210,40 +210,104 @@ describe("builtin Keep Awake server entry", () => {
     await host.harness.dispose();
   });
 
-  it("reconciles immediately after its host worker exits unexpectedly", async () => {
-    const subscriptions = lifecycleSubscriptions();
-    const host = createFakePluginHost({
-      pluginId: "keep-awake",
-      sdk: {
-        subscribe: subscriptions.subscribe,
-        hosts: { list: async () => [hostRecord("host-1")] },
-      },
-      experimental_callHostRpc: () => ({ enabled: true, supported: true }),
-    });
-    await host.bb.storage.kv.set("configuration", {
-      enabled: true,
-      selection: { mode: "all" },
-    });
-    await plugin(host.bb);
-    const running = host.harness.runService("desired-state-reconciler");
-    await vi.waitFor(() => {
+  it("retries after a backoff delay when its host worker exits unexpectedly", async () => {
+    vi.useFakeTimers();
+    try {
+      const subscriptions = lifecycleSubscriptions();
+      const host = createFakePluginHost({
+        pluginId: "keep-awake",
+        sdk: {
+          subscribe: subscriptions.subscribe,
+          hosts: { list: async () => [hostRecord("host-1")] },
+        },
+        experimental_callHostRpc: () => ({ enabled: true, supported: true }),
+      });
+      await host.bb.storage.kv.set("configuration", {
+        enabled: true,
+        selection: { mode: "all" },
+      });
+      await plugin(host.bb);
+      const running = host.harness.runService("desired-state-reconciler");
+      await vi.advanceTimersByTimeAsync(0);
       expect(host.harness.experimental_hostRpcCalls).toHaveLength(1);
-    });
 
-    await host.harness.experimental_emitHostWorkerExit("host-1");
+      await host.harness.experimental_emitHostWorkerExit("host-1");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(host.harness.experimental_hostRpcCalls).toHaveLength(1);
+      expect(host.harness.logEntries).toContainEqual({
+        level: "warn",
+        message:
+          "Keep Awake host worker exited unexpectedly on host host-1; retrying",
+      });
 
-    await vi.waitFor(() => {
+      await vi.advanceTimersByTimeAsync(1_000);
       expect(host.harness.experimental_hostRpcCalls).toHaveLength(2);
-    });
-    expect(host.harness.logEntries).toContainEqual({
-      level: "warn",
-      message:
-        "Keep Awake host worker exited unexpectedly on host host-1; retrying",
-    });
 
-    running.controller.abort();
-    await running.done;
-    await host.harness.dispose();
+      running.controller.abort();
+      await running.done;
+      await host.harness.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("backs off exponentially while its host worker crash-loops", async () => {
+    vi.useFakeTimers();
+    try {
+      const subscriptions = lifecycleSubscriptions();
+      let harness: ReturnType<typeof createFakePluginHost>["harness"] | null =
+        null;
+      const host = createFakePluginHost({
+        pluginId: "keep-awake",
+        sdk: {
+          subscribe: subscriptions.subscribe,
+          hosts: { list: async () => [hostRecord("host-1")] },
+        },
+        experimental_callHostRpc: async () => {
+          // The daemon reports the worker exit before the call rejects.
+          await harness?.experimental_emitHostWorkerExit("host-1");
+          throw new Error("host plugin worker exited (1)");
+        },
+      });
+      harness = host.harness;
+      await host.bb.storage.kv.set("configuration", {
+        enabled: true,
+        selection: { mode: "all" },
+      });
+      await plugin(host.bb);
+      const running = host.harness.runService("desired-state-reconciler");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(host.harness.experimental_hostRpcCalls).toHaveLength(1);
+
+      // Retry delays double: 1s, 2s, 4s, ... capped at 30s.
+      await vi.advanceTimersByTimeAsync(999);
+      expect(host.harness.experimental_hostRpcCalls).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(host.harness.experimental_hostRpcCalls).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(host.harness.experimental_hostRpcCalls).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(host.harness.experimental_hostRpcCalls).toHaveLength(3);
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(host.harness.experimental_hostRpcCalls).toHaveLength(4);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(host.harness.experimental_hostRpcCalls.length).toBeLessThanOrEqual(
+        7,
+      );
+
+      // A configuration change still reconciles immediately.
+      const before = host.harness.experimental_hostRpcCalls.length;
+      const result = await host.harness.runCli(["disable"]);
+      expect(result.exitCode).toBe(0);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(host.harness.experimental_hostRpcCalls).toHaveLength(before + 1);
+
+      running.controller.abort();
+      await running.done;
+      await host.harness.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("loads its host selection from plugin KV and exposes CLI parity", async () => {
