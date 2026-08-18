@@ -16,6 +16,14 @@ type ProviderErrorEventRow = Extract<
   ThreadEventRow,
   { type: "provider/error" }
 >;
+type TurnCompletedEventRow = Extract<
+  ThreadEventRow,
+  { type: "turn/completed" }
+>;
+type TurnInputAcceptedEventRow = Extract<
+  ThreadEventRow,
+  { type: "turn/input/accepted" }
+>;
 
 export type ProviderRateLimitState = RateLimitsEventRow["data"]["rateLimits"];
 
@@ -81,6 +89,7 @@ type FailedTurnInspection =
     };
 
 const EVENT_PAGE_SIZE = 500;
+const RATE_LIMIT_PAGE_SIZE = 100;
 const PROVIDER_RETRY_EVENT_TYPES = [
   "client/turn/requested",
   "provider/error",
@@ -88,6 +97,18 @@ const PROVIDER_RETRY_EVENT_TYPES = [
   "system/thread/interrupted",
   "turn/completed",
   "turn/input/accepted",
+] as const satisfies readonly [
+  ThreadEventRow["type"],
+  ...ThreadEventRow["type"][],
+];
+const REQUEST_EVENT_TYPES = [
+  "client/turn/requested",
+] as const satisfies readonly [
+  ThreadEventRow["type"],
+  ...ThreadEventRow["type"][],
+];
+const RATE_LIMIT_EVENT_TYPES = [
+  "provider/rateLimits/updated",
 ] as const satisfies readonly [
   ThreadEventRow["type"],
   ...ThreadEventRow["type"][],
@@ -153,37 +174,57 @@ function currentExecution(
 }
 
 function inspectFailedTurn(events: ThreadEventRows): FailedTurnInspection {
-  const requests = events.filter(
-    (row): row is TurnRequestEventRow => row.type === "client/turn/requested",
-  );
+  const requests: TurnRequestEventRow[] = [];
+  const acceptedByRequestId = new Map<
+    TurnInputAcceptedEventRow["data"]["clientRequestId"],
+    TurnInputAcceptedEventRow
+  >();
+  const completedByTurnId = new Map<string, TurnCompletedEventRow>();
+  for (const row of events) {
+    if (row.type === "client/turn/requested") {
+      requests.push(row);
+      continue;
+    }
+    if (row.type === "turn/input/accepted" && row.scope.kind === "turn") {
+      if (!acceptedByRequestId.has(row.data.clientRequestId)) {
+        acceptedByRequestId.set(row.data.clientRequestId, row);
+      }
+      continue;
+    }
+    if (row.type === "turn/completed" && row.scope.kind === "turn") {
+      completedByTurnId.set(row.scope.turnId, row);
+    }
+  }
+
   const latestRequest = requests.at(-1);
   if (latestRequest === undefined) {
     return { candidate: null, reason: "input-not-accepted" };
   }
 
-  const completedAcceptedTurns = requests.flatMap((request) => {
-    const accepted = events.find(
-      (row) =>
-        row.seq > request.seq &&
-        row.type === "turn/input/accepted" &&
-        row.data.clientRequestId === request.data.requestId &&
-        row.scope.kind === "turn",
-    );
-    if (accepted === undefined || accepted.scope.kind !== "turn") return [];
-    const turnId = accepted.scope.turnId;
-    const completed = events
-      .filter(
-        (row) =>
-          row.seq > accepted.seq &&
-          row.type === "turn/completed" &&
-          belongsToTurn(row, turnId),
-      )
-      .at(-1);
-    return completed === undefined ? [] : [{ accepted, completed, request }];
-  });
-  const latestCompleted = completedAcceptedTurns
-    .sort((left, right) => left.completed.seq - right.completed.seq)
-    .at(-1);
+  let latestCompleted:
+    | {
+        completed: TurnCompletedEventRow;
+        request: TurnRequestEventRow;
+      }
+    | undefined;
+  for (const request of requests) {
+    const accepted = acceptedByRequestId.get(request.data.requestId);
+    if (
+      accepted === undefined ||
+      accepted.seq <= request.seq ||
+      accepted.scope.kind !== "turn"
+    ) {
+      continue;
+    }
+    const completed = completedByTurnId.get(accepted.scope.turnId);
+    if (completed === undefined || completed.seq <= accepted.seq) continue;
+    if (
+      latestCompleted === undefined ||
+      completed.seq > latestCompleted.completed.seq
+    ) {
+      latestCompleted = { completed, request };
+    }
+  }
   if (latestCompleted === undefined) {
     return { candidate: null, reason: "input-not-accepted" };
   }
@@ -304,40 +345,92 @@ export function classifyProviderRetry(args: {
   };
 }
 
-async function listThreadEvents(
+async function findLatestRequestEvent(
+  bb: BbPluginApi,
+  threadId: string,
+): Promise<TurnRequestEventRow | undefined> {
+  const rows = await bb.sdk.threads.events.list({
+    threadId,
+    limit: "1",
+    order: "desc",
+    types: REQUEST_EVENT_TYPES,
+  });
+  return rows.find(
+    (row): row is TurnRequestEventRow => row.type === "client/turn/requested",
+  );
+}
+
+async function findLatestProviderRateLimitsEvent(
   bb: BbPluginApi,
   threadId: string,
   providerId: string,
-): Promise<ThreadEventRows> {
-  const descendingEvents: ThreadEventRow[] = [];
+): Promise<RateLimitsEventRow | undefined> {
   let beforeSeq: string | undefined;
   while (true) {
     const page = await bb.sdk.threads.events.list({
       threadId,
       ...(beforeSeq === undefined ? {} : { beforeSeq }),
-      limit: String(EVENT_PAGE_SIZE),
+      limit: String(RATE_LIMIT_PAGE_SIZE),
       order: "desc",
-      types: PROVIDER_RETRY_EVENT_TYPES,
+      types: RATE_LIMIT_EVENT_TYPES,
     });
-    descendingEvents.push(...page);
-    const hasLatestRequest = descendingEvents.some(
-      (row) => row.type === "client/turn/requested",
+    const match = page.find(
+      (row): row is RateLimitsEventRow =>
+        isRateLimitsEvent(row) && row.data.rateLimits.providerId === providerId,
     );
-    const hasProviderRateLimits = descendingEvents.some(
-      (row) =>
-        row.type === "provider/rateLimits/updated" &&
-        row.data.rateLimits.providerId === providerId,
-    );
-    if (
-      page.length < EVENT_PAGE_SIZE ||
-      (hasLatestRequest && hasProviderRateLimits)
-    ) {
-      return descendingEvents.reverse();
-    }
+    if (match !== undefined) return match;
+    if (page.length < RATE_LIMIT_PAGE_SIZE) return undefined;
     const oldestRow = page.at(-1);
-    if (oldestRow === undefined) return descendingEvents.reverse();
+    if (oldestRow === undefined) return undefined;
     beforeSeq = String(oldestRow.seq);
   }
+}
+
+async function listRequestWindowEvents(
+  bb: BbPluginApi,
+  threadId: string,
+  request: TurnRequestEventRow,
+): Promise<ThreadEventRow[]> {
+  const events: ThreadEventRow[] = [request];
+  let afterSeq = String(request.seq);
+  while (true) {
+    const page = await bb.sdk.threads.events.list({
+      threadId,
+      afterSeq,
+      limit: String(EVENT_PAGE_SIZE),
+      order: "asc",
+      types: PROVIDER_RETRY_EVENT_TYPES,
+    });
+    events.push(...page);
+    if (page.length < EVENT_PAGE_SIZE) return events;
+    const newestRow = page.at(-1);
+    if (newestRow === undefined) return events;
+    afterSeq = String(newestRow.seq);
+  }
+}
+
+async function listThreadEvents(
+  bb: BbPluginApi,
+  threadId: string,
+  providerId: string,
+): Promise<ThreadEventRows> {
+  const [request, observedRateLimits] = await Promise.all([
+    findLatestRequestEvent(bb, threadId),
+    findLatestProviderRateLimitsEvent(bb, threadId, providerId),
+  ]);
+  if (request === undefined) {
+    return observedRateLimits === undefined ? [] : [observedRateLimits];
+  }
+
+  const events = await listRequestWindowEvents(bb, threadId, request);
+  if (
+    observedRateLimits !== undefined &&
+    !events.some((row) => row.seq === observedRateLimits.seq)
+  ) {
+    events.push(observedRateLimits);
+    events.sort((left, right) => left.seq - right.seq);
+  }
+  return events;
 }
 
 export async function inspectProviderRetry(

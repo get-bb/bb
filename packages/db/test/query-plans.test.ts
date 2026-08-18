@@ -20,6 +20,7 @@ import {
   listLatestGoalEventRowsByThreadIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredConversationOutlineEventRows,
+  listStoredEventRows,
   pruneContextWindowUsageEventsBeforeSequence,
   pruneResolvedItemDeltas,
 } from "../src/data/events.js";
@@ -220,6 +221,34 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
+  it("uses the thread/type/sequence index for filtered event pages", () => {
+    const { db, thread } = setup();
+
+    const captured = captureStatements(db, () => {
+      expect(
+        listStoredEventRows(db, {
+          beforeSequence: 100,
+          limit: 25,
+          order: "desc",
+          threadId: thread.id,
+          types: ["provider/error", "turn/completed"],
+        }),
+      ).toEqual([]);
+    });
+    expect(captured).toHaveLength(2);
+    for (const query of captured) {
+      const details = queryPlanDetails({
+        db,
+        params: query.params,
+        sql: query.sql,
+      });
+      expect(details).toMatch(/USING INDEX events_thread_type_sequence_idx/u);
+      expect(details).not.toMatch(/events_thread_sequence_idx/u);
+    }
+
+    db.$client.close();
+  });
+
   it("loads daemon item lifecycle state through the targeted partial index", () => {
     const { db, logger, thread } = setup();
     const turnId = "turn-lifecycle-plan";
