@@ -110,14 +110,19 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
     fileTabContent,
     onClose,
     onOpenNewTab,
+    topChromeSurface,
   }: {
     browserDeck: ReactNode;
     fileTabs: Array<{ id: string; filename: string; onSelect: () => void }>;
     fileTabContent: ReactNode;
     onClose: () => void;
     onOpenNewTab: () => void;
+    topChromeSurface?: "panel" | "page";
   }) => (
-    <aside data-testid="shared-thread-secondary-panel">
+    <aside
+      data-testid="shared-thread-secondary-panel"
+      data-top-chrome-surface={topChromeSurface ?? "panel"}
+    >
       {fileTabs.map((tab) => (
         <button key={tab.id} type="button" onClick={tab.onSelect}>
           {tab.filename}
@@ -230,6 +235,7 @@ describe("PluginPanelRightPanelHost", () => {
     const collapsedPanel = await screen.findByTestId(
       "shared-thread-secondary-panel",
     );
+    expect(collapsedPanel.dataset.topChromeSurface).toBe("panel");
     expect(
       screen.getByTestId("shared-secondary-panel-region").hasAttribute("hidden"),
     ).toBe(true);

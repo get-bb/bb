@@ -520,7 +520,6 @@ export function PluginPanelRightPanelHost({
             showGitDiffTab={false}
             showInfoTab={false}
             showNewTabButton
-            topChromeSurface="page"
             onPanelFocus={() => undefined}
             onPanelChange={() => undefined}
             onCollapse={hidePanel}
