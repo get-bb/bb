@@ -1,6 +1,5 @@
 import {
   type ThreadEventContextWindowUsage,
-  type ThreadEventTokenUsage,
   type ThreadEventTokenUsageBreakdown,
   toPositiveNumber,
   extractResultText,
@@ -13,7 +12,6 @@ import {
   claudeAssistantUsageMessageSchema,
   claudeModelUsageSchema,
   messageContentSchema,
-  messageIdSchema,
   sdkUsageSchema,
   streamEventSchema,
   thinkingBlockSchema,
@@ -93,11 +91,6 @@ export function getNestedParentToolUseId(message: unknown): string | undefined {
   return typeof message.parent_tool_use_id === "string"
     ? message.parent_tool_use_id
     : undefined;
-}
-
-export function getNestedMessageId(message: unknown): string | undefined {
-  const parsed = messageIdSchema.safeParse(message);
-  return parsed.success ? parsed.data.id : undefined;
 }
 
 function parseMessageContent(
@@ -259,10 +252,18 @@ export function extractClaudeCommandExecutionOutput(
   return normalizedContentOutput;
 }
 
-export function extractTokenUsage(
+export interface ClaudeResultTokenUsage {
+  last: ThreadEventTokenUsageBreakdown;
+  modelContextWindow: number | null;
+}
+
+/**
+ * The result's own (per-segment) token usage. Running thread totals are the
+ * delta assembler's accumulation; the bridge only reports the segment.
+ */
+export function extractClaudeResultTokenUsage(
   message: ClaudeResultMessage | SDKResultMessage,
-  cumulativeTokens: ThreadEventTokenUsageBreakdown,
-): ThreadEventTokenUsage | undefined {
+): ClaudeResultTokenUsage | undefined {
   const parsed = sdkUsageSchema.safeParse(message.usage);
   const last = parsed.success ? toTokenUsageBreakdown(parsed.data) : undefined;
   const parsedModelUsage = claudeModelUsageSchema.safeParse(message.modelUsage);
@@ -274,25 +275,14 @@ export function extractTokenUsage(
     return undefined;
   }
 
-  const emptyBreakdown: ThreadEventTokenUsageBreakdown = {
-    totalTokens: 0,
-    inputTokens: 0,
-    cachedInputTokens: 0,
-    outputTokens: 0,
-    reasoningOutputTokens: 0,
-  };
-
-  const current = last ?? emptyBreakdown;
-
-  cumulativeTokens.totalTokens += current.totalTokens;
-  cumulativeTokens.inputTokens += current.inputTokens;
-  cumulativeTokens.cachedInputTokens += current.cachedInputTokens;
-  cumulativeTokens.outputTokens += current.outputTokens;
-  cumulativeTokens.reasoningOutputTokens += current.reasoningOutputTokens;
-
   return {
-    total: { ...cumulativeTokens },
-    last: current,
+    last: last ?? {
+      totalTokens: 0,
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      reasoningOutputTokens: 0,
+    },
     modelContextWindow,
   };
 }

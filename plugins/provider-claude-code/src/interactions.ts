@@ -41,7 +41,7 @@ import { claudeFileEditArgsSchema } from "./schemas.js";
 import {
   getClaudeFileEditPath,
   parseClaudeBashCommand,
-} from "./event-translation.js";
+} from "./delta-translation.js";
 
 function hasClaudeSessionPermissionUpdate(
   args: ClaudePermissionRequestApprovalParams,

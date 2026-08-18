@@ -1,8 +1,8 @@
 import {
   type BackgroundTaskStatus,
   type BackgroundTaskUsage,
-  type ThreadEvent,
-  type ThreadEventBackgroundTaskItem,
+  type DeltaBackgroundTaskShape,
+  type ThreadDelta,
   type WorkflowAgentSnapshot,
   type WorkflowAgentState,
   type WorkflowPhaseSnapshot,
@@ -12,8 +12,6 @@ import {
   backgroundTaskItemStatus,
   isBackgroundAgentTaskType,
   isSettledBackgroundTaskStatus,
-  threadScope,
-  turnScope,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   claudeTaskNotificationMessageSchema,
@@ -27,24 +25,29 @@ import {
 } from "./schemas.js";
 
 /**
- * Minimum gap between persisted progress snapshots per task. The CLI flushes
- * progress batches every 16ms; every batch is folded into adapter state, but
- * only snapshots at this cadence become events. Status transitions flush
- * immediately, and the terminal completed event always carries the final
- * state, so skipped intermediate snapshots are never load-bearing.
+ * Claude background-task dialect state → narrow-grammar deltas.
+ *
+ * The per-index workflow snapshot fold across delta batches, opaque-task
+ * tracking, and generation counting are claude dialect knowledge and stay
+ * bridge-side; the emitted deltas carry the full re-embedded snapshot per
+ * event. Progress-event throttling is NOT here anymore — it is the runtime
+ * delta assembler's central policy (500ms per item key, status transitions
+ * ride `flush: true`).
  */
-export const CLAUDE_TASK_PROGRESS_THROTTLE_MS = 500;
 
 /**
- * Thread-lifetime state for one provider background task. Lives outside the
- * transient turn state (tasks outlive turns by design) and pins its thread's
- * registry entry against LRU eviction while any task is open.
+ * Thread-lifetime state for one provider background task. Lives outside any
+ * turn state (tasks outlive turns by design); the assembler's eviction guard
+ * pins the thread while the materialized item is open.
  */
 export interface ClaudeTrackedTask {
   taskId: string;
-  itemId: string;
-  /** Spawning turn; places the item in the timeline via its item/started. */
-  turnId: string;
+  /**
+   * Provider item key for the assembler's id maps. A restarted settled task is
+   * a NEW provider item key (`task:<taskId>#<generation>`; generation is a
+   * bridge counter), so it mints a fresh timeline item.
+   */
+  providerItemKey: string;
   toolUseId: string | undefined;
   taskType: string;
   generation: number;
@@ -58,20 +61,15 @@ export interface ClaudeTrackedTask {
   summary: string | undefined;
   error: string | undefined;
   outputFile: string | undefined;
-  lastProgressEmittedAt: number;
   terminal: boolean;
 }
 
 export type ClaudeTaskMap = Map<string, ClaudeTrackedTask>;
 
 export interface TranslateClaudeTaskMessageArgs {
-  /** Lazily opens the spawning turn and returns its id. */
-  ensureTurnStarted: () => string | undefined;
   event: unknown;
-  now: number;
   opaqueTaskIds: Set<string>;
   tasks: ClaudeTaskMap;
-  threadId: string;
 }
 
 export function hasOpenClaudeBackgroundTasks(tasks: ClaudeTaskMap): boolean {
@@ -114,7 +112,7 @@ export function hasCompletionBlockingClaudeTasks(
   return false;
 }
 
-function buildClaudeTaskItemId(taskId: string, generation: number): string {
+function buildClaudeTaskItemKey(taskId: string, generation: number): string {
   return generation > 1 ? `task:${taskId}#${generation}` : `task:${taskId}`;
 }
 
@@ -243,13 +241,11 @@ function buildWorkflowSnapshot(
   };
 }
 
-function buildClaudeTaskItem(
-  task: ClaudeTrackedTask,
-): ThreadEventBackgroundTaskItem {
+/** The full snapshot re-embedded on every task delta. */
+function buildClaudeTaskShape(task: ClaudeTrackedTask): DeltaBackgroundTaskShape {
   const workflow = buildWorkflowSnapshot(task);
   return {
     type: "backgroundTask",
-    id: task.itemId,
     taskType: task.taskType,
     description: task.description,
     status: backgroundTaskItemStatus(task.taskStatus),
@@ -263,35 +259,38 @@ function buildClaudeTaskItem(
     ...(task.summary !== undefined ? { summary: task.summary } : {}),
     ...(task.error !== undefined ? { error: task.error } : {}),
     ...(task.outputFile !== undefined ? { outputFile: task.outputFile } : {}),
-    ...(task.toolUseId !== undefined
-      ? { parentToolCallId: task.toolUseId }
-      : {}),
   };
 }
 
-function buildClaudeTaskProgressEvent(
-  task: ClaudeTrackedTask,
-  threadId: string,
-): ThreadEvent {
+function taskKey(task: ClaudeTrackedTask): {
+  providerItemId: string;
+  parentRef?: string;
+} {
   return {
-    type: "item/backgroundTask/progress",
-    threadId,
-    providerThreadId: "",
-    scope: threadScope(),
-    item: buildClaudeTaskItem(task),
+    providerItemId: task.providerItemKey,
+    ...(task.toolUseId !== undefined ? { parentRef: task.toolUseId } : {}),
   };
 }
 
-function buildClaudeTaskCompletedEvent(
+function buildClaudeTaskProgressDelta(
   task: ClaudeTrackedTask,
-  threadId: string,
-): ThreadEvent {
+  flush: boolean,
+): ThreadDelta {
   return {
-    type: "item/backgroundTask/completed",
-    threadId,
-    providerThreadId: "",
-    scope: threadScope(),
-    item: buildClaudeTaskItem(task),
+    kind: "item.progress",
+    key: taskKey(task),
+    snapshot: buildClaudeTaskShape(task),
+    ...(flush ? { flush: true } : {}),
+  };
+}
+
+function buildClaudeTaskCloseDelta(task: ClaudeTrackedTask): ThreadDelta {
+  const shape = buildClaudeTaskShape(task);
+  return {
+    kind: "item.close",
+    key: taskKey(task),
+    status: shape.status,
+    item: shape,
   };
 }
 
@@ -311,14 +310,18 @@ function isMaterializedTaskType(taskType: string): boolean {
 
 /**
  * Translates the SDK task event family (task_started / task_progress /
- * task_updated / task_notification). Returns null when the message is not a
- * task message; returns [] for task messages that are intentionally not
- * materialized (monitor/unknown task types and events for unknown/settled
- * tasks).
+ * task_updated / task_notification) into deltas. Returns null when the
+ * message is not a task message; returns [] for task messages that are
+ * intentionally not materialized (monitor/unknown task types and events for
+ * unknown/settled tasks).
+ *
+ * A `task_started` for a materialized type opens the item in the spawning
+ * turn: the returned deltas begin with `turn.open` exactly where the old
+ * translator called ensureTurnStarted.
  */
 export function translateClaudeTaskMessage(
   args: TranslateClaudeTaskMessageArgs,
-): ThreadEvent[] | null {
+): ThreadDelta[] | null {
   const started = claudeTaskStartedMessageSchema.safeParse(args.event);
   if (started.success) {
     const message = started.data;
@@ -334,14 +337,9 @@ export function translateClaudeTaskMessage(
       return [];
     }
     const generation = existing ? existing.generation + 1 : 1;
-    const turnId = args.ensureTurnStarted();
-    if (turnId === undefined) {
-      return [];
-    }
     const task: ClaudeTrackedTask = {
       taskId: message.task_id,
-      itemId: buildClaudeTaskItemId(message.task_id, generation),
-      turnId,
+      providerItemKey: buildClaudeTaskItemKey(message.task_id, generation),
       toolUseId: message.tool_use_id,
       taskType,
       generation,
@@ -355,17 +353,15 @@ export function translateClaudeTaskMessage(
       summary: undefined,
       error: undefined,
       outputFile: undefined,
-      lastProgressEmittedAt: args.now,
       terminal: false,
     };
     args.tasks.set(message.task_id, task);
     return [
+      { kind: "turn.open" },
       {
-        type: "item/started",
-        threadId: args.threadId,
-        providerThreadId: "",
-        scope: turnScope(turnId),
-        item: buildClaudeTaskItem(task),
+        kind: "item.open",
+        key: taskKey(task),
+        item: buildClaudeTaskShape(task),
       },
     ];
   }
@@ -381,14 +377,7 @@ export function translateClaudeTaskMessage(
       foldWorkflowProgressRecords(task, message.workflow_progress);
     }
     task.usage = toBackgroundTaskUsage(message.usage);
-    if (
-      args.now - task.lastProgressEmittedAt <
-      CLAUDE_TASK_PROGRESS_THROTTLE_MS
-    ) {
-      return [];
-    }
-    task.lastProgressEmittedAt = args.now;
-    return [buildClaudeTaskProgressEvent(task, args.threadId)];
+    return [buildClaudeTaskProgressDelta(task, false)];
   }
 
   const updated = claudeTaskUpdatedMessageSchema.safeParse(args.event);
@@ -419,14 +408,9 @@ export function translateClaudeTaskMessage(
     // end_time / total_paused_ms / is_backgrounded are ignored by design for
     // workflow tasks: duration comes from usage.duration_ms and workflows are
     // always backgrounded. Revisit when non-workflow tasks materialize.
-    if (
-      !statusChanged &&
-      args.now - task.lastProgressEmittedAt < CLAUDE_TASK_PROGRESS_THROTTLE_MS
-    ) {
-      return [];
-    }
-    task.lastProgressEmittedAt = args.now;
-    return [buildClaudeTaskProgressEvent(task, args.threadId)];
+    // Status transitions must land immediately: flush bypasses the assembler's
+    // central progress throttle.
+    return [buildClaudeTaskProgressDelta(task, statusChanged)];
   }
 
   const notification = claudeTaskNotificationMessageSchema.safeParse(
@@ -448,27 +432,27 @@ export function translateClaudeTaskMessage(
       task.usage = toBackgroundTaskUsage(message.usage);
     }
     task.terminal = true;
-    return [buildClaudeTaskCompletedEvent(task, args.threadId)];
+    return [buildClaudeTaskCloseDelta(task)];
   }
 
   return null;
 }
 
 /**
- * Settles every open task. Used when the CLI session backing the tasks is
- * gone: thread/resume restarts the session (settings change, reconnect
- * re-resume) and provider process exit kills it outright. Tasks whose latest
- * patch already reported a finished status (completed/failed/killed) keep it —
- * only the terminal task_notification is lost, not the outcome — while
- * genuinely open tasks settle as interrupted ("stopped"). The daemon-crash
- * case — where this in-memory state is lost entirely — is reconciled
- * server-side on daemon session re-registration.
+ * Settles every open task as explicit `item.close` deltas. Used when the CLI
+ * session backing the tasks is gone: thread/resume restarts the session
+ * (settings change, reconnect re-resume), thread/stop interrupts it, and
+ * provider process exit kills it outright. Tasks whose latest patch already
+ * reported a finished status (completed/failed/killed) keep it — only the
+ * terminal task_notification is lost, not the outcome — while genuinely open
+ * tasks settle as interrupted ("stopped"). The daemon-crash case — where this
+ * in-memory state is lost entirely — is reconciled server-side on daemon
+ * session re-registration.
  */
-export function buildInterruptedClaudeTaskEvents(args: {
+export function buildInterruptedClaudeTaskDeltas(args: {
   tasks: ClaudeTaskMap;
-  threadId: string;
-}): ThreadEvent[] {
-  const events: ThreadEvent[] = [];
+}): ThreadDelta[] {
+  const deltas: ThreadDelta[] = [];
   for (const task of args.tasks.values()) {
     if (task.terminal) {
       continue;
@@ -477,7 +461,7 @@ export function buildInterruptedClaudeTaskEvents(args: {
       task.taskStatus = "stopped";
     }
     task.terminal = true;
-    events.push(buildClaudeTaskCompletedEvent(task, args.threadId));
+    deltas.push(buildClaudeTaskCloseDelta(task));
   }
-  return events;
+  return deltas;
 }

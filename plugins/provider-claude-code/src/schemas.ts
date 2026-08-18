@@ -26,10 +26,6 @@ export const claudeWebFetchArgsSchema = z
   .passthrough();
 export type ClaudeWebFetchArgs = z.infer<typeof claudeWebFetchArgsSchema>;
 
-export const messageIdSchema = z.object({
-  id: z.string(),
-});
-
 export const toolUseBlockSchema = z.object({
   type: z.literal("tool_use"),
   id: z.string(),

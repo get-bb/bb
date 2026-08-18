@@ -3,44 +3,44 @@
 /**
  * Claude Code bridge process.
  *
- * Thin JSON-RPC shell that manages Claude Agent SDK sessions and forwards
- * raw `SDKMessage` events to the parent process. The parent (host-daemon)
- * passes these to the adapter's `translateEvent` for conversion to
- * `ThreadEvent[]`.
+ * JSON-RPC shell that manages Claude Agent SDK sessions and emits
+ * narrow-grammar `thread/delta` notifications: raw `SDKMessage` events run
+ * through the claude dialect translator (`../delta-translation.ts`) and the
+ * parsed semantic deltas go to the parent, where the runtime's delta
+ * assembler constructs every canonical `ThreadEvent`.
  *
- * The bridge does NOT translate events — it only:
- * - Manages SDK session lifecycle (start, resume, stop, push input)
- * - Forwards raw SDK messages as `{ method: "sdk/message", params: { threadId, message } }`
+ * The bridge owns only the dialect and the command plane:
+ * - Manages SDK session lifecycle (start, resume, fork, stop, push input)
+ * - Translates SDK messages into semantic deltas per canonical session
  * - Forwards tool call requests to the parent and feeds responses back to the SDK
- * - Emits `thread/identity` when the SDK session ID is captured
+ * - Emits `thread/identity` when the SDK session ID is captured, and
+ *   `session.reset` at every session construction (the provider id-space
+ *   boundary for central id minting)
  */
 
 import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   pendingInteractionResolutionSchema,
-  turnScope,
   type PendingInteractionGrantedPermissionProfile,
   type PendingInteractionPayload,
   type PermissionEscalation,
   type ReasoningLevel,
-  type ThreadEvent,
+  type ThreadDelta,
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_NOTIFICATION_METHOD,
   threadDiscardParamsSchema as canonicalThreadDiscardParamsSchema,
   threadStartParamsSchema as canonicalThreadStartParamsSchema,
   threadStopParamsSchema as canonicalThreadStopParamsSchema,
   turnStartParamsSchema as canonicalTurnStartParamsSchema,
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
   type InitializeResult,
-  UNSTAMPED_THREAD_ID,
-  buildAcceptedUserMessageEvent,
   createBridgeIo,
   createBridgeLineHandler,
   createPendingToolCallTracker,
   decodeBridgeJsonRpcResponse,
-  queueAcceptedUserMessage,
   runBridgeRequest,
   shouldAutoDenyInteractiveRequest,
   withoutBridgeRuntimeEnv,
@@ -59,9 +59,9 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import {
-  createClaudeEventTranslator,
-  type ClaudeEventTranslator,
-} from "../event-translation.js";
+  createClaudeDeltaTranslator,
+  type ClaudeDeltaTranslator,
+} from "../delta-translation.js";
 import {
   buildClaudeApprovalInteractionPayload,
   buildClaudeInteractiveResponse,
@@ -72,7 +72,6 @@ import {
   buildClaudeTurnParams,
   type ClaudeCodeSkillRoot,
 } from "../session-params.js";
-import { buildInterruptedClaudeTaskEvents } from "../task-translation.js";
 import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";
 import { createClaudeCodeBridgeModelListMemo } from "./model-list.js";
 import {
@@ -233,7 +232,7 @@ interface ThreadSession {
   closing: boolean;
   streamEnded: boolean;
   /** Every session-scoped notification is translated through this. */
-  translator: ClaudeEventTranslator;
+  translator: ClaudeDeltaTranslator;
   mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
   pendingInteractiveRequests: Map<string | number, PendingInteractiveRequest>;
   /** Current-turn fallback when Claude supplies no originating-work metadata. */
@@ -652,17 +651,9 @@ async function applyLiveSessionSettings(
 }
 
 // ---------------------------------------------------------------------------
-// Thread-event emission
+// Thread-delta emission
 // ---------------------------------------------------------------------------
 
-/**
- * Per-process entropy for turn/item id prefixes (#1224): combined with a
- * per-session serial below, ids never collide across process restarts or
- * session resumes.
- */
-const sessionIdEntropyPrefix = `bt${randomUUID().slice(0, 8)}-`;
-let translatorSessionSerial = 0;
-const CLAUDE_PROVIDER_ID = "claude-code";
 /**
  * Model catalogs change on the order of releases; two minutes is enough to
  * absorb the burst of picker, thread-open, and reconnect asks that hit one
@@ -673,35 +664,35 @@ const listModelsMemoized = createClaudeCodeBridgeModelListMemo({
   ttlMs: MODEL_LIST_MEMO_TTL_MS,
 });
 
-function createSessionTranslator(): ClaudeEventTranslator {
-  translatorSessionSerial += 1;
-  const idPrefix = `${sessionIdEntropyPrefix}${translatorSessionSerial}-`;
-  return createClaudeEventTranslator({
-    providerId: CLAUDE_PROVIDER_ID,
-    turnIdPrefix: idPrefix,
-    itemIdPrefix: idPrefix,
-    synthesizeItemStarted: true,
+function sendThreadDeltas(
+  threadId: string,
+  deltas: readonly ThreadDelta[],
+): void {
+  if (deltas.length === 0) {
+    return;
+  }
+  send({
+    jsonrpc: "2.0",
+    method: THREAD_DELTA_NOTIFICATION_METHOD,
+    params: { threadId, deltas: [...deltas] },
   });
 }
 
-function sendThreadEvents(
-  threadId: string,
-  events: readonly ThreadEvent[],
-): void {
-  for (const event of events) {
-    send({
-      jsonrpc: "2.0",
-      method: BRIDGE_NOTIFICATION_METHODS.threadEvent,
-      params: { threadId, event },
-    });
-  }
+/**
+ * The provider id-space boundary: a new SDK session was constructed for this
+ * thread, so the assembler drops the thread's assembly state (id maps,
+ * accumulated usage). Sent right after the construction's thread/identity —
+ * identity precedes every thread/delta for the session.
+ */
+function sendSessionReset(threadId: string): void {
+  sendThreadDeltas(threadId, [{ kind: "session.reset" }]);
 }
 
 /**
  * The one session-scoped emitter: it runs the Claude-flavored notification
- * through the session translator and emits the finished `ThreadEvent`s as
- * `thread/event` notifications. The `sdk/message` envelope never reaches the
- * wire — it is only the translator's input vocabulary.
+ * through the session translator and emits the parsed semantic deltas as one
+ * batched `thread/delta` notification. The `sdk/message` envelope never
+ * reaches the wire — it is only the translator's input vocabulary.
  */
 function emitForSession(
   threadSession: ThreadSession,
@@ -709,9 +700,9 @@ function emitForSession(
   method: string,
   params: Record<string, unknown>,
 ): void {
-  sendThreadEvents(
+  sendThreadDeltas(
     threadId,
-    threadSession.translator.translateClaudeEvent(
+    threadSession.translator.translate(
       { jsonrpc: "2.0", method, params },
       { threadId },
     ),
@@ -727,8 +718,7 @@ function emitSessionError(
   // exactly one terminal state, and settlement events precede the error
   // signal. Without an open turn the error stays a runtime notification —
   // translating it would fabricate a failed turn bb never accepted.
-  const state = threadSession.translator.resolveState({ threadId });
-  if (state.currentTurnId !== undefined) {
+  if (threadSession.translator.hasOpenTurn(threadId)) {
     emitForSession(threadSession, threadId, "error", { threadId, message });
   }
   send({
@@ -746,8 +736,9 @@ function emitSessionError(
  * Settle a session's in-flight work and announce the rebuild. Mandatory
  * whenever the bridge tears down and rebuilds a live provider session
  * (execution options it cannot apply in place, resume fallback): settlement
- * events precede the `session/replaced` notification, which is never silent
- * (#1268).
+ * deltas — the interrupted turn boundary, then the background-task drain
+ * (replacing the CLI session kills its tasks with it) — precede the
+ * `session/replaced` notification, which is never silent (#1268).
  */
 function emitSessionReplacement(args: {
   contextLost: boolean;
@@ -756,28 +747,10 @@ function emitSessionReplacement(args: {
   threadId: string;
   threadSession: ThreadSession;
 }): void {
-  const translator = args.threadSession.translator;
-  const state = translator.resolveState({ threadId: args.threadId });
-  const settlement: ThreadEvent[] = [];
-  if (state.currentTurnId !== undefined) {
-    settlement.push({
-      type: "turn/completed",
-      threadId: UNSTAMPED_THREAD_ID,
-      providerThreadId: "",
-      scope: turnScope(state.currentTurnId),
-      status: "interrupted",
-    });
-    translator.turnState.finishTurn({ state, threadId: args.threadId });
-  }
-  // Replacing the CLI session kills its background tasks with it.
-  settlement.push(
-    ...buildInterruptedClaudeTaskEvents({
-      tasks: state.tasksById,
-      threadId: UNSTAMPED_THREAD_ID,
-    }),
+  sendThreadDeltas(
+    args.threadId,
+    args.threadSession.translator.buildSessionSettlementDeltas(args.threadId),
   );
-  state.opaqueTaskIds.clear();
-  sendThreadEvents(args.threadId, settlement);
   send({
     jsonrpc: "2.0",
     method: BRIDGE_NOTIFICATION_METHODS.sessionReplaced,
@@ -791,36 +764,19 @@ function emitSessionReplacement(args: {
 }
 
 /**
- * Correlate canonical turn input with its bb turn (turn/input/accepted): a
- * still-open translator turn gets the event immediately; otherwise it is
- * queued so the translator's onTurnStart drains it into the opening turn.
+ * Correlate canonical turn input with its bb turn: the acceptance delta is
+ * emitted only once the SDK actually consumed the input; the assembler owns
+ * the queue-until-turn-opens behavior.
  */
 function emitCanonicalTurnInputAccepted(
   threadSession: ThreadSession,
   acceptance: CanonicalTurnAcceptance,
   threadId: string,
 ): void {
-  if (threadSession.translator === null) {
-    return;
-  }
-  const state = threadSession.translator.resolveState({ threadId });
-  state.suppressUnacceptedTurnStart = false;
-  if (state.currentTurnId !== undefined) {
-    sendThreadEvents(
-      threadId,
-      buildAcceptedUserMessageEvent({
-        clientRequestId: acceptance.clientRequestId,
-        providerThreadId: acceptance.providerThreadId,
-        threadId,
-        turnId: state.currentTurnId,
-      }),
-    );
-    return;
-  }
-  queueAcceptedUserMessage({
-    clientRequestId: acceptance.clientRequestId,
-    state,
-  });
+  sendThreadDeltas(
+    threadId,
+    threadSession.translator.acceptInput(threadId, acceptance.clientRequestId),
+  );
 }
 
 function sendThreadIdentity(threadId: string, providerThreadId: string): void {
@@ -922,7 +878,7 @@ function seedModelContextWindowHint(
   threadId: string,
   model: string | undefined,
 ): void {
-  if (threadSession.translator === null || model === undefined) {
+  if (model === undefined) {
     return;
   }
   threadSession.translator.setClaudeModelContextWindowHint(threadId, model);
@@ -949,7 +905,7 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     sessionSerial,
     closing: false,
     streamEnded: false,
-    translator: createSessionTranslator(),
+    translator: createClaudeDeltaTranslator(),
     mockCliTrafficProxy: args.mockCliTrafficProxy,
     pendingInteractiveRequests: new Map(),
     permissionEscalation: args.permissionEscalation,
@@ -1261,6 +1217,7 @@ function replaceThreadSession(args: ReplaceThreadSessionArgs): void {
   sessions.set(args.threadId, args.replacementSession);
   args.replacementSession.session.start(args.providerThreadId);
   sendThreadIdentity(args.threadId, args.providerThreadId);
+  sendSessionReset(args.threadId);
 }
 
 function replaceEndedThreadSession(
@@ -1621,23 +1578,6 @@ function buildInteractivePermissionResult(
   }
 }
 
-/**
- * The bb turn id a canonical interaction correlates with: the translator's
- * open turn when one exists, else null so the runtime resolves it from the
- * active turn.
- */
-function resolveCanonicalInteractionTurnId(
-  threadSession: ThreadSession,
-  threadId: string,
-): string | null {
-  if (threadSession.translator === null) {
-    return null;
-  }
-  return (
-    threadSession.translator.resolveState({ threadId }).currentTurnId ?? null
-  );
-}
-
 function createForwardInteractiveRequest(
   threadIdRef: ThreadIdRef,
 ): (args: ForwardInteractiveRequestArgs) => Promise<PermissionResult> {
@@ -1698,6 +1638,10 @@ function createForwardInteractiveRequest(
         toolName: args.toolName,
       });
 
+      // The approval subject's item id is claude's native tool-use id and the
+      // bridge holds no bb turn ids: the runtime adapter translates the ids
+      // through the delta assembler's maps and resolves the turn from its own
+      // active-turn state (turnId: null).
       send({
         jsonrpc: "2.0",
         id: requestId,
@@ -1705,10 +1649,8 @@ function createForwardInteractiveRequest(
         params: {
           threadId: args.threadId,
           providerThreadId: args.providerThreadId,
-          turnId: resolveCanonicalInteractionTurnId(
-            threadSession,
-            args.threadId,
-          ),
+          turnId: null,
+          providerNativeIds: true,
           payload,
         },
       });
@@ -1759,6 +1701,10 @@ function createForwardUserQuestionRequest(
         resolve: finish,
       });
 
+      // The approval subject's item id is claude's native tool-use id and the
+      // bridge holds no bb turn ids: the runtime adapter translates the ids
+      // through the delta assembler's maps and resolves the turn from its own
+      // active-turn state (turnId: null).
       send({
         jsonrpc: "2.0",
         id: requestId,
@@ -1766,10 +1712,8 @@ function createForwardUserQuestionRequest(
         params: {
           threadId: args.threadId,
           providerThreadId: args.providerThreadId,
-          turnId: resolveCanonicalInteractionTurnId(
-            threadSession,
-            args.threadId,
-          ),
+          turnId: null,
+          providerNativeIds: true,
           payload,
         },
       });
@@ -2130,9 +2074,10 @@ async function handleThreadStart(
   sessions.set(threadIdRef.current, threadSession);
   threadSession.session.start();
 
-  // Identity precedes any thread/event; the result carries the same identity
-  // with per-session restorability.
+  // Identity precedes any thread/delta; the result carries the same identity
+  // with per-session restorability. The fresh session is an id-space boundary.
   sendThreadIdentity(threadIdRef.current, providerThreadId);
+  sendSessionReset(threadIdRef.current);
   sendResult(id, { providerThreadId, sessionRestorable: true });
 }
 
@@ -2235,6 +2180,7 @@ async function handleThreadResume(
     return;
   }
   sendThreadIdentity(threadId, requestedProviderThreadId);
+  sendSessionReset(threadId);
   sendResult(id, {
     providerThreadId: requestedProviderThreadId,
     sessionRestorable: true,
@@ -2303,6 +2249,7 @@ async function handleThreadFork(
   threadSession.session.start(forkedProviderThreadId);
 
   sendThreadIdentity(threadId, forkedProviderThreadId);
+  sendSessionReset(threadId);
   sendResult(id, {
     providerThreadId: forkedProviderThreadId,
     sessionRestorable: true,
@@ -2491,32 +2438,11 @@ async function handleThreadStop(
   ) {
     // An interrupt settles the active turn as interrupted and, like today's
     // cancel semantics, takes the session's background tasks down with the
-    // CLI session it closes.
-    const state = threadSession.translator.resolveState({
-      threadId: params.threadId,
-    });
-    const settlement: ThreadEvent[] = [];
-    if (state.currentTurnId !== undefined) {
-      settlement.push({
-        type: "turn/completed",
-        threadId: UNSTAMPED_THREAD_ID,
-        providerThreadId: "",
-        scope: turnScope(state.currentTurnId),
-        status: "interrupted",
-      });
-      threadSession.translator.turnState.finishTurn({
-        state,
-        threadId: params.threadId,
-      });
-    }
-    settlement.push(
-      ...buildInterruptedClaudeTaskEvents({
-        tasks: state.tasksById,
-        threadId: UNSTAMPED_THREAD_ID,
-      }),
+    // CLI session it closes: the boundary delta first, then the task drain.
+    sendThreadDeltas(
+      params.threadId,
+      threadSession.translator.buildSessionSettlementDeltas(params.threadId),
     );
-    state.opaqueTaskIds.clear();
-    sendThreadEvents(params.threadId, settlement);
   }
   // A release detaches the idle session and must not fabricate an
   // interruption or settle background tasks (#1584): the session stays

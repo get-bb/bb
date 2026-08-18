@@ -59,6 +59,7 @@ export {
   BRIDGE_REQUEST_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_NOTIFICATION_METHOD,
+  deltaBackgroundTaskShapeSchema,
   deltaFileChangeSchema,
   deltaItemKeySchema,
   deltaItemShapeSchema,
@@ -86,6 +87,7 @@ export {
 } from "@bb/provider-bridge-protocol";
 export type {
   BridgeExecutionOptions,
+  DeltaBackgroundTaskShape,
   DeltaFileChange,
   DeltaItemKey,
   DeltaItemShape,
