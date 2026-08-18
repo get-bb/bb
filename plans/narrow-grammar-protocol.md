@@ -1,8 +1,12 @@
 # Narrow-grammar revision of the Provider Bridge Protocol
 
-Status: investigation + prototype (branch `narrow-grammar-prototype`). Decides
-`docs/api_to_audit.md` item 1 for `@get-bb/plugin-sdk/provider-bridge` (whether
-the SDK keeps re-exporting `@bb/domain`'s event vocabulary).
+Status: **cutover complete, pending live QA** (branch
+`narrow-grammar-prototype`). All four bridges emit `thread/delta`; the
+`thread/event` path is deleted; protocol version bumped to 2;
+`docs/api_to_audit.md` item 1 for `@get-bb/plugin-sdk/provider-bridge` is
+resolved as "the protocol owns its own timeline vocabulary". Real-API
+integration runs were not part of this branch (no provider credentials);
+that is the remaining QA before merge.
 
 ## The revision in one paragraph
 
@@ -568,6 +572,61 @@ exactly.
   on an idle thread when given a thread id; the delta translator reproduces
   that (turn.open + settling error) and the bridge keeps gating it on an
   open mirror turn, so wire behavior is unchanged.
+
+## Final results (2026-08-18, stage 5: single-dialect cutover)
+
+The `thread/event` ingestion path is deleted end to end and exactly one
+protocol dialect remains:
+
+- **Protocol**: `BRIDGE_NOTIFICATION_METHODS.threadEvent`,
+  `threadEventNotificationSchema`, and the adapter's thread/event branch are
+  gone. `PROVIDER_BRIDGE_PROTOCOL_VERSION` 1 → 2; the runtime's required
+  post-initialize handshake now rejects a mismatched version with a legible
+  startup error (a v1 bridge would otherwise connect and show an empty
+  timeline), and the conformance kit's handshake scenario fails a
+  wrong-version answer. The conformance kit's grammar checks still run over
+  canonical ThreadEvents, on a kit-internal lane
+  (`conformance/assembledEvent`) fed by the shared
+  `toConformanceMessages` transport helper (deltas through a real
+  assembler); the four bridge conformance suites and the stub-bridge kit
+  test all ride it.
+- **Kit deletion**: turn-state (289 + 196 test), scoped-item-ids (97),
+  accepted-user-messages (82), provider-terminal-turn (33),
+  tool-item-translation (221 + 30 test), provider-unhandled-event
+  (113 + 70 test), unstamped-thread-id (9; the branded constant moved into
+  the assembler, its only consumer) — 1,140 lines out of the kit, none of
+  it published anymore. Their invariants are pinned by the
+  delta-assembler suite (queue/drain, claim-if-idle, uniform close,
+  vouched-turn scoping, LRU pinning), so no kit tests needed porting.
+- **SDK surface**: 192 exports at the branch base → 216 mid-branch (the
+  delta grammar's schemas/types added) → **184** after the cutover
+  deletions (the assembly machinery, the orphaned
+  `buildEditDiff`/`withParentToolCallId`, and every `@bb/domain` re-export
+  with zero bridge consumers: the ThreadEvent event vocabulary,
+  `threadScope`/`turnScope` + scope helpers, `NONE_REASONING_EFFORT`,
+  `createStandaloneBuiltinCompactCommandInput`). Audit item 1 resolved:
+  the protocol owns its timeline vocabulary; what remains from `@bb/domain`
+  is the command-plane/interaction surface the params are made of plus the
+  enum/status types the delta shapes reference.
+- **Per-bridge translator deltas across the branch** (from the stage
+  sections above): pi 1,259 → 898 (−361, plus bridge −61); acp
+  1,135 → 845 (−290, bridge −35); codex 1,094 → 1,019 (−75, bridge −241,
+  translator +18); claude 1,633 → 1,496 (−137, task-translation −13,
+  sdk-extraction −10, bridge −74). Every per-bridge turn-state /
+  scoped-id / accepted-queue / accumulation copy is gone.
+- **New shared code final sizes**: `thread-delta.ts` 555 (grammar schemas),
+  `delta-assembler.ts` 1,875 + `delta-assembler.test.ts` 1,808 — one
+  assembler bought four bridges' assembly layers plus the kit's published
+  machinery.
+- **Whole branch, excluding bundled d.ts and lockfile**: 74 files,
+  +11,158 / −10,224 (net +934, and −2,752 with the generated d.ts). The
+  raw net is dominated by the assembler's own new suite (+1,808) and the
+  heavy doc comments on the grammar; the deletion landed where it was
+  aimed — the published surface (kit −1,140 lines, SDK 216 → 184 exports)
+  and the four per-bridge assembly copies.
+- Board: provider-bridge-protocol, agent-runtime (incl. pi + conformance),
+  plugin-sdk, acp, codex, claude plugin suites all green after each stage;
+  see the repo history for the per-commit runs.
 
 ## Open questions for Michael
 

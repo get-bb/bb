@@ -253,9 +253,10 @@ bridge ships inside its plugin's `bb.host` artifact, and a host artifact may
 not import private `@bb/*` workspace packages, so everything a bridge needs is
 named here: `experimental_defineProviderBridge` (the export shape the
 daemon-side bootstrap looks for), the Provider Bridge Protocol's method
-vocabulary and param schemas, the bridge kit's authoring helpers (JSON-RPC
-framing, tool-call and interaction codecs, id scoping, visibility, translation
-helpers), and the `@bb/domain` event vocabulary those payloads are made of.
+vocabulary, the `thread/delta` grammar, and param schemas, the bridge kit's
+authoring helpers (JSON-RPC framing, tool-call and interaction codecs,
+visibility, dialect-parsing helpers), and the `@bb/domain` command-plane
+vocabulary those params reference.
 Curated by hand — named exports only, never `export *`. Unlike
 `@get-bb/plugin-sdk` and `@get-bb/plugin-sdk/host`, it is NOT a build-time
 runtime stub: it is pure schema and helper code with no daemon-pinned
@@ -264,17 +265,30 @@ build inlines the SDK's published, self-contained bundle.
 
 **Audit before stabilizing.**
 
-1. **The event vocabulary's home.** The names in group (4) of
-   `src/provider-bridge.ts`
-   (`ThreadEvent`, `PromptInput`, `PendingInteractionPayload`, `turnScope`, …)
-   are `@bb/domain`'s — bb's persisted-thread vocabulary, shared by the server,
-   the app and the runtime. The SDK names them because a published surface
-   cannot reference a private package, not because it owns them; moving them
-   here would invert the dependency and hand the plugin SDK the product's core
-   domain. Decide, before third parties depend on the shapes, whether the
-   protocol should own a narrower event vocabulary of its own that `@bb/domain`
-   then derives from, or whether this facade is the permanent answer.
-2. **Surface size.** ~190 names is a large promise. Single-consumer
+1. **Resolved (Aug 2026, the narrow-grammar cutover): the protocol owns its
+   own timeline vocabulary.** Bridges no longer construct `ThreadEvent`s —
+   they emit the protocol's own `thread/delta` grammar and the runtime's
+   assembler constructs every canonical event — so the `@bb/domain` event
+   vocabulary (`ThreadEvent`, the item types, `threadScope`/`turnScope` and
+   the scope helpers) left the surface with the kit's assembly machinery
+   (turn-state registry, scoped-item-ids, accepted-user-messages, item
+   constructors, unhandled-event builders). What still comes from
+   `@bb/domain` is deliberate and consumed by bridges today: the
+   command-plane and interaction surface the protocol's params are made of
+   (`PromptInput`, `PendingInteraction*`, `DynamicTool`,
+   `RuntimePermissionPolicy`, permission/reasoning/service-tier values,
+   rate-limit state, workflow snapshots) plus the enum/status types the
+   delta shapes reference (`ThreadEventItemStatus`, `ThreadEventTurnStatus`,
+   `ThreadEventPlanStep`, `ThreadEventTokenUsageBreakdown`,
+   `ThreadEventContextWindowUsage`, `ThreadEventUserContent`). Those are
+   shared server/app/runtime contracts, so the facade re-export (bundle
+   inlining, `@bb/domain` staying private) is the permanent answer for
+   them.
+2. **Surface size.** 184 names after the cutover (was ~190, then ~216 with
+   the delta grammar added, then the assembly surface deleted: the
+   turn-state/scoped-id/accepted-message/constructor helpers, the orphaned
+   `buildEditDiff`/`withParentToolCallId`, and the unconsumed domain
+   re-exports came off). Single-consumer
    repatriation done (Aug 2026): `extractEnvOverrides` and
    `getMessageContentTypes` moved into the claude-code plugin,
    `normalizePendingInteractionRequestedPermissionProfile` (whole
@@ -287,10 +301,8 @@ build inlines the SDK's published, self-contained bundle.
    server), the `claudeTaskTool*` schemas share their contract file with
    thread-view, the `acp*Cli`/`acpNativeReasoning` schemas are parsed by
    host-daemon-contract and config, and the workflow snapshot types are
-   rendered by the app. `buildEditDiff`, `completeStartedToolItem`, and
-   `decodeToolCallResponsePayload` are used inside the kit itself. The
-   surface is still large; any further shrink is a per-name product decision,
-   not a mechanical move.
+   rendered by the app. The surface is still large; any further shrink is a
+   per-name product decision, not a mechanical move.
    A follow-up de-overfitting pass (Aug 2026) then unwound the kit's
    over-general helpers: `buildToolUseItem`'s parser-callback router became
    per-provider switches over plain constructors (`buildFileChangeItem`,
