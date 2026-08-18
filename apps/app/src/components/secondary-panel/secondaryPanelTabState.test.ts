@@ -112,7 +112,7 @@ describe("secondaryPanelTabState", () => {
     ]);
   });
 
-  it("closes the panel when closing the last active content tab", () => {
+  it("activates a remaining fixed tab when closing the last content tab", () => {
     const fileTab = createHostFilePreviewFixedPanelTab({
       environmentId: "env-1",
       tab: {
@@ -131,11 +131,13 @@ describe("secondaryPanelTabState", () => {
 
     const nextState = closeSecondaryPanelTabInState(state, fileTab.id);
 
-    expect(nextState.secondary.activeTabId).toBeNull();
+    expect(nextState.secondary.activeTabId).toBe(
+      createThreadInfoFixedPanelTab().id,
+    );
     expect(nextState.secondary.tabs.map((tab) => tab.id)).toEqual([
       createThreadInfoFixedPanelTab().id,
     ]);
-    expect(nextState.secondary.isOpen).toBe(false);
+    expect(nextState.secondary.isOpen).toBe(true);
   });
 
   it("closes the panel and removes its sole New tab launcher", () => {

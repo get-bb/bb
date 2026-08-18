@@ -303,16 +303,17 @@ export function closeSecondaryPanelTabInState(
     return state;
   }
 
-  // Closing the last active content tab closes the shared panel. A later
-  // explicit open can create New tab; closing content never does so implicitly.
+  // Closing the last active content tab falls back to a remaining fixed tab.
+  // Only a genuinely empty panel closes; closing content never creates New tab.
   if (
     isClosingActiveTab &&
     isSecondaryFileTab(tab) &&
     !tabs.some(isSecondaryFileTab)
   ) {
+    const fallbackTab = tabs[0] ?? null;
     return setSecondaryPanelTabsInState({
-      activeTabId: null,
-      isOpen: false,
+      activeTabId: fallbackTab?.id ?? null,
+      isOpen: fallbackTab !== null,
       state,
       tabs,
     });
