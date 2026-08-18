@@ -593,6 +593,7 @@ type DocsRpcClient = ReturnType<typeof useRpc<typeof docsRpcContract>>;
 interface NotebookStore {
   consumers: Set<symbol>;
   data: NotesData | null;
+  error: string | null;
   inFlight: Promise<void> | null;
   listeners: Set<() => void>;
   owner: symbol | null;
@@ -608,6 +609,7 @@ function getNotebookStore(vaultId: string | null): NotebookStore {
   const store: NotebookStore = {
     consumers: new Set(),
     data: null,
+    error: null,
     inFlight: null,
     listeners: new Set(),
     owner: null,
@@ -628,6 +630,10 @@ function refreshNotebookStore(
 ): Promise<void> {
   if (notebookStores.get(store.vaultId) !== store) return Promise.resolve();
   if (store.inFlight) return store.inFlight;
+  if (store.error !== null) {
+    store.error = null;
+    notifyNotebookStore(store);
+  }
   const requestId = ++store.requestId;
   const request = rpc
     .call("listNotes", store.vaultId ? { vaultId: store.vaultId } : {})
@@ -638,19 +644,18 @@ function refreshNotebookStore(
       )
         return;
       store.data = parseNotesData(value);
+      store.error = null;
       notifyNotebookStore(store);
     })
     .catch((error: unknown) => {
       if (
         requestId !== store.requestId ||
-        notebookStores.get(store.vaultId) !== store ||
-        store.data === null
+        notebookStores.get(store.vaultId) !== store
       )
         return;
-      store.data = {
-        ...store.data,
-        error: error instanceof Error ? error.message : String(error),
-      };
+      const message = error instanceof Error ? error.message : String(error);
+      if (store.data === null) store.error = message;
+      else store.data = { ...store.data, error: message };
       notifyNotebookStore(store);
     })
     .finally(() => {
@@ -684,8 +689,18 @@ function useNotebook(vaultId: string | null) {
       if (store.owner === consumer)
         store.owner = store.consumers.values().next().value ?? null;
       if (store.consumers.size === 0) {
-        store.requestId += 1;
-        notebookStores.delete(store.vaultId);
+        // React Strict Mode immediately replays effects in development. Defer
+        // eviction through that replay so the remounted consumer keeps the
+        // same in-flight request instead of holding a detached, empty store.
+        queueMicrotask(() => {
+          if (
+            store.consumers.size !== 0 ||
+            notebookStores.get(store.vaultId) !== store
+          )
+            return;
+          store.requestId += 1;
+          notebookStores.delete(store.vaultId);
+        });
       }
     };
   }, [refresh, store]);
@@ -701,7 +716,7 @@ function useNotebook(vaultId: string | null) {
     store.data && (vaultId === null || store.data.vault.id === vaultId)
       ? store.data
       : null;
-  return { data, refresh };
+  return { data, error: store.error, refresh };
 }
 
 function DocumentSkeleton() {
@@ -1808,7 +1823,7 @@ function NotesWorkspace({
   const [vaultRootPath, setVaultRootPath] = useState("");
   const [vaultHostId, setVaultHostId] = useState("primary");
   const [vaultError, setVaultError] = useState<string | null>(null);
-  const { data, refresh } = useNotebook(route.vaultId);
+  const { data, error, refresh } = useNotebook(route.vaultId);
   const activeVaultId = data?.vault.id ?? route.vaultId;
   const filePath = route.filePath;
   const currentVaultIdRef = useRef(activeVaultId);
@@ -1829,7 +1844,16 @@ function NotesWorkspace({
     [activeVaultId, isCurrentVault, navigate],
   );
 
-  if (!data || !activeVaultId)
+  if (!data || !activeVaultId) {
+    if (error)
+      return (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm">
+          <p className="text-destructive">Could not load vaults: {error}</p>
+          <Button size="sm" variant="outline" onClick={refresh}>
+            Retry
+          </Button>
+        </div>
+      );
     return (
       <div
         className="flex min-h-0 flex-1 items-center justify-center p-6 text-sm text-muted-foreground"
@@ -1838,6 +1862,7 @@ function NotesWorkspace({
         Loading vaults…
       </div>
     );
+  }
 
   const selectedFolder = filePath ? dirname(filePath) : "";
   const newNote = () =>

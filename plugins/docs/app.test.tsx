@@ -7,6 +7,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
@@ -186,6 +187,52 @@ describe("Docs nav panel", () => {
     expect(
       within(toolbar).getByRole("button", { name: "New folder" }),
     ).toBeTruthy();
+  });
+
+  it("keeps the shared notebook request alive through Strict Mode effect replay", async () => {
+    let requests = 0;
+    const StrictNavigation = (props: { subPath: string }) => (
+      <StrictMode>
+        <navigationView.component {...props} />
+      </StrictMode>
+    );
+    const slot = renderSlot(
+      { ...navigationRegistration, component: StrictNavigation },
+      { subPath: "personal" },
+      {
+        rpc: {
+          listNotes: () => {
+            requests += 1;
+            return listNotesResult([]);
+          },
+        },
+      },
+    );
+
+    await slot.findByRole("navigation", { name: "Notes" });
+    expect(requests).toBe(1);
+  });
+
+  it("shows an initial notebook error and lets the user retry", async () => {
+    let requests = 0;
+    const slot = renderSlot(
+      navigationRegistration,
+      { subPath: "personal" },
+      {
+        rpc: {
+          listNotes: () => {
+            requests += 1;
+            if (requests === 1) throw new Error("Host unavailable");
+            return listNotesResult([]);
+          },
+        },
+      },
+    );
+
+    await slot.findByText("Could not load vaults: Host unavailable");
+    fireEvent.click(slot.getByRole("button", { name: "Retry" }));
+    await slot.findByRole("navigation", { name: "Notes" });
+    expect(requests).toBe(2);
   });
 
   it("keeps folder children together in the native navigation view", async () => {
