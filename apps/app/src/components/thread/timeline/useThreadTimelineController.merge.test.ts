@@ -22,6 +22,7 @@ interface TimelineTestRowArgs {
 
 interface TimelineTurnTestRowArgs extends TimelineTestRowArgs {
   children?: TimelineRow[];
+  endSequence?: number;
 }
 
 function timelineCursor(args: TimelineTestRowArgs): TimelinePaginationCursor {
@@ -83,7 +84,7 @@ function turnSummaryRow(args: TimelineTurnTestRowArgs): TimelineTurnRow {
     threadId: "thread-1",
     turnId: "turn-1",
     sourceSeqStart: args.sequence,
-    sourceSeqEnd: args.sequence,
+    sourceSeqEnd: args.endSequence ?? args.sequence,
     startedAt: args.sequence,
     createdAt: args.sequence,
     kind: "turn",
@@ -94,9 +95,15 @@ function turnSummaryRow(args: TimelineTurnTestRowArgs): TimelineTurnRow {
   };
 }
 
+/**
+ * `headSequence` is the thread's highest event sequence when the page was read,
+ * which the server reports as `maxSeq`. Together with the cursor naming the
+ * window's first sequence it states the event range the response covers.
+ */
 function makeTimelineResponse(
   rows: TimelineRow[],
   olderCursor: TimelinePaginationCursor | null,
+  headSequence: number,
 ): ThreadTimelineResponse {
   return {
     rows,
@@ -107,7 +114,7 @@ function makeTimelineResponse(
     pendingTodos: null,
     goal: null,
     modelFallback: null,
-    maxSeq: 0,
+    maxSeq: headSequence,
     timelinePage: {
       kind: "latest",
       segmentLimit: 20,
@@ -121,8 +128,10 @@ function makeTimelineResponse(
 function makeLoadedTimelineState(
   rows: TimelineRow[],
   olderCursor: TimelinePaginationCursor | null,
+  headSequence: number,
 ): LoadedTimelineState {
   return {
+    coverageEndSequence: headSequence,
     rows,
     olderCursor,
     surfaceKey: "thread-1:default",
@@ -297,10 +306,12 @@ describe("timeline page row merging", () => {
     const current = makeLoadedTimelineState(
       [userRow({ id: "oldest", sequence: 1 })],
       oldestCursor,
+      1,
     );
     const latestTimeline = makeTimelineResponse(
       [userRow({ id: "latest", sequence: 50 })],
       latestCursor,
+      50,
     );
 
     const next = mergeLoadedTimelineWithLatest({
@@ -322,10 +333,12 @@ describe("timeline page row merging", () => {
     const current = makeLoadedTimelineState(
       [userRow({ id: "oldest", sequence: 1 })],
       oldestCursor,
+      1,
     );
     const latestTimeline = makeTimelineResponse(
       [userRow({ id: "latest", sequence: 2 })],
       timelineCursor({ id: "latest-page", sequence: 2 }),
+      2,
     );
 
     const next = mergeLoadedTimelineWithLatest({
@@ -352,6 +365,7 @@ describe("timeline page row merging", () => {
     const current = makeLoadedTimelineState(
       [commandRow({ id: "live-work", sequence: 500 }), liveTail],
       inTurnCursor,
+      520,
     );
     const finishedCursor = timelineCursor({ id: "older-turn", sequence: 1 });
     const latestTimeline = makeTimelineResponse(
@@ -361,6 +375,7 @@ describe("timeline page row merging", () => {
         liveTail,
       ],
       finishedCursor,
+      520,
     );
 
     const next = mergeLoadedTimelineWithLatest({
@@ -377,6 +392,82 @@ describe("timeline page row merging", () => {
     expect(next.olderCursor).toEqual(finishedCursor);
   });
 
+  it("keeps loaded rows when unprojected events separate them from the follow-up window", () => {
+    // The shape a follow-up submission produces on a byte-budgeted thread: the
+    // completed turn's summary spans to `turn/completed`, a provider error that
+    // began later sorts after it and ends earlier, and the events that carry
+    // the turn's end never become rows at all. The prompt opening the next turn
+    // is the first sequence of the fresh window and continues the loaded
+    // history directly, so nothing may be dropped — dropping here truncates the
+    // timeline on submit until auto-load pages it back.
+    const oldestCursor = timelineCursor({ id: "oldest", sequence: 1 });
+    const current = makeLoadedTimelineState(
+      [
+        userRow({ id: "oldest", sequence: 1 }),
+        turnSummaryRow({ endSequence: 100, id: "turn-summary", sequence: 10 }),
+        commandRow({ id: "late-error", sequence: 99 }),
+      ],
+      oldestCursor,
+      100,
+    );
+    const latestTimeline = makeTimelineResponse(
+      [userRow({ id: "follow-up", sequence: 101 })],
+      timelineCursor({ id: "follow-up", sequence: 101 }),
+      104,
+    );
+
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: "thread-1:default",
+    });
+
+    expect(next.rows.map((row) => row.id)).toEqual([
+      "oldest",
+      "turn-summary",
+      "late-error",
+      "follow-up",
+    ]);
+    expect(next.olderCursor).toEqual(oldestCursor);
+    expect(next.coverageEndSequence).toBe(104);
+  });
+
+  it("keeps loaded rows when a window's first row is backfilled from below the cut", () => {
+    // A sequence-cut window names the cut in its cursor, but its first row can
+    // start under it: the projection backfills the running turn's `turn/started`
+    // row from wherever that turn began. The window still continues the loaded
+    // history, so the loaded pages stay.
+    const inTurnCursor = timelineCursor({
+      id: "thread-1:in-turn:60",
+      sequence: 60,
+    });
+    const current = makeLoadedTimelineState(
+      [commandRow({ id: "loaded-work", sequence: 40 })],
+      timelineCursor({ id: "thread-1:in-turn:30", sequence: 30 }),
+      59,
+    );
+    const latestTimeline = makeTimelineResponse(
+      [
+        turnSummaryRow({ endSequence: 70, id: "turn-summary", sequence: 20 }),
+        commandRow({ id: "live-work", sequence: 65 }),
+      ],
+      inTurnCursor,
+      70,
+    );
+
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: "thread-1:default",
+    });
+
+    expect(next.rows.map((row) => row.id)).toEqual([
+      "loaded-work",
+      "turn-summary",
+      "live-work",
+    ]);
+  });
+
   it("recovers from a stale cursor with a fresh latest cursor without dropping loaded rows", () => {
     const staleCursor = timelineCursor({ id: "stale-cursor", sequence: 1 });
     const freshCursor = timelineCursor({ id: "fresh-cursor", sequence: 40 });
@@ -387,10 +478,10 @@ describe("timeline page row merging", () => {
       sourceSeqEnd: oldTail.sourceSeqEnd + 1,
       text: "updated tail",
     };
-    const latestTimeline = makeTimelineResponse([updatedTail], freshCursor);
+    const latestTimeline = makeTimelineResponse([updatedTail], freshCursor, 41);
 
     const next = recoverLoadedTimelineAfterStaleCursor({
-      current: makeLoadedTimelineState([olderUser, oldTail], staleCursor),
+      current: makeLoadedTimelineState([olderUser, oldTail], staleCursor, 20),
       latestTimeline,
       surfaceKey: "thread-1:default",
     });

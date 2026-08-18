@@ -39,12 +39,20 @@ export interface UseThreadTimelineControllerResult {
 type NullableTimelinePaginationCursor = TimelinePaginationCursor | null;
 
 export interface LoadedTimelineState {
+  /**
+   * Highest event sequence the loaded rows account for: the thread head as of
+   * the response that produced them. With the window start named by
+   * `olderCursor`, this closes the event-sequence interval the loaded rows
+   * cover. See {@link canSpliceLatestTimelineWindow}.
+   */
+  coverageEndSequence: number;
   olderCursor: NullableTimelinePaginationCursor;
   rows: TimelineRow[];
   surfaceKey: string;
 }
 
 interface BuildLoadedTimelineStateArgs {
+  coverageEndSequence: number;
   latestRows: TimelineRow[];
   olderCursor: NullableTimelinePaginationCursor;
   surfaceKey: string;
@@ -141,11 +149,13 @@ function filterThreadTimelineResponse({
 }
 
 function buildLoadedTimelineState({
+  coverageEndSequence,
   latestRows,
   olderCursor,
   surfaceKey,
 }: BuildLoadedTimelineStateArgs): LoadedTimelineState {
   return {
+    coverageEndSequence,
     olderCursor,
     rows: latestRows,
     surfaceKey,
@@ -300,46 +310,68 @@ export function mergeLatestTimelineRows({
 }
 
 /**
+ * First event sequence a window covers.
+ *
+ * Every pagination cursor names the first sequence the page that issued it
+ * covered — that is what makes older pages chain — so the cursor is the exact
+ * lower bound of the window it came with. No cursor means the page reached the
+ * start of the thread.
+ */
+function timelineWindowStartSequence(
+  olderCursor: NullableTimelinePaginationCursor,
+): number {
+  return olderCursor === null ? 0 : olderCursor.anchorSeq;
+}
+
+/**
  * Whether a fresh latest window can be spliced onto what is already loaded.
  *
- * Splicing assumes the loaded rows are a prefix of the same history: older
- * first, the latest window continuing from somewhere inside them. Two shapes
- * break that assumption, and both became reachable once a window could be cut
- * inside a running turn rather than on a user message:
+ * Both sides are half of an event-sequence interval the server states outright:
+ * a window starts at its `olderCursor` and a latest window runs to `maxSeq`,
+ * the thread head when it was read. Splicing is sound exactly when the loaded
+ * interval reaches the latest one, so this compares the two intervals rather
+ * than inferring them from the rows.
  *
- * - The latest window reaches back *past* the oldest loaded row. A turn watched
- *   mid-flight is windowed from the budget floor; the moment it finishes it
- *   collapses into one summary row spanning the whole turn, so the next latest
- *   response starts at that turn's user message — before everything held.
- *   Splicing renders the user's prompt after the work it produced.
- * - The latest window starts after the newest loaded row with nothing in
- *   common. Everything between is history neither response contains, and
- *   `olderCursor` still points below the loaded rows, so scrolling never
- *   reaches it.
+ * Rows cannot answer this. Most events never become a row — `turn/completed`,
+ * token-usage and rate-limit updates — so the gap between the last loaded row
+ * and the next window is routinely non-zero while the history is in fact
+ * continuous. Rows are ordered by where they start, not where they end, so the
+ * last row is not the one that reaches furthest: a turn summary spans its whole
+ * turn while shorter rows that begin later sort after it. And a window's first
+ * row can start *below* the window, because the projection backfills a turn's
+ * `turn/started` row from under the cut. Each of those makes row arithmetic
+ * report a break in continuous history, and the caller responds by dropping
+ * every loaded page — the timeline visibly truncates to the newest window and
+ * then refills as auto-load pages it back.
  *
- * Neither can be repaired by merging, so the loaded rows are dropped and the
- * fresh response becomes the timeline. The cost is a scrolled-back reader
- * losing their loaded pages; the alternative is showing them a reordered or
- * silently incomplete thread.
+ * Two shapes are genuinely unspliceable and still return false:
+ *
+ * - The latest window starts below the loaded window. A turn watched mid-flight
+ *   is windowed from the budget floor; the moment it finishes it collapses into
+ *   one summary row spanning the whole turn, so the next latest response starts
+ *   at that turn's user message — before everything held. The fresh window is a
+ *   superset, so rebuilding from it loses no history.
+ * - The latest window starts past the loaded head. Everything between is
+ *   history neither response contains, and `olderCursor` still points below the
+ *   loaded rows, so scrolling could never reach it.
  */
-function isLatestTimelineWindowContiguous({
-  latestRows,
-  loadedRows,
-}: MergeLatestTimelineRowsArgs): boolean {
-  const oldestLoaded = loadedRows[0];
-  const newestLoaded = loadedRows.at(-1);
-  const oldestLatest = latestRows[0];
-  if (!oldestLoaded || !newestLoaded || !oldestLatest) {
+function canSpliceLatestTimelineWindow({
+  current,
+  latestTimeline,
+}: {
+  current: LoadedTimelineState;
+  latestTimeline: ThreadTimelineResponse;
+}): boolean {
+  if (current.rows.length === 0) {
     return true;
   }
-  if (oldestLatest.sourceSeqStart < oldestLoaded.sourceSeqStart) {
+  const latestStartSequence = timelineWindowStartSequence(
+    latestTimeline.timelinePage.olderCursor,
+  );
+  if (latestStartSequence < timelineWindowStartSequence(current.olderCursor)) {
     return false;
   }
-  const loadedRowIds = new Set(loadedRows.map((row) => row.id));
-  if (latestRows.some((row) => loadedRowIds.has(row.id))) {
-    return true;
-  }
-  return oldestLatest.sourceSeqStart <= newestLoaded.sourceSeqEnd + 1;
+  return latestStartSequence <= current.coverageEndSequence + 1;
 }
 
 export function mergeLoadedTimelineWithLatest({
@@ -350,12 +382,10 @@ export function mergeLoadedTimelineWithLatest({
   if (
     current.surfaceKey !== surfaceKey ||
     (current.rows.length === 0 && current.olderCursor === null) ||
-    !isLatestTimelineWindowContiguous({
-      latestRows: latestTimeline.rows,
-      loadedRows: current.rows,
-    })
+    !canSpliceLatestTimelineWindow({ current, latestTimeline })
   ) {
     return buildLoadedTimelineState({
+      coverageEndSequence: latestTimeline.maxSeq,
       latestRows: latestTimeline.rows,
       olderCursor: latestTimeline.timelinePage.olderCursor,
       surfaceKey,
@@ -369,6 +399,13 @@ export function mergeLoadedTimelineWithLatest({
 
   return {
     ...current,
+    // A response older than one already merged (a retry losing a race, a
+    // replayed cache entry) must not walk the head backwards and reopen a gap
+    // that was already closed.
+    coverageEndSequence: Math.max(
+      current.coverageEndSequence,
+      latestTimeline.maxSeq,
+    ),
     olderCursor: current.olderCursor,
     rows: latestMerge.rows,
   };
@@ -381,6 +418,7 @@ export function recoverLoadedTimelineAfterStaleCursor({
 }: RecoverLoadedTimelineAfterStaleCursorArgs): LoadedTimelineState {
   if (current.surfaceKey !== surfaceKey) {
     return buildLoadedTimelineState({
+      coverageEndSequence: latestTimeline.maxSeq,
       latestRows: latestTimeline.rows,
       olderCursor: latestTimeline.timelinePage.olderCursor,
       surfaceKey,
@@ -393,6 +431,10 @@ export function recoverLoadedTimelineAfterStaleCursor({
   });
 
   return {
+    coverageEndSequence: Math.max(
+      current.coverageEndSequence,
+      latestTimeline.maxSeq,
+    ),
     olderCursor: latestTimeline.timelinePage.olderCursor,
     rows: latestMerge.rows,
     surfaceKey,
@@ -427,6 +469,7 @@ export function useThreadTimelineController({
   const [loadedTimeline, setLoadedTimeline] = useState<LoadedTimelineState>(
     () =>
       buildLoadedTimelineState({
+        coverageEndSequence: 0,
         latestRows: [],
         olderCursor: null,
         surfaceKey,
@@ -450,6 +493,7 @@ export function useThreadTimelineController({
         current.surfaceKey === surfaceKey
           ? current
           : buildLoadedTimelineState({
+              coverageEndSequence: 0,
               latestRows: [],
               olderCursor: null,
               surfaceKey,
@@ -499,6 +543,9 @@ export function useThreadTimelineController({
           return current;
         }
         return {
+          // An older page extends the loaded window downwards only; the head it
+          // reaches is unchanged.
+          coverageEndSequence: current.coverageEndSequence,
           olderCursor: areTimelinePaginationCursorsEqual({
             left: current.olderCursor,
             right: nextOlderCursor,
