@@ -3,15 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Run bb threads with ACP (Agent Client Protocol) agents, starting with Cursor.",
+  "description": "Run Cursor and other ACP (Agent Client Protocol) agents as bb providers, with streaming output, permission prompts, and model selection.",
   "engines": {
     "bb": ">=0.0"
   },
   "bb": {
     "name": "ACP providers",
-    "description": "Run bb threads with ACP (Agent Client Protocol) agents, starting with Cursor.",
+    "description": "Run Cursor and other ACP (Agent Client Protocol) agents as bb providers, with streaming output, permission prompts, and model selection.",
     "branding": {
-      "icon": "./icons/cursor.svg"
+      "icon": "./icons/acp.svg"
     },
     "server": "./server.ts",
     "app": "./app.tsx",
