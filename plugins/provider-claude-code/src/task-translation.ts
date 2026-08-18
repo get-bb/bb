@@ -70,6 +70,13 @@ export interface TranslateClaudeTaskMessageArgs {
   event: unknown;
   opaqueTaskIds: Set<string>;
   tasks: ClaudeTaskMap;
+  /**
+   * The caller's late-drain suppression (#1623): while true, a `task_started`
+   * may not materialize a new task, because its `turn.open` would manufacture
+   * an unaccepted provider-only turn. Updates for already-tracked tasks still
+   * translate — they ride the thread-attached item, not a turn.
+   */
+  turnStartSuppressed: boolean;
 }
 
 export function hasOpenClaudeBackgroundTasks(tasks: ClaudeTaskMap): boolean {
@@ -242,7 +249,9 @@ function buildWorkflowSnapshot(
 }
 
 /** The full snapshot re-embedded on every task delta. */
-function buildClaudeTaskShape(task: ClaudeTrackedTask): DeltaBackgroundTaskShape {
+function buildClaudeTaskShape(
+  task: ClaudeTrackedTask,
+): DeltaBackgroundTaskShape {
   const workflow = buildWorkflowSnapshot(task);
   return {
     type: "backgroundTask",
@@ -337,6 +346,9 @@ export function translateClaudeTaskMessage(
       return [];
     }
     const generation = existing ? existing.generation + 1 : 1;
+    if (args.turnStartSuppressed) {
+      return [];
+    }
     const task: ClaudeTrackedTask = {
       taskId: message.task_id,
       providerItemKey: buildClaudeTaskItemKey(message.task_id, generation),

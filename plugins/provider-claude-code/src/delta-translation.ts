@@ -549,6 +549,13 @@ interface ClaudeThreadDialectState {
   armedHardRateLimitRejection: { detail: string; segment: number } | undefined;
   selectedModelContextWindow: number | null;
   /**
+   * Blocks unaccepted provider-only turn starts after a terminal failure.
+   * Late SDK drain output (background tasks, sidechains, bridge errors) after
+   * a failed result must not manufacture a turn nobody asked for; a real
+   * accepted input or an actually opened turn clears the suppression (#1623).
+   */
+  suppressUnacceptedTurnStart: boolean;
+  /**
    * Open context-compaction item for the segment it started in; a
    * non-compacting status completes it only inside the same open segment (the
    * stale-turn guard: a stale entry never completes under a later turn).
@@ -575,6 +582,7 @@ function createThreadState(): ClaudeThreadDialectState {
     lastModelFallback: undefined,
     armedHardRateLimitRejection: undefined,
     selectedModelContextWindow: null,
+    suppressUnacceptedTurnStart: false,
     openCompaction: undefined,
     startedToolShapes: new Map(),
     tasksById: new Map(),
@@ -607,6 +615,7 @@ export function createClaudeDeltaTranslator() {
     if (state.mirror.turnOpen) {
       return;
     }
+    state.suppressUnacceptedTurnStart = false;
     state.mirror.turnOpen = true;
     state.mirror.segment += 1;
     state.mirror.pendingInputs = 0;
@@ -666,6 +675,19 @@ export function createClaudeDeltaTranslator() {
       }
     }
     return deltas;
+  }
+
+  /**
+   * The late-drain suppression predicate (#1623): a terminal failure set the
+   * flag, no turn is open, and no accepted input is pending — so nothing may
+   * open a provider-only turn.
+   */
+  function isTurnStartSuppressed(state: ClaudeThreadDialectState): boolean {
+    return (
+      state.suppressUnacceptedTurnStart &&
+      !state.mirror.turnOpen &&
+      state.mirror.pendingInputs === 0
+    );
   }
 
   // -- fallback payloads (the old "no active turn" visibility guards) --------
@@ -763,21 +785,27 @@ export function createClaudeDeltaTranslator() {
         code: apiRetryMessage.data.error,
         httpStatusCode: apiRetryMessage.data.error_status,
       });
+      const retryError: ThreadDelta = {
+        kind: "provider.error",
+        message: "Provider error",
+        detail: buildClaudeApiRetryDetail(apiRetryMessage.data),
+        willRetry: true,
+        ...(errorInfo === null ? {} : { errorInfo }),
+      };
+      // A retry notice during a suppressed late drain stays a thread-scoped
+      // diagnostic instead of manufacturing a turn (#1623).
+      if (isTurnStartSuppressed(state)) {
+        return [{ ...retryError, threadScoped: true }];
+      }
       // Opens a turn when none is open, exactly like the old ensureTurnStarted.
-      return withMirror(state, [
-        { kind: "turn.open" },
-        {
-          kind: "provider.error",
-          message: "Provider error",
-          detail: buildClaudeApiRetryDetail(apiRetryMessage.data),
-          willRetry: true,
-          ...(errorInfo === null ? {} : { errorInfo }),
-        },
-      ]);
+      return withMirror(state, [{ kind: "turn.open" }, retryError]);
     }
 
     const statusMessage = claudeStatusSystemMessageSchema.safeParse(event);
     if (statusMessage.success && statusMessage.data.status === "compacting") {
+      if (isTurnStartSuppressed(state)) {
+        return [];
+      }
       const deltas = withMirror(state, [
         { kind: "turn.open" },
         {
@@ -889,6 +917,7 @@ export function createClaudeDeltaTranslator() {
       event,
       opaqueTaskIds: state.opaqueTaskIds,
       tasks: state.tasksById,
+      turnStartSuppressed: isTurnStartSuppressed(state),
     });
     if (taskDeltas !== null) {
       return withMirror(state, taskDeltas);
@@ -935,6 +964,11 @@ export function createClaudeDeltaTranslator() {
       return unexpectedSdkEventDeltas(event, context);
     }
     const message = parsedMessage.data;
+    // Late assistant drain (sidechain or root) after a terminal failure must
+    // not manufacture an unaccepted provider-only turn (#1623).
+    if (isTurnStartSuppressed(state)) {
+      return [];
+    }
     const parentToolCallId = context?.parentToolCallId;
     const parentRefField = parentToolCallId
       ? { parentRef: parentToolCallId }
@@ -1046,6 +1080,9 @@ export function createClaudeDeltaTranslator() {
       return unexpectedSdkEventDeltas(event, context);
     }
     const message = parsedMessage.data;
+    if (isTurnStartSuppressed(state)) {
+      return [];
+    }
     const parentToolCallId = context?.parentToolCallId;
     const parentRefField = parentToolCallId
       ? { parentRef: parentToolCallId }
@@ -1239,6 +1276,10 @@ export function createClaudeDeltaTranslator() {
     if (!failed && hasCompletionBlockingClaudeTasks(state.tasksById)) {
       return deltas;
     }
+    // Arm the late-drain suppression on terminal failure; a completed turn
+    // clears it (#1623). The flag is read only after the boundary closes the
+    // mirror's turn.
+    state.suppressUnacceptedTurnStart = failed;
     deltas.push(
       ...withMirror(state, [
         {
@@ -1276,6 +1317,11 @@ export function createClaudeDeltaTranslator() {
       }
       return [{ kind: "provider.rateLimits", rateLimits }];
     }
+    // During a suppressed late drain the rate-limit snapshot still surfaces,
+    // but no turn opens and no rejection is armed (#1623).
+    if (isTurnStartSuppressed(state)) {
+      return [{ kind: "provider.rateLimits", rateLimits }];
+    }
     // Armed hard rejection: the terminal error is deferred onto the result so
     // exactly one error lands inside the failed turn (#1408).
     const deltas = withMirror(state, [{ kind: "turn.open" }]);
@@ -1303,6 +1349,9 @@ export function createClaudeDeltaTranslator() {
           claudeConversationResetMessageSchema.safeParse(event);
         if (!parsedMessage.success) {
           return unexpectedSdkEventDeltas(event, context);
+        }
+        if (isTurnStartSuppressed(state)) {
+          return [];
         }
         return withMirror(state, [
           { kind: "turn.open" },
@@ -1383,6 +1432,11 @@ export function createClaudeDeltaTranslator() {
         ];
       }
       const state = stateFor(context);
+      // A bridge error draining after a terminal failure settles nothing new;
+      // it must not fail a turn nobody opened (#1623).
+      if (isTurnStartSuppressed(state)) {
+        return [];
+      }
       // The old buildErrorEvents opened a turn unconditionally and failed it;
       // the bridge gates this on an open translator turn, so in practice the
       // fabrication only reproduces the old translator-level behavior.
@@ -1423,9 +1477,10 @@ export function createClaudeDeltaTranslator() {
     threadId: string,
     clientRequestId: ClientTurnRequestId,
   ): ThreadDelta[] {
-    return withMirror(stateFor({ threadId }), [
-      { kind: "input.accepted", clientRequestId },
-    ]);
+    const state = stateFor({ threadId });
+    // A real accepted input ends the post-failure drain window (#1623).
+    state.suppressUnacceptedTurnStart = false;
+    return withMirror(state, [{ kind: "input.accepted", clientRequestId }]);
   }
 
   /**
@@ -1444,7 +1499,9 @@ export function createClaudeDeltaTranslator() {
         ]),
       );
     }
-    deltas.push(...buildInterruptedClaudeTaskDeltas({ tasks: state.tasksById }));
+    deltas.push(
+      ...buildInterruptedClaudeTaskDeltas({ tasks: state.tasksById }),
+    );
     state.opaqueTaskIds.clear();
     return deltas;
   }

@@ -430,6 +430,155 @@ describe("claude turn and checkpoint lifecycle", () => {
       }),
     );
   });
+
+  it("does not open a provider-only turn while a failed turn's subagent drains", () => {
+    const harness = createClaudeDeltaHarness();
+    const context = { threadId: "bb-thread-rate-limited" };
+    harness.acceptInput("creq_23456789af", context.threadId);
+    harness.translate(loadFixture("task-started-subagent.json"), context);
+    harness.translate(
+      {
+        type: "rate_limit_event",
+        rate_limit_info: {
+          status: "rejected",
+          rateLimitType: "five_hour",
+          resetsAt: 12345,
+        },
+        session_id: "claude-session-1",
+      },
+      context,
+    );
+
+    const failed = harness.translate(
+      {
+        type: "result",
+        subtype: "error_during_execution",
+        is_error: true,
+        api_error_status: 429,
+        result: "You've hit your session limit",
+        usage: {},
+        modelUsage: {},
+        session_id: "claude-session-1",
+      },
+      context,
+    );
+    expect(failed).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope(TURN_1),
+        status: "failed",
+      }),
+    );
+
+    const taskCompleted = harness.translate(
+      loadFixture("task-notification-subagent.json"),
+      context,
+    );
+    expect(taskCompleted).toContainEqual(
+      expect.objectContaining({ type: "item/backgroundTask/completed" }),
+    );
+    expect(
+      harness.translate(
+        {
+          type: "assistant",
+          message: {
+            id: "late-subagent-message",
+            role: "assistant",
+            content: [{ type: "text", text: "Late subagent output" }],
+          },
+          session_id: "claude-session-1",
+        },
+        {
+          ...context,
+          parentToolCallId: "toolu_01W1cLr7AsTRvbya9LM5LSAV",
+        },
+      ),
+    ).toEqual([]);
+
+    // A real accepted input ends the drain window: the next assistant output
+    // opens the follow-up turn and correlates the acceptance.
+    harness.acceptInput("creq_23456789ad", context.threadId);
+    const followUp = harness.translate(
+      {
+        type: "assistant",
+        message: {
+          id: "follow-up-message",
+          role: "assistant",
+          content: [{ type: "text", text: "Working again" }],
+        },
+        session_id: "claude-session-1",
+      },
+      context,
+    );
+    expect(followUp).toContainEqual(
+      expect.objectContaining({
+        type: "turn/started",
+        scope: turnScope(TURN_2),
+      }),
+    );
+    expect(followUp).toContainEqual(
+      expect.objectContaining({
+        type: "turn/input/accepted",
+        clientRequestId: "creq_23456789ad",
+        scope: turnScope(TURN_2),
+      }),
+    );
+    expect(followUp).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope(TURN_2),
+      }),
+    );
+  });
+
+  it("does not open a provider-only turn for a bridge error after terminal failure", () => {
+    const harness = createClaudeDeltaHarness();
+    const context = { threadId: "bb-thread-bridge-error-drain" };
+    harness.acceptInput("creq_23456789bg", context.threadId);
+    harness.translate(
+      {
+        type: "assistant",
+        message: {
+          id: "assistant-before-failure",
+          role: "assistant",
+          content: [{ type: "text", text: "Working" }],
+        },
+        session_id: "claude-session-1",
+      },
+      context,
+    );
+    expect(
+      harness.translate(
+        {
+          type: "result",
+          subtype: "error_during_execution",
+          is_error: true,
+          result: "Usage limit reached",
+          usage: {},
+          modelUsage: {},
+          session_id: "claude-session-1",
+        },
+        context,
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope(TURN_1),
+        status: "failed",
+      }),
+    );
+
+    expect(
+      harness.translate(
+        {
+          jsonrpc: "2.0",
+          method: "error",
+          params: { message: "Late SDK stream failure" },
+        },
+        context,
+      ),
+    ).toEqual([]);
+  });
 });
 
 describe("claude synthetic no-response handling", () => {
