@@ -1754,6 +1754,13 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   `project-default` environment seeds nothing, and a seeded host/worktree
   that no longer exists falls back to the composer's default environment.
 
+  Projectless threads: the project picker always offers "Don't work in a
+  project". That choice submits BB's personal-project id in `projectId` (not
+  `null`) and a host environment with `workspace: { type: "personal" }`.
+  Forward both fields unchanged to `threads.spawn`. If you need metadata for
+  the selected project, call `bb.sdk.projects.list({ includePersonal: true })`
+  because the ordinary list omits the personal project.
+
   The composer resolves selections; YOUR PLUGIN creates the thread. On
   submit it calls `onSubmit(request)` with a JSON-serializable
   `NewThreadRequest`

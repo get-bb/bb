@@ -402,6 +402,14 @@ Implementation: the shared workflow is
    `PluginNewThreadComposer.test.tsx` guard this) and re-decide whether the
    re-seed-on-change rule should instead be an explicit reset nonce.
 
+6. **Projectless contract.** The picker always offers "Don't work in a
+   project", including when a plugin seeds a specific project. That choice
+   submits the personal-project id (not `null`) with a `personal` workspace;
+   plugin authors forward both fields unchanged and must opt into personal
+   project metadata with `projects.list({ includePersonal: true })`. Before
+   stabilizing, confirm unconditional project switching is right for embedded
+   plugin workflows, rather than adding an explicit project-locking policy.
+
 ## `app.slots.experimental_newThreadPanelAction` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Adds a plugin row to the root New thread screen's
