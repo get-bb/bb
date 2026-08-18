@@ -13,6 +13,8 @@
  * prototype (plans/narrow-grammar-protocol.md).
  */
 import {
+  backgroundTaskStatusSchema,
+  backgroundTaskUsageSchema,
   clientTurnRequestIdSchema,
   providerErrorCategorySchema,
   providerErrorInfoSchema,
@@ -24,6 +26,7 @@ import {
   threadEventTurnStatusSchema,
   threadEventWarningCategorySchema,
   threadTimelineGoalStatusSchema,
+  workflowProgressSnapshotSchema,
 } from "@bb/domain";
 import { z } from "zod";
 
@@ -76,6 +79,33 @@ export const deltaFileChangeSchema = z.object({
 });
 export type DeltaFileChange = z.infer<typeof deltaFileChangeSchema>;
 
+/**
+ * A provider background task (claude workflows, backgrounded shells and
+ * subagents). The full snapshot is re-embedded per event — the bridge owns the
+ * dialect fold (per-index workflow records, generation counting) and the
+ * assembler only re-emits it. The family's canonical events are structurally
+ * thread-scoped by the domain grammar (`item/backgroundTask/progress` and
+ * `item/backgroundTask/completed`), so its progress/close deltas need no open
+ * turn; only the spawning `item.open` (→ `item/started`) is turn-scoped.
+ */
+export const deltaBackgroundTaskShapeSchema = z.object({
+  type: z.literal("backgroundTask"),
+  taskType: z.string(),
+  description: z.string(),
+  status: threadEventItemStatusSchema,
+  taskStatus: backgroundTaskStatusSchema,
+  skipTranscript: z.boolean(),
+  workflowName: z.string().optional(),
+  workflow: workflowProgressSnapshotSchema.optional(),
+  usage: backgroundTaskUsageSchema.optional(),
+  summary: z.string().optional(),
+  error: z.string().optional(),
+  outputFile: z.string().optional(),
+});
+export type DeltaBackgroundTaskShape = z.infer<
+  typeof deltaBackgroundTaskShapeSchema
+>;
+
 export const deltaItemShapeSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("command"),
@@ -114,9 +144,11 @@ export const deltaItemShapeSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("webFetch"),
     url: z.string(),
+    prompt: z.string().nullable().optional(),
     pattern: z.string().nullable(),
   }),
   z.object({ type: z.literal("imageView"), path: z.string() }),
+  deltaBackgroundTaskShapeSchema,
 ]);
 export type DeltaItemShape = z.infer<typeof deltaItemShapeSchema>;
 
@@ -262,13 +294,22 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
   }),
 
   /**
-   * Free-form progress on an open item (non-command tool updates).
-   * Not in the plan's grammar cut; recorded in its Open Questions.
+   * Free-form progress on an open item (non-command tool updates), or — with
+   * `snapshot` — a re-embedded background-task snapshot
+   * (`item/backgroundTask/progress`, thread-scoped, no turn required).
+   *
+   * Progress is throttled centrally by the assembler (one emission per item
+   * key per policy interval, 500ms default; the newest suppressed snapshot is
+   * flushed trailing-edge on the thread's next traffic once the window
+   * elapses, and an `item.close` supersedes it). `flush: true` bypasses the
+   * throttle and resets the window — status transitions must land immediately.
    */
   z.object({
     kind: z.literal("item.progress"),
     key: deltaItemKeySchema,
     message: z.string().optional(),
+    snapshot: deltaBackgroundTaskShapeSchema.optional(),
+    flush: z.boolean().optional(),
     providerTurnId: providerTurnIdSchema.optional(),
     noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
@@ -434,6 +475,21 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     settlesTurn: z.boolean().optional(),
     providerTurnId: providerTurnIdSchema.optional(),
     threadScoped: z.boolean().optional(),
+  }),
+
+  /**
+   * The provider switched models mid-flight (claude model fallback). Scoped to
+   * the open-or-just-closed turn when one exists, thread scope otherwise (the
+   * claude translator's currentOrLast rule). Cross-message dedup of the early
+   * assistant fallback block against the later system duplicate stays
+   * bridge-side — it is keyed by the bridge's own segment tracking.
+   */
+  z.object({
+    kind: z.literal("provider.modelFallback"),
+    originalModel: z.string().min(1),
+    fallbackModel: z.string().min(1),
+    reason: z.enum(["refusal", "provider"]),
+    message: z.string(),
   }),
 
   /**

@@ -1447,3 +1447,362 @@ describe("delta assembler (keyed provider turns)", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Background tasks, central progress throttling, model fallback (claude cut)
+// ---------------------------------------------------------------------------
+
+describe("delta assembler background tasks and progress policy", () => {
+  function createClockedAssembler(progressThrottleMs?: number) {
+    let nowMs = 0;
+    const assembler = createDeltaAssembler({
+      providerId: "claude-code",
+      entropyPrefix: "as-test",
+      now: () => nowMs,
+      ...(progressThrottleMs === undefined ? {} : { progressThrottleMs }),
+    });
+    return {
+      assembler,
+      advance(ms: number) {
+        nowMs += ms;
+      },
+    };
+  }
+
+  function taskShape(
+    overrides: Partial<Extract<DeltaItemShape, { type: "backgroundTask" }>> = {},
+  ): Extract<DeltaItemShape, { type: "backgroundTask" }> {
+    return {
+      type: "backgroundTask",
+      taskType: "local_workflow",
+      description: "run the workflow",
+      status: "pending",
+      taskStatus: "running",
+      skipTranscript: false,
+      ...overrides,
+    };
+  }
+
+  const TASK_KEY = { providerItemId: "task:wf-1" };
+
+  it("materializes started(turn) → progress(thread, throttled) → completed(thread)", () => {
+    const { assembler, advance } = createClockedAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    const turnId = assembler.getOpenTurnId(THREAD_ID) ?? "";
+
+    const started = assemble(assembler, {
+      kind: "item.open",
+      key: TASK_KEY,
+      item: taskShape(),
+    });
+    expect(started).toEqual([
+      expect.objectContaining({
+        type: "item/started",
+        scope: turnScope(turnId),
+        item: expect.objectContaining({
+          type: "backgroundTask",
+          taskType: "local_workflow",
+          status: "pending",
+        }),
+      }),
+    ]);
+    const itemId = assembler.getBbItemId(THREAD_ID, "task:wf-1") ?? "";
+    expect(itemId).not.toBe("");
+
+    // The open seeded the throttle window: progress inside it is suppressed.
+    advance(100);
+    expect(
+      assemble(assembler, {
+        kind: "item.progress",
+        key: TASK_KEY,
+        snapshot: taskShape(),
+      }),
+    ).toEqual([]);
+
+    // After the window, progress emits thread-scoped with the full snapshot.
+    advance(500);
+    const progress = assemble(assembler, {
+      kind: "item.progress",
+      key: TASK_KEY,
+      snapshot: taskShape({ summary: "still going" }),
+    });
+    expect(progress).toEqual([
+      expect.objectContaining({
+        type: "item/backgroundTask/progress",
+        scope: threadScope(),
+        item: expect.objectContaining({ id: itemId, summary: "still going" }),
+      }),
+    ]);
+
+    // The task survives the turn boundary; its terminal close needs no turn.
+    assemble(assembler, { kind: "turn.boundary", status: "completed" });
+    const completed = assemble(assembler, {
+      kind: "item.close",
+      key: TASK_KEY,
+      status: "completed",
+      item: taskShape({ status: "completed", taskStatus: "completed" }),
+    });
+    expect(completed).toEqual([
+      expect.objectContaining({
+        type: "item/backgroundTask/completed",
+        scope: threadScope(),
+        item: expect.objectContaining({
+          id: itemId,
+          status: "completed",
+          taskStatus: "completed",
+        }),
+      }),
+    ]);
+  });
+
+  it("flush bypasses the throttle and resets the window", () => {
+    const { assembler, advance } = createClockedAssembler();
+    assemble(
+      assembler,
+      { kind: "turn.open" },
+      { kind: "item.open", key: TASK_KEY, item: taskShape() },
+    );
+
+    advance(100);
+    const flushed = assemble(assembler, {
+      kind: "item.progress",
+      key: TASK_KEY,
+      snapshot: taskShape({ taskStatus: "paused" }),
+      flush: true,
+    });
+    expect(flushed).toHaveLength(1);
+
+    // The flush reset the window: the next unflushed progress is suppressed.
+    advance(100);
+    expect(
+      assemble(assembler, {
+        kind: "item.progress",
+        key: TASK_KEY,
+        snapshot: taskShape(),
+      }),
+    ).toEqual([]);
+  });
+
+  it("flushes the newest suppressed snapshot trailing-edge on later traffic", () => {
+    const { assembler, advance } = createClockedAssembler();
+    assemble(
+      assembler,
+      { kind: "turn.open" },
+      { kind: "item.open", key: TASK_KEY, item: taskShape() },
+    );
+
+    advance(100);
+    expect(
+      assemble(assembler, {
+        kind: "item.progress",
+        key: TASK_KEY,
+        snapshot: taskShape({ summary: "suppressed" }),
+      }),
+    ).toEqual([]);
+
+    // Unrelated later traffic after the window elapses carries the pending
+    // snapshot out first.
+    advance(600);
+    const events = assemble(assembler, { kind: "turn.boundary", status: "completed" });
+    expect(events[0]).toMatchObject({
+      type: "item/backgroundTask/progress",
+      item: expect.objectContaining({ summary: "suppressed" }),
+    });
+    expect(events[1]).toMatchObject({ type: "turn/completed" });
+  });
+
+  it("a close supersedes suppressed progress", () => {
+    const { assembler, advance } = createClockedAssembler();
+    assemble(
+      assembler,
+      { kind: "turn.open" },
+      { kind: "item.open", key: TASK_KEY, item: taskShape() },
+    );
+    advance(100);
+    assemble(assembler, {
+      kind: "item.progress",
+      key: TASK_KEY,
+      snapshot: taskShape({ summary: "suppressed" }),
+    });
+    advance(600);
+    const events = assemble(assembler, {
+      kind: "item.close",
+      key: TASK_KEY,
+      status: "completed",
+      item: taskShape({ status: "completed", taskStatus: "completed" }),
+    });
+    // The pending snapshot flushes with this batch, then the terminal event —
+    // the close always carries the final state, so nothing pends afterwards.
+    expect(events.map((event) => event.type)).toEqual([
+      "item/backgroundTask/progress",
+      "item/backgroundTask/completed",
+    ]);
+  });
+
+  it("drops turn-scoped pending progress with its turn, keeps thread pending", () => {
+    const { assembler, advance } = createClockedAssembler();
+    assemble(
+      assembler,
+      { kind: "turn.open" },
+      { kind: "item.open", key: { providerItemId: "tool-1" }, item: { type: "tool", tool: "read" } },
+    );
+    advance(100);
+    // Suppressed turn-scoped message progress.
+    expect(
+      assemble(assembler, {
+        kind: "item.progress",
+        key: { providerItemId: "tool-1" },
+        message: "halfway",
+      }),
+    ).toEqual([]);
+    assemble(assembler, { kind: "turn.boundary", status: "completed" });
+
+    // The turn is gone; the pending progress must not resurface later.
+    advance(600);
+    expect(assemble(assembler, { kind: "turn.open" }).map((e) => e.type)).toEqual([
+      "turn/started",
+    ]);
+  });
+
+  it("message progress seeds its window at open and throttles per item", () => {
+    const { assembler, advance } = createClockedAssembler();
+    assemble(
+      assembler,
+      { kind: "turn.open" },
+      { kind: "item.open", key: { providerItemId: "tool-1" }, item: { type: "tool", tool: "read" } },
+    );
+    advance(100);
+    expect(
+      assemble(assembler, {
+        kind: "item.progress",
+        key: { providerItemId: "tool-1" },
+        message: "early",
+      }),
+    ).toEqual([]);
+    advance(500);
+    const events = assemble(assembler, {
+      kind: "item.progress",
+      key: { providerItemId: "tool-1" },
+      message: "later",
+    });
+    // The newer progress supersedes the suppressed one: exactly one emission,
+    // carrying the latest state.
+    expect(events).toEqual([
+      expect.objectContaining({ type: "item/toolCall/progress", message: "later" }),
+    ]);
+  });
+
+  it("keeps background-task ids across LRU pressure (open items pin the thread)", () => {
+    const { assembler } = createClockedAssembler();
+    assemble(
+      assembler,
+      { kind: "turn.open" },
+      { kind: "item.open", key: TASK_KEY, item: taskShape() },
+      { kind: "turn.boundary", status: "completed" },
+    );
+    const itemId = assembler.getBbItemId(THREAD_ID, "task:wf-1") ?? "";
+    for (let index = 0; index < 300; index += 1) {
+      assembler.assemble({
+        threadId: `filler-${index}`,
+        deltas: [
+          { kind: "turn.open" },
+          { kind: "turn.boundary", status: "completed" },
+        ],
+      });
+    }
+    expect(assembler.getBbItemId(THREAD_ID, "task:wf-1")).toBe(itemId);
+  });
+
+  it("scopes provider.modelFallback to the current-or-last turn, thread when idle", () => {
+    const assembler = createAssembler();
+    const fallback = {
+      kind: "provider.modelFallback",
+      originalModel: "claude-fable-5",
+      fallbackModel: "claude-opus-4-8",
+      reason: "provider",
+      message: "Switched from claude-fable-5 to claude-opus-4-8.",
+    } as const;
+
+    const [idle] = assemble(assembler, fallback);
+    expect(idle).toMatchObject({
+      type: "provider/modelFallback",
+      scope: threadScope(),
+      reason: "provider",
+    });
+
+    assemble(assembler, { kind: "turn.open" });
+    const turnId = assembler.getOpenTurnId(THREAD_ID) ?? "";
+    const [inTurn] = assemble(assembler, fallback);
+    expect(inTurn).toMatchObject({ scope: turnScope(turnId) });
+
+    assemble(assembler, { kind: "turn.boundary", status: "completed" });
+    const [afterTurn] = assemble(assembler, fallback);
+    expect(afterTurn).toMatchObject({ scope: turnScope(turnId) });
+  });
+
+  it("carries close resultText onto webSearch/webFetch terminal items", () => {
+    const assembler = createAssembler();
+    assemble(
+      assembler,
+      { kind: "turn.open" },
+      {
+        kind: "item.open",
+        key: { providerItemId: "web-1" },
+        item: { type: "webSearch", queries: ["react suspense"] },
+      },
+      {
+        kind: "item.open",
+        key: { providerItemId: "fetch-1" },
+        item: {
+          type: "webFetch",
+          url: "https://example.com",
+          prompt: "page title",
+          pattern: null,
+        },
+      },
+    );
+
+    const events = assemble(
+      assembler,
+      {
+        kind: "item.close",
+        key: { providerItemId: "web-1" },
+        status: "completed",
+        resultText: "Found the Suspense docs",
+        item: { type: "webSearch", queries: ["react suspense"] },
+      },
+      {
+        kind: "item.close",
+        key: { providerItemId: "fetch-1" },
+        status: "completed",
+        resultText: "Example Domain",
+        item: {
+          type: "webFetch",
+          url: "https://example.com",
+          prompt: "page title",
+          pattern: null,
+        },
+      },
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "webSearch",
+          resultText: "Found the Suspense docs",
+        }),
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "webFetch",
+          prompt: "page title",
+          resultText: "Example Domain",
+        }),
+      }),
+    );
+  });
+});
