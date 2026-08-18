@@ -18,6 +18,13 @@ import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 
 const browserState = vi.hoisted(() => ({ available: false }));
 const createTerminal = vi.hoisted(() => vi.fn());
+const hostState = vi.hoisted(() => ({
+  hosts: [
+    { id: "host-1", name: "Studio", status: "connected" },
+    { id: "host-2", name: "Laptop", status: "connected" },
+  ],
+  primaryHostId: "host-1",
+}));
 
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => false,
@@ -72,6 +79,16 @@ vi.mock("@/hooks/queries/thread-terminal-queries", () => ({
     },
     error: null,
     isLoading: false,
+  }),
+}));
+
+vi.mock("@/hooks/queries/host-queries", () => ({
+  useHosts: () => ({ data: hostState.hosts, isLoading: false }),
+}));
+
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({
+    data: { primaryHostId: hostState.primaryHostId },
   }),
 }));
 
@@ -155,9 +172,13 @@ vi.mock("@/components/secondary-panel/NewTabPage", () => ({
   NewTabPage: ({
     onOpenBrowser,
     onStartTerminal,
+    startTerminalDisabled,
+    startTerminalTrailing,
   }: {
     onOpenBrowser?: () => void;
     onStartTerminal?: () => void;
+    startTerminalDisabled?: boolean;
+    startTerminalTrailing?: ReactNode;
   }) => (
     <div data-testid="plugin-page-new-tab">
       {onOpenBrowser ? (
@@ -166,9 +187,16 @@ vi.mock("@/components/secondary-panel/NewTabPage", () => ({
         </button>
       ) : null}
       {onStartTerminal ? (
-        <button type="button" onClick={onStartTerminal}>
-          Start terminal
-        </button>
+        <>
+          <button
+            type="button"
+            disabled={startTerminalDisabled}
+            onClick={onStartTerminal}
+          >
+            Start terminal
+          </button>
+          {startTerminalTrailing}
+        </>
       ) : null}
     </div>
   ),
@@ -180,27 +208,6 @@ vi.mock("@/components/secondary-panel/BrowserTabDeck", () => ({
 
 vi.mock("@/components/thread/terminal/ThreadTerminalPanel", () => ({
   ThreadTerminalPanel: () => <div data-testid="plugin-page-terminal" />,
-}));
-
-vi.mock("./PluginPageTerminalTargetDialog", () => ({
-  PluginPageTerminalTargetDialog: ({
-    onSelect,
-  }: {
-    onSelect: (target: {
-      kind: "host_path";
-      hostId: string;
-      cwd: null;
-    }) => void;
-  }) => (
-    <button
-      type="button"
-      onClick={() =>
-        onSelect({ kind: "host_path", hostId: "host-1", cwd: null })
-      }
-    >
-      Use test machine
-    </button>
-  ),
 }));
 
 function renderHost(panelPath = "board") {
@@ -250,7 +257,9 @@ describe("PluginPanelRightPanelHost", () => {
     );
     expect(collapsedPanel.dataset.topChromeSurface).toBe("panel");
     expect(
-      screen.getByTestId("shared-secondary-panel-region").hasAttribute("hidden"),
+      screen
+        .getByTestId("shared-secondary-panel-region")
+        .hasAttribute("hidden"),
     ).toBe(true);
 
     const showButton = await screen.findByRole("button", {
@@ -263,7 +272,9 @@ describe("PluginPanelRightPanelHost", () => {
       collapsedPanel,
     );
     expect(
-      screen.getByTestId("shared-secondary-panel-region").hasAttribute("hidden"),
+      screen
+        .getByTestId("shared-secondary-panel-region")
+        .hasAttribute("hidden"),
     ).toBe(false);
     expect(
       screen.queryByRole("button", { name: "Show right panel" }),
@@ -329,30 +340,30 @@ describe("PluginPanelRightPanelHost", () => {
     renderHost();
 
     expect(
-      screen.getByTestId("shared-secondary-panel-region").hasAttribute(
-        "hidden",
-      ),
+      screen
+        .getByTestId("shared-secondary-panel-region")
+        .hasAttribute("hidden"),
     ).toBe(false);
     expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
   });
 
-  it("asks for a terminal target instead of guessing one", async () => {
+  it("starts a terminal on the machine selected in the New tab row", async () => {
     renderHost();
     fireEvent.click(
       await screen.findByRole("button", { name: "Show right panel" }),
     );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Start terminal" }),
+    fireEvent.pointerDown(
+      await screen.findByRole("button", { name: "Machine" }),
+      { button: 0 },
     );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Use test machine" }),
-    );
+    fireEvent.click(screen.getByRole("menuitem", { name: /Laptop/u }));
+    fireEvent.click(screen.getByRole("button", { name: "Start terminal" }));
 
     await waitFor(() =>
       expect(createTerminal).toHaveBeenCalledWith({
         cols: 100,
         rows: 30,
-        target: { kind: "host_path", hostId: "host-1", cwd: null },
+        target: { kind: "host_path", hostId: "host-2", cwd: null },
       }),
     );
     expect(await screen.findByTestId("plugin-page-terminal")).toBeTruthy();

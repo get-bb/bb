@@ -11,6 +11,7 @@ import {
 import { createPortal } from "react-dom";
 import { atom, useAtom } from "jotai";
 import { atomFamily } from "jotai-family";
+import type { Host } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -38,6 +39,8 @@ import {
   useCreateTerminal,
   useTerminals,
 } from "@/hooks/queries/thread-terminal-queries";
+import { useHosts } from "@/hooks/queries/host-queries";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
   getDesktopBrowserApi,
   isDesktopBrowserAvailable,
@@ -46,10 +49,15 @@ import { getBrowserUrlHost } from "@/lib/browser-url";
 import { isRoutePath } from "@/lib/route-paths";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
+import {
+  resolveTerminalHost,
+  TerminalHostSelector,
+} from "@/components/secondary-panel/TerminalHostSelector";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 
 const TERMINAL_COLS = 100;
 const TERMINAL_ROWS = 30;
+const EMPTY_TERMINAL_HOSTS: readonly Host[] = [];
 const RIGHT_PANEL_TOGGLE_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
 
 const LazyBrowserTabDeck = lazy(() =>
@@ -72,14 +80,6 @@ const LazyThreadTerminalPanel = lazy(() =>
     ({ ThreadTerminalPanel }) => ({ default: ThreadTerminalPanel }),
   ),
 );
-const LazyTerminalTargetDialog = lazy(() =>
-  import("./PluginPageTerminalTargetDialog").then(
-    ({ PluginPageTerminalTargetDialog }) => ({
-      default: PluginPageTerminalTargetDialog,
-    }),
-  ),
-);
-
 const compactDrawerOpenAtomFamily = atomFamily((_panelStateId: string) =>
   atom(false),
 );
@@ -199,8 +199,21 @@ export function PluginPanelRightPanelHost({
   });
   const createTerminal = useCreateTerminal();
   const { mutateAsync: closeTerminal } = useCloseTerminal();
-  const [isTerminalTargetDialogOpen, setTerminalTargetDialogOpen] =
-    useState(false);
+  const hostsQuery = useHosts();
+  const primaryHostId = useSystemConfig().data?.primaryHostId ?? null;
+  const [preferredTerminalHostId, setPreferredTerminalHostId] = useState<
+    string | null
+  >(null);
+  const terminalHosts = hostsQuery.data ?? EMPTY_TERMINAL_HOSTS;
+  const selectedTerminalHost = useMemo(
+    () =>
+      resolveTerminalHost({
+        hosts: terminalHosts,
+        preferredHostId: preferredTerminalHostId,
+        primaryHostId,
+      }),
+    [preferredTerminalHostId, primaryHostId, terminalHosts],
+  );
 
   // This branch previously persisted plugin-defined views in the shared tab
   // state. The new host accepts only native page tabs; remove stale local
@@ -289,11 +302,6 @@ export function PluginPanelRightPanelHost({
     openNewTab();
     return true;
   });
-  useAppCommandHandler("terminal.open", () => {
-    if (!isFocused || panel === null) return false;
-    setTerminalTargetDialogOpen(true);
-    return true;
-  });
 
   const [togglePortalTarget, setTogglePortalTarget] =
     useState<HTMLElement | null>(null);
@@ -357,13 +365,33 @@ export function PluginPanelRightPanelHost({
               },
             };
           });
-          setTerminalTargetDialogOpen(false);
           revealPanel();
         })
         .catch(() => undefined);
     },
     [createTerminal, isCompactViewport, revealPanel, updatePanelState],
   );
+  const startSelectedTerminal = useCallback(() => {
+    if (selectedTerminalHost?.status !== "connected") return;
+    startTerminal({
+      kind: "host_path",
+      hostId: selectedTerminalHost.id,
+      cwd: null,
+    });
+  }, [selectedTerminalHost, startTerminal]);
+
+  useAppCommandHandler("terminal.open", () => {
+    if (
+      !isFocused ||
+      panel === null ||
+      createTerminal.isPending ||
+      selectedTerminalHost?.status !== "connected"
+    ) {
+      return false;
+    }
+    startSelectedTerminal();
+    return true;
+  });
 
   const closeTerminalTab = useCallback(
     (tab: TerminalFixedPanelTab) => {
@@ -474,19 +502,37 @@ export function PluginPanelRightPanelHost({
             onOpenBrowser={
               isDesktopBrowserAvailable() ? () => openBrowser() : undefined
             }
-            onStartTerminal={() => setTerminalTargetDialogOpen(true)}
+            onStartTerminal={startSelectedTerminal}
             showFileSearch={false}
+            startTerminalDisabled={
+              createTerminal.isPending ||
+              selectedTerminalHost?.status !== "connected"
+            }
+            startTerminalTrailing={
+              <TerminalHostSelector
+                disabled={createTerminal.isPending}
+                hosts={terminalHosts}
+                isLoading={hostsQuery.isLoading}
+                onChange={setPreferredTerminalHostId}
+                selectedHostId={selectedTerminalHost?.id ?? null}
+              />
+            }
           />
         </Suspense>
       ) : null,
     [
       activeTerminalTab,
       activeTerminalTarget,
+      createTerminal.isPending,
+      hostsQuery.isLoading,
       isNewTabActive,
       isOpen,
       openBrowser,
       panelState.secondary.isOpen,
       panelStateId,
+      selectedTerminalHost,
+      startSelectedTerminal,
+      terminalHosts,
     ],
   );
 
@@ -613,16 +659,6 @@ export function PluginPanelRightPanelHost({
           )
         : null}
       {page}
-      {isTerminalTargetDialogOpen ? (
-        <Suspense fallback={null}>
-          <LazyTerminalTargetDialog
-            open
-            pending={createTerminal.isPending}
-            onOpenChange={setTerminalTargetDialogOpen}
-            onSelect={startTerminal}
-          />
-        </Suspense>
-      ) : null}
     </>
   );
 }

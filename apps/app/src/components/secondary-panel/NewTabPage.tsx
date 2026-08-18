@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
 import {
   NewTabActions,
@@ -13,6 +14,8 @@ export interface NewTabPageProps extends NewTabPageFileSearchProps {
   onOpenBrowser?: OpenBrowserHandler;
   onStartTerminal?: StartTerminalHandler;
   pluginActions?: readonly PluginPanelActionEntry[];
+  startTerminalDisabled?: boolean;
+  startTerminalTrailing?: ReactNode;
 }
 
 /**
@@ -34,6 +37,8 @@ export function NewTabPage({
   projectId,
   recentItemsThreadId,
   showFileSearch,
+  startTerminalDisabled,
+  startTerminalTrailing,
 }: NewTabPageProps) {
   return (
     <div className="flex min-h-full flex-col gap-3 bg-sidebar px-4 pb-3 pt-1">
@@ -48,6 +53,8 @@ export function NewTabPage({
             onOpenBrowser={onOpenBrowser}
             onStartTerminal={onStartTerminal}
             pluginActions={pluginActions}
+            startTerminalDisabled={startTerminalDisabled}
+            startTerminalTrailing={startTerminalTrailing}
           />
         }
         initialQuery={initialQuery}
