@@ -83,12 +83,20 @@ function browserPlatform(): string {
   return typeof navigator === "undefined" ? "" : navigator.platform;
 }
 
+// A dialog that is mounted but not showing must not suppress app commands. The
+// compact sidebar drawer keeps its `aria-modal` panel in the DOM across
+// open/close and only marks it `inert` while closed (see `SidebarMobilePanel`),
+// so matching `aria-modal` alone left `modalOpen` stuck on for the whole
+// session on narrow windows — every `mainSurface` chord (thread.new,
+// panel.toggle, terminal.open, …) then silently declined. The `inert`
+// exclusions cover the node itself and any inert ancestor.
+const OPEN_MODAL_SELECTOR = [
+  '[aria-modal="true"]:not([inert]):not([inert] *):not([data-state="closed"])',
+  '[role="dialog"][data-state="open"]:not([inert]):not([inert] *)',
+].join(", ");
+
 function hasOpenModal(): boolean {
-  return (
-    document.querySelector(
-      '[aria-modal="true"], [role="dialog"][data-state="open"]',
-    ) !== null
-  );
+  return document.querySelector(OPEN_MODAL_SELECTOR) !== null;
 }
 
 export function AppCommandProvider({ children }: { children: ReactNode }) {
