@@ -278,7 +278,7 @@ function classifyPiToolUse(toolName: string, args: unknown): DeltaItemShape {
   return { type: "tool", tool: toolName, args };
 }
 
-/** Fallback classification for close-without-open (buildToolResultItem's). */
+/** Fallback classification for close-without-open (the old kit fallback). */
 function classifyPiToolResultFallback(toolName: string): DeltaItemShape {
   if (PI_COMMAND_TOOL_NAMES.has(toolName)) {
     return { type: "command", command: "", cwd: "" };

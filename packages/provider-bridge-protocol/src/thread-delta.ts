@@ -222,7 +222,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
   /**
    * The bridge's conclusion that the turn settled. `claimIfIdle: true` marks
    * fallback closers that own a turn only if accepted input is pending
-   * (`resolveProviderTerminalTurn`'s rule, applied centrally); an open turn is
+   * (the old bridge-kit terminal-turn rule, applied centrally); an open turn is
    * always settled. A keyed boundary (`providerTurnId`) always emits — the
    * provider named the turn — and settles only that turn.
    */

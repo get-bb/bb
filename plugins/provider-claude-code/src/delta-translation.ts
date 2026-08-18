@@ -242,7 +242,7 @@ function classifyClaudeToolUse(
   return genericToolShape(toolName, args);
 }
 
-/** Fallback classification for close-without-open (buildToolResultItem's). */
+/** Fallback classification for close-without-open (the old kit fallback). */
 function classifyClaudeToolResultFallback(
   toolName: string | undefined,
 ): DeltaItemShape {
