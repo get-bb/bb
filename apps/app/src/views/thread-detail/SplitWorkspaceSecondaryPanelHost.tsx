@@ -33,6 +33,7 @@ import {
   type SecondaryPanelHostLayout,
 } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import {
+  getPanelCollapseTransitionStyle,
   PANEL_COLLAPSE_TRANSITION_CLASS,
   PANEL_RESIZE_HIT_AREA_MARGINS,
   PANEL_RESIZE_HANDLE_LAYER_CLASS,
@@ -207,7 +208,10 @@ export function SplitWorkspaceSecondaryPanelHost({
     // close), and the right-edge pane headers drop their reserved corner slot
     // while the open panel's chrome hosts the window toggle instead.
     <SecondaryPanelHostLayoutContext.Provider value={hostLayout}>
-      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div
+        className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
+        style={getPanelCollapseTransitionStyle(model?.transitionsReady ?? true)}
+      >
         <div
           data-testid="split-workspace-panel-toggle"
           className={cn(

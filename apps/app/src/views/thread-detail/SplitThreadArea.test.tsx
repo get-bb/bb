@@ -101,6 +101,7 @@ function RootComposeFixture() {
       isOpen: isPanelOpen,
       panel: <div data-testid="hosted-new-thread-panel" />,
       onToggle: () => setIsPanelOpen((open) => !open),
+      transitionsReady: true,
     }),
     [isPanelOpen],
   );
@@ -249,6 +250,7 @@ vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
           </div>
         ),
         onToggle: () => setIsPanelOpen((open) => !open),
+        transitionsReady: true,
       }),
       [isPanelOpen, panelPath, pluginId],
     );
@@ -305,6 +307,7 @@ vi.mock("./ThreadDetailView", () => ({
           </div>
         ),
         onToggle: () => setIsPanelOpen((open) => !open),
+        transitionsReady: true,
       }),
       [composerHost, isPanelOpen, threadId],
     );

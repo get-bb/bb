@@ -90,6 +90,8 @@ export interface PaneSecondaryPanelViewModel {
   isOpen: boolean;
   panel: ReactNode;
   onToggle: () => void;
+  /** False while mount-time state reconciliation must update without motion. */
+  transitionsReady: boolean;
 }
 
 export interface PaneSecondaryPanelRegistration {
