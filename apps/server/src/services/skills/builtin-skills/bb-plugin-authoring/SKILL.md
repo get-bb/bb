@@ -1516,10 +1516,26 @@ Slot props contracts (versioned, additive-only):
   Registration:
   `{ id, title, icon, path, component, experimental_sidebarAccessory?, headerContent? }`.
   BB automatically wraps every plugin page in the same host-owned App panel
-  used by first-party pages. Browser and Terminal are native page capabilities;
-  plugins do not opt into them or mount panel layout themselves. A generic
-  plugin page has no implicit execution target, so starting a terminal asks the
-  user to choose a connected machine.
+  used by New thread and thread pages. The page component supplies only its
+  main body; it must not mount a second panel layout or register Browser and
+  Terminal itself. BB owns the desktop split, compact drawer, header/panel
+  toggle, resizing, tab strip, persistence, and the shared `panel.toggle`,
+  `panel.newTab`, and `terminal.open` keyboard commands.
+
+  New tab is a transient host launcher. On a plugin page it offers Browser
+  (when the desktop browser is available) and Terminal; it does not offer
+  workspace file search because a generic plugin page has no implicit project,
+  environment, or working directory. The Terminal row includes a compact
+  connected-machine selector, initially resolving the primary machine and then
+  the first connected fallback. Changing the selector does not launch
+  anything; activating Start terminal uses the selected machine. The selection
+  is page-session UI state, not plugin storage.
+
+  Browser and Terminal tabs are normal host content tabs. Closing the final
+  content tab closes an otherwise empty panel; hydration also closes an open
+  panel when no durable tab survived. Plugins cannot currently contribute
+  fixed tabs to this page panel or replace its native tab chrome. Those are
+  host capabilities, not additional `navPanel` registration fields.
   `experimental_sidebarAccessory` is a no-props, presentational component at
   the trailing edge of the sidebar row. It can own SDK hooks for a live count
   or short status without lifting state into the host sidebar. The host does
