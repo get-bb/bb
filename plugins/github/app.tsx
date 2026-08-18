@@ -2255,6 +2255,7 @@ function NewIssueForm({
 
 interface Status {
   ghOk: boolean;
+  ghState: "ready" | "needs_configuration" | "unavailable";
   ghError: string | null;
   repos: RepoInfo[];
   lastSyncedAt: string | null;
@@ -2300,7 +2301,9 @@ function PanelHeader() {
               ? `${status.repos.length} repo${status.repos.length === 1 ? "" : "s"} · synced ${
                   status.lastSyncedAt !== null ? relativeTime(status.lastSyncedAt) : "never"
                 }`
-              : "GitHub CLI not authenticated"}
+              : status.ghState === "unavailable"
+                ? "GitHub CLI unavailable — retrying"
+                : "GitHub CLI not authenticated"}
       </span>
       <Button
         size="sm"
@@ -2401,6 +2404,13 @@ function GithubPanelBody({
   query: string;
   setQuery: (query: string) => void;
 }) {
+  if (status !== null && status.ghState === "unavailable") {
+    return (
+      <EmptyState
+        message={`GitHub CLI could not reach GitHub. Check your network or keychain; the plugin retries by itself. (${status.ghError ?? ""})`}
+      />
+    );
+  }
   if (status !== null && !status.ghOk) {
     return (
       <EmptyState
