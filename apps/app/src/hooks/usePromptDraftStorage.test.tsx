@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   usePromptDraftInputThreadIds,
   usePromptDraftStorage,
@@ -32,9 +32,67 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
 });
 
 describe("usePromptDraftStorage", () => {
+  it("keeps deferred text writes readable and serializes at the persist boundary", () => {
+    vi.useFakeTimers();
+    const scope = uniqueScope();
+    const { result } = renderHook(() => usePromptDraftStorage(scope));
+
+    act(() => {
+      result.current.setTextAndMentions("large pending draft", []);
+    });
+
+    expect(result.current.text).toBe("large pending draft");
+    expect(window.localStorage.getItem(result.current.storageKey)).toBeNull();
+    act(() => vi.advanceTimersByTime(249));
+    expect(window.localStorage.getItem(result.current.storageKey)).toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+    expect(window.localStorage.getItem(result.current.storageKey)).toBe(
+      storedDraft("large pending draft"),
+    );
+  });
+
+  it("lets an immediate write replace a pending deferred write", () => {
+    vi.useFakeTimers();
+    const scope = uniqueScope();
+    const { result } = renderHook(() => usePromptDraftStorage(scope));
+
+    act(() => {
+      result.current.setTextAndMentions("stale pending draft", []);
+      result.current.setDraft({
+        text: "immediate replacement",
+        mentions: [],
+        attachments: [],
+      });
+    });
+
+    expect(window.localStorage.getItem(result.current.storageKey)).toBe(
+      storedDraft("immediate replacement"),
+    );
+    act(() => vi.advanceTimersByTime(250));
+    expect(window.localStorage.getItem(result.current.storageKey)).toBe(
+      storedDraft("immediate replacement"),
+    );
+  });
+
+  it("flushes a deferred write when the page is hidden", () => {
+    vi.useFakeTimers();
+    const scope = uniqueScope();
+    const { result } = renderHook(() => usePromptDraftStorage(scope));
+
+    act(() => {
+      result.current.setTextAndMentions("flush before leaving", []);
+      window.dispatchEvent(new Event("pagehide"));
+    });
+
+    expect(window.localStorage.getItem(result.current.storageKey)).toBe(
+      storedDraft("flush before leaving"),
+    );
+  });
+
   it("subscribes to draft presence for a batch of threads", () => {
     const projectId = "proj-batch-drafts";
     const threadRefs = [

@@ -36,12 +36,31 @@ function escapeRegexLiteral(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
-function triggerPattern(trigger: TypeaheadTrigger): RegExp {
+function triggerPattern(
+  trigger: TypeaheadTrigger,
+  options: { windowed: boolean },
+): RegExp {
   const escapedChar = escapeRegexLiteral(trigger.char);
   const queryClass =
     trigger.kind === "mention" ? `[^\\s${escapedChar}]*` : "\\S*";
-  return new RegExp(`(^|[\\s([{])${escapedChar}(${queryClass})$`, "u");
+  // In a windowed scan the window start is not the start of input, so the
+  // `^` alternative must not fire there; a real trigger inside the window
+  // always carries its boundary char (the window includes one extra char
+  // beyond the longest recognizable query).
+  const boundary = options.windowed ? "([\\s([{])" : "(^|[\\s([{])";
+  return new RegExp(`${boundary}${escapedChar}(${queryClass})$`, "u");
 }
+
+/**
+ * How many characters before the caret are scanned for a trigger. Trigger
+ * queries are short human-typed tokens (skill/command names, mention
+ * queries); scanning the full document instead would rebuild and regex-scan
+ * the entire text on every keystroke and selection change, which costs
+ * several ms once a large paste (e.g. a minified JS bundle) is in the box. A
+ * trigger whose query exceeds the window no longer opens the menu — at that
+ * length no menu has useful matches anyway.
+ */
+const TRIGGER_SCAN_WINDOW = 256;
 
 /**
  * Resolves the typeahead trigger currently under the caret, if any. Replaces the
@@ -61,15 +80,17 @@ export function findActiveTrigger(
   const selection = editor.state.selection;
   if (!selection.empty) return null;
 
+  const scanStart = Math.max(0, selection.from - TRIGGER_SCAN_WINDOW);
+  const windowed = scanStart > 0;
   const textBeforeCursor = editor.state.doc.textBetween(
-    0,
+    scanStart,
     selection.from,
     "\n",
     "\n",
   );
 
   for (const trigger of triggers) {
-    const match = triggerPattern(trigger).exec(textBeforeCursor);
+    const match = triggerPattern(trigger, { windowed }).exec(textBeforeCursor);
     if (!match) continue;
 
     const query = match[2] ?? "";

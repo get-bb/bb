@@ -94,12 +94,22 @@ function persistPromptDraftCache(storageKey: string): void {
   pendingPromptDraftStorageKeys.delete(storageKey);
 
   const cachedEntry = promptDraftCache.get(storageKey);
-  if (!cachedEntry || cachedEntry.rawValue === null) {
+  if (!cachedEntry) {
     window.localStorage.removeItem(storageKey);
     return;
   }
 
-  window.localStorage.setItem(storageKey, cachedEntry.rawValue);
+  // Serialization happens here, at persist time, not on every write: a write
+  // per keystroke with a large draft (e.g. a pasted 1 MB minified bundle)
+  // would otherwise JSON.stringify the full text on each character typed.
+  const serialized = serializePromptDraftStorage(cachedEntry.draft);
+  cachedEntry.rawValue = serialized;
+  if (serialized === null) {
+    window.localStorage.removeItem(storageKey);
+    return;
+  }
+
+  window.localStorage.setItem(storageKey, serialized);
 }
 
 function schedulePromptDraftPersist(storageKey: string): void {
@@ -176,25 +186,13 @@ function writePromptDraft(
   if (!storageKey || typeof window === "undefined") return;
 
   // Keep all prompt composer mounts in sync, including late async completions from
-  // a previously unmounted thread view.
-  const serialized = serializePromptDraftStorage(value);
-  if (!serialized) {
-    promptDraftCache.set(storageKey, {
-      rawValue: null,
-      draft: EMPTY_PROMPT_DRAFT,
-    });
-    if (options.persist === "deferred") {
-      schedulePromptDraftPersist(storageKey);
-    } else {
-      persistPromptDraftCache(storageKey);
-    }
-    emitPromptDraftChange(storageKey);
-    return;
-  }
-
+  // a previously unmounted thread view. `rawValue` stays unset until
+  // persistPromptDraftCache serializes the draft; while a write is pending the
+  // cached draft object is authoritative (readPromptDraft short-circuits on
+  // pendingPromptDraftStorageKeys), so no reader observes the placeholder.
   promptDraftCache.set(storageKey, {
-    rawValue: serialized,
-    draft: value,
+    rawValue: null,
+    draft: isPromptDraftEmpty(value) ? EMPTY_PROMPT_DRAFT : value,
   });
   if (options.persist === "deferred") {
     schedulePromptDraftPersist(storageKey);
@@ -202,6 +200,25 @@ function writePromptDraft(
     persistPromptDraftCache(storageKey);
   }
   emitPromptDraftChange(storageKey);
+}
+
+function addQuoteToPromptDraft(
+  storageKey: string | null,
+  text: string,
+  attachments: readonly PromptDraftAttachment[] = [],
+): void {
+  const currentDraft = readPromptDraft(storageKey);
+  const nextDraft = appendQuoteAndAttachmentsToDraft(
+    currentDraft,
+    text,
+    attachments,
+  );
+  // Whitespace-only text with no new attachments is a no-op; skip the write
+  // so an empty selection can't mark an otherwise-empty draft dirty.
+  if (nextDraft === currentDraft) {
+    return;
+  }
+  writePromptDraft(storageKey, nextDraft);
 }
 
 function restorePromptDraftIfEmpty(
@@ -245,19 +262,28 @@ function getPromptDraftStorageKey(scope: PromptDraftScope): string {
  * Imperative access to a scope's stored draft without subscribing to it.
  *
  * For components that only need to read or replace the draft at event time
- * (e.g. the browse hero seeding the composer): `usePromptDraftStorage` is a
- * `useSyncExternalStore` subscription, so it re-renders its caller on every
- * keystroke a mounted composer writes — pure waste when the caller never
- * renders the draft.
+ * (e.g. the browse hero seeding the composer, or a thread view's "Add to
+ * chat" quote action): `usePromptDraftStorage` is a `useSyncExternalStore`
+ * subscription, so it re-renders its caller on every keystroke a mounted
+ * composer writes — pure waste when the caller never renders the draft, and
+ * actively harmful when the caller is a large tree like the thread timeline.
  */
 export function getPromptDraftAccessor(scope: PromptDraftScope): {
+  storageKey: string;
   getCurrent: () => PromptDraftState;
   setDraft: (draft: PromptDraftState) => void;
+  addQuote: (
+    text: string,
+    attachments?: readonly PromptDraftAttachment[],
+  ) => void;
 } {
   const storageKey = getPromptDraftStorageKey(scope);
   return {
+    storageKey,
     getCurrent: () => readPromptDraft(storageKey),
     setDraft: (draft) => writePromptDraft(storageKey, draft),
+    addQuote: (text, attachments = []) =>
+      addQuoteToPromptDraft(storageKey, text, attachments),
   };
 }
 
@@ -333,21 +359,8 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
   );
 
   const addQuote = useCallback(
-    (text: string, attachments: readonly PromptDraftAttachment[] = []) => {
-      const currentDraft = readPromptDraft(storageKey);
-      const nextDraft = appendQuoteAndAttachmentsToDraft(
-        currentDraft,
-        text,
-        attachments,
-      );
-      // Whitespace-only text with no new attachments is a no-op; skip the write
-      // so an empty selection can't mark an otherwise-empty draft dirty.
-      if (nextDraft === currentDraft) {
-        return;
-      }
-
-      writePromptDraft(storageKey, nextDraft);
-    },
+    (text: string, attachments: readonly PromptDraftAttachment[] = []) =>
+      addQuoteToPromptDraft(storageKey, text, attachments),
     [storageKey],
   );
 
