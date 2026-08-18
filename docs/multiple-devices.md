@@ -113,6 +113,14 @@ tunnel is an accepted tradeoff. npm installs the package into the machine's bb
 data directory, not its system-wide global prefix, so enrollment needs neither
 `sudo` nor a PATH change.
 
+The route publishes the package's size and sha256 as `x-bb-package-bytes` and
+`x-bb-package-sha256`, and both the installer and the daemon's self-update
+refuse a download that does not match. Transport framing is not enough on its
+own: bb connect relays the body as a stream with no `content-length`, so a
+tunnel that drops mid-transfer looks like a complete short file to curl and to
+`fetch`. The installer retries once and then reports the mismatch, instead of
+handing a truncated tarball to npm and surfacing a `zlib` error.
+
 Each joined server gets its own daemon instance, data directory
 (`~/.bb-machines/<server-host>`, override with `BB_DATA_DIR` when running the
 installer), local API port, and launchd/systemd service. The installer persists

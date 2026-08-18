@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rename, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -7,7 +8,21 @@ import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 
 const execFileAsync = promisify(execFile);
 
+/**
+ * Integrity signals published alongside the served tarball.
+ *
+ * bb connect relays the package over a WebSocket tunnel and drops
+ * `content-length` for relayed streams, so a client that only trusts transport
+ * framing cannot tell a truncated body from a complete one. These travel as
+ * response headers, which do survive the relay.
+ */
+export interface BbAppArtifactDigest {
+  bytes: number;
+  sha256: string;
+}
+
 export interface BbAppArtifactService {
+  getTarballDigest(): Promise<BbAppArtifactDigest>;
   getTarballPath(): Promise<string>;
   getVersion(): Promise<string>;
 }
@@ -103,6 +118,21 @@ function safeVersionFilePart(version: string): string {
   return version.replace(/[^a-zA-Z0-9._-]/gu, "_");
 }
 
+/** Hash in a single streamed pass: the tarball is tens of megabytes. */
+async function digestTarball(
+  tarballPath: string,
+): Promise<BbAppArtifactDigest> {
+  const hash = createHash("sha256");
+  let bytes = 0;
+  const tarball = await open(tarballPath);
+  for await (const chunk of tarball.createReadStream()) {
+    const view: Uint8Array = chunk;
+    bytes += view.byteLength;
+    hash.update(view);
+  }
+  return { bytes, sha256: hash.digest("hex") };
+}
+
 export function createBbAppArtifactService(
   options: CreateBbAppArtifactServiceOptions,
 ): BbAppArtifactService {
@@ -113,6 +143,8 @@ export function createBbAppArtifactService(
     options.protocolVersion ?? HOST_DAEMON_PROTOCOL_VERSION;
   let resolvedPackagePromise: Promise<ResolvedBbAppPackage> | undefined;
   let artifactPromise: Promise<string> | undefined;
+  let digestPromise: Promise<BbAppArtifactDigest> | undefined;
+  let digestedTarballPath: string | undefined;
 
   function getResolvedPackage(): Promise<ResolvedBbAppPackage> {
     resolvedPackagePromise ??= resolveBbAppPackage(serverEntryUrl);
@@ -159,6 +191,20 @@ export function createBbAppArtifactService(
   }
 
   return {
+    async getTarballDigest(): Promise<BbAppArtifactDigest> {
+      const tarballPath = await this.getTarballPath();
+      // Keyed on the path so a rebuild at a different version or protocol
+      // re-hashes instead of serving the previous artifact's digest.
+      if (digestPromise === undefined || digestedTarballPath !== tarballPath) {
+        digestedTarballPath = tarballPath;
+        digestPromise = digestTarball(tarballPath).catch((error: unknown) => {
+          digestPromise = undefined;
+          digestedTarballPath = undefined;
+          throw error;
+        });
+      }
+      return digestPromise;
+    },
     getTarballPath(): Promise<string> {
       // Build once per process from the package this process is running, so a
       // restart into a different source build at the same version and protocol

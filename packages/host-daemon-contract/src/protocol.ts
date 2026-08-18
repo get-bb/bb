@@ -29,6 +29,24 @@
 export const HOST_DAEMON_PROTOCOL_VERSION = 132 as const;
 
 /**
+ * Integrity headers on `GET /install/bb-app.tgz`, read by both the machine
+ * installer and the daemon's protocol self-update.
+ *
+ * Transport framing is not a usable integrity signal on this route: bb connect
+ * relays the body over a WebSocket tunnel and workerd drops `content-length`
+ * for a relayed stream, so a tunnel that drops mid-transfer produces a short
+ * body that both curl and `fetch` accept as complete. npm then fails on the
+ * truncated tarball with an opaque `Z_BUF_ERROR`. These headers ride in
+ * `resp-head`, ahead of the body, and survive the relay.
+ *
+ * Additive and only ever sent by a server that is newer than its client, so no
+ * protocol bump: the installer is fetched from the same server that serves the
+ * package, and the daemon self-updates only toward a higher protocol version.
+ */
+export const INSTALL_PACKAGE_BYTES_HEADER = "x-bb-package-bytes";
+export const INSTALL_PACKAGE_SHA256_HEADER = "x-bb-package-sha256";
+
+/**
  * Absolute ceiling for any executable artifact delivered to a host daemon —
  * a plugin host bundle or a provider bridge bundle alike. The daemon buffers
  * an artifact whole to hash-verify it before executing it, so an unbounded

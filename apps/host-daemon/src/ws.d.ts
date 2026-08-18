@@ -19,7 +19,16 @@ declare module "ws" {
     static readonly OPEN: number;
     readonly readyState: number;
     readonly protocol: string;
-    send(data: string | Buffer | Uint8Array): void;
+    /**
+     * Bytes queued for the peer. The tunnel client relays large response bodies
+     * against this so it never queues a whole download at once.
+     */
+    readonly bufferedAmount: number;
+    /** The callback fires once the frame is written, not merely queued. */
+    send(
+      data: string | Buffer | Uint8Array,
+      callback?: (error?: Error) => void,
+    ): void;
     close(code?: number, reason?: string): void;
     terminate(): void;
     on(event: "open", listener: () => void): this;

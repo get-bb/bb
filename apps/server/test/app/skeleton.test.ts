@@ -62,6 +62,7 @@ describe("server skeleton", () => {
     const harness = await createTestAppHarness();
     const { app } = createApp(harness.deps, {
       bbAppArtifactService: {
+        getTarballDigest: async () => ({ bytes: 0, sha256: "unused" }),
         getTarballPath: async () => "/unused",
         getVersion: async () => "3.2.1-test",
       },
@@ -78,18 +79,32 @@ describe("server skeleton", () => {
     }
   });
 
-  it("serves the cached server bb-app tarball without auth", async () => {
+  // The digest headers are the only integrity signal a client has through bb
+  // connect, which relays this body as a stream and drops its content-length.
+  it("serves the cached server bb-app tarball with its published digest", async () => {
     const harness = await createTestAppHarness();
     const tarballPath = join(harness.config.dataDir, "fixture.tgz");
     writeFileSync(tarballPath, "tarball-bytes");
     const getTarballPath = vi.fn(async () => tarballPath);
     const { app } = createApp(harness.deps, {
-      bbAppArtifactService: { getTarballPath, getVersion: async () => "test" },
+      bbAppArtifactService: {
+        getTarballDigest: async () => ({
+          bytes: 13,
+          sha256: "fixture-digest",
+        }),
+        getTarballPath,
+        getVersion: async () => "test",
+      },
     });
     try {
       const response = await app.request("/install/bb-app.tgz");
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toBe("application/gzip");
+      expect(response.headers.get("content-length")).toBe("13");
+      expect(response.headers.get("x-bb-package-bytes")).toBe("13");
+      expect(response.headers.get("x-bb-package-sha256")).toBe(
+        "fixture-digest",
+      );
       expect(await response.text()).toBe("tarball-bytes");
       expect(getTarballPath).toHaveBeenCalledOnce();
     } finally {

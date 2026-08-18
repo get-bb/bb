@@ -20,6 +20,7 @@ requested_host_daemon_port=
 
 CURL_CONNECT_TIMEOUT_SECONDS=10
 PACKAGE_DOWNLOAD_TIMEOUT_SECONDS=300
+PACKAGE_DOWNLOAD_ATTEMPTS=2
 MACHINE_CODE_REDEEM_TIMEOUT_SECONDS=30
 DAEMON_WAIT_ATTEMPTS=60
 WAIT_PROGRESS_EVERY_ATTEMPTS=5
@@ -368,19 +369,108 @@ complete_step "Using local host-daemon port $host_daemon_port"
 package_url="${server_url%/}/install/bb-app.tgz"
 package_dir=$(mktemp -d "${TMPDIR:-/tmp}/bb-app.XXXXXX")
 package_file="$package_dir/bb-app.tgz"
+package_headers="$package_dir/bb-app.headers"
 # curl's numeric meter shows bytes, rate, percentage, and ETA without the
 # animated ASCII bar. Keep redirected installs quiet while preserving errors.
 curl_output_mode=--progress-meter
 if [ ! -t 2 ]; then
   curl_output_mode=--silent
 fi
-active_step "Downloading the server's bb-app package (timeout: 5 minutes)"
-package_status=$(curl "$curl_output_mode" --show-error --location \
-  --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
-  --max-time "$PACKAGE_DOWNLOAD_TIMEOUT_SECONDS" \
-  --output "$package_file" \
-  --write-out '%{http_code}' \
-  "$package_url") || package_status=000
+
+download_package() {
+  rm -f "$package_file" "$package_headers"
+  curl "$curl_output_mode" --show-error --location \
+    --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
+    --max-time "$PACKAGE_DOWNLOAD_TIMEOUT_SECONDS" \
+    --dump-header "$package_headers" \
+    --output "$package_file" \
+    --write-out '%{http_code}' \
+    "$package_url"
+}
+
+# Last value wins so a redirect chain reports the final response. Header names
+# are case-insensitive; values here are hex digests and decimal counts, so
+# lowercasing the whole stream is safe.
+response_header_value() {
+  tr -d '\r' <"$package_headers" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -n "s/^$1: *//p" \
+    | tail -n 1
+}
+
+# Size and digest in one streamed pass, so verifying costs a single process
+# whatever the package weighs. Prints the mismatch reason, or nothing when the
+# file is exactly what the server published.
+compare_package_to_digest() {
+  node -e '
+    const { createHash } = require("node:crypto");
+    const { createReadStream } = require("node:fs");
+    const [file, expectedBytes, expectedSha256] = process.argv.slice(1);
+    const hash = createHash("sha256");
+    let bytes = 0;
+    createReadStream(file)
+      .on("data", (chunk) => {
+        bytes += chunk.byteLength;
+        hash.update(chunk);
+      })
+      .on("error", () => {
+        process.stdout.write("the downloaded package could not be read");
+      })
+      .on("end", () => {
+        const sha256 = hash.digest("hex");
+        if (String(bytes) !== expectedBytes) {
+          process.stdout.write(`received ${bytes} of ${expectedBytes} bytes`);
+        } else if (sha256 !== expectedSha256.toLowerCase()) {
+          process.stdout.write(
+            `sha256 ${sha256} does not match the published ${expectedSha256}`,
+          );
+        }
+      });
+  ' "$1" "$2" "$3"
+}
+
+# The transport cannot be trusted to report a short download: bb connect relays
+# this body over a WebSocket tunnel with no content-length, so a tunnel that
+# drops mid-transfer leaves curl exiting 0 on a truncated file and npm failing
+# later with an opaque zlib error. Check what arrived against the digest the
+# server published for the bytes it served.
+package_verification_error=
+verify_package() {
+  expected_bytes=$(response_header_value x-bb-package-bytes)
+  expected_sha256=$(response_header_value x-bb-package-sha256)
+  if [ -z "$expected_bytes" ] || [ -z "$expected_sha256" ]; then
+    package_verification_error="the server did not publish a package digest"
+    return 1
+  fi
+  # Empty output means verified, so a failed hash must not read as success.
+  package_verification_error=$(compare_package_to_digest \
+    "$package_file" "$expected_bytes" "$expected_sha256") || {
+    package_verification_error="the downloaded package could not be verified"
+    return 1
+  }
+  [ -z "$package_verification_error" ]
+}
+
+package_attempt=1
+while :; do
+  active_step "Downloading the server's bb-app package (timeout: 5 minutes)"
+  package_status=$(download_package) || package_status=000
+  # Non-2xx falls through to the fallbacks below, which report the status.
+  if [ "$package_status" -lt 200 ] || [ "$package_status" -ge 300 ]; then
+    break
+  fi
+  if verify_package; then
+    break
+  fi
+  if [ "$package_attempt" -ge "$PACKAGE_DOWNLOAD_ATTEMPTS" ]; then
+    rm -rf "$package_dir"
+    fail_step "The bb-app package from $package_url did not arrive intact: $package_verification_error"
+    detail "The connection most likely dropped mid-download. Rerun this command." >&2
+    exit 1
+  fi
+  warning_step "The bb-app package did not arrive intact ($package_verification_error); retrying."
+  package_attempt=$((package_attempt + 1))
+done
 
 bb_app=
 bb_app_npm_prefix=

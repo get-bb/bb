@@ -24,6 +24,24 @@ import type { TunnelClientLogger } from "./logger.js";
 const HEARTBEAT_INTERVAL_MS = 20_000;
 const HEARTBEAT_DEADLINE_MS = 60_000;
 
+/**
+ * Pause a body relay once this many bytes are already queued on the tunnel
+ * socket, and resume when the queue drains below it.
+ *
+ * Without a ceiling, a large response (the ~32 MB bb-app package the machine
+ * installer downloads) is handed to `ws.send()` as fast as loopback delivers
+ * it. Everything after the first few frames then sits in the socket's send
+ * buffer, the heartbeat queues *behind* that backlog, its ack cannot return
+ * inside HEARTBEAT_DEADLINE_MS, and the watchdog terminates a perfectly
+ * healthy tunnel — truncating the body it was in the middle of relaying.
+ *
+ * 1 MiB is one MAX_CHUNK_BYTES frame: enough to keep the socket busy, small
+ * enough that a heartbeat never waits long behind it.
+ */
+const SEND_HIGH_WATER_MARK_BYTES = 1024 * 1024;
+/** `ws` has no drain event, so the high-water wait polls. */
+const SEND_DRAIN_POLL_MS = 20;
+
 const UNREGISTERED_PORT_BODY = "this port is not shared";
 const textEncoder = new TextEncoder();
 const INITIAL_THREAD_LOAD_PATH =
@@ -149,6 +167,9 @@ export class TunnelSession {
   private lastAck = Date.now();
   private heartbeat: ReturnType<typeof setInterval> | undefined;
   private remoteClientCount = 0;
+  /** Bytes `ws` has finished writing to the socket, ever. Monotonic. */
+  private flushedBytes = 0;
+  private flushedBytesAtLastCheck = 0;
   lastRemoteActivityAt: number | null = null;
 
   constructor(private readonly options: TunnelSessionOptions) {}
@@ -160,7 +181,13 @@ export class TunnelSession {
   start(): void {
     const { tunnel } = this.options;
     this.heartbeat = setInterval(() => {
-      if (Date.now() - this.lastAck > HEARTBEAT_DEADLINE_MS) {
+      // A socket that is still handing bytes to the peer is alive, whatever the
+      // heartbeat says: during a large body relay the ack sits behind queued
+      // frames, and terminating here would truncate that body mid-transfer.
+      // Flush progress is the liveness signal; an idle tunnel has none, so a
+      // genuinely dead peer is still caught by the deadline.
+      const progressed = this.takeFlushProgress();
+      if (!progressed && Date.now() - this.lastAck > HEARTBEAT_DEADLINE_MS) {
         this.options.log.warn("tunnel heartbeat missed; reconnecting");
         tunnel.terminate();
         return;
@@ -211,8 +238,34 @@ export class TunnelSession {
   }
 
   private send(frame: Frame): void {
-    if (this.options.tunnel.readyState === NodeWebSocket.OPEN) {
-      this.options.tunnel.send(encodeFrame(frame));
+    if (this.options.tunnel.readyState !== NodeWebSocket.OPEN) return;
+    const encoded = encodeFrame(frame);
+    this.options.tunnel.send(encoded, (error) => {
+      if (error === undefined) this.flushedBytes += encoded.byteLength;
+    });
+  }
+
+  /** Whether bytes reached the peer since the previous call. */
+  private takeFlushProgress(): boolean {
+    const flushed = this.flushedBytes;
+    const progressed = flushed > this.flushedBytesAtLastCheck;
+    this.flushedBytesAtLastCheck = flushed;
+    return progressed;
+  }
+
+  /**
+   * Resolve once the socket's send queue is back under the high-water mark, so
+   * the caller can relay the next slice of a response body. Returns early if
+   * the stream is abandoned or the tunnel goes away — the caller checks both.
+   */
+  private async awaitSendCapacity(signal: AbortSignal): Promise<void> {
+    const { tunnel } = this.options;
+    while (
+      !signal.aborted &&
+      tunnel.readyState === NodeWebSocket.OPEN &&
+      tunnel.bufferedAmount > SEND_HIGH_WATER_MARK_BYTES
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, SEND_DRAIN_POLL_MS));
     }
   }
 
@@ -339,6 +392,11 @@ export class TunnelSession {
           chunk instanceof Uint8Array ? chunk : Buffer.from(String(chunk));
         responseBytes += value.byteLength;
         for (const frame of chunkBody(streamId, value)) this.send(frame);
+        // `for await` holds the origin stream paused while this waits, so a
+        // body the peer cannot keep up with backs up onto the origin socket
+        // instead of into this process or the tunnel's send queue.
+        await this.awaitSendCapacity(stream.abort.signal);
+        if (stream.abort.signal.aborted) return;
       }
       this.send({ type: "body-end", streamId });
       if (initialThreadLoad) {

@@ -1,8 +1,13 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import {
+  HOST_DAEMON_PROTOCOL_VERSION,
+  INSTALL_PACKAGE_BYTES_HEADER,
+  INSTALL_PACKAGE_SHA256_HEADER,
+} from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "./logger.js";
 import type { FetchFn } from "./server-client.js";
 import { usesSecureInternalFetchTransport } from "./server-client.js";
@@ -52,6 +57,37 @@ interface CreateProtocolSelfUpdaterOptions {
   installTarball?: ProtocolSelfUpdateInstaller;
   runProcess?: SelfUpdateProcessRunner;
   now?: () => number;
+}
+
+/**
+ * A self-update only ever downloads from a server newer than this daemon, so
+ * the digest headers are always present — a missing one means something between
+ * here and the server rewrote the response, which is exactly when installing is
+ * unsafe.
+ *
+ * `fetch` cannot catch this itself: bb connect relays the package with no
+ * content-length, so a tunnel that drops mid-transfer yields a short body that
+ * resolves normally and only fails deep inside npm's tar reader.
+ */
+function assertPackageIntact(tarball: Uint8Array, headers: Headers): void {
+  const expectedSha256 = headers.get(INSTALL_PACKAGE_SHA256_HEADER);
+  const expectedBytes = headers.get(INSTALL_PACKAGE_BYTES_HEADER);
+  if (expectedSha256 === null || expectedBytes === null) {
+    throw new Error(
+      `Package download is unverifiable: the server sent no ${INSTALL_PACKAGE_SHA256_HEADER} / ${INSTALL_PACKAGE_BYTES_HEADER}`,
+    );
+  }
+  if (String(tarball.byteLength) !== expectedBytes) {
+    throw new Error(
+      `Package download is incomplete: received ${tarball.byteLength} of ${expectedBytes} bytes`,
+    );
+  }
+  const actualSha256 = createHash("sha256").update(tarball).digest("hex");
+  if (actualSha256 !== expectedSha256.toLowerCase()) {
+    throw new Error(
+      `Package download is corrupt: sha256 ${actualSha256} does not match the published ${expectedSha256}`,
+    );
+  }
 }
 
 function parseUpdateVersion(value: unknown): UpdateVersion {
@@ -255,11 +291,9 @@ export function createProtocolSelfUpdater(
               `Package download failed: ${response.status} ${response.statusText}`,
             );
           }
-          await writeFile(
-            tarballPath,
-            new Uint8Array(await response.arrayBuffer()),
-            { mode: 0o600 },
-          );
+          const tarball = new Uint8Array(await response.arrayBuffer());
+          assertPackageIntact(tarball, response.headers);
+          await writeFile(tarballPath, tarball, { mode: 0o600 });
           await installTarball(tarballPath);
         } finally {
           await rm(tarballPath, { force: true });

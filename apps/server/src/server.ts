@@ -1,6 +1,7 @@
 import { createNodeWebSocket } from "@hono/node-ws";
-import { readFile, stat } from "node:fs/promises";
+import { open, readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
+import { Readable } from "node:stream";
 import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
@@ -68,7 +69,11 @@ import {
   createBbAppArtifactService,
   type BbAppArtifactService,
 } from "./services/install/bb-app-artifact.js";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import {
+  HOST_DAEMON_PROTOCOL_VERSION,
+  INSTALL_PACKAGE_BYTES_HEADER,
+  INSTALL_PACKAGE_SHA256_HEADER,
+} from "@bb/host-daemon-contract";
 import {
   createPluginCatalogService,
   type PluginCatalogService,
@@ -146,6 +151,7 @@ const SLOW_API_REQUEST_LOG_THRESHOLD_MS = 1_000;
 const INSTALL_MACHINE_SCRIPT_PATH = fileURLToPath(
   new URL("./assets/install-machine.sh", import.meta.url),
 );
+const INSTALL_PACKAGE_PATH = "/install/bb-app.tgz";
 const THREAD_EVENT_WAIT_PATH_PATTERN =
   /^\/api\/v1\/threads\/[^/]+\/events\/wait$/u;
 const PLUGIN_APP_ASSET_PATH_PATTERN =
@@ -325,6 +331,11 @@ export function createApp(
     if (PLUGIN_APP_ASSET_PATH_PATTERN.test(context.req.path)) {
       return next();
     }
+    // The bb-app tarball is already gzip. Recompressing it would only drop the
+    // content-length and the digest clients verify the download against.
+    if (context.req.path === INSTALL_PACKAGE_PATH) {
+      return next();
+    }
     return compressResponse(context, next);
   });
   app.onError((error) => errorToResponse(error, deps.logger));
@@ -347,12 +358,27 @@ export function createApp(
   // bb-app is public on npm. A paired tunnel can expose an unpublished build
   // slightly before release; serving the exact server build is an accepted
   // tradeoff so remote daemons cannot be stranded by protocol skew.
-  app.get("/install/bb-app.tgz", async (context) => {
-    const tarball = await readFile(await bbAppArtifactService.getTarballPath());
-    return new Response(tarball, {
+  //
+  // Streamed rather than buffered: the tarball is tens of megabytes and every
+  // concurrent enrollment would otherwise hold a full copy in memory. The
+  // digest headers are the clients' only integrity signal through bb connect,
+  // which relays this body as a stream and drops `content-length` on the way.
+  app.get(INSTALL_PACKAGE_PATH, async (context) => {
+    const tarballPath = await bbAppArtifactService.getTarballPath();
+    const digest = await bbAppArtifactService.getTarballDigest();
+    // A FileHandle stream closes its own descriptor when the response body is
+    // fully read, so no per-request cleanup rides on the caller.
+    const tarball = await open(tarballPath);
+    const body = Readable.toWeb(
+      tarball.createReadStream(),
+    ) as ReadableStream<Uint8Array>;
+    return new Response(body, {
       headers: {
         "cache-control": "public, max-age=300",
+        "content-length": String(digest.bytes),
         "content-type": "application/gzip",
+        [INSTALL_PACKAGE_BYTES_HEADER]: String(digest.bytes),
+        [INSTALL_PACKAGE_SHA256_HEADER]: digest.sha256,
       },
     });
   });

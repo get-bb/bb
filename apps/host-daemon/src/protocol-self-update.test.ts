@@ -12,6 +12,21 @@ import {
 
 const roots: string[] = [];
 
+// The daemon refuses to install a package it cannot verify, so every mocked
+// download has to publish the digest the real route does.
+const FIXTURE_TARBALL = "tarball";
+const FIXTURE_TARBALL_SHA256 =
+  "db4b4d0d1cb480bf9aeea253771c00febe627f236765fa37d6a5614f079a3aa0";
+
+function packageResponse(body = FIXTURE_TARBALL): Response {
+  return new Response(body, {
+    headers: {
+      "x-bb-package-bytes": String(Buffer.byteLength(FIXTURE_TARBALL)),
+      "x-bb-package-sha256": FIXTURE_TARBALL_SHA256,
+    },
+  });
+}
+
 function logger() {
   return {
     debug: vi.fn(),
@@ -47,7 +62,7 @@ async function createFixture(
       });
     }
     if (url.endsWith("/install/bb-app.tgz")) {
-      return new Response("tarball");
+      return packageResponse();
     }
     throw new Error(`Unexpected URL: ${url}`);
   });
@@ -251,6 +266,48 @@ describe("protocol self-update", () => {
     expect(test.installTarball).toHaveBeenCalledTimes(3);
   });
 
+  // A tunnel that drops mid-download yields a short body with no
+  // content-length, which `fetch` resolves as if it were complete. Installing it
+  // fails deep inside npm's tar reader, so catch it here instead.
+  it("refuses a truncated package download", async () => {
+    const test = await createFixture();
+    test.fetchFn.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/install/version")) {
+        return Response.json({
+          version: "9.0.0-test",
+          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION + 1,
+        });
+      }
+      return packageResponse("tar");
+    });
+
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe("failed");
+    expect(test.installTarball).not.toHaveBeenCalled();
+    expect(test.logger.error.mock.calls.at(-1)?.[0]).toMatchObject({
+      err: expect.objectContaining({
+        message: "Package download is incomplete: received 3 of 7 bytes",
+      }),
+    });
+  });
+
+  it("refuses a package the server published no digest for", async () => {
+    const test = await createFixture();
+    test.fetchFn.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/install/version")) {
+        return Response.json({
+          version: "9.0.0-test",
+          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION + 1,
+        });
+      }
+      return new Response(FIXTURE_TARBALL);
+    });
+
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe("failed");
+    expect(test.installTarball).not.toHaveBeenCalled();
+  });
+
   it("tries immediately when the server advances to another protocol", async () => {
     let now = 30_000;
     let protocolVersion = HOST_DAEMON_PROTOCOL_VERSION + 1;
@@ -260,7 +317,7 @@ describe("protocol self-update", () => {
       if (url.endsWith("/install/version")) {
         return Response.json({ version: "test", protocolVersion });
       }
-      return new Response("tarball");
+      return packageResponse();
     });
 
     await expect(test.updater.handleProtocolMismatch()).resolves.toBe(

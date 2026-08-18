@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -18,6 +19,56 @@ const SCRIPT_PATH = new URL(
   "../../src/assets/install-machine.sh",
   import.meta.url,
 );
+
+// The installer verifies the downloaded package against the digest headers the
+// server publishes for it, so every curl mock that answers 2xx has to serve a
+// matching pair. `FIXTURE_TARBALL_SHA256` is sha256("fixture-tarball").
+const FIXTURE_TARBALL = "fixture-tarball";
+const FIXTURE_TARBALL_BYTES = 15;
+const FIXTURE_TARBALL_SHA256 =
+  "30c090e3e87bf1e120322eda5b9ff55de1095622aab6d224f92cd0e25a5ef15d";
+
+interface CurlPackageResponse {
+  /** Bytes to write to --output. Defaults to the whole fixture tarball. */
+  body?: string;
+  /** Omit the digest headers, as a header-stripping proxy would. */
+  omitDigestHeaders?: boolean;
+  /** Serve a short body once, then the full one — a dropped transfer retried. */
+  truncateFirstAttempt?: boolean;
+}
+
+/**
+ * sh fragment for a curl mock: consumes --output/--dump-header and answers the
+ * package request with a body plus the digest the server publishes for it.
+ */
+function curlPackageResponseScript(
+  response: CurlPackageResponse,
+  attemptMarkerPath: string,
+): string {
+  const digestHeaders =
+    response.omitDigestHeaders === true
+      ? ""
+      : `printf 'x-bb-package-bytes: ${FIXTURE_TARBALL_BYTES}\\r\\nx-bb-package-sha256: ${FIXTURE_TARBALL_SHA256}\\r\\n' >>"$headers"`;
+  const writeBody =
+    response.truncateFirstAttempt === true
+      ? `if [ -e '${attemptMarkerPath}' ]; then
+  [ -z "$output" ] || printf '%s' '${FIXTURE_TARBALL}' >"$output"
+else
+  : >'${attemptMarkerPath}'
+  [ -z "$output" ] || printf '%s' '${FIXTURE_TARBALL.slice(0, 11)}' >"$output"
+fi`
+      : `[ -z "$output" ] || printf '%s' '${response.body ?? FIXTURE_TARBALL}' >"$output"`;
+  return `output=
+headers=/dev/null
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = --output ]; then output=$2; shift 2;
+  elif [ "$1" = --dump-header ]; then headers=$2; shift 2;
+  else shift; fi
+done
+printf 'HTTP/1.1 200\\r\\n' >"$headers"
+${digestHeaders}
+${writeBody}`;
+}
 const createdDirectories: string[] = [];
 
 function createFixture(): { binDir: string; dataDir: string; homeDir: string } {
@@ -164,6 +215,7 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
 function writeServerInstallTools(
   fixture: ReturnType<typeof createFixture>,
   artifactStatus: 200 | 404,
+  packageResponse: CurlPackageResponse = {},
 ): void {
   const curlLog = join(fixture.dataDir, "curl.log");
   const npmLog = join(fixture.dataDir, "npm.log");
@@ -174,11 +226,7 @@ printf '%s\n' "$*" >>"${curlLog}"
 case "$*" in
   *redeem-machine*) printf '%s' '{"credential":"bbcm_durable","machineId":"machine-1"}' ;;
   *)
-    output=
-    while [ "$#" -gt 0 ]; do
-      if [ "$1" = --output ]; then output=$2; shift 2; else shift; fi
-    done
-    [ -z "$output" ] || printf '%s' 'fixture-tarball' >"$output"
+${curlPackageResponseScript(packageResponse, join(fixture.dataDir, "curl-attempt"))}
     printf '%s' '${artifactStatus}'
     ;;
 esac
@@ -220,15 +268,12 @@ function writeEnrollingBbApp(
 function writeCurlArtifactMock(
   fixture: ReturnType<typeof createFixture>,
   artifactStatus: number,
+  packageResponse: CurlPackageResponse = {},
 ): void {
   writeExecutable(
     join(fixture.binDir, "curl"),
     `#!/bin/sh
-output=
-while [ "$#" -gt 0 ]; do
-  if [ "$1" = --output ]; then output=$2; shift 2; else shift; fi
-done
-[ -z "$output" ] || printf '%s' 'fixture-tarball' >"$output"
+${curlPackageResponseScript(packageResponse, join(fixture.dataDir, "curl-attempt"))}
 printf '%s' '${artifactStatus}'
 `,
   );
@@ -246,7 +291,10 @@ afterEach(() => {
   }
 });
 
-describe("machine install script", () => {
+// Every case drives the real script through sh, which spawns curl, npm, node,
+// and a daemon that waits on a socket. Several already ran within a second of
+// the 5s default when the rest of the suite was competing for cores.
+describe("machine install script", { timeout: 30_000 }, () => {
   it("rejects missing required flags with usage", () => {
     const fixture = createFixture();
     const result = runScript(["--join-code", "code-only"], fixture);
@@ -375,6 +423,56 @@ describe("machine install script", () => {
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
     process.kill(daemonPid, "SIGTERM");
+  });
+
+  // Regression: a bb connect tunnel that drops mid-download ends the body early
+  // with no content-length, so curl exits 0 on a partial tarball and npm fails
+  // with an opaque `Z_BUF_ERROR`. The installer must catch it first, retry, and
+  // never hand a short file to npm.
+  it("rejects a truncated package instead of installing it", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 200, { body: "fixture-tar" });
+    const result = runScript(JOIN_ARGS, fixture, {
+      BB_INSTALL_SKIP_SERVICE: "1",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("received 11 of 15 bytes");
+    expect(result.stderr).toContain("did not arrive intact");
+    expect(result.stderr).toContain("Rerun this command");
+    expect(existsSync(join(fixture.dataDir, "npm.log"))).toBe(false);
+    // One retry before giving up, so a single dropped transfer self-heals.
+    const packageDownloads = readFileSync(
+      join(fixture.dataDir, "curl.log"),
+      "utf8",
+    )
+      .split("\n")
+      .filter((line) => line.includes("bb-app.tgz"));
+    expect(packageDownloads).toHaveLength(2);
+  });
+
+  it("recovers when a retried package download arrives intact", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 200, { truncateFirstAttempt: true });
+    const result = runScript(JOIN_ARGS, fixture, {
+      BB_INSTALL_SKIP_SERVICE: "1",
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain("did not arrive intact");
+    expect(result.stdout).toContain("Installed the server's bb-app build");
+  });
+
+  it("refuses a package the server published no digest for", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 200, { omitDigestHeaders: true });
+    const result = runScript(JOIN_ARGS, fixture, {
+      BB_INSTALL_SKIP_SERVICE: "1",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("did not publish a package digest");
+    expect(existsSync(join(fixture.dataDir, "npm.log"))).toBe(false);
   });
 
   it("prefers the server-matched tarball when bb-app is absent", () => {
