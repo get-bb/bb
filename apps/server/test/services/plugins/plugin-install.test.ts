@@ -44,6 +44,7 @@ import {
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
 const run = promisify(execFile);
@@ -353,6 +354,7 @@ describe("plugin install flows", () => {
     afterArtifactPromoted = undefined;
     materializationCount = 0;
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -993,6 +995,7 @@ describe("plugin install flows", () => {
 
       // The same db and dataDir, so the checkout and its artifact row survive.
       service = createPluginService({
+        telemetry: createNoopTelemetryService(),
         db,
         hub: {
           getDaemonSessionIdForHost: () => null,
@@ -1113,6 +1116,7 @@ describe("plugin install flows", () => {
       await mkdir(`${entry.rootDir}.promoting`, { recursive: true });
       await writeFile(join(`${entry.rootDir}.promoting`, "partial"), "copy");
       service = createPluginService({
+        telemetry: createNoopTelemetryService(),
         db,
         hub: {
           getDaemonSessionIdForHost: () => null,

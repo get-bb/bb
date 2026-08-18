@@ -18,6 +18,7 @@ import {
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
 
@@ -73,6 +74,7 @@ describe("plugin background services", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-bg-test-"));
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -137,6 +139,7 @@ describe("plugin background services", () => {
     }));
     const interruptPluginInteractions = vi.fn(() => []);
     const local = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -197,6 +200,7 @@ describe("plugin background services", () => {
     // Own instance: the stop bound must exceed the service's stop delay so
     // the slow stop is a legitimate (non-hung) dispose in progress.
     const local = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -396,6 +400,7 @@ describe("plugin schedules", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sched-test-"));
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,

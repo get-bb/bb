@@ -50,23 +50,30 @@ import {
 } from "./update-resolver.js";
 
 /**
- * The anonymous install event. Only public plugins report an id: bundled
- * builtins and marketplace catalog entries. A direct install can point at
- * private code, so it reports the shape of the install and nothing else.
+ * The anonymous install event. Only public plugins report names: bundled
+ * builtins and entries of the curated `bb-community` marketplace. A direct
+ * install or a third-party catalog (a local `path:` or private git
+ * marketplace) can name private code, so it reports only the shape of the
+ * install.
  */
 export function pluginInstalledTelemetryEvent(
   pluginId: string,
   provenance: PluginProvenance,
   sourceIntent: PluginSourceIntent,
 ): Extract<TelemetryEvent, { name: "plugin_installed" }> {
-  const isPublic = provenance.kind !== "direct";
+  const isPublic =
+    provenance.kind === "builtin" ||
+    (provenance.kind === "catalog" &&
+      provenance.marketplace === CURATED_MARKETPLACE_NAME);
   return {
     name: "plugin_installed",
     properties: {
       plugin_id: isPublic ? pluginId : null,
       provenance: provenance.kind,
       marketplace:
-        provenance.kind === "catalog" ? provenance.marketplace : null,
+        isPublic && provenance.kind === "catalog"
+          ? provenance.marketplace
+          : null,
       source_kind: sourceIntent.kind,
     },
   };
@@ -331,7 +338,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     notifyPluginsChanged();
     const entry = list().find((p) => p.id === manifest.id);
     if (!entry) throw new Error(`plugin ${manifest.id} missing after install`);
-    deps.telemetry?.capture(
+    deps.telemetry.capture(
       pluginInstalledTelemetryEvent(
         manifest.id,
         args.provenance,

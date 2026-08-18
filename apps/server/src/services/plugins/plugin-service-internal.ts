@@ -107,8 +107,8 @@ export interface PluginServiceDeps {
     "getDaemonSessionIdForHost" | "notifyPluginSignal" | "notifySystem"
   >;
   logger: ServerLogger;
-  /** Anonymous usage telemetry. Omitted only by isolated plugin tests. */
-  telemetry?: TelemetryService;
+  /** Anonymous usage telemetry; tests pass `createNoopTelemetryService()`. */
+  telemetry: TelemetryService;
   pendingInteractions?: Pick<
     import("../interactions/pending-interactions.js").PendingInteractionLifecycle,
     "requestPluginInteraction" | "interruptPluginInteractions"

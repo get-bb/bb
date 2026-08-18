@@ -19,6 +19,7 @@ import {
 import { testLogger } from "../../helpers/test-app.js";
 import { pluginInstalledTelemetryEvent } from "../../../src/services/plugins/plugin-registration.js";
 import type { TelemetryEvent } from "../../../src/services/system/telemetry.js";
+import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
 
@@ -106,6 +107,7 @@ describe("plugin service", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-test-"));
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -550,6 +552,7 @@ describe("plugin service", () => {
 
   it("skips the engines gate on 0.0.0 dev builds instead of marking everything incompatible", async () => {
     const devService = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -611,6 +614,38 @@ describe("plugin service", () => {
     await tracked.start();
     expect(captured).toHaveLength(1);
     await tracked.stop();
+  });
+
+  it("hides names of plugins from third-party catalogs in the install event", () => {
+    // A local or private marketplace can name internal code, so only the
+    // curated bb-community catalog and bundled builtins report names.
+    const properties = pluginInstalledTelemetryEvent(
+      "internal-tool",
+      {
+        kind: "catalog",
+        marketplace: "acme-private",
+        entryId: "internal-tool",
+      },
+      {
+        kind: "git",
+        url: "git@github.com:acme/internal-tool.git",
+        subdirectory: null,
+        selector: { kind: "ref", ref: "main", refKind: "branch" },
+      },
+    ).properties;
+    expect(properties).toEqual({
+      plugin_id: null,
+      provenance: "catalog",
+      marketplace: null,
+      source_kind: "git",
+    });
+    expect(
+      pluginInstalledTelemetryEvent(
+        "tasks",
+        { kind: "builtin" },
+        { kind: "builtin", name: "tasks" },
+      ).properties.plugin_id,
+    ).toBe("tasks");
   });
 
   it("names public plugins in the install event so PostHog can rank them", () => {
@@ -722,6 +757,7 @@ describe("plugins-changed broadcast", () => {
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-notify-test-"));
     notifySystem = vi.fn<(changes: SystemChangeKind[]) => void>();
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,

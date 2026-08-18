@@ -6,6 +6,7 @@ import { createConnection, migrate } from "@bb/db";
 import type { Logger } from "@bb/logger";
 import { createPluginRuntime } from "../../../src/services/plugins/plugin-runtime.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 async function createRuntime() {
   const db = createConnection(":memory:");
@@ -19,6 +20,7 @@ async function createRuntime() {
         notifySystem: () => {},
       },
       logger: testLogger as unknown as Logger,
+      telemetry: createNoopTelemetryService(),
       dataDir: await mkdtemp(join(tmpdir(), "bb-dev-build-problems-")),
       appVersion: "0.9.0",
     },

@@ -69,10 +69,12 @@ docs, start with
 ### Telemetry
 
 Production runs (the desktop app and `npx bb-app`) send anonymous usage
-telemetry (app starts, thread creation counts, and user message counts) to help
-us understand adoption. Identification is a random per-install id stored in your
-data dir — no user, host, project, workspace, or message content is ever
-attached. Development/source runs never send. Opt out any run with
+telemetry (app starts, thread creation counts, user message counts, and plugin
+installs) to help us understand adoption. Identification is a random per-install
+id stored in your data dir — no user, host, project, workspace, or message
+content is ever attached. Plugin install events name only public plugins
+(bundled plugins and `bb-community` marketplace entries); installs from a local
+path, a private git or npm source, or a third-party marketplace report no name. Development/source runs never send. Opt out any run with
 `BB_TELEMETRY=false`. See
 [`apps/server/src/services/system/telemetry.ts`](./apps/server/src/services/system/telemetry.ts).
 

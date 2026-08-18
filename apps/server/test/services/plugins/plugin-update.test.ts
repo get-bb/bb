@@ -37,6 +37,7 @@ import {
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
 const run = promisify(execFile);
@@ -104,6 +105,7 @@ describe("plugin update service and routes", () => {
     afterArtifactPromoted = undefined;
     materializationCount = 0;
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -521,6 +523,7 @@ describe("plugin update service and routes", () => {
     vi.stubGlobal("__bbPluginStabilizationCrash", serviceCrash);
     await service.stop();
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -621,6 +624,7 @@ describe("plugin update service and routes", () => {
     );
     await service.stop();
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -657,6 +661,7 @@ describe("plugin update service and routes", () => {
 
     await service.stop();
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -704,6 +709,7 @@ describe("plugin update service and routes", () => {
     let clock = Date.now();
     const makeService = () =>
       createPluginService({
+        telemetry: createNoopTelemetryService(),
         db,
         hub: {
           getDaemonSessionIdForHost: () => null,

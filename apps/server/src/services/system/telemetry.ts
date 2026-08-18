@@ -90,13 +90,13 @@ export type TelemetryEvent =
       name: "plugin_installed";
       properties: {
         /**
-         * Manifest id for public plugins: bundled builtins and marketplace
-         * catalog entries. Null for direct path/git/npm installs, whose ids
-         * and sources may name private code.
+         * Manifest id for public plugins: bundled builtins and entries of the
+         * curated `bb-community` marketplace. Null for direct installs and
+         * third-party catalogs, whose ids and sources may name private code.
          */
         plugin_id: string | null;
         provenance: "builtin" | "catalog" | "direct";
-        /** Marketplace name for catalog installs; null otherwise. */
+        /** `bb-community` for curated catalog installs; null otherwise. */
         marketplace: string | null;
         source_kind: "builtin" | "git" | "npm" | "path";
       };

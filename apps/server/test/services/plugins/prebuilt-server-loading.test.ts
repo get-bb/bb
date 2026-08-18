@@ -15,6 +15,7 @@ import {
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
 
@@ -68,6 +69,7 @@ describe("prebuilt server bundle loading", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-prebuilt-"));
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
