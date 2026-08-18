@@ -74,11 +74,19 @@ Script mode flags:
 
 ```text
 --script <inline>              Inline script content
---script-file <path>           Read script content from a local file
+--script-file <path>           Copy script content from a file on the server host
 --interpreter <name>           bash, sh, node, or python3
 --timeout <ms>                 Timeout in milliseconds, default 120000, max 900000
 --env-json <json>              Script variables as a string-to-string JSON object
 ```
+
+`--script-file` reads the file on the bb server host, relative to your current
+directory, and stores a private copy under
+`<data dir>/plugins/automations/scripts/<automationId>/`. Runs execute that
+copy. The copy is a snapshot: edits to the source file do not apply until you
+run `update <automationId> --script-file <path>` again. `create`, `update`, and
+`show` print the stored copy path on the `Script:` line; `--json` returns it as
+`execution.storedScriptPath`.
 
 Script environment variables:
 

@@ -83,9 +83,7 @@ async function bootAutomationsPlugin(
             routedPermissionModes !== undefined
               ? routedPermissionModes
               : declaredPermissionModes;
-          return [
-            { id: "codex", capabilities: { permissionModes } },
-          ] as never;
+          return [{ id: "codex", capabilities: { permissionModes } }] as never;
         },
         async models() {
           return {
@@ -395,6 +393,9 @@ describe("automations server plugin harness", () => {
     expect(scriptUpdated.execution).toEqual({
       mode: "script",
       scriptFile: "script.sh",
+      storedScriptPath: expect.stringMatching(
+        new RegExp(`/scripts/${created.id}/script\\.sh$`),
+      ),
       interpreter: "bash",
       timeoutMs: 12_000,
       env: { CHANNEL: "qa" },
@@ -408,6 +409,9 @@ describe("automations server plugin harness", () => {
     expect(updatedEditable.execution).toEqual({
       mode: "script",
       script: "echo updated",
+      storedScriptPath: expect.stringMatching(
+        new RegExp(`/scripts/${created.id}/script\\.sh$`),
+      ),
       interpreter: "bash",
       timeoutMs: 12_000,
       env: { CHANNEL: "qa" },

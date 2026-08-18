@@ -10,6 +10,7 @@ import {
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
+import type { PluginCliRegistration } from "@get-bb/plugin-sdk";
 import { describe, expect, it } from "vitest";
 import {
   claimAutomationScheduledRun,
@@ -42,6 +43,7 @@ import {
 import { reconcileRunningAutomationRuns } from "./run.js";
 import { sweepDueAutomations } from "./sweep.js";
 import { createAutomationService } from "./service.js";
+import { registerAutomationCli } from "./cli.js";
 import { automationScriptDir } from "./script-files.js";
 
 function createTestDb(): Db {
@@ -1126,6 +1128,131 @@ describe("automation service", () => {
       await expect(readdir(scriptDir)).resolves.toEqual(["old.sh"]);
     } finally {
       await rm(pluginDataDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("automation CLI --script-file", () => {
+  // Regression for get-bb/bb#1649: `--script-file` stores a snapshot copy of
+  // the source, so later edits to the source do nothing. The CLI must resolve
+  // the path against the caller's cwd, print both paths with a note, and
+  // expose the stored copy path in `show`.
+  it("resolves the source against ctx.cwd and reports the stored snapshot copy", async () => {
+    const db = createTestDb();
+    const pluginDataDir = await mkdtemp(join(tmpdir(), "bb-1649-data-"));
+    const srcDir = await mkdtemp(join(tmpdir(), "bb-1649-src-"));
+    const sourcePath = join(srcDir, "hello.sh");
+    await writeFile(sourcePath, '#!/bin/sh\necho "VERSION 1"\n');
+    const bb = createAutomationServiceBb();
+    const service = createAutomationService({
+      bb,
+      db,
+      pluginDataDir,
+      serverUrl: "http://127.0.0.1:1",
+    });
+    let cli: PluginCliRegistration | undefined;
+    registerAutomationCli({
+      bb: {
+        sdk: bb.sdk as never,
+        cli: {
+          register: (registration) => {
+            cli = registration;
+          },
+        },
+      },
+      service,
+    });
+    if (!cli) throw new Error("automation CLI was not registered");
+    try {
+      // The plugin CLI runs server-side; a relative path must resolve against
+      // the invoking CLI's cwd, not the server process cwd.
+      const created = await cli.run(
+        [
+          "create",
+          "--project",
+          "proj_test",
+          "--name",
+          "issue-1649",
+          "--in",
+          "30m",
+          "--script-file",
+          "./hello.sh",
+        ],
+        { cwd: srcDir },
+      );
+      expect(created.exitCode).toBe(0);
+      const automationId = /Automation created: (\S+)/.exec(
+        created.stdout ?? "",
+      )?.[1];
+      if (!automationId) throw new Error(`no id in: ${created.stdout}`);
+      const storedPath = join(
+        automationScriptDir(pluginDataDir, automationId),
+        "hello.sh",
+      );
+      expect(created.stdout).toContain(`Script:    ${storedPath}`);
+      expect(created.stdout).toContain(`Copied ${sourcePath}`);
+      expect(created.stdout).toContain(`to ${storedPath}`);
+      expect(created.stdout).toContain(
+        `bb automation update ${automationId} --project proj_test --script-file ${sourcePath}`,
+      );
+
+      const shown = await cli.run(
+        ["show", automationId, "--project", "proj_test"],
+        {},
+      );
+      expect(shown.stdout).toContain(`Script:    ${storedPath}`);
+      const shownJson = await cli.run(
+        ["show", automationId, "--project", "proj_test", "--json"],
+        {},
+      );
+      expect(JSON.parse(shownJson.stdout ?? "").execution).toEqual({
+        mode: "script",
+        script: '#!/bin/sh\necho "VERSION 1"\n',
+        interpreter: "bash",
+        timeoutMs: 120_000,
+        storedScriptPath: storedPath,
+      });
+
+      // Editing the source does not change the stored copy; only a fresh
+      // `update --script-file` refreshes it.
+      await writeFile(sourcePath, '#!/bin/sh\necho "VERSION 2"\n');
+      await expect(readFile(storedPath, "utf8")).resolves.toContain(
+        "VERSION 1",
+      );
+      const updated = await cli.run(
+        [
+          "update",
+          automationId,
+          "--project",
+          "proj_test",
+          "--script-file",
+          "hello.sh",
+        ],
+        { cwd: srcDir },
+      );
+      expect(updated.exitCode).toBe(0);
+      expect(updated.stdout).toContain(`Copied ${sourcePath}`);
+      const updatedJson = await cli.run(
+        ["show", automationId, "--project", "proj_test", "--json"],
+        {},
+      );
+      const refreshedPath: unknown = JSON.parse(updatedJson.stdout ?? "")
+        .execution.storedScriptPath;
+      if (typeof refreshedPath !== "string") {
+        throw new Error("missing storedScriptPath after update");
+      }
+      expect(
+        refreshedPath.startsWith(
+          automationScriptDir(pluginDataDir, automationId),
+        ),
+      ).toBe(true);
+      expect(updated.stdout).toContain(`to ${refreshedPath}`);
+      await expect(readFile(refreshedPath, "utf8")).resolves.toContain(
+        "VERSION 2",
+      );
+    } finally {
+      await rm(pluginDataDir, { recursive: true, force: true });
+      await rm(srcDir, { recursive: true, force: true });
     }
   });
 });

@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
@@ -49,6 +50,7 @@ import {
   validateScheduleDefinition,
 } from "./schedule-helpers.js";
 import {
+  automationScriptDir,
   deleteAutomationScriptDir,
   deleteAutomationScriptFile,
   readAutomationScript,
@@ -194,11 +196,44 @@ async function discardUncommittedScript(args: {
   }
 }
 
+/**
+ * Adds `storedScriptPath` (the absolute path of the private copy that runs
+ * execute) to script automations that have a stored script file.
+ */
+function withStoredScriptPath(
+  pluginDataDir: string,
+  automation: AutomationResponse,
+): AutomationResponse {
+  if (
+    automation.execution.mode !== "script" ||
+    automation.execution.scriptFile === undefined
+  ) {
+    return automation;
+  }
+  return {
+    ...automation,
+    execution: {
+      ...automation.execution,
+      storedScriptPath: join(
+        automationScriptDir(pluginDataDir, automation.id),
+        automation.execution.scriptFile,
+      ),
+    },
+  };
+}
+
+function toStoredAutomationResponse(
+  pluginDataDir: string,
+  row: AutomationRow,
+): AutomationResponse {
+  return withStoredScriptPath(pluginDataDir, toAutomationResponse(row));
+}
+
 async function toEditableAutomationResponse(args: {
   pluginDataDir: string;
   row: AutomationRow;
 }): Promise<AutomationResponse> {
-  const automation = toAutomationResponse(args.row);
+  const automation = toStoredAutomationResponse(args.pluginDataDir, args.row);
   if (
     automation.execution.mode !== "script" ||
     automation.execution.scriptFile === undefined
@@ -393,8 +428,8 @@ export function createAutomationService(args: {
     },
 
     list(input) {
-      return listAutomationsForProject(db, input.projectId).map(
-        toAutomationResponse,
+      return listAutomationsForProject(db, input.projectId).map((row) =>
+        toStoredAutomationResponse(pluginDataDir, row),
       );
     },
 
@@ -514,7 +549,7 @@ export function createAutomationService(args: {
         throw error;
       }
       publishAutomationChange(bb, payload.projectId, "automations-changed");
-      return toAutomationResponse(created);
+      return toStoredAutomationResponse(pluginDataDir, created);
     },
 
     async update(input) {
@@ -607,7 +642,7 @@ export function createAutomationService(args: {
         });
       }
       publishAutomationChange(bb, input.projectId, "automations-changed");
-      return toAutomationResponse(updated);
+      return toStoredAutomationResponse(pluginDataDir, updated);
     },
 
     async delete(input) {

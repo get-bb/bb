@@ -564,6 +564,12 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   `bb automation create --project <id> --name "..." --cron "..." --timezone "..." --script-file ./watch.sh`
   (or `--script "<inline>"`). A script that exits 0 with empty stdout, or whose
   last non-empty line is `{"wakeAgent": false}`, stays silent.
+- `--script-file` reads the file on the server host, relative to your cwd, and
+  stores a private copy that runs execute. The copy is a snapshot: edits to the
+  source file do nothing until you run
+  `bb automation update <id> --project <id> --script-file <path>` again.
+  `create`, `update`, and `show` print the stored copy path on the `Script:`
+  line (`execution.storedScriptPath` in `--json`).
 - Script automations run on the server with cwd set to the plugin data
   directory. They have no environment/workspace. Injected variables are
   `BB_SERVER_URL`, `BB_PROJECT_ID`, `BB_AUTOMATION_ID`, and

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { extname } from "node:path";
+import { extname, resolve } from "node:path";
 import type {
   BbPluginApi,
   PluginCliContext,
@@ -289,13 +289,28 @@ async function buildAgentEnvironment(
   return { type: "reuse", environmentId: environment };
 }
 
+/**
+ * The plugin CLI runs inside the server, so `--script-file` is read from the
+ * server's filesystem. Resolve it against the invoking CLI's cwd so relative
+ * paths such as `./watch.sh` work when the CLI runs on the server host.
+ */
+function scriptFileSourcePath(
+  args: ParsedArgs,
+  ctx: Pick<PluginCliContext, "cwd">,
+): string | undefined {
+  const scriptFile = flag(args, "script-file");
+  if (scriptFile === undefined) return undefined;
+  return resolve(ctx.cwd ?? process.cwd(), scriptFile);
+}
+
 async function buildExecution(
   bb: Pick<BbPluginApi, "sdk">,
   args: ParsedArgs,
+  ctx: Pick<PluginCliContext, "cwd">,
 ): Promise<ResolvedCreateAutomationInput["execution"]> {
   const prompt = flag(args, "prompt");
   const script = flag(args, "script");
-  const scriptFile = flag(args, "script-file");
+  const scriptFile = scriptFileSourcePath(args, ctx);
   const hasAgent = prompt !== undefined;
   const hasScript = script !== undefined || scriptFile !== undefined;
   if (hasAgent && hasScript) {
@@ -429,6 +444,7 @@ async function buildAgentExecutionUpdate(
 async function buildUpdateRequest(
   bb: Pick<BbPluginApi, "sdk">,
   args: ParsedArgs,
+  ctx: Pick<PluginCliContext, "cwd">,
 ): Promise<UpdateAutomationInput> {
   const projectId = requireFlag(args, "project");
   const automationId = args.positionals[0];
@@ -445,7 +461,7 @@ async function buildUpdateRequest(
     request.trigger = buildTrigger(args);
   }
   if (COMPLETE_EXECUTION_FLAG_NAMES.some((name) => args.flags.has(name))) {
-    request.execution = await buildExecution(bb, args);
+    request.execution = await buildExecution(bb, args, ctx);
   } else {
     const agentUpdate = await buildAgentExecutionUpdate(bb, args);
     if (agentUpdate !== undefined) {
@@ -489,9 +505,40 @@ function printAutomation(automation: AutomationResponse): string {
     `  Runs:      ${automation.runCount}`,
     `  Origin:    ${automation.origin}`,
   ];
+  if (
+    automation.execution.mode === "script" &&
+    automation.execution.storedScriptPath !== undefined
+  ) {
+    lines.push(`  Script:    ${automation.execution.storedScriptPath}`);
+  }
   if (automation.lastError) lines.push(`  Error:     ${automation.lastError}`);
   lines.push("");
   return `${lines.join("\n")}\n`;
+}
+
+/**
+ * Explains that `--script-file` stored a snapshot copy, so edits to the source
+ * path do not reach the automation until it is updated again.
+ */
+function printScriptFileSnapshotNote(
+  automation: AutomationResponse,
+  sourcePath: string | undefined,
+): string {
+  if (
+    sourcePath === undefined ||
+    automation.execution.mode !== "script" ||
+    automation.execution.storedScriptPath === undefined
+  ) {
+    return "";
+  }
+  return [
+    `Copied ${sourcePath}`,
+    `    to ${automation.execution.storedScriptPath}`,
+    "The automation runs this stored copy, a snapshot of the source file.",
+    "Edits to the source file do not apply until you run:",
+    `  bb automation update ${automation.id} --project ${automation.projectId} --script-file ${sourcePath}`,
+    "",
+  ].join("\n");
 }
 
 function table(head: string[], rows: string[][]): string {
@@ -631,7 +678,7 @@ export function registerAutomationCli(args: {
         }
         if (command === "create") {
           const projectId = requireFlag(parsed, "project");
-          const execution = await buildExecution(bb, parsed);
+          const execution = await buildExecution(bb, parsed, ctx);
           const request: ResolvedCreateAutomationInput = {
             projectId,
             name: requireFlag(parsed, "name"),
@@ -647,7 +694,7 @@ export function registerAutomationCli(args: {
             exitCode: 0,
             stdout:
               json ??
-              `Automation created: ${created.id}\n${printAutomation(created)}`,
+              `Automation created: ${created.id}\n${printAutomation(created)}${printScriptFileSnapshotNote(created, scriptFileSourcePath(parsed, ctx))}`,
           };
         }
         if (command === "show") {
@@ -662,14 +709,14 @@ export function registerAutomationCli(args: {
         }
         if (command === "update") {
           const updated = await service.update(
-            await buildUpdateRequest(bb, parsed),
+            await buildUpdateRequest(bb, parsed, ctx),
           );
           const json = optionalJson(parsed, updated);
           return {
             exitCode: 0,
             stdout:
               json ??
-              `Automation ${updated.id} updated\n${printAutomation(updated)}`,
+              `Automation ${updated.id} updated\n${printAutomation(updated)}${printScriptFileSnapshotNote(updated, scriptFileSourcePath(parsed, ctx))}`,
           };
         }
         if (command === "pause" || command === "resume") {
