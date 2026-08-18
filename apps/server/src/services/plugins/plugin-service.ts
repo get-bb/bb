@@ -10,6 +10,7 @@ import {
   type DeclaredCodeTheme,
   type JsonValue,
   type PluginThemeMeta,
+  type SystemChangeKind,
   type ToolCallResponse,
 } from "@bb/domain";
 import {
@@ -960,6 +961,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   const artifactRetentionMs =
     deps.artifactRetentionMs ?? DEFAULT_ARTIFACT_RETENTION_MS;
   const now = deps.now ?? Date.now;
+  let lastNotifiedProviderRegistrationRevision =
+    deps.providerRegistry?.getRegistrationRevision() ?? 0;
   const scheduleStabilizationWindow =
     deps.scheduleStabilizationWindow ??
     ((durationMs: number, onElapsed: () => void) => {
@@ -1148,11 +1151,23 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   /**
    * Broadcast that the set of running plugins (and therefore host-rendered
    * contributions) changed, so open app pages re-fetch instead of waiting
-   * out their query stale time. Fired on install/remove/enable/disable/
+   * out their query stale time. Provider cache invalidation gets its own
+   * change kind and only rides the broadcast when the registry changed since
+   * the previous lifecycle boundary. Fired on install/remove/enable/disable/
    * reload completion.
    */
   function notifyPluginsChanged(): void {
-    deps.hub.notifySystem(["plugins-changed"]);
+    const changes: SystemChangeKind[] = ["plugins-changed"];
+    const providerRegistrationRevision =
+      deps.providerRegistry?.getRegistrationRevision();
+    if (
+      providerRegistrationRevision !== undefined &&
+      providerRegistrationRevision !== lastNotifiedProviderRegistrationRevision
+    ) {
+      lastNotifiedProviderRegistrationRevision = providerRegistrationRevision;
+      changes.push("provider-registrations-changed");
+    }
+    deps.hub.notifySystem(changes);
   }
 
   function compactPath(path: string): string {

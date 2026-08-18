@@ -20,6 +20,7 @@ import { testLogger } from "../../helpers/test-app.js";
 import { pluginInstalledTelemetryEvent } from "../../../src/services/plugins/plugin-registration.js";
 import type { TelemetryEvent } from "../../../src/services/system/telemetry.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
+import { createProviderRegistryService } from "../../../src/services/providers/provider-registry.js";
 
 const logger = testLogger as unknown as Logger;
 
@@ -749,6 +750,7 @@ describe("plugins-changed broadcast", () => {
   let notifySystem: ReturnType<
     typeof vi.fn<(changes: SystemChangeKind[]) => void>
   >;
+  let providerRegistry: ReturnType<typeof createProviderRegistryService>;
   let service: PluginService;
 
   beforeEach(async () => {
@@ -756,6 +758,7 @@ describe("plugins-changed broadcast", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-notify-test-"));
     notifySystem = vi.fn<(changes: SystemChangeKind[]) => void>();
+    providerRegistry = createProviderRegistryService();
     service = createPluginService({
       telemetry: createNoopTelemetryService(),
       db,
@@ -765,6 +768,7 @@ describe("plugins-changed broadcast", () => {
         notifySystem,
       },
       logger,
+      providerRegistry,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       loadTimeoutMs: 2000,

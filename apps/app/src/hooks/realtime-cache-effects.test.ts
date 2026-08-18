@@ -181,7 +181,7 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("invalidates plugin contributions, commands, and provider pickers on plugins-changed", () => {
+  it("keeps provider pickers cached on unrelated plugins-changed events", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const contributionsKey = pluginContributionsQueryKey();
     queryClient.setQueryData(contributionsKey, {
@@ -216,6 +216,29 @@ describe("createRealtimeCacheEffects", () => {
       true,
     );
     expect(queryClient.getQueryState(commandsKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(providersKey)?.isInvalidated).toBe(false);
+    expect(queryClient.getQueryState(executionOptionsKey)?.isInvalidated).toBe(
+      false,
+    );
+  });
+
+  it("invalidates provider pickers on provider registration changes", () => {
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const providersKey = systemProvidersQueryKey({ hostId: "host-1" });
+    queryClient.setQueryData(providersKey, []);
+    const executionOptionsKey = systemExecutionOptionsQueryKey({
+      environmentId: "environment-1",
+      hostId: "host-1",
+      providerId: "codex",
+    });
+    queryClient.setQueryData(executionOptionsKey, {});
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "system",
+      changes: ["provider-registrations-changed"],
+    });
+
     expect(queryClient.getQueryState(providersKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(executionOptionsKey)?.isInvalidated).toBe(
       true,

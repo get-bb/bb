@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listSystemProviderInfos } from "../../../src/services/system/execution-options.js";
 import {
   resolveCreateThreadExecutionDefaults,
@@ -90,12 +90,17 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
 
   it("adds the provider to the composed listing and removes it when the plugin is disabled", async () => {
     await withTestHarness(async (harness) => {
+      const notifySystem = vi.spyOn(harness.deps.hub, "notifySystem");
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-remote-agent",
         serverSource: REGISTER_PROVIDER_SOURCE("my-remote-agent"),
       });
       const entry = await harness.pluginService.installPath(rootDir);
       expect(entry.status).toBe("running");
+      expect(notifySystem).toHaveBeenCalledWith([
+        "plugins-changed",
+        "provider-registrations-changed",
+      ]);
 
       const registration = harness.deps.providerRegistry.get("my-remote-agent");
       expect(registration).toMatchObject({
@@ -139,12 +144,18 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
       );
 
       // Disabling the plugin runs its dispose hooks and removes the provider.
+      notifySystem.mockClear();
       await harness.pluginService.setEnabled(entry.id, false);
+      expect(notifySystem).toHaveBeenCalledWith([
+        "plugins-changed",
+        "provider-registrations-changed",
+      ]);
       expect(harness.deps.providerRegistry.get("my-remote-agent")).toBeNull();
       const afterDisable = await listSystemProviderInfos(harness.deps, {});
       expect(afterDisable.map((provider) => provider.id)).not.toContain(
         "my-remote-agent",
       );
+      notifySystem.mockRestore();
     });
   });
 

@@ -128,6 +128,12 @@ export interface ProviderRegistryService {
   list(): ProviderRegistration[];
   get(providerId: string): ProviderRegistration | null;
   /**
+   * Monotonic revision of the live registration set. Plugin lifecycle
+   * notifications use it to distinguish provider changes from unrelated
+   * plugin changes without broadcasting every intermediate reload step.
+   */
+  getRegistrationRevision(): number;
+  /**
    * Policy accessors: one answer per question, covering registered providers
    * plus the dynamic ACP tier (acp-* ids resolved from launch specs are never
    * registered — they fall back to the shared ACP capability set, exactly as
@@ -223,6 +229,7 @@ export function createProviderRegistryService(
 ): ProviderRegistryService {
   const pluginRegistrations = new Map<string, ProviderRegistration>();
   const providerRegistrationWaiters = new Map<string, Set<() => void>>();
+  let registrationRevision = 0;
   let settle: (() => void) | null = null;
   const settled: Promise<void> =
     deps.deferRegistrationsSettled === true
@@ -297,6 +304,10 @@ export function createProviderRegistryService(
 
     get(providerId) {
       return getRegistration(providerId);
+    },
+
+    getRegistrationRevision() {
+      return registrationRevision;
     },
 
     getServerCapabilities(providerId) {
@@ -378,11 +389,13 @@ export function createProviderRegistryService(
         ...(registration.icon === undefined ? {} : { icon: registration.icon }),
       };
       pluginRegistrations.set(providerId, entry);
+      registrationRevision += 1;
       releaseProviderRegistrationWaiters(providerId);
       return {
         dispose() {
           if (pluginRegistrations.get(providerId) === entry) {
             pluginRegistrations.delete(providerId);
+            registrationRevision += 1;
           }
         },
       };
