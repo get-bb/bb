@@ -123,7 +123,7 @@ type PluginProviderPermissionMode = "accept-edits" | "auto" | "full";
  * declared ladder is a fallback only: precise per-model reasoning sets come
  * from the provider's model list at runtime.
  */
-type PluginProviderReasoningLevel = "none" | "low" | "medium" | "high" | "xhigh" | "ultracode" | "max" | "ultra";
+type PluginProviderReasoningLevel = "high" | "low" | "max" | "medium" | "none" | "ultra" | "ultracode" | "xhigh";
 /**
  * Composer actions a provider supports, by name only. The skills
  * slash-command typeahead is universal — BB injects skills into every
@@ -131,7 +131,7 @@ type PluginProviderReasoningLevel = "none" | "low" | "medium" | "high" | "xhigh"
  * trigger syntax (`/plan `, `/goal `) rather than each declaration repeating
  * it.
  */
-type PluginProviderComposerAction = "plan" | "goal";
+type PluginProviderComposerAction = "goal" | "plan";
 /**
  * Pre-session capability facts about a provider. A capability earns a field
  * here only when it passes BOTH tests: (1) a consumer outside the provider's
@@ -213,7 +213,7 @@ interface PluginProviderDeclaration {
      * (the universal skills typeahead is implicit). */
     composerActions: readonly PluginProviderComposerAction[];
 }
-type PluginMentionTrigger = "@" | "#" | "$" | "!" | "~";
+type PluginMentionTrigger = "!" | "#" | "$" | "@" | "~";
 
 /**
  * Built-in dynamic tool names plugins may not shadow. Maintained by hand —

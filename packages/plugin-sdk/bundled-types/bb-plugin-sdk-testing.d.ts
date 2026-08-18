@@ -79,7 +79,7 @@ declare function createFakeSdk(options: {
 declare class PluginContextStaleError extends Error {
     constructor(pluginId: string);
 }
-type FakeLogLevel = "debug" | "info" | "warn" | "error";
+type FakeLogLevel = "debug" | "error" | "info" | "warn";
 interface FakeLogEntry {
     level: FakeLogLevel;
     message: string;

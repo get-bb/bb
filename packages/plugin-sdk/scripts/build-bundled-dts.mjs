@@ -19,6 +19,8 @@ import { fileURLToPath } from "node:url";
 import { rollup } from "rollup";
 import { dts } from "rollup-plugin-dts";
 
+import { normalizeBundledDts } from "./normalize-bundled-dts.mjs";
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
 const pkgsDir = path.resolve(pkgRoot, "..");
@@ -129,26 +131,9 @@ const HEADER = [
 
 const generated = {};
 for (const [fileName, entry] of Object.entries(outputs)) {
-  generated[fileName] = `${HEADER}\n\n${await bundle(entry)}`;
-}
-
-/**
- * rollup-plugin-dts loads modules concurrently, so the emission order of
- * inferred type members (zod enum maps especially) varies run to run while
- * the content stays semantically identical. Compare (and skip rewrites) on
- * the sorted line multiset: real drift adds/removes/changes lines and is
- * still caught, but a pure reordering neither fails --check nor churns the
- * committed bytes.
- */
-function canonicalize(content) {
-  // Union member order can vary on a single emitted line as well as across
-  // object-member lines. Normalize quoted literal unions before sorting lines
-  // so semantically identical output does not rewrite committed declarations.
-  const normalizedLiteralUnions = content.replace(
-    /"(?:[^"\\]|\\.)+"(?: \| "(?:[^"\\]|\\.)+")+/gu,
-    (union) => union.split(" | ").sort().join(" | "),
+  generated[fileName] = normalizeBundledDts(
+    `${HEADER}\n\n${await bundle(entry)}`,
   );
-  return normalizedLiteralUnions.split("\n").sort().join("\n");
 }
 
 const check = process.argv.includes("--check");
@@ -158,8 +143,7 @@ if (!check) mkdirSync(outDir, { recursive: true });
 for (const [fileName, content] of Object.entries(generated)) {
   const target = path.join(outDir, fileName);
   const current = existsSync(target) ? readFileSync(target, "utf8") : null;
-  const unchanged =
-    current !== null && canonicalize(current) === canonicalize(content);
+  const unchanged = current === content;
   if (check) {
     if (!unchanged) {
       console.error(

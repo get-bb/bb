@@ -51,7 +51,7 @@ interface ExperimentalHostPaths {
     /** Temporary directory scoped to this worker process. */
     readonly tempDir: string;
 }
-type ExperimentalHostWatchChangeType = "create" | "update" | "delete";
+type ExperimentalHostWatchChangeType = "create" | "delete" | "update";
 interface ExperimentalHostWatchChange {
     readonly path: string;
     readonly type: ExperimentalHostWatchChangeType;

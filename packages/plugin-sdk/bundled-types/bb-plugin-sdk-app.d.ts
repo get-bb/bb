@@ -17,7 +17,7 @@ interface PluginRpcValidationIssue {
     path?: PluginRpcIssuePathSegment[];
 }
 /** Stable wire error categories for plugin RPC. */
-type PluginRpcErrorCode = "invalid_json" | "invalid_input" | "handler_error" | "invalid_output" | "non_json_result" | "unknown_method";
+type PluginRpcErrorCode = "handler_error" | "invalid_input" | "invalid_json" | "invalid_output" | "non_json_result" | "unknown_method";
 /** Structured RPC failure returned as `{ ok: false, error }`. */
 interface PluginRpcError {
     code: PluginRpcErrorCode;
@@ -67,14 +67,14 @@ type PluginRpcCallArgs<Method extends PluginRpcMethodContract> = null extends Pl
 type PluginRpcResult<Method extends PluginRpcMethodContract> = StandardSchemaV1InferOutput<Method["output"]>;
 
 declare const reasoningLevelSchema: z.ZodEnum<{
-    none: "none";
-    low: "low";
-    medium: "medium";
     high: "high";
-    xhigh: "xhigh";
-    ultracode: "ultracode";
+    low: "low";
     max: "max";
+    medium: "medium";
+    none: "none";
     ultra: "ultra";
+    ultracode: "ultracode";
+    xhigh: "xhigh";
 }>;
 type ReasoningLevel = z.infer<typeof reasoningLevelSchema>;
 declare const serviceTierSchema: z.ZodEnum<{
@@ -83,9 +83,9 @@ declare const serviceTierSchema: z.ZodEnum<{
 }>;
 type ServiceTier = z.infer<typeof serviceTierSchema>;
 declare const permissionModeSchema: z.ZodEnum<{
-    full: "full";
-    auto: "auto";
     "accept-edits": "accept-edits";
+    auto: "auto";
+    full: "full";
 }>;
 type PermissionMode = z.infer<typeof permissionModeSchema>;
 declare const promptInputSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
@@ -113,12 +113,12 @@ declare const promptInputSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
         }, z.core.$strip>, z.ZodObject<{
             kind: z.ZodLiteral<"path">;
             source: z.ZodEnum<{
-                workspace: "workspace";
                 "thread-storage": "thread-storage";
+                workspace: "workspace";
             }>;
             entryKind: z.ZodEnum<{
-                file: "file";
                 directory: "directory";
+                file: "file";
             }>;
             path: z.ZodString;
             label: z.ZodString;
@@ -133,9 +133,9 @@ declare const promptInputSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
                 skill: "skill";
             }>;
             origin: z.ZodEnum<{
-                user: "user";
-                project: "project";
                 builtin: "builtin";
+                project: "project";
+                user: "user";
             }>;
             label: z.ZodString;
             argumentHint: z.ZodNullable<z.ZodString>;
@@ -205,24 +205,24 @@ type CreateThreadEnvironmentArgs = z.infer<typeof createThreadEnvironmentArgsSch
 
 declare const createExecutionInputSourcesSchema: z.ZodObject<{
     providerId: z.ZodOptional<z.ZodEnum<{
-        explicit: "explicit";
         "client-preference": "client-preference";
+        explicit: "explicit";
     }>>;
     model: z.ZodOptional<z.ZodEnum<{
-        explicit: "explicit";
         "client-preference": "client-preference";
+        explicit: "explicit";
     }>>;
     serviceTier: z.ZodOptional<z.ZodEnum<{
-        explicit: "explicit";
         "client-preference": "client-preference";
+        explicit: "explicit";
     }>>;
     reasoningLevel: z.ZodOptional<z.ZodEnum<{
-        explicit: "explicit";
         "client-preference": "client-preference";
+        explicit: "explicit";
     }>>;
     permissionMode: z.ZodOptional<z.ZodEnum<{
-        explicit: "explicit";
         "client-preference": "client-preference";
+        explicit: "explicit";
     }>>;
 }, z.core.$strict>;
 type CreateExecutionInputSources = z.infer<typeof createExecutionInputSourcesSchema>;
@@ -372,7 +372,7 @@ interface PluginThreadHeaderActionProps {
  * are absolute on the thread's host.
  */
 interface PluginFileOpenerSource {
-    kind: "workspace" | "host" | "thread-storage";
+    kind: "host" | "thread-storage" | "workspace";
     threadId: string | null;
     environmentId: string | null;
     projectId: string | null;
@@ -465,7 +465,7 @@ interface PluginNavPanelRegistration {
         icon: string;
         component: ComponentType<PluginNavPanelProps>;
         /** `flush` lets the component own padding and scrolling. */
-        layout?: "padded" | "flush";
+        layout?: "flush" | "padded";
     }[];
     /**
      * Optional presentational component rendered at the trailing edge of this
@@ -529,7 +529,7 @@ interface PluginThreadPanelActionRegistration {
      * app-like content that manages its own layout, such as
      * `ThreadChat`.
      */
-    layout?: "padded" | "flush";
+    layout?: "flush" | "padded";
     /**
      * Runs when the user activates the action: call your RPC methods, show a
      * toast, and/or open panel tabs via `context.openPanel`. Omitted =
@@ -563,7 +563,7 @@ interface PluginNewThreadPanelActionRegistration {
     /** Rendered inside every panel tab this action opens. */
     component: ComponentType<PluginNewThreadPanelProps>;
     /** Host framing; matches `threadPanelAction`. */
-    layout?: "padded" | "flush";
+    layout?: "flush" | "padded";
     /**
      * Runs when the user activates the action. Omitted = immediately open a
      * panel tab with defaults. Errors are contained and logged.
@@ -615,12 +615,12 @@ interface PluginSidebarFooterActionRegistration {
  * cannot. A thread holding a draft reports whatever it would report without
  * one.
  */
-type PluginSidebarThreadIndicator = "unread-error" | "waiting-for-input" | "working-draft" | "workflow" | "background-agent" | "background-command" | "plan-mode" | "goal" | "runtime" | "draft" | "unread-success" | "none";
+type PluginSidebarThreadIndicator = "background-agent" | "background-command" | "draft" | "goal" | "none" | "plan-mode" | "runtime" | "unread-error" | "unread-success" | "waiting-for-input" | "workflow" | "working-draft";
 /**
  * How a thread's environment presents its workspace: a worktree bb manages,
  * a worktree the user manages, or anything else (a plain checkout).
  */
-type PluginSidebarWorkspaceKind = "managed-worktree" | "unmanaged-worktree" | "other";
+type PluginSidebarWorkspaceKind = "managed-worktree" | "other" | "unmanaged-worktree";
 /** Live work counts on a thread. All zero means nothing is running. */
 interface PluginSidebarThreadActivity {
     workflows: number;
@@ -694,8 +694,8 @@ interface PluginSidebarPullRequest {
     number: number;
     title: string;
     url: string;
-    state: "draft" | "open" | "merged" | "closed";
-    attention: "checks_failed" | "checks_pending" | "changes_requested" | "review_requested" | "conflicts" | "blocked" | "draft" | "ready_to_merge" | "merged" | "closed" | "none";
+    state: "closed" | "draft" | "merged" | "open";
+    attention: "blocked" | "changes_requested" | "checks_failed" | "checks_pending" | "closed" | "conflicts" | "draft" | "merged" | "none" | "ready_to_merge" | "review_requested";
 }
 interface PluginSidebarThreadPullRequestState {
     /** True while the first lookup for this thread's environment is in flight. */
@@ -715,7 +715,7 @@ interface PluginSidebarProject {
     isPersonal: boolean;
 }
 interface PluginSidebarThreadsState {
-    status: "loading" | "ready" | "error";
+    status: "error" | "loading" | "ready";
     threads: readonly PluginSidebarThread[];
     projects: readonly PluginSidebarProject[];
 }
@@ -888,7 +888,7 @@ interface PluginMessageDirectiveRegistration {
 interface ThreadChatMessageReference {
     id: string;
     threadId: string;
-    role: "user" | "assistant";
+    role: "assistant" | "user";
     /** Visible text of the message. */
     text: string;
     sourceSeqEnd: number;
@@ -1080,7 +1080,7 @@ interface PluginSettingsState {
     isLoading: boolean;
 }
 /** State of the app's shared realtime connection to the bb server. */
-type PluginRealtimeConnectionState = "connecting" | "connected" | "reconnecting";
+type PluginRealtimeConnectionState = "connected" | "connecting" | "reconnecting";
 /** Where `useComposer()` writes. */
 type PluginComposerScope = {
     kind: "thread";
@@ -1113,7 +1113,7 @@ interface ComposerCustomization {
     banners?: readonly {
         id: string;
         /** Host chrome around the banner. Defaults to `"card"`. */
-        chrome?: "card" | "bare";
+        chrome?: "bare" | "card";
         component: ComponentType;
     }[];
     plusMenu?: readonly ComposerPlusMenuItem[];
@@ -1136,7 +1136,7 @@ interface ComposerPlusMenuItem {
 /** Reactive read-side of the composer a plugin surface is mounted in. */
 interface ComposerView {
     scope: PluginComposerScope;
-    layout: "expanded" | "compact" | "zen";
+    layout: "compact" | "expanded" | "zen";
     draft: {
         text: string;
         isEmpty: boolean;
@@ -1186,7 +1186,7 @@ interface PluginComposerThreadRowStatus {
      * shimmers; terminal `success` and `error` tones are static. Defaults to the
      * neutral tone.
      */
-    tone?: "default" | "running" | "success" | "error";
+    tone?: "default" | "error" | "running" | "success";
 }
 /** An @-mention pill bound to one of the calling plugin's mention providers. */
 interface PluginComposerMention {
@@ -1267,7 +1267,7 @@ interface ThreadChatMessageAction {
      * Message roles the action applies to. Omitted = both user and assistant
      * messages.
      */
-    roles?: readonly ("user" | "assistant")[];
+    roles?: readonly ("assistant" | "user")[];
     /**
      * Runs when the user activates the action. Errors (sync or async) are
      * contained and logged; they never break the timeline.
@@ -1290,7 +1290,7 @@ interface ThreadChatProps {
      * "compact" is the side-panel presentation; "timeline" renders the
      * transcript without a composer.
      */
-    variant?: "full" | "compact" | "timeline";
+    variant?: "compact" | "full" | "timeline";
     /**
      * "contained" (default) fills and scrolls inside a bounded parent;
      * "document" grows with its content and defers scrolling to the page.
@@ -1306,7 +1306,7 @@ interface ThreadChatProps {
      * lower permissions for this thread independently of the thread it was
      * forked from. Ignored by `variant: "timeline"` (no composer).
      */
-    permissionPolicy?: "inherit" | "editable";
+    permissionPolicy?: "editable" | "inherit";
     className?: string;
     /** Rendered above the conversation, scrolling with it. */
     leadingContent?: ReactNode;
