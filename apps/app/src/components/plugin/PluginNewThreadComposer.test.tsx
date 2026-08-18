@@ -405,6 +405,30 @@ describe("PluginNewThreadComposer seeding", () => {
     });
   });
 
+  it("binds plugin draft actions to the hosted composer instance", async () => {
+    renderComposer(STORED_REQUEST, () => undefined, "host-binding");
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    const host = latestPromptBoxProps().pluginComposerHost;
+    expect(host.scope).toEqual({ kind: "new-thread", projectId: "proj_1" });
+    expect(host.getCurrent().text).toBe("review every PR for slop");
+
+    act(() => {
+      host.setDraft({
+        ...host.getCurrent(),
+        text: "updated through the Composer API",
+      });
+    });
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().value).toBe(
+        "updated through the Composer API",
+      );
+    });
+  });
+
   it("allows submitting a projectless thread", async () => {
     const submitted: NewThreadRequest[] = [];
     renderComposer(

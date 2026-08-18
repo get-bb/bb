@@ -9,6 +9,7 @@ import {
   type ComponentProps,
   type FocusEvent as ReactFocusEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 import type {
   PromptTextMention,
@@ -25,9 +26,9 @@ import {
   usePluginComposerViewModel,
 } from "@/components/plugin/plugin-composer-host";
 import {
-  useAppCommandContext,
-  useAppCommandHandler,
-} from "@/components/commands/AppCommandProvider";
+  ComposerExtensionHost,
+  useComposerExtensionController,
+} from "@/components/plugin/ComposerExtensionHost";
 import {
   PromptBoxInternal,
   type AttachmentsConfig,
@@ -364,11 +365,16 @@ function FollowUpPromptBoxWithComposer({
   // surfaces have no pane context and default to focused.
   const paneContext = useOptionalPaneContext();
   const isFocusedPane = paneContext?.isFocused ?? true;
-  useAppCommandContext("promptAvailable", true);
-  useAppCommandHandler("composer.focus", () => {
-    if (!isFocusedPane || !isPrimaryComposer) return false;
+  const focusDefault = useCallback(() => {
     promptBoxRef.current?.focusEnd();
     return promptBoxRef.current !== null;
+  }, []);
+  const extensionController = useComposerExtensionController({
+    host: pluginComposerHost ?? null,
+    view: composerView,
+    isFocused: isFocusedPane,
+    isPrimary: isPrimaryComposer,
+    focusDefault,
   });
   const voice = usePromptVoice(promptBoxRef);
   const isCompactViewport = useIsCompactViewport();
@@ -783,32 +789,57 @@ function FollowUpPromptBoxWithComposer({
   );
 
   return (
-    <PluginComposerViewProvider value={composerView}>
-      <PluginComposerHostProvider value={pluginComposerHost ?? null}>
-        <>
-          {showScrollToBottomButton ? (
-            <ThreadTimelineScrollToBottomButton
-              active={composer.threadRuntimeDisplayStatus === "active"}
-            />
-          ) : null}
-          <div
-            data-app-composer=""
-            data-app-composer-role={isPrimaryComposer ? "primary" : "secondary"}
-            data-promptbox-shell=""
-            className="space-y-2"
-          >
-            <div ref={stackRef} className="grid gap-2">
-              {composerScope ? (
-                <ComposerBannersSlot>{stack}</ComposerBannersSlot>
-              ) : (
-                stack
-              )}
-            </div>
-            <div data-follow-up-composer-anchor="">{composerElement}</div>
-          </div>
-        </>
-      </PluginComposerHostProvider>
-    </PluginComposerViewProvider>
+    <ComposerExtensionHost
+      controller={extensionController}
+      defaultRenderer={
+        <DefaultFollowUpComposer
+          active={composer.threadRuntimeDisplayStatus === "active"}
+          composerElement={composerElement}
+          isPrimaryComposer={isPrimaryComposer}
+          showScrollToBottomButton={showScrollToBottomButton}
+          stack={stack}
+          stackRef={stackRef}
+        />
+      }
+    />
+  );
+}
+
+interface DefaultFollowUpComposerProps {
+  active: boolean;
+  composerElement: ReactNode;
+  isPrimaryComposer: boolean;
+  showScrollToBottomButton: boolean;
+  stack: ReactNode | null;
+  stackRef: RefObject<HTMLDivElement | null>;
+}
+
+/** BB's presentation for a host-owned follow-up Composer controller. */
+export function DefaultFollowUpComposer({
+  active,
+  composerElement,
+  isPrimaryComposer,
+  showScrollToBottomButton,
+  stack,
+  stackRef,
+}: DefaultFollowUpComposerProps) {
+  return (
+    <>
+      {showScrollToBottomButton ? (
+        <ThreadTimelineScrollToBottomButton active={active} />
+      ) : null}
+      <div
+        data-app-composer=""
+        data-app-composer-role={isPrimaryComposer ? "primary" : "secondary"}
+        data-promptbox-shell=""
+        className="space-y-2"
+      >
+        <div ref={stackRef} className="grid gap-2">
+          <ComposerBannersSlot>{stack}</ComposerBannersSlot>
+        </div>
+        <div data-follow-up-composer-anchor="">{composerElement}</div>
+      </div>
+    </>
   );
 }
 

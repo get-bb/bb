@@ -1131,8 +1131,8 @@ export function NewThreadComposer({
           disabled={baseSubmitDisabled || externallyBlocked}
           placeholder={options.placeholder}
           autoFocus={options.autoFocus}
-          pluginComposerHost={options.pluginComposerHost}
-          textEffects={options.textEffects}
+          pluginComposerHost={options.pluginComposerHost ?? pluginComposerHost}
+          textEffects={options.textEffects ?? textEffects}
           zenModeStorageKey={options.zenModeStorageKey}
           history={{
             currentDraft,
@@ -1324,6 +1324,7 @@ export function NewThreadComposer({
       promptDraft,
       promptHistoryDrafts,
       promptMentions,
+      pluginComposerHost,
       providerOptions,
       reasoningLevel,
       reasoningOptions,
@@ -1337,6 +1338,7 @@ export function NewThreadComposer({
       serviceTierSupportByProvider,
       supportsPermissionModeSelection,
       supportsServiceTier,
+      textEffects,
       worktreeDisabledReason,
       worktreeUnavailable,
     ],
