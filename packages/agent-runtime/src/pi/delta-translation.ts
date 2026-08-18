@@ -21,6 +21,7 @@ import type { ProviderRawEvent } from "@bb/domain";
 import { providerRawEventSchema, toPositiveNumber } from "@bb/domain";
 import type {
   DeltaItemShape,
+  DeltaNoTurnFallback,
   ThreadDelta,
 } from "@bb/provider-bridge-protocol";
 import {
@@ -421,11 +422,16 @@ export function createPiDeltaTranslator(
     ];
   }
 
-  /** A known event whose payload failed its schema: always surfaced. */
-  function unexpectedSdkEventDeltas(
+  /**
+   * The raw payload a turn-requiring delta carries so the assembler can
+   * surface it as provider/unhandled when no turn is open — the old
+   * translator's `buildUnexpectedPiSdkEvent` no-active-turn guard, preserved
+   * across the bridge/assembler split.
+   */
+  function noTurnFallbackFor(
     rawMessage: unknown,
     context: PiDeltaTranslationContext | undefined,
-  ): ThreadDelta[] {
+  ): DeltaNoTurnFallback {
     const rawEvent: JsonRpcMessage = {
       jsonrpc: "2.0",
       method: "sdk/message",
@@ -434,11 +440,23 @@ export function createPiDeltaTranslator(
         message: rawMessage,
       },
     };
+    return {
+      raw: toRawEvent(rawEvent),
+      rawType: piVisibilityMetadata.describeRawEvent(rawEvent).kind,
+    };
+  }
+
+  /** A known event whose payload failed its schema: always surfaced. */
+  function unexpectedSdkEventDeltas(
+    rawMessage: unknown,
+    context: PiDeltaTranslationContext | undefined,
+  ): ThreadDelta[] {
+    const fallback = noTurnFallbackFor(rawMessage, context);
     return [
       {
         kind: "unhandled",
-        raw: toRawEvent(rawEvent),
-        rawType: piVisibilityMetadata.describeRawEvent(rawEvent).kind,
+        raw: fallback.raw,
+        rawType: fallback.rawType,
         vouchedTurn: true,
         ...(context?.parentToolCallId
           ? { parentRef: context.parentToolCallId }
@@ -568,6 +586,7 @@ export function createPiDeltaTranslator(
           ...(parsed.data.reason === "manual"
             ? {}
             : { attach: "currentOrLast" }),
+          noTurnFallback: noTurnFallbackFor(event, context),
         };
         return parsed.data.reason === "manual"
           ? [{ kind: "turn.open" }, open]
@@ -580,9 +599,13 @@ export function createPiDeltaTranslator(
           return unexpectedSdkEventDeltas(event, context);
         }
         const succeeded = !parsed.data.aborted && !parsed.data.errorMessage;
+        const compacted: ThreadDelta = {
+          kind: "context.compacted",
+          noTurnFallback: noTurnFallbackFor(event, context),
+        };
         if (parsed.data.reason === "manual") {
           return [
-            ...(succeeded ? [{ kind: "context.compacted" } as const] : []),
+            ...(succeeded ? [compacted] : []),
             {
               kind: "turn.boundary",
               status: parsed.data.aborted
@@ -597,7 +620,7 @@ export function createPiDeltaTranslator(
           ];
         }
         if (succeeded) {
-          return [{ kind: "context.compacted" }];
+          return [compacted];
         }
         return [
           {
@@ -746,6 +769,7 @@ export function createPiDeltaTranslator(
               ...parentRefField,
             },
             item: classifyPiToolUse(piEvent.data.toolName, piEvent.data.args),
+            noTurnFallback: noTurnFallbackFor(piEvent.data, context),
           },
         ];
       }
@@ -773,6 +797,7 @@ export function createPiDeltaTranslator(
             exitCode: piEvent.data.isError ? 1 : 0,
             ...(aggregatedOutput === undefined ? {} : { aggregatedOutput }),
             item: classifyPiToolResultFallback(piEvent.data.toolName),
+            noTurnFallback: noTurnFallbackFor(piEvent.data, context),
           },
         ];
       }
@@ -797,6 +822,7 @@ export function createPiDeltaTranslator(
                 ...parentRefField,
               },
               text: snapshot,
+              noTurnFallback: noTurnFallbackFor(piEvent.data, context),
             },
           ];
         }
@@ -808,6 +834,7 @@ export function createPiDeltaTranslator(
               ...parentRefField,
             },
             message: extractPiToolProgressText(piEvent.data),
+            noTurnFallback: noTurnFallbackFor(piEvent.data, context),
           },
         ];
       }

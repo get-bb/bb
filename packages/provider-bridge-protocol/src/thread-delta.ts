@@ -73,6 +73,20 @@ const deltaErrorSchema = z.object({ message: z.string() });
 
 const deltaAttachSchema = z.enum(["open", "currentOrLast"]);
 
+/**
+ * Turnless fallback: item/stream deltas never open turns — only `turn.open`,
+ * a claiming `turn.boundary`, and accepted-input lifecycle settlement do.
+ * When a turn-scoped delta arrives with no turn to attach to, the assembler
+ * surfaces this raw payload as a thread-scoped `provider/unhandled` (the
+ * bridges' old "no active turn" guard, applied centrally). Absent, the
+ * turnless delta is dropped silently.
+ */
+export const deltaNoTurnFallbackSchema = z.object({
+  raw: providerRawEventSchema,
+  rawType: z.string(),
+});
+export type DeltaNoTurnFallback = z.infer<typeof deltaNoTurnFallbackSchema>;
+
 export const threadDeltaSchema = z.discriminatedUnion("kind", [
   /**
    * The provider consumed an input (immediate or steered). The assembler owns
@@ -103,13 +117,14 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
   /**
    * A parsed item opened. `attach: "currentOrLast"` pins the item to the turn
    * that is open or just closed without opening a new one (pi threshold
-   * compaction); the default implicitly opens a turn.
+   * compaction); the default attaches to the open turn only.
    */
   z.object({
     kind: z.literal("item.open"),
     key: deltaItemKeySchema,
     item: deltaItemShapeSchema,
     attach: deltaAttachSchema.optional(),
+    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
 
   /**
@@ -125,6 +140,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     exitCode: z.number().optional(),
     aggregatedOutput: z.string().optional(),
     item: deltaItemShapeSchema.optional(),
+    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
 
   /**
@@ -135,6 +151,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     kind: z.literal("item.progress"),
     key: deltaItemKeySchema,
     message: z.string(),
+    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
 
   /**
@@ -147,6 +164,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     streamKey: z.string(),
     text: z.string(),
     parentRef: z.string().min(1).optional(),
+    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
 
   /**
@@ -163,6 +181,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     text: z.string().optional(),
     detach: z.boolean().optional(),
     parentRef: z.string().min(1).optional(),
+    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
 
   /**
@@ -173,6 +192,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     kind: z.literal("command.outputSnapshot"),
     key: deltaItemKeySchema,
     text: z.string(),
+    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
 
   /** Last-turn usage; the assembler accumulates the running thread totals. */
@@ -194,7 +214,10 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     attach: deltaAttachSchema,
   }),
 
-  z.object({ kind: z.literal("context.compacted") }),
+  z.object({
+    kind: z.literal("context.compacted"),
+    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
+  }),
   z.object({ kind: z.literal("context.cleared") }),
 
   /**

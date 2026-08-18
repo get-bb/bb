@@ -812,6 +812,65 @@ describe("delta assembler", () => {
     ]);
   });
 
+  // -- turnless item/stream deltas --------------------------------------------
+
+  it("never fabricates a turn for turnless item deltas: fallback surfaces, no fallback drops", () => {
+    const assembler = createAssembler();
+    const raw = {
+      jsonrpc: "2.0" as const,
+      method: "sdk/message",
+      params: { message: { type: "tool_execution_start" } },
+    };
+    const surfaced = assemble(assembler, {
+      kind: "item.open",
+      key: { providerItemId: "tc-1" },
+      item: { type: "command", command: "npm test", cwd: "/repo" },
+      noTurnFallback: { raw, rawType: "sdk/tool_execution_start" },
+    });
+    expect(surfaced).toEqual([
+      expect.objectContaining({
+        type: "provider/unhandled",
+        providerId: "pi",
+        rawType: "sdk/tool_execution_start",
+        rawEvent: raw,
+        scope: threadScope(),
+      }),
+    ]);
+    // No fallback attached: the turnless delta drops silently.
+    expect(
+      assemble(assembler, {
+        kind: "message.delta",
+        channel: "assistant",
+        streamKey: "assistant",
+        text: "orphan",
+      }),
+    ).toEqual([]);
+    expect(assembler.getOpenTurnId(THREAD_ID)).toBeUndefined();
+  });
+
+  it("turnless item deltas do not claim pending accepted input", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "input.accepted", clientRequestId: CREQ });
+    expect(
+      assemble(assembler, {
+        kind: "item.close",
+        key: { providerItemId: "tc-1" },
+        status: "completed",
+      }),
+    ).toEqual([]);
+    // The claim still belongs to the lifecycle closer.
+    const events = assemble(assembler, {
+      kind: "turn.boundary",
+      status: "completed",
+      claimIfIdle: true,
+    });
+    expect(events.map((event) => event.type)).toEqual([
+      "turn/started",
+      "turn/input/accepted",
+      "turn/completed",
+    ]);
+  });
+
   // -- session settlement ----------------------------------------------------
 
   it("session.ended interrupts the open turn and its open items", () => {

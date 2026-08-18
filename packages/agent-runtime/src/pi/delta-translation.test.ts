@@ -24,10 +24,6 @@ import {
  * shape and stability because minting moved from the bridge to the assembler
  * (turn ids are `<entropy>-tN` instead of `turn-N`, item ids `<entropy>-iN`
  * instead of provider tool-call ids / `pi-assistant-N`).
- *
- * Deliberate behavior deviations from the old translator are marked
- * "narrow-grammar deviation" inline and recorded in
- * plans/narrow-grammar-protocol.md.
  */
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -440,10 +436,7 @@ describe("pi delta translation equivalence", () => {
     ]);
   });
 
-  it("compaction_end without a known turn settles nothing", () => {
-    // Narrow-grammar deviation: the old translator emitted provider/unhandled
-    // here. The bridge no longer knows whether a turn exists, so the
-    // assembler drops a context.compacted with no current-or-last turn.
+  it("compaction_end without a known turn is unhandled", () => {
     const harness = createHarness();
     const events = harness.translate({
       type: "compaction_end",
@@ -453,7 +446,15 @@ describe("pi delta translation equivalence", () => {
       willRetry: false,
     } satisfies AgentSessionEvent);
 
-    expect(events).toEqual([]);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "provider/unhandled",
+        providerId: "pi",
+        rawType: "sdk/compaction_end",
+        scope: threadScope(),
+        rawEvent: expect.objectContaining({ method: "sdk/message" }),
+      }),
+    ]);
   });
 
   it("compaction_start reuses the last completed turn id without opening a new turn", () => {
@@ -1202,10 +1203,7 @@ describe("pi delta translation equivalence", () => {
     expect(completedEvent.item.aggregatedOutput).toBeUndefined();
   });
 
-  it("opens a turn implicitly for tool events that arrive without agent_start", () => {
-    // Narrow-grammar deviation: the old translator surfaced tool events
-    // without an active turn as provider/unhandled. Under the grammar most
-    // deltas open a turn implicitly, so the item lands in a fresh turn.
+  it("surfaces tool events without an active turn as provider/unhandled", () => {
     const harness = createHarness();
 
     const events = harness.translate({
@@ -1222,10 +1220,17 @@ describe("pi delta translation equivalence", () => {
       },
     });
 
-    expect(events.map((event) => event.type)).toEqual([
-      "turn/started",
-      "item/started",
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "provider/unhandled",
+        providerId: "pi",
+        rawType: "sdk/tool_execution_start",
+        scope: threadScope(),
+        rawEvent: expect.objectContaining({ method: "sdk/message" }),
+      }),
     ]);
+    // No turn was fabricated for the stray tool event.
+    expect(harness.openTurnId()).toBe("");
   });
 
   it("ignores auto retry notifications for now", () => {

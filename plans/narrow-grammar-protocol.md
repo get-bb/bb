@@ -57,8 +57,9 @@ the session transcript)
   consumed an input (immediate or steered). The assembler owns the
   queue-until-turn-opens behavior and the terminal-turn invariant.
 - `turn.open {}` — an explicit provider signal opened work (pi `agent_start`).
-  Most deltas also open a turn implicitly; this exists for signals that carry
-  nothing else.
+  Only `turn.open`, a claiming `turn.boundary`, and accepted-input lifecycle
+  settlement open turns; item/stream deltas never do (they carry an optional
+  `noTurnFallback` instead — see the grammar gaps).
 - `turn.boundary { status: completed|failed|interrupted, error?,
   providerCheckpointId?, claimIfIdle? }` — the bridge's conclusion that the
   turn settled. `claimIfIdle: true` marks fallback closers (pi
@@ -192,13 +193,24 @@ run (no provider credentials in the prototype environment).
    string is bridge knowledge the assembler cannot recompute.
 7. `input.accepted.clientRequestId` is required, not optional — the
    canonical `turn/input/accepted` event cannot be built without it.
+8. **`noTurnFallback { raw, rawType }` on turn-requiring deltas** — restores
+   the old bridges' "no active turn → provider/unhandled" guard without
+   implicit turn opening: when an item/stream delta (or `context.compacted`)
+   has no turn to attach to, the assembler surfaces the fallback payload as
+   a thread-scoped `provider/unhandled`, or drops the delta when the bridge
+   attached none (pi attaches it to tool/compaction deltas and leaves
+   message deltas bare, matching old pi's coverage-filtered silence).
 
 ### Behavior deviations (old translator behavior the grammar cannot express)
 
-- Bridge-side *no-turn guards* are gone: tool/message events arriving
-  before any turn now open one implicitly (grammar rule) instead of
-  surfacing as `provider/unhandled`; `context.compacted` with no
-  current-or-last turn is dropped. Both are marked in the ported suite.
+- **Resolved: behavior-neutral (2026-08-18).** The bridge-side *no-turn
+  guards* are restored — item/stream deltas never open turns (only
+  `turn.open`, a claiming `turn.boundary`, and accepted-input lifecycle
+  settlement do) and turnless turn-requiring deltas surface their
+  `noTurnFallback` payload as `provider/unhandled` exactly as the old
+  translator did, including turnless `compaction_end`. The deviation
+  markers are gone from the ported suite; whether any implicit turn opening
+  should return is deferred to the ACP conversion (open question 4).
 - `item.close.item` double-duty: the prototype uses it only as the
   close-without-open fallback classification (pi must always send it since
   it cannot know whether the assembler still holds the open item);
@@ -240,10 +252,11 @@ run (no provider credentials in the prototype environment).
    needs its own signal so it cannot collide with the fallback use.)
 3. Where the pi model→context-window catalog lives once usage assembly is
    central (prototype: carried on `usage.turn.modelContextWindow`).
-4. Should implicit turn-opening deltas be narrowed? The prototype follows
-   the grammar (most deltas open a turn), which erases the old bridges'
-   "no active turn → provider/unhandled" guards; if that guard mattered,
-   the grammar needs an explicit `requiresTurn` marking instead.
+4. Resolved for the prototype: implicit turn opening is removed entirely —
+   item/stream deltas require an open turn and fall back to their
+   `noTurnFallback` `provider/unhandled` payload (grammar gap 8), which is
+   behavior-neutral against the old translators. Whether any delta should
+   regain implicit turn opening is deferred to the ACP conversion.
 5. `message.close.detach` (silent stream release) vs making
    tool-`item.open` auto-detach the only mechanism — the prototype
    implements both (pi relies on the auto-detach; `detach` exists for
