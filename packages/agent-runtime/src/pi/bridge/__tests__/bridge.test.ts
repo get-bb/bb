@@ -133,7 +133,9 @@ import {
 import {
   createStandaloneBuiltinCompactCommandInput,
   type JsonValue,
+  type ThreadEvent,
 } from "@bb/domain";
+import { assembleCapturedThreadEvents } from "../../../test/bridge-delta-assembly.js";
 
 const originalPiBridgeSessionDir = process.env[PI_BRIDGE_SESSION_DIR_ENV];
 
@@ -199,13 +201,15 @@ function turnSteerParams(
   return { ...turnStartParams(threadId, input), expectedTurnId };
 }
 
-/** The thread events a canonical session emitted, in order. */
+/**
+ * The thread events a canonical session emitted, in order. Pi emits
+ * `thread/delta` notifications; assembling the full capture through a fresh
+ * delta assembler reproduces exactly what the runtime adapter would emit.
+ */
 function threadEvents(
   messages: readonly BridgeJsonRpcOutputMessage[],
-): JsonValue[] {
-  return messages
-    .filter((message) => message.method === "thread/event")
-    .map((message) => (message.params as { event: JsonValue }).event);
+): ThreadEvent[] {
+  return assembleCapturedThreadEvents(messages);
 }
 
 interface ControlledPiAgentSession {

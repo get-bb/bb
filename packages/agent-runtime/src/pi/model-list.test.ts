@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPiModelContextWindowResolverFrom } from "./event-translation.js";
+import { createPiModelContextWindowResolverFrom } from "./delta-translation.js";
 import { buildPiAvailableModels } from "./model-list.js";
 
 /**

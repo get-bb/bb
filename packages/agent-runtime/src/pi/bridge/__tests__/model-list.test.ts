@@ -13,7 +13,7 @@ vi.mock("@earendil-works/pi-ai", () => ({
   getSupportedThinkingLevels,
 }));
 
-import { createPiModelContextWindowResolverFrom } from "../../event-translation.js";
+import { createPiModelContextWindowResolverFrom } from "../../delta-translation.js";
 import {
   listPiBridgeModels,
   resetPiModelNetworkRefreshForTests,

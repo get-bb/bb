@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { randomUUID } from "node:crypto";
+
 import {
   existsSync,
   mkdirSync,
@@ -10,12 +10,13 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
-import type { ThreadEvent, ThreadEventContextWindowUsage } from "@bb/domain";
-import { isStandaloneBuiltinCompactCommand, turnScope } from "@bb/domain";
+import type { ThreadEventContextWindowUsage } from "@bb/domain";
+import { isStandaloneBuiltinCompactCommand } from "@bb/domain";
 import {
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_NOTIFICATION_METHOD,
   modelListParamsSchema,
   threadDiscardParamsSchema,
   threadForkParamsSchema,
@@ -26,17 +27,15 @@ import {
   turnSteerParamsSchema,
   skillsConfigureParamsSchema,
   type InitializeResult,
+  type ThreadDelta,
 } from "@bb/provider-bridge-protocol";
 import {
-  UNSTAMPED_THREAD_ID,
   bridgeRequestEnvelopeSchema,
-  buildAcceptedUserMessageEvent,
   createBridgeIo,
   createBridgeLineHandler,
   createPendingToolCallTracker,
   decodeBridgeJsonRpcResponse,
   mimeTypeFromExtension,
-  queueAcceptedUserMessage,
   runBridgeRequest,
   experimental_defineProviderBridge,
 } from "@bb/provider-bridge-protocol/bridge-kit";
@@ -47,10 +46,7 @@ import {
   type ContextUsage,
 } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
-import {
-  createPiEventTranslator,
-  type PiEventTranslator,
-} from "../event-translation.js";
+import { createPiDeltaTranslator } from "../delta-translation.js";
 import {
   buildPiSessionParams,
   type PiSessionParams,
@@ -215,8 +211,6 @@ interface ThreadSession {
   closing: boolean;
   /** Stable provider identity used to resolve the persisted session file. */
   providerThreadId: string;
-  /** Every session-scoped notification is translated through this. */
-  translator: PiEventTranslator;
 }
 
 interface PiThreadStopResult {
@@ -304,16 +298,9 @@ async function closeThreadSessionsGracefully(message: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Thread-event emission
+// Thread-delta emission
 // ---------------------------------------------------------------------------
 
-/**
- * Per-process entropy for turn/item id prefixes (#1224): combined with a
- * per-session serial below, ids never collide across process restarts or
- * session resumes.
- */
-const sessionIdEntropyPrefix = `bt${randomUUID().slice(0, 8)}-`;
-let translatorSessionSerial = 0;
 /**
  * Skill directories latched by the `skills/configure` request. Pi takes
  * additional skill paths at session construction only, so the payload is
@@ -321,47 +308,42 @@ let translatorSessionSerial = 0;
  * configured skills for this process.
  */
 let configuredSkillPaths: string[] | null = null;
-const PI_PROVIDER_ID = "pi";
 
-function createSessionTranslator(): PiEventTranslator {
-  translatorSessionSerial += 1;
-  const idPrefix = `${sessionIdEntropyPrefix}${translatorSessionSerial}-`;
-  return createPiEventTranslator({
-    providerId: PI_PROVIDER_ID,
-    turnIdPrefix: idPrefix,
-    itemIdPrefix: idPrefix,
-    synthesizeItemStarted: true,
-  });
-}
+/**
+ * One stateless dialect translator for the whole process: the pi dialect
+ * carries every join key the runtime's delta assembler needs, so no
+ * per-session turn/item/id state lives bridge-side anymore.
+ */
+const piDeltaTranslator = createPiDeltaTranslator();
 
-function sendThreadEvents(
+function sendThreadDeltas(
   threadId: string,
-  events: readonly ThreadEvent[],
+  deltas: readonly ThreadDelta[],
 ): void {
-  for (const event of events) {
-    send({
-      jsonrpc: "2.0",
-      method: BRIDGE_NOTIFICATION_METHODS.threadEvent,
-      params: { threadId, event },
-    });
+  if (deltas.length === 0) {
+    return;
   }
+  send({
+    jsonrpc: "2.0",
+    method: THREAD_DELTA_NOTIFICATION_METHOD,
+    params: { threadId, deltas: [...deltas] },
+  });
 }
 
 /**
  * The one session-scoped emitter: it runs the pi-flavored notification through
- * the session translator and emits the finished `ThreadEvent`s as
- * `thread/event` notifications. The pi-flavored envelope never reaches the
+ * the dialect translator and emits the parsed semantic deltas as one batched
+ * `thread/delta` notification. The pi-flavored envelope never reaches the
  * wire — it is only the translator's input vocabulary.
  */
 function emitForSession(
-  threadSession: ThreadSession,
   threadId: string,
   method: string,
   params: Record<string, unknown>,
 ): void {
-  sendThreadEvents(
+  sendThreadDeltas(
     threadId,
-    threadSession.translator.translatePiEvent(
+    piDeltaTranslator.translate(
       { jsonrpc: "2.0", method, params },
       { threadId },
     ),
@@ -398,14 +380,11 @@ function emitSessionError(
   threadId: string,
   message: string,
 ): void {
-  // Settle any open translator turn first: every accepted turn reaches
-  // exactly one terminal state, and settlement events precede the error
-  // signal. Without an open turn the error stays a runtime notification —
-  // translating it would fabricate a failed turn bb never accepted.
-  const state = threadSession.translator.resolveState({ threadId });
-  if (state.currentTurnId !== undefined) {
-    emitForSession(threadSession, threadId, "error", { threadId, message });
-  }
+  // A settling error delta: the assembler fails the turn the error owns (an
+  // open turn, or one proven by pending accepted input) and settles nothing
+  // when the thread is idle — fabricating a failed turn bb never accepted
+  // stays impossible. The runtime notification below always goes out.
+  emitForSession(threadId, "error", { threadId, message });
   sendSessionScopedError(threadId, threadSession.providerThreadId, message);
 }
 
@@ -437,7 +416,7 @@ function emitContextWindowUsage(threadId: string): void {
     return;
   }
 
-  emitForSession(threadSession, threadId, "thread/contextWindowUsage/updated", {
+  emitForSession(threadId, "thread/contextWindowUsage/updated", {
     threadId,
     contextWindowUsage,
   });
@@ -484,7 +463,7 @@ function createOnPiEvent(
       event.type === "agent_end"
         ? threadSession.session.getProviderCheckpointId()
         : undefined;
-    emitForSession(threadSession, args.threadId, "sdk/message", {
+    emitForSession(args.threadId, "sdk/message", {
       threadId: args.threadId,
       message:
         providerCheckpointId === undefined
@@ -542,7 +521,7 @@ function reportPromptSettled(args: {
       : args.error instanceof Error
         ? args.error.message
         : String(args.error);
-  emitForSession(threadSession, args.threadId, "pi/prompt/settled", {
+  emitForSession(args.threadId, "pi/prompt/settled", {
     threadId: args.threadId,
     status: errorMessage === undefined ? "completed" : "failed",
     ...(errorMessage !== undefined ? { error: errorMessage } : {}),
@@ -744,7 +723,6 @@ async function startPiThreadSession(
     sessionSerial,
     closing: false,
     providerThreadId,
-    translator: createSessionTranslator(),
   };
   sessions.set(threadId, threadSession);
 
@@ -902,33 +880,13 @@ function startPiCompaction(
 }
 
 /**
- * Accepted-input correlation (turn/input/accepted): queue onto the translator
- * so its onTurnStart drains it into the opening turn; a still-open translator
- * turn gets the event immediately instead.
+ * Accepted-input correlation (turn/input/accepted): the assembler owns the
+ * queue-until-turn-opens behavior, so the bridge only reports the acceptance.
  */
-function recordAcceptedTurnInput(
-  threadSession: ThreadSession,
-  params: TurnStartParams,
-): void {
-  const state = threadSession.translator.resolveState({
-    threadId: params.threadId,
-  });
-  if (state.currentTurnId !== undefined) {
-    sendThreadEvents(
-      params.threadId,
-      buildAcceptedUserMessageEvent({
-        clientRequestId: params.clientRequestId,
-        providerThreadId: params.providerThreadId,
-        threadId: params.threadId,
-        turnId: state.currentTurnId,
-      }),
-    );
-    return;
-  }
-  queueAcceptedUserMessage({
-    clientRequestId: params.clientRequestId,
-    state,
-  });
+function recordAcceptedTurnInput(params: TurnStartParams): void {
+  sendThreadDeltas(params.threadId, [
+    { kind: "input.accepted", clientRequestId: params.clientRequestId },
+  ]);
 }
 
 function handleTurnStart(id: string | number, params: TurnStartParams): void {
@@ -943,7 +901,7 @@ function handleTurnStart(id: string | number, params: TurnStartParams): void {
   // not model input. Prompting with the literal text would make the model talk
   // about compaction while the context keeps growing.
   if (isStandaloneBuiltinCompactCommand(params.input)) {
-    recordAcceptedTurnInput(threadSession, params);
+    recordAcceptedTurnInput(params);
     startPiCompaction(threadSession, params.threadId);
     sendResult(id, { threadId: params.threadId });
     return;
@@ -955,7 +913,7 @@ function handleTurnStart(id: string | number, params: TurnStartParams): void {
     return;
   }
 
-  recordAcceptedTurnInput(threadSession, params);
+  recordAcceptedTurnInput(params);
   startPiPrompt(threadSession, params.threadId, text, images);
   sendResult(id, { threadId: params.threadId });
 }
@@ -986,17 +944,11 @@ async function handleTurnSteer(
       text,
       images.length > 0 ? images : undefined,
     );
-    // A steer joins the active turn; its acceptance is emitted only once the
-    // SDK actually accepted the queued input, against the expected turn id.
-    sendThreadEvents(
-      params.threadId,
-      buildAcceptedUserMessageEvent({
-        clientRequestId: params.clientRequestId,
-        providerThreadId: params.providerThreadId,
-        threadId: params.threadId,
-        turnId: params.expectedTurnId,
-      }),
-    );
+    // A steer joins the active turn; its acceptance is reported only once
+    // the SDK actually accepted the queued input.
+    sendThreadDeltas(params.threadId, [
+      { kind: "input.accepted", clientRequestId: params.clientRequestId },
+    ]);
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -1026,25 +978,12 @@ async function handleThreadStop(
     !threadSession.closing
   ) {
     // An interrupt settles the active turn as interrupted before teardown;
-    // the SDK session is detached on close, so no further events flow.
-    const state = threadSession.translator.resolveState({
-      threadId: params.threadId,
-    });
-    if (state.currentTurnId !== undefined) {
-      sendThreadEvents(params.threadId, [
-        {
-          type: "turn/completed",
-          threadId: UNSTAMPED_THREAD_ID,
-          providerThreadId: "",
-          scope: turnScope(state.currentTurnId),
-          status: "interrupted",
-        },
-      ]);
-      threadSession.translator.turnState.finishTurn({
-        state,
-        threadId: params.threadId,
-      });
-    }
+    // the SDK session is detached on close, so no further events flow. The
+    // assembler settles only a turn it actually holds open (or one owed to
+    // pending accepted input), so an idle interrupt fabricates nothing.
+    sendThreadDeltas(params.threadId, [
+      { kind: "session.ended", reason: "interrupted" },
+    ]);
   }
   // A release detaches the idle session and must not fabricate an
   // interruption (#1584): the close path emits no turn events.
