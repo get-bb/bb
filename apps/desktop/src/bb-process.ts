@@ -102,6 +102,7 @@ async function runAppImageBridgeSupervisor(
   bridgeRelativePathEnv: string,
 ): Promise<void> {
   const { spawn: spawnChild } = process.getBuiltinModule("node:child_process");
+  const { readdirSync, readFileSync } = process.getBuiltinModule("node:fs");
   const { resolve: resolvePath } = process.getBuiltinModule("node:path");
   const appDirPath = process.env.APPDIR;
   const bridgeRelativePath = process.env[bridgeRelativePathEnv];
@@ -111,7 +112,6 @@ async function runAppImageBridgeSupervisor(
 
   const bridgePath = resolvePath(appDirPath, bridgeRelativePath);
   const bridgeProcess = spawnChild(process.execPath, [bridgePath], {
-    detached: true,
     env: process.env,
     stdio: "inherit",
   });
@@ -119,12 +119,12 @@ async function runAppImageBridgeSupervisor(
     throw new Error("AppImage bridge process did not expose a PID");
   }
 
-  const bridgePid = bridgeProcess.pid;
+  const supervisorPid = process.pid;
   let terminationSignal: NodeJS.Signals | null = null;
   let killTimer: ReturnType<typeof setTimeout> | null = null;
   const signalBridgeGroup = (signal: NodeJS.Signals | 0): boolean => {
     try {
-      process.kill(-bridgePid, signal);
+      process.kill(-supervisorPid, signal);
       return true;
     } catch (error) {
       if (
@@ -137,6 +137,37 @@ async function runAppImageBridgeSupervisor(
       }
       throw error;
     }
+  };
+  const bridgeGroupHasLiveDescendants = (): boolean => {
+    for (const entry of readdirSync("/proc", { withFileTypes: true })) {
+      if (!entry.isDirectory() || !/^\d+$/u.test(entry.name)) {
+        continue;
+      }
+      const pid = Number(entry.name);
+      if (pid === supervisorPid) {
+        continue;
+      }
+      try {
+        const stat = readFileSync(`/proc/${entry.name}/stat`, "utf8");
+        const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+        const state = fields[0];
+        const processGroupId = Number(fields[2]);
+        if (state !== "Z" && processGroupId === supervisorPid) {
+          return true;
+        }
+      } catch (error) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          (error.code === "ENOENT" || error.code === "ESRCH")
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    return false;
   };
   const beginTermination = (signal: NodeJS.Signals): void => {
     if (terminationSignal !== null) {
@@ -155,7 +186,7 @@ async function runAppImageBridgeSupervisor(
       bridgeProcess.once("exit", (code) => resolveExit(code));
     },
   );
-  while (signalBridgeGroup(0)) {
+  while (bridgeGroupHasLiveDescendants()) {
     await new Promise<void>((resolveDelay) => {
       setTimeout(resolveDelay, 100);
     });
@@ -374,6 +405,11 @@ export function startBbAppProcess(args: StartBbAppProcessArgs): BbAppProcess {
   });
   const childProcess = spawn(launch.executablePath, launch.args, {
     cwd: args.cwd,
+    // The AppImage bootstrap must remain the process-group leader until every
+    // managed descendant has exited. Besides keeping its FUSE mount alive,
+    // owning the PGID prevents a delayed group signal from ever targeting a
+    // recycled ID after the bridge process exits.
+    detached: args.runtime.kind === "appimage",
     env: launch.env,
     stdio: ["ignore", "pipe", "pipe"],
   });

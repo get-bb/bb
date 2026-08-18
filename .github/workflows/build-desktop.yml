@@ -184,6 +184,11 @@ jobs:
         # needs a virtual display.
         run: xvfb-run -a pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --output-logs=new-only
 
+      - name: Smoke test AppImage mount lifecycle
+        # Launches the generated AppImage itself, tears down only its GUI mount,
+        # and verifies the separately mounted owned runtime remains healthy.
+        run: xvfb-run -a pnpm exec turbo run smoke:appimage-lifecycle --filter=@bb/desktop --force --output-logs=new-only
+
       - name: Generate desktop version feed
         run: pnpm --dir apps/desktop run desktop:version-feed
 
