@@ -1591,7 +1591,7 @@ function Tree({
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-sidebar">
-      <div className="relative flex items-center gap-1 border-b border-border p-2">
+      <div className="relative flex items-center gap-1 p-2">
         <NotesSidebarNavigation
           query={query}
           searchOpen={searchOpen}
