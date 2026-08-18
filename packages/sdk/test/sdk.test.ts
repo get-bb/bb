@@ -1450,7 +1450,6 @@ describe("@bb/sdk", () => {
       {
         bodyText: JSON.stringify({
           source: "npm:@bb/notes@^1",
-          selection: { kind: "root" },
         }),
         method: "POST",
         url: "http://bb.test/api/v1/plugins/install",
