@@ -71,6 +71,15 @@ import {
   type PaneSecondaryPanelRegistration,
   type PaneSecondaryPanelRegistry,
 } from "./PaneContext";
+// ThreadDetailView stays a static import even though it is the largest pane
+// view. Wrapping it in React.lazy does not just add a request: the Suspense
+// retry mounts the pane at transition priority, slicing the mount across
+// thousands of scheduler tasks. Measured on the production build, the first
+// thread opened in a session took 469 ms lazy versus 242 ms static (−48%),
+// and prefetching the chunk during idle recovered only ~7 ms — the cost is
+// the suspend, not the bytes. The tradeoff is that a session which never
+// opens a thread still downloads and parses this view (~899 KB raw) as part
+// of the workspace route chunk.
 import { ThreadDetailView } from "./ThreadDetailView";
 import { RootComposeView } from "@/views/RootComposeView";
 import { PluginPanelView } from "@/views/PluginPanelView";

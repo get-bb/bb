@@ -418,7 +418,7 @@ interface DismissedTriggerRange {
   hasLeftRange: boolean;
 }
 
-interface PromptEditorValueKey {
+export interface PromptEditorValueKey {
   text: string;
   mentions: readonly PromptTextMention[];
 }
@@ -484,8 +484,41 @@ function createTransientZenModeAtom() {
   );
 }
 
-function promptEditorValueKey(value: PromptEditorValueKey): string {
-  return JSON.stringify(value);
+/**
+ * Structural equality between the last value synced into the editor and the
+ * incoming controlled value. This used to be a JSON.stringify key compare,
+ * which re-serialized the full text twice per keystroke — several ms per
+ * character once a large paste (e.g. a 1 MB minified bundle) sits in the box.
+ * In the controlled round-trip the text and mention references are identical,
+ * so this normally settles on pointer equality alone.
+ */
+export function arePromptEditorValuesEqual(
+  left: PromptEditorValueKey | null,
+  right: PromptEditorValueKey,
+): boolean {
+  if (left === null) return false;
+  if (left.text !== right.text) return false;
+  if (left.mentions === right.mentions) return true;
+  if (left.mentions.length !== right.mentions.length) return false;
+  for (let index = 0; index < left.mentions.length; index += 1) {
+    const leftMention = left.mentions[index]!;
+    const rightMention = right.mentions[index]!;
+    if (leftMention === rightMention) continue;
+    if (
+      leftMention.start !== rightMention.start ||
+      leftMention.end !== rightMention.end
+    ) {
+      return false;
+    }
+    if (
+      leftMention.resource !== rightMention.resource &&
+      JSON.stringify(leftMention.resource) !==
+        JSON.stringify(rightMention.resource)
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function normalizePastedPlainText(text: string): string {
@@ -1211,7 +1244,7 @@ export function PromptBoxInternal({
   const mentionRangesRef = useRef<readonly PromptTextMention[]>(mentionRanges);
   const placeholderRef = useRef(placeholder);
   const skipEditorChangeRef = useRef(false);
-  const editorValueKeyRef = useRef("");
+  const lastSyncedEditorValueRef = useRef<PromptEditorValueKey | null>(null);
   const triggerKeyRef = useRef("");
   const handleEditorKeyDownRef = useRef<
     (event: KeyboardEvent, isOriginalIPadHardwareEnter?: boolean) => boolean
@@ -1771,7 +1804,7 @@ export function PromptBoxInternal({
               const nextValue = trimTrailingPromptNewlines(
                 promptEditorValueFromDoc(currentEditor.state.doc),
               );
-              editorValueKeyRef.current = promptEditorValueKey(nextValue);
+              lastSyncedEditorValueRef.current = nextValue;
               onChangeRef.current(nextValue.text, nextValue.mentions);
             }
             return true;
@@ -1797,10 +1830,10 @@ export function PromptBoxInternal({
       },
       onCreate({ editor: createdEditor }) {
         editorRef.current = createdEditor;
-        editorValueKeyRef.current = promptEditorValueKey({
+        lastSyncedEditorValueRef.current = {
           text: value,
           mentions: mentionRanges,
-        });
+        };
       },
       onSelectionUpdate({ editor: updatedEditor, transaction }) {
         // A typing transaction changes both the document and the selection, so
@@ -1815,7 +1848,7 @@ export function PromptBoxInternal({
       onUpdate({ editor: updatedEditor, transaction }) {
         if (skipEditorChangeRef.current) return;
         const nextValue = promptEditorValueFromDoc(updatedEditor.state.doc);
-        editorValueKeyRef.current = promptEditorValueKey(nextValue);
+        lastSyncedEditorValueRef.current = nextValue;
         onChangeRef.current(nextValue.text, nextValue.mentions);
         syncTriggerStateRef.current(updatedEditor);
         // Native typing already asks ProseMirror to scroll the selection into
@@ -1921,8 +1954,9 @@ export function PromptBoxInternal({
       text: value,
       mentions: mentionRanges,
     };
-    const nextKey = promptEditorValueKey(nextValue);
-    if (nextKey === editorValueKeyRef.current) {
+    if (
+      arePromptEditorValuesEqual(lastSyncedEditorValueRef.current, nextValue)
+    ) {
       return;
     }
 
@@ -1933,7 +1967,7 @@ export function PromptBoxInternal({
           richTextMarkdown: richTextEditing,
         }),
       );
-      editorValueKeyRef.current = nextKey;
+      lastSyncedEditorValueRef.current = nextValue;
     } finally {
       skipEditorChangeRef.current = false;
     }
@@ -2192,7 +2226,7 @@ export function PromptBoxInternal({
   const finishApply = useCallback(
     (appliedEditor: Editor) => {
       const nextValue = promptEditorValueFromDoc(appliedEditor.state.doc);
-      editorValueKeyRef.current = promptEditorValueKey(nextValue);
+      lastSyncedEditorValueRef.current = nextValue;
       onChangeRef.current(nextValue.text, nextValue.mentions);
 
       requestAnimationFrame(() => {

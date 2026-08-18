@@ -66,11 +66,31 @@ export interface PromptDecorationExtensionOptions {
 interface PromptDecorationPluginState {
   decorations: DecorationSet | null;
   revision: number;
+  /**
+   * A doc edit was absorbed by mapping the existing decorations instead of
+   * rebuilding them; a deferred full rebuild is required.
+   */
+  rebuildPending: boolean;
 }
 
 const promptDecorationPluginKey = new PluginKey<PromptDecorationPluginState>(
   "promptDecorations",
 );
+
+/**
+ * Above this ProseMirror doc size (≈ characters), a doc edit no longer
+ * rebuilds decorations synchronously. Rebuilding serializes the entire
+ * document and runs every rule's `match` over the full text — several ms per
+ * keystroke once a large paste (e.g. a 1 MB minified bundle) sits in the
+ * composer, and unbounded for plugin-supplied rules. Instead, existing
+ * decorations are mapped through the edit (so they stay anchored to their
+ * text) and a full rebuild runs shortly afterwards via
+ * PROMPT_DECORATION_LARGE_DOC_REBUILD_DELAY_MS. The only observable
+ * difference on a large doc is that highlight additions/removals can lag the
+ * edit by one rebuild interval.
+ */
+export const PROMPT_DECORATION_LARGE_DOC_SIZE = 100_000;
+export const PROMPT_DECORATION_LARGE_DOC_REBUILD_DELAY_MS = 200;
 
 const EMPTY_SOURCES: readonly PromptDecorationSource[] = [];
 const EMPTY_OBSERVERS: readonly PromptDraftObserver[] = [];
@@ -325,11 +345,26 @@ export const PromptDecorationExtension =
                 options.onRuleError,
               ),
               revision: 0,
+              rebuildPending: false,
             }),
             apply(transaction, previous, _oldState, newState) {
               const refreshed =
                 transaction.getMeta(promptDecorationPluginKey) === true;
               if (!refreshed && !transaction.docChanged) return previous;
+              if (
+                !refreshed &&
+                newState.doc.content.size > PROMPT_DECORATION_LARGE_DOC_SIZE
+              ) {
+                return {
+                  decorations:
+                    previous.decorations?.map(
+                      transaction.mapping,
+                      newState.doc,
+                    ) ?? null,
+                  revision: previous.revision,
+                  rebuildPending: true,
+                };
+              }
               return {
                 decorations: buildDecorations(
                   newState.doc,
@@ -338,6 +373,7 @@ export const PromptDecorationExtension =
                   options.onRuleError,
                 ),
                 revision: refreshed ? previous.revision + 1 : previous.revision,
+                rebuildPending: false,
               };
             },
           },
@@ -350,7 +386,20 @@ export const PromptDecorationExtension =
           },
           view(initialView) {
             let timeout: ReturnType<typeof setTimeout> | null = null;
+            let rebuildTimeout: ReturnType<typeof setTimeout> | null = null;
             let latestDoc = initialView.state.doc;
+            // Throttled (not reset per keystroke) so continuous typing in a
+            // large doc still refreshes matches at a bounded cadence.
+            const scheduleDeferredRebuild = (view: typeof initialView) => {
+              if (rebuildTimeout !== null) return;
+              rebuildTimeout = setTimeout(() => {
+                rebuildTimeout = null;
+                if (view.isDestroyed) return;
+                view.dispatch(
+                  view.state.tr.setMeta(promptDecorationPluginKey, true),
+                );
+              }, PROMPT_DECORATION_LARGE_DOC_REBUILD_DELAY_MS);
+            };
             const schedule = (doc: ProseMirrorNode) => {
               latestDoc = doc;
               if (timeout !== null) clearTimeout(timeout);
@@ -373,20 +422,27 @@ export const PromptDecorationExtension =
             return {
               update(updatedView, previousState) {
                 latestDoc = updatedView.state.doc;
-                const previousRevision =
-                  promptDecorationPluginKey.getState(previousState)?.revision;
-                const nextRevision = promptDecorationPluginKey.getState(
+                const previousPluginState =
+                  promptDecorationPluginKey.getState(previousState);
+                const nextPluginState = promptDecorationPluginKey.getState(
                   updatedView.state,
-                )?.revision;
+                );
                 if (
                   !updatedView.state.doc.eq(previousState.doc) ||
-                  previousRevision !== nextRevision
+                  previousPluginState?.revision !== nextPluginState?.revision
                 ) {
                   schedule(updatedView.state.doc);
+                }
+                if (nextPluginState?.rebuildPending) {
+                  scheduleDeferredRebuild(updatedView);
+                } else if (rebuildTimeout !== null) {
+                  clearTimeout(rebuildTimeout);
+                  rebuildTimeout = null;
                 }
               },
               destroy() {
                 if (timeout !== null) clearTimeout(timeout);
+                if (rebuildTimeout !== null) clearTimeout(rebuildTimeout);
               },
             };
           },
