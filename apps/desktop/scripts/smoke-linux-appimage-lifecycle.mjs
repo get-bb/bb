@@ -41,7 +41,12 @@ async function sleep(delayMs) {
   });
 }
 
-async function waitFor({ describe, predicate, timeoutMs = startupTimeoutMs }) {
+async function waitFor({
+  describe,
+  predicate,
+  retryErrors = true,
+  timeoutMs = startupTimeoutMs,
+}) {
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
   while (Date.now() <= deadline) {
@@ -51,6 +56,9 @@ async function waitFor({ describe, predicate, timeoutMs = startupTimeoutMs }) {
         return result;
       }
     } catch (error) {
+      if (!retryErrors) {
+        throw error;
+      }
       lastError = error;
     }
     await sleep(pollIntervalMs);
@@ -458,6 +466,7 @@ async function smokeLinuxAppImageLifecycle() {
         }
         return await readOwnedRuntime(userDataDir);
       },
+      retryErrors: false,
     });
     await waitFor({
       describe: `bb health at ${runtime.serverUrl}`,
