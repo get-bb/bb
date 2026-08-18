@@ -407,7 +407,7 @@ export function createAutomationService(args: {
             if (projects.size > 0 && projectName === undefined) return null;
             try {
               return {
-                automation: toAutomationResponse(row),
+                automation: toStoredAutomationResponse(pluginDataDir, row),
                 project: {
                   id: row.projectId,
                   name: projectName ?? row.projectId,
@@ -669,7 +669,7 @@ export function createAutomationService(args: {
       });
       if (!updated) throw new Error("Automation not found");
       publishAutomationChange(bb, input.projectId, "automations-changed");
-      return toAutomationResponse(updated);
+      return toStoredAutomationResponse(pluginDataDir, updated);
     },
 
     resume(input) {
@@ -687,7 +687,7 @@ export function createAutomationService(args: {
       });
       if (!updated) throw new Error("Automation not found");
       publishAutomationChange(bb, input.projectId, "automations-changed");
-      return toAutomationResponse(updated);
+      return toStoredAutomationResponse(pluginDataDir, updated);
     },
 
     async run(input) {
