@@ -1704,6 +1704,7 @@ async function startOwnedRuntime(
     runtime: resolveBbAppProcessRuntime({
       env: process.env,
       isPackaged: app.isPackaged,
+      platform: process.platform,
       processExecPath: process.execPath,
     }),
   });
