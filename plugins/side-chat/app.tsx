@@ -5,7 +5,7 @@
 // with the host-owned ThreadChat: a "Replying to" header above the
 // conversation, a per-message "Send to main thread" action on assistant
 // messages.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -123,7 +123,6 @@ interface OpenSideChatArgs {
  * deliberate re-open still works.
  */
 const inFlightOpens = new Map<string, Promise<void>>();
-const panelHydrationStarts = new Map<string, number>();
 
 function openKey({
   sourceThreadId,
@@ -175,28 +174,15 @@ async function createAndOpenSideChat({
     );
     throw error;
   }
-  const panelHydrationStartedAt = performance.now();
-  panelHydrationStarts.set(threadId, panelHydrationStartedAt);
-  try {
-    const opened = openPanel({
-      title: PANEL_TAB_TITLE,
-      params: {
-        threadId,
-        sourceThreadId,
-        sourceMessageText: anchorText,
-        sourceSeqEnd,
-      },
-    });
-    if (opened === false) {
-      panelHydrationStarts.delete(threadId);
-      console.debug(
-        `[plugin:side-chat] createSideChat panel hydration sourceThreadId=${sourceThreadId} threadId=${threadId} outcome=rejected durationMs=${(performance.now() - panelHydrationStartedAt).toFixed(1)}`,
-      );
-    }
-  } catch (error) {
-    panelHydrationStarts.delete(threadId);
-    throw error;
-  }
+  openPanel({
+    title: PANEL_TAB_TITLE,
+    params: {
+      threadId,
+      sourceThreadId,
+      sourceMessageText: anchorText,
+      sourceSeqEnd,
+    },
+  });
 }
 
 function ReplyingTo({ anchorText }: { anchorText: string }) {
@@ -263,16 +249,6 @@ function SideChatPanel({ params }: PluginThreadPanelProps) {
   const parsed = parsePanelParams(params);
   const sideChatThreadId = parsed?.threadId ?? null;
   const sourceThreadId = parsed?.sourceThreadId ?? null;
-
-  useEffect(() => {
-    if (sideChatThreadId === null) return;
-    const startedAt = panelHydrationStarts.get(sideChatThreadId);
-    if (startedAt === undefined) return;
-    panelHydrationStarts.delete(sideChatThreadId);
-    console.debug(
-      `[plugin:side-chat] createSideChat panel hydration sourceThreadId=${sourceThreadId} threadId=${sideChatThreadId} outcome=mounted durationMs=${(performance.now() - startedAt).toFixed(1)}`,
-    );
-  }, [sideChatThreadId]);
 
   const sendToMain = useCallback(
     async (message: { text: string; threadId: string }) => {

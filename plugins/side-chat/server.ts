@@ -176,15 +176,15 @@ export const sideChatRpcContract = defineRpcContract({
 export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(sideChatRpcContract, {
     async createSideChat({ sourceThreadId, sourceSeqEnd, anchorText }) {
-      const timelineStartedAt = performance.now();
+      // The seed rule reads only the source's *last* conversation message, and
+      // every timeline segment is anchored at a user message — so the newest
+      // segment always holds it. Without this the lookup projects the default
+      // 20 segments of nested rows on the activation path.
       const timeline = await bb.sdk.threads.timeline({
         threadId: sourceThreadId,
         includeNestedRows: "true",
         segmentLimit: "1",
       });
-      bb.log.debug(
-        `createSideChat timeline lookup sourceThreadId=${sourceThreadId} durationMs=${(performance.now() - timelineStartedAt).toFixed(1)}`,
-      );
       const seedText = resolveReplySeedText({
         anchorText,
         sourceTimelineRows: timeline.rows,
@@ -211,29 +211,22 @@ export default async function plugin(bb: BbPluginApi) {
             }
           : {}),
       };
-      const forkStartedAt = performance.now();
       try {
-        try {
-          const fork = await bb.sdk.threads.fork({
-            ...forkArgs,
-            ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
-          });
-          return { threadId: fork.id };
-        } catch (error) {
-          // Messages earlier than the source's first provider session (e.g. the
-          // opening user message) have no point-in-time session to clone. The
-          // legacy side chat always forked from the tip; fall back to that so
-          // those anchors keep working — the reply seed still marks the anchor.
-          if (sourceSeqEnd === undefined || !isSessionUnavailableError(error)) {
-            throw error;
-          }
-          const fork = await bb.sdk.threads.fork(forkArgs);
-          return { threadId: fork.id };
+        const fork = await bb.sdk.threads.fork({
+          ...forkArgs,
+          ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
+        });
+        return { threadId: fork.id };
+      } catch (error) {
+        // Messages earlier than the source's first provider session (e.g. the
+        // opening user message) have no point-in-time session to clone. The
+        // legacy side chat always forked from the tip; fall back to that so
+        // those anchors keep working — the reply seed still marks the anchor.
+        if (sourceSeqEnd === undefined || !isSessionUnavailableError(error)) {
+          throw error;
         }
-      } finally {
-        bb.log.debug(
-          `createSideChat fork persistence sourceThreadId=${sourceThreadId} durationMs=${(performance.now() - forkStartedAt).toFixed(1)}`,
-        );
+        const fork = await bb.sdk.threads.fork(forkArgs);
+        return { threadId: fork.id };
       }
     },
     async sendToMain({ sourceThreadId, senderThreadId, text }) {
