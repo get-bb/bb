@@ -1,7 +1,6 @@
 import type Database from "better-sqlite3";
 import type { Context } from "hono";
 import type * as z from "zod";
-import type { ClientTurnRequestId, ThreadEventRow } from "@bb/domain";
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type { BbSdk } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
@@ -754,61 +753,6 @@ export interface PluginEvents {
 }
 
 // ---------------------------------------------------------------------------
-// Failed-turn continuation.
-// ---------------------------------------------------------------------------
-
-export type ExperimentalFailedTurnInspectionReason =
-  | "eligible"
-  | "no-failed-turn"
-  | "input-not-accepted"
-  | "superseded"
-  | "execution-unavailable";
-
-/**
- * A failed root turn whose accepted client request is still the latest request
- * on the thread. `events` begins at that client request and includes the
- * failed turn plus later provider-only drain events observed by the server.
- */
-export interface ExperimentalFailedTurnCandidate {
-  completedSeq: number;
-  events: ThreadEventRow[];
-  failedRequestId: ClientTurnRequestId;
-  hostId: string;
-  providerId: string;
-  turnId: string;
-}
-
-export type ExperimentalFailedTurnInspection =
-  | {
-      candidate: ExperimentalFailedTurnCandidate;
-      reason: "eligible";
-    }
-  | {
-      candidate: null;
-      reason: Exclude<ExperimentalFailedTurnInspectionReason, "eligible">;
-    };
-
-/**
- * Provider-neutral, atomic failed-turn continuation capability. Plugins own
- * the policy that decides whether a failure should be continued; core only
- * identifies the accepted failed turn, guards against supersession, and
- * starts the continuation with the original execution options.
- *
- * Experimental — see docs/api_to_audit.md before relying on it.
- */
-export interface ExperimentalFailedTurnContinuation {
-  inspect(args: {
-    threadId: string;
-  }): Promise<ExperimentalFailedTurnInspection>;
-  continue(args: {
-    failedRequestId: ClientTurnRequestId;
-    /** Agent-visible, user-hidden instruction for the continuation turn. */
-    instruction: string;
-    threadId: string;
-  }): Promise<{ requestId: ClientTurnRequestId }>;
-}
-
-// ---------------------------------------------------------------------------
 // Server info.
 // ---------------------------------------------------------------------------
 
@@ -907,8 +851,6 @@ export interface BbPluginApi {
   readonly ui: PluginUi;
   /** Additive plugin lifecycle listeners (design §4.5). */
   readonly events: PluginEvents;
-  /** Provider-neutral inspection and atomic continuation of failed turns. */
-  readonly experimental_failedTurnContinuation: ExperimentalFailedTurnContinuation;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
   /** Read-only facts about the running server (loopback base URL). */

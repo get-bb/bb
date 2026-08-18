@@ -759,38 +759,6 @@ always in the timeline yet. To react to a thread's content, listen on
 in a handler — including `bb.sdk.threads.update({ threadId, title })` —
 cannot delay or interrupt the thread's turn.
 
-### bb.experimental_failedTurnContinuation
-
-Provider-neutral inspection and atomic continuation for plugins that implement
-failure-recovery policy. `inspect({ threadId })` returns the latest failed root
-turn that accepted the thread's latest client request, including the raw event
-rows from that request through later provider-only drain activity. It does not
-decide which provider errors are retryable. The plugin owns that policy.
-
-After validating its own policy, call
-`continue({ threadId, failedRequestId, instruction })`. Core rechecks the same
-failed request transactionally, rejects a newer request or explicit user stop,
-reuses the original execution options, and starts one agent-visible,
-user-hidden continuation turn. The instruction is limited to 4096 characters.
-
-```ts
-const inspection = await bb.experimental_failedTurnContinuation.inspect({
-  threadId,
-});
-if (
-  inspection.candidate !== null &&
-  shouldRecover(inspection.candidate.events)
-) {
-  await bb.experimental_failedTurnContinuation.continue({
-    threadId,
-    failedRequestId: inspection.candidate.failedRequestId,
-    instruction: "Please continue.",
-  });
-}
-```
-
-This surface is experimental; see `docs/api_to_audit.md`.
-
 ### bb.http — HTTP routes
 
 `bb.http.route(method, path, handler, { auth? })` mounts an exact-match

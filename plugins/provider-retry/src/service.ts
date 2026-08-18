@@ -25,7 +25,6 @@ export interface ProviderRetrySources {
 
 export interface ManualProviderRetryResult {
   failedRequestId: string;
-  requestId: string;
 }
 
 interface WaitingEntry {
@@ -197,12 +196,7 @@ export class ProviderRetryService {
         this.publish(threadId);
       }
       try {
-        const result =
-          await this.bb.experimental_failedTurnContinuation.continue({
-            threadId,
-            failedRequestId: candidate.failedRequestId,
-            instruction: "Please continue.",
-          });
+        await this.continueCandidate(threadId, candidate);
         if (candidate.resetsAtMs !== null) {
           this.attemptedWindows.set(threadId, {
             resetsAtMs: candidate.resetsAtMs,
@@ -212,7 +206,6 @@ export class ProviderRetryService {
         this.remove(threadId);
         return {
           failedRequestId: candidate.failedRequestId,
-          requestId: result.requestId,
         };
       } catch (error) {
         if (existing !== undefined && this.entries.get(threadId) === existing) {
@@ -465,11 +458,7 @@ export class ProviderRetryService {
       }
       const candidate = status.candidate;
       const resetsAtMs = candidate.resetsAtMs;
-      await this.bb.experimental_failedTurnContinuation.continue({
-        threadId,
-        failedRequestId,
-        instruction: "Please continue.",
-      });
+      await this.continueCandidate(threadId, candidate);
       this.attemptedWindows.set(threadId, {
         resetsAtMs,
         scopeKey: status.scopeKey,
@@ -511,6 +500,31 @@ export class ProviderRetryService {
       this.remove(threadId);
       return false;
     }
+  }
+
+  private async continueCandidate(
+    threadId: string,
+    candidate: RecoveryCandidate,
+  ): Promise<void> {
+    await this.bb.sdk.threads.send({
+      threadId,
+      mode: "start",
+      input: [
+        {
+          type: "text",
+          text: "Please continue.",
+          mentions: [],
+          visibility: "agent-only",
+        },
+      ],
+      ...candidate.execution,
+      executionInputSources: {
+        model: "explicit",
+        permissionMode: "explicit",
+        reasoningLevel: "explicit",
+        serviceTier: "explicit",
+      },
+    });
   }
 
   dispose(): void {

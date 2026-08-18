@@ -2,13 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   makeThreadResponse,
-  type CreateFakePluginHostOptions,
 } from "@get-bb/plugin-sdk/testing";
-import type {
-  ExperimentalFailedTurnCandidate,
-  ExperimentalFailedTurnContinuation,
-  ExperimentalFailedTurnInspection,
-} from "@get-bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import plugin from "./server.js";
 import {
   ProviderRetryService,
@@ -19,6 +14,21 @@ import type { ProviderRateLimitState } from "./src/recovery.js";
 
 const NOW_MS = Date.parse("2026-08-05T12:00:00.000Z");
 const RESET_AT_MS = NOW_MS + 5 * 60 * 60 * 1_000;
+
+type ThreadEventRows = Awaited<
+  ReturnType<BbPluginApi["sdk"]["threads"]["events"]["list"]>
+>;
+type ThreadSend = BbPluginApi["sdk"]["threads"]["send"];
+
+interface TestFailedTurnInspection {
+  candidate: null | {
+    events: ThreadEventRows;
+    hostId: string;
+    providerId: "claude-code" | "codex";
+  };
+  events: ThreadEventRows;
+  reason: "eligible" | "input-not-accepted" | "superseded";
+}
 
 function rateLimits(
   providerId: "claude-code" | "codex" = "codex",
@@ -66,14 +76,52 @@ function failedTurnInspection(
     limits?: ProviderRateLimitState;
     observedLimits?: ProviderRateLimitState;
     providerId?: "claude-code" | "codex";
+    providerDrain?: boolean;
     willRetry?: boolean;
   } = {},
-): ExperimentalFailedTurnInspection {
+): TestFailedTurnInspection {
   const providerId = options.providerId ?? "codex";
   const limits = options.limits ?? rateLimits(providerId);
   const turnId = `turn-${threadId}`;
   const providerThreadId = `provider-thread-${threadId}`;
-  const events: ExperimentalFailedTurnCandidate["events"] = [
+  const requestId = `request-${threadId}`;
+  const events: ThreadEventRows = [
+    {
+      id: `request-${threadId}`,
+      threadId,
+      seq: 1,
+      createdAt: NOW_MS,
+      scope: { kind: "thread" },
+      type: "client/turn/requested",
+      data: {
+        direction: "outbound",
+        requestId,
+        source: "tell",
+        initiator: "user",
+        senderThreadId: null,
+        systemMessageKind: "unlabeled",
+        systemMessageSubject: null,
+        input: [{ type: "text", text: "Finish the task", mentions: [] }],
+        target: { kind: "new-turn" },
+        request: { method: "turn/start", params: {} },
+        execution: {
+          model: "gpt-5",
+          serviceTier: "default",
+          reasoningLevel: "medium",
+          permissionMode: "full",
+          source: "client/turn/requested",
+        },
+      },
+    },
+    {
+      id: `accepted-${threadId}`,
+      threadId,
+      seq: 2,
+      createdAt: NOW_MS,
+      scope: { kind: "turn", turnId },
+      type: "turn/input/accepted",
+      data: { providerThreadId, clientRequestId: requestId },
+    },
     {
       id: `rate-limits-${threadId}`,
       threadId,
@@ -115,20 +163,51 @@ function failedTurnInspection(
       data: { providerThreadId, rateLimits: options.observedLimits },
     });
   }
+  events.push({
+    id: `completed-${threadId}`,
+    threadId,
+    seq: 5,
+    createdAt: NOW_MS,
+    scope: { kind: "turn", turnId },
+    type: "turn/completed",
+    data: { providerThreadId, status: "failed" },
+  });
+  if (options.providerDrain === true) {
+    const drainTurnId = `drain-${threadId}`;
+    events.push(
+      {
+        id: `drain-started-${threadId}`,
+        threadId,
+        seq: 7,
+        createdAt: NOW_MS + 2,
+        scope: { kind: "turn", turnId: drainTurnId },
+        type: "turn/started",
+        data: { providerThreadId },
+      },
+      {
+        id: `drain-completed-${threadId}`,
+        threadId,
+        seq: 8,
+        createdAt: NOW_MS + 3,
+        scope: { kind: "turn", turnId: drainTurnId },
+        type: "turn/completed",
+        data: { providerThreadId, status: "failed" },
+      },
+    );
+  }
+  events.sort((left, right) => left.seq - right.seq);
   return {
     reason: "eligible",
     candidate: {
-      completedSeq: 5,
       events,
-      failedRequestId: `request-${threadId}`,
       hostId: "host-one",
       providerId,
-      turnId,
     },
+    events,
   };
 }
 
-function manualInspection(threadId: string): ExperimentalFailedTurnInspection {
+function manualInspection(threadId: string): TestFailedTurnInspection {
   return failedTurnInspection(threadId, {
     limits: {
       ...rateLimits(),
@@ -140,25 +219,139 @@ function manualInspection(threadId: string): ExperimentalFailedTurnInspection {
 
 function unavailableInspection(
   reason: "input-not-accepted" | "superseded",
-): ExperimentalFailedTurnInspection {
-  return { reason, candidate: null };
+  threadId = "thread-ineligible",
+): TestFailedTurnInspection {
+  if (reason === "input-not-accepted") {
+    const inspection = failedTurnInspection(threadId);
+    const events = inspection.events.filter(
+      (row) =>
+        row.type !== "turn/input/accepted" && row.type !== "turn/completed",
+    );
+    return { reason, candidate: null, events };
+  }
+  const inspection = failedTurnInspection(threadId);
+  const events: ThreadEventRows = [
+    ...inspection.events,
+    {
+      id: `new-request-${threadId}`,
+      threadId,
+      seq: 7,
+      createdAt: NOW_MS + 2,
+      scope: { kind: "thread" },
+      type: "client/turn/requested",
+      data: {
+        direction: "outbound",
+        requestId: `new-request-${threadId}`,
+        source: "tell",
+        initiator: "user",
+        senderThreadId: null,
+        systemMessageKind: "unlabeled",
+        systemMessageSubject: null,
+        input: [{ type: "text", text: "New work", mentions: [] }],
+        target: { kind: "new-turn" },
+        request: { method: "turn/start", params: {} },
+        execution: {
+          model: "gpt-5",
+          serviceTier: "default",
+          reasoningLevel: "medium",
+          permissionMode: "full",
+          source: "client/turn/requested",
+        },
+      },
+    },
+  ];
+  return { reason, candidate: null, events };
 }
 
 function createRetryHost(args: {
-  continueFailedTurn?: ExperimentalFailedTurnContinuation["continue"];
-  inspect: ExperimentalFailedTurnContinuation["inspect"];
-  sdk?: CreateFakePluginHostOptions["sdk"];
+  continueFailedTurn?: ThreadSend;
+  inspect: (args: {
+    threadId: string;
+  }) => TestFailedTurnInspection | Promise<TestFailedTurnInspection>;
+  onHostSubscription?: (
+    notify: (changes: Array<"host-connected" | "host-disconnected">) => void,
+  ) => void;
+  providerId?: "claude-code" | "codex";
 }) {
   return createFakePluginHost({
     pluginId: "provider-retry",
-    experimental_failedTurnContinuation: {
-      inspect: args.inspect,
-      continue:
-        args.continueFailedTurn ??
-        (async () => ({ requestId: "continuation-request" })),
+    sdk: {
+      environments: {
+        get: async ({ environmentId }) => ({
+          id: environmentId,
+          name: null,
+          projectId: "project-one",
+          hostId: "host-one",
+          path: "/workspace",
+          managed: false,
+          isGitRepo: true,
+          isWorktree: false,
+          workspaceProvisionType: "unmanaged",
+          branchName: "main",
+          baseBranch: null,
+          defaultBranch: "main",
+          createdAt: NOW_MS,
+          updatedAt: NOW_MS,
+          status: "ready",
+        }),
+      },
+      threads: {
+        get: async ({ threadId }) =>
+          makeThreadResponse({
+            id: threadId,
+            environmentId: "environment-one",
+            providerId: args.providerId ?? "codex",
+            status: "error",
+          }),
+        events: {
+          list: async ({ threadId, afterSeq }) => {
+            const inspection = await args.inspect({ threadId });
+            const after = afterSeq === undefined ? 0 : Number(afterSeq);
+            return inspection.events.filter((row) => row.seq > after);
+          },
+        },
+        send: args.continueFailedTurn ?? (async () => ({ ok: true as const })),
+      },
+      subscribe: ({ event, callback }) => {
+        if (event === "host:changed") {
+          args.onHostSubscription?.((changes) =>
+            callback({
+              type: "changed",
+              entity: "host",
+              id: "host-one",
+              changes,
+            }),
+          );
+        }
+        return () => undefined;
+      },
     },
-    ...(args.sdk === undefined ? {} : { sdk: args.sdk }),
   });
+}
+
+function expectedContinuation(threadId: string) {
+  return {
+    threadId,
+    mode: "start",
+    input: [
+      {
+        type: "text",
+        text: "Please continue.",
+        mentions: [],
+        visibility: "agent-only",
+      },
+    ],
+    model: "gpt-5",
+    permissionMode: "full",
+    reasoningLevel: "medium",
+    serviceTier: "default",
+    executionInputSources: {
+      model: "explicit",
+      permissionMode: "explicit",
+      reasoningLevel: "explicit",
+      serviceTier: "explicit",
+    },
+  };
 }
 
 async function flushPromises() {
@@ -207,9 +400,7 @@ describe("provider retry scheduler", () => {
   });
 
   it("classifies provider events and schedules subscription-window failures", async () => {
-    const continueFailedTurn = vi.fn(async () => ({
-      requestId: "continuation-request",
-    }));
+    const continueFailedTurn = vi.fn(async () => ({ ok: true as const }));
     const host = createRetryHost({
       inspect: async ({ threadId }) => failedTurnInspection(threadId),
       continueFailedTurn,
@@ -228,18 +419,14 @@ describe("provider retry scheduler", () => {
     });
 
     await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
-    expect(continueFailedTurn).toHaveBeenCalledWith({
-      threadId: "thread-limited",
-      failedRequestId: "request-thread-limited",
-      instruction: "Please continue.",
-    });
+    expect(continueFailedTurn).toHaveBeenCalledWith(
+      expectedContinuation("thread-limited"),
+    );
     await host.harness.dispose();
   });
 
   it("releases immediately when a later provider observation is allowed", async () => {
-    const continueFailedTurn = vi.fn(async () => ({
-      requestId: "continuation-request",
-    }));
+    const continueFailedTurn = vi.fn(async () => ({ ok: true as const }));
     const host = createRetryHost({
       inspect: async ({ threadId }) =>
         failedTurnInspection(threadId, {
@@ -255,11 +442,9 @@ describe("provider retry scheduler", () => {
     });
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(continueFailedTurn).toHaveBeenCalledWith({
-      threadId: "thread-allowed",
-      failedRequestId: "request-thread-allowed",
-      instruction: "Please continue.",
-    });
+    expect(continueFailedTurn).toHaveBeenCalledWith(
+      expectedContinuation("thread-allowed"),
+    );
     await host.harness.dispose();
   });
 
@@ -307,9 +492,7 @@ describe("provider retry scheduler", () => {
   });
 
   it("keeps non-resettable limits manual and retries them through the plugin CLI", async () => {
-    const continueFailedTurn = vi.fn(async () => ({
-      requestId: "manual-continuation",
-    }));
+    const continueFailedTurn = vi.fn(async () => ({ ok: true as const }));
     const host = createRetryHost({
       inspect: async ({ threadId }) => manualInspection(threadId),
       continueFailedTurn,
@@ -329,13 +512,13 @@ describe("provider retry scheduler", () => {
       host.harness.runCli(["retry", "thread-credits", "--json"]),
     ).resolves.toMatchObject({
       exitCode: 0,
-      stdout: expect.stringContaining('"requestId": "manual-continuation"'),
+      stdout: expect.stringContaining(
+        '"failedRequestId": "request-thread-credits"',
+      ),
     });
-    expect(continueFailedTurn).toHaveBeenCalledWith({
-      threadId: "thread-credits",
-      failedRequestId: "request-thread-credits",
-      instruction: "Please continue.",
-    });
+    expect(continueFailedTurn).toHaveBeenCalledWith(
+      expectedContinuation("thread-credits"),
+    );
     await host.harness.dispose();
   });
 
@@ -355,9 +538,7 @@ describe("provider retry scheduler", () => {
   });
 
   it("paces threads sharing one provider account", async () => {
-    const continueFailedTurn = vi.fn(async () => ({
-      requestId: "continuation-request",
-    }));
+    const continueFailedTurn = vi.fn(async () => ({ ok: true as const }));
     const host = createRetryHost({
       inspect: async ({ threadId }) => failedTurnInspection(threadId),
       continueFailedTurn,
@@ -385,9 +566,7 @@ describe("provider retry scheduler", () => {
   });
 
   it("attempts each reported reset window only once per plugin process", async () => {
-    const continueFailedTurn = vi.fn(async () => ({
-      requestId: "continuation-request",
-    }));
+    const continueFailedTurn = vi.fn(async () => ({ ok: true as const }));
     const host = createRetryHost({
       inspect: async ({ threadId }) => failedTurnInspection(threadId),
       continueFailedTurn,
@@ -410,7 +589,7 @@ describe("provider retry scheduler", () => {
   });
 
   it("keeps cancellation final when reconciliation is already running", async () => {
-    const pendingInspection = deferred<ExperimentalFailedTurnInspection>();
+    const pendingInspection = deferred<TestFailedTurnInspection>();
     let inspectionCount = 0;
     const continueFailedTurn = vi.fn();
     const host = createRetryHost({
@@ -463,12 +642,17 @@ describe("provider retry scheduler", () => {
   it("keeps an accepted failure scheduled while provider-only activity drains", async () => {
     const threadId = "thread-claude-drain";
     const inspect = vi.fn(async () =>
-      failedTurnInspection(threadId, { providerId: "claude-code" }),
+      failedTurnInspection(threadId, {
+        providerDrain: true,
+        providerId: "claude-code",
+      }),
     );
-    const continueFailedTurn = vi.fn(async () => ({
-      requestId: "continuation-request",
-    }));
-    const host = createRetryHost({ inspect, continueFailedTurn });
+    const continueFailedTurn = vi.fn(async () => ({ ok: true as const }));
+    const host = createRetryHost({
+      inspect,
+      continueFailedTurn,
+      providerId: "claude-code",
+    });
     await plugin(host.bb);
 
     await host.harness.emitThreadEvent("thread.failed", {
@@ -502,7 +686,7 @@ describe("provider retry scheduler", () => {
         inspectionCount += 1;
         return inspectionCount === 1
           ? failedTurnInspection(threadId)
-          : unavailableInspection("superseded");
+          : unavailableInspection("superseded", threadId);
       },
       continueFailedTurn,
     });
@@ -522,6 +706,35 @@ describe("provider retry scheduler", () => {
         threadId: "thread-manual",
       }),
     ).resolves.toEqual({ view: null });
+    await host.harness.dispose();
+  });
+
+  it("does not retry after an explicit user stop", async () => {
+    const threadId = "thread-stopped";
+    const inspection = failedTurnInspection(threadId);
+    inspection.events.push({
+      id: `manual-stop-${threadId}`,
+      threadId,
+      seq: 7,
+      createdAt: NOW_MS + 2,
+      scope: { kind: "thread" },
+      type: "system/thread/interrupted",
+      data: { reason: "manual-stop" },
+    });
+    const continueFailedTurn = vi.fn();
+    const host = createRetryHost({
+      inspect: async () => inspection,
+      continueFailedTurn,
+    });
+    await plugin(host.bb);
+
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: threadId, status: "error" }),
+      error: "Usage limit reached",
+    });
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000);
+
+    expect(continueFailedTurn).not.toHaveBeenCalled();
     await host.harness.dispose();
   });
 
@@ -574,7 +787,7 @@ describe("provider retry scheduler", () => {
           status: 502,
         }),
       )
-      .mockResolvedValueOnce({ requestId: "continuation-request" });
+      .mockResolvedValueOnce({ ok: true as const });
     const subscription = {
       hostChanged: null as
         | ((changes: Array<"host-connected" | "host-disconnected">) => void)
@@ -583,19 +796,8 @@ describe("provider retry scheduler", () => {
     const host = createRetryHost({
       inspect: async ({ threadId }) => failedTurnInspection(threadId),
       continueFailedTurn,
-      sdk: {
-        subscribe: ({ event, callback }) => {
-          if (event === "host:changed") {
-            subscription.hostChanged = (changes) =>
-              callback({
-                type: "changed",
-                entity: "host",
-                id: "host-one",
-                changes,
-              });
-          }
-          return () => undefined;
-        },
+      onHostSubscription: (notify) => {
+        subscription.hostChanged = notify;
       },
     });
     await plugin(host.bb);

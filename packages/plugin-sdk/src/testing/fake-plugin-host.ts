@@ -35,7 +35,6 @@ import {
 } from "../internal/host-policy.js";
 import type {
   BbPluginApi,
-  ExperimentalFailedTurnContinuation,
   PluginAgentConfiguration,
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
@@ -395,8 +394,6 @@ export interface CreateFakePluginHostOptions {
   experimental_callHostRpc?: (
     call: ExperimentalFakeHostRpcCall,
   ) => unknown | Promise<unknown>;
-  /** Deterministic stand-in for core's failed-turn inspection/continuation. */
-  experimental_failedTurnContinuation?: Partial<ExperimentalFailedTurnContinuation>;
 }
 
 export interface FakePluginHost {
@@ -1718,30 +1715,6 @@ function createFakePluginHostInternal(
       handlers.push(handler);
     },
   };
-  const experimentalFailedTurnContinuation: ExperimentalFailedTurnContinuation =
-    {
-      inspect(args) {
-        assertLive();
-        const inspect = options.experimental_failedTurnContinuation?.inspect;
-        if (inspect === undefined) {
-          throw new Error(
-            "fake plugin host has no failed-turn inspection stub",
-          );
-        }
-        return inspect(args);
-      },
-      continue(args) {
-        assertLive();
-        const continueFailedTurn =
-          options.experimental_failedTurnContinuation?.continue;
-        if (continueFailedTurn === undefined) {
-          throw new Error(
-            "fake plugin host has no failed-turn continuation stub",
-          );
-        }
-        return continueFailedTurn(args);
-      },
-    };
 
   const bb: BbPluginApi = {
     pluginId,
@@ -1756,7 +1729,6 @@ function createFakePluginHostInternal(
     agents,
     ui,
     events,
-    experimental_failedTurnContinuation: experimentalFailedTurnContinuation,
     status,
     server,
     hosts,

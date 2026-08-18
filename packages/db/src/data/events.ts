@@ -2,7 +2,6 @@ import {
   and,
   desc,
   eq,
-  exists,
   gt,
   gte,
   inArray,
@@ -970,10 +969,6 @@ export interface GetLatestStoredEventRowByTypeArgs {
   type: ThreadEventType;
 }
 
-export interface GetLatestStoredTurnCompletedRowWithAcceptedInputArgs {
-  threadId: string;
-}
-
 export interface ListStoredEventRowsInRangeArgs {
   seqEnd: number;
   seqStart: number;
@@ -1416,41 +1411,6 @@ export function getLatestStoredEventRowByType(
       .select(storedEventRowFields)
       .from(events)
       .where(and(eq(events.threadId, args.threadId), eq(events.type, args.type)))
-      .orderBy(desc(events.sequence))
-      .limit(1)
-      .get() ?? null
-  );
-}
-
-export function getLatestStoredTurnCompletedRowWithAcceptedInput(
-  db: DbQueryConnection,
-  args: GetLatestStoredTurnCompletedRowWithAcceptedInputArgs,
-): StoredEventRow | null {
-  const acceptedInput = alias(events, "accepted_input_for_completed_turn");
-  return (
-    db
-      .select(storedEventRowFields)
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, args.threadId),
-          eq(events.type, "turn/completed"),
-          isNotNull(events.turnId),
-          exists(
-            db
-              .select({ one: sql`1` })
-              .from(acceptedInput)
-              .where(
-                and(
-                  eq(acceptedInput.threadId, events.threadId),
-                  eq(acceptedInput.turnId, events.turnId),
-                  eq(acceptedInput.type, "turn/input/accepted"),
-                  lt(acceptedInput.sequence, events.sequence),
-                ),
-              ),
-          ),
-        ),
-      )
       .orderBy(desc(events.sequence))
       .limit(1)
       .get() ?? null
