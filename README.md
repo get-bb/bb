@@ -60,6 +60,20 @@ To run the newest automated build instead:
 npx bb-app@nightly
 ```
 
+npm 12 and later block dependency install scripts by default. bb needs those
+scripts to build its native add-ons. If your npm version is 12 or later, allow
+the scripts for the install:
+
+```bash
+npx --allow-scripts=better-sqlite3,node-pty,@parcel/watcher bb-app@latest
+```
+
+Or set the policy once for all global installs:
+
+```bash
+npm config set allow-scripts=better-sqlite3,node-pty,@parcel/watcher --location=user
+```
+
 bb uses the provider CLI you already have authenticated.
 
 For install requirements, provider setup, configuration, and package-focused
@@ -199,7 +213,30 @@ Error: Could not locate the bindings file. Tried:
  → .../node_modules/better-sqlite3/build/better_sqlite3.node
 ```
 
-The usual cause is `ignore-scripts=true` in your `~/.npmrc`. Set the
+There are two usual causes.
+
+The first cause is npm 12 or later. Since npm 12, npm blocks dependency install
+scripts by default and prints
+`npm warn install-scripts N packages had install scripts blocked`. Name bb's
+native add-ons in `--allow-scripts` to let this one command run their install
+scripts:
+
+```bash
+npx --allow-scripts=better-sqlite3,node-pty,@parcel/watcher bb-app@latest
+```
+
+For a permanent install with the same setting, use:
+
+```bash
+npm install -g --allow-scripts=better-sqlite3,node-pty,@parcel/watcher bb-app
+bb-app
+```
+
+To allow them for all global installs on this machine, run
+`npm config set allow-scripts=better-sqlite3,node-pty,@parcel/watcher --location=user`.
+npm 10 and 11 accept or ignore the flag, so it is safe on every supported Node.
+
+The second cause is `ignore-scripts=true` in your `~/.npmrc`. Set the
 `npm_config_ignore_scripts` environment variable to let this one command run its
 install scripts:
 
