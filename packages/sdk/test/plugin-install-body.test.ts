@@ -6,6 +6,11 @@
  * install body with a strict schema that only knows `source`, so an extra
  * `selection` key the caller never asked for is rejected with HTTP 422
  * `expected { "source": string }`. The SDK must not send defaulted keys.
+ *
+ * The same servers answer with the 0.37.x installed-plugin shape, which has
+ * no `publisherLabel`. The SDK must accept that response: the server has
+ * already installed the plugin, so a parse failure would report a failure
+ * after a successful change.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -18,18 +23,50 @@ const legacyPluginInstallRequestSchema = z
   .object({ source: z.string().min(1) })
   .strict();
 
-async function captureInstallBody(
-  args: Parameters<ReturnType<typeof createBbSdk>["plugins"]["install"]>[0],
-): Promise<unknown> {
-  let captured: unknown;
+// The installed-plugin shape a bb-app 0.37.x server returns: every field of
+// its `installedPluginSchema`, and nothing added later (no `publisherLabel`).
+const legacyInstalledPlugin = {
+  id: "my-plugin",
+  source: "path:/tmp/my-plugin",
+  rootDir: "/tmp/my-plugin",
+  version: "0.1.0",
+  provenance: "direct",
+  isOrphanedBuiltin: false,
+  sourceDisplay: "path · /tmp/my-plugin",
+  updateState: {},
+  enabled: true,
+  description: null,
+  name: "My plugin",
+  icon: null,
+  iconUrl: null,
+  status: "running",
+  statusDetail: null,
+  handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+  services: [],
+  schedules: [],
+  cliCommand: null,
+  capabilities: [],
+  hasSettings: false,
+  app: { hasApp: false, bundle: null },
+  logoUrl: null,
+  logoDarkUrl: null,
+};
+
+function createLegacyServerSdk(): {
+  sdk: ReturnType<typeof createBbSdk>;
+  bodies: unknown[];
+} {
+  const bodies: unknown[] = [];
   const fetch: FetchImplementation = async (_input, init) => {
-    captured = JSON.parse(String(init?.body));
-    // Mimic a bb-app 0.37.x server: strict `{ source }` only.
-    const ok = legacyPluginInstallRequestSchema.safeParse(captured).success;
+    const body: unknown = JSON.parse(String(init?.body));
+    bodies.push(body);
+    // Mimic a bb-app 0.37.x server: strict `{ source }` request, 0.37.x plugin
+    // shape in the response.
+    const ok = legacyPluginInstallRequestSchema.safeParse(body).success;
     return new Response(
       JSON.stringify(
         ok
-          ? { ok: true, plugin: {} }
+          ? { ok: true, plugin: legacyInstalledPlugin }
           : { ok: false, error: 'expected { "source": string }' },
       ),
       {
@@ -45,27 +82,31 @@ async function captureInstallBody(
       runtime: "node",
     }),
   });
-  // The response is a stub, so response parsing may throw; only the request
-  // body matters here.
-  await sdk.plugins.install(args).catch(() => undefined);
-  return captured;
+  return { sdk, bodies };
 }
 
-describe("issue #1662: plugin install request body vs pre-0.38.0 servers", () => {
-  it("a plain root install sends only { source }", async () => {
-    const body = await captureInstallBody({ source: "path:/tmp/my-plugin" });
-    expect(body).toEqual({ source: "path:/tmp/my-plugin" });
-    expect(legacyPluginInstallRequestSchema.safeParse(body).success).toBe(true);
+describe("issue #1662: plugin install against a pre-0.38.0 server", () => {
+  it("a plain root install sends only { source } and accepts the legacy response", async () => {
+    const { sdk, bodies } = createLegacyServerSdk();
+    await expect(
+      sdk.plugins.install({ source: "path:/tmp/my-plugin" }),
+    ).resolves.toEqual({ ...legacyInstalledPlugin, publisherLabel: null });
+    expect(bodies).toEqual([{ source: "path:/tmp/my-plugin" }]);
   });
 
   it("a subdirectory install still sends an explicit selection", async () => {
-    const body = await captureInstallBody({
-      source: "git:github.com/acme/plugins",
-      subdirectory: "packages/notes",
-    });
-    expect(body).toEqual({
-      source: "git:github.com/acme/plugins",
-      selection: { kind: "subdirectory", path: "packages/notes" },
-    });
+    const { sdk, bodies } = createLegacyServerSdk();
+    await sdk.plugins
+      .install({
+        source: "git:github.com/acme/plugins",
+        subdirectory: "packages/notes",
+      })
+      .catch(() => undefined);
+    expect(bodies).toEqual([
+      {
+        source: "git:github.com/acme/plugins",
+        selection: { kind: "subdirectory", path: "packages/notes" },
+      },
+    ]);
   });
 });
