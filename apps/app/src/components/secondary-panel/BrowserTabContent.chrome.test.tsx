@@ -121,6 +121,16 @@ describe("BrowserTabContent persistent navigation", () => {
     expect(screen.getByLabelText("Address and search bar")).not.toBeNull();
   });
 
+  it("aligns the trailing browser action with the right-panel header actions", () => {
+    const harness = createBrowserChromeHarness();
+    renderBrowserChrome(harness, "https://example.com/docs");
+
+    const controls = screen.getByTestId("browser-tab-nav-controls");
+    expect(controls.classList).toContain("pl-2");
+    expect(controls.classList).toContain("pr-4");
+    expect(controls.classList).not.toContain("px-2");
+  });
+
   it("keeps navigation visible while loading and preserves the stop action", () => {
     const harness = createBrowserChromeHarness();
     renderBrowserChrome(harness, "https://example.com/docs");

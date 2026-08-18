@@ -64,6 +64,14 @@ type ModelListResult = Pick<
   "modelLoadError" | "models" | "selectedOnlyModels"
 >;
 
+function unavailableProviderModelResult(providerId: string): ModelListResult {
+  return {
+    models: [],
+    selectedOnlyModels: [],
+    modelLoadError: { providerId, code: "provider_unavailable" },
+  };
+}
+
 interface AppendCustomModelsArgs {
   customModels: CustomProviderModel[];
   models: AvailableModel[];
@@ -304,11 +312,10 @@ export async function resolveSystemProviderModels(
   deps: LoggedWorkSessionDeps,
   args: ResolveSystemProviderModelsArgs,
 ): Promise<ModelListResult> {
-  await deps.providerRegistry.whenRegistrationsSettled();
-  const configuredProvider = listConfiguredSystemProviderInfos(
-    deps,
-    [],
-  ).find((provider) => provider.id === args.providerId);
+  await deps.providerRegistry.whenProviderRegistered(args.providerId);
+  const configuredProvider = listConfiguredSystemProviderInfos(deps, []).find(
+    (provider) => provider.id === args.providerId,
+  );
   const knownAcpAgent = isAcpProviderTierRegistered(deps)
     ? findKnownAcpAgentForProviderId(args.providerId)
     : undefined;
@@ -426,7 +433,11 @@ export async function resolveSystemExecutionOptions(
   deps: LoggedWorkSessionDeps,
   query: SystemExecutionOptionsRequest,
 ): Promise<SystemExecutionOptionsResponse> {
-  await deps.providerRegistry.whenRegistrationsSettled();
+  if (query.providerId === undefined) {
+    await deps.providerRegistry.whenRegistrationsSettled();
+  } else {
+    await deps.providerRegistry.whenProviderRegistered(query.providerId);
+  }
   const cwd =
     query.environmentId === undefined
       ? undefined
@@ -475,6 +486,14 @@ export async function resolveSystemExecutionOptions(
       models: [],
       selectedOnlyModels: [],
       modelLoadError: null,
+    };
+  }
+
+  if (!modelsProvider.available) {
+    return {
+      providers,
+      permissionCeiling,
+      ...unavailableProviderModelResult(modelsProvider.id),
     };
   }
 
@@ -543,6 +562,9 @@ async function loadSystemProviderModels(
     provider: ProviderInfo;
   },
 ): Promise<ModelListResult> {
+  if (!provider.available) {
+    return unavailableProviderModelResult(provider.id);
+  }
   const customAcpAgent = findCustomAcpAgentForProviderId(
     deps.config.customAcpAgents,
     provider.id,

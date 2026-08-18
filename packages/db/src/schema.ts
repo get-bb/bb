@@ -728,6 +728,13 @@ export const events = sqliteTable(
       table.threadId,
       table.sequence,
     ),
+    // Timeline in-turn pagination checks whether a delegated child above a
+    // candidate cut belongs to a tool call below it. Keep that parent probe on
+    // the small tool-call subset rather than walking the thread/sequence index
+    // and fetching scattered event payload rows.
+    index("events_tool_call_parent_lookup_idx")
+      .on(table.threadId, table.itemId, table.sequence)
+      .where(sql`${table.itemKind} = 'toolCall'`),
     index("events_thread_type_item_kind_sequence_idx").on(
       table.threadId,
       table.type,
@@ -751,6 +758,11 @@ export const events = sqliteTable(
       table.itemId,
       table.sequence,
     ),
+    index("events_item_lifecycle_thread_item_sequence_idx")
+      .on(table.threadId, table.itemId, table.sequence)
+      .where(
+        sql`${table.type} IN ('item/started', 'item/completed', 'item/backgroundTask/completed')`,
+      ),
     index("events_environment_idx").on(table.environmentId),
     index("events_completed_item_truncation_idx")
       .on(table.itemKind, table.createdAt, table.id)

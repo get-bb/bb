@@ -139,6 +139,7 @@ export type EventProjectionToolParsedIntent =
 export interface EventProjectionDelegationMetadata {
   subagentType?: string;
   description?: string;
+  model?: string;
 }
 
 export interface EventProjectionToolCallMessage extends EventProjectionMessageBase {
@@ -373,6 +374,8 @@ export interface EventProjectionWorkflowMessage extends EventProjectionMessageBa
   taskType: string;
   workflowName: string | null;
   description: string;
+  /** Model requested by the spawning delegation, when the provider exposed it. */
+  model: string | null;
   status: Extract<
     EventProjectionMessageStatus,
     "pending" | "completed" | "error" | "interrupted"

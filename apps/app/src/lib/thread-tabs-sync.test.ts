@@ -1,7 +1,11 @@
 import type { ThreadTab } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { createEmptyFixedPanelTabsState } from "./fixed-panel-tabs-state";
-import { reconcileFixedPanelTabsState } from "./thread-tabs-sync";
+import { createPluginPageFixedPanelTab } from "./fixed-panel-tabs-state";
+import {
+  areThreadTabListsEquivalent,
+  reconcileFixedPanelTabsState,
+} from "./thread-tabs-sync";
 
 function browserTab(
   id: string,
@@ -64,5 +68,15 @@ describe("thread tab synchronization", () => {
     ]);
 
     expect(reconciled.secondary.tabs).toEqual([browser]);
+  });
+
+  it("keeps plugin page fixed tabs out of thread synchronization", () => {
+    const pageTab = createPluginPageFixedPanelTab({
+      fixedTabId: "navigation",
+      pageId: "tasks",
+      pluginId: "tasks",
+    });
+
+    expect(areThreadTabListsEquivalent([pageTab], [])).toBe(true);
   });
 });

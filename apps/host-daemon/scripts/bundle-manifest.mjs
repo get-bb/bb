@@ -57,6 +57,15 @@ export const bundleTargets = [
     outfile: resolve(packageRoot, "dist", "bb-provider-bridge-worker.mjs"),
   },
   {
+    // Forked child that runs a plugin's `bb.host` entry (plugin-host-manager.ts).
+    // Emitted next to the daemon bundle so defaultWorkerEntryPath resolves it as
+    // a sibling in the packaged app.
+    banner: NODE_ESM_REQUIRE_BANNER,
+    entryPoint: resolve(packageRoot, "src", "plugin-host-worker.ts"),
+    label: "plugin host worker",
+    outfile: resolve(packageRoot, "dist", "bb-plugin-host-worker.mjs"),
+  },
+  {
     banner: NODE_ESM_REQUIRE_BANNER,
     entryPoint: resolve(workspaceRoot, "apps", "cli", "src", "index.ts"),
     executable: true,

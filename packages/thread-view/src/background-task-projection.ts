@@ -128,6 +128,7 @@ export function upsertBackgroundTaskMessage(
     taskType: lifecycle.item.taskType,
     workflowName: lifecycle.item.workflowName ?? null,
     description: lifecycle.item.description,
+    model: null,
     status: toWorkflowMessageStatus(lifecycle.item.status),
     taskStatus: lifecycle.item.taskStatus,
     skipTranscript: lifecycle.item.skipTranscript,

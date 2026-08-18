@@ -4,6 +4,7 @@ import {
   type BrowserFixedPanelTab,
   type FixedPanelTab,
   type FixedPanelTabsState,
+  type FixedPanelViewTab,
   type NewTabFixedPanelTab,
   type SecondaryFileFixedPanelTab,
   type SecondaryFixedPanelTab,
@@ -58,6 +59,12 @@ interface PruneStorageTabsArgs {
   threadId: string | null | undefined;
 }
 
+interface ReconcileFixedPanelViewTabsInStateArgs {
+  fixedTabs: readonly FixedPanelViewTab[];
+  openFirstFixedTabWhenEmpty?: boolean;
+  state: FixedPanelTabsState;
+}
+
 export function isWorkspaceFilePreviewTab(
   tab: FixedPanelTab,
 ): tab is WorkspaceFilePreviewFixedPanelTab {
@@ -92,8 +99,60 @@ export function isSecondaryFileTab(
       return true;
     case "thread-info":
     case "git-diff":
+    case "plugin-page-fixed":
       return false;
   }
+}
+
+export function isFixedPanelViewTab(
+  tab: FixedPanelTab,
+): tab is FixedPanelViewTab {
+  return !isSecondaryFileTab(tab);
+}
+
+export function reconcileFixedPanelViewTabsInState({
+  fixedTabs,
+  openFirstFixedTabWhenEmpty = false,
+  state,
+}: ReconcileFixedPanelViewTabsInStateArgs): FixedPanelTabsState {
+  const contentTabs = state.secondary.tabs.filter(isSecondaryFileTab);
+  const tabs: readonly FixedPanelTab[] = [...fixedTabs, ...contentTabs];
+  const tabsAreEquivalent =
+    tabs.length === state.secondary.tabs.length &&
+    tabs.every((tab, index) => {
+      const current = state.secondary.tabs[index];
+      return current !== undefined && areFixedPanelTabsEquivalent(tab, current);
+    });
+  const activeTabStillExists = tabs.some(
+    (tab) => tab.id === state.secondary.activeTabId,
+  );
+  const activeTabId = activeTabStillExists
+    ? state.secondary.activeTabId
+    : (fixedTabs[0]?.id ?? contentTabs[0]?.id ?? null);
+  const isFirstInitialization =
+    state.secondary.tabs.length === 0 &&
+    state.secondary.activeTabId === null &&
+    !state.secondary.isOpen;
+  const isOpen =
+    activeTabId !== null &&
+    (state.secondary.isOpen ||
+      (openFirstFixedTabWhenEmpty &&
+        isFirstInitialization &&
+        fixedTabs.length > 0));
+
+  if (
+    tabsAreEquivalent &&
+    activeTabId === state.secondary.activeTabId &&
+    isOpen === state.secondary.isOpen
+  ) {
+    return state;
+  }
+  return setSecondaryPanelTabsInState({
+    activeTabId,
+    isOpen,
+    state,
+    tabs,
+  });
 }
 
 export function getActiveSecondaryPanelTab(
@@ -292,10 +351,33 @@ export function closeSecondaryPanelTabInState(
   state: FixedPanelTabsState,
   tabId: string,
 ): FixedPanelTabsState {
+  const tab = findSecondaryPanelTab(state.secondary.tabs, tabId);
+  if (tab === null) {
+    return state;
+  }
+  const isClosingActiveTab = state.secondary.activeTabId === tabId;
+
   const tabs = removeSecondaryPanelTab(state.secondary.tabs, tabId);
   if (tabs === state.secondary.tabs) {
     return state;
   }
+
+  // Closing the last active content tab falls back to a remaining fixed tab.
+  // Only a genuinely empty panel closes; closing content never creates New tab.
+  if (
+    isClosingActiveTab &&
+    isSecondaryFileTab(tab) &&
+    !tabs.some(isSecondaryFileTab)
+  ) {
+    const fallbackTab = tabs[0] ?? null;
+    return setSecondaryPanelTabsInState({
+      activeTabId: fallbackTab?.id ?? null,
+      isOpen: fallbackTab !== null,
+      state,
+      tabs,
+    });
+  }
+
   return setSecondaryPanelTabsInState({
     activeTabId: getActiveTabIdAfterClose({
       activeTabId: state.secondary.activeTabId,
@@ -410,6 +492,7 @@ export function buildOrderedSecondaryPanelFileTabs({
         break;
       case "thread-info":
       case "git-diff":
+      case "plugin-page-fixed":
         break;
     }
   }

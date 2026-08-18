@@ -30,6 +30,8 @@ import {
 
 /** Larger than any thread these tests build, so the budget never binds. */
 const LARGE_BUDGET = 1_000_000;
+/** Three or more byte windows without making loaded-suite timing dominate. */
+const BYTE_WINDOW_ITEM_COUNT = 250;
 
 const providerThreadId = "provider-root";
 const execution = {
@@ -598,7 +600,7 @@ describe("in-turn timeline windows", () => {
     seedTurns(db, thread, {
       commandChars: 25_000,
       completeLastTurn: true,
-      itemsPerTurn: [650],
+      itemsPerTurn: [BYTE_WINDOW_ITEM_COUNT],
     });
 
     const commandCallIds = new Set<string>();
@@ -626,7 +628,7 @@ describe("in-turn timeline windows", () => {
         const pageDetailCallIds = new Set<string>();
         collectCommandCallIds(details.rows, pageDetailCallIds);
         expect(pageDetailCallIds.size).toBeGreaterThan(0);
-        expect(pageDetailCallIds.size).toBeLessThan(650);
+        expect(pageDetailCallIds.size).toBeLessThan(BYTE_WINDOW_ITEM_COUNT);
         for (const callId of pageDetailCallIds) {
           expandedCommandCallIds.add(callId);
         }
@@ -643,9 +645,9 @@ describe("in-turn timeline windows", () => {
       expect(pages).toBeLessThan(10);
     }
 
-    expect(pages).toBeGreaterThan(1);
-    expect(commandCallIds.size).toBe(650);
-    expect(expandedCommandCallIds.size).toBe(650);
+    expect(pages).toBeGreaterThan(2);
+    expect(commandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
+    expect(expandedCommandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
     expect(turnRowIds.size).toBe(pages);
   }, 15_000);
 
@@ -744,7 +746,7 @@ describe("in-turn timeline windows", () => {
       commandChars: 25_000,
       completeLastTurn: true,
       delegateLastTurn: true,
-      itemsPerTurn: [650],
+      itemsPerTurn: [BYTE_WINDOW_ITEM_COUNT],
     });
 
     const commandCallIds = new Set<string>();
@@ -773,7 +775,7 @@ describe("in-turn timeline windows", () => {
         });
         const pageDetailCallIds = new Set<string>();
         collectCommandCallIds(details.rows, pageDetailCallIds);
-        expect(pageDetailCallIds.size).toBeLessThan(650);
+        expect(pageDetailCallIds.size).toBeLessThan(BYTE_WINDOW_ITEM_COUNT);
         for (const callId of pageDetailCallIds) {
           expandedCommandCallIds.add(callId);
         }
@@ -789,9 +791,9 @@ describe("in-turn timeline windows", () => {
       expect(pages).toBeLessThan(10);
     }
 
-    expect(pages).toBeGreaterThan(1);
-    expect(commandCallIds.size).toBe(650);
-    expect(expandedCommandCallIds.size).toBe(650);
+    expect(pages).toBeGreaterThan(2);
+    expect(commandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
+    expect(expandedCommandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
   }, 15_000);
 
   it("returns a placeholder when one event exceeds the byte limit", () => {
@@ -874,7 +876,7 @@ describe("in-turn timeline windows", () => {
     seedTurns(db, thread, {
       commandChars: 25_000,
       completeLastTurn: true,
-      itemsPerTurn: [650],
+      itemsPerTurn: [BYTE_WINDOW_ITEM_COUNT],
       longRunningItemIndexes: [0],
     });
 
@@ -913,7 +915,7 @@ describe("in-turn timeline windows", () => {
       expect(pages).toBeLessThan(10);
     }
 
-    expect(pages).toBeGreaterThan(1);
+    expect(pages).toBeGreaterThan(2);
     expect(straddlingDetailRows).toHaveLength(1);
     expect(straddlingDetailRows[0]).toEqual(
       expect.objectContaining({

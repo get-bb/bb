@@ -41,10 +41,17 @@ vi.mock("react-resizable-panels", async () => {
   const React = await import("react");
 
   const PanelGroup = React.forwardRef<
-    { setLayout: (layout: number[]) => void },
+    {
+      getLayout: () => number[];
+      setLayout: (layout: number[]) => void;
+    },
     { children?: ReactNode }
   >(({ children }, ref) => {
-    React.useImperativeHandle(ref, () => ({ setLayout: () => {} }), []);
+    React.useImperativeHandle(
+      ref,
+      () => ({ getLayout: () => [50, 50], setLayout: () => {} }),
+      [],
+    );
     return React.createElement(
       "div",
       { "data-testid": "panel-group" },

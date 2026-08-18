@@ -224,6 +224,26 @@ function restorePromptDraftIfEmpty(
   return true;
 }
 
+function addQuoteToPromptDraft(
+  storageKey: string,
+  text: string,
+  attachments: readonly PromptDraftAttachment[] = [],
+): void {
+  const currentDraft = readPromptDraft(storageKey);
+  const nextDraft = appendQuoteAndAttachmentsToDraft(
+    currentDraft,
+    text,
+    attachments,
+  );
+  // Whitespace-only text with no new attachments is a no-op; skip the write
+  // so an empty selection can't mark an otherwise-empty draft dirty.
+  if (nextDraft === currentDraft) {
+    return;
+  }
+
+  writePromptDraft(storageKey, nextDraft);
+}
+
 function getPromptDraftStorageKey(scope: PromptDraftScope): string {
   if (scope.kind === "automation-edit") {
     const normalizedAutomationId = normalizeStorageSegment(scope.automationId);
@@ -251,13 +271,21 @@ function getPromptDraftStorageKey(scope: PromptDraftScope): string {
  * renders the draft.
  */
 export function getPromptDraftAccessor(scope: PromptDraftScope): {
+  storageKey: string;
   getCurrent: () => PromptDraftState;
   setDraft: (draft: PromptDraftState) => void;
+  addQuote: (
+    text: string,
+    attachments?: readonly PromptDraftAttachment[],
+  ) => void;
 } {
   const storageKey = getPromptDraftStorageKey(scope);
   return {
+    storageKey,
     getCurrent: () => readPromptDraft(storageKey),
     setDraft: (draft) => writePromptDraft(storageKey, draft),
+    addQuote: (text, attachments) =>
+      addQuoteToPromptDraft(storageKey, text, attachments),
   };
 }
 
@@ -333,21 +361,8 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
   );
 
   const addQuote = useCallback(
-    (text: string, attachments: readonly PromptDraftAttachment[] = []) => {
-      const currentDraft = readPromptDraft(storageKey);
-      const nextDraft = appendQuoteAndAttachmentsToDraft(
-        currentDraft,
-        text,
-        attachments,
-      );
-      // Whitespace-only text with no new attachments is a no-op; skip the write
-      // so an empty selection can't mark an otherwise-empty draft dirty.
-      if (nextDraft === currentDraft) {
-        return;
-      }
-
-      writePromptDraft(storageKey, nextDraft);
-    },
+    (text: string, attachments?: readonly PromptDraftAttachment[]) =>
+      addQuoteToPromptDraft(storageKey, text, attachments),
     [storageKey],
   );
 

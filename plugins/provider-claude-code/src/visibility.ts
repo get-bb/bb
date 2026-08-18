@@ -1,13 +1,30 @@
 import {
   createProviderVisibilityMetadata,
-  getMessageContentTypes,
   getRawSdkMessage,
   getRecordProperty,
   getStringProperty,
+  isRecord,
   type JsonRpcMessage,
   type ProviderRawEventDescription,
   type ProviderVisibilityMetadata,
 } from "@get-bb/plugin-sdk/provider-bridge";
+
+function getMessageContentTypes(message: Record<string, unknown>): string[] {
+  const messagePayload = getRecordProperty(message, "message");
+  const content = messagePayload?.["content"];
+  if (!Array.isArray(content)) {
+    return [];
+  }
+
+  const types = new Set<string>();
+  for (const block of content) {
+    if (!isRecord(block)) continue;
+    const type = getStringProperty(block, "type");
+    if (!type) continue;
+    types.add(type);
+  }
+  return [...types];
+}
 const CLAUDE_NORMALIZED_ASSISTANT_CONTENT_TYPES = new Set([
   "fallback",
   "text",

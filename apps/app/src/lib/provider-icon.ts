@@ -26,14 +26,9 @@ const GenericAcpIcon: ComponentType<{ className?: string }> = ({ className }) =>
   createElement(Icon, { name: "Code", className, "aria-hidden": "true" });
 
 // Vendored brand marks for the built-in providers, keyed by provider id. The
-// first-party provider plugins now register these same marks through
-// `app.slots.experimental_providerIcon`, so this map is the fallback for the
-// window before plugin frontends boot and for a disabled/failed provider
-// plugin: built-ins must keep rendering their real brand marks, never the
-// generic glyph and never a black-on-black `<img>` logo. It graduates to dead
-// code — deletable along with the vendored SVG components — once the plugin
-// icons have soaked and a disabled provider plugin no longer leaves its
-// provider in the picker.
+// first-party provider plugins register these same marks through
+// `app.slots.experimental_providerIcon`; this map remains the fallback while a
+// plugin frontend boots and if it is disabled or fails to load.
 const BUILT_IN_BRAND_ICONS: Record<string, ProviderIconInfo> = {
   codex: { icon: OpenAiIcon, ariaLabel: "Codex" },
   "claude-code": { icon: ClaudeIcon, ariaLabel: "Claude Code" },

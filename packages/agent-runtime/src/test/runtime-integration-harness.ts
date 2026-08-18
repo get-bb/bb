@@ -639,15 +639,6 @@ export function getCompletedCommands(events: ThreadEvent[]): string[] {
   return commands;
 }
 
-export function hasDeniedCommandExecution(events: ThreadEvent[]): boolean {
-  return events.some(
-    (event) =>
-      event.type === "item/completed" &&
-      event.item.type === "commandExecution" &&
-      event.item.approvalStatus === "denied",
-  );
-}
-
 export async function resolveDefaultModel(
   providerId: string,
   ctx: TestContext,

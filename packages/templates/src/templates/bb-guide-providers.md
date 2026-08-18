@@ -60,12 +60,12 @@ settings, or run:
 
   bb provider-retry status [thread-id] [--json]    Inspect in-memory waits
   bb provider-retry cancel <thread-id> [--json]    Cancel an automatic retry
-  bb thread retry [id] [--request-id <id>]         Core continuation
+  bb provider-retry retry <thread-id> [--json]     Request a manual retry
 
 Timed waits exist only while the current bb server/plugin process remains
 running. Disabling/reloading the plugin or restarting the server clears them;
-the original failed thread remains available for `bb thread retry`. Credit and
-spend-control exhaustion without a reset time is ignored by the plugin.
+the original failed thread remains available for `bb provider-retry retry`.
+Credit and spend-control exhaustion without a reset time is manual-only.
 
 Claude Code's native Workflow tool can be disabled separately on its provider
 page. This preference also defaults off and applies to newly started, resumed,

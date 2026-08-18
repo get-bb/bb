@@ -49,6 +49,7 @@
     "host-daemon/dist/bb",
     "host-daemon/dist/bb-parcel-watcher-child.mjs",
     "host-daemon/dist/bb-pi-bridge.mjs",
+    "host-daemon/dist/bb-plugin-host-worker.mjs",
     "host-daemon/dist/bb-provider-bridge-worker.mjs",
     "host-daemon/dist/daemon-bundle.mjs",
     "server/dist",

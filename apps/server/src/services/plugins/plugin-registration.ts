@@ -21,6 +21,7 @@ import {
 } from "./builtin-registry.js";
 import { CURATED_MARKETPLACE_NAME } from "../plugin-catalog/marketplace-manifest.js";
 import type { PluginSourceSelection } from "@bb/server-contract";
+import type { TelemetryEvent } from "../system/telemetry.js";
 import { resolveSelectedSubdirectory } from "./collection-manifest.js";
 import {
   isCommitSha,
@@ -47,6 +48,36 @@ import {
   type NpmSourceIntentForResolution,
   type PluginResolvedUpdateVersion,
 } from "./update-resolver.js";
+
+/**
+ * The anonymous install event. Only public plugins report names: bundled
+ * builtins and entries of the curated `bb-community` marketplace. A direct
+ * install or a third-party catalog (a local `path:` or private git
+ * marketplace) can name private code, so it reports only the shape of the
+ * install.
+ */
+export function pluginInstalledTelemetryEvent(
+  pluginId: string,
+  provenance: PluginProvenance,
+  sourceIntent: PluginSourceIntent,
+): Extract<TelemetryEvent, { name: "plugin_installed" }> {
+  const isPublic =
+    provenance.kind === "builtin" ||
+    (provenance.kind === "catalog" &&
+      provenance.marketplace === CURATED_MARKETPLACE_NAME);
+  return {
+    name: "plugin_installed",
+    properties: {
+      plugin_id: isPublic ? pluginId : null,
+      provenance: provenance.kind,
+      marketplace:
+        isPublic && provenance.kind === "catalog"
+          ? provenance.marketplace
+          : null,
+      source_kind: sourceIntent.kind,
+    },
+  };
+}
 
 export interface PluginRegistrationContext {
   deps: PluginServiceDeps;
@@ -307,6 +338,13 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     notifyPluginsChanged();
     const entry = list().find((p) => p.id === manifest.id);
     if (!entry) throw new Error(`plugin ${manifest.id} missing after install`);
+    deps.telemetry.capture(
+      pluginInstalledTelemetryEvent(
+        manifest.id,
+        args.provenance,
+        args.sourceIntent,
+      ),
+    );
     return entry;
   }
 

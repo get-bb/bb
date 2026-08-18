@@ -23,6 +23,7 @@ import { usePluginSlots } from "@/lib/plugin-slots";
 import { useFileOpenerPreferenceValue } from "@/lib/file-opener-preference";
 import {
   createFileOpenerTabForRequest,
+  fileOpenerIdFromActionId,
   type FileTabViewerOverride,
 } from "@/components/plugin/file-opener-tabs";
 import type { OpenPluginPanelArgs } from "@/components/plugin/PluginPanelActions";
@@ -411,11 +412,11 @@ export function useThreadFileTabs({
       request: OpenSecondaryPanelTabRequest,
       options?: { viewer?: FileTabViewerOverride },
     ): SecondaryPanelTab | null => {
-      // Default-opener diversion (plugin design §5.2): every file-open flow
+      // Opener diversion (plugin design §5.2): every file-open flow
       // funnels through here (links, file search, `bb thread open`), so a
-      // preferred plugin opener applies uniformly. Falls through to the
+      // matching plugin opener applies uniformly. Falls through to the
       // built-in tab when no opener matches; a link menu's per-open viewer
-      // choice overrides the default in either direction.
+      // choice overrides automatic or pinned resolution in either direction.
       const openerTab = createFileOpenerTabForRequest({
         fileOpeners,
         preference: fileOpenerPreference,
@@ -599,25 +600,86 @@ export function useThreadFileTabs({
   const activeNewTab = activeTab?.kind === "new-tab" ? activeTab : null;
   const activePluginPanelTab =
     activeTab?.kind === "plugin-panel" ? activeTab : null;
+  const activeFileOpenerOwner =
+    activePluginPanelTab !== null &&
+    fileOpenerIdFromActionId(activePluginPanelTab.actionId) !== null
+      ? (activePluginPanelTab.fileOpenerOwner ?? null)
+      : null;
 
   return {
     activateTab,
     activeBrowserTab,
-    activeHostFileEnvironmentId: activeHostFileTab?.environmentId ?? null,
-    activeHostFileLineRange: activeHostFileTab?.lineRange ?? null,
-    activeHostFilePath: activeHostFileTab?.path ?? null,
-    activeHostFileThreadId: activeHostFileTab?.threadId ?? null,
-    activeStorageFileEnvironmentId: activeStorageFileTab?.environmentId ?? null,
-    activeStorageFileLineRange: activeStorageFileTab?.lineRange ?? null,
-    activeStorageFilePath: activeStorageFileTab?.path ?? null,
-    activeStorageFileThreadId: activeStorageFileTab?.threadId ?? null,
-    activeWorkspaceFileLineRange: activeWorkspaceFileTab?.lineRange ?? null,
+    activeFileOpenerOwner,
+    activeHostFileEnvironmentId:
+      activeHostFileTab?.environmentId ??
+      (activeFileOpenerOwner?.kind === "host-file-preview"
+        ? activeFileOpenerOwner.environmentId
+        : null),
+    activeHostFileLineRange:
+      activeHostFileTab?.lineRange ??
+      (activeFileOpenerOwner?.kind === "host-file-preview"
+        ? activeFileOpenerOwner.tab.lineRange
+        : null),
+    activeHostFilePath:
+      activeHostFileTab?.path ??
+      (activeFileOpenerOwner?.kind === "host-file-preview"
+        ? activeFileOpenerOwner.tab.path
+        : null),
+    activeHostFileThreadId:
+      activeHostFileTab?.threadId ??
+      (activeFileOpenerOwner?.kind === "host-file-preview"
+        ? activeFileOpenerOwner.threadId
+        : null),
+    activeStorageFileEnvironmentId:
+      activeStorageFileTab?.environmentId ??
+      (activeFileOpenerOwner?.kind === "thread-storage-file-preview"
+        ? activeFileOpenerOwner.environmentId
+        : null),
+    activeStorageFileLineRange:
+      activeStorageFileTab?.lineRange ??
+      (activeFileOpenerOwner?.kind === "thread-storage-file-preview"
+        ? activeFileOpenerOwner.tab.lineRange
+        : null),
+    activeStorageFilePath:
+      activeStorageFileTab?.path ??
+      (activeFileOpenerOwner?.kind === "thread-storage-file-preview"
+        ? activeFileOpenerOwner.tab.path
+        : null),
+    activeStorageFileThreadId:
+      activeStorageFileTab?.threadId ??
+      (activeFileOpenerOwner?.kind === "thread-storage-file-preview"
+        ? activeFileOpenerOwner.threadId
+        : null),
+    activeWorkspaceFileLineRange:
+      activeWorkspaceFileTab?.lineRange ??
+      (activeFileOpenerOwner?.kind === "workspace-file-preview"
+        ? activeFileOpenerOwner.tab.lineRange
+        : null),
     activeWorkspaceFileEnvironmentId:
-      activeWorkspaceFileTab?.environmentId ?? null,
-    activeWorkspaceFilePath: activeWorkspaceFileTab?.path ?? null,
-    activeWorkspaceFileProjectId: activeWorkspaceFileTab?.projectId ?? null,
-    activeWorkspaceFileSource: activeWorkspaceFileTab?.source ?? null,
-    activeWorkspaceFileStatusLabel: activeWorkspaceFileTab?.statusLabel ?? null,
+      activeWorkspaceFileTab?.environmentId ??
+      (activeFileOpenerOwner?.kind === "workspace-file-preview"
+        ? activeFileOpenerOwner.environmentId
+        : null),
+    activeWorkspaceFilePath:
+      activeWorkspaceFileTab?.path ??
+      (activeFileOpenerOwner?.kind === "workspace-file-preview"
+        ? activeFileOpenerOwner.tab.path
+        : null),
+    activeWorkspaceFileProjectId:
+      activeWorkspaceFileTab?.projectId ??
+      (activeFileOpenerOwner?.kind === "workspace-file-preview"
+        ? activeFileOpenerOwner.projectId
+        : null),
+    activeWorkspaceFileSource:
+      activeWorkspaceFileTab?.source ??
+      (activeFileOpenerOwner?.kind === "workspace-file-preview"
+        ? activeFileOpenerOwner.tab.source
+        : null),
+    activeWorkspaceFileStatusLabel:
+      activeWorkspaceFileTab?.statusLabel ??
+      (activeFileOpenerOwner?.kind === "workspace-file-preview"
+        ? activeFileOpenerOwner.tab.statusLabel
+        : null),
     activePluginPanelTab,
     browserTabs,
     clearActiveFileTabs,

@@ -21,6 +21,7 @@ import type {
 } from "./provider-registry.js";
 
 export function buildPluginProviderRegistration(args: {
+  available: boolean;
   pluginId: string;
   declaration: PluginProviderDeclaration;
 }): Omit<ProviderRegistration, "source"> {
@@ -59,7 +60,7 @@ export function buildPluginProviderRegistration(args: {
   const info: ProviderInfo = {
     id: declaration.id,
     displayName: declaration.displayName,
-    available: true,
+    available: args.available,
     // Served by the provider-logo route from the icon byte snapshot on the
     // registration (see registerProvider in plugin-runtime.ts). The raw
     // plugin-assets route serves only branding variants and built bundles, so

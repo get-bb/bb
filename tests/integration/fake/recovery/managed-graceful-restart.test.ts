@@ -9,6 +9,7 @@ import {
 import { withHarness } from "../../helpers/harness.js";
 import {
   createRecoveryThread,
+  RECOVERY_TEST_TIMEOUT_MS,
   RECOVERY_TIMEOUT_MS,
   TURN_TIMEOUT_MS,
 } from "./shared.js";
@@ -65,6 +66,6 @@ describe.sequential(
           "idle",
           TURN_TIMEOUT_MS,
         );
-      }));
+      }), RECOVERY_TEST_TIMEOUT_MS);
   },
 );

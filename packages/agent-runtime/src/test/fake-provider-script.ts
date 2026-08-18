@@ -270,6 +270,20 @@ function completeTurn(
   clearActiveTurn(thread);
 
   if (status === "completed") {
+    const itemId = `msg-${thread.turnCount}`;
+    send({
+      jsonrpc: "2.0",
+      method: "item/started",
+      params: {
+        threadId,
+        turnId: turn.turnId,
+        item: {
+          type: "agentMessage",
+          id: itemId,
+          text: "",
+        },
+      },
+    });
     send({
       jsonrpc: "2.0",
       method: "item/completed",
@@ -278,7 +292,7 @@ function completeTurn(
         turnId: turn.turnId,
         item: {
           type: "agentMessage",
-          id: `msg-${thread.turnCount}`,
+          id: itemId,
           text: responseText,
         },
       },

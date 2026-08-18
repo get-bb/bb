@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { useContext, useMemo, useState, type ReactNode } from "react";
@@ -100,6 +101,7 @@ function RootComposeFixture() {
       isOpen: isPanelOpen,
       panel: <div data-testid="hosted-new-thread-panel" />,
       onToggle: () => setIsPanelOpen((open) => !open),
+      transitionsReady: true,
     }),
     [isPanelOpen],
   );
@@ -213,6 +215,62 @@ vi.mock("@/views/RootComposeView", () => ({
   RootComposeView: RootComposeFixture,
 }));
 
+vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
+  PluginPanelRightPanelHost: ({
+    children,
+    flushPageInsets,
+    panelPath,
+    pluginId,
+  }: {
+    children: ReactNode;
+    flushPageInsets?: boolean;
+    panelPath: string;
+    pluginId: string;
+  }) => {
+    const pane = useContext(PaneContext);
+    const [isPanelOpen, setIsPanelOpen] = useState(false);
+    const panelModel = useMemo(
+      () => ({
+        composerHost: null,
+        contentKey: `plugin-panel:${pluginId}:${panelPath}`,
+        isMainCollapsed: false,
+        isOpen: isPanelOpen,
+        panel: (
+          <div data-testid="hosted-plugin-app-panel">
+            <div data-testid="workspace-panel-resize-handle" className="z-[30]">
+              <span data-panel-resize-hit-target="" />
+            </div>
+            {isPanelOpen ? (
+              <button
+                type="button"
+                aria-label="Hide right panel"
+                onClick={() => setIsPanelOpen(false)}
+              />
+            ) : null}
+          </div>
+        ),
+        onToggle: () => setIsPanelOpen((open) => !open),
+        transitionsReady: true,
+      }),
+      [isPanelOpen, panelPath, pluginId],
+    );
+    usePaneSecondaryPanelRegistration(
+      pane?.secondaryPanelHost ?? null,
+      panelModel,
+    );
+    return (
+      <div
+        data-testid="plugin-browser-host"
+        data-flush-page-insets={String(flushPageInsets === true)}
+        data-panel-path={panelPath}
+        data-plugin-id={pluginId}
+      >
+        {children}
+      </div>
+    );
+  },
+}));
+
 // Lightweight stand-in for the heavyweight thread view. It surfaces the pane's
 // thread id, focus, close affordance, and a real threadId-keyed draft so the
 // test exercises SplitThreadArea's wiring without its dependency tree.
@@ -249,6 +307,7 @@ vi.mock("./ThreadDetailView", () => ({
           </div>
         ),
         onToggle: () => setIsPanelOpen((open) => !open),
+        transitionsReady: true,
       }),
       [composerHost, isPanelOpen, threadId],
     );
@@ -567,6 +626,36 @@ afterEach(() => {
 });
 
 describe("SplitThreadArea", () => {
+  it("hosts Browser-tab navigation on compact plugin-panel routes", async () => {
+    viewportState.compact = true;
+
+    renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout: pluginSplitLayout(),
+      routeContent: docsContent,
+    });
+
+    const host = await screen.findByTestId("plugin-browser-host");
+    expect(host.dataset.pluginId).toBe("docs");
+    expect(host.dataset.panelPath).toBe("docs");
+    expect(host.dataset.flushPageInsets).toBe("true");
+  });
+
+  it("hosts Browser-tab navigation when split workspaces are disabled", async () => {
+    experimentState.enabled = false;
+
+    renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout: pluginSplitLayout(),
+      routeContent: docsContent,
+    });
+
+    expect(
+      (await screen.findByTestId("plugin-browser-host")).dataset
+        .flushPageInsets,
+    ).toBe("true");
+  });
+
   it("applies spotlight pane actions to the targeted open split and preference", async () => {
     const store = renderSplitArea({
       path: threadPath("thr-b"),
@@ -1346,7 +1435,7 @@ describe("SplitThreadArea", () => {
     ).toBe("true");
   });
 
-  it("shows the empty panel state while a plugin pane is focused", async () => {
+  it("hosts the app panel while a plugin pane is focused", async () => {
     const layout = pluginSplitLayout();
     layout.focusedPaneId = "pane-1";
     renderSplitArea({
@@ -1367,13 +1456,13 @@ describe("SplitThreadArea", () => {
       throw new Error("Expected plugin split pane");
     }
 
-    // The plugin pane publishes no panel, so the window panel keeps its place
-    // and states that plainly. Its toggle and pane controls all stay live.
+    // Plugin pages publish the same panel model as first-party pages, so focus
+    // swaps the window panel content without an empty-state interlude.
     fireEvent.pointerDown(pluginPane);
-    const emptyState = await screen.findByTestId(
-      "split-workspace-empty-panel-state",
-    );
-    expect(emptyState.textContent).toContain("This pane has no right panel.");
+    expect(await screen.findByTestId("hosted-plugin-app-panel")).toBeTruthy();
+    expect(
+      screen.queryByTestId("split-workspace-empty-panel-state"),
+    ).toBeNull();
     const panelResizeHandle = screen.getByTestId(
       "workspace-panel-resize-handle",
     );
@@ -1388,7 +1477,7 @@ describe("SplitThreadArea", () => {
       pluginPane.querySelector('button[aria-label*="Full Screen"]'),
     ).not.toBeNull();
 
-    // The toggle closes and reopens the empty state on its own.
+    // The plugin page's hosted panel owns the open/close transition.
     fireEvent.click(pluginToggle!);
     await waitFor(() =>
       expect(
@@ -1421,11 +1510,10 @@ describe("SplitThreadArea", () => {
       throw new Error("Expected plugin split pane");
     }
 
-    // Focusing a pane with no hosted panel exposes the empty right-panel
-    // handle beside that pane's bounded header. The handle must own the whole
-    // 12px grab strip at this row instead of losing its left overhang.
+    // The hosted plugin panel's handle must own the whole 12px grab strip at
+    // this row instead of losing its left overhang to the bounded pane header.
     fireEvent.pointerDown(pluginPane);
-    await screen.findByTestId("split-workspace-empty-panel-state");
+    await screen.findByTestId("hosted-plugin-app-panel");
 
     const panelResizeHandle = screen.getByTestId(
       "workspace-panel-resize-handle",
@@ -1439,7 +1527,7 @@ describe("SplitThreadArea", () => {
     }
   });
 
-  it("ignores the empty panel's initial collapse so a thread keeps its open panel", async () => {
+  it("keeps a thread's open panel after focusing a plugin page", async () => {
     const layout = pluginSplitLayout();
     layout.focusedPaneId = "pane-2";
     renderSplitArea({
@@ -1448,24 +1536,24 @@ describe("SplitThreadArea", () => {
       routeAwareContent: true,
     });
 
-    await screen.findByTestId("split-workspace-empty-panel-state");
-    // react-resizable-panels reports the zero-width first layout as a
-    // collapse. Honoring it would harden the "adopt the first publisher's
-    // state" sentinel into closed before any pane published.
-    act(() => {
-      panelCallbacks
-        .get("split-workspace-empty-secondary-panel")
-        ?.onCollapse?.();
-    });
+    await screen.findByTestId("hosted-plugin-app-panel");
+    fireEvent.click(screen.getByRole("button", { name: "Show right panel" }));
+    await within(screen.getByTestId("hosted-plugin-app-panel")).findByRole(
+      "button",
+      { name: "Hide right panel" },
+    );
 
     fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
     expect(await screen.findByTestId("hosted-panel-thr-a")).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.queryByTestId("hosted-plugin-app-panel")).toBeNull(),
+    );
     expect(
       screen.getByRole("button", { name: "Hide right panel" }),
     ).toBeTruthy();
   });
 
-  it("drops the corner reserve while the open empty panel holds the toggle", async () => {
+  it("drops the corner reserve while the hosted plugin panel holds the toggle", async () => {
     const layout = pluginSplitLayout();
     layout.focusedPaneId = "pane-2";
     renderSplitArea({
@@ -1476,7 +1564,7 @@ describe("SplitThreadArea", () => {
 
     // pane-2 is the plugin pane at the right edge. Closed, the toggle sits on
     // its header row, so the header keeps that corner free.
-    await screen.findByTestId("split-workspace-empty-panel-state");
+    await screen.findByTestId("hosted-plugin-app-panel");
     const close = screen.getByRole("button", { name: "Close pane" });
     expect(close.nextElementSibling?.tagName).toBe("SPAN");
 
@@ -1489,7 +1577,13 @@ describe("SplitThreadArea", () => {
     );
     expect(
       screen.getByTestId("split-workspace-panel-toggle").classList,
-    ).not.toContain("hidden");
+    ).toContain("hidden");
+    expect(
+      within(screen.getByTestId("hosted-plugin-app-panel")).getByRole(
+        "button",
+        { name: "Hide right panel" },
+      ),
+    ).toBeTruthy();
   });
 
   it("preserves plugin-owned right panels with and without a plugin split", async () => {
@@ -1544,12 +1638,17 @@ describe("SplitThreadArea", () => {
       "Docs content with notes sidebar",
     );
     expect(docsPanelContent).toBeTruthy();
+    expect(
+      screen
+        .getAllByTestId("plugin-browser-host")
+        .every((host) => host.dataset.flushPageInsets === "false"),
+    ).toBe(true);
     expect(docsPanelContent.closest(".isolate")).not.toBeNull();
     expect(
       screen.getByRole("button", { name: "Collapse notes sidebar" }),
     ).toBeTruthy();
-    // Neither plugin pane publishes a panel, so the window offers its empty
-    // state instead of dropping the control.
+    // Plugin pages publish the shared App panel model, so the window keeps the
+    // same panel control while focus moves between plugin panes.
     expect(screen.getByTestId("split-workspace-panel-toggle")).toBeTruthy();
     // The app panel belongs to a publishing pane, but full screen is pane
     // chrome: every pane in a split owns it, plugin panes included.
@@ -1570,6 +1669,9 @@ describe("SplitThreadArea", () => {
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Close pane" })).toBeNull();
     expect(screen.queryByTestId("split-workspace-panel-toggle")).toBeNull();
+    const remainingHost = screen.getByTestId("plugin-browser-host");
+    expect(remainingHost.dataset.flushPageInsets).toBe("true");
+    expect(remainingHost.firstElementChild?.classList).not.toContain("-m-4");
   });
 
   it("mounts both panes with independent, threadId-keyed drafts", async () => {

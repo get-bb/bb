@@ -55,6 +55,7 @@ import type {
 } from "@get-bb/plugin-sdk";
 import {
   AGENT_TOOL_NAME_PATTERN,
+  assertNoRecursiveJsonSchemaReferences,
   BACKGROUND_NAME_PATTERN,
   CLI_COMMAND_NAME_PATTERN,
   isZodSchemaLike,
@@ -293,6 +294,8 @@ export interface PluginApiHandle {
   cli: { registration: PluginCliRegistrationRecord | null };
   /** Native tools recorded by `bb.agents.registerTool`. */
   agentTools: PluginAgentToolRecord[];
+  /** Undisposed provider declarations staged by the factory. */
+  listProviderDeclarations(): PluginProviderDeclaration[];
   /** Per-resolution selector from `bb.agents.configure` (at most one). */
   agentConfigurationProvider: PluginAgentConfigurationProvider | null;
   /**
@@ -1023,6 +1026,10 @@ export function createPluginApi(options: {
           `tool "${name}" parameters must be a zod schema or a JSON-schema object`,
         );
       }
+      assertNoRecursiveJsonSchemaReferences(
+        inputSchema,
+        `tool "${name}" parameters`,
+      );
       const owner = isAgentToolNameTaken(name);
       if (owner !== undefined) {
         // Cross-plugin collision: the earlier registration wins; this one
@@ -1348,6 +1355,11 @@ export function createPluginApi(options: {
     schedules,
     cli: cliRecord,
     agentTools,
+    listProviderDeclarations() {
+      return [...providerRegistrations.values()]
+        .filter((entry) => !entry.disposed)
+        .map((entry) => entry.declaration);
+    },
     get agentConfigurationProvider() {
       return agentConfigurationProvider;
     },

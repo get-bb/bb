@@ -232,13 +232,14 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "isCompactViewport",
     "onNavigate",
     "searchQuery",
+    "experimental_Original",
   ],
   experimental_threadHeaderAction: [
     "threadId",
     "projectId",
     "isCompactViewport",
   ],
-  fileOpener: ["path", "source"],
+  fileOpener: ["path", "source", "experimental_Original"],
   messageDirective: ["attributes", "source", "message", "openWorkspaceFile"],
   messageAction: ["threadId", "message", "selectedText", "openPanel"],
   experimental_providerIcon: ["providerId", "icon"],
@@ -268,6 +269,7 @@ const NAV_PANEL_REGISTRATION_FIELDS = [
   "icon",
   "path",
   "component",
+  "experimental_fixedTabs",
   "experimental_sidebarAccessory",
   "headerContent",
 ] as const satisfies readonly (keyof PluginNavPanelRegistration)[];

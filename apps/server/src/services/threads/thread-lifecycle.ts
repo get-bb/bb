@@ -98,6 +98,7 @@ import {
 } from "./thread-provisioning-active-context.js";
 import { hasProvisioningTimelineRow } from "./thread-provisioning-context.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
+import { settleDanglingBackgroundTasksForStoppedThreadInTransaction } from "./background-task-reconciliation.js";
 
 type ReadyThreadTurnDispatchKind = "thread.start" | "turn.submit";
 type ThreadStartCommand = Awaited<ReturnType<typeof buildThreadStartCommand>>;
@@ -221,8 +222,10 @@ interface HasProviderTurnCompletedEventAtOrAfterArgs {
  * interruption reason on the thread. The release intent has no caller here, so
  * it is not part of these args.
  */
-export interface RequestThreadStopArgs
-  extends Omit<ThreadStopCommandArgs, "intent"> {
+export interface RequestThreadStopArgs extends Omit<
+  ThreadStopCommandArgs,
+  "intent"
+> {
   interruptionReason: SystemThreadInterruptedReason;
 }
 
@@ -1038,6 +1041,12 @@ export function settleThreadStopCommandResult(
   // append `system/thread/interrupted` and interrupt the pending interactions
   // of a thread that nobody interrupted, so a release settles as a no-op and
   // leaves the thread resumable.
+  if (args.report.ok) {
+    settleDanglingBackgroundTasksForStoppedThreadInTransaction(args.deps, {
+      threadId: args.command.threadId,
+    });
+  }
+
   if (args.command.intent === "release") {
     return emptyCommandResultSideEffects();
   }

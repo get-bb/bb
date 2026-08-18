@@ -9,7 +9,23 @@
  */
 
 import { z } from "zod";
-import { providerToolCallResponseSchema } from "./provider-tool-call-contract.js";
+
+/** Kit-internal: the runtime's `item/tool/call` response result shape. */
+const providerToolCallResponseSchema = z.object({
+  success: z.boolean(),
+  contentItems: z.array(
+    z.discriminatedUnion("type", [
+      z.object({
+        type: z.literal("inputText"),
+        text: z.string(),
+      }),
+      z.object({
+        type: z.literal("inputImage"),
+        imageUrl: z.string().min(1),
+      }),
+    ]),
+  ),
+});
 
 // ---------------------------------------------------------------------------
 // Tool call request — bridge → host-daemon

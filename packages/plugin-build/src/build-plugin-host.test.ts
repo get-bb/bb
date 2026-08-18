@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -116,6 +124,62 @@ describe("plugin host build", () => {
     );
   });
 
+  it("removes old host staging directories without deleting an active concurrent build", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-host-stage-cleanup-test-"));
+    tempDirs.push(dir);
+    const distDir = join(dir, "dist");
+    await mkdir(join(distDir, ".host-stage-abandoned"), { recursive: true });
+    await writeFile(
+      join(distDir, ".host-stage-abandoned", "partial-host.js"),
+      "partial artifact\n",
+    );
+    const abandonedAt = new Date(Date.now() - 2 * 60 * 60 * 1_000);
+    await utimes(
+      join(distDir, ".host-stage-abandoned"),
+      abandonedAt,
+      abandonedAt,
+    );
+    await mkdir(join(distDir, ".host-stage-active"));
+    await writeFile(
+      join(distDir, ".host-stage-active", "partial-host.js"),
+      "active build artifact\n",
+    );
+    await mkdir(join(distDir, ".stage-app-build"));
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-host-stage-cleanup-fixture",
+        version: "1.0.0",
+        engines: { bb: ">=0.0" },
+        bb: {
+          name: "Host stage cleanup fixture",
+          description: "Exercises stale host staging directory cleanup.",
+          branding: { icon: "Cpu" },
+          server: "./server.ts",
+          host: "./host.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    await writeFile(join(dir, "host.ts"), "export default {};\n");
+
+    await buildPluginHost(dir, "0.9.0-test", await testToolchain());
+
+    const distEntries = await readdir(distDir);
+    expect(distEntries).not.toContain(".host-stage-abandoned");
+    expect(distEntries).toContain(".host-stage-active");
+    expect(distEntries).toContain(".stage-app-build");
+    expect(
+      distEntries.filter(
+        (entry) =>
+          entry.startsWith(".host-stage-") && entry !== ".host-stage-active",
+      ),
+    ).toEqual([]);
+  });
+
   it("rejects a host entry outside the plugin directory", async () => {
     const dir = await mkdtemp(join(process.cwd(), ".host-build-escape-test-"));
     tempDirs.push(dir);
@@ -221,9 +285,9 @@ describe("plugin host build", () => {
       ].join("\n"),
     );
 
-    expect(
-      Object.keys(HOST_ARTIFACT_RUNTIME_STUBS),
-    ).not.toContain("@get-bb/plugin-sdk/provider-bridge");
+    expect(Object.keys(HOST_ARTIFACT_RUNTIME_STUBS)).not.toContain(
+      "@get-bb/plugin-sdk/provider-bridge",
+    );
     const result = await buildPluginHost(
       dir,
       "0.9.0-test",

@@ -4,6 +4,8 @@ import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import {
   sanitizeInheritedChildProcessEnv,
   spawnPortablePipedProcess,
+  stopProcessGroupLeaderFirst,
+  supportsProcessGroups,
 } from "@bb/process-utils";
 import type {
   ProviderAdapter,
@@ -435,19 +437,13 @@ export class RuntimeProviderProcessManager {
 
     for (const [processKey, providerProcess] of this.processes) {
       if (!hasChildProcessExited(providerProcess.child)) {
+        // Leader first: the bridge handles SIGTERM by closing its CLI
+        // sessions gracefully. Group SIGTERM/SIGKILL only on escalation.
         shutdownPromises.push(
-          new Promise<void>((resolve) => {
-            const timer = setTimeout(() => {
-              providerProcess.child.kill("SIGKILL");
-              resolve();
-            }, 5000);
-
-            providerProcess.child.on("exit", () => {
-              clearTimeout(timer);
-              resolve();
-            });
-
-            providerProcess.child.kill("SIGTERM");
+          stopProcessGroupLeaderFirst({
+            child: providerProcess.child,
+            timeoutMs: 5000,
+            killGraceMs: 0,
           }),
         );
       }
@@ -498,10 +494,13 @@ export class RuntimeProviderProcessManager {
       ...processConfig.env,
     };
 
+    // Lead a process group so shutdown can also reap grandchildren the
+    // provider CLI starts (background dev servers, MCP servers, ...).
     const child = spawnPortablePipedProcess({
       command: processConfig.command,
       args: processConfig.args,
       cwd: this.args.workspacePath,
+      detached: supportsProcessGroups(),
       env,
     });
     let finalizeExit: () => void = () => undefined;
@@ -661,22 +660,12 @@ export class RuntimeProviderProcessManager {
       return;
     }
 
-    await new Promise<void>((resolve) => {
-      const timeoutMs = args.timeoutMs ?? 5000;
-      const softTimer = setTimeout(() => {
-        if (!hasChildProcessExited(args.providerProcess.child)) {
-          args.providerProcess.child.kill("SIGKILL");
-        }
-      }, timeoutMs);
-      const hardTimer = setTimeout(resolve, timeoutMs + 1000);
-
-      args.providerProcess.child.once("exit", () => {
-        clearTimeout(softTimer);
-        clearTimeout(hardTimer);
-        resolve();
-      });
-
-      args.providerProcess.child.kill("SIGTERM");
+    // Leader first: the bridge handles SIGTERM by closing its CLI sessions
+    // gracefully. Group SIGTERM/SIGKILL only on escalation.
+    await stopProcessGroupLeaderFirst({
+      child: args.providerProcess.child,
+      timeoutMs: args.timeoutMs ?? 5000,
+      killGraceMs: 1000,
     });
   }
 

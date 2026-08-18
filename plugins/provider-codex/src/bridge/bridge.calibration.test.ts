@@ -196,6 +196,65 @@ const SCRIPT: (ScriptedNotification | ScriptedRequest)[][] = [
         durationMs: 12,
       },
     }),
+    // Real Codex denial flows can repeat the exact terminal notification for
+    // one item after the approval response. Provider retries must not create a
+    // second canonical completion for the same lifecycle edge.
+    codexNotification("item/completed", {
+      threadId: SCRIPT_THREAD_ID,
+      turnId: FIRST_TURN_ID,
+      completedAtMs: 0,
+      item: {
+        type: "commandExecution",
+        id: COMMAND_ITEM_ID,
+        command: "git status --short",
+        cwd: "/tmp/project",
+        processId: null,
+        source: "agent",
+        status: "completed",
+        commandActions: [],
+        aggregatedOutput: " M src/app.ts\n",
+        exitCode: 0,
+        durationMs: 12,
+      },
+    }),
+    // item/started explicitly reopens an identifier under the canonical event
+    // grammar. The next completion is new lifecycle work, not a retry.
+    codexNotification("item/started", {
+      threadId: SCRIPT_THREAD_ID,
+      turnId: FIRST_TURN_ID,
+      startedAtMs: 0,
+      item: {
+        type: "commandExecution",
+        id: COMMAND_ITEM_ID,
+        command: "git status --short",
+        cwd: "/tmp/project",
+        processId: null,
+        source: "agent",
+        status: "inProgress",
+        commandActions: [],
+        aggregatedOutput: null,
+        exitCode: null,
+        durationMs: null,
+      },
+    }),
+    codexNotification("item/completed", {
+      threadId: SCRIPT_THREAD_ID,
+      turnId: FIRST_TURN_ID,
+      completedAtMs: 0,
+      item: {
+        type: "commandExecution",
+        id: COMMAND_ITEM_ID,
+        command: "git status --short",
+        cwd: "/tmp/project",
+        processId: null,
+        source: "agent",
+        status: "completed",
+        commandActions: [],
+        aggregatedOutput: "clean\n",
+        exitCode: 0,
+        durationMs: 8,
+      },
+    }),
     codexNotification("item/completed", {
       threadId: SCRIPT_THREAD_ID,
       turnId: FIRST_TURN_ID,
@@ -423,6 +482,8 @@ const GOLDEN_EVENT_STREAM: string[] = [
   "item/started:commandExecution",
   "item/commandExecution/outputDelta",
   "item/completed:commandExecution",
+  "item/started:commandExecution",
+  "item/completed:commandExecution",
   "item/completed:reasoning",
   "turn/completed",
   // The steer's ack. Codex never acks a steer itself, so correlation is
@@ -469,13 +530,13 @@ it("replays one scripted codex session onto the golden event stream", async () =
   // back to the fake app-server's own hardcoded turn.
   expect(canonical.events.length).toBeGreaterThan(10);
   expect(
-    canonical.events.some(
+    canonical.events.filter(
       (event) =>
         event.type === "item/completed" &&
         event.item.type === "commandExecution" &&
         event.item.command === "git status --short",
     ),
-  ).toBe(true);
+  ).toHaveLength(2);
 
   expect(
     describeCalibrationEvents(normalizeCalibrationEvents(canonical.events)),

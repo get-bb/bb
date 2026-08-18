@@ -4,10 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
-import {
-  finishOpenProviderTurn,
-  queueAcceptedUserMessage,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+import { queueAcceptedUserMessage } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
 import { createClaudeEventTranslator } from "./event-translation.js";
 
@@ -487,6 +484,160 @@ describe("claude turn and checkpoint lifecycle", () => {
       }),
     );
   });
+
+  it("does not open a provider-only turn while a failed turn's subagent drains", () => {
+    const { translateClaudeEvent, turnState } = createTranslator();
+    const context = { threadId: "bb-thread-rate-limited" };
+    const state = turnState.getOrCreate({ threadId: context.threadId });
+    queueAcceptedUserMessage({
+      clientRequestId: "creq_23456789af",
+      state,
+    });
+    translateClaudeEvent(loadFixture("task-started-subagent.json"), context);
+    translateClaudeEvent(
+      {
+        type: "rate_limit_event",
+        rate_limit_info: {
+          status: "rejected",
+          rateLimitType: "five_hour",
+          resetsAt: 12345,
+        },
+        session_id: "claude-session-1",
+      },
+      context,
+    );
+
+    const failed = translateClaudeEvent(
+      {
+        type: "result",
+        subtype: "error_during_execution",
+        is_error: true,
+        api_error_status: 429,
+        result: "You've hit your session limit",
+        usage: {},
+        modelUsage: {},
+        session_id: "claude-session-1",
+      },
+      context,
+    );
+    expect(failed).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "failed",
+      }),
+    );
+
+    const taskCompleted = translateClaudeEvent(
+      loadFixture("task-notification-subagent.json"),
+      context,
+    );
+    expect(taskCompleted).toContainEqual(
+      expect.objectContaining({ type: "item/backgroundTask/completed" }),
+    );
+    expect(
+      translateClaudeEvent(
+        {
+          type: "assistant",
+          message: {
+            id: "late-subagent-message",
+            role: "assistant",
+            content: [{ type: "text", text: "Late subagent output" }],
+          },
+          session_id: "claude-session-1",
+        },
+        {
+          ...context,
+          parentToolCallId: "toolu_01W1cLr7AsTRvbya9LM5LSAV",
+        },
+      ),
+    ).toEqual([]);
+
+    state.suppressUnacceptedTurnStart = false;
+    queueAcceptedUserMessage({
+      clientRequestId: "creq_23456789ad",
+      state,
+    });
+    expect(
+      translateClaudeEvent(
+        {
+          type: "assistant",
+          message: {
+            id: "follow-up-message",
+            role: "assistant",
+            content: [{ type: "text", text: "Working again" }],
+          },
+          session_id: "claude-session-1",
+        },
+        context,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "turn/started",
+        scope: turnScope("turn-2"),
+      }),
+      expect.objectContaining({
+        type: "turn/input/accepted",
+        clientRequestId: "creq_23456789ad",
+      }),
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope("turn-2"),
+      }),
+    ]);
+  });
+
+  it("does not open a provider-only turn for a bridge error after terminal failure", () => {
+    const { translateClaudeEvent, turnState } = createTranslator();
+    const context = { threadId: "bb-thread-bridge-error-drain" };
+    queueAcceptedUserMessage({
+      clientRequestId: "creq_23456789bg",
+      state: turnState.getOrCreate({ threadId: context.threadId }),
+    });
+    translateClaudeEvent(
+      {
+        type: "assistant",
+        message: {
+          id: "assistant-before-failure",
+          role: "assistant",
+          content: [{ type: "text", text: "Working" }],
+        },
+        session_id: "claude-session-1",
+      },
+      context,
+    );
+    expect(
+      translateClaudeEvent(
+        {
+          type: "result",
+          subtype: "error_during_execution",
+          is_error: true,
+          result: "Usage limit reached",
+          usage: {},
+          modelUsage: {},
+          session_id: "claude-session-1",
+        },
+        context,
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "failed",
+      }),
+    );
+
+    expect(
+      translateClaudeEvent(
+        {
+          jsonrpc: "2.0",
+          method: "error",
+          params: { message: "Late SDK stream failure" },
+        },
+        context,
+      ),
+    ).toEqual([]);
+  });
 });
 
 describe("claude synthetic no-response handling", () => {
@@ -625,7 +776,10 @@ describe("claude synthetic no-response handling", () => {
 
     // A stop finishes the open turn before the CLI's result lands, so a result
     // with no open turn is routine. It must not open a second, empty turn.
-    finishOpenProviderTurn({ registry: turnState, threadId: "bb-thread-1" });
+    const state = turnState.getOrCreate({ threadId: "bb-thread-1" });
+    if (state.currentTurnId) {
+      turnState.finishTurn({ state, threadId: "bb-thread-1" });
+    }
 
     expect(
       translateClaudeEvent(

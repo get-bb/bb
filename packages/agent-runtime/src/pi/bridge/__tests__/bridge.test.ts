@@ -613,6 +613,65 @@ describe("pi bridge", () => {
     }
   });
 
+  it("reopens a stable provider session under a new bb thread id", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const resumedSession = createControlledPiAgentSession();
+    mockCreateAgentSession.mockResolvedValue({ session: resumedSession });
+    const sessionDir = mkdtempSync(join(tmpdir(), "pi-resume-test-"));
+    process.env[PI_BRIDGE_SESSION_DIR_ENV] = sessionDir;
+    const providerThreadId = "thread-original";
+    const resumedThreadId = "thread-resumed";
+    const providerSessionFile = join(sessionDir, `${providerThreadId}.jsonl`);
+    writeFileSync(
+      providerSessionFile,
+      `${JSON.stringify({
+        type: "session",
+        version: 3,
+        id: "persisted-session",
+        timestamp: "2026-08-17T00:00:00.000Z",
+        cwd: "/tmp/worktree",
+      })}\n`,
+    );
+
+    try {
+      bridge.sendRequest(62, "thread/resume", {
+        ...sessionParams({ threadId: resumedThreadId }),
+        providerThreadId,
+      });
+      await expect(bridge.waitForResponse(62)).resolves.toMatchObject({
+        id: 62,
+        result: { providerThreadId, sessionRestorable: true },
+      });
+
+      expect(mockOpen).toHaveBeenCalledWith(providerSessionFile, sessionDir);
+      expect(bridge.messages).toContainEqual(
+        expect.objectContaining({
+          method: "thread/identity",
+          params: {
+            threadId: resumedThreadId,
+            providerThreadId,
+            sessionRestorable: true,
+          },
+        }),
+      );
+
+      bridge.sendRequest(63, "thread/discard", {
+        providerThreadId,
+        threadId: resumedThreadId,
+      });
+      await bridge.flushWork();
+      resumedSession.finishAbort();
+      await expect(bridge.waitForResponse(63)).resolves.toMatchObject({
+        id: 63,
+        result: { ok: true },
+      });
+      expect(existsSync(providerSessionFile)).toBe(false);
+    } finally {
+      bridge.restore();
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  });
+
   it("fails thread/start when the requested Pi model cannot be resolved", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     mockCreateAgentSession.mockImplementation(async () => ({

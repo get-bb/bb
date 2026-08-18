@@ -11,6 +11,7 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { SettingsWithControl } from "@/components/ui/settings-section";
 import {
+  AUTOMATIC_THREAD_LIST_PROVIDER,
   BUILT_IN_THREAD_LIST_PROVIDER,
   threadListProviderAtom,
   threadListProviderKey,
@@ -24,17 +25,22 @@ const BUILT_IN_OPTION = {
 } as const;
 
 /**
- * Picks which thread list fills the sidebar. Rendered only while at least one
- * plugin registers an `experimental_threadList`, so the setting appears with
- * the capability rather than sitting inert for everyone else.
+ * Automatic activation remains the default. This control lets the user pin
+ * BB's list or a specific plugin provider on this client.
  */
 export function SidebarThreadListSetting() {
   const { threadLists } = usePluginSlots();
   const [preference, setPreference] = useAtom(threadListProviderAtom);
 
-  if (threadLists.length === 0) return null;
-
+  const automaticProvider = threadLists[0];
+  if (automaticProvider === undefined) return null;
+  const automaticOption = {
+    key: AUTOMATIC_THREAD_LIST_PROVIDER,
+    title: "Automatic",
+    description: `Currently using ${automaticProvider.title} from ${automaticProvider.pluginId}.`,
+  };
   const options = [
+    automaticOption,
     BUILT_IN_OPTION,
     ...threadLists.map((slot) => ({
       key: threadListProviderKey(slot),
@@ -42,15 +48,14 @@ export function SidebarThreadListSetting() {
       description: slot.description ?? `From the ${slot.pluginId} plugin.`,
     })),
   ];
-  // An unresolvable preference (plugin disabled or still loading) reads as the
-  // built-in list, which is exactly what the sidebar renders in that state.
+  // An unavailable explicit provider renders BB's list until it returns.
   const selected =
     options.find((option) => option.key === preference) ?? BUILT_IN_OPTION;
 
   return (
     <SettingsWithControl
       label="Sidebar"
-      description="Which thread list fills the sidebar on this device."
+      description="Choose automatic activation, BB's list, or a specific plugin on this device."
     >
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { JsonValue } from "@get-bb/plugin-sdk";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
@@ -16,6 +16,8 @@ import {
   parseFileOpenerParams,
 } from "./file-opener-tabs";
 import { PluginSlotMount } from "./PluginSlotMount";
+import { PluginReplacementSlot } from "./PluginReplacementSlot";
+import { resolveReplacement } from "@/lib/plugin-slot-resolvers";
 
 /**
  * Plugin panel-action slots (plugin design §5.2): surface-specific rows in
@@ -190,13 +192,22 @@ export type PluginPanelSurfaceContext =
 export function PluginPanelTabContent({
   tab,
   context,
+  fileOpenerOriginal,
 }: {
   tab: PluginPanelFixedPanelTab;
   context: PluginPanelSurfaceContext;
+  /** The view's real native file-preview node, with its live actions bound. */
+  fileOpenerOriginal?: ReactNode;
 }) {
   const openerId = fileOpenerIdFromActionId(tab.actionId);
   if (openerId !== null) {
-    return <FileOpenerTabContent openerId={openerId} tab={tab} />;
+    return (
+      <FileOpenerTabContent
+        openerId={openerId}
+        original={fileOpenerOriginal}
+        tab={tab}
+      />
+    );
   }
   return context.kind === "thread" ? (
     <ThreadActionTabContent tab={tab} threadId={context.threadId} />
@@ -307,45 +318,60 @@ function NewThreadActionTabContent({
  */
 function FileOpenerTabContent({
   openerId,
+  original,
   tab,
 }: {
   openerId: string;
+  original: ReactNode | undefined;
   tab: PluginPanelFixedPanelTab;
 }) {
   const { fileOpeners } = usePluginSlots();
-  const opener =
-    fileOpeners.find(
-      (candidate) =>
-        candidate.pluginId === tab.pluginId && candidate.id === openerId,
-    ) ?? null;
+  const replacement = resolveReplacement(
+    fileOpeners,
+    (candidate) =>
+      candidate.pluginId === tab.pluginId && candidate.id === openerId,
+  );
   const file = useMemo(
     () => parseFileOpenerParams(tab.paramsJson),
     [tab.paramsJson],
   );
-  if (opener === null || file === null) {
-    return (
-      <div className="p-4">
-        <EmptyStatePanel className="rounded-lg p-6 text-sm">
-          This file opener is not available. The plugin may still be loading, or
-          it has been disabled or removed — reopen the file to use the built-in
-          preview.
-        </EmptyStatePanel>
-      </div>
-    );
+  if (
+    file === null ||
+    tab.fileOpenerOwner === undefined ||
+    original === undefined
+  ) {
+    return <UnavailableFileOpenerTab />;
   }
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col overflow-hidden"
-      data-testid="plugin-file-opener-tab-content"
+    <PluginReplacementSlot
+      replacement={replacement}
+      original={original}
+      slotKind="fileOpener"
     >
-      <PluginSlotMount
-        key={`${opener.pluginId}/${opener.id}/${opener.generation}`}
-        pluginId={opener.pluginId}
-        slotKind="fileOpener"
-        slotId={opener.id}
-      >
-        <opener.component path={file.path} source={file.source} />
-      </PluginSlotMount>
+      {(opener, BoundOriginal) => (
+        <div
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          data-testid="plugin-file-opener-tab-content"
+        >
+          <opener.component
+            path={file.path}
+            source={file.source}
+            experimental_Original={BoundOriginal}
+          />
+        </div>
+      )}
+    </PluginReplacementSlot>
+  );
+}
+
+function UnavailableFileOpenerTab() {
+  return (
+    <div className="p-4">
+      <EmptyStatePanel className="rounded-lg p-6 text-sm">
+        This file opener is not available. The plugin may still be loading, or
+        it has been disabled or removed — reopen the file to use the built-in
+        preview.
+      </EmptyStatePanel>
     </div>
   );
 }

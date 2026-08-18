@@ -75,7 +75,11 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
     contract: keepAwakeHostContract,
   });
 
+  // `reconcileRequested` asks for an immediate pass (configuration or host
+  // changes). `retryRequested` asks for a pass after the current backoff delay
+  // (host worker exits), so a crash-looping worker cannot spin the reconciler.
   let reconcileRequested = true;
+  let retryRequested = false;
   let wakeWaiter: (() => void) | null = null;
   const storedConfiguration = keepAwakeConfigurationSchema.safeParse(
     await bb.storage.kv.get<unknown>(CONFIGURATION_KEY),
@@ -86,6 +90,11 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
 
   function requestReconcile(): void {
     reconcileRequested = true;
+    wakeWaiter?.();
+  }
+
+  function requestRetry(): void {
+    retryRequested = true;
     wakeWaiter?.();
   }
 
@@ -214,7 +223,7 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
     bb.log.warn(
       `Keep Awake host worker exited unexpectedly on host ${hostId}; retrying`,
     );
-    requestReconcile();
+    requestRetry();
   });
 
   async function reconcile(signal: AbortSignal): Promise<ReconcileOutcome> {
@@ -274,7 +283,7 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
 
   function waitForReconcile(
     signal: AbortSignal,
-    retryMs: number | null,
+    options: { readonly retryDelayMs: number; readonly retryPending: boolean },
   ): Promise<void> {
     if (signal.aborted || reconcileRequested) return Promise.resolve();
     return new Promise((resolve) => {
@@ -284,14 +293,25 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
         if (settled) return;
         settled = true;
         if (timer !== null) clearTimeout(timer);
-        if (wakeWaiter === finish) wakeWaiter = null;
+        if (wakeWaiter === wake) wakeWaiter = null;
         signal.removeEventListener("abort", finish);
         resolve();
       };
-      wakeWaiter = finish;
+      const armRetry = (): void => {
+        if (timer !== null) return;
+        timer = setTimeout(finish, options.retryDelayMs);
+      };
+      const wake = (): void => {
+        if (signal.aborted || reconcileRequested) {
+          finish();
+          return;
+        }
+        if (retryRequested) armRetry();
+      };
+      wakeWaiter = wake;
       signal.addEventListener("abort", finish, { once: true });
-      if (retryMs !== null) timer = setTimeout(finish, retryMs);
-      if (signal.aborted || reconcileRequested) finish();
+      if (options.retryPending) armRetry();
+      wake();
     });
   }
 
@@ -315,15 +335,18 @@ export default async function keepAwakePlugin(bb: BbPluginApi): Promise<void> {
       try {
         while (!signal.aborted) {
           reconcileRequested = false;
+          retryRequested = false;
           const outcome = await reconcile(signal);
           if (signal.aborted) break;
           if (reconcileRequested) continue;
-          if (outcome === "retry") {
-            await waitForReconcile(signal, retryMs);
+          const retryPending = outcome === "retry" || retryRequested;
+          if (!retryPending) retryMs = RETRY_MIN_MS;
+          await waitForReconcile(signal, {
+            retryDelayMs: retryMs,
+            retryPending,
+          });
+          if (retryPending || retryRequested) {
             retryMs = Math.min(retryMs * 2, RETRY_MAX_MS);
-          } else {
-            retryMs = RETRY_MIN_MS;
-            await waitForReconcile(signal, null);
           }
         }
       } finally {

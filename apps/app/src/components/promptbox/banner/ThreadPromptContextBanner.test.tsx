@@ -1,7 +1,10 @@
+// @vitest-environment jsdom
+
+import { cleanup, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { ThreadPullRequest } from "@bb/domain";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   isThreadDisplayStatusBannerActive,
   ThreadPromptContextBanner,
@@ -387,9 +390,7 @@ describe("ThreadPromptContextBanner", () => {
       </MemoryRouter>,
     );
 
-    expect(markup).toContain(
-      "1 active child thread: Waiting for build host",
-    );
+    expect(markup).toContain("1 active child thread: Waiting for build host");
     expect(markup).toContain("Active child thread:");
     expect(markup).not.toContain("Running child thread:");
   });
@@ -528,5 +529,44 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("PR #128");
     expect(markup).toContain("Committed");
     expect(markup).toContain("1 file");
+  });
+});
+
+describe("ThreadPromptContextBanner git section body", () => {
+  afterEach(cleanup);
+
+  function renderBanner(expandedSection: "git" | null) {
+    return (
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={makeGitSection("uncommitted")}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={null}
+          pullRequestSection={null}
+          expandedSection={expandedSection}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>
+    );
+  }
+
+  it("does not mount the changed-files list until the section first expands", () => {
+    // The list can hold thousands of rows. A collapsed body still costs
+    // layout for every node inside it, so it must stay out of the DOM.
+    const { rerender } = render(renderBanner(null));
+    expect(screen.queryByRole("list", { hidden: true })).toBeNull();
+
+    rerender(renderBanner("git"));
+    expect(screen.getByRole("list")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: `Open ${changedFile.path}` }),
+    ).toBeTruthy();
+
+    // Retain the realized body after collapse so re-opening is instant.
+    rerender(renderBanner(null));
+    expect(screen.getByRole("list", { hidden: true })).toBeTruthy();
   });
 });

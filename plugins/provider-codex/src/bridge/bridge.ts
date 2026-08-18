@@ -287,6 +287,7 @@ const CODEX_INITIALIZE_PARAMS = {
 };
 
 const CHILD_REQUEST_TIMEOUT_MS = 60_000;
+const MAX_TRACKED_ITEM_IDS_PER_SESSION = 512;
 const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
   /\b(?:session|thread)\s+\S+\s+is archived\b/i;
 const MISSING_CODEX_CLI_GUIDANCE =
@@ -345,10 +346,22 @@ interface CodexBridgeSession {
   translator: CodexEventTranslator;
   construction: CodexSessionConstruction;
   constructionSignature: string;
-  /** Codex-id space; feeds delta-first item/started synthesis. */
+  /** Bounded Codex-id space; feeds delta-first item/started synthesis. */
   openedItemIds: Set<string>;
+  /**
+   * Bounded Codex-id space for item incarnations already settled. An explicit
+   * item/started reopens an id, matching the runtime event grammar.
+   */
+  settledItemIds: Set<string>;
   /** Codex-id space; open turns settle as failed if the child dies. */
   openCodexTurnIds: Set<string>;
+  /**
+   * True from thread/resume or thread/fork construction until this session's
+   * first turn/started. Codex replays the rollout's last-turn usage in that
+   * window, scoped to a turn this session never started; the bridge must not
+   * emit it under a bridge-minted turn id bb has never seen (#1727).
+   */
+  awaitingReplayedUsage: boolean;
   identityAnnounced: boolean;
   /**
    * Events translated before the session's identity is known (codex can emit
@@ -363,6 +376,8 @@ interface CodexBridgeSession {
 
 const sessionsByBbThreadId = new Map<string, CodexBridgeSession>();
 const maintenanceConnections = new Set<CodexAppServerConnection>();
+let modelListConnection: CodexAppServerConnection | null = null;
+let modelListConnectionPromise: Promise<CodexAppServerConnection> | null = null;
 let sessionSerialCounter = 0;
 let configuredSkillExtraRoots: string[] | null = null;
 
@@ -609,6 +624,17 @@ function isSynthesizableDeltaType(
   );
 }
 
+function rememberTrackedItemId(itemIds: Set<string>, itemId: string): void {
+  itemIds.add(itemId);
+  while (itemIds.size > MAX_TRACKED_ITEM_IDS_PER_SESSION) {
+    const oldest = itemIds.values().next();
+    if (oldest.done) {
+      return;
+    }
+    itemIds.delete(oldest.value);
+  }
+}
+
 /**
  * Stamp one translated (Codex-id-space) event into canonical form, tracking
  * open turns/items and synthesizing `item/started` when Codex streams a
@@ -623,14 +649,48 @@ function toCanonicalEvents(
 ): ThreadEvent[] {
   const out: ThreadEvent[] = [];
 
+  if (event.type === "item/started") {
+    session.settledItemIds.delete(event.item.id);
+  } else if (
+    event.type === "item/completed" ||
+    event.type === "item/backgroundTask/completed"
+  ) {
+    if (session.settledItemIds.has(event.item.id)) {
+      return out;
+    }
+    rememberTrackedItemId(session.settledItemIds, event.item.id);
+  }
+
   if (event.type === "turn/started" && event.scope.kind === "turn") {
     session.openCodexTurnIds.add(event.scope.turnId);
+    session.awaitingReplayedUsage = false;
+  }
+  // Replayed thread-state snapshot (thread/resume, thread/fork): the turn it
+  // names was never started in this session, so its bridge-minted turn id
+  // would be unknown to bb and the server would drop it as an orphan.
+  // Context-window usage is session state and may be thread-scoped; token
+  // usage is turn-only and, on resume, duplicates the snapshot bb already
+  // persisted for that turn, so drop it.
+  if (
+    session.awaitingReplayedUsage &&
+    (event.type === "thread/tokenUsage/updated" ||
+      event.type === "thread/contextWindowUsage/updated") &&
+    event.scope.kind === "turn"
+  ) {
+    if (event.type === "thread/contextWindowUsage/updated") {
+      out.push(remapEvent(session, { ...event, scope: { kind: "thread" } }));
+    }
+    return out;
   }
   if (event.type === "turn/completed" && event.scope.kind === "turn") {
     session.openCodexTurnIds.delete(event.scope.turnId);
   }
-  if (event.type === "item/started" || event.type === "item/completed") {
-    session.openedItemIds.add(event.item.id);
+  if (
+    event.type === "item/started" ||
+    event.type === "item/completed" ||
+    event.type === "item/backgroundTask/completed"
+  ) {
+    rememberTrackedItemId(session.openedItemIds, event.item.id);
   }
 
   if (
@@ -638,7 +698,7 @@ function toCanonicalEvents(
     "itemId" in event &&
     !session.openedItemIds.has(event.itemId)
   ) {
-    session.openedItemIds.add(event.itemId);
+    rememberTrackedItemId(session.openedItemIds, event.itemId);
     const item = synthesizeOpeningItem(event.type, event.itemId);
     out.push(
       remapEvent(session, {
@@ -1065,7 +1125,9 @@ async function constructThreadSession(
       decoded.sessionOptions,
     ),
     openedItemIds: new Set(),
+    settledItemIds: new Set(),
     openCodexTurnIds: new Set(),
+    awaitingReplayedUsage: args.request.kind !== "start",
     identityAnnounced: false,
     pendingPreIdentityEvents: [],
     openWorkReported: false,
@@ -1224,16 +1286,14 @@ async function rebuildThreadSession(
 }
 
 // ---------------------------------------------------------------------------
-// Maintenance children (model/list; thread ops without a live child)
+// Maintenance children (thread ops without a live child; reusable model list)
 // ---------------------------------------------------------------------------
 
 /**
- * Run one request against an app-server. Thread-scoped maintenance uses the
- * thread's live child when one exists (the rollout is open there); otherwise
- * — and always for model/list — a one-shot child is spawned and killed after
- * the call. One-shot keeps the bridge free of a persistent maintenance
- * process to supervise; archive/rename after release are rare enough that
- * the extra spawn is the simpler correct trade.
+ * Run one request against a one-shot app-server. Thread-scoped maintenance
+ * uses the thread's live child when one exists (the rollout is open there);
+ * archive/rename after release are rare enough that spawning here remains the
+ * simpler trade.
  */
 async function withMaintenanceChild<T>(
   fn: (connection: CodexAppServerConnection) => Promise<T>,
@@ -1256,6 +1316,72 @@ async function withMaintenanceChild<T>(
     maintenanceConnections.delete(connection);
     connection.kill();
   }
+}
+
+/**
+ * Lazily initialize and retain the app-server used for model catalogs. The
+ * host daemon already retains one bridge runtime for model listing, so keeping
+ * its child alive restores the pre-plugin behavior: later picker refreshes ask
+ * an initialized process instead of paying process startup on every request.
+ * A concurrent cold lookup shares the same initialization promise, and an
+ * exited child is replaced by the next lookup.
+ */
+async function getModelListConnection(): Promise<CodexAppServerConnection> {
+  if (modelListConnection !== null && !modelListConnection.exited) {
+    return modelListConnection;
+  }
+  if (modelListConnectionPromise !== null) {
+    return modelListConnectionPromise;
+  }
+
+  const connectionPromise = (async () => {
+    const connection = spawnChildConnection({
+      onNotification: () => {},
+      onRequest: (_method, _params, responder) => {
+        responder.error(
+          BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND,
+          "model-list codex app-server does not serve requests",
+        );
+      },
+      onExit: () => {
+        maintenanceConnections.delete(connection);
+        if (modelListConnection === connection) {
+          modelListConnection = null;
+        }
+      },
+    });
+    maintenanceConnections.add(connection);
+    try {
+      await initializeChild(connection);
+      modelListConnection = connection;
+      return connection;
+    } catch (error) {
+      maintenanceConnections.delete(connection);
+      connection.kill();
+      throw error;
+    }
+  })();
+  modelListConnectionPromise = connectionPromise;
+  try {
+    return await connectionPromise;
+  } finally {
+    if (modelListConnectionPromise === connectionPromise) {
+      modelListConnectionPromise = null;
+    }
+  }
+}
+
+/**
+ * Retire a cached model-list child after a request-level failure. A timeout or
+ * malformed response does not make the connection report `exited`, but it is
+ * no longer safe to reuse: a later picker refresh must get a fresh process.
+ */
+function retireModelListConnection(connection: CodexAppServerConnection): void {
+  maintenanceConnections.delete(connection);
+  if (modelListConnection === connection) {
+    modelListConnection = null;
+  }
+  connection.kill();
 }
 
 async function withChildForThread<T>(
@@ -1310,15 +1436,15 @@ function handleInitialize(id: string | number): void {
 }
 
 async function handleModelList(id: string | number): Promise<void> {
+  let connection: CodexAppServerConnection | null = null;
   try {
-    const result = await withMaintenanceChild((connection) =>
-      connection.request({
-        method: "model/list",
-        params: {},
-        resultSchema: ignoredChildResultSchema,
-        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-      }),
-    );
+    connection = await getModelListConnection();
+    const result = await connection.request({
+      method: "model/list",
+      params: {},
+      resultSchema: ignoredChildResultSchema,
+      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+    });
     // Codex's upstream API only exposes an active model list; legacy/retired
     // models aren't surfaced separately, so selectedOnlyModels is always
     // empty.
@@ -1327,6 +1453,9 @@ async function handleModelList(id: string | number): Promise<void> {
       selectedOnlyModels: [],
     });
   } catch (error) {
+    if (connection !== null) {
+      retireModelListConnection(connection);
+    }
     sendError(
       id,
       BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
@@ -1905,11 +2034,16 @@ function killAllChildren(): void {
     session.connection = null;
   }
   sessionsByBbThreadId.clear();
+  modelListConnection = null;
+  modelListConnectionPromise = null;
   for (const connection of maintenanceConnections) {
     connection.kill();
   }
   maintenanceConnections.clear();
 }
+
+/** @internal Test cleanup for bridge tests that create a persistent child. */
+export const experimental_killAllChildrenForTests = killAllChildren;
 
 export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine,

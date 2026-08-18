@@ -241,4 +241,42 @@ describe("provider registry", () => {
     });
     second.dispose();
   });
+
+  it("releases a provider-scoped boot wait as soon as that provider registers", async () => {
+    const registry = createProviderRegistryService({
+      deferRegistrationsSettled: true,
+    });
+    let requestedProviderReady = false;
+    let unrelatedProviderReady = false;
+    const requestedWait = registry.whenProviderRegistered("codex").then(() => {
+      requestedProviderReady = true;
+    });
+    const unrelatedWait = registry
+      .whenProviderRegistered("claude-code")
+      .then(() => {
+        unrelatedProviderReady = true;
+      });
+
+    registerProvider(registry, "codex", "provider-codex");
+    await requestedWait;
+
+    expect(requestedProviderReady).toBe(true);
+    expect(unrelatedProviderReady).toBe(false);
+
+    registry.markRegistrationsSettled();
+    await unrelatedWait;
+    expect(unrelatedProviderReady).toBe(true);
+  });
+
+  it("uses the shared ACP tier registration to release dynamic ACP waits", async () => {
+    const registry = createProviderRegistryService({
+      deferRegistrationsSettled: true,
+    });
+    const ready = registry.whenProviderRegistered("acp-opencode");
+
+    registerProvider(registry, "acp-cursor", "provider-acp");
+
+    await ready;
+    expect(registry.get("acp-opencode")).toBeNull();
+  });
 });

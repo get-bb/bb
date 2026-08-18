@@ -33,6 +33,7 @@ import {
 } from "../../../src/services/plugins/builtin-registry.js";
 import { copyBuiltinPlugins } from "../../../scripts/copy-builtin-plugins.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
 const testDir = dirname(fileURLToPath(import.meta.url));
@@ -146,6 +147,7 @@ function createService(args: {
   watchBuiltinPluginSources?: boolean;
 }): PluginService {
   return createPluginService({
+    telemetry: createNoopTelemetryService(),
     db: args.db,
     hub: {
       getDaemonSessionIdForHost: () => null,

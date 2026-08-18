@@ -2,14 +2,16 @@ import type {
   PluginFileOpenerProps,
   PluginFileOpenerSource,
 } from "@get-bb/plugin-sdk";
+import type { ThreadTabFileOpenerOwner } from "@bb/server-contract";
 import {
   createPluginPanelFixedPanelTab,
   type PluginPanelFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
+import type { FileOpenerPreferenceMap } from "@/lib/file-opener-preference";
 import {
-  resolvePreferredFileOpener,
-  type FileOpenerPreferenceMap,
-} from "@/lib/file-opener-preference";
+  resolveFileOpenerReplacement,
+  type FileOpenerOverride,
+} from "@/lib/plugin-slot-resolvers";
 import type { PluginFileOpenerSlot } from "@/lib/plugin-slots";
 import type { OpenSecondaryPanelTabRequest } from "@/components/secondary-panel/useThreadFileTabs";
 
@@ -21,6 +23,11 @@ import type { OpenSecondaryPanelTabRequest } from "@/components/secondary-panel/
  */
 export const FILE_OPENER_ACTION_ID_PREFIX = "file-opener:";
 
+export type PluginFileOpenerFile = Pick<
+  PluginFileOpenerProps,
+  "path" | "source"
+>;
+
 export function fileOpenerIdFromActionId(actionId: string): string | null {
   return actionId.startsWith(FILE_OPENER_ACTION_ID_PREFIX)
     ? actionId.slice(FILE_OPENER_ACTION_ID_PREFIX.length)
@@ -29,20 +36,24 @@ export function fileOpenerIdFromActionId(actionId: string): string | null {
 
 export function buildFileOpenerPanelTab(
   opener: Pick<PluginFileOpenerSlot, "id" | "pluginId">,
-  file: PluginFileOpenerProps,
+  file: PluginFileOpenerFile,
+  owner: ThreadTabFileOpenerOwner,
 ): PluginPanelFixedPanelTab {
-  return createPluginPanelFixedPanelTab({
-    actionId: `${FILE_OPENER_ACTION_ID_PREFIX}${opener.id}`,
-    paramsJson: JSON.stringify({ path: file.path, source: file.source }),
-    pluginId: opener.pluginId,
-    title: file.path.split("/").at(-1) ?? file.path,
-  });
+  return {
+    ...createPluginPanelFixedPanelTab({
+      actionId: `${FILE_OPENER_ACTION_ID_PREFIX}${opener.id}`,
+      paramsJson: JSON.stringify({ path: file.path, source: file.source }),
+      pluginId: opener.pluginId,
+      title: file.path.split("/").at(-1) ?? file.path,
+    }),
+    fileOpenerOwner: owner,
+  };
 }
 
 /** Parse a persisted opener tab's params; null on any mismatch (degrade). */
 export function parseFileOpenerParams(
   paramsJson: string | null,
-): PluginFileOpenerProps | null {
+): PluginFileOpenerFile | null {
   if (paramsJson === null) return null;
   let parsed: unknown;
   try {
@@ -76,12 +87,10 @@ export function parseFileOpenerParams(
 
 /**
  * A per-open viewer choice (the link context menu): "builtin" pins the
- * built-in preview; an opener ref forces that plugin opener. Absent =
- * follow the per-extension default.
+ * built-in preview; an opener ref forces that plugin opener. Absent means
+ * follow the extension's automatic or pinned Settings choice.
  */
-export type FileTabViewerOverride =
-  | "builtin"
-  | { pluginId: string; openerId: string };
+export type FileTabViewerOverride = FileOpenerOverride;
 
 export interface CreateFileOpenerTabForRequestArgs {
   fileOpeners: readonly PluginFileOpenerSlot[];
@@ -108,31 +117,26 @@ export function createFileOpenerTabForRequest({
   threadId,
   viewer,
 }: CreateFileOpenerTabForRequestArgs): PluginPanelFixedPanelTab | null {
-  if (viewer === "builtin") return null;
-  const file = fileForOpenRequest({
+  const owner = ownerRequestForOpenRequest({
     projectId,
     request,
     resolvedEnvironmentId,
     threadId,
   });
-  if (file === null) return null;
-  const opener =
-    viewer !== undefined
-      ? (fileOpeners.find(
-          (candidate) =>
-            candidate.pluginId === viewer.pluginId &&
-            candidate.id === viewer.openerId,
-        ) ?? null)
-      : resolvePreferredFileOpener({
-          openers: fileOpeners,
-          preference,
-          path: file.path,
-        });
-  if (opener === null) return null;
-  return buildFileOpenerPanelTab(opener, file);
+  if (owner === null) return null;
+  const file = fileForOwnerRequest(owner);
+  const resolved = resolveFileOpenerReplacement({
+    registrations: fileOpeners,
+    preference,
+    path: file.path,
+    ...(viewer !== undefined ? { override: viewer } : {}),
+  });
+  return resolved.kind === "plugin"
+    ? buildFileOpenerPanelTab(resolved.registration, file, owner)
+    : null;
 }
 
-function fileForOpenRequest({
+function ownerRequestForOpenRequest({
   projectId,
   request,
   resolvedEnvironmentId,
@@ -140,7 +144,7 @@ function fileForOpenRequest({
 }: Omit<
   CreateFileOpenerTabForRequestArgs,
   "fileOpeners" | "preference"
->): PluginFileOpenerProps | null {
+>): ThreadTabFileOpenerOwner | null {
   switch (request.kind) {
     case "workspace-file-preview": {
       // Same guard as the built-in path, plus live-content-only rules.
@@ -148,38 +152,67 @@ function fileForOpenRequest({
       if (request.tab.source.kind !== "working-tree") return null;
       if (request.tab.statusLabel === "deleted") return null;
       return {
-        path: request.tab.path,
-        source: buildSource("workspace", {
-          environmentId: resolvedEnvironmentId,
-          projectId: resolvedEnvironmentId === null ? projectId : null,
-          threadId: threadId ?? null,
-        }),
+        kind: request.kind,
+        environmentId: resolvedEnvironmentId,
+        projectId: resolvedEnvironmentId === null ? projectId : null,
+        tab: request.tab,
+        threadId: threadId ?? null,
       };
     }
     case "host-file-preview": {
       if (!threadId || !resolvedEnvironmentId) return null;
       return {
-        path: request.tab.path,
-        source: buildSource("host", {
-          environmentId: resolvedEnvironmentId,
-          projectId: null,
-          threadId,
-        }),
+        kind: request.kind,
+        environmentId: resolvedEnvironmentId,
+        tab: request.tab,
+        threadId,
       };
     }
     case "thread-storage-file-preview": {
       if (!threadId) return null;
       return {
-        path: request.tab.path,
-        source: buildSource("thread-storage", {
-          environmentId: resolvedEnvironmentId ?? null,
-          projectId: null,
-          threadId,
-        }),
+        kind: request.kind,
+        environmentId: resolvedEnvironmentId ?? null,
+        tab: request.tab,
+        threadId,
       };
     }
     default:
       return null;
+  }
+}
+
+function fileForOwnerRequest(
+  owner: ThreadTabFileOpenerOwner,
+): PluginFileOpenerFile {
+  switch (owner.kind) {
+    case "workspace-file-preview":
+      return {
+        path: owner.tab.path,
+        source: buildSource("workspace", {
+          environmentId: owner.environmentId,
+          projectId: owner.projectId,
+          threadId: owner.threadId,
+        }),
+      };
+    case "host-file-preview":
+      return {
+        path: owner.tab.path,
+        source: buildSource("host", {
+          environmentId: owner.environmentId,
+          projectId: null,
+          threadId: owner.threadId,
+        }),
+      };
+    case "thread-storage-file-preview":
+      return {
+        path: owner.tab.path,
+        source: buildSource("thread-storage", {
+          environmentId: owner.environmentId,
+          projectId: null,
+          threadId: owner.threadId,
+        }),
+      };
   }
 }
 

@@ -33,6 +33,7 @@ import { PluginHostArtifactRegistry } from "../../../src/services/plugins/plugin
 import { startTestServer, testLogger } from "../../helpers/test-app.js";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
 
@@ -92,7 +93,6 @@ describe("plugin bb.sdk bind gate", () => {
     ) => ({ pong: true }),
   );
   const disposePluginHost = vi.fn(async () => undefined);
-
   beforeEach(async () => {
     db = createConnection(":memory:");
     migrate(db);
@@ -106,6 +106,7 @@ describe("plugin bb.sdk bind gate", () => {
     disposePluginHost.mockClear();
     pluginHostArtifacts = new PluginHostArtifactRegistry();
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       pluginHostArtifacts,
       sharedPorts,

@@ -38,15 +38,13 @@ import {
   buildAcceptedUserMessageEvent,
   createBridgeIo,
   createBridgeLineHandler,
-  createBridgeSessionRegistry,
+  createPendingToolCallTracker,
   decodeBridgeJsonRpcResponse,
-  extractEnvOverrides,
   queueAcceptedUserMessage,
   runBridgeRequest,
   shouldAutoDenyInteractiveRequest,
   withoutBridgeRuntimeEnv,
   type BridgeToolCallRequest,
-  type PendingBridgeToolCall,
   experimental_defineProviderBridge,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { randomUUID } from "node:crypto";
@@ -110,6 +108,7 @@ import {
   buildBridgeMcpServer,
   getAllowedToolNames,
   BRIDGE_MCP_SERVER_NAME,
+  type ToolCallForwarder,
 } from "./tool-proxy-mcp.js";
 import {
   type ClaudeInteractiveResponse,
@@ -236,7 +235,6 @@ interface ThreadSession {
   /** Every session-scoped notification is translated through this. */
   translator: ClaudeEventTranslator;
   mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
-  pendingToolCalls: Map<string | number, PendingBridgeToolCall>;
   pendingInteractiveRequests: Map<string | number, PendingInteractiveRequest>;
   /** Current-turn fallback when Claude supplies no originating-work metadata. */
   permissionEscalation: PermissionEscalation | null;
@@ -385,7 +383,17 @@ interface ForwardUserQuestionRequestArgs extends BuildUserQuestionRequestParamsA
 }
 
 let sessionSerialCounter = 0;
-let toolCallRequestIdCounter = 0;
+/**
+ * Interactive requests carry a string-prefixed id so they can never collide
+ * with the tool-call tracker's numeric request ids on the shared
+ * bidirectional channel; the runtime echoes ids opaquely either way.
+ */
+let interactiveRequestIdCounter = 0;
+
+function nextInteractiveRequestId(): string {
+  interactiveRequestIdCounter += 1;
+  return `interaction-${interactiveRequestIdCounter}`;
+}
 /**
  * Skill roots latched by the canonical `skills/configure` request. The runtime
  * configures the process once, before any session exists, and every canonical
@@ -402,27 +410,77 @@ const { send, sendResult, sendError } = createBridgeIo<
   SdkMessageNotification | BridgeEventNotification | BridgeToolCallRequest
 >();
 
-const {
-  closeThreadSession,
-  closeThreadSessionsGracefully,
-  createForwardToolCall,
-  handleToolCallResponse,
-  resolvePendingSessionWork,
-  sessions,
-} = createBridgeSessionRegistry<ThreadSession>({
-  closeSessionGracefully: (threadSession) =>
-    closeClaudeThreadSession(threadSession, true),
-  getProviderThreadId: (threadSession, threadId) =>
-    threadSession.providerThreadId ?? threadId,
-  nextToolCallRequestId: () => {
-    toolCallRequestIdCounter += 1;
-    return toolCallRequestIdCounter;
-  },
-  resolveAdditionalPendingWork: resolvePendingInteractiveRequests,
-  sendToolCall: send,
-  stopSession: (threadSession) =>
-    closeClaudeThreadSession(threadSession, false),
-});
+const sessions = new Map<string, ThreadSession>();
+const closingSessions = new Map<string, Promise<void>>();
+const toolCallTracker = createPendingToolCallTracker({ sendToolCall: send });
+const { forwardToolCall, handleToolCallResponse } = toolCallTracker;
+
+function resolvePendingSessionWork(
+  threadSession: ThreadSession,
+  message: string,
+): void {
+  toolCallTracker.resolvePendingToolCalls(threadSession, message);
+  resolvePendingInteractiveRequests(threadSession, message);
+}
+
+function createForwardToolCall(
+  getThreadId: () => string,
+): ToolCallForwarder {
+  return (toolName, args) => {
+    const threadId = getThreadId();
+    const threadSession = sessions.get(threadId);
+    if (!threadSession || threadSession.closing) {
+      return Promise.resolve({
+        content: "Thread session not found",
+        isError: true,
+      });
+    }
+    return forwardToolCall({
+      arguments: args,
+      providerThreadId: threadSession.providerThreadId ?? threadId,
+      scope: threadSession,
+      threadId,
+      toolName,
+    });
+  };
+}
+
+async function closeThreadSession(args: {
+  graceful?: boolean;
+  message: string;
+  threadId: string;
+}): Promise<void> {
+  const existingClose = closingSessions.get(args.threadId);
+  if (existingClose) {
+    return existingClose;
+  }
+
+  const threadSession = sessions.get(args.threadId);
+  if (!threadSession) {
+    return;
+  }
+
+  threadSession.closing = true;
+  resolvePendingSessionWork(threadSession, args.message);
+  const closePromise = Promise.resolve()
+    .then(() => closeClaudeThreadSession(threadSession, args.graceful !== false))
+    .finally(() => {
+      if (sessions.get(args.threadId) === threadSession) {
+        sessions.delete(args.threadId);
+      }
+      closingSessions.delete(args.threadId);
+    });
+  closingSessions.set(args.threadId, closePromise);
+  return closePromise;
+}
+
+async function closeThreadSessionsGracefully(message: string): Promise<void> {
+  await Promise.all(
+    Array.from(sessions.keys()).map((threadId) =>
+      closeThreadSession({ graceful: true, message, threadId }),
+    ),
+  );
+}
 
 function normalizePermissionPath(path: string): string {
   return resolvePath(path);
@@ -737,6 +795,7 @@ function emitCanonicalTurnInputAccepted(
     return;
   }
   const state = threadSession.translator.resolveState({ threadId });
+  state.suppressUnacceptedTurnStart = false;
   if (state.currentTurnId !== undefined) {
     sendThreadEvents(
       threadId,
@@ -883,7 +942,6 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     streamEnded: false,
     translator: createSessionTranslator(),
     mockCliTrafficProxy: args.mockCliTrafficProxy,
-    pendingToolCalls: new Map(),
     pendingInteractiveRequests: new Map(),
     permissionEscalation: args.permissionEscalation,
     permissionEscalationByAgentId: new Map(),
@@ -1387,10 +1445,20 @@ function appendNoProxyLoopback(value: string | undefined): string {
   return [...entries].join(",");
 }
 
+const sessionConfigEnvVarsSchema = z.record(z.string(), z.string());
+
+/** The bridge end of `buildClaudeCodeConfig`'s plugin-internal config bag. */
+function readConfigEnvOverrides(
+  config: Record<string, unknown> | undefined,
+): Record<string, string> {
+  const parsed = sessionConfigEnvVarsSchema.safeParse(config?.["envVars"]);
+  return parsed.success ? parsed.data : {};
+}
+
 async function prepareSessionEnv(
   params: PrepareSessionEnvParams,
 ): Promise<PreparedSessionEnv> {
-  const envOverrides = extractEnvOverrides(params.config);
+  const envOverrides = readConfigEnvOverrides(params.config);
   if (!params.claudeCodeMockCliTraffic.enabled) {
     return {
       env: buildSessionEnv(envOverrides),
@@ -1588,8 +1656,7 @@ function createForwardInteractiveRequest(
         return;
       }
 
-      toolCallRequestIdCounter += 1;
-      const requestId = toolCallRequestIdCounter;
+      const requestId = nextInteractiveRequestId();
 
       const finish = (result: PermissionResult): void => {
         args.signal.removeEventListener("abort", onAbort);
@@ -1655,8 +1722,7 @@ function createForwardUserQuestionRequest(
       }
 
       const params = buildUserQuestionRequestParams(args);
-      toolCallRequestIdCounter += 1;
-      const requestId = toolCallRequestIdCounter;
+      const requestId = nextInteractiveRequestId();
 
       const finish = (result: PermissionResult): void => {
         args.signal.removeEventListener("abort", onAbort);

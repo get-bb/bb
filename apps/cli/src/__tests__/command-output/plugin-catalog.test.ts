@@ -182,7 +182,7 @@ describe("bb plugin catalog", () => {
     );
     expect(
       JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)),
-    ).toEqual({ source, selection: { kind: "root" } });
+    ).toEqual({ source });
   });
 
   it("sends --plugin and --subdirectory as the install selection", async () => {

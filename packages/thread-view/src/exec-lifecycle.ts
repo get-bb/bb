@@ -28,6 +28,7 @@ import {
 interface DelegationMetadata {
   subagentType?: string;
   description?: string;
+  model?: string;
 }
 
 function parseToolArgs(
@@ -238,9 +239,11 @@ function getDelegationMetadata(
     "subagentType",
   ]);
   const description = getFirstStringField(args, ["description", "prompt"]);
+  const model = getFirstStringField(args, ["model"]);
   return {
     ...(subagentType ? { subagentType } : {}),
     ...(description ? { description } : {}),
+    ...(model ? { model } : {}),
   };
 }
 

@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useCachedProviderInfo } from "@/hooks/queries/system-queries";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
@@ -67,7 +74,7 @@ import {
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
-import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
@@ -166,7 +173,7 @@ import {
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { getFileExtension } from "@/lib/file-opener-preference";
+import { getFileExtension } from "@/lib/plugin-slot-resolvers";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   getBbDesktopInfo,
@@ -223,14 +230,19 @@ import {
   type MarkdownLocalFileLinkRouting,
 } from "@/components/ui/markdown-link-routing";
 import {
-  useFixedPanelTabsState,
   useFixedPanelTabsStorageMaintenance,
+  useReconciledFixedPanelTabsState,
   useRemoveFixedRightTerminalTab,
   useSetFixedRightTerminalActiveTerminal,
   useTouchFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
-import { createNewTabFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import {
+  createGitDiffFixedPanelTab,
+  createNewTabFixedPanelTab,
+  createThreadInfoFixedPanelTab,
+} from "@/lib/fixed-panel-tabs-state";
+import { resolveGitDiffTabStatus } from "@/components/secondary-panel/gitDiffTabEligibility";
 import { isRootThread } from "./threadParentSelectorOptions";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { ThreadTerminalPanel } from "@/components/thread/terminal/ThreadTerminalPanel";
@@ -502,7 +514,51 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const navigate = useNavigate();
   useFixedPanelTabsStorageMaintenance(threadId);
   const systemConfigQuery = useSystemConfig();
-  const fixedPanelTabsState = useFixedPanelTabsState(threadId, threadId);
+  const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId ?? "");
+  const hasThreadDetailBootstrapSettled =
+    threadDetailBootstrapQuery.isSuccess || threadDetailBootstrapQuery.isError;
+  const {
+    data: thread,
+    isFetching,
+    isLoadingError,
+    error,
+  } = useThread(threadId ?? "", {
+    enabled: hasThreadDetailBootstrapSettled,
+    // A successful bootstrap just populated this exact query with a fresh
+    // thread response; refetching it immediately adds redundant tunnel work.
+    refetchOnMount: didThreadDetailBootstrapRefreshAfterMount(
+      threadDetailBootstrapQuery,
+    )
+      ? false
+      : "always",
+  });
+  const environmentQuery = useEnvironment(thread?.environmentId, {
+    enabled: hasThreadDetailBootstrapSettled,
+    staleTime: 5_000,
+  });
+  const environment = environmentQuery.data;
+  const gitDiffTabStatus = resolveGitDiffTabStatus({
+    environmentId: thread?.environmentId ?? null,
+    environmentIsGitRepo: environment?.isGitRepo,
+    environmentLoadFailed: environmentQuery.isError,
+    hasResolvedThread: thread !== undefined,
+  });
+  const threadFixedViewTabs = useMemo(
+    () => [
+      createThreadInfoFixedPanelTab(),
+      ...(gitDiffTabStatus === "ineligible"
+        ? []
+        : [createGitDiffFixedPanelTab()]),
+    ],
+    [gitDiffTabStatus],
+  );
+  const fixedPanelTabsState = useReconciledFixedPanelTabsState({
+    fixedTabs: threadFixedViewTabs,
+    isAuthoritative:
+      gitDiffTabStatus === "eligible" || gitDiffTabStatus === "ineligible",
+    panelStateId: threadId,
+    syncThreadId: threadId,
+  });
   const isPersistedSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
@@ -559,24 +615,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     );
   const toggleDefaultPersistedSecondaryPanel =
     useToggleThreadSecondaryPanelSelection(threadId, threadId);
-  const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId ?? "");
-  const hasThreadDetailBootstrapSettled =
-    threadDetailBootstrapQuery.isSuccess || threadDetailBootstrapQuery.isError;
-  const {
-    data: thread,
-    isFetching,
-    isLoadingError,
-    error,
-  } = useThread(threadId ?? "", {
-    enabled: hasThreadDetailBootstrapSettled,
-    // A successful bootstrap just populated this exact query with a fresh
-    // thread response; refetching it immediately adds redundant tunnel work.
-    refetchOnMount: didThreadDetailBootstrapRefreshAfterMount(
-      threadDetailBootstrapQuery,
-    )
-      ? false
-      : "always",
-  });
   // Treat placeholder data (a full thread row primed from the sidebar list
   // cache) as resolved so switching to an uncached thread renders the shell
   // immediately instead of flashing a full-page "Loading..." while the
@@ -646,6 +684,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   });
   const {
     activeBrowserTab,
+    activeFileOpenerOwner,
     activeHostFileLineRange,
     activeHostFilePath,
     activeStorageFileLineRange,
@@ -883,11 +922,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     terminalsListQuery.data,
     updateFixedPanelTabsState,
   ]);
-  const environmentQuery = useEnvironment(thread?.environmentId, {
-    enabled: hasThreadDetailBootstrapSettled,
-    staleTime: 5_000,
-  });
-  const environment = environmentQuery.data;
   const hostsQuery = useHosts({
     enabled:
       hasThreadDetailBootstrapSettled &&
@@ -954,11 +988,19 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   // localStorage-backed draft — the quoted text is appended to the draft as a
   // `> ` blockquote block and renders inline in the composer immediately, with
   // no duplicated draft state.
-  const selectionPromptDraft = usePromptDraftStorage({
-    kind: "thread",
-    projectId: thread?.projectId ?? projectId ?? "",
-    threadId: thread?.id ?? "",
-  });
+  // This view only needs draft actions at event time. Subscribing to the draft
+  // here made every composer write re-render the surrounding thread tree.
+  const selectionPromptDraftProjectId = thread?.projectId ?? projectId ?? "";
+  const selectionPromptDraftThreadId = thread?.id ?? "";
+  const selectionPromptDraft = useMemo(
+    () =>
+      getPromptDraftAccessor({
+        kind: "thread",
+        projectId: selectionPromptDraftProjectId,
+        threadId: selectionPromptDraftThreadId,
+      }),
+    [selectionPromptDraftProjectId, selectionPromptDraftThreadId],
+  );
   const addQuoteToComposer = selectionPromptDraft.addQuote;
   // Desktop quote actions keep their existing focus handoff. Mobile web does
   // not focus inputs programmatically; see PromptBoxInternal.
@@ -1174,7 +1216,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     isSideChatThread && threadSourceThreadId !== null
       ? sendSideChatMessageToMain
       : undefined;
-  const canUseGitUi = environment?.isGitRepo === true;
+  const canUseGitUi = gitDiffTabStatus === "eligible";
   const canCreateTerminal =
     thread?.environmentId !== null &&
     thread?.environmentId !== undefined &&
@@ -2659,6 +2701,24 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     activeTabId: activeFixedSecondaryTabId,
     tabs: syncedOrderedSecondaryFileTabs,
   });
+  const renderFileOpenerReplacement = (original: ReactNode): ReactNode =>
+    activeFileOpenerOwner !== null && activePluginPanelTab !== null ? (
+      <ThreadTimelineNavigationProvider
+        environmentId={thread.environmentId}
+        onOpenLink={handleOpenTimelineLink}
+        onOpenLocalFileLink={handleOpenTimelineLocalFileLink}
+        resolveMentionLink={resolveMentionLink}
+        workspaceRootPath={environment?.path ?? undefined}
+      >
+        <PluginPanelTabContent
+          tab={activePluginPanelTab}
+          context={{ kind: "thread", threadId: thread.id }}
+          fileOpenerOriginal={original}
+        />
+      </ThreadTimelineNavigationProvider>
+    ) : (
+      original
+    );
   const fileTabContent = activeTerminalId ? (
     <ThreadTerminalPanel
       autoFocus={shouldAutoFocusTerminal}
@@ -2668,6 +2728,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       onAutoFocusHandled={handleTerminalAutoFocusHandled}
       onOpenLink={handleOpenTimelineLink}
       onSelectionAddToChat={handleSelectionAddToChat}
+      syncThreadId={thread.id}
       target={{ kind: "thread", threadId: thread.id }}
     />
   ) : isNewTabActive ? (
@@ -2683,39 +2744,45 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       pluginActions={pluginPanelActions}
     />
   ) : activeWorkspaceFilePath ? (
-    <WorkspaceFilePreviewTabContent
-      activePath={activeWorkspaceFilePath}
-      copyPath={workspaceFileCopyPath}
-      environmentId={thread.environmentId}
-      lineRange={activeWorkspaceFileLineRange}
-      markdownLinkRouting={workspaceMarkdownLinkRouting}
-      onOpenInEditor={handleOpenFileInEditor}
-      onSelectionAddToChat={handleSelectionAddToChat}
-      source={activeWorkspaceFileSource}
-      statusLabel={activeWorkspaceFileStatusLabel}
-      threadId={thread.id}
-    />
+    renderFileOpenerReplacement(
+      <WorkspaceFilePreviewTabContent
+        activePath={activeWorkspaceFilePath}
+        copyPath={workspaceFileCopyPath}
+        environmentId={thread.environmentId}
+        lineRange={activeWorkspaceFileLineRange}
+        markdownLinkRouting={workspaceMarkdownLinkRouting}
+        onOpenInEditor={handleOpenFileInEditor}
+        onSelectionAddToChat={handleSelectionAddToChat}
+        source={activeWorkspaceFileSource}
+        statusLabel={activeWorkspaceFileStatusLabel}
+        threadId={thread.id}
+      />,
+    )
   ) : activeHostFilePath ? (
-    <HostFilePreviewTabContent
-      activePath={activeHostFilePath}
-      copyPath={activeHostFilePath}
-      environmentId={thread.environmentId}
-      lineRange={activeHostFileLineRange}
-      markdownLinkRouting={hostMarkdownLinkRouting}
-      onOpenInEditor={handleOpenHostFileInEditor}
-      onSelectionAddToChat={handleSelectionAddToChat}
-      threadId={thread.id}
-    />
+    renderFileOpenerReplacement(
+      <HostFilePreviewTabContent
+        activePath={activeHostFilePath}
+        copyPath={activeHostFilePath}
+        environmentId={thread.environmentId}
+        lineRange={activeHostFileLineRange}
+        markdownLinkRouting={hostMarkdownLinkRouting}
+        onOpenInEditor={handleOpenHostFileInEditor}
+        onSelectionAddToChat={handleSelectionAddToChat}
+        threadId={thread.id}
+      />,
+    )
   ) : activeStorageFilePath ? (
-    <ThreadStorageFilePreviewTabContent
-      activePath={activeStorageFilePath}
-      copyPath={storageFileCopyPath}
-      lineRange={activeStorageFileLineRange}
-      markdownLinkRouting={storageMarkdownLinkRouting}
-      onOpenInEditor={handleOpenStorageFileInEditor}
-      onSelectionAddToChat={handleSelectionAddToChat}
-      threadId={thread.id}
-    />
+    renderFileOpenerReplacement(
+      <ThreadStorageFilePreviewTabContent
+        activePath={activeStorageFilePath}
+        copyPath={storageFileCopyPath}
+        lineRange={activeStorageFileLineRange}
+        markdownLinkRouting={storageMarkdownLinkRouting}
+        onOpenInEditor={handleOpenStorageFileInEditor}
+        onSelectionAddToChat={handleSelectionAddToChat}
+        threadId={thread.id}
+      />,
+    )
   ) : activePluginPanelTab ? (
     <ThreadTimelineNavigationProvider
       environmentId={thread.environmentId}
@@ -2799,6 +2866,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           secondaryPanel={{
             activeTab: activeFixedSecondaryTab,
             canUseGitUi,
+            gitDiffTabStatus,
             environmentId: thread.environmentId ?? undefined,
             workspaceRootPath: environment?.path,
             fileTabs,
@@ -2819,6 +2887,9 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             onOpenFileInEditor: handleOpenFileInEditor,
             onFileTabReorder: reorderFileTab,
             onOpenNewTab: handleOpenNewTab,
+            onRetryGitDiffEligibility: () => {
+              void environmentQuery.refetch();
+            },
             onOpenFilePreview: handleOpenFilePreview,
             onSelectionAddToChat: handleSelectionAddToChat,
             pendingGitDiffCommitSha,
@@ -2826,7 +2897,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             requestedMergeBaseBranch,
             onPanelFocus: handleSecondaryPanelFocus,
             onPanelChange: handleSecondaryPanelChange,
-            showGitDiffTab: canUseGitUi,
           }}
           timeline={{
             activeThinking,

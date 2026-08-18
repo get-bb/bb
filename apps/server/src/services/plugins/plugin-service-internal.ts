@@ -9,6 +9,7 @@ import {
   type PluginSourceDetail,
 } from "@bb/server-contract";
 import type { ServerLogger } from "../../types.js";
+import type { TelemetryService } from "../system/telemetry.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import type { BundledPluginRegistration } from "./builtin-registry.js";
 import type { PluginManifest } from "./manifest.js";
@@ -106,6 +107,8 @@ export interface PluginServiceDeps {
     "getDaemonSessionIdForHost" | "notifyPluginSignal" | "notifySystem"
   >;
   logger: ServerLogger;
+  /** Anonymous usage telemetry; tests pass `createNoopTelemetryService()`. */
+  telemetry: TelemetryService;
   pendingInteractions?: Pick<
     import("../interactions/pending-interactions.js").PendingInteractionLifecycle,
     "requestPluginInteraction" | "interruptPluginInteractions"

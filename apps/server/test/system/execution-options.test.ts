@@ -228,6 +228,36 @@ describe("appendCustomModels", () => {
 });
 
 describe("resolveSystemExecutionOptions", () => {
+  it("keeps an unavailable provider in the roster and returns its picker error without probing it", async () => {
+    await withTestHarness(
+      { seedFirstPartyProviders: false },
+      async (harness) => {
+        await registerFirstPartyProviders(harness.deps.providerRegistry, {
+          excludePluginIds: ["provider-acp"],
+          unavailablePluginIds: ["provider-codex"],
+        });
+        const { host } = seedHostSession(harness.deps, {
+          id: "host-execution-options-unavailable-provider",
+        });
+
+        const response = await resolveSystemExecutionOptions(harness.deps, {
+          hostId: host.id,
+          providerId: "codex",
+        });
+
+        expect(response.providers[0]).toEqual(
+          expect.objectContaining({ id: "codex", available: false }),
+        );
+        expect(response.models).toEqual([]);
+        expect(response.selectedOnlyModels).toEqual([]);
+        expect(response.modelLoadError).toEqual({
+          providerId: "codex",
+          code: "provider_unavailable",
+        });
+      },
+    );
+  });
+
   it("includes installed known ACP agents and sends their launch spec when loading models", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -1024,6 +1054,47 @@ describe("resolveSystemExecutionOptions", () => {
         expect((await providersPromise).map((provider) => provider.id)).toEqual(
           ["codex", "claude-code", "pi", "acp-cursor"],
         );
+      },
+    );
+  });
+
+  it("answers a provider-scoped picker request before unrelated plugins finish loading", async () => {
+    await withTestHarness(
+      { seedFirstPartyProviders: false },
+      async (harness) => {
+        const registry = createProviderRegistryService({
+          deferRegistrationsSettled: true,
+        });
+        harness.deps.providerRegistry = registry;
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-execution-options-provider-ready",
+        });
+        registerProviderHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+        });
+
+        const optionsPromise = resolveSystemExecutionOptions(harness.deps, {
+          hostId: host.id,
+          providerId: "pi",
+        });
+        await registerFirstPartyProviders(registry, {
+          excludePluginIds: [
+            "provider-acp",
+            "provider-claude-code",
+            "provider-codex",
+          ],
+        });
+
+        const response = await optionsPromise;
+        expect(response.providers.map((provider) => provider.id)).toEqual([
+          "pi",
+        ]);
+        expect(response.modelLoadError).toBeNull();
+
+        // Full plugin startup is intentionally still outstanding. It may
+        // complete later and invalidate this partial boot-time roster.
+        registry.markRegistrationsSettled();
       },
     );
   });

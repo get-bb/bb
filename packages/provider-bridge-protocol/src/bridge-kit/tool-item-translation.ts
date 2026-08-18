@@ -6,37 +6,31 @@ import {
 } from "./adapter-utils.js";
 
 type FileChangeItem = Extract<ThreadEventItem, { type: "fileChange" }>;
+type ToolCallItem = Extract<ThreadEventItem, { type: "toolCall" }>;
 
-export interface ToolUseTranslationInput {
+/**
+ * The generic pending `toolCall` item a provider falls back to when a tool
+ * use has no richer translation (unknown tool, or a known tool whose
+ * arguments failed to parse). Raw arguments are attached when they are a
+ * record.
+ */
+export function buildGenericToolCallItem(args: {
   args: unknown;
   callId: string;
-  parentToolCallId?: string;
   toolName: string;
-}
-
-export interface ParsedCommandToolArguments {
-  command: string;
-  cwd: string;
-}
-
-export interface ParsedFileChangeToolArguments {
-  arguments: Record<string, unknown>;
-  newText?: string;
-  oldText?: string;
-  path?: string;
-}
-
-export interface BuildToolUseItemOptions {
-  commandToolNames: ReadonlySet<string>;
-  fileChangeToolNames: ReadonlySet<string>;
-  parseCommand: (args: unknown) => ParsedCommandToolArguments | null;
-  parseFileChange: (args: unknown) => ParsedFileChangeToolArguments | null;
-  translateSpecialToolUse?: (
-    input: ToolUseTranslationInput,
-  ) => ThreadEventItem | null;
+}): ToolCallItem {
+  const toolArguments = toOptionalRecord(args.args);
+  return {
+    type: "toolCall",
+    id: args.callId,
+    tool: args.toolName,
+    ...(toolArguments ? { arguments: toolArguments } : {}),
+    status: "pending",
+  };
 }
 
 export function buildFileChangeItem(args: {
+  callId: string;
   newText?: string;
   oldText?: string;
   path: string;
@@ -44,7 +38,7 @@ export function buildFileChangeItem(args: {
   const diff = buildEditDiff(args.path, args.oldText, args.newText);
   return {
     type: "fileChange",
-    id: "",
+    id: args.callId,
     changes: [
       {
         path: args.path,
@@ -57,63 +51,12 @@ export function buildFileChangeItem(args: {
   };
 }
 
-export function buildToolUseItem(
-  input: ToolUseTranslationInput,
-  options: BuildToolUseItemOptions,
-): ThreadEventItem {
-  const toolArguments = toOptionalRecord(input.args);
-  const baseToolCall = {
-    type: "toolCall" as const,
-    id: input.callId,
-    tool: input.toolName,
-    ...(toolArguments ? { arguments: toolArguments } : {}),
-    status: "pending" as const,
-  };
-  const withParent = (item: ThreadEventItem): ThreadEventItem =>
-    withParentToolCallId(item, input.parentToolCallId);
-
-  if (options.commandToolNames.has(input.toolName)) {
-    const command = options.parseCommand(input.args);
-    return command
-      ? withParent({
-          type: "commandExecution",
-          id: input.callId,
-          command: command.command,
-          cwd: command.cwd,
-          status: "pending",
-          approvalStatus: null,
-        })
-      : withParent(baseToolCall);
-  }
-
-  if (options.fileChangeToolNames.has(input.toolName)) {
-    const parsed = options.parseFileChange(input.args);
-    if (!parsed) {
-      return withParent(baseToolCall);
-    }
-    if (!parsed.path) {
-      return withParent({ ...baseToolCall, arguments: parsed.arguments });
-    }
-    return withParent({
-      ...buildFileChangeItem({
-        path: parsed.path,
-        oldText: parsed.oldText,
-        newText: parsed.newText,
-      }),
-      id: input.callId,
-    });
-  }
-
-  return withParent(options.translateSpecialToolUse?.(input) ?? baseToolCall);
-}
-
 export interface CompleteStartedToolItemArgs {
   callId: string;
   commandOutputText?: string;
   exitCode?: number;
   outputText?: string;
   parentToolCallId?: string;
-  preserveUndefinedToolCallFields?: boolean;
   startedItem: ThreadEventItem;
   status: ThreadEventItemStatus;
   toolCallResult?: unknown;
@@ -121,6 +64,18 @@ export interface CompleteStartedToolItemArgs {
 
 export function completeStartedToolItem(
   args: CompleteStartedToolItemArgs,
+): ThreadEventItem | null {
+  return completeStartedToolItemInternal(args, false);
+}
+
+/**
+ * `preserveUndefinedToolCallFields` keeps explicit `undefined` values on the
+ * completed toolCall's `arguments`/`result` keys, matching the historical
+ * result-item shape `buildToolResultItem` has always emitted.
+ */
+function completeStartedToolItemInternal(
+  args: CompleteStartedToolItemArgs,
+  preserveUndefinedToolCallFields: boolean,
 ): ThreadEventItem | null {
   const parentToolCallId =
     args.parentToolCallId ?? args.startedItem.parentToolCallId;
@@ -170,12 +125,12 @@ export function completeStartedToolItem(
         type: "toolCall",
         id: args.callId,
         tool: args.startedItem.tool,
-        ...(args.preserveUndefinedToolCallFields ||
+        ...(preserveUndefinedToolCallFields ||
         args.startedItem.arguments !== undefined
           ? { arguments: args.startedItem.arguments }
           : {}),
         status: args.status,
-        ...(args.preserveUndefinedToolCallFields ||
+        ...(preserveUndefinedToolCallFields ||
         args.toolCallResult !== undefined
           ? { result: args.toolCallResult }
           : {}),
@@ -189,7 +144,6 @@ export function buildToolResultItem(args: {
   callId: string;
   commandOutputText?: string;
   commandToolNames: ReadonlySet<string>;
-  completeWebItems?: boolean;
   fileChangeToolNames: ReadonlySet<string>;
   isError: boolean;
   outputText?: string;
@@ -200,23 +154,26 @@ export function buildToolResultItem(args: {
 }): ThreadEventItem {
   const status = args.isError ? "failed" : "completed";
   const exitCode = args.isError ? 1 : 0;
+  // Web items are never completed here: a provider that wants a started
+  // webSearch/webFetch item finished calls completeStartedToolItem itself.
   if (
     args.startedItem &&
-    (args.completeWebItems ||
-      (args.startedItem.type !== "webSearch" &&
-        args.startedItem.type !== "webFetch"))
+    args.startedItem.type !== "webSearch" &&
+    args.startedItem.type !== "webFetch"
   ) {
-    const completed = completeStartedToolItem({
-      callId: args.callId,
-      commandOutputText: args.commandOutputText,
-      exitCode,
-      outputText: args.outputText,
-      parentToolCallId: args.parentToolCallId,
-      preserveUndefinedToolCallFields: true,
-      startedItem: args.startedItem,
-      status,
-      toolCallResult: args.toolCallResult,
-    });
+    const completed = completeStartedToolItemInternal(
+      {
+        callId: args.callId,
+        commandOutputText: args.commandOutputText,
+        exitCode,
+        outputText: args.outputText,
+        parentToolCallId: args.parentToolCallId,
+        startedItem: args.startedItem,
+        status,
+        toolCallResult: args.toolCallResult,
+      },
+      true,
+    );
     if (completed) {
       return completed;
     }

@@ -36,6 +36,11 @@ const entries = [
     external: ["zod", "zod/*"],
   },
   {
+    source: "src/internal/plugin-app-collector.ts",
+    output: "dist/internal/plugin-app-collector.js",
+    external: [],
+  },
+  {
     source: "src/testing/index.ts",
     output: "dist/testing/index.js",
     external: [

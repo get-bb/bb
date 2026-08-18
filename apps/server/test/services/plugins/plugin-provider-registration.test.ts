@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listSystemProviderInfos } from "../../../src/services/system/execution-options.js";
 import {
   resolveCreateThreadExecutionDefaults,
@@ -17,7 +17,12 @@ import { withTestHarness } from "../../helpers/test-app.js";
  */
 async function writePlugin(
   dir: string,
-  options: { name: string; serverSource: string; withBridge?: boolean },
+  options: {
+    bridgeSource?: string;
+    name: string;
+    serverSource: string;
+    withBridge?: boolean;
+  },
 ): Promise<string> {
   const withBridge = options.withBridge ?? true;
   const rootDir = join(dir, options.name);
@@ -43,7 +48,8 @@ async function writePlugin(
       // Shaped like a bridge export without importing the SDK: the fixture
       // lives outside the workspace, and what matters here is that the
       // manifest declares a buildable bb.host artifact.
-      "export const experimental_providerBridge = { experimental_apiVersion: 1, handleLine: () => undefined };\n",
+      options.bridgeSource ??
+        "export const experimental_providerBridge = { experimental_apiVersion: 1, handleLine: () => undefined };\n",
     );
   }
   return rootDir;
@@ -84,12 +90,17 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
 
   it("adds the provider to the composed listing and removes it when the plugin is disabled", async () => {
     await withTestHarness(async (harness) => {
+      const notifySystem = vi.spyOn(harness.deps.hub, "notifySystem");
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-remote-agent",
         serverSource: REGISTER_PROVIDER_SOURCE("my-remote-agent"),
       });
       const entry = await harness.pluginService.installPath(rootDir);
       expect(entry.status).toBe("running");
+      expect(notifySystem).toHaveBeenCalledWith([
+        "plugins-changed",
+        "provider-registrations-changed",
+      ]);
 
       const registration = harness.deps.providerRegistry.get("my-remote-agent");
       expect(registration).toMatchObject({
@@ -133,12 +144,65 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
       );
 
       // Disabling the plugin runs its dispose hooks and removes the provider.
+      notifySystem.mockClear();
       await harness.pluginService.setEnabled(entry.id, false);
+      expect(notifySystem).toHaveBeenCalledWith([
+        "plugins-changed",
+        "provider-registrations-changed",
+      ]);
       expect(harness.deps.providerRegistry.get("my-remote-agent")).toBeNull();
       const afterDisable = await listSystemProviderInfos(harness.deps, {});
       expect(afterDisable.map((provider) => provider.id)).not.toContain(
         "my-remote-agent",
       );
+      notifySystem.mockRestore();
+    });
+  });
+
+  it("keeps a failed provider in the listing as unavailable", async () => {
+    await withTestHarness(async (harness) => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-failed-agent",
+        serverSource: REGISTER_PROVIDER_SOURCE("failed-agent"),
+        bridgeSource: 'import "missing-provider-runtime";\n',
+      });
+      const entry = await harness.pluginService.installPath(rootDir);
+
+      expect(entry.status).toBe("error");
+      expect(entry.statusDetail).toContain("Could not resolve");
+      expect(harness.deps.providerRegistry.get("failed-agent")?.info).toEqual(
+        expect.objectContaining({
+          id: "failed-agent",
+          displayName: "My Remote Agent",
+          available: false,
+        }),
+      );
+      expect(
+        (await listSystemProviderInfos(harness.deps, {})).find(
+          (provider) => provider.id === "failed-agent",
+        ),
+      ).toEqual(expect.objectContaining({ available: false }));
+
+      await writeFile(
+        join(rootDir, "bridge.ts"),
+        "export const experimental_providerBridge = { experimental_apiVersion: 1, handleLine: () => undefined };\n",
+      );
+      await harness.pluginService.reload(entry.id);
+      expect(
+        harness.pluginService.list().find((plugin) => plugin.id === entry.id)
+          ?.status,
+      ).toBe("running");
+      expect(
+        harness.deps.providerRegistry.get("failed-agent")?.info.available,
+      ).toBe(true);
+      expect(
+        harness.deps.providerRegistry
+          .list()
+          .filter((provider) => provider.info.id === "failed-agent"),
+      ).toHaveLength(1);
+
+      await harness.pluginService.setEnabled(entry.id, false);
+      expect(harness.deps.providerRegistry.get("failed-agent")).toBeNull();
     });
   });
 

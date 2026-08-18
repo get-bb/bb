@@ -154,12 +154,24 @@ function workerLogContext(worker: WorkerState): Record<string, unknown> {
   };
 }
 
+// Resolve the worker entry relative to this module's runtime location. In the
+// packaged app this file is bundled into daemon-bundle.mjs, so the emitted
+// worker bundle (bb-plugin-host-worker.mjs, see scripts/bundle-manifest.mjs)
+// sits beside it in dist/. Built-but-unbundled output has the `.js` sibling,
+// and dev runs from the `.ts` source (forked children inherit `--import tsx`).
 function defaultWorkerEntryPath(): string {
-  const compiled = fileURLToPath(
-    new URL("./plugin-host-worker.js", import.meta.url),
+  const candidates = [
+    "./bb-plugin-host-worker.mjs",
+    "./plugin-host-worker.js",
+    "./plugin-host-worker.ts",
+  ];
+  for (const candidate of candidates) {
+    const candidatePath = fileURLToPath(new URL(candidate, import.meta.url));
+    if (existsSync(candidatePath)) return candidatePath;
+  }
+  throw new Error(
+    `host plugin worker entry not found beside ${fileURLToPath(import.meta.url)} (looked for ${candidates.join(", ")})`,
   );
-  if (existsSync(compiled)) return compiled;
-  return fileURLToPath(new URL("./plugin-host-worker.ts", import.meta.url));
 }
 
 function errorMessage(error: unknown): string {
@@ -963,7 +975,6 @@ export class PluginHostManager {
       logger: this.options.logger,
     });
   }
-
 
   private async stopWorker(worker: WorkerState, reason: string): Promise<void> {
     if (worker.disposing) return worker.closed;

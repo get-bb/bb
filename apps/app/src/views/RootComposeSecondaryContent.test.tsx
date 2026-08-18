@@ -18,6 +18,7 @@ type RootComposeSecondaryContentProps = ComponentProps<
 >;
 
 interface PanelGroupHandle {
+  getLayout: () => number[];
   setLayout: (layout: number[]) => void;
 }
 
@@ -41,6 +42,7 @@ type TestDesktopWindow = {
 };
 
 const panelGroupState = vi.hoisted(() => ({
+  getLayout: vi.fn(() => [60, 40]),
   setLayout: vi.fn(),
 }));
 
@@ -66,7 +68,10 @@ vi.mock("react-resizable-panels", async () => {
     ({ children }, ref) => {
       React.useImperativeHandle(
         ref,
-        () => ({ setLayout: panelGroupState.setLayout }),
+        () => ({
+          getLayout: panelGroupState.getLayout,
+          setLayout: panelGroupState.setLayout,
+        }),
         [],
       );
       return React.createElement(

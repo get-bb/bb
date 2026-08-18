@@ -12,6 +12,10 @@ import {
   MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
 } from "@/lib/bb-desktop";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
+import {
+  APP_PAGE_HEADER_SURFACE_CLASS,
+  HEADER_SEAM_CLASS,
+} from "@/components/layout/AppPageHeader";
 
 describe("secondary panel surface tone", () => {
   it("uses the same sidebar background token as the primary sidebar", () => {
@@ -45,6 +49,18 @@ describe("getSecondaryPanelChromeStackClassName", () => {
     expect(className).toContain("shrink-0");
     expect(className).not.toContain(CHROME_ROW_HEIGHT_CLASS);
     expect(CHROME_ROW_CLASS).toContain(CHROME_ROW_HEIGHT_CLASS);
+  });
+
+  it("matches adjacent page-header chrome when requested", () => {
+    const className = getSecondaryPanelChromeStackClassName(false, "page");
+
+    for (const token of APP_PAGE_HEADER_SURFACE_CLASS.split(/\s+/)) {
+      expect(className).toContain(token);
+    }
+    for (const token of HEADER_SEAM_CLASS.split(/\s+/)) {
+      expect(className).toContain(token);
+    }
+    expect(className).not.toContain(SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS);
   });
 });
 

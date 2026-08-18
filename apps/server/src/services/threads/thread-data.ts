@@ -22,8 +22,11 @@ type StoredEventPayloadRow = Pick<
 
 export interface ListThreadEventRowsArgs {
   afterSeq?: number;
+  beforeSeq?: number;
   limit?: number;
+  order?: "asc" | "desc";
   threadId: string;
+  types?: readonly ThreadEventType[];
 }
 
 export interface FindThreadEventArgs {
@@ -115,8 +118,11 @@ export function listThreadEventRows(
 ): ThreadEventRow[] {
   const rows = listStoredEventRowRecords(db, {
     afterSequence: args.afterSeq,
+    beforeSequence: args.beforeSeq,
     limit: args.limit,
+    order: args.order,
     threadId: args.threadId,
+    types: args.types,
   });
   return rows.map((row) => parseStoredEventRow(row));
 }

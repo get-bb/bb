@@ -128,6 +128,12 @@ export interface ProviderRegistryService {
   list(): ProviderRegistration[];
   get(providerId: string): ProviderRegistration | null;
   /**
+   * Monotonic revision of the live registration set. Plugin lifecycle
+   * notifications use it to distinguish provider changes from unrelated
+   * plugin changes without broadcasting every intermediate reload step.
+   */
+  getRegistrationRevision(): number;
+  /**
    * Policy accessors: one answer per question, covering registered providers
    * plus the dynamic ACP tier (acp-* ids resolved from launch specs are never
    * registered — they fall back to the shared ACP capability set, exactly as
@@ -166,12 +172,25 @@ export interface ProviderRegistryService {
     registration: Omit<ProviderRegistration, "source"> & { pluginId: string },
   ): { dispose(): void };
   /**
+   * Resolves as soon as the requested provider's plugin has registered, or
+   * when plugin startup settles without it. Dynamic `acp-*` ids share the ACP
+   * tier registration, since those per-agent ids are resolved from config and
+   * are never registered individually.
+   *
+   * Use this for a request already scoped to one provider. Full provider
+   * listings still use {@link whenRegistrationsSettled} so their roster is
+   * complete rather than reflecting a partially loaded plugin set.
+   */
+  whenProviderRegistered(providerId: string): Promise<void>;
+  /**
    * Resolves once provider registrations have settled — that is, once plugin
    * startup finished (or failed). Providers exist only while their plugin is
    * loaded, and the HTTP listener deliberately starts serving before plugins
    * load, so anything that routes work by provider must wait for this: on that
-   * boot window the registry is still empty and the request would fail with
-   * "no provider available" or dispatch a command with no bridge launch.
+   * boot window the registry is still empty and an unscoped request would
+   * fail with "no provider available". Picker/model requests already scoped
+   * to a provider use {@link whenProviderRegistered} so unrelated plugins do
+   * not hold them behind this full-startup gate.
    *
    * Bounded by {@link REGISTRATIONS_SETTLED_TIMEOUT_MS} so a stuck plugin
    * cannot wedge requests, and so a plugin's own loopback SDK call during
@@ -209,6 +228,8 @@ export function createProviderRegistryService(
   deps: ProviderRegistryDeps = {},
 ): ProviderRegistryService {
   const pluginRegistrations = new Map<string, ProviderRegistration>();
+  const providerRegistrationWaiters = new Map<string, Set<() => void>>();
+  let registrationRevision = 0;
   let settle: (() => void) | null = null;
   const settled: Promise<void> =
     deps.deferRegistrationsSettled === true
@@ -219,6 +240,55 @@ export function createProviderRegistryService(
 
   function getRegistration(providerId: string): ProviderRegistration | null {
     return pluginRegistrations.get(providerId) ?? null;
+  }
+
+  function registrationWaiterKey(providerId: string): string {
+    return isAcpProviderId(providerId) ? ACP_TIER_OWNER_PLUGIN_ID : providerId;
+  }
+
+  function hasProviderRegistration(providerId: string): boolean {
+    if (!isAcpProviderId(providerId)) {
+      return pluginRegistrations.has(providerId);
+    }
+    for (const registeredProviderId of pluginRegistrations.keys()) {
+      if (isAcpProviderId(registeredProviderId)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function releaseProviderRegistrationWaiters(providerId: string): void {
+    const key = registrationWaiterKey(providerId);
+    const waiters = providerRegistrationWaiters.get(key);
+    if (waiters === undefined) return;
+    providerRegistrationWaiters.delete(key);
+    for (const resolve of waiters) resolve();
+  }
+
+  function releaseAllProviderRegistrationWaiters(): void {
+    for (const waiters of providerRegistrationWaiters.values()) {
+      for (const resolve of waiters) resolve();
+    }
+    providerRegistrationWaiters.clear();
+  }
+
+  async function waitUntilSettledOrTimeout(
+    readiness: Promise<void>,
+  ): Promise<void> {
+    if (settle === null) {
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      readiness,
+      settled,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, REGISTRATIONS_SETTLED_TIMEOUT_MS);
+        timer.unref?.();
+      }),
+    ]);
+    clearTimeout(timer);
   }
 
   return {
@@ -234,6 +304,10 @@ export function createProviderRegistryService(
 
     get(providerId) {
       return getRegistration(providerId);
+    },
+
+    getRegistrationRevision() {
+      return registrationRevision;
     },
 
     getServerCapabilities(providerId) {
@@ -315,33 +389,49 @@ export function createProviderRegistryService(
         ...(registration.icon === undefined ? {} : { icon: registration.icon }),
       };
       pluginRegistrations.set(providerId, entry);
+      registrationRevision += 1;
+      releaseProviderRegistrationWaiters(providerId);
       return {
         dispose() {
           if (pluginRegistrations.get(providerId) === entry) {
             pluginRegistrations.delete(providerId);
+            registrationRevision += 1;
           }
         },
       };
     },
 
-    async whenRegistrationsSettled() {
-      if (settle === null) {
-        return settled;
+    async whenProviderRegistered(providerId) {
+      if (hasProviderRegistration(providerId) || settle === null) {
+        return;
       }
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      await Promise.race([
-        settled,
-        new Promise<void>((resolve) => {
-          timer = setTimeout(resolve, REGISTRATIONS_SETTLED_TIMEOUT_MS);
-          timer.unref?.();
-        }),
-      ]);
-      clearTimeout(timer);
+      const key = registrationWaiterKey(providerId);
+      let release!: () => void;
+      const registered = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const waiters = providerRegistrationWaiters.get(key) ?? new Set();
+      waiters.add(release);
+      providerRegistrationWaiters.set(key, waiters);
+      try {
+        await waitUntilSettledOrTimeout(registered);
+      } finally {
+        const currentWaiters = providerRegistrationWaiters.get(key);
+        currentWaiters?.delete(release);
+        if (currentWaiters?.size === 0) {
+          providerRegistrationWaiters.delete(key);
+        }
+      }
+    },
+
+    async whenRegistrationsSettled() {
+      await waitUntilSettledOrTimeout(settled);
     },
 
     markRegistrationsSettled() {
       settle?.();
       settle = null;
+      releaseAllProviderRegistrationWaiters();
     },
   };
 }

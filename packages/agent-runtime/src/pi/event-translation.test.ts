@@ -221,6 +221,82 @@ describe("pi event translation", () => {
     expect(events.some((event) => event.type === "provider/error")).toBe(false);
   });
 
+  it("completes extension-triggered turns when agent_end includes string custom content", () => {
+    const translator = createTranslator();
+    const context = { threadId: "pi-thread-1" };
+    const agentEndEvent = {
+      type: "agent_end",
+      messages: [
+        {
+          role: "custom",
+          customType: "pi-processes",
+          content: "Process completed successfully",
+          display: true,
+          timestamp: 1777995780000,
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "The process finished." }],
+          api: "anthropic-messages",
+          provider: "anthropic",
+          model: "claude-haiku-4-5",
+          usage: {
+            input: 10,
+            output: 5,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 15,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+          stopReason: "stop",
+          timestamp: 1777995781000,
+        },
+      ],
+      willRetry: false,
+    } satisfies AgentSessionEvent;
+
+    translator.translatePiEvent(
+      {
+        jsonrpc: "2.0",
+        method: "sdk/message",
+        params: {
+          threadId: context.threadId,
+          message: { type: "agent_start" },
+        },
+      },
+      context,
+    );
+
+    const events = translator.translatePiEvent(
+      {
+        jsonrpc: "2.0",
+        method: "sdk/message",
+        params: {
+          threadId: context.threadId,
+          message: agentEndEvent,
+        },
+      },
+      context,
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      }),
+    );
+    expect(events.some((event) => event.type === "provider/unhandled")).toBe(
+      false,
+    );
+  });
+
   it("translateEvent agent_end surfaces Pi assistant stop errors as failed turns", () => {
     const translator = createTranslator();
     const context = { threadId: "bb-thread-1" };
@@ -430,17 +506,49 @@ describe("pi event translation", () => {
   });
 
   it.each([
+    "Compaction failed: Nothing to compact (session too small)",
+    "Compaction failed: Already compacted",
+  ])(
+    "translateEvent manual compaction refusal %j completes the turn as a no-op",
+    (errorMessage) => {
+      const { completed } = translateManualCompaction({
+        aborted: false,
+        errorMessage,
+      });
+
+      expect(completed).toEqual([
+        expect.objectContaining({
+          type: "provider/warning",
+          scope: turnScope("turn-1"),
+          category: "compaction-skipped",
+          summary: "Context compaction skipped",
+          details: errorMessage,
+        }),
+        {
+          type: "turn/completed",
+          threadId: "",
+          providerThreadId: "",
+          scope: turnScope("turn-1"),
+          status: "completed",
+        },
+      ]);
+      expect(completed.some((event) => event.type === "thread/compacted")).toBe(
+        false,
+      );
+    },
+  );
+
+  it.each([
     {
       label: "failed",
       args: {
         aborted: false,
-        errorMessage:
-          "Compaction failed: Nothing to compact (session too small)",
+        errorMessage: "Compaction failed: Summarization failed: 500",
       },
       expected: {
         status: "failed",
         error: {
-          message: "Compaction failed: Nothing to compact (session too small)",
+          message: "Compaction failed: Summarization failed: 500",
         },
       },
     },

@@ -321,6 +321,37 @@ interface RightPanelFileTabIconProps {
   path: string;
 }
 
+interface BuildRootComposeNewTabFileTabArgs {
+  activeTabId: string | null;
+  onClose: () => void;
+  onSelect: () => void;
+  tabId: string;
+}
+
+/** The root launcher uses the same visible tab-pill model as thread panels. */
+export function buildRootComposeNewTabFileTab({
+  activeTabId,
+  onClose,
+  onSelect,
+  tabId,
+}: BuildRootComposeNewTabFileTabArgs): SecondaryPanelFileTab {
+  return {
+    id: tabId,
+    filename: "New tab",
+    isActive: tabId === activeTabId,
+    leadingVisual: (
+      <Icon
+        name="NewTab"
+        className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+        aria-hidden
+      />
+    ),
+    statusLabel: null,
+    onSelect,
+    onClose,
+  };
+}
+
 function RightPanelFileTabIcon({ path }: RightPanelFileTabIconProps) {
   const visual = resolveRightPanelFileVisual({ path });
   return (
@@ -1136,6 +1167,7 @@ function RootComposeSurface({
     usePluginSlots();
   const {
     activePluginPanelTab,
+    activeFileOpenerOwner,
     activeHostFileEnvironmentId,
     activeHostFileLineRange,
     activeHostFilePath,
@@ -1152,7 +1184,6 @@ function RootComposeSurface({
     activeWorkspaceFileStatusLabel,
     activeBrowserTab,
     browserTabs,
-    clearActiveFileTabs,
     activateTab,
     closeTab,
     isNewTabActive,
@@ -1262,7 +1293,6 @@ function RootComposeSurface({
   const {
     closePanel: closeSecondaryPanel,
     openCompactDrawer,
-    openPanel: openSecondaryPanel,
     openStorageFile,
     openWorkspaceFile,
   } = useThreadSecondaryPanelVisibility({
@@ -1329,19 +1359,6 @@ function RootComposeSurface({
       rootPanelThreadId,
     ],
   );
-  useEffect(() => {
-    if (!isSecondaryPanelOpen) {
-      return;
-    }
-    if (
-      activeFixedSecondaryTab !== null &&
-      activeFixedSecondaryTab.kind !== "thread-info" &&
-      activeFixedSecondaryTab.kind !== "git-diff"
-    ) {
-      return;
-    }
-    openTab({ kind: "new-tab" });
-  }, [activeFixedSecondaryTab, isSecondaryPanelOpen, openTab]);
   const openBrowserTab = useCallback(
     (url?: string) => {
       const browserUrl = url ?? "";
@@ -1468,13 +1485,6 @@ function RootComposeSurface({
     }
     handleOpenNewTab();
   }, [closeSecondaryPanel, handleOpenNewTab, isSecondaryPanelOpen]);
-  const handleSecondaryPanelChange = useCallback<SecondaryPanelChangeHandler>(
-    (panel) => {
-      clearActiveFileTabs();
-      openSecondaryPanel(panel);
-    },
-    [clearActiveFileTabs, openSecondaryPanel],
-  );
   const handleSecondaryPanelFocus = useCallback(() => {
     touchFixedPanelTabsState();
   }, [touchFixedPanelTabsState]);
@@ -1587,16 +1597,6 @@ function RootComposeSurface({
       activeFixedSecondaryTab !== null &&
       isSecondaryFileTab(activeFixedSecondaryTab)
     ) {
-      // A lone new-tab placeholder respawns on close (an effect reopens one
-      // whenever the panel would otherwise be empty), so hide the panel
-      // instead of churning the placeholder.
-      if (
-        activeFixedSecondaryTab.kind === "new-tab" &&
-        fixedPanelTabsState.secondary.tabs.length === 1
-      ) {
-        closeSecondaryPanel();
-        return true;
-      }
       if (activeFixedSecondaryTab.kind === "terminal") {
         handleCloseTerminalTab(activeFixedSecondaryTab.terminalId);
       } else {
@@ -1612,11 +1612,10 @@ function RootComposeSurface({
     activeFixedSecondaryTab,
     closeSecondaryPanel,
     closeTab,
-    fixedPanelTabsState.secondary.tabs,
     handleCloseTerminalTab,
     isSecondaryPanelOpen,
   ]);
-  const fileTabs = (() => {
+  const fileTabs = useMemo(() => {
     const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
     const tabs = syncedOrderedSecondaryFileTabs.map(
       (tab): SecondaryPanelFileTab => {
@@ -1694,22 +1693,12 @@ function RootComposeSurface({
               onClose: () => closeTab(tab.id),
             };
           case "new-tab":
-            return {
-              id: tab.id,
-              filename: "New tab",
-              isHidden: true,
-              isActive: tab.id === activeFixedSecondaryTabId,
-              leadingVisual: (
-                <Icon
-                  name="NewTab"
-                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                  aria-hidden
-                />
-              ),
-              statusLabel: null,
-              onSelect: () => handleActivateFileTab(tab.id),
+            return buildRootComposeNewTabFileTab({
+              activeTabId: activeFixedSecondaryTabId,
               onClose: () => closeTab(tab.id),
-            };
+              onSelect: () => handleActivateFileTab(tab.id),
+              tabId: tab.id,
+            });
           case "plugin-panel": {
             const actionIcon =
               rootPanelNewThreadPanelActions.find(
@@ -1737,7 +1726,16 @@ function RootComposeSurface({
       },
     );
     return tabs.length > 0 ? tabs : undefined;
-  })();
+  }, [
+    activeFixedSecondaryTabId,
+    closeTab,
+    handleActivateFileTab,
+    handleActivateTerminalTab,
+    handleCloseTerminalTab,
+    rootPanelNewThreadPanelActions,
+    syncedOrderedSecondaryFileTabs,
+    terminalsById,
+  ]);
   const { isLocalDaemonHost } = useHostDaemon();
   const activeWorkspaceEnvironmentQuery = useEnvironment(
     activeWorkspaceFileEnvironmentId,
@@ -1981,6 +1979,19 @@ function RootComposeSurface({
     activeTabId: activeFixedSecondaryTabId,
     tabs: syncedOrderedSecondaryFileTabs,
   });
+  const renderFileOpenerReplacement = (original: ReactNode): ReactNode =>
+    activeFileOpenerOwner !== null && activePluginPanelTab !== null ? (
+      <PluginPanelTabContent
+        tab={activePluginPanelTab}
+        context={{
+          kind: "new-thread",
+          projectId: isProjectless ? null : projectId,
+        }}
+        fileOpenerOriginal={original}
+      />
+    ) : (
+      original
+    );
   const fileTabContent: ReactNode =
     activeTerminalId && rootPanelTerminalTarget ? (
       <ThreadTerminalPanel
@@ -1992,6 +2003,7 @@ function RootComposeSurface({
         onOpenLink={handleOpenPanelLink}
         onSelectionAddToChat={handleRootPanelSelectionAddToChat}
         panelStateId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}
+        syncThreadId={null}
         target={rootPanelTerminalTarget}
       />
     ) : isNewTabActive ? (
@@ -2013,65 +2025,73 @@ function RootComposeSurface({
       />
     ) : activeWorkspaceFilePath !== null &&
       activeWorkspaceFileEnvironmentId !== null ? (
-      <WorkspaceFilePreviewTabContent
-        activePath={activeWorkspaceFilePath}
-        copyPath={workspaceFileCopyPath}
-        environmentId={activeWorkspaceFileEnvironmentId}
-        lineRange={activeWorkspaceFileLineRange}
-        onOpenInEditor={handleOpenWorkspaceFileInEditor}
-        onSelectionAddToChat={handleRootPanelSelectionAddToChat}
-        source={activeWorkspaceFileSource}
-        statusLabel={activeWorkspaceFileStatusLabel}
-        threadId={rootPanelThreadId}
-      />
+      renderFileOpenerReplacement(
+        <WorkspaceFilePreviewTabContent
+          activePath={activeWorkspaceFilePath}
+          copyPath={workspaceFileCopyPath}
+          environmentId={activeWorkspaceFileEnvironmentId}
+          lineRange={activeWorkspaceFileLineRange}
+          onOpenInEditor={handleOpenWorkspaceFileInEditor}
+          onSelectionAddToChat={handleRootPanelSelectionAddToChat}
+          source={activeWorkspaceFileSource}
+          statusLabel={activeWorkspaceFileStatusLabel}
+          threadId={rootPanelThreadId}
+        />,
+      )
     ) : activeWorkspaceFilePath !== null &&
       activeWorkspaceFileProjectPreviewId !== null ? (
-      <ProjectFilePreviewTabContent
-        activePath={activeWorkspaceFilePath}
-        copyPath={projectFileCopyPath}
-        environmentId={rootPanelEnvironmentId}
-        hostId={rootProjectHostId}
-        lineRange={activeWorkspaceFileLineRange}
-        onOpenInEditor={handleOpenProjectFileInEditor}
-        onSelectionAddToChat={handleRootPanelSelectionAddToChat}
-        projectId={activeWorkspaceFileProjectPreviewId}
-      />
-    ) : activeHostFilePath !== null ? (
-      activeRootHostFileThreadId && activeRootHostFileEnvironmentId ? (
-        <HostFilePreviewTabContent
-          activePath={activeHostFilePath}
-          copyPath={activeHostFilePath}
-          environmentId={activeRootHostFileEnvironmentId}
-          lineRange={activeHostFileLineRange}
-          onOpenInEditor={handleOpenHostFileInEditor}
+      renderFileOpenerReplacement(
+        <ProjectFilePreviewTabContent
+          activePath={activeWorkspaceFilePath}
+          copyPath={projectFileCopyPath}
+          environmentId={rootPanelEnvironmentId}
+          hostId={rootProjectHostId}
+          lineRange={activeWorkspaceFileLineRange}
+          onOpenInEditor={handleOpenProjectFileInEditor}
           onSelectionAddToChat={handleRootPanelSelectionAddToChat}
-          threadId={activeRootHostFileThreadId}
-        />
-      ) : (
-        <FilePreview
-          path={activeHostFilePath}
-          copyPath={activeHostFilePath}
-          onOpenInEditor={handleOpenHostFileInEditor}
-          state={{ kind: "loading" }}
-        />
+          projectId={activeWorkspaceFileProjectPreviewId}
+        />,
+      )
+    ) : activeHostFilePath !== null ? (
+      renderFileOpenerReplacement(
+        activeRootHostFileThreadId && activeRootHostFileEnvironmentId ? (
+          <HostFilePreviewTabContent
+            activePath={activeHostFilePath}
+            copyPath={activeHostFilePath}
+            environmentId={activeRootHostFileEnvironmentId}
+            lineRange={activeHostFileLineRange}
+            onOpenInEditor={handleOpenHostFileInEditor}
+            onSelectionAddToChat={handleRootPanelSelectionAddToChat}
+            threadId={activeRootHostFileThreadId}
+          />
+        ) : (
+          <FilePreview
+            path={activeHostFilePath}
+            copyPath={activeHostFilePath}
+            onOpenInEditor={handleOpenHostFileInEditor}
+            state={{ kind: "loading" }}
+          />
+        ),
       )
     ) : activeStorageFilePath !== null ? (
-      activeRootStorageFileThreadId ? (
-        <ThreadStorageFilePreviewTabContent
-          activePath={activeStorageFilePath}
-          copyPath={storageFileCopyPath}
-          lineRange={activeStorageFileLineRange}
-          onOpenInEditor={handleOpenStorageFileInEditor}
-          onSelectionAddToChat={handleRootPanelSelectionAddToChat}
-          threadId={activeRootStorageFileThreadId}
-        />
-      ) : (
-        <FilePreview
-          path={activeStorageFilePath}
-          copyPath={storageFileCopyPath}
-          onOpenInEditor={handleOpenStorageFileInEditor}
-          state={{ kind: "loading" }}
-        />
+      renderFileOpenerReplacement(
+        activeRootStorageFileThreadId ? (
+          <ThreadStorageFilePreviewTabContent
+            activePath={activeStorageFilePath}
+            copyPath={storageFileCopyPath}
+            lineRange={activeStorageFileLineRange}
+            onOpenInEditor={handleOpenStorageFileInEditor}
+            onSelectionAddToChat={handleRootPanelSelectionAddToChat}
+            threadId={activeRootStorageFileThreadId}
+          />
+        ) : (
+          <FilePreview
+            path={activeStorageFilePath}
+            copyPath={storageFileCopyPath}
+            onOpenInEditor={handleOpenStorageFileInEditor}
+            state={{ kind: "loading" }}
+          />
+        ),
       )
     ) : activePluginPanelTab ? (
       <PluginPanelTabContent
@@ -2344,9 +2364,11 @@ function RootComposeSurface({
             renderBrowserDeck,
             isBrowserTabActive,
             isOpen: isSecondaryPanelOpen,
+            fixedTabs: [],
+            // The shell, tab strip, launcher, resize, and drawer behavior are
+            // shared with threads. Info, Diff, and conversation full-screen
+            // stay thread-only because no thread exists on this surface yet.
             showConversationCollapseControl: false,
-            showGitDiffTab: false,
-            showInfoTab: false,
             inlinePanelToggle: panelTogglePlacement.inlinePanelToggle,
             onClose: closeSecondaryPanel,
             onCollapse: closeSecondaryPanel,
@@ -2356,7 +2378,6 @@ function RootComposeSurface({
             onOpenFilePreview: handleOpenFilePreview,
             onSelectionAddToChat: handleRootPanelSelectionAddToChat,
             onPanelFocus: handleSecondaryPanelFocus,
-            onPanelChange: handleSecondaryPanelChange,
           }}
         >
           {showEmptyWelcome ? (

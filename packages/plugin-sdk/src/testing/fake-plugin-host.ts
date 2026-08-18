@@ -8,6 +8,7 @@ import { z } from "zod";
 import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@bb/domain/plugin-interaction-limits";
 import {
   AGENT_TOOL_NAME_PATTERN,
+  assertNoRecursiveJsonSchemaReferences,
   BACKGROUND_NAME_PATTERN,
   CLI_COMMAND_NAME_PATTERN,
   enforcePluginCliOutputLimit,
@@ -688,6 +689,10 @@ function normalizeAgentToolParameters(args: {
       `configure() output.tools[${index}].parameters must have root type "object"`,
     );
   }
+  assertNoRecursiveJsonSchemaReferences(
+    parameters,
+    `configure() output.tools[${index}].parameters`,
+  );
   return parameters;
 }
 
@@ -1222,9 +1227,7 @@ function createFakePluginHostInternal(
       // declarations exactly like production.
       const normalized = validatePluginProviderDeclaration(declaration);
       if (
-        providerRegistrations.some(
-          (existing) => existing.id === normalized.id,
-        )
+        providerRegistrations.some((existing) => existing.id === normalized.id)
       ) {
         throw new Error(
           `Provider "${normalized.id}" is already registered; a plugin cannot shadow an existing provider.`,
@@ -1350,6 +1353,10 @@ function createFakePluginHostInternal(
           `tool "${name}" parameters must be a zod schema or a JSON-schema object`,
         );
       }
+      assertNoRecursiveJsonSchemaReferences(
+        inputSchema,
+        `tool "${name}" parameters`,
+      );
       const record: FakeAgentToolRecord = {
         name,
         description: tool.description,

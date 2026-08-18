@@ -502,6 +502,177 @@ export function isZodSchemaLike(value: unknown): boolean {
   );
 }
 
+const SINGLE_SCHEMA_KEYWORDS = [
+  "additionalItems",
+  "additionalProperties",
+  "contains",
+  "contentSchema",
+  "else",
+  "if",
+  "items",
+  "not",
+  "propertyNames",
+  "then",
+  "unevaluatedItems",
+  "unevaluatedProperties",
+] as const;
+
+const SCHEMA_ARRAY_KEYWORDS = [
+  "allOf",
+  "anyOf",
+  "oneOf",
+  "prefixItems",
+] as const;
+
+const SCHEMA_MAP_KEYWORDS = [
+  "$defs",
+  "definitions",
+  "dependentSchemas",
+  "patternProperties",
+  "properties",
+] as const;
+
+function isJsonSchemaObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function decodeJsonPointerToken(token: string): string {
+  return token.replaceAll("~1", "/").replaceAll("~0", "~");
+}
+
+function resolveLocalJsonSchemaReference(
+  document: Record<string, unknown>,
+  anchors: ReadonlyMap<string, Record<string, unknown>>,
+  reference: string,
+): unknown {
+  if (!reference.startsWith("#")) return undefined;
+  let pointer: string;
+  try {
+    pointer = decodeURIComponent(reference.slice(1));
+  } catch {
+    return undefined;
+  }
+  if (pointer.length === 0) return document;
+  if (!pointer.startsWith("/")) return anchors.get(pointer);
+
+  let current: unknown = document;
+  for (const encodedToken of pointer.slice(1).split("/")) {
+    const token = decodeJsonPointerToken(encodedToken);
+    if (Array.isArray(current)) {
+      if (!/^(0|[1-9][0-9]*)$/.test(token)) return undefined;
+      current = current[Number(token)];
+      continue;
+    }
+    if (!isJsonSchemaObject(current) || !Object.hasOwn(current, token)) {
+      return undefined;
+    }
+    current = current[token];
+  }
+  return current;
+}
+
+function forEachJsonSchemaChild(
+  schema: Record<string, unknown>,
+  visit: (child: unknown) => void,
+): void {
+  for (const keyword of SINGLE_SCHEMA_KEYWORDS) {
+    const child = schema[keyword];
+    if (Array.isArray(child)) {
+      for (const entry of child) visit(entry);
+    } else {
+      visit(child);
+    }
+  }
+  for (const keyword of SCHEMA_ARRAY_KEYWORDS) {
+    const children = schema[keyword];
+    if (!Array.isArray(children)) continue;
+    for (const child of children) visit(child);
+  }
+  for (const keyword of SCHEMA_MAP_KEYWORDS) {
+    const children = schema[keyword];
+    if (!isJsonSchemaObject(children)) continue;
+    for (const child of Object.values(children)) visit(child);
+  }
+  const dependencies = schema.dependencies;
+  if (isJsonSchemaObject(dependencies)) {
+    for (const dependency of Object.values(dependencies)) {
+      if (!Array.isArray(dependency)) visit(dependency);
+    }
+  }
+}
+
+/**
+ * Reject recursive local references before a tool schema reaches a provider.
+ * Some providers reject the complete tool list when any one schema contains a
+ * recursive `$ref`, so this is a shared production/fake-host boundary rule.
+ */
+export function assertNoRecursiveJsonSchemaReferences(
+  schema: unknown,
+  subject: string,
+): void {
+  if (!isJsonSchemaObject(schema)) return;
+  const document = schema;
+  const anchors = new Map<string, Record<string, unknown>>();
+  const indexed = new Set<object>();
+
+  function indexAnchors(candidate: unknown): void {
+    if (!isJsonSchemaObject(candidate) || indexed.has(candidate)) return;
+    indexed.add(candidate);
+    for (const keyword of ["$anchor", "$dynamicAnchor"] as const) {
+      const anchor = candidate[keyword];
+      if (typeof anchor === "string") anchors.set(anchor, candidate);
+    }
+    for (const keyword of ["$id", "id"] as const) {
+      const id = candidate[keyword];
+      if (typeof id === "string" && /^#[^/]+$/.test(id)) {
+        anchors.set(id.slice(1), candidate);
+      }
+    }
+    forEachJsonSchemaChild(candidate, indexAnchors);
+  }
+
+  indexAnchors(document);
+
+  const visited = new Set<object>();
+  const visiting = new Set<object>();
+
+  function visit(
+    candidate: unknown,
+    viaReference?: { keyword: string; value: string },
+  ): void {
+    if (typeof candidate === "boolean" || !isJsonSchemaObject(candidate)) {
+      return;
+    }
+    if (visiting.has(candidate)) {
+      throw new Error(
+        `${subject} contains recursive JSON Schema ${viaReference?.keyword ?? "$ref"} ${JSON.stringify(viaReference?.value ?? "#")}`,
+      );
+    }
+    if (visited.has(candidate)) return;
+
+    visiting.add(candidate);
+    for (const keyword of ["$ref", "$recursiveRef", "$dynamicRef"] as const) {
+      const reference = candidate[keyword];
+      if (typeof reference === "string" && reference.startsWith("#")) {
+        const target = resolveLocalJsonSchemaReference(
+          document,
+          anchors,
+          reference,
+        );
+        if (target !== undefined) {
+          visit(target, { keyword, value: reference });
+        }
+      }
+    }
+    forEachJsonSchemaChild(candidate, visit);
+
+    visiting.delete(candidate);
+    visited.add(candidate);
+  }
+
+  visit(schema);
+}
+
 /** Compact issue summary from a (possibly foreign-instance) zod error. */
 export function summarizeParseIssues(error: unknown): string {
   const issues = (

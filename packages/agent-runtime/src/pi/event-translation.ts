@@ -25,14 +25,13 @@ import { threadScope, toPositiveNumber, turnScope } from "@bb/domain";
 import {
   UNSTAMPED_THREAD_ID,
   bashArgsSchema,
+  buildFileChangeItem,
+  buildGenericToolCallItem,
   buildToolResultItem,
-  buildToolUseItem,
   buildUnhandledProviderEvents,
   createProviderTurnStateRegistry,
   createScopedItemIdFactory,
   createUnhandledProviderEvent,
-  diffCumulativeText,
-  drainAcceptedUserMessages,
   errorEnvelopeSchema,
   extractResultText,
   jsonRpcEnvelopeSchema,
@@ -49,9 +48,9 @@ import {
 import type {
   AcceptedUserMessageState,
   JsonRpcMessage,
-  ToolUseTranslationInput,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { ProviderTranslationContext } from "../provider-adapter.js";
+import { diffCumulativeText } from "./diff-cumulative-text.js";
 import { toCanonicalPiModelId } from "./model-list.js";
 import { piVisibilityMetadata } from "./visibility.js";
 
@@ -171,7 +170,9 @@ const piAssistantMessageSchema = z
 const piConversationMessageSchema = z
   .object({
     role: z.string(),
-    content: z.array(piMessageContentBlockSchema).optional(),
+    content: z
+      .union([z.string(), z.array(piMessageContentBlockSchema)])
+      .optional(),
     stopReason: z.string().optional(),
     errorMessage: z.string().optional(),
     provider: z.string().optional(),
@@ -210,6 +211,21 @@ const piCompactionEndEventSchema = z
     errorMessage: z.string().optional(),
   })
   .passthrough();
+
+/**
+ * Pi refuses a manual compaction before it calls the model when the session
+ * has nothing to summarize. Pi reports the refusal through the same
+ * `compaction_end.errorMessage` field as a real failure, so bb must tell them
+ * apart: a refusal is a no-op, not a failed turn.
+ */
+const piCompactionNoopMessages = new Set([
+  "Compaction failed: Nothing to compact (session too small)",
+  "Compaction failed: Already compacted",
+]);
+
+function isPiCompactionNoop(errorMessage: string): boolean {
+  return piCompactionNoopMessages.has(errorMessage.trim());
+}
 
 const piMessageUpdateEventSchema = z
   .object({
@@ -296,35 +312,61 @@ const PI_EMPTY_BASH_OUTPUT_PLACEHOLDERS = ["(no output)"] as const;
 const PI_COMMAND_TOOL_NAMES = new Set(["bash"]);
 const PI_FILE_CHANGE_TOOL_NAMES = new Set(["edit", "write"]);
 
+interface PiToolUseTranslationInput {
+  args: unknown;
+  callId: string;
+  parentToolCallId?: string;
+  toolName: string;
+}
+
 function translatePiToolUseItem(
-  input: ToolUseTranslationInput,
+  input: PiToolUseTranslationInput,
 ): ThreadEventItem {
-  return buildToolUseItem(input, {
-    commandToolNames: PI_COMMAND_TOOL_NAMES,
-    fileChangeToolNames: PI_FILE_CHANGE_TOOL_NAMES,
-    parseCommand(args) {
-      const parsed = bashArgsSchema.safeParse(args);
-      const command = parsed.success
-        ? toOptionalString(parsed.data.command)
-        : undefined;
-      const cwd = parsed.success
-        ? (toOptionalString(parsed.data.cwd) ?? "")
-        : "";
-      return command ? { command, cwd } : null;
-    },
-    parseFileChange(args) {
-      const parsed = piFileEditArgsSchema.safeParse(args);
-      if (!parsed.success) {
-        return null;
-      }
-      return {
+  const withParent = (item: ThreadEventItem): ThreadEventItem =>
+    withParentToolCallId(item, input.parentToolCallId);
+  const genericToolCall = (): ThreadEventItem =>
+    withParent(buildGenericToolCallItem(input));
+
+  if (PI_COMMAND_TOOL_NAMES.has(input.toolName)) {
+    const parsed = bashArgsSchema.safeParse(input.args);
+    const command = parsed.success
+      ? toOptionalString(parsed.data.command)
+      : undefined;
+    if (!command) {
+      return genericToolCall();
+    }
+    return withParent({
+      type: "commandExecution",
+      id: input.callId,
+      command,
+      cwd: toOptionalString(parsed.success ? parsed.data.cwd : undefined) ?? "",
+      status: "pending",
+      approvalStatus: null,
+    });
+  }
+
+  if (PI_FILE_CHANGE_TOOL_NAMES.has(input.toolName)) {
+    const parsed = piFileEditArgsSchema.safeParse(input.args);
+    if (!parsed.success) {
+      return genericToolCall();
+    }
+    if (!parsed.data.path) {
+      return withParent({
+        ...buildGenericToolCallItem(input),
         arguments: parsed.data,
+      });
+    }
+    return withParent(
+      buildFileChangeItem({
+        callId: input.callId,
         path: parsed.data.path,
         oldText: parsed.data.oldText,
         newText: parsed.data.newText ?? parsed.data.content,
-      };
-    },
-  });
+      }),
+    );
+  }
+
+  return genericToolCall();
 }
 
 function translatePiToolResultItem(
@@ -403,9 +445,9 @@ export interface PiTurnState {
   currentTurnId: string | undefined;
   cumulativeTokens: ThreadEventTokenUsageBreakdown;
   openAssistantMessageIdsByScope: Map<string, string>;
-  openReasoningItemIdsByScope: Map<string, string>;
+  openScopedItemIdsByScope: Map<string, string>;
   pendingAcceptedUserMessages: AcceptedUserMessageState["pendingAcceptedUserMessages"];
-  reasoningItemCounter: number;
+  scopedItemCounter: number;
   toolItemsByCallId: Map<string, ThreadEventItem>;
 }
 
@@ -475,20 +517,13 @@ export function createPiEventTranslator(
         reasoningOutputTokens: 0,
       },
       openAssistantMessageIdsByScope: new Map(),
-      openReasoningItemIdsByScope: new Map(),
+      openScopedItemIdsByScope: new Map(),
       pendingAcceptedUserMessages: [],
-      reasoningItemCounter: 0,
+      scopedItemCounter: 0,
       toolItemsByCallId: new Map(),
     }),
-    onTurnStart: ({ events, state, threadId, turnId }) => {
+    onTurnStart: ({ state }) => {
       resetPiCommandOutputSnapshots(state);
-      drainAcceptedUserMessages({
-        events,
-        providerThreadId: "",
-        state,
-        threadId,
-        turnId,
-      });
     },
     turnIdPrefix: options.turnIdPrefix,
   });
@@ -727,12 +762,29 @@ export function createPiEventTranslator(
         if (turnId.length === 0) {
           return buildUnexpectedEvent(event);
         }
+        const compactionNoopDetail =
+          parsed.data.reason === "manual" &&
+          !parsed.data.aborted &&
+          parsed.data.errorMessage !== undefined &&
+          isPiCompactionNoop(parsed.data.errorMessage)
+            ? parsed.data.errorMessage
+            : undefined;
         if (!parsed.data.aborted && !parsed.data.errorMessage) {
           events.push({
             type: "thread/compacted",
             threadId,
             providerThreadId: "",
             scope: turnScope(turnId),
+          });
+        } else if (compactionNoopDetail !== undefined) {
+          events.push({
+            type: "provider/warning",
+            threadId,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+            category: "compaction-skipped",
+            summary: "Context compaction skipped",
+            details: compactionNoopDetail,
           });
         } else if (parsed.data.reason !== "manual") {
           events.push({
@@ -756,10 +808,10 @@ export function createPiEventTranslator(
             scope: turnScope(turnId),
             status: parsed.data.aborted
               ? "interrupted"
-              : parsed.data.errorMessage
+              : parsed.data.errorMessage && compactionNoopDetail === undefined
                 ? "failed"
                 : "completed",
-            ...(parsed.data.errorMessage
+            ...(parsed.data.errorMessage && compactionNoopDetail === undefined
               ? { error: { message: parsed.data.errorMessage } }
               : {}),
           });
@@ -900,7 +952,7 @@ export function createPiEventTranslator(
             if (typeof assistantEvent.contentIndex !== "number") {
               return buildUnexpectedEvent(event);
             }
-            const opensItem = !state.openReasoningItemIdsByScope.has(
+            const opensItem = !state.openScopedItemIdsByScope.has(
               `${context?.parentToolCallId ?? "root"}:${assistantEvent.contentIndex}`,
             );
             const itemId = piReasoningItemIds.getOrCreate({

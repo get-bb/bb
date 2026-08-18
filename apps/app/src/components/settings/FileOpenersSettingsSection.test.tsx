@@ -6,11 +6,8 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
+import { BUILT_IN_FILE_OPENER_PREFERENCE } from "@/lib/file-opener-preference";
 import { FileOpenersSettingsSection } from "./FileOpenersSettingsSection";
-
-function NotesEditor() {
-  return null;
-}
 
 function registerNotesOpener() {
   setPluginSlotRegistrations("notes", {
@@ -24,7 +21,7 @@ function registerNotesOpener() {
         id: "editor",
         title: "Notes editor",
         extensions: ["md", "mdx"],
-        component: NotesEditor,
+        component: () => null,
       },
     ],
     messageDirectives: [],
@@ -38,39 +35,37 @@ afterEach(() => {
 });
 
 describe("FileOpenersSettingsSection", () => {
-  it("lists one row per extension and persists a picked default", async () => {
+  it("defaults to automatic and persists built-in, plugin, and automatic choices", async () => {
     registerNotesOpener();
     render(<FileOpenersSettingsSection />);
 
     expect(screen.getByText(".md files")).toBeDefined();
     expect(screen.getByText(".mdx files")).toBeDefined();
+    const trigger = screen.getByRole("button", {
+      name: "Default opener for .md files",
+    });
+    expect(trigger.textContent).toContain("Automatic");
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Default opener for .md files" }),
-      { button: 0 },
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: /Notes editor/ }),
-    );
+    await selectOption(trigger, /Built-in preview/u);
+    expect(storedPreference()).toEqual({
+      md: BUILT_IN_FILE_OPENER_PREFERENCE,
+    });
 
-    expect(
-      JSON.parse(
-        window.localStorage.getItem("bb.fileOpenerByExtension") ?? "{}",
-      ),
-    ).toEqual({ md: "notes:editor" });
+    await selectOption(trigger, /Notes editor \(notes\)/u);
+    expect(storedPreference()).toEqual({ md: "notes:editor" });
 
-    // Switching back to the built-in preview clears the entry.
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Default opener for .md files" }),
-      { button: 0 },
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: /Built-in preview/ }),
-    );
-    expect(
-      JSON.parse(
-        window.localStorage.getItem("bb.fileOpenerByExtension") ?? "{}",
-      ),
-    ).toEqual({});
+    await selectOption(trigger, /Automatic/u);
+    expect(storedPreference()).toEqual({});
   });
 });
+
+async function selectOption(trigger: HTMLElement, name: RegExp) {
+  fireEvent.pointerDown(trigger, { button: 0 });
+  fireEvent.click(await screen.findByRole("menuitem", { name }));
+}
+
+function storedPreference(): Record<string, string> {
+  return JSON.parse(
+    window.localStorage.getItem("bb.fileOpenerByExtension") ?? "{}",
+  ) as Record<string, string>;
+}

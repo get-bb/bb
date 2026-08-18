@@ -12,6 +12,7 @@
 import { useEffect, type ReactNode } from "react";
 import { Provider } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   act,
   cleanup,
@@ -401,6 +402,40 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(submitted[0]).toEqual(STORED_REQUEST);
     await waitFor(() => {
       expect(latestPromptBoxProps().value).toBe("");
+    });
+  });
+
+  it("allows submitting a projectless thread", async () => {
+    const submitted: NewThreadRequest[] = [];
+    renderComposer(
+      STORED_REQUEST,
+      (request) => {
+        submitted.push(request);
+      },
+      "projectless",
+    );
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+      expect(latestPromptBoxProps().project.allowNoProject).toBe(true);
+    });
+    await act(async () => {
+      await latestPromptBoxProps().project.onChange(null);
+    });
+    await waitFor(() => {
+      expect(latestPromptBoxProps().project.value).toBeNull();
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]).toMatchObject({
+      projectId: PERSONAL_PROJECT_ID,
+      environment: {
+        type: "host",
+        hostId: "host_1",
+        workspace: { type: "personal" },
+      },
     });
   });
 

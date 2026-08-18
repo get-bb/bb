@@ -8,7 +8,6 @@
 import {
   ProviderRequestDecodeError as ProviderRequestDecodeErrorValue,
   ProviderResponseEncodeError,
-  normalizePendingInteractionRequestedPermissionProfile,
   type BuildInteractiveResponseArgs,
   type DecodedInteractiveRequest,
   type ProviderInboundRequest,
@@ -19,6 +18,7 @@ import {
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
 } from "@get-bb/plugin-sdk/provider-bridge";
+import { normalizePendingInteractionRequestedPermissionProfile } from "./pending-interaction-normalization.js";
 import type { CommandExecutionRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/CommandExecutionRequestApprovalResponse.js";
 import type { FileChangeRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/FileChangeRequestApprovalResponse.js";
 import type { PermissionsRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/PermissionsRequestApprovalResponse.js";

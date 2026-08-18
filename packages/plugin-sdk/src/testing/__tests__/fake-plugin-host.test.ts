@@ -727,6 +727,49 @@ describe("agent tools", () => {
     ).rejects.toThrow('tool "lookup_doc" arguments are invalid');
   });
 
+  it("rejects recursive schemas at registration and configuration", async () => {
+    const { bb, harness } = createFakePluginHost();
+
+    expect(() =>
+      bb.agents.registerTool({
+        name: "recursive_zod",
+        description: "Recursive zod schema",
+        parameters: z.object({ value: z.json() }),
+        execute: () => "unused",
+      }),
+    ).toThrow(/recursive JSON Schema \$ref/);
+
+    bb.agents.registerTool({
+      name: "acyclic_ref",
+      description: "Acyclic local reference",
+      parameters: {
+        type: "object",
+        properties: { label: { $ref: "#/$defs/label" } },
+        $defs: { label: { type: "string" } },
+      },
+      execute: () => "ok",
+    });
+    bb.agents.configure(() => ({
+      tools: [
+        {
+          name: "acyclic_ref",
+          parameters: {
+            type: "object",
+            properties: { nested: { $ref: "#" } },
+          },
+        },
+      ],
+      skills: [],
+    }));
+
+    await expect(
+      harness.resolveAgentConfiguration(configurationContext),
+    ).resolves.toEqual({ tools: [], skills: [], instructions: null });
+    expect(harness.logEntries.at(-1)?.message).toContain(
+      "recursive JSON Schema $ref",
+    );
+  });
+
   it("rejects duplicate keyed registrations like the production host", () => {
     const { bb } = createFakePluginHost();
     const tool = {

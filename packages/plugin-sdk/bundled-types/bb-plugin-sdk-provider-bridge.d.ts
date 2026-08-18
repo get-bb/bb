@@ -2235,6 +2235,7 @@ declare const providerEventSchema: z.ZodIntersection<z.ZodDiscriminatedUnion<[z.
         deprecation: "deprecation";
         config: "config";
         general: "general";
+        "compaction-skipped": "compaction-skipped";
     }>;
     summary: z.ZodOptional<z.ZodString>;
     details: z.ZodOptional<z.ZodString>;
@@ -3134,6 +3135,7 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
         deprecation: "deprecation";
         config: "config";
         general: "general";
+        "compaction-skipped": "compaction-skipped";
     }>;
     summary: z.ZodOptional<z.ZodString>;
     details: z.ZodOptional<z.ZodString>;
@@ -3687,7 +3689,6 @@ declare const XHIGH_REASONING_EFFORT: ModelReasoningEffort;
 declare const ULTRACODE_REASONING_EFFORT: ModelReasoningEffort;
 declare const MAX_REASONING_EFFORT: ModelReasoningEffort;
 declare function reasoningEffortsForLevels(levels: readonly ReasoningLevel[]): ModelReasoningEffort[];
-declare function cloneReasoningEfforts(efforts: readonly ModelReasoningEffort[]): ModelReasoningEffort[];
 
 declare const threadEventScopeSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     kind: z.ZodLiteral<"thread">;
@@ -3722,16 +3723,8 @@ interface BuildAcceptedUserMessageEventArgs extends CreateAcceptedUserMessageArg
 interface QueueAcceptedUserMessageArgs<TState extends AcceptedUserMessageState> extends CreateAcceptedUserMessageArgs {
     state: TState;
 }
-interface DrainAcceptedUserMessagesArgs<TState extends AcceptedUserMessageState> {
-    events: ThreadEvent[];
-    providerThreadId: string;
-    state: TState;
-    threadId: string;
-    turnId: string;
-}
 declare function buildAcceptedUserMessageEvent(args: BuildAcceptedUserMessageEventArgs): ThreadEvent[];
 declare function queueAcceptedUserMessage<TState extends AcceptedUserMessageState>(args: QueueAcceptedUserMessageArgs<TState>): void;
-declare function drainAcceptedUserMessages<TState extends AcceptedUserMessageState>(args: DrainAcceptedUserMessagesArgs<TState>): void;
 
 /**
  * Shared adapter utilities.
@@ -3740,19 +3733,6 @@ declare function drainAcceptedUserMessages<TState extends AcceptedUserMessageSta
  * adapters are extracted here so each adapter imports from one place.
  */
 
-interface NormalizeProviderCommandOutputArgs {
-    emptyPlaceholders: readonly string[];
-    text: string;
-}
-interface DiffCumulativeTextArgs {
-    nextText: string;
-    previousText?: string;
-}
-interface DiffCumulativeTextResult {
-    delta: string;
-    nextText: string;
-    reset: boolean;
-}
 /**
  * Builds a compact unified-diff-like string from old/new text pairs.
  * Exported so each adapter can call it with its own arg names.
@@ -3768,16 +3748,11 @@ declare function withParentToolCallId<TItem extends ThreadEventItem>(item: TItem
  * its whole session on one bad key.
  */
 declare function buildShellEnvOverrides(envVars?: Record<string, string>): Record<string, string>;
-/**
- * The same overrides expressed as a codex/pi-style `shell_environment_policy`
- * config bag, for providers whose session construction takes config keys
- * rather than an environment map.
- */
-declare function buildShellEnvironmentPolicyConfig(envVars?: Record<string, string>): Record<string, string> | undefined;
-declare function extractEnvOverrides(config: Record<string, unknown> | undefined): Record<string, string>;
 declare function toNonNegativeNumber(value: unknown): number;
-declare function normalizeProviderCommandOutput(args: NormalizeProviderCommandOutputArgs): string | undefined;
-declare function diffCumulativeText(args: DiffCumulativeTextArgs): DiffCumulativeTextResult | null;
+declare function normalizeProviderCommandOutput(args: {
+    emptyPlaceholders: readonly string[];
+    text: string;
+}): string | undefined;
 /**
  * Extracts text from tool result content.
  * Handles strings, arrays of text blocks, and `{ content: [...] }` wrappers.
@@ -3866,41 +3841,6 @@ declare function decodeBridgeJsonRpcResponse(input: unknown): BridgeJsonRpcRespo
 declare function decodeToolCallResponsePayload(result: unknown): {
     content: string;
     isError: boolean;
-};
-
-type ToolCallResult = {
-    content: string;
-    isError?: boolean;
-};
-interface PendingBridgeToolCall {
-    resolve: (value: ToolCallResult) => void;
-}
-interface RegisteredBridgeSession {
-    closing: boolean;
-    pendingToolCalls: Map<string | number, PendingBridgeToolCall>;
-}
-interface CloseThreadSessionArgs {
-    graceful?: boolean;
-    message: string;
-    threadId: string;
-}
-interface BridgeSessionRegistryOptions<TSession extends RegisteredBridgeSession, TCloseResult> {
-    closeSessionGracefully: (session: TSession) => Promise<TCloseResult>;
-    getProviderThreadId: (session: TSession, threadId: string) => string;
-    nextToolCallRequestId?: () => number;
-    resolveAdditionalPendingWork?: (session: TSession, message: string) => void;
-    sendToolCall: (request: BridgeToolCallRequest) => void;
-    stopSession?: (session: TSession) => Promise<TCloseResult> | TCloseResult;
-}
-type BridgeToolCallForwarder = (toolName: string, args: Record<string, unknown>) => Promise<ToolCallResult>;
-declare function createBridgeSessionRegistry<TSession extends RegisteredBridgeSession, TCloseResult = void>(options: BridgeSessionRegistryOptions<TSession, TCloseResult>): {
-    closeThreadSession: (args: CloseThreadSessionArgs) => Promise<TCloseResult | undefined>;
-    closeThreadSessionsGracefully: (message: string) => Promise<void>;
-    createForwardToolCall: (getThreadId: () => string) => BridgeToolCallForwarder;
-    handleToolCallResponse: (response: BridgeJsonRpcResponse) => boolean;
-    resolvePendingSessionWork: (session: TSession, message: string) => void;
-    resolvePendingToolCalls: (session: TSession, message: string) => void;
-    sessions: Map<string, TSession>;
 };
 
 /**
@@ -3997,119 +3937,44 @@ declare const errorEnvelopeSchema: z.ZodObject<{
 
 declare function mimeTypeFromExtension(filePath: string): string;
 
-declare const pendingInteractionRequestedPermissionProfileInputSchema: z.ZodPipe<z.ZodObject<{
-    network: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodOptional<z.ZodPipe<z.ZodObject<{
-        enabled: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodOptional<z.ZodBoolean>>;
-    }, z.core.$strip>, z.ZodTransform<{
-        enabled: boolean | null;
-    }, {
-        enabled?: boolean | undefined;
-    }>>>>;
-    fileSystem: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodOptional<z.ZodPipe<z.ZodObject<{
-        read: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodOptional<z.ZodArray<z.ZodString>>>;
-        write: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodOptional<z.ZodArray<z.ZodString>>>;
-    }, z.core.$strip>, z.ZodTransform<{
-        read: string[];
-        write: string[];
-    }, {
-        read?: string[] | undefined;
-        write?: string[] | undefined;
-    }>>>>;
-    macos: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodOptional<z.ZodPipe<z.ZodObject<{
-        preferences: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodOptional<z.ZodEnum<{
-            none: "none";
-            read_only: "read_only";
-            read_write: "read_write";
-        }>>>;
-        automations: z.ZodOptional<z.ZodPipe<z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodOptional<z.ZodUnion<readonly [z.ZodLiteral<"none">, z.ZodLiteral<"all">, z.ZodPipe<z.ZodObject<{
-            bundleIds: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodOptional<z.ZodArray<z.ZodString>>>;
-        }, z.core.$strip>, z.ZodTransform<{
-            kind: "bundle_ids";
-            bundleIds: string[];
-        }, {
-            bundleIds?: string[] | undefined;
-        }>>]>>>, z.ZodTransform<"none" | "all" | {
-            kind: "bundle_ids";
-            bundleIds: string[];
-        }, "none" | "all" | {
-            kind: "bundle_ids";
-            bundleIds: string[];
-        } | undefined>>>;
-        launchServices: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodOptional<z.ZodBoolean>>;
-        accessibility: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodOptional<z.ZodBoolean>>;
-        calendar: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodOptional<z.ZodBoolean>>;
-        reminders: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodOptional<z.ZodBoolean>>;
-        contacts: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodOptional<z.ZodEnum<{
-            none: "none";
-            read_only: "read_only";
-            read_write: "read_write";
-        }>>>;
-    }, z.core.$strip>, z.ZodTransform<{
-        preferences: "none" | "read_only" | "read_write";
-        automations: "none" | "all" | {
-            kind: "bundle_ids";
-            bundleIds: string[];
-        };
-        launchServices: boolean;
-        accessibility: boolean;
-        calendar: boolean;
-        reminders: boolean;
-        contacts: "none" | "read_only" | "read_write";
-    }, {
-        preferences?: "none" | "read_only" | "read_write" | undefined;
-        automations?: "none" | "all" | {
-            kind: "bundle_ids";
-            bundleIds: string[];
-        } | undefined;
-        launchServices?: boolean | undefined;
-        accessibility?: boolean | undefined;
-        calendar?: boolean | undefined;
-        reminders?: boolean | undefined;
-        contacts?: "none" | "read_only" | "read_write" | undefined;
-    }>>>>;
-}, z.core.$strip>, z.ZodTransform<{
-    network: {
-        enabled: boolean | null;
-    } | null;
-    fileSystem: {
-        read: string[];
-        write: string[];
-    } | null;
-    macos: {
-        preferences: "none" | "read_only" | "read_write";
-        automations: "none" | "all" | {
-            kind: "bundle_ids";
-            bundleIds: string[];
-        };
-        launchServices: boolean;
-        accessibility: boolean;
-        calendar: boolean;
-        reminders: boolean;
-        contacts: "none" | "read_only" | "read_write";
-    } | null;
-}, {
-    network?: {
-        enabled: boolean | null;
-    } | undefined;
-    fileSystem?: {
-        read: string[];
-        write: string[];
-    } | undefined;
-    macos?: {
-        preferences: "none" | "read_only" | "read_write";
-        automations: "none" | "all" | {
-            kind: "bundle_ids";
-            bundleIds: string[];
-        };
-        launchServices: boolean;
-        accessibility: boolean;
-        calendar: boolean;
-        reminders: boolean;
-        contacts: "none" | "read_only" | "read_write";
-    } | undefined;
-}>>;
-type PendingInteractionRequestedPermissionProfileInput = z.input<typeof pendingInteractionRequestedPermissionProfileInputSchema>;
-declare function normalizePendingInteractionRequestedPermissionProfile(input: PendingInteractionRequestedPermissionProfileInput): PendingInteractionRequestedPermissionProfile;
+interface BridgeToolCallResult {
+    content: string;
+    isError?: boolean;
+}
+interface ForwardBridgeToolCallArgs {
+    arguments: Record<string, unknown>;
+    providerThreadId: string;
+    /**
+     * The session the pending call belongs to. `resolvePendingToolCalls`
+     * error-resolves by scope identity, so a bridge passes its own session
+     * object and settles that session's calls on close/replace without touching
+     * calls minted by a successor session under the same thread id.
+     */
+    scope: object;
+    threadId: string;
+    toolName: string;
+}
+interface PendingToolCallTracker {
+    /**
+     * Mints an `item/tool/call` JSON-RPC request toward the runtime and returns
+     * a promise settled by the matching response (or by
+     * `resolvePendingToolCalls`). Never rejects: failures resolve as
+     * `isError: true` results.
+     */
+    forwardToolCall: (args: ForwardBridgeToolCallArgs) => Promise<BridgeToolCallResult>;
+    /** Returns true when the response settled a pending tool call. */
+    handleToolCallResponse: (response: BridgeJsonRpcResponse) => boolean;
+    /** Error-resolves every pending call minted under `scope`. */
+    resolvePendingToolCalls: (scope: object, message: string) => void;
+}
+/**
+ * Tracks the bridge's outgoing tool-call requests: mints request ids, sends
+ * the `item/tool/call` envelope, and matches responses back to their waiting
+ * promise via `decodeToolCallResponsePayload`.
+ */
+declare function createPendingToolCallTracker(options: {
+    sendToolCall: (request: BridgeToolCallRequest) => void;
+}): PendingToolCallTracker;
 
 /**
  * The single statement of when an interactive provider request is answered
@@ -4174,7 +4039,9 @@ interface ProviderTurnState {
     currentTurnId: string | undefined;
     cumulativeTokens: ThreadEventTokenUsageBreakdown;
     openAssistantMessageIdsByScope: Map<string, string>;
-    openReasoningItemIdsByScope: Map<string, string>;
+    openScopedItemIdsByScope: Map<string, string>;
+    /** Accepted turn input queued while no turn was open; drained on turn start. */
+    pendingAcceptedUserMessages: AcceptedUserMessage[];
     toolItemsByCallId: Map<string, ThreadEventItem>;
 }
 interface CreateProviderTurnStateRegistryOptions<TState extends ProviderTurnState> {
@@ -4321,11 +4188,10 @@ declare function isRecord(value: unknown): value is StringRecord;
 declare function getRecordProperty(value: StringRecord, key: string): StringRecord | null;
 declare function getStringProperty(value: StringRecord, key: string): string | undefined;
 declare function getRawSdkMessage(event: JsonRpcMessage): StringRecord | null;
-declare function getMessageContentTypes(message: StringRecord): string[];
 
 interface CounterScopedItemIdState {
-    openReasoningItemIdsByScope: Map<string, string>;
-    reasoningItemCounter: number;
+    openScopedItemIdsByScope: Map<string, string>;
+    scopedItemCounter: number;
 }
 interface CounterScopedItemIdArgs<TState extends CounterScopedItemIdState> {
     parentToolCallId?: string;
@@ -4357,37 +4223,35 @@ declare const textBlockSchema: z.ZodObject<{
     text: z.ZodString;
 }, z.core.$strip>;
 
-interface ToolUseTranslationInput {
+type FileChangeItem = Extract<ThreadEventItem, {
+    type: "fileChange";
+}>;
+type ToolCallItem = Extract<ThreadEventItem, {
+    type: "toolCall";
+}>;
+/**
+ * The generic pending `toolCall` item a provider falls back to when a tool
+ * use has no richer translation (unknown tool, or a known tool whose
+ * arguments failed to parse). Raw arguments are attached when they are a
+ * record.
+ */
+declare function buildGenericToolCallItem(args: {
     args: unknown;
     callId: string;
-    parentToolCallId?: string;
     toolName: string;
-}
-interface ParsedCommandToolArguments {
-    command: string;
-    cwd: string;
-}
-interface ParsedFileChangeToolArguments {
-    arguments: Record<string, unknown>;
+}): ToolCallItem;
+declare function buildFileChangeItem(args: {
+    callId: string;
     newText?: string;
     oldText?: string;
-    path?: string;
-}
-interface BuildToolUseItemOptions {
-    commandToolNames: ReadonlySet<string>;
-    fileChangeToolNames: ReadonlySet<string>;
-    parseCommand: (args: unknown) => ParsedCommandToolArguments | null;
-    parseFileChange: (args: unknown) => ParsedFileChangeToolArguments | null;
-    translateSpecialToolUse?: (input: ToolUseTranslationInput) => ThreadEventItem | null;
-}
-declare function buildToolUseItem(input: ToolUseTranslationInput, options: BuildToolUseItemOptions): ThreadEventItem;
+    path: string;
+}): FileChangeItem;
 interface CompleteStartedToolItemArgs {
     callId: string;
     commandOutputText?: string;
     exitCode?: number;
     outputText?: string;
     parentToolCallId?: string;
-    preserveUndefinedToolCallFields?: boolean;
     startedItem: ThreadEventItem;
     status: ThreadEventItemStatus;
     toolCallResult?: unknown;
@@ -4397,7 +4261,6 @@ declare function buildToolResultItem(args: {
     callId: string;
     commandOutputText?: string;
     commandToolNames: ReadonlySet<string>;
-    completeWebItems?: boolean;
     fileChangeToolNames: ReadonlySet<string>;
     isError: boolean;
     outputText?: string;
@@ -4449,8 +4312,8 @@ declare const initializeResultSchema: z.ZodObject<{
             checkpoint: "checkpoint";
         }>>;
         approvalEnforcedBy: z.ZodDefault<z.ZodEnum<{
-            runtime: "runtime";
             provider: "provider";
+            runtime: "runtime";
         }>>;
     }, z.core.$loose>>;
 }, z.core.$loose>;
@@ -4473,8 +4336,8 @@ type InitializeResult = z.infer<typeof initializeResultSchema>;
 declare const bridgeExecutionOptionsSchema: z.ZodIntersection<z.ZodObject<{
     model: z.ZodOptional<z.ZodString>;
     serviceTier: z.ZodOptional<z.ZodEnum<{
-        fast: "fast";
         default: "default";
+        fast: "fast";
     }>>;
     reasoningLevel: z.ZodOptional<z.ZodEnum<{
         none: "none";
@@ -4494,16 +4357,16 @@ declare const bridgeExecutionOptionsSchema: z.ZodIntersection<z.ZodObject<{
     permissionScope: z.ZodLiteral<"workspace">;
     approvalReviewer: z.ZodLiteral<"user">;
     permissionEscalation: z.ZodEnum<{
-        ask: "ask";
         deny: "deny";
+        ask: "ask";
     }>;
 }, z.core.$strip>, z.ZodObject<{
     permissionMode: z.ZodLiteral<"auto">;
     permissionScope: z.ZodLiteral<"workspace">;
     approvalReviewer: z.ZodLiteral<"automatic">;
     permissionEscalation: z.ZodEnum<{
-        ask: "ask";
         deny: "deny";
+        ask: "ask";
     }>;
 }, z.core.$strip>, z.ZodObject<{
     permissionMode: z.ZodLiteral<"full">;
@@ -4626,8 +4489,8 @@ declare const threadStartParamsSchema: z.ZodObject<{
     options: z.ZodIntersection<z.ZodObject<{
         model: z.ZodOptional<z.ZodString>;
         serviceTier: z.ZodOptional<z.ZodEnum<{
-            fast: "fast";
             default: "default";
+            fast: "fast";
         }>>;
         reasoningLevel: z.ZodOptional<z.ZodEnum<{
             none: "none";
@@ -4647,16 +4510,16 @@ declare const threadStartParamsSchema: z.ZodObject<{
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"user">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"auto">;
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"automatic">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"full">;
@@ -4682,8 +4545,8 @@ declare const threadResumeParamsSchema: z.ZodObject<{
     options: z.ZodIntersection<z.ZodObject<{
         model: z.ZodOptional<z.ZodString>;
         serviceTier: z.ZodOptional<z.ZodEnum<{
-            fast: "fast";
             default: "default";
+            fast: "fast";
         }>>;
         reasoningLevel: z.ZodOptional<z.ZodEnum<{
             none: "none";
@@ -4703,16 +4566,16 @@ declare const threadResumeParamsSchema: z.ZodObject<{
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"user">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"auto">;
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"automatic">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"full">;
@@ -4739,8 +4602,8 @@ declare const threadForkParamsSchema: z.ZodObject<{
     options: z.ZodIntersection<z.ZodObject<{
         model: z.ZodOptional<z.ZodString>;
         serviceTier: z.ZodOptional<z.ZodEnum<{
-            fast: "fast";
             default: "default";
+            fast: "fast";
         }>>;
         reasoningLevel: z.ZodOptional<z.ZodEnum<{
             none: "none";
@@ -4760,16 +4623,16 @@ declare const threadForkParamsSchema: z.ZodObject<{
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"user">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"auto">;
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"automatic">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"full">;
@@ -4906,8 +4769,8 @@ declare const turnStartParamsSchema: z.ZodObject<{
     options: z.ZodIntersection<z.ZodObject<{
         model: z.ZodOptional<z.ZodString>;
         serviceTier: z.ZodOptional<z.ZodEnum<{
-            fast: "fast";
             default: "default";
+            fast: "fast";
         }>>;
         reasoningLevel: z.ZodOptional<z.ZodEnum<{
             none: "none";
@@ -4927,16 +4790,16 @@ declare const turnStartParamsSchema: z.ZodObject<{
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"user">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"auto">;
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"automatic">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"full">;
@@ -5034,8 +4897,8 @@ declare const turnSteerParamsSchema: z.ZodObject<{
     options: z.ZodIntersection<z.ZodObject<{
         model: z.ZodOptional<z.ZodString>;
         serviceTier: z.ZodOptional<z.ZodEnum<{
-            fast: "fast";
             default: "default";
+            fast: "fast";
         }>>;
         reasoningLevel: z.ZodOptional<z.ZodEnum<{
             none: "none";
@@ -5055,16 +4918,16 @@ declare const turnSteerParamsSchema: z.ZodObject<{
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"user">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"auto">;
         permissionScope: z.ZodLiteral<"workspace">;
         approvalReviewer: z.ZodLiteral<"automatic">;
         permissionEscalation: z.ZodEnum<{
-            ask: "ask";
             deny: "deny";
+            ask: "ask";
         }>;
     }, z.core.$strip>, z.ZodObject<{
         permissionMode: z.ZodLiteral<"full">;
@@ -5967,6 +5830,7 @@ declare const threadEventNotificationSchema: z.ZodObject<{
             deprecation: "deprecation";
             config: "config";
             general: "general";
+            "compaction-skipped": "compaction-skipped";
         }>;
         summary: z.ZodOptional<z.ZodString>;
         details: z.ZodOptional<z.ZodString>;
@@ -5977,8 +5841,8 @@ declare const threadEventNotificationSchema: z.ZodObject<{
         originalModel: z.ZodString;
         fallbackModel: z.ZodString;
         reason: z.ZodEnum<{
-            provider: "provider";
             refusal: "refusal";
+            provider: "provider";
         }>;
         message: z.ZodString;
     }, z.core.$strip>, z.ZodObject<{
@@ -6239,8 +6103,8 @@ declare const threadEventNotificationSchema: z.ZodObject<{
             seq: z.ZodOptional<z.ZodNumber>;
             model: z.ZodString;
             serviceTier: z.ZodEnum<{
-                fast: "fast";
                 default: "default";
+                fast: "fast";
             }>;
             reasoningLevel: z.ZodEnum<{
                 none: "none";
@@ -6259,8 +6123,8 @@ declare const threadEventNotificationSchema: z.ZodObject<{
             }>;
             permissionMode: z.ZodEnum<{
                 readonly: "readonly";
-                "accept-edits": "accept-edits";
                 auto: "auto";
+                "accept-edits": "accept-edits";
                 full: "full";
                 "workspace-write": "workspace-write";
             }>;
@@ -6611,5 +6475,5 @@ declare const hostDaemonAcpLaunchSpecSchema: z.ZodObject<{
 type HostDaemonAcpLaunchSpec = z.infer<typeof hostDaemonAcpLaunchSpecSchema>;
 declare function normalizeHostDaemonAcpLaunchSpec(spec: HostDaemonAcpLaunchSpec): HostDaemonAcpLaunchSpec;
 
-export { BRIDGE_INBOUND_REQUEST_METHODS, BRIDGE_JSON_RPC_ERRORS, BRIDGE_NOTIFICATION_METHODS, BRIDGE_REQUEST_METHODS, DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG, DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT, HIGH_REASONING_EFFORT, LOCAL_BASH_TASK_TYPE, LOCAL_WORKFLOW_TASK_TYPE, LOW_REASONING_EFFORT, MAX_REASONING_EFFORT, MEDIUM_REASONING_EFFORT, NONE_REASONING_EFFORT, PROVIDER_BRIDGE_EXPORT_NAME, PROVIDER_BRIDGE_PROTOCOL_VERSION, ProviderRequestDecodeError, ProviderResponseEncodeError, ULTRACODE_REASONING_EFFORT, UNSTAMPED_THREAD_ID, USER_QUESTION_MAX_OPTIONS, USER_QUESTION_MAX_QUESTIONS, XHIGH_REASONING_EFFORT, acpNativeReasoningSchema, acpPermissionCliSchema, acpReasoningCliSchema, backgroundTaskItemStatus, bashArgsSchema, bridgeRequestEnvelopeSchema, buildAcceptedUserMessageEvent, buildEditDiff, buildShellEnvOverrides, buildShellEnvironmentPolicyConfig, buildToolResultItem, buildToolUseItem, buildUnhandledProviderEvents, claudeCodeMockCliTrafficConfigSchema, claudeTaskToolNameSchema, claudeTaskToolOutputSchema, cloneReasoningEfforts, completeStartedToolItem, createBridgeIo, createBridgeLineHandler, createBridgeSessionRegistry, createProviderTurnStateRegistry, createProviderVisibilityMetadata, createScopedItemIdFactory, createStandaloneBuiltinCompactCommandInput, createUnhandledProviderEvent, decodeBridgeJsonRpcResponse, decodeToolCallResponsePayload, diffCumulativeText, drainAcceptedUserMessages, dynamicToolSchema, errorEnvelopeSchema, experimental_defineProviderBridge, extractEnvOverrides, extractResultText, getMessageContentTypes, getRawSdkMessage, getRecordProperty, getStringProperty, getThreadEventScopeTurnId, hostDaemonAcpLaunchSpecSchema, initializeParamsSchema, instructionModeValues, isApprovalPendingInteractionPayload, isApprovalPendingInteractionResolution, isBackgroundAgentTaskType, isClaudeCodeMockCliTrafficEndpoint, isRecord, isSettledBackgroundTaskStatus, isStandaloneBuiltinCompactCommand, isUserQuestionPendingInteractionPayload, isUserQuestionPendingInteractionResolution, jsonRpcEnvelopeSchema, jsonValueSchema, mimeTypeFromExtension, modelListParamsSchema, normalizeHostDaemonAcpLaunchSpec, normalizePendingInteractionRequestedPermissionProfile, normalizeProviderCommandOutput, pendingInteractionCommandActionSchema, pendingInteractionFileSystemPermissionsSchema, pendingInteractionMacOsPermissionsSchema, pendingInteractionNetworkPermissionsSchema, pendingInteractionResolutionSchema, permissionEscalationValues, queueAcceptedUserMessage, reasoningEffortsForLevels, reasoningLevelSchema, reasoningLevelValues, removeCommandMentionsFromPromptInput, requireThreadEventScopeTurnId, resolveProviderTerminalTurn, runBridgeRequest, runtimePermissionScopeValues, sanitizeInheritedChildProcessEnv, sdkMessageEnvelopeSchema, shouldAutoDenyInteractiveRequest, skillsConfigureParamsSchema, textBlockSchema, threadArchiveParamsSchema, threadContextWindowUsageEnvelopeSchema, threadDiscardParamsSchema, threadEventNotificationSchema, threadForkParamsSchema, threadGoalClearParamsSchema, threadIdentityEnvelopeSchema, threadNameSetParamsSchema, threadResumeParamsSchema, threadScope, threadStartParamsSchema, threadStopParamsSchema, threadUnarchiveParamsSchema, toNonNegativeNumber, toOptionalRecord, toOptionalString, toPositiveNumber, turnScope, turnStartParamsSchema, turnSteerParamsSchema, withParentToolCallId, withoutBridgeRuntimeEnv };
-export type { AcceptedUserMessageState, ApprovalPendingInteractionPayload, AvailableModel, BackgroundTaskStatus, BackgroundTaskUsage, BridgeExecutionOptions, BridgeJsonRpcResponse, BridgeToolCallRequest, BuildInteractiveResponseArgs, ClaudeCodeMockCliTrafficConfig, ClaudeTaskToolOutput, ClientTurnRequestId, DecodedInteractiveRequest, DynamicTool, EnsureProviderTurnStartedArgs, HostDaemonAcpLaunchSpec, InitializeResult, InstructionMode, JsonObject, JsonRpcMessage, JsonValue, ModelReasoningEffort, PendingBridgeToolCall, PendingInteractionApprovalDecision, PendingInteractionApprovalSubject, PendingInteractionCommandAction, PendingInteractionGrantablePermissionProfile, PendingInteractionGrantedPermissionProfile, PendingInteractionPayload, PendingInteractionRequestedPermissionProfile, PendingInteractionResolution, PendingInteractionUserQuestionQuestion, PermissionEscalation, PermissionMode, PreparedProviderCommandDispatch, PromptInput, ProviderBridgeContext, ProviderBridgeDefinition, ProviderBridgeEntry, ProviderErrorCategory, ProviderErrorInfo, ProviderInboundRequest, ProviderPostInitializeRequest, ProviderRateLimitState, ProviderRateLimitStatus, ProviderRateLimitWindow, ProviderRawEventCoverage, ProviderRawEventDescription, ProviderRuntimeEvent, ProviderTurnStateRegistry, ProviderVisibilityMetadata, ReasoningLevel, RuntimePermissionPolicy, RuntimePermissionScope, ServiceTier, ThreadEvent, ThreadEventBackgroundTaskItem, ThreadEventContextWindowUsage, ThreadEventItem, ThreadEventItemApprovalStatus, ThreadEventItemStatus, ThreadEventPlanStep, ThreadEventScope, ThreadEventTokenUsage, ThreadEventTokenUsageBreakdown, ThreadEventTurnStatus, ThreadEventUserContent, ThreadEventWebFetchItem, ThreadEventWebSearchItem, ToolUseTranslationInput, UserQuestionPendingInteractionPayload, UserQuestionPendingInteractionResolution, WorkflowAgentSnapshot, WorkflowAgentState, WorkflowPhaseSnapshot, WorkflowProgressSnapshot };
+export { BRIDGE_INBOUND_REQUEST_METHODS, BRIDGE_JSON_RPC_ERRORS, BRIDGE_NOTIFICATION_METHODS, BRIDGE_REQUEST_METHODS, DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG, DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT, HIGH_REASONING_EFFORT, LOCAL_BASH_TASK_TYPE, LOCAL_WORKFLOW_TASK_TYPE, LOW_REASONING_EFFORT, MAX_REASONING_EFFORT, MEDIUM_REASONING_EFFORT, NONE_REASONING_EFFORT, PROVIDER_BRIDGE_EXPORT_NAME, PROVIDER_BRIDGE_PROTOCOL_VERSION, ProviderRequestDecodeError, ProviderResponseEncodeError, ULTRACODE_REASONING_EFFORT, UNSTAMPED_THREAD_ID, USER_QUESTION_MAX_OPTIONS, USER_QUESTION_MAX_QUESTIONS, XHIGH_REASONING_EFFORT, acpNativeReasoningSchema, acpPermissionCliSchema, acpReasoningCliSchema, backgroundTaskItemStatus, bashArgsSchema, bridgeRequestEnvelopeSchema, buildAcceptedUserMessageEvent, buildEditDiff, buildFileChangeItem, buildGenericToolCallItem, buildShellEnvOverrides, buildToolResultItem, buildUnhandledProviderEvents, claudeCodeMockCliTrafficConfigSchema, claudeTaskToolNameSchema, claudeTaskToolOutputSchema, completeStartedToolItem, createBridgeIo, createBridgeLineHandler, createPendingToolCallTracker, createProviderTurnStateRegistry, createProviderVisibilityMetadata, createScopedItemIdFactory, createStandaloneBuiltinCompactCommandInput, createUnhandledProviderEvent, decodeBridgeJsonRpcResponse, decodeToolCallResponsePayload, dynamicToolSchema, errorEnvelopeSchema, experimental_defineProviderBridge, extractResultText, getRawSdkMessage, getRecordProperty, getStringProperty, getThreadEventScopeTurnId, hostDaemonAcpLaunchSpecSchema, initializeParamsSchema, instructionModeValues, isApprovalPendingInteractionPayload, isApprovalPendingInteractionResolution, isBackgroundAgentTaskType, isClaudeCodeMockCliTrafficEndpoint, isRecord, isSettledBackgroundTaskStatus, isStandaloneBuiltinCompactCommand, isUserQuestionPendingInteractionPayload, isUserQuestionPendingInteractionResolution, jsonRpcEnvelopeSchema, jsonValueSchema, mimeTypeFromExtension, modelListParamsSchema, normalizeHostDaemonAcpLaunchSpec, normalizeProviderCommandOutput, pendingInteractionCommandActionSchema, pendingInteractionFileSystemPermissionsSchema, pendingInteractionMacOsPermissionsSchema, pendingInteractionNetworkPermissionsSchema, pendingInteractionRequestedPermissionProfileSchema, pendingInteractionResolutionSchema, permissionEscalationValues, queueAcceptedUserMessage, reasoningEffortsForLevels, reasoningLevelSchema, reasoningLevelValues, removeCommandMentionsFromPromptInput, requireThreadEventScopeTurnId, resolveProviderTerminalTurn, runBridgeRequest, runtimePermissionScopeValues, sanitizeInheritedChildProcessEnv, sdkMessageEnvelopeSchema, shouldAutoDenyInteractiveRequest, skillsConfigureParamsSchema, textBlockSchema, threadArchiveParamsSchema, threadContextWindowUsageEnvelopeSchema, threadDiscardParamsSchema, threadEventNotificationSchema, threadForkParamsSchema, threadGoalClearParamsSchema, threadIdentityEnvelopeSchema, threadNameSetParamsSchema, threadResumeParamsSchema, threadScope, threadStartParamsSchema, threadStopParamsSchema, threadUnarchiveParamsSchema, toNonNegativeNumber, toOptionalRecord, toOptionalString, toPositiveNumber, turnScope, turnStartParamsSchema, turnSteerParamsSchema, withParentToolCallId, withoutBridgeRuntimeEnv };
+export type { AcceptedUserMessageState, ApprovalPendingInteractionPayload, AvailableModel, BackgroundTaskStatus, BackgroundTaskUsage, BridgeExecutionOptions, BridgeJsonRpcResponse, BridgeToolCallRequest, BuildInteractiveResponseArgs, ClaudeCodeMockCliTrafficConfig, ClaudeTaskToolOutput, ClientTurnRequestId, DecodedInteractiveRequest, DynamicTool, EnsureProviderTurnStartedArgs, HostDaemonAcpLaunchSpec, InitializeResult, InstructionMode, JsonObject, JsonRpcMessage, JsonValue, ModelReasoningEffort, PendingInteractionApprovalDecision, PendingInteractionApprovalSubject, PendingInteractionCommandAction, PendingInteractionGrantablePermissionProfile, PendingInteractionGrantedPermissionProfile, PendingInteractionPayload, PendingInteractionRequestedPermissionProfile, PendingInteractionResolution, PendingInteractionUserQuestionQuestion, PermissionEscalation, PermissionMode, PreparedProviderCommandDispatch, PromptInput, ProviderBridgeContext, ProviderBridgeDefinition, ProviderBridgeEntry, ProviderErrorCategory, ProviderErrorInfo, ProviderInboundRequest, ProviderPostInitializeRequest, ProviderRateLimitState, ProviderRateLimitStatus, ProviderRateLimitWindow, ProviderRawEventCoverage, ProviderRawEventDescription, ProviderRuntimeEvent, ProviderTurnStateRegistry, ProviderVisibilityMetadata, ReasoningLevel, RuntimePermissionPolicy, RuntimePermissionScope, ServiceTier, ThreadEvent, ThreadEventBackgroundTaskItem, ThreadEventContextWindowUsage, ThreadEventItem, ThreadEventItemApprovalStatus, ThreadEventItemStatus, ThreadEventPlanStep, ThreadEventScope, ThreadEventTokenUsage, ThreadEventTokenUsageBreakdown, ThreadEventTurnStatus, ThreadEventUserContent, ThreadEventWebFetchItem, ThreadEventWebSearchItem, UserQuestionPendingInteractionPayload, UserQuestionPendingInteractionResolution, WorkflowAgentSnapshot, WorkflowAgentState, WorkflowPhaseSnapshot, WorkflowProgressSnapshot };

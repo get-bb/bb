@@ -853,9 +853,9 @@ export function NewThreadComposer({
   const promptMentions = usePromptMentions(
     isProjectless ? undefined : projectId,
     {
-      currentThreadId: panelThreadId ?? undefined,
       environmentId: reuseEnvironmentId,
       hostId: projectHostId,
+      threadStorageThreadId: panelThreadId ?? undefined,
     },
   );
   const defaultMentionLinkResolver = useCallback<PromptMentionLinkResolver>(
@@ -973,6 +973,7 @@ export function NewThreadComposer({
     !selectedProviderId ||
     isLoadingModels ||
     isResolvingInitialProvider ||
+    modelLoadError?.code === "provider_unavailable" ||
     modelLoadError?.code === "missing_executable" ||
     modelLoadError?.code === "auth_required" ||
     !selectedThreadModel ||
@@ -1242,6 +1243,9 @@ export function NewThreadComposer({
               isUploading ||
               isCopyingAttachments ||
               isSubmitting,
+            // A lock renders the picker as a plain label; the transient busy
+            // states must not resize the trigger and shift the row beside it.
+            showChevronWhenDisabled: !locks.project,
           }}
           execution={{
             providerRouting: executionOptionsRouting,

@@ -266,6 +266,12 @@ declare function readRpcMethodContract(method: string, value: unknown): PluginRp
 /** Duck-typed zod detection: plugin sources may carry their own zod copy,
  * so instanceof is useless — anything with safeParse is treated as zod. */
 declare function isZodSchemaLike(value: unknown): boolean;
+/**
+ * Reject recursive local references before a tool schema reaches a provider.
+ * Some providers reject the complete tool list when any one schema contains a
+ * recursive `$ref`, so this is a shared production/fake-host boundary rule.
+ */
+declare function assertNoRecursiveJsonSchemaReferences(schema: unknown, subject: string): void;
 /** Compact issue summary from a (possibly foreign-instance) zod error. */
 declare function summarizeParseIssues(error: unknown): string;
 declare function enforcePluginCliOutputLimit(result: Omit<PluginCliExecutionResult, "error">, jsonOutput: boolean): PluginCliExecutionResult;
@@ -284,4 +290,4 @@ declare function enforcePluginCliOutputLimit(result: Omit<PluginCliExecutionResu
  */
 declare function adoptHttpRouteResponse(value: unknown): Response;
 
-export { AGENT_TOOL_NAME_PATTERN, BACKGROUND_NAME_PATTERN, CLI_COMMAND_NAME_PATTERN, KV_VALUE_MAX_BYTES, MENTION_PROVIDER_ID_PATTERN, PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS, PLUGIN_AGENT_SELECTION_MAX_IDS, PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS, PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS, PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES, PLUGIN_HTTP_METHODS, PLUGIN_MENTION_TRIGGER_VALUES, PLUGIN_PROVIDER_COMPOSER_ACTION_VALUES, PLUGIN_PROVIDER_DISPLAY_NAME_MAX_CHARS, PLUGIN_PROVIDER_PERMISSION_MODE_VALUES, PLUGIN_PROVIDER_REASONING_LEVEL_VALUES, PROVIDER_ID_PATTERN, RESERVED_AGENT_TOOL_NAMES, RESERVED_BB_CLI_COMMANDS, RPC_METHOD_PATTERN, SETTING_KEY_PATTERN, adoptHttpRouteResponse, enforcePluginCliOutputLimit, isPluginMentionTrigger, isStandardSchema, isZodSchemaLike, normalizeMentionProviderTriggers, readRpcMethodContract, registerSettingDescriptors, summarizeParseIssues, validatePluginProviderDeclaration, validateSettingsUpdate };
+export { AGENT_TOOL_NAME_PATTERN, BACKGROUND_NAME_PATTERN, CLI_COMMAND_NAME_PATTERN, KV_VALUE_MAX_BYTES, MENTION_PROVIDER_ID_PATTERN, PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS, PLUGIN_AGENT_SELECTION_MAX_IDS, PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS, PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS, PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES, PLUGIN_HTTP_METHODS, PLUGIN_MENTION_TRIGGER_VALUES, PLUGIN_PROVIDER_COMPOSER_ACTION_VALUES, PLUGIN_PROVIDER_DISPLAY_NAME_MAX_CHARS, PLUGIN_PROVIDER_PERMISSION_MODE_VALUES, PLUGIN_PROVIDER_REASONING_LEVEL_VALUES, PROVIDER_ID_PATTERN, RESERVED_AGENT_TOOL_NAMES, RESERVED_BB_CLI_COMMANDS, RPC_METHOD_PATTERN, SETTING_KEY_PATTERN, adoptHttpRouteResponse, assertNoRecursiveJsonSchemaReferences, enforcePluginCliOutputLimit, isPluginMentionTrigger, isStandardSchema, isZodSchemaLike, normalizeMentionProviderTriggers, readRpcMethodContract, registerSettingDescriptors, summarizeParseIssues, validatePluginProviderDeclaration, validateSettingsUpdate };

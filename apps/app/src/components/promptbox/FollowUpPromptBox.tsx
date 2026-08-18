@@ -17,7 +17,7 @@ import type {
 } from "@bb/domain";
 import type { ComposerView, PluginComposerScope } from "@get-bb/plugin-sdk";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
-import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
+import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
 import {
   PluginComposerHostProvider,
   PluginComposerViewProvider,
@@ -287,8 +287,11 @@ function FollowUpPromptBoxStackOnly({
       <PluginComposerHostProvider value={pluginComposerHost ?? null}>
         <div data-promptbox-shell="" className="space-y-2">
           <div className="grid gap-2">
-            {composerScope ? <PluginComposerBanners /> : null}
-            {stack}
+            {composerScope ? (
+              <ComposerBannersSlot>{stack}</ComposerBannersSlot>
+            ) : (
+              stack
+            )}
           </div>
         </div>
       </PluginComposerHostProvider>
@@ -795,8 +798,11 @@ function FollowUpPromptBoxWithComposer({
             className="space-y-2"
           >
             <div ref={stackRef} className="grid gap-2">
-              {composerScope ? <PluginComposerBanners /> : null}
-              {stack}
+              {composerScope ? (
+                <ComposerBannersSlot>{stack}</ComposerBannersSlot>
+              ) : (
+                stack
+              )}
             </div>
             <div data-follow-up-composer-anchor="">{composerElement}</div>
           </div>

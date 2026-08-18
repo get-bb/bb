@@ -15,7 +15,11 @@ import { Icon } from "@bb/shared-ui/icon";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@bb/shared-ui/button";
-import { HEADER_PANE_ACTION_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
+import {
+  APP_PAGE_HEADER_SURFACE_CLASS,
+  HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
+  HEADER_SEAM_CLASS,
+} from "@/components/layout/AppPageHeader";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
 import {
   COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
@@ -36,7 +40,6 @@ import type {
   SecondaryPanelFileTab,
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelFileTab";
-import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { GIT_DIFF_VIEW_BASE_OPTIONS } from "../git-diff/GitDiffCard";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { useEnvironmentDiffFiles } from "@/hooks/queries/environment-queries";
@@ -75,13 +78,22 @@ import {
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import { useOptionalIsSidebarShowing } from "@/components/ui/sidebar.js";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
-import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import type {
+  FixedPanelViewTab,
+  SecondaryFixedPanelTab,
+} from "@/lib/fixed-panel-tabs-state";
+import {
+  createGitDiffFixedPanelTab,
+  createThreadInfoFixedPanelTab,
+} from "@/lib/fixed-panel-tabs-state";
+import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { TabPill } from "@/components/ui/tab-pill";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
+import type { GitDiffTabStatus } from "./gitDiffTabEligibility";
 export type {
   GitDiffDisplayMode,
   GitDiffSelectionOption,
@@ -137,11 +149,14 @@ export function getReservedInlinePanelToggleClassName(
  */
 export function getSecondaryPanelChromeStackClassName(
   hasGitDiffToolbar: boolean,
+  surface: "panel" | "page" = "panel",
 ): string {
   return cn(
     "shrink-0",
     hasGitDiffToolbar && "flex flex-col",
-    SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
+    surface === "page"
+      ? cn(APP_PAGE_HEADER_SURFACE_CLASS, HEADER_SEAM_CLASS)
+      : SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
   );
 }
 
@@ -197,11 +212,6 @@ export function resolveCollapsedPanelTrafficLightReserveClassName({
   return reserves && MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS;
 }
 
-interface ResolveActiveFixedPanelArgs {
-  activeTab: SecondaryFixedPanelTab | null;
-  canUseGitUi: boolean;
-}
-
 export function resolveSecondaryPanelHideControl() {
   return {
     iconName: "PanelRight" as const,
@@ -209,14 +219,28 @@ export function resolveSecondaryPanelHideControl() {
   };
 }
 
+export interface SecondaryPanelFixedTab {
+  ariaLabel: string;
+  label: string;
+  leadingVisual: ReactNode;
+  onSelect: () => void;
+  tab: FixedPanelViewTab;
+  title: string;
+}
+
 export interface ThreadSecondaryPanelProps {
   activeTab: SecondaryFixedPanelTab | null;
   canUseGitUi: boolean;
+  gitDiffTabStatus?: GitDiffTabStatus;
+  onRetryGitDiffEligibility?: () => void;
   requestedMergeBaseBranch?: string;
   environmentId?: string;
   metadataContent: ReactNode;
   fileTabs?: SecondaryPanelFileTab[];
   fileTabContent?: ReactNode;
+  fixedTabs?: readonly SecondaryPanelFixedTab[];
+  fixedTabContent?: ReactNode;
+  fixedTabContentFillsRegion?: boolean;
   /**
    * True when the active file tab's content owns its own layout and
    * scrolling (terminal-style): the slot then provides only a definite
@@ -238,9 +262,16 @@ export interface ThreadSecondaryPanelProps {
   isBrowserTabActive?: boolean;
   isOpen: boolean;
   showConversationCollapseControl?: boolean;
+  /** Legacy thread-surface inputs normalized into `fixedTabs`. */
   showGitDiffTab?: boolean;
   showInfoTab?: boolean;
   showNewTabButton?: boolean;
+  /**
+   * Use the app page-header surface when this panel's top row is a direct
+   * sibling of a page header. The default keeps thread panels on sidebar
+   * chrome.
+   */
+  topChromeSurface?: "panel" | "page";
   /**
    * How the panel's own inline hide control (top chrome, trailing edge) renders
    * on the wide layout:
@@ -266,7 +297,8 @@ export interface ThreadSecondaryPanelProps {
   onPanelFocus: () => void;
   /** Reports the panel's live percentage while it resizes. */
   onPanelResize?: (sizePercent: number) => void;
-  onPanelChange: (panel: ThreadSecondaryPanelTab) => void;
+  /** Legacy thread-surface selector normalized into `fixedTabs`. */
+  onPanelChange?: (panel: ThreadSecondaryPanelTab) => void;
   onCollapse: () => void;
   onClose: () => void;
   onClearPendingGitDiffIntent?: () => void;
@@ -298,38 +330,18 @@ export interface ThreadSecondaryPanelProps {
   renderAsDrawer: boolean;
 }
 
-function resolveActiveFixedPanel({
-  activeTab,
-  canUseGitUi,
-}: ResolveActiveFixedPanelArgs): ThreadSecondaryPanelTab | null {
-  if (activeTab === null) {
-    return null;
-  }
-
-  switch (activeTab.kind) {
-    case "thread-info":
-      return "thread-info";
-    case "git-diff":
-      return canUseGitUi ? "git-diff" : "thread-info";
-    case "plugin-panel":
-    case "workspace-file-preview":
-    case "host-file-preview":
-    case "thread-storage-file-preview":
-    case "browser":
-    case "terminal":
-    case "new-tab":
-      return null;
-  }
-}
-
 export function ThreadSecondaryPanel({
   activeTab,
   canUseGitUi,
+  gitDiffTabStatus,
   requestedMergeBaseBranch,
   environmentId,
   metadataContent,
   fileTabs,
   fileTabContent,
+  fixedTabs,
+  fixedTabContent,
+  fixedTabContentFillsRegion = false,
   fileTabContentFillsRegion,
   onFileTabReorder,
   browserDeck,
@@ -339,6 +351,7 @@ export function ThreadSecondaryPanel({
   showGitDiffTab = true,
   showInfoTab = true,
   showNewTabButton = true,
+  topChromeSurface = "panel",
   inlinePanelToggle = "button",
   resizablePanelId = "thread-detail-secondary-panel",
   onPanelFocus,
@@ -348,6 +361,7 @@ export function ThreadSecondaryPanel({
   onClose,
   onClearPendingGitDiffIntent,
   onOpenNewTab,
+  onRetryGitDiffEligibility,
   pendingGitDiffCommitSha,
   pendingGitDiffScrollPath,
   workspaceRootPath,
@@ -358,15 +372,56 @@ export function ThreadSecondaryPanel({
   onToggleConversationCollapse,
   renderAsDrawer,
 }: ThreadSecondaryPanelProps) {
+  const resolvedGitDiffTabStatus =
+    gitDiffTabStatus ?? (canUseGitUi ? "eligible" : "ineligible");
   const newTabShortcut = useAppCommandShortcut("panel.newTab");
   const togglePanelShortcut = useAppCommandShortcut("panel.toggle");
   const diffShortcut = useAppCommandShortcut("diff.toggle");
   const activeFileTab = fileTabs?.find((tab) => tab.isActive);
-  const visibleFileTabs = fileTabs?.filter((tab) => tab.isHidden !== true);
+  const visibleFileTabs = useMemo(
+    () => fileTabs?.filter((tab) => tab.isHidden !== true),
+    [fileTabs],
+  );
   const hasActiveFileTab = activeFileTab !== undefined;
   const isTerminalTabActive =
     activeTab?.kind === "terminal" && hasActiveFileTab;
   const hideControl = resolveSecondaryPanelHideControl();
+  const resolvedFixedTabs = useMemo<readonly SecondaryPanelFixedTab[]>(() => {
+    if (fixedTabs !== undefined) return fixedTabs;
+    const selectThreadPanel = onPanelChange ?? (() => undefined);
+    return [
+      ...(showInfoTab
+        ? [
+            {
+              ariaLabel: "Show thread info panel",
+              label: "Info",
+              leadingVisual: <Icon name="Info" />,
+              onSelect: () => selectThreadPanel("thread-info"),
+              tab: createThreadInfoFixedPanelTab(),
+              title: "Thread info",
+            },
+          ]
+        : []),
+      ...(resolvedGitDiffTabStatus !== "ineligible" && showGitDiffTab
+        ? [
+            {
+              ariaLabel: "Show diff panel",
+              label: "Diff",
+              leadingVisual: <Icon name="FileDiff" />,
+              onSelect: () => selectThreadPanel("git-diff"),
+              tab: createGitDiffFixedPanelTab(),
+              title: "Diff",
+            },
+          ]
+        : []),
+    ];
+  }, [
+    fixedTabs,
+    onPanelChange,
+    resolvedGitDiffTabStatus,
+    showGitDiffTab,
+    showInfoTab,
+  ]);
   // The conversation-collapse toggle only exists on a wide viewport; the drawer
   // layout fills the screen and cannot collapse the conversation.
   const conversationCollapseControl =
@@ -452,11 +507,17 @@ export function ThreadSecondaryPanel({
   // after mount — a stale-closed value would collapse the just-opened panel.
   const isLayoutOpen =
     (hostLayout?.isOpen ?? isOpen) && !hostLayout?.isSuppressed;
-  const activeFixedPanel =
-    resolveActiveFixedPanel({ activeTab, canUseGitUi }) ?? "thread-info";
-  const isDiffPanelActive = activeFixedPanel === "git-diff";
+  const activeFixedTab =
+    resolvedFixedTabs.find((fixedTab) => fixedTab.tab.id === activeTab?.id) ??
+    (!hasActiveFileTab ? resolvedFixedTabs[0] : undefined);
+  const isDiffPanelActive =
+    resolvedGitDiffTabStatus === "eligible" &&
+    activeFixedTab?.tab.kind === "git-diff";
+  const isDiffEligibilityPending =
+    activeFixedTab?.tab.kind === "git-diff" &&
+    (resolvedGitDiffTabStatus === "loading" ||
+      resolvedGitDiffTabStatus === "error");
   const showsGitDiffToolbar = isDiffPanelActive && !hasActiveFileTab;
-  const shouldShowGitDiffTab = canUseGitUi && showGitDiffTab !== false;
   // Keep file content mounted across every close. The compact views defer the
   // first full panel mount, then retain it inside their persistent drawer.
   // Removing only this subtree would lose terminal and plugin state and move
@@ -624,7 +685,10 @@ export function ThreadSecondaryPanel({
     >
       <IframeDragGuardOverlay active={isSecondaryPanelResizing} />
       <div
-        className={getSecondaryPanelChromeStackClassName(showsGitDiffToolbar)}
+        className={getSecondaryPanelChromeStackClassName(
+          showsGitDiffToolbar,
+          topChromeSurface,
+        )}
       >
         <div
           data-testid="thread-secondary-panel-top-chrome"
@@ -662,37 +726,31 @@ export function ThreadSecondaryPanel({
             role="toolbar"
             aria-label="Right panel views"
           >
-            {showInfoTab ? (
-              <PinnedIconTab
-                ariaLabel="Show thread info panel"
-                isActive={
-                  activeFixedPanel === "thread-info" && !hasActiveFileTab
-                }
-                label="Info"
-                leadingVisual={<Icon name="Info" />}
-                onClick={() => onPanelChange("thread-info")}
-                title="Thread info"
-                usesDesktopChrome={usesDesktopChrome}
-                activeTreatment="fill"
-              />
-            ) : null}
-            {shouldShowGitDiffTab ? (
-              <PinnedIconTab
-                ariaLabel={
-                  diffShortcut
-                    ? `Show diff panel (${diffShortcut.label})`
-                    : "Show diff panel"
-                }
-                ariaKeyshortcuts={diffShortcut?.ariaKeyshortcuts}
-                isActive={isDiffPanelActive && !hasActiveFileTab}
-                label="Diff"
-                leadingVisual={<Icon name="FileDiff" />}
-                onClick={() => onPanelChange("git-diff")}
-                title="Diff"
-                usesDesktopChrome={usesDesktopChrome}
-                activeTreatment="fill"
-              />
-            ) : null}
+            {resolvedFixedTabs.map((fixedTab) => {
+              const shortcut =
+                fixedTab.tab.kind === "git-diff" ? diffShortcut : null;
+              return (
+                <PinnedIconTab
+                  key={fixedTab.tab.id}
+                  ariaLabel={
+                    shortcut
+                      ? `${fixedTab.ariaLabel} (${shortcut.label})`
+                      : fixedTab.ariaLabel
+                  }
+                  ariaKeyshortcuts={shortcut?.ariaKeyshortcuts}
+                  isActive={
+                    activeFixedTab?.tab.id === fixedTab.tab.id &&
+                    !hasActiveFileTab
+                  }
+                  label={fixedTab.label}
+                  leadingVisual={fixedTab.leadingVisual}
+                  onClick={fixedTab.onSelect}
+                  title={fixedTab.title}
+                  usesDesktopChrome={usesDesktopChrome}
+                  activeTreatment="fill"
+                />
+              );
+            })}
             {visibleFileTabs && visibleFileTabs.length > 0 ? (
               <SecondaryPanelTabStrip
                 fileTabs={visibleFileTabs}
@@ -819,6 +877,38 @@ export function ThreadSecondaryPanel({
               </EmptyStatePanel>
             )}
           </div>
+        ) : activeFixedTab !== undefined && fixedTabContent !== undefined ? (
+          <div
+            className={
+              fixedTabContentFillsRegion
+                ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+                : cn(PANEL_SCROLL_SLOT_CLASS, "p-4 pb-3")
+            }
+          >
+            {fixedTabContent}
+          </div>
+        ) : isDiffEligibilityPending ? (
+          <EmptyStatePanel className="m-4 rounded-lg" role="status">
+            {resolvedGitDiffTabStatus === "error" ? (
+              <div className="flex flex-col items-center gap-3 text-center">
+                <span>
+                  Could not determine whether this workspace uses Git.
+                </span>
+                {onRetryGitDiffEligibility ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={onRetryGitDiffEligibility}
+                  >
+                    Retry
+                  </Button>
+                ) : null}
+              </div>
+            ) : (
+              "Checking Git support…"
+            )}
+          </EmptyStatePanel>
         ) : isDiffPanelActive ? (
           <GitDiffTabContent
             environmentId={environmentId}
@@ -832,8 +922,12 @@ export function ThreadSecondaryPanel({
             pendingGitDiffScrollPath={pendingGitDiffScrollPath}
             workspaceRootPath={workspaceRootPath}
           />
-        ) : (
+        ) : activeFixedTab?.tab.kind === "thread-info" ? (
           <ThreadInfoTabContent metadataContent={metadataContent} />
+        ) : (
+          <EmptyStatePanel className="m-4 rounded-lg">
+            This panel view is unavailable.
+          </EmptyStatePanel>
         )}
       </div>
     </aside>

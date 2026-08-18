@@ -33,17 +33,14 @@ import {
   buildAcceptedUserMessageEvent,
   createBridgeIo,
   createBridgeLineHandler,
-  createBridgeSessionRegistry,
+  createPendingToolCallTracker,
   decodeBridgeJsonRpcResponse,
   mimeTypeFromExtension,
   queueAcceptedUserMessage,
   runBridgeRequest,
   experimental_defineProviderBridge,
 } from "@bb/provider-bridge-protocol/bridge-kit";
-import type {
-  BridgeToolCallRequest,
-  PendingBridgeToolCall,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+import type { BridgeToolCallRequest } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   SessionManager,
   type AgentSessionEvent,
@@ -63,7 +60,11 @@ import {
   resolvePiBridgeSessionDir,
   resolvePiSessionFilePath,
 } from "./session-paths.js";
-import { buildDynamicTools, type DynamicToolDefinition } from "./tool-proxy.js";
+import {
+  buildDynamicTools,
+  type DynamicToolDefinition,
+  type ToolCallForwarder,
+} from "./tool-proxy.js";
 import { listPiBridgeModels } from "./model-list.js";
 import { getPiModelRuntime } from "./model-runtime.js";
 import {
@@ -77,13 +78,13 @@ import {
 
 interface BuildPiSessionOptionsArgs {
   params: PiSessionParams;
-  threadId: string;
+  providerThreadId: string;
 }
 
 /**
- * The canonical Provider Bridge Protocol params, per method. `model/list` and
- * `thread/discard` address the session by bb thread id — pi's provider
- * identity is that id, so it carries `providerThreadId` without reading it.
+ * The canonical Provider Bridge Protocol params, per method. A new Pi session
+ * uses its bb thread id as provider identity; a resumed session can have a new
+ * bb thread id while retaining the provider id that names its persisted file.
  */
 const piCommandSchema = z.discriminatedUnion("method", [
   z.object({
@@ -212,9 +213,10 @@ interface ThreadSession {
   session: PiSdkSession;
   sessionSerial: number;
   closing: boolean;
+  /** Stable provider identity used to resolve the persisted session file. */
+  providerThreadId: string;
   /** Every session-scoped notification is translated through this. */
   translator: PiEventTranslator;
-  pendingToolCalls: Map<string | number, PendingBridgeToolCall>;
 }
 
 interface PiThreadStopResult {
@@ -236,18 +238,70 @@ const { send, sendResult, sendError } = createBridgeIo<
   BridgeEventNotification | BridgeToolCallRequest
 >({ write: writePiBridgeProtocol });
 
-const {
-  closeThreadSession,
-  closeThreadSessionsGracefully,
-  createForwardToolCall,
-  handleToolCallResponse,
-  sessions,
-} = createBridgeSessionRegistry<ThreadSession, string | undefined>({
-  closeSessionGracefully: (threadSession) =>
-    threadSession.session.closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS),
-  getProviderThreadId: (_threadSession, threadId) => threadId,
-  sendToolCall: send,
-});
+const sessions = new Map<string, ThreadSession>();
+const closingSessions = new Map<string, Promise<string | undefined>>();
+const { forwardToolCall, handleToolCallResponse, resolvePendingToolCalls } =
+  createPendingToolCallTracker({ sendToolCall: send });
+
+function createForwardToolCall(getThreadId: () => string): ToolCallForwarder {
+  return (toolName, args) => {
+    const threadId = getThreadId();
+    const threadSession = sessions.get(threadId);
+    if (!threadSession || threadSession.closing) {
+      return Promise.resolve({
+        content: "Thread session not found",
+        isError: true,
+      });
+    }
+    return forwardToolCall({
+      arguments: args,
+      // The stable provider identity, not the bb thread id: a resumed session
+      // can run under a new thread id while keeping its persisted-file name.
+      providerThreadId: threadSession.providerThreadId,
+      scope: threadSession,
+      threadId,
+      toolName,
+    });
+  };
+}
+
+async function closeThreadSession(args: {
+  message: string;
+  threadId: string;
+}): Promise<string | undefined> {
+  const existingClose = closingSessions.get(args.threadId);
+  if (existingClose) {
+    return existingClose;
+  }
+
+  const threadSession = sessions.get(args.threadId);
+  if (!threadSession) {
+    return;
+  }
+
+  threadSession.closing = true;
+  resolvePendingToolCalls(threadSession, args.message);
+  const closePromise = Promise.resolve()
+    .then(() =>
+      threadSession.session.closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS),
+    )
+    .finally(() => {
+      if (sessions.get(args.threadId) === threadSession) {
+        sessions.delete(args.threadId);
+      }
+      closingSessions.delete(args.threadId);
+    });
+  closingSessions.set(args.threadId, closePromise);
+  return closePromise;
+}
+
+async function closeThreadSessionsGracefully(message: string): Promise<void> {
+  await Promise.all(
+    Array.from(sessions.keys()).map((threadId) =>
+      closeThreadSession({ message, threadId }),
+    ),
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Thread-event emission
@@ -315,23 +369,27 @@ function emitForSession(
 }
 
 /**
- * A session announces identity before any `thread/event`; pi's provider
- * identity is the bb threadId and pi sessions always persist to a session
- * file, so every session is restorable.
+ * A session announces identity before any `thread/event`. Pi sessions always
+ * persist to the file named by their stable provider identity, so every
+ * session is restorable even when bb resumes it under a new thread id.
  */
-function sendThreadIdentity(threadId: string): void {
+function sendThreadIdentity(threadId: string, providerThreadId: string): void {
   send({
     jsonrpc: "2.0",
     method: BRIDGE_NOTIFICATION_METHODS.threadIdentity,
-    params: { threadId, providerThreadId: threadId, sessionRestorable: true },
+    params: { threadId, providerThreadId, sessionRestorable: true },
   });
 }
 
-function sendSessionScopedError(threadId: string, message: string): void {
+function sendSessionScopedError(
+  threadId: string,
+  providerThreadId: string,
+  message: string,
+): void {
   send({
     jsonrpc: "2.0",
     method: BRIDGE_NOTIFICATION_METHODS.error,
-    params: { threadId, providerThreadId: threadId, message },
+    params: { threadId, providerThreadId, message },
   });
 }
 
@@ -348,7 +406,7 @@ function emitSessionError(
   if (state.currentTurnId !== undefined) {
     emitForSession(threadSession, threadId, "error", { threadId, message });
   }
-  sendSessionScopedError(threadId, message);
+  sendSessionScopedError(threadId, threadSession.providerThreadId, message);
 }
 
 function toContextWindowUsagePayload(
@@ -447,7 +505,8 @@ function createOnSessionDone(
       reportSessionError({ ...args, error });
       return;
     }
-    if (!getCurrentThreadSession(args)) {
+    const threadSession = getCurrentThreadSession(args);
+    if (!threadSession) {
       return;
     }
     void closeThreadSession({
@@ -459,7 +518,11 @@ function createOnSessionDone(
         shutdownError instanceof Error
           ? shutdownError.message
           : String(shutdownError);
-      sendSessionScopedError(args.threadId, message);
+      sendSessionScopedError(
+        args.threadId,
+        threadSession.providerThreadId,
+        message,
+      );
     });
   };
 }
@@ -509,7 +572,7 @@ function buildSessionOptions(
     model: args.params.model,
     sessionFilePath: resolvePiSessionFilePath({
       env: process.env,
-      threadId: args.threadId,
+      threadId: args.providerThreadId,
     }),
     systemPrompt: args.params.baseInstructions,
     appendSystemPrompt: args.params.appendSystemPrompt,
@@ -569,14 +632,22 @@ async function handleRequest(
       // configuration decides which providers are configured.
       await handleModelList(request.id, request.params);
       break;
-    // Pi's provider identity is the bb threadId (the canonical
-    // providerThreadId equals it for sessions this bridge minted), so a resume
-    // is a start that reopens the deterministic session file for that id.
+    // A start mints provider identity from the bb thread id. Resume keeps the
+    // caller's stable provider identity while registering the live session
+    // under the new bb thread id used by later turn commands.
     case "thread/start":
+      await handleThreadConstruction(
+        request.id,
+        request.params.threadId,
+        request.params.threadId,
+        toPiSessionParams(request.params),
+      );
+      break;
     case "thread/resume":
       await handleThreadConstruction(
         request.id,
         request.params.threadId,
+        request.params.providerThreadId,
         toPiSessionParams(request.params),
       );
       break;
@@ -646,6 +717,7 @@ async function handleModelList(
 
 async function startPiThreadSession(
   threadId: string,
+  providerThreadId: string,
   params: PiSessionParams,
 ): Promise<void> {
   // Stop existing session for this thread if any
@@ -657,7 +729,7 @@ async function startPiThreadSession(
     });
   }
 
-  const sessionOptions = buildSessionOptions({ params, threadId });
+  const sessionOptions = buildSessionOptions({ params, providerThreadId });
   applyDynamicTools(sessionOptions, params.dynamicTools, threadId);
 
   const sessionSerial = nextSessionSerial();
@@ -671,8 +743,8 @@ async function startPiThreadSession(
     session,
     sessionSerial,
     closing: false,
+    providerThreadId,
     translator: createSessionTranslator(),
-    pendingToolCalls: new Map(),
   };
   sessions.set(threadId, threadSession);
 
@@ -685,35 +757,35 @@ async function startPiThreadSession(
 }
 
 /**
- * Announce the constructed session. Pi has no separately minted session id:
- * its provider identity is the BB thread id. The result returns that identity
- * synchronously so callers do not have to race the thread/identity
- * notification.
+ * Announce the constructed session. Starts mint identity from the bb thread
+ * id; resumes return the earlier identity whose session file was reopened.
+ * The synchronous result keeps callers from racing the notification.
  */
-function sendThreadSessionResult(id: string | number, threadId: string): void {
-  sendThreadIdentity(threadId);
-  sendResult(id, { providerThreadId: threadId, sessionRestorable: true });
+function sendThreadSessionResult(
+  id: string | number,
+  threadId: string,
+  providerThreadId: string,
+): void {
+  sendThreadIdentity(threadId, providerThreadId);
+  sendResult(id, { providerThreadId, sessionRestorable: true });
 }
 
 async function handleThreadConstruction(
   id: string | number,
   threadId: string,
+  providerThreadId: string,
   params: PiSessionParams,
 ): Promise<void> {
-  await startPiThreadSession(threadId, params);
-  sendThreadSessionResult(id, threadId);
+  await startPiThreadSession(threadId, providerThreadId, params);
+  sendThreadSessionResult(id, threadId, providerThreadId);
 }
 
-// Pi keeps no provider-minted session id: provider identity == bb threadId, and
-// the session file is the deterministic path for that threadId. Forking therefore
-// means materializing the source thread's full history at the NEW thread's
-// deterministic path, then launching like thread/start (which SessionManager.open's
-// that path). A dedicated handler — rather than a sessionPath hint on thread/start —
-// keeps "open my own file fresh" (start) distinct from "copy another file's history
-// into my file" (fork). SessionManager.forkFrom picks its own filename inside the
-// bridge session dir, so we rename the forked file onto the new thread's path before
-// startPiThreadSession opens it. The forked header's parentSession still points at
-// the source file, preserving lineage.
+// Pi mints provider identity from the bb thread id for new sessions, and the
+// session file is the deterministic path for that provider id. Forking means
+// materializing source history at the NEW thread's path, then launching like
+// thread/start. A dedicated handler keeps "open my own file fresh" distinct
+// from "copy another file's history into my file". SessionManager.forkFrom
+// picks its own filename, so move it onto the new identity's path before open.
 async function handleThreadFork(
   id: string | number,
   params: ThreadForkParams,
@@ -773,6 +845,7 @@ async function handleThreadFork(
 
   await handleThreadConstruction(
     id,
+    params.threadId,
     params.threadId,
     toPiSessionParams(params),
   );
@@ -986,7 +1059,10 @@ async function handleThreadDiscard(
     threadId: params.threadId,
   });
   rmSync(
-    resolvePiSessionFilePath({ env: process.env, threadId: params.threadId }),
+    resolvePiSessionFilePath({
+      env: process.env,
+      threadId: params.providerThreadId,
+    }),
     { force: true },
   );
   return { ok: true };

@@ -76,6 +76,30 @@ unexpected-exit recovery without feature-specific core hooks.
     limits without pretending to model process startup, crashes, native watcher
     recovery, or reconnect behavior.
 
+## `PluginNavPanelRegistration.experimental_fixedTabs`
+
+**What it does.** Lets a nav panel declare ordered, non-closable tabs in the
+host-owned right panel. The host owns tab selection, persistence, chrome,
+Browser and Terminal tools, and only mounts the active plugin component while
+the panel is open. A fixed tab receives the nav page's current `subPath`; `layout: "padded"` uses
+host padding and scrolling, while `layout: "flush"` gives the component the
+whole content region. On the first visit the first declared fixed tab opens on
+wide layouts. A later user close remains closed.
+
+**Audit before stabilizing.**
+
+1. Confirm first-visit opening and subsequent close persistence across plugin
+   reloads, app upgrades, wide/compact transitions, and page deep links.
+2. Exercise multiple fixed tabs and dynamic registration changes; selection
+   must remain stable when possible and fall back without mounting inactive
+   components.
+3. Confirm `subPath` is sufficient context and that fixed tabs should remain
+   page-scoped rather than gaining independent routes or plugin-owned state.
+4. Audit padded versus flush layout against Tasks, Docs, accessibility zoom,
+   and nested scrolling before freezing the presentation contract.
+5. Confirm named icon hints and the non-closable tab treatment remain the right
+   amount of plugin-controlled chrome.
+
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
 **What it does.** Lets a nav panel register a no-props, presentational React
@@ -199,7 +223,7 @@ registration record so fields without a registry consumer yet
    (`experimental_providerBridge`), built into `dist/host.js`, recorded in the
    one live-host-artifact registry, served by the one host artifact route, and
    cached once per plugin on the daemon. Thread commands carry `bridgeLaunch
-   {pluginId, source: {kind: "artifact", digest, byteLength}}`. Pi is the one
+{pluginId, source: {kind: "artifact", digest, byteLength}}`. Pi is the one
    provider whose bridge stays daemon-bundled
    (`DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS`); every other provider, first-party or
    not, arrives as an artifact. Before stabilizing: confirm one artifact per
@@ -250,20 +274,35 @@ build inlines the SDK's published, self-contained bundle.
    domain. Decide, before third parties depend on the shapes, whether the
    protocol should own a narrower event vocabulary of its own that `@bb/domain`
    then derives from, or whether this facade is the permanent answer.
-2. **Surface size.** ~190 names is a large promise. Several are there for one
-   first-party bridge only (the Claude mock-CLI traffic config, the ACP
-   reasoning/permission CLI schemas, the workflow snapshot types). Each is a
-   candidate to move into its own plugin instead of being promised to everyone.
-   The root cause is upstream of the SDK: the wave-5 move relocated
-   `agent-runtime/src/shared/` byte-identically, and `bridge-kit/adapter-utils.ts`
-   is a self-described grab-bag of "functions and constants duplicated across
-   the claude-code, pi, and codex adapters" whose single-consumer passengers
-   moved with it — `claudeCodeMockCliTrafficConfigSchema`,
-   `claudeTaskToolNameSchema`, `claudeTaskToolOutputSchema` (claude-code plugin
-   only) and `acpNativeReasoningSchema` (acp plugin only). Repatriate those to
-   their owning plugins and shrink `adapter-utils` to what two-plus bridges
-   actually share; the kit barrel is `export *`, so trimming the kit trims the
-   published surface (and this audit) with it.
+2. **Surface size.** ~190 names is a large promise. Single-consumer
+   repatriation done (Aug 2026): `extractEnvOverrides` and
+   `getMessageContentTypes` moved into the claude-code plugin,
+   `normalizePendingInteractionRequestedPermissionProfile` (whole
+   `pending-interaction-normalization` module plus test) into the codex
+   plugin, and the `cloneReasoningEfforts` helper out of `@bb/domain` into
+   claude-code's model catalog. The other named candidates turned out not to
+   be movable: they are `@bb/domain`/protocol definitions with core consumers
+   — `claudeCodeMockCliTrafficConfigSchema` is the source of the
+   core-consumed `ClaudeCodeMockCliTrafficConfig`/default (agent-runtime,
+   server), the `claudeTaskTool*` schemas share their contract file with
+   thread-view, the `acp*Cli`/`acpNativeReasoning` schemas are parsed by
+   host-daemon-contract and config, and the workflow snapshot types are
+   rendered by the app. `buildEditDiff`, `completeStartedToolItem`, and
+   `decodeToolCallResponsePayload` are used inside the kit itself. The
+   surface is still large; any further shrink is a per-name product decision,
+   not a mechanical move.
+   A follow-up de-overfitting pass (Aug 2026) then unwound the kit's
+   over-general helpers: `buildToolUseItem`'s parser-callback router became
+   per-provider switches over plain constructors (`buildFileChangeItem`,
+   `buildGenericToolCallItem`); the generic session registry was split into
+   `createPendingToolCallTracker` plus consumer-owned session maps;
+   claude-code stopped borrowing codex's `shell_environment_policy` namespace
+   (`buildShellEnvironmentPolicyConfig` now lives in provider-codex,
+   `diffCumulativeText` in pi); the zero-consumer native tool-call decoder,
+   the `finishOpenProviderTurn` wrapper, and the per-consumer flags
+   (`completeWebItems`, `preserveUndefinedToolCallFields`) came off the
+   surface; and the shared accepted-user-message drain folded into the
+   turn-state registry core.
 3. **The ACP launch spec.** `hostDaemonAcpLaunchSpecSchema` is a
    server↔daemon wire shape a bridge parses out of its provider-scoped static
    options. It is the one core contract leaking into the published surface;
@@ -387,6 +426,14 @@ Implementation: the shared workflow is
    `PluginNewThreadComposer.test.tsx` guard this) and re-decide whether the
    re-seed-on-change rule should instead be an explicit reset nonce.
 
+6. **Projectless contract.** The picker always offers "Don't work in a
+   project", including when a plugin seeds a specific project. That choice
+   submits the personal-project id (not `null`) with a `personal` workspace;
+   plugin authors forward both fields unchanged and must opt into personal
+   project metadata with `projects.list({ includePersonal: true })`. Before
+   stabilizing, confirm unconditional project switching is right for embedded
+   plugin workflows, rather than adding an explicit project-locking policy.
+
 ## `app.slots.experimental_newThreadPanelAction` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Adds a plugin row to the root New thread screen's
@@ -420,24 +467,27 @@ Before stabilization, audit:
 
 **What it does.** Replaces the sidebar's scrolling thread list with a plugin
 component. Unlike every other `app.slots.*` member this slot is **exclusive**:
-one list at a time fills the scroll area. The built-in list stays the default;
-the user picks a provider in Settings → Appearance → Sidebar, stored per client
-in `localStorage` under `bb.sidebar.threadListProvider`.
+one list at a time fills the scroll area. Automatic activation is the default.
+If several are registered, the first in the slot snapshot wins (plugin ids are
+sorted, then each plugin's registration order is preserved); removing the
+automatic winner reveals the next. The user can override that behavior under
+Settings → Appearance by pinning BB's list or a specific provider; the choice
+is stored per client. A plugin-owned enable/disable setting can also live in
+the component, which renders `experimental_Original` when disabled.
 
-Three fallbacks keep the sidebar usable: a preference naming an unregistered
-provider resolves to the built-in list without clearing the stored value; a
-crashing component renders the built-in list (not the usual "plugin crashed"
-chip, which in place of a whole sidebar would strand the user) plus one toast;
-and a disabled or uninstalled plugin gets its list back when it returns.
+Fallbacks keep the sidebar usable: no automatic provider renders BB's list; an
+unavailable pinned provider temporarily renders BB's list without erasing the
+choice; and a crashing component renders BB's list (not the usual "plugin
+crashed" chip, which in place of a whole sidebar would strand the user) plus
+one toast.
 
 **Audit before stabilizing.**
 
-1. **Arbitration.** Confirm a client-local single choice is right, versus a
-   per-project or per-workspace choice, and what a synced setting would mean
-   across devices where the plugin is not installed.
+1. **Arbitration.** Confirm automatic/pinned/built-in is the right long-term
+   selection model and alphabetical plugin-id order is an acceptable default
+   tie-breaker when multiple replacements are enabled.
 2. **Fallback discoverability.** Confirm one toast is the right signal when a
-   crash silently swaps the user's sidebar back, and whether the preference
-   should self-clear after repeated crashes.
+   crash silently swaps the user's sidebar back.
 3. **Region boundary.** The plugin gets the scrolling list and nothing else:
    the New-thread button, search field, plugin nav rows, and footer stay
    host-rendered, because they are shared surfaces (other plugins live in two
@@ -449,6 +499,44 @@ and a disabled or uninstalled plugin gets its list back when it returns.
 5. **Accessibility.** Confirm the host can still guarantee list semantics,
    focus order, and the mobile close behavior when a plugin owns the markup —
    `onNavigate` is currently the plugin's responsibility to call.
+
+## `PluginThreadListProps.experimental_Original` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Supplies the thread-list replacement with BB's list already
+bound to the current sidebar instance. Rendering it explicitly delegates to
+the owner without re-entering replacement resolution; the host also renders it
+when the plugin component crashes.
+
+**Audit before stabilizing.**
+
+1. Confirm a no-props, instance-bound component remains the smallest useful
+   delegation contract as thread-list context grows.
+2. Verify owner delegation preserves search state, mobile navigation, keyboard
+   shortcuts, split behavior, and all BB-owned row affordances.
+3. Confirm the owner renderer stays lazy enough that a plugin replacement
+   which never delegates does not eagerly load a second list implementation.
+4. Revisit whether the field should remain tied to the experimental thread-list
+   registration or stabilize together with the replacement primitive shared by
+   other surfaces.
+
+## `PluginFileOpenerProps.experimental_Original` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Supplies a file-opener replacement with BB's preview bound to
+the file named by `path` and `source`. A plugin can render it conditionally, and
+the host uses it as the crash and missing-provider fallback without resolving
+the same plugin again.
+
+**Audit before stabilizing.**
+
+1. Verify the bound preview preserves source-specific behavior for workspace,
+   host, project, and thread-storage files, including relative links, line
+   ranges, open-in-editor actions, and selection-to-composer actions.
+2. Confirm the no-props bound component is preferable to an owner component
+   which receives the existing `{ path, source }` props again.
+3. Confirm delegation and crash fallback retain the current file tab identity
+   and do not remount unrelated panel state.
+4. Verify the owner renderer remains independent of provider precedence and
+   cannot recurse through file-opener resolution.
 
 ## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@get-bb/plugin-sdk/app`)
 

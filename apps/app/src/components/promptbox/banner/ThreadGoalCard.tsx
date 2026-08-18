@@ -155,7 +155,7 @@ export function ThreadGoalCard({
                 />
                 {formatTokenUsage(goal)}
               </span>
-              <span className="inline-flex items-center gap-1.5">
+              <span className="inline-flex items-center gap-1.5 tabular-nums">
                 <Icon
                   name="Clock"
                   className="size-3.5 shrink-0"

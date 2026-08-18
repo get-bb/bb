@@ -411,6 +411,7 @@ export function createApp(
     db: deps.db,
     hub: deps.hub,
     logger: deps.logger,
+    telemetry: deps.telemetry,
     pendingInteractions: deps.pendingInteractions,
     dataDir: deps.config.dataDir,
     appVersion: deps.config.appVersion,

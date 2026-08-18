@@ -520,6 +520,12 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       reconcilePluginFrontendBundles,
     ],
   },
+  "provider-registrations-changed": {
+    dirty: [
+      dirtySystemProviderQueries, // Provider plugins add/remove picker entries.
+      dirtySystemExecutionOptionQueries, // Refresh changed or boot-time partial provider rosters.
+    ],
+  },
 } satisfies SystemChangeRegistry;
 
 export type ThreadChangeFlushPriority = "debounced" | "immediate";

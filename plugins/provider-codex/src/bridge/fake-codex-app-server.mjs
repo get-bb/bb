@@ -23,12 +23,13 @@
  * behavior below is unchanged.
  */
 
-import { readFileSync } from "node:fs";
+import { closeSync, openSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 let threadCounter = 0;
 let turnCounter = 0;
 const openTurnIdsByThreadId = new Map();
+const processInstanceId = `${process.pid}-${Date.now()}-${Math.random()}`;
 
 function send(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
@@ -72,6 +73,24 @@ function firstInputText(input) {
   return first && first.type === "text" ? first.text : undefined;
 }
 
+const FIXED_TOKEN_USAGE = {
+  total: {
+    totalTokens: 39970,
+    inputTokens: 39960,
+    cachedInputTokens: 0,
+    outputTokens: 10,
+    reasoningOutputTokens: 0,
+  },
+  last: {
+    totalTokens: 19993,
+    inputTokens: 19988,
+    cachedInputTokens: 0,
+    outputTokens: 5,
+    reasoningOutputTokens: 0,
+  },
+  modelContextWindow: 258400,
+};
+
 function runScriptedTurn(threadId) {
   turnCounter += 1;
   const turnId = `turn-fx-${turnCounter}`;
@@ -91,6 +110,15 @@ function runScriptedTurn(threadId) {
     turnId,
     item: { type: "agentMessage", id: itemId, text },
   });
+  if (String(threadId).startsWith("usage-replay-")) {
+    // Usage-replay threads also report the turn's own usage, like the real
+    // app-server, so tests can tell a replay from live turn usage (#1727).
+    notify("thread/tokenUsage/updated", {
+      threadId,
+      turnId,
+      tokenUsage: FIXED_TOKEN_USAGE,
+    });
+  }
   notify("turn/completed", {
     threadId,
     turn: { id: turnId, status: "completed" },
@@ -101,10 +129,25 @@ function runScriptedTurn(threadId) {
 // argv, not an env var: the bridge builds its child's environment from an
 // allowlist, so an env var set by a test never reaches this process.
 const scriptPath = process.argv[2];
-const scriptedTurns = scriptPath
-  ? JSON.parse(readFileSync(scriptPath, "utf8")).turns
-  : null;
+const script = scriptPath ? JSON.parse(readFileSync(scriptPath, "utf8")) : null;
+const scriptedTurns = script?.turns ?? null;
+const modelListFailOnceMarkerPath = script?.modelListFailOnceMarkerPath ?? null;
 let scriptedTurnIndex = 0;
+
+function shouldFailThisModelList() {
+  if (modelListFailOnceMarkerPath === null) {
+    return false;
+  }
+  try {
+    closeSync(openSync(modelListFailOnceMarkerPath, "wx"));
+    return true;
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "EEXIST") {
+      return false;
+    }
+    throw error;
+  }
+}
 
 /** Rewrite every `threadId` to the id this process minted for the session. */
 function withThreadId(value, threadId) {
@@ -161,6 +204,14 @@ async function runScriptFileTurn(threadId) {
   }
 }
 
+function replayLastTurnUsage(threadId) {
+  notify("thread/tokenUsage/updated", {
+    threadId,
+    turnId: "turn-fx-1",
+    tokenUsage: FIXED_TOKEN_USAGE,
+  });
+}
+
 async function handleRequest(message) {
   const { id, method } = message;
   const params = message.params ?? {};
@@ -170,6 +221,27 @@ async function handleRequest(message) {
       return;
     case "account/rateLimits/read":
       respond(id, { rateLimits: {} });
+      return;
+    case "model/list":
+      if (shouldFailThisModelList()) {
+        respond(id, { data: [] });
+        return;
+      }
+      respond(id, {
+        data: [
+          {
+            id: `fake-model-${processInstanceId}`,
+            model: `fake-model-${processInstanceId}`,
+            displayName: "Fake model",
+            description: "Hermetic bridge fixture model",
+            supportedReasoningEfforts: [
+              { reasoningEffort: "medium", description: "Medium" },
+            ],
+            defaultReasoningEffort: "medium",
+            isDefault: true,
+          },
+        ],
+      });
       return;
     case "skills/extraRoots/set":
       respond(id, {});
@@ -193,13 +265,29 @@ async function handleRequest(message) {
         );
         return;
       }
+      // Mirror the real app-server (codex-cli 0.147.0, observed live for
+      // #1727): thread/resume replays the rollout's last-turn token usage,
+      // scoped to that PREVIOUS turn's id, before any new turn is started.
+      // Opt-in via a `usage-replay-` provider-thread-id prefix.
+      if (String(params.threadId).startsWith("usage-replay-")) {
+        replayLastTurnUsage(params.threadId);
+      }
       respond(id, { thread: { id: params.threadId } });
       return;
     }
     case "thread/fork": {
       threadCounter += 1;
-      const threadId = `codex-fx-${process.pid}-fork-${threadCounter}`;
+      const replaysUsage = String(params.threadId).startsWith("usage-replay-");
+      const threadId = replaysUsage
+        ? `usage-replay-fork-${process.pid}-${threadCounter}`
+        : `codex-fx-${process.pid}-fork-${threadCounter}`;
       respond(id, { thread: { id: threadId } });
+      // thread/fork replays the source rollout's last-turn usage the same way,
+      // after the response, under the NEW thread id but the SOURCE turn id
+      // (#1727).
+      if (replaysUsage) {
+        replayLastTurnUsage(threadId);
+      }
       return;
     }
     case "turn/start": {

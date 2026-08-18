@@ -6,7 +6,10 @@ import path from "node:path";
 import { spawn as spawnPty } from "node-pty";
 import type { TerminalSessionCloseReason } from "@bb/domain";
 import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
+import {
+  killProcessGroup,
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 import type { HostDaemonServerTerminalMessage } from "../server-connection-support.js";
 import type { HostDaemonLogger } from "../logger.js";
 import { RuntimeManager } from "../runtime-manager.js";
@@ -54,7 +57,7 @@ export interface TerminalPtyExit {
 }
 
 export interface TerminalPtyProcess {
-  kill(signal?: string): void;
+  kill(signal?: NodeJS.Signals): void;
   onData(listener: (data: string) => void): TerminalPtyDisposable;
   onExit(listener: (event: TerminalPtyExit) => void): TerminalPtyDisposable;
   resize(cols: number, rows: number): void;
@@ -209,7 +212,14 @@ export const nodePtyAdapter: TerminalPtyAdapter = {
       rows: args.rows,
     });
     return {
-      kill: (signal) => pty.kill(signal),
+      // The pty child is a session leader, so its pid is also its process
+      // group id. Signal the whole group so background jobs die with the
+      // shell instead of surviving with a cwd in a removed workspace.
+      kill: (signal) =>
+        killProcessGroup({
+          child: { pid: pty.pid, kill: (groupSignal) => pty.kill(groupSignal) },
+          signal: signal ?? "SIGHUP",
+        }),
       onData: (listener) => pty.onData(listener),
       onExit: (listener) =>
         pty.onExit((event) =>

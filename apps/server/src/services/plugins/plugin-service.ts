@@ -10,6 +10,7 @@ import {
   type DeclaredCodeTheme,
   type JsonValue,
   type PluginThemeMeta,
+  type SystemChangeKind,
   type ToolCallResponse,
 } from "@bb/domain";
 import {
@@ -21,6 +22,7 @@ import {
   type StandardSchemaV1Result,
 } from "@get-bb/plugin-sdk";
 import {
+  assertNoRecursiveJsonSchemaReferences,
   enforcePluginCliOutputLimit,
   PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
   PLUGIN_AGENT_SELECTION_MAX_IDS,
@@ -773,6 +775,10 @@ function normalizePluginAgentToolParameters(args: {
       `configure() output.tools[${index}].parameters must have root type "object"`,
     );
   }
+  assertNoRecursiveJsonSchemaReferences(
+    parameters,
+    `configure() output.tools[${index}].parameters`,
+  );
   return parameters;
 }
 
@@ -955,6 +961,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   const artifactRetentionMs =
     deps.artifactRetentionMs ?? DEFAULT_ARTIFACT_RETENTION_MS;
   const now = deps.now ?? Date.now;
+  let lastNotifiedProviderRegistrationRevision =
+    deps.providerRegistry?.getRegistrationRevision() ?? 0;
   const scheduleStabilizationWindow =
     deps.scheduleStabilizationWindow ??
     ((durationMs: number, onElapsed: () => void) => {
@@ -1143,11 +1151,23 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   /**
    * Broadcast that the set of running plugins (and therefore host-rendered
    * contributions) changed, so open app pages re-fetch instead of waiting
-   * out their query stale time. Fired on install/remove/enable/disable/
+   * out their query stale time. Provider cache invalidation gets its own
+   * change kind and only rides the broadcast when the registry changed since
+   * the previous lifecycle boundary. Fired on install/remove/enable/disable/
    * reload completion.
    */
   function notifyPluginsChanged(): void {
-    deps.hub.notifySystem(["plugins-changed"]);
+    const changes: SystemChangeKind[] = ["plugins-changed"];
+    const providerRegistrationRevision =
+      deps.providerRegistry?.getRegistrationRevision();
+    if (
+      providerRegistrationRevision !== undefined &&
+      providerRegistrationRevision !== lastNotifiedProviderRegistrationRevision
+    ) {
+      lastNotifiedProviderRegistrationRevision = providerRegistrationRevision;
+      changes.push("provider-registrations-changed");
+    }
+    deps.hub.notifySystem(changes);
   }
 
   function compactPath(path: string): string {
@@ -1503,11 +1523,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                   deps.appVersion,
                   await getPluginBuildToolchain(deps),
                 );
-                setDevBuildProblem(row.id, null);
+                setDevBuildProblem(row.id, "frontend", null);
                 notifyPluginsChanged();
               } catch (error) {
                 setDevBuildProblem(
                   row.id,
+                  "frontend",
                   error instanceof Error ? error.message : String(error),
                 );
                 notifyPluginsChanged();
@@ -1521,11 +1542,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                   deps.appVersion,
                   await getPluginBuildToolchain(deps),
                 );
-                setDevBuildProblem(row.id, null);
+                setDevBuildProblem(row.id, "host", null);
                 notifyPluginsChanged();
               } catch (error) {
                 setDevBuildProblem(
                   row.id,
+                  "host",
                   error instanceof Error ? error.message : String(error),
                 );
                 notifyPluginsChanged();

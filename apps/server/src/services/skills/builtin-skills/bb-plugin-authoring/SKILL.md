@@ -581,7 +581,7 @@ signatures (see "Looking up the exact API").
 
 | Area             | Methods                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `threads`        | `list` `get` `search` `spawn` `fork` `send` `update` `delete` `stop` `compact` `wait` `open` `output` `timeline` `conversationOutline` `promptHistory` `archive` `archiveAll` `unarchive` `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary` `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storagePaths` `cancelPlan` `clearGoal` `continueAfterRateLimit` `rateLimitRecovery` `defaultExecutionOptions`; sub-areas `events` (`list` `wait`), `interactions` (`get` `list` `cancel` `resolve` `respond`), `queuedMessages` (`create` `list` `update` `delete` `send` `reorder` `setGroupBoundary`), `tabs` (`get` `update`) |
+| `threads`        | `list` `get` `search` `spawn` `fork` `send` `update` `delete` `stop` `compact` `wait` `open` `output` `timeline` `conversationOutline` `promptHistory` `archive` `archiveAll` `unarchive` `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary` `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storagePaths` `cancelPlan` `clearGoal` `defaultExecutionOptions`; sub-areas `events` (`list` `wait`), `interactions` (`get` `list` `cancel` `resolve` `respond`), `queuedMessages` (`create` `list` `update` `delete` `send` `reorder` `setGroupBoundary`), `tabs` (`get` `update`) |
 | `threadSections` | `list` `create` `update` `delete`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `projects`       | `list` `get` `create` `update` `delete` `reorder` `paths` `files` `fileContent` `branches` `commands` `defaultExecutionOptions` `promptHistory`; sub-areas `attachments` (`upload` `read` `copy`), `sources` (`add` `update` `delete`)                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `environments`   | `get` `update` `status` `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles` `diffBranches` `diffPatch` `pullRequest` `markPullRequestDraft` `markPullRequestReady` `mergePullRequest` `squashMerge`                                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -632,6 +632,10 @@ await bb.sdk.threads.update({ threadId, title: "Fix the flaky test" });
 `threads.update` writes `title`, `sectionId`, `parentThreadId`, `model`,
 `reasoningLevel`, and `visibility`. Use `threads.timeline` (or
 `threads.output` for the last assistant text) to read a thread's messages.
+For raw history, `threads.events.list` defaults to ascending order and supports
+exclusive `afterSeq` / `beforeSeq` cursors, `order: "asc" | "desc"`, and a
+non-empty typed `types` array. Combine `order: "desc"` with `beforeSeq` to page
+backward from the newest matching events without reading unrelated payloads.
 
 Use `visibility: "hidden"` for background workers. Hidden threads stay
 out of sidebar organization and do not contribute unread/pending favicon
@@ -1056,25 +1060,25 @@ in one small package.
 
 ```ts
 bb.agents.experimental_registerProvider({
-  id: "echo-agent",              // stable public id; thread rows persist it
-  displayName: "Echo Agent",     // 1-80 chars, shown in the picker
-  icon: "./icons/echo.svg",      // optional; same grammar as bb.branding.icon
-  kind: "agent",                 // "agent" REQUIRES bridge; "router" forbids it
+  id: "echo-agent", // stable public id; thread rows persist it
+  displayName: "Echo Agent", // 1-80 chars, shown in the picker
+  icon: "./icons/echo.svg", // optional; same grammar as bb.branding.icon
+  kind: "agent", // "agent" REQUIRES bridge; "router" forbids it
   bridge: { entry: "provider-bridge" }, // names the built bundle
   capabilities: {
     // Pre-session facts only — the bridge reports the same facts at
     // initialize and may only narrow what is declared here, never widen it.
     supportsServiceTier: false,
     supportsNativeUserQuestion: false,
-    fork: "none",                    // "none" | "tip" | "checkpoint"
+    fork: "none", // "none" | "tip" | "checkpoint"
     supportsManualCompaction: false,
-    supportsThreadArchive: false,    // bb mirrors archive/unarchive onto it
-    supportsThreadRename: false,     // bb forwards renames to it
-    supportsWorkflows: false,        // the provider can run bb Workflow tools
-    permissionModes: ["full"],       // non-empty, no duplicates
-    reasoningLevels: ["medium"],     // coarse fallback ladder
+    supportsThreadArchive: false, // bb mirrors archive/unarchive onto it
+    supportsThreadRename: false, // bb forwards renames to it
+    supportsWorkflows: false, // the provider can run bb Workflow tools
+    permissionModes: ["full"], // non-empty, no duplicates
+    reasoningLevels: ["medium"], // coarse fallback ladder
   },
-  composerActions: [],           // skills typeahead is implicit
+  composerActions: [], // skills typeahead is implicit
 });
 ```
 
@@ -1248,6 +1252,15 @@ export default definePluginApp((app) => {
     icon: "Columns",
     path: "board",
     component: Board,
+    experimental_fixedTabs: [
+      {
+        id: "navigation",
+        title: "Navigation",
+        icon: "PanelRight",
+        component: BoardNavigation,
+        layout: "flush",
+      },
+    ],
     experimental_sidebarAccessory: OpenIssueCount,
   });
   app.slots.threadPanelAction({
@@ -1342,8 +1355,10 @@ surface them here instead, filtering `experimental_useSidebarThreads()` by
 ### Replacing the sidebar thread list
 
 `app.slots.experimental_threadList` is the one **exclusive** slot: only one
-list fills the sidebar's scroll area. Registering it does not take the sidebar
-— the built-in list stays the default, and the user picks a provider in
+list fills the sidebar's scroll area. Registering activates the replacement
+while the plugin is enabled. If multiple plugins register one, the first in
+deterministic slot order is active by default; removing it reveals the next.
+The user can pin BB's list or a specific provider under
 **Settings → Appearance → Sidebar**. The choice is per client.
 
 Your component gets the scrolling list and nothing else. The New-thread button,
@@ -1368,6 +1383,9 @@ interface PluginThreadListProps {
   /** The host search field's text; "" when the field is closed. The host owns
       that field — filter by this rather than shipping a second one. */
   searchQuery: string;
+  /** BB's bound thread list. Render it to delegate conditionally without
+      re-entering plugin replacement resolution. */
+  experimental_Original: ComponentType;
 }
 ```
 
@@ -1509,7 +1527,38 @@ Slot props contracts (versioned, additive-only):
   back/forward then walks panel-internal history (prefer this over hash
   routing).
   Registration:
-  `{ id, title, icon, path, component, experimental_sidebarAccessory?, headerContent? }`.
+  `{ id, title, icon, path, component, experimental_fixedTabs?, experimental_sidebarAccessory?, headerContent? }`.
+  BB automatically wraps every plugin page in the same host-owned App panel
+  used by New thread and thread pages. The page component supplies only its
+  main body; it must not mount a second panel layout or register Browser and
+  Terminal itself. BB owns the desktop split, compact drawer, header/panel
+  toggle, resizing, tab strip, persistence, and the shared `panel.toggle`,
+  `panel.newTab`, and `terminal.open` keyboard commands.
+
+  New tab is a transient host launcher. On a plugin page it offers Browser
+  (when the desktop browser is available) and Terminal; it does not offer
+  workspace file search because a generic plugin page has no implicit project,
+  environment, or working directory. The Terminal row includes a compact
+  connected-machine selector, initially resolving the primary machine and then
+  the first connected fallback. Changing the selector does not launch
+  anything; activating Start terminal uses the selected machine. The selection
+  is page-session UI state, not plugin storage.
+
+  Browser and Terminal tabs are normal host content tabs. Closing the final
+  content tab closes an otherwise empty panel; if fixed tabs remain, BB falls
+  back to the first one instead. Hydration closes an open panel when no durable
+  tab survived.
+
+  `experimental_fixedTabs` declares ordered, non-closable page views in that
+  same host tab strip: `{ id, title, icon, component, layout? }`. BB opens the
+  first fixed tab on the page's first wide-layout visit, but remembers a later
+  user close. Only the active fixed-tab component is mounted, and closing the
+  panel unmounts it. It receives the same `{ subPath }` as the main page. `layout: "padded"` (the default) gives it
+  host padding and scrolling; `layout: "flush"` gives it the full panel content
+  region so it can own both. Fixed tabs add content to the shared panel; they
+  do not replace its native chrome, Browser, Terminal, or keyboard commands.
+  Experimental: see `docs/api_to_audit.md`.
+
   `experimental_sidebarAccessory` is a no-props, presentational component at
   the trailing edge of the sidebar row. It can own SDK hooks for a live count
   or short status without lifting state into the host sidebar. The host does
@@ -1529,6 +1578,7 @@ Slot props contracts (versioned, additive-only):
   title bar or the panel body. For a classic page, use an outer scroll region
   with `p-4 md:p-5` and wrap its content in a
   `mx-auto w-full max-w-3xl space-y-4` div.
+
 - `threadPanelAction` → an entry in the thread right panel's new-tab
   Actions list (next to "Start side chat" / "Start terminal"), labeled
   `title` with your compact plugin icon. This slot is only offered for an
@@ -1579,9 +1629,11 @@ Slot props contracts (versioned, additive-only):
   (sync or async) are contained and logged,
   never breaking the sidebar. `title` is the tooltip + accessible label;
   `icon` is a BB icon-name hint (unknown names fall back to a generic bolt).
-- `fileOpener` → `{ path: string, source }` — register as a viewer/editor
+- `fileOpener` → `{ path: string, source, experimental_Original }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
-  Users set the per-extension default under Settings → "File openers", and
+  Matching files use the first applicable opener in deterministic slot order
+  by default. Users can pin BB's preview or a specific opener per extension
+  under Settings → "File openers", and
   right-clicking a file link in rendered markdown offers a one-off
   "Open with …" choice; matching files opened in the right panel then
   render your component in a plugin tab instead of the built-in preview —
@@ -1590,6 +1642,8 @@ Slot props contracts (versioned, additive-only):
   `{ kind: "workspace" | "host" | "thread-storage", threadId, environmentId,
 projectId }` (nullable fields) and `path` follows the source (workspace:
   worktree-relative; host: absolute; thread-storage: storage-relative).
+  `experimental_Original` is BB's preview bound to this file; render it to
+  delegate conditionally without re-entering plugin replacement resolution.
   Applies only to live file content — git-ref snapshots and deleted files
   always use the built-in preview, and a removed/disabled opener degrades
   back to it. Pair with `bb.sdk.files` (rpc from your server) to load and
@@ -1723,6 +1777,13 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   project defaults. Limits (documented on `defaultEnvironment`): a
   `project-default` environment seeds nothing, and a seeded host/worktree
   that no longer exists falls back to the composer's default environment.
+
+  Projectless threads: the project picker always offers "Don't work in a
+  project". That choice submits BB's personal-project id in `projectId` (not
+  `null`) and a host environment with `workspace: { type: "personal" }`.
+  Forward both fields unchanged to `threads.spawn`. If you need metadata for
+  the selected project, call `bb.sdk.projects.list({ includePersonal: true })`
+  because the ordinary list omits the personal project.
 
   The composer resolves selections; YOUR PLUGIN creates the thread. On
   submit it calls `onSubmit(request)` with a JSON-serializable

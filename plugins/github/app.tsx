@@ -34,6 +34,7 @@ import { FileDiff as PierreFileDiff } from "@pierre/diffs/react";
 import { toast } from "sonner";
 import { Badge } from "@bb/shared-ui/badge";
 import { Button } from "@bb/shared-ui/button";
+import { DelayedLoading } from "./components/delayed-loading.js";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -999,33 +1000,47 @@ function ItemRow({
 
 function TableSkeleton() {
   return (
-    <div className="divide-y divide-border">
-      {[0, 1, 2, 3].map((row) => (
-        <div
-          key={row}
-          className="grid grid-cols-1 gap-y-3 px-3 py-3 @[48rem]:flex @[48rem]:items-center @[48rem]:gap-3"
-        >
-          <Skeleton className="h-3 w-4/5 @[48rem]:order-2 @[48rem]:flex-1" />
-          <span className="flex items-center gap-2 @[48rem]:contents">
-            <span className={`${COL.id} @[48rem]:order-1`}>
-              <Skeleton className="h-3 w-10" />
+    <DelayedLoading>
+      <div className="divide-y divide-border">
+        {[0, 1, 2, 3].map((row) => (
+          <div
+            key={row}
+            className="grid grid-cols-1 gap-y-3 px-3 py-3 @[48rem]:flex @[48rem]:items-center @[48rem]:gap-3"
+          >
+            <Skeleton className="h-3 w-4/5 @[48rem]:order-2 @[48rem]:flex-1" />
+            <span className="flex items-center gap-2 @[48rem]:contents">
+              <span className={`${COL.id} @[48rem]:order-1`}>
+                <Skeleton className="h-3 w-10" />
+              </span>
+              <span className={`${COL.assignee} flex @[48rem]:order-3`}>
+                <Skeleton className="size-5 rounded-full @[48rem]:h-3 @[48rem]:w-16" />
+              </span>
+              <span className={`${COL.status} @[48rem]:order-4`}>
+                <Skeleton className="h-3 w-16" />
+              </span>
+              <span className={`${COL.updated} @[48rem]:order-5`}>
+                <Skeleton className="ml-auto h-3 w-12" />
+              </span>
+              <span className={`${COL.actions} @[48rem]:order-6`}>
+                <Skeleton className="h-7 w-20" />
+              </span>
             </span>
-            <span className={`${COL.assignee} flex @[48rem]:order-3`}>
-              <Skeleton className="size-5 rounded-full @[48rem]:h-3 @[48rem]:w-16" />
-            </span>
-            <span className={`${COL.status} @[48rem]:order-4`}>
-              <Skeleton className="h-3 w-16" />
-            </span>
-            <span className={`${COL.updated} @[48rem]:order-5`}>
-              <Skeleton className="ml-auto h-3 w-12" />
-            </span>
-            <span className={`${COL.actions} @[48rem]:order-6`}>
-              <Skeleton className="h-7 w-20" />
-            </span>
-          </span>
-        </div>
-      ))}
-    </div>
+          </div>
+        ))}
+      </div>
+    </DelayedLoading>
+  );
+}
+
+function DetailSkeleton() {
+  return (
+    <DelayedLoading>
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-7 w-2/3" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+    </DelayedLoading>
   );
 }
 
@@ -1329,13 +1344,7 @@ function IssueDetailView({
 
   if (error !== null) return <EmptyState message={error} />;
   if (detail === null) {
-    return (
-      <div className="flex flex-col gap-4">
-        <Skeleton className="h-4 w-40" />
-        <Skeleton className="h-7 w-2/3" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    );
+    return <DetailSkeleton />;
   }
 
   const issueLinks = links[`issue:${repo}#${number}`];
@@ -1929,13 +1938,7 @@ function PullDetailView({
 
   if (error !== null) return <EmptyState message={error} />;
   if (pull === null) {
-    return (
-      <div className="flex flex-col gap-4">
-        <Skeleton className="h-4 w-40" />
-        <Skeleton className="h-7 w-2/3" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    );
+    return <DetailSkeleton />;
   }
 
   const pullLinks = links[`pr:${repo}#${number}`];
@@ -2086,11 +2089,13 @@ function PullPickerList({ onPick }: { onPick: (repo: string, number: number) => 
   if (error !== null) return <EmptyState message={error} />;
   if (items === null) {
     return (
-      <div className="flex flex-col gap-2">
-        <Skeleton className="h-5 w-full" />
-        <Skeleton className="h-5 w-5/6" />
-        <Skeleton className="h-5 w-2/3" />
-      </div>
+      <DelayedLoading>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-5 w-full" />
+          <Skeleton className="h-5 w-5/6" />
+          <Skeleton className="h-5 w-2/3" />
+        </div>
+      </DelayedLoading>
     );
   }
   const open = items.filter((item) => item.state === "OPEN");
@@ -2147,13 +2152,7 @@ function PullPanelTab({ threadId }: PluginThreadPanelProps) {
   }, [rpc, threadId]);
 
   if (!resolved) {
-    return (
-      <div className="flex flex-col gap-4">
-        <Skeleton className="h-4 w-40" />
-        <Skeleton className="h-7 w-2/3" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    );
+    return <DetailSkeleton />;
   }
   if (selected === null) {
     return (
@@ -2256,6 +2255,7 @@ function NewIssueForm({
 
 interface Status {
   ghOk: boolean;
+  ghState: "ready" | "needs_configuration" | "unavailable";
   ghError: string | null;
   repos: RepoInfo[];
   lastSyncedAt: string | null;
@@ -2296,12 +2296,14 @@ function PanelHeader() {
         {failed
           ? "Sync failed — check `gh auth status`"
           : status === null
-            ? "Loading…"
+            ? <DelayedLoading>Loading…</DelayedLoading>
             : status.ghOk
               ? `${status.repos.length} repo${status.repos.length === 1 ? "" : "s"} · synced ${
                   status.lastSyncedAt !== null ? relativeTime(status.lastSyncedAt) : "never"
                 }`
-              : "GitHub CLI not authenticated"}
+              : status.ghState === "unavailable"
+                ? "GitHub CLI unavailable — retrying"
+                : "GitHub CLI not authenticated"}
       </span>
       <Button
         size="sm"
@@ -2402,6 +2404,13 @@ function GithubPanelBody({
   query: string;
   setQuery: (query: string) => void;
 }) {
+  if (status !== null && status.ghState === "unavailable") {
+    return (
+      <EmptyState
+        message={`GitHub CLI could not reach GitHub. Check your network or keychain; the plugin retries by itself. (${status.ghError ?? ""})`}
+      />
+    );
+  }
   if (status !== null && !status.ghOk) {
     return (
       <EmptyState

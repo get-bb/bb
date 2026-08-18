@@ -11,6 +11,7 @@ import type {
 } from "./src/rpc-types";
 import { AUTOMATION_PROMPT_MAX_LENGTH } from "./src/rpc-types";
 import { Button } from "@bb/shared-ui/button";
+import { DelayedLoading } from "./delayed-loading.js";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   ResourceActionButton,
@@ -1058,18 +1059,20 @@ export function AutomationDetailView({
               </div>
             </ResourceDetailCollection>
           ) : runsState.loading ? (
-            <ResourceDetailCollection>
-              <div
-                data-automation-runs-state="loading"
-                role="status"
-                aria-label="Loading runs"
-                className="flex min-w-0 items-center gap-2.5 px-2 py-2.5"
-              >
-                <Skeleton className="size-3.5 shrink-0 rounded-full" />
-                <Skeleton className="h-3 w-28 rounded-sm" />
-                <Skeleton className="h-3 w-10 rounded-sm" />
-              </div>
-            </ResourceDetailCollection>
+            <DelayedLoading>
+              <ResourceDetailCollection>
+                <div
+                  data-automation-runs-state="loading"
+                  role="status"
+                  aria-label="Loading runs"
+                  className="flex min-w-0 items-center gap-2.5 px-2 py-2.5"
+                >
+                  <Skeleton className="size-3.5 shrink-0 rounded-full" />
+                  <Skeleton className="h-3 w-28 rounded-sm" />
+                  <Skeleton className="h-3 w-10 rounded-sm" />
+                </div>
+              </ResourceDetailCollection>
+            </DelayedLoading>
           ) : runsState.runs.length === 0 ? (
             <ResourceDetailCollection>
               <div

@@ -241,7 +241,10 @@ function resolveProviderWorkflowsEnabled(
   if (!resolveWorkflowsEnabledPolicy(deps.providerRegistry, providerId)) {
     return false;
   }
-  return !getAppSettings(deps.db).claudeCodeWorkflowsDisabled;
+  if (providerId === "claude-code") {
+    return !getAppSettings(deps.db).claudeCodeWorkflowsDisabled;
+  }
+  return true;
 }
 
 /**

@@ -14,6 +14,10 @@ export const DEFAULT_TIMEOUT_MS = scaleTimeoutMs(10_000);
 export const TURN_TIMEOUT_MS = scaleTimeoutMs(15_000);
 // Recovery waits: allow for disconnect detection plus daemon restart and reconciliation.
 export const RECOVERY_TIMEOUT_MS = scaleTimeoutMs(30_000);
+// Recovery scenarios compose setup, multiple turns, disconnect detection, and
+// daemon startup. Keep the outer deadline above those operation-level budgets
+// so a loaded run reports the specific recovery step that stalled.
+export const RECOVERY_TEST_TIMEOUT_MS = scaleTimeoutMs(180_000);
 // Active-turn waits: only long enough to catch a turn in flight before the crash/restart step.
 export const ACTIVE_TIMEOUT_MS = scaleTimeoutMs(5_000);
 // Hold the turn long enough to observe active status before crashing, while
