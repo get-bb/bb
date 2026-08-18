@@ -432,6 +432,13 @@ export async function createHostDaemonApp(
         threadIds: [request.threadId],
       });
     },
+    onTimeout: (request) => {
+      enqueueInteractiveInterrupt({
+        providerId: request.providerId,
+        reason: "User question timed out waiting for an answer",
+        threadIds: [request.threadId],
+      });
+    },
   });
 
   let sendServerMessage = (_message: HostDaemonDaemonWsMessage) => false;
@@ -597,7 +604,8 @@ export async function createHostDaemonApp(
       } catch (error) {
         if (
           error instanceof InteractiveRequestRegistryError &&
-          error.code === "interactive_request_rejected"
+          (error.code === "interactive_request_rejected" ||
+            error.code === "interactive_request_timeout")
         ) {
           options.logger.warn(
             {
@@ -609,7 +617,9 @@ export async function createHostDaemonApp(
               providerRequestId: request.providerRequestId,
               kind: request.payload.kind,
             },
-            "Interactive provider request rejected by server",
+            error.code === "interactive_request_timeout"
+              ? "Interactive user question timed out"
+              : "Interactive provider request rejected by server",
           );
           throw error;
         }

@@ -7,6 +7,16 @@ import { normalizeCaughtError } from "./error-utils.js";
 
 const DELIVERED_INTERACTIVE_REQUEST_TOMBSTONE_TTL_MS = 5 * 60 * 1000;
 
+/**
+ * How long a user-question interaction may sit unanswered before the daemon
+ * gives up on it. The plugin interaction path defaults to the same ten
+ * minutes (`bb.ui.requestInput`), so a native provider question waits no
+ * longer than a plugin one. Without this, `registerAndWait` resolves only
+ * when a client answers or the provider exits, so an unattended thread hangs
+ * for hours and the human's replies queue behind a turn that never ends.
+ */
+export const USER_QUESTION_DEADLINE_MS = 10 * 60 * 1000;
+
 export interface InteractiveResolveCommandInput {
   interactionId: string;
   providerId: string;
@@ -28,6 +38,8 @@ export interface InteractiveRequestRegistryOptions {
   registerRequest: (
     request: PendingInteractionCreate,
   ) => Promise<HostDaemonInteractiveRequestResponse>;
+  /** Invoked when a user-question request exceeds its deadline unanswered. */
+  onTimeout?: (request: PendingInteractionCreate) => void;
 }
 
 export interface InterruptInteractiveThreadsArgs {
@@ -42,6 +54,8 @@ interface PendingInteractiveRequestEntry {
   reject: (error: Error) => void;
   resolve: (resolution: PendingInteractionResolution) => void;
   request: PendingInteractionCreate;
+  /** Armed for user questions; cleared on every terminal path. */
+  timeout?: ReturnType<typeof setTimeout>;
 }
 
 interface DeliveredInteractiveRequestTombstone {
@@ -130,11 +144,17 @@ export class InteractiveRequestRegistry {
       request,
     };
     this.pendingEntries.set(key, entry);
+    if (request.payload.kind === "user_question") {
+      entry.timeout = setTimeout(() => {
+        this.expireUserQuestionEntry(key, entry);
+      }, USER_QUESTION_DEADLINE_MS);
+      entry.timeout.unref();
+    }
 
     try {
       const response = await this.options.registerRequest(request);
       if (response.outcome === "rejected") {
-        this.pendingEntries.delete(key);
+        this.removeEntry(key);
         entry.reject(
           new InteractiveRequestRegistryError(
             "interactive_request_rejected",
@@ -146,7 +166,7 @@ export class InteractiveRequestRegistry {
 
       entry.interactionId = response.interactionId;
       if (response.status !== "pending" && response.status !== "resolving") {
-        this.pendingEntries.delete(key);
+        this.removeEntry(key);
         entry.reject(
           new Error(
             `Pending interaction ${response.interactionId} is already ${response.status}`,
@@ -154,7 +174,7 @@ export class InteractiveRequestRegistry {
         );
       }
     } catch (error) {
-      this.pendingEntries.delete(key);
+      this.removeEntry(key);
       const registrationError = normalizeCaughtError(error);
       this.options.onRegistrationFailure?.({
         error: registrationError,
@@ -164,6 +184,39 @@ export class InteractiveRequestRegistry {
     }
 
     return promise;
+  }
+
+  /**
+   * Gives up on a user question no client answered within the deadline. The
+   * rejection propagates to the provider bridge, which turns it into a denial
+   * the model can answer in prose; `onTimeout` lets the caller tell the server
+   * to drop the still-pending row so the thread is not stuck "already awaiting
+   * user interaction" afterwards.
+   */
+  private expireUserQuestionEntry(
+    key: string,
+    entry: PendingInteractiveRequestEntry,
+  ): void {
+    if (!this.pendingEntries.has(key)) {
+      return;
+    }
+    this.removeEntry(key);
+    entry.reject(
+      new InteractiveRequestRegistryError(
+        "interactive_request_timeout",
+        `No client answered this question within ${USER_QUESTION_DEADLINE_MS / 60_000} minutes — ask it in prose instead so the answer arrives as a message`,
+      ),
+    );
+    this.options.onTimeout?.(entry.request);
+  }
+
+  private removeEntry(key: string): void {
+    const entry = this.pendingEntries.get(key);
+    if (entry?.timeout !== undefined) {
+      clearTimeout(entry.timeout);
+      entry.timeout = undefined;
+    }
+    this.pendingEntries.delete(key);
   }
 
   resolve(request: InteractiveResolveCommandInput): void {
@@ -190,7 +243,7 @@ export class InteractiveRequestRegistry {
       );
     }
 
-    this.pendingEntries.delete(key);
+    this.removeEntry(key);
     this.addDeliveredTombstone(tombstoneKey);
     entry.resolve(request.resolution);
   }
@@ -205,7 +258,7 @@ export class InteractiveRequestRegistry {
         continue;
       }
 
-      this.pendingEntries.delete(key);
+      this.removeEntry(key);
       entry.reject(new Error(args.reason));
     }
   }

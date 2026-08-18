@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   PendingInteractionCreate,
   PendingInteractionResolution,
@@ -7,6 +7,7 @@ import type { HostDaemonInteractiveRequestResponse } from "@bb/host-daemon-contr
 import {
   InteractiveRequestRegistry,
   InteractiveRequestRegistryError,
+  USER_QUESTION_DEADLINE_MS,
 } from "./interactive-request-registry.js";
 
 interface Deferred<TValue> {
@@ -19,6 +20,7 @@ interface CreateRegistryArgs {
   registerRequest: (
     request: PendingInteractionCreate,
   ) => Promise<HostDaemonInteractiveRequestResponse>;
+  onTimeout?: (request: PendingInteractionCreate) => void;
 }
 
 interface CreateCommandApprovalRequestArgs {
@@ -71,9 +73,45 @@ function createCommandApprovalResolution(): PendingInteractionResolution {
   };
 }
 
+function createUserQuestionRequest(): PendingInteractionCreate {
+  return {
+    threadId: "thr_registry_question",
+    turnId: "turn_registry_question",
+    providerId: "claude-code",
+    providerThreadId: "provider-thread-registry-question",
+    providerRequestId: "request-registry-question",
+    payload: {
+      kind: "user_question",
+      questions: [
+        {
+          id: "question-registry",
+          prompt: "Should I proceed?",
+          shortLabel: "Proceed?",
+          multiSelect: false,
+          options: [
+            { value: "yes", label: "Yes" },
+            { value: "no", label: "No" },
+          ],
+          allowFreeText: false,
+        },
+      ],
+    },
+  };
+}
+
+function createUserQuestionResolution(): PendingInteractionResolution {
+  return {
+    kind: "user_answer",
+    answers: {
+      "Should I proceed?": { selected: ["yes"] },
+    },
+  };
+}
+
 function createRegistry(args: CreateRegistryArgs): InteractiveRequestRegistry {
   return new InteractiveRequestRegistry({
     registerRequest: args.registerRequest,
+    onTimeout: args.onTimeout,
   });
 }
 
@@ -199,6 +237,115 @@ describe("InteractiveRequestRegistry", () => {
       message: "Thread is already awaiting user interaction",
       name: "InteractiveRequestRegistryError",
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("rejects a user question no client answers within the deadline", async () => {
+    vi.useFakeTimers();
+    const request = createUserQuestionRequest();
+    const timedOutRequests: PendingInteractionCreate[] = [];
+    const registry = createRegistry({
+      registerRequest: async () => ({
+        outcome: "created",
+        interactionId: "pint_registry_question",
+        status: "pending",
+      }),
+      onTimeout: (timedOutRequest) => {
+        timedOutRequests.push(timedOutRequest);
+      },
+    });
+
+    const pending = registry.registerAndWait(request);
+    vi.advanceTimersByTime(USER_QUESTION_DEADLINE_MS);
+
+    await expect(pending).rejects.toMatchObject({
+      code: "interactive_request_timeout",
+      name: "InteractiveRequestRegistryError",
+    });
+    expect(timedOutRequests).toEqual([request]);
+  });
+
+  it("does not apply the deadline to approval requests", async () => {
+    vi.useFakeTimers();
+    const request = createCommandApprovalRequest();
+    const timedOutRequests: PendingInteractionCreate[] = [];
+    const registry = createRegistry({
+      registerRequest: async () => ({
+        outcome: "created",
+        interactionId: "pint_registry",
+        status: "pending",
+      }),
+      onTimeout: (timedOutRequest) => {
+        timedOutRequests.push(timedOutRequest);
+      },
+    });
+
+    const pending = registry.registerAndWait(request);
+    vi.advanceTimersByTime(USER_QUESTION_DEADLINE_MS * 2);
+
+    // Still awaiting the user's decision.
+    await expect(
+      Promise.race([
+        pending.then(() => "resolved", () => "rejected"),
+        Promise.resolve("still-pending"),
+      ]),
+    ).resolves.toBe("still-pending");
+    expect(timedOutRequests).toEqual([]);
+  });
+
+  it("clears the deadline when a user question is answered in time", async () => {
+    vi.useFakeTimers();
+    const request = createUserQuestionRequest();
+    const resolution = createUserQuestionResolution();
+    const timedOutRequests: PendingInteractionCreate[] = [];
+    const registry = createRegistry({
+      registerRequest: async () => ({
+        outcome: "created",
+        interactionId: "pint_registry_question",
+        status: "pending",
+      }),
+      onTimeout: (timedOutRequest) => {
+        timedOutRequests.push(timedOutRequest);
+      },
+    });
+
+    const pending = registry.registerAndWait(request);
+    registry.resolve({
+      interactionId: "pint_registry_question",
+      providerId: request.providerId,
+      providerRequestId: request.providerRequestId,
+      providerThreadId: request.providerThreadId,
+      resolution,
+      threadId: request.threadId,
+    });
+    await expect(pending).resolves.toEqual(resolution);
+
+    vi.advanceTimersByTime(USER_QUESTION_DEADLINE_MS * 2);
+    expect(timedOutRequests).toEqual([]);
+  });
+
+  it("does not time out a user question whose registration failed", async () => {
+    vi.useFakeTimers();
+    const request = createUserQuestionRequest();
+    const timedOutRequests: PendingInteractionCreate[] = [];
+    const registry = createRegistry({
+      registerRequest: async () => ({
+        outcome: "rejected",
+        reason: "Thread is already awaiting user interaction",
+      }),
+      onTimeout: (timedOutRequest) => {
+        timedOutRequests.push(timedOutRequest);
+      },
+    });
+
+    await expect(registry.registerAndWait(request)).rejects.toMatchObject({
+      code: "interactive_request_rejected",
+    });
+    vi.advanceTimersByTime(USER_QUESTION_DEADLINE_MS * 2);
+    expect(timedOutRequests).toEqual([]);
   });
 
   it("rejects provider waits when the provider exits", async () => {
