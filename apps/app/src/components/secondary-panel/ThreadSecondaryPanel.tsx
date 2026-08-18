@@ -881,7 +881,7 @@ export function ThreadSecondaryPanel({
           <div
             className={
               fixedTabContentFillsRegion
-                ? "min-h-0 flex-1 overflow-hidden"
+                ? "flex min-h-0 flex-1 flex-col overflow-hidden"
                 : cn(PANEL_SCROLL_SLOT_CLASS, "p-4 pb-3")
             }
           >

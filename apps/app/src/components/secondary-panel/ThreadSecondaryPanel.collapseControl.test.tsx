@@ -128,6 +128,41 @@ describe("ThreadSecondaryPanel compact file content", () => {
   });
 });
 
+describe("ThreadSecondaryPanel fixed tab content", () => {
+  it("gives flush plugin content a full-height flex region", () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    render(
+      <Wrapper>
+        <TooltipProvider>
+          <PanelGroup direction="horizontal">
+            <ThreadSecondaryPanel
+              activeTab={createThreadInfoFixedPanelTab()}
+              canUseGitUi={false}
+              fixedTabContent={<div data-testid="flush-fixed-content" />}
+              fixedTabContentFillsRegion
+              isConversationCollapsed={false}
+              isOpen
+              metadataContent={null}
+              onClose={noop}
+              onCollapse={noop}
+              onFileTabReorder={noop}
+              onOpenNewTab={noop}
+              onPanelChange={noop}
+              onPanelFocus={noop}
+              onToggleConversationCollapse={noop}
+              renderAsDrawer={false}
+            />
+          </PanelGroup>
+        </TooltipProvider>
+      </Wrapper>,
+    );
+
+    expect(
+      screen.getByTestId("flush-fixed-content").parentElement?.className,
+    ).toContain("flex min-h-0 flex-1 flex-col overflow-hidden");
+  });
+});
+
 describe("ThreadSecondaryPanel Diff eligibility", () => {
   it("falls back from an ineligible active Diff tab to Info", () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
