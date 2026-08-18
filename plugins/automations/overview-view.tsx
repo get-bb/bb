@@ -15,7 +15,7 @@ import {
   automationScheduleLabel,
 } from "./detail-view.js";
 import { Icon } from "@bb/shared-ui/icon";
-import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
+import { DelayedLoading } from "./delayed-loading.js";
 import {
   ResourcePagination,
   useResourcePagination,

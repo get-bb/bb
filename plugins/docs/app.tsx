@@ -56,7 +56,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@bb/shared-ui/button";
-import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
+import { DelayedLoading } from "./delayed-loading.js";
 import {
   Dialog,
   DialogContent,

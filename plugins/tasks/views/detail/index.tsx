@@ -25,7 +25,7 @@ import {
 } from "./rail.js";
 import { ThreadsSection } from "./threads.js";
 import { DetailToasts, useDetailToasts } from "./toast.js";
-import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
+import { DelayedLoading } from "../../components/delayed-loading.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 

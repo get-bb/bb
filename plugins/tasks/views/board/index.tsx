@@ -29,7 +29,7 @@ import {
 } from "./drop-position.js";
 import { PriorityIcon, STATUS_LABELS, StatusIcon } from "./icons.js";
 import { Button } from "@bb/shared-ui/button";
-import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
+import { DelayedLoading } from "../../components/delayed-loading.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";

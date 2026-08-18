@@ -34,7 +34,7 @@ import {
   type AutomationCollectionMode,
 } from "./overview-view";
 import { Button } from "@bb/shared-ui/button";
-import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
+import { DelayedLoading } from "./delayed-loading.js";
 import {
   Dialog,
   DialogContent,

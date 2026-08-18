@@ -1513,7 +1513,7 @@ describe("Automation detail recipe", () => {
     );
   });
 
-  it("uses the shared shimmer treatment while runs are loading", () => {
+  it("uses the shared shimmer treatment while runs are loading", async () => {
     const { container } = render(
       <MemoryRouter>
         <AutomationDetailView
@@ -1538,7 +1538,9 @@ describe("Automation detail recipe", () => {
       </MemoryRouter>,
     );
 
-    const loading = screen.getByRole("status", { name: "Loading runs" });
+    const loading = await screen.findByRole("status", {
+      name: "Loading runs",
+    });
     expect(loading.textContent).toBe("");
     expect(loading.querySelectorAll(".animate-pulse")).toHaveLength(3);
     expect(container.textContent).not.toContain("Loading…");

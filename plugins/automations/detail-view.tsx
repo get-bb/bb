@@ -11,7 +11,7 @@ import type {
 } from "./src/rpc-types";
 import { AUTOMATION_PROMPT_MAX_LENGTH } from "./src/rpc-types";
 import { Button } from "@bb/shared-ui/button";
-import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
+import { DelayedLoading } from "./delayed-loading.js";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   ResourceActionButton,

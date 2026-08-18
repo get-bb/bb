@@ -104,11 +104,6 @@
       "types": "./src/components/ui/dialog.tsx",
       "default": "./src/components/ui/dialog.tsx"
     },
-    "./delayed-loading": {
-      "source": "./src/components/ui/delayed-loading.tsx",
-      "types": "./src/components/ui/delayed-loading.tsx",
-      "default": "./src/components/ui/delayed-loading.tsx"
-    },
     "./drawer": {
       "source": "./src/components/ui/drawer.tsx",
       "types": "./src/components/ui/drawer.tsx",

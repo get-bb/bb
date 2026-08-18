@@ -34,7 +34,7 @@ import { FileDiff as PierreFileDiff } from "@pierre/diffs/react";
 import { toast } from "sonner";
 import { Badge } from "@bb/shared-ui/badge";
 import { Button } from "@bb/shared-ui/button";
-import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
+import { DelayedLoading } from "./components/delayed-loading.js";
 import {
   DropdownMenu,
   DropdownMenuContent,
