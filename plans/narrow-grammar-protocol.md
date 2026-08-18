@@ -134,9 +134,9 @@ and emits an ordinary `turn.open`+`boundary` pair when it fires).
    its internal envelopes map ~1:1), claude (task extension design), codex
    (mostly renaming its native passthrough).
 
-## Migration order (post-prototype, if adopted)
+## Migration order (adopted; acp converted 2026-08-18)
 
-acp → codex → claude (task extension lands with it) → delete the kit's
+acp ✓ → codex → claude (task extension lands with it) → delete the kit's
 turn-state/scoped-ids/accepted-messages/constructor surface from the SDK →
 protocol version bump + conformance kit rewritten around delta
 well-formedness. Sequenced before session-mode so the transport carries the
@@ -158,7 +158,10 @@ run (no provider credentials in the prototype environment).
   (−361), and it is now **stateless** — the turn-state registry, scoped-item
   ids, accepted-input queue, snapshot diffing, and token accumulation are
   gone from the bridge side entirely (pi now imports zero kit assembly
-  machinery; only parsing/classification helpers remain).
+  machinery; only parsing/classification helpers remain). *(Amended with the
+  ACP conversion: the uniform terminal-shape close rule gave pi back one
+  piece of dialect memory, the started-tool shape cache — see open
+  question 2.)*
 - Pi bridge lifecycle: `bridge/bridge.ts` 1,155 → 1,094 (−61): entropy
   minting, per-session translator serials, and the hand-built interrupt
   `turn/completed` all collapsed into one-line delta emissions.
@@ -200,6 +203,10 @@ run (no provider credentials in the prototype environment).
    a thread-scoped `provider/unhandled`, or drops the delta when the bridge
    attached none (pi attaches it to tool/compaction deltas and leaves
    message deltas bare, matching old pi's coverage-filtered silence).
+9. *(ACP conversion)* **`unhandled.onlyIfNoTurn`**, **`turn.plan`**,
+   **`provider.warning.vouchedTurn`**, and the **`fileChange.changes` list**
+   (multi-entry, explicit `add|update|delete` kinds) — see the ACP results
+   section below.
 
 ### Behavior deviations (old translator behavior the grammar cannot express)
 
@@ -211,25 +218,95 @@ run (no provider credentials in the prototype environment).
   translator did, including turnless `compaction_end`. The deviation
   markers are gone from the ported suite; whether any implicit turn opening
   should return is deferred to the ACP conversion (open question 4).
-- `item.close.item` double-duty: the prototype uses it only as the
-  close-without-open fallback classification (pi must always send it since
-  it cannot know whether the assembler still holds the open item);
-  reclassification-with-open (ACP's dual-complete) is therefore
-  unimplemented and collides with the fallback semantics — needs a decision
-  before ACP converts (see open question 2).
+- **Resolved: uniform terminal-shape close (Michael, 2026-08-18, implemented
+  with the ACP conversion).** `item.close.item` is REQUIRED and always
+  carries the full terminal item shape; the assembler treats close
+  uniformly: the completed item is built from the carried shape (an open
+  item under the key contributes only its minted id and parent fallback), a
+  different-shaped open item is settled first and the terminal shape follows
+  under the same id (ACP's dual-complete preserved), and close-without-open
+  builds the bare item. Pi was updated to pass its terminal shape too: its
+  `tool_execution_end` omits args, so the translator remembers the shape it
+  classified at `tool_execution_start` in a per-call cache
+  (`agent-runtime/src/pi/delta-translation.ts:401`, dropped when the turn
+  settles) — pi's translator is therefore no longer strictly stateless,
+  holding the same kind of dialect memory as ACP's merge cache.
 - `session.ended` now settles open *items* too (plan-mandated;
   old pi interrupt left them dangling) — a strict improvement, but it means
   interrupt timelines gain item/completed events they did not have.
 
-### Assessed conversion cost
+## ACP conversion results (2026-08-18, stage 2 of the cutover)
 
-- **acp — low.** Its internal envelope layer already separates dialect from
-  assembly; `acp/turn/started`→`turn.open`, `acp/update` text →
-  `message.delta` (accumulated close is native to the grammar), tool calls →
-  `item.open/close` with `parentRef`. Blockers: resolve the
-  reclassification question (above), and move permission-request turn
-  stamping runtime-side — the assembler already exposes `getOpenTurnId` and
-  the provider↔bb item maps for exactly this.
+Converted as assessed: the envelope layer mapped ~1:1 onto deltas and the
+translator's assembly half is deleted. All acp plugin suites (144 tests,
+incl. the canonical conformance run and the ported equivalence suite) pass
+through the new path; provider-bridge-protocol, agent-runtime, plugin-sdk
+green; @bb/server typecheck untouched-green.
+
+### Line deltas
+
+- ACP translator: `event-translation.ts` 1,135 → `delta-translation.ts` 845
+  (−290). Its only remaining state is the tool-call **merge cache** (updates
+  inherit absent fields — dialect knowledge); turn/item ids, accumulation,
+  scoped-id factories, accepted-input queueing, and the per-thread turn
+  registry are gone from the bridge side.
+- ACP bridge lifecycle: `bridge/bridge.ts` 2,500 → 2,465 (−35): the
+  per-session id-entropy translator factory, the translator-queue accepted
+  input dance, and translator-state reads all collapsed into one-line delta
+  emissions.
+- Grammar/schema/assembler growth for ACP: `thread-delta.ts` 281 → 312,
+  `delta-assembler.ts` 1,081 → 1,128 (uniform close, fileChange changes
+  list, turn.plan, warning scoping, stream-release + trim suppression).
+
+### How the ACP behaviors mapped
+
+- **Interaction turn ids are runtime-stamped.** The wire contract already
+  had the mechanism: `turnId: null` in `interaction/request` means
+  "unresolved", and `runtime-provider-requests.ts` resolves it from the
+  runtime's active-turn state (fed by the assembled `turn/started`). The
+  bridge simply stopped sending a turn id — no sentinel wart was needed.
+- **Turn-end settlement stays a bridge-emitted `item.close` drain**
+  (`provider-acp/src/delta-translation.ts:426`), not generic assembler
+  settlement: the terminal shapes and close fields (aggregated output,
+  results) come from the merge cache's raw ACP data, which the assembler
+  cannot reconstruct, and the dual-settle of mid-flight reclassified calls
+  needs the merged classification. The assembler's generic settlement
+  (`session.ended`) remains for lifecycle death; ACP's stream flushes ride
+  explicit `message.close` deltas at the provider's trigger points
+  (message chunk closes thought; tool call closes both; turn end closes
+  both before draining tools), preserving today's event order exactly.
+- **Turnless known updates** map to `noTurnFallback` on the primary delta;
+  known updates that translate to *nothing* even mid-turn (non-terminal
+  update without progress text, non-text chunks, malformed known payloads)
+  carry a new `unhandled { onlyIfNoTurn: true }` delta so the old
+  "known event, no active turn → provider/unhandled" guard survives without
+  emitting anything when a turn is open (grammar gap 9).
+- **Idle bridge errors stay gated bridge-side**
+  (`provider-acp/src/bridge/bridge.ts:288`): `activePromptKind` mirrors the
+  turn the bridge opened, so an agent death on an idle thread emits only the
+  runtime error notification, exactly as before (the delta path would have
+  added a thread-scoped provider/error the old translator never emitted).
+- **fs/write envelopes carry `oldText`/`content`** instead of a pre-built
+  diff string; the assembler builds the identical diff (same `buildEditDiff`)
+  centrally.
+- `usage_update` → `contextWindow { attach: "open" }` (turn-scoped when
+  open, thread-scoped otherwise — old scoping exactly); `plan` →
+  new `turn.plan { steps }`; `acp/warning` → `provider.warning` with new
+  `vouchedTurn` turn scoping.
+
+### Behavior deviations (ACP)
+
+- A `tool_call` that arrives *pending with output content already attached*
+  used to surface that output on the `item/started` event
+  (`aggregatedOutput`/`result` at start). Delta item shapes deliberately
+  exclude output fields (`provider-acp/src/delta-translation.ts:183`), so
+  the output now first appears on the completed item. No agent in the test
+  corpus does this; the close carries it in full.
+- A whitespace-only accumulated stream still completes no item, but the
+  suppression now lives in the assembler (release + empty-after-trim),
+  shared with every accumulating bridge.
+
+### Assessed conversion cost (remaining)
 - **codex — low-to-medium.** Its native turn/item events are ~the target
   vocabulary; conversion is mostly renaming plus carrying provider ids as
   join keys. Zero-work settlement stays bridge-side as an ordinary
@@ -245,18 +322,22 @@ run (no provider credentials in the prototype environment).
 ## Open questions for Michael
 
 1. Batch framing: one `thread/delta` per delta vs arrays (prototype: arrays).
-2. Does `item.close.item` (reclassification) pay for itself vs making ACP
-   emit close+reopen? (Prototype keeps the field but uses it only as the
-   close-without-open fallback classification — with an open item the
-   started fields always win. If reclassification-with-open is kept, it
-   needs its own signal so it cannot collide with the fallback use.)
+2. Resolved (Michael, 2026-08-18): `item.close` ALWAYS carries the full
+   terminal item shape, required for tool-family items, and the assembler
+   treats close uniformly — different-shaped open item: close the opened
+   shape and emit the terminal shape (dual-complete preserved); nothing
+   open: build the completed item from the carried shape; same-shaped open
+   item: the carried terminal shape wins under the opened id. Pi's emission
+   was updated to pass its terminal shape (started-shape cache). Implemented
+   with the ACP conversion; see the results sections.
 3. Where the pi model→context-window catalog lives once usage assembly is
    central (prototype: carried on `usage.turn.modelContextWindow`).
-4. Resolved for the prototype: implicit turn opening is removed entirely —
-   item/stream deltas require an open turn and fall back to their
-   `noTurnFallback` `provider/unhandled` payload (grammar gap 8), which is
-   behavior-neutral against the old translators. Whether any delta should
-   regain implicit turn opening is deferred to the ACP conversion.
+4. Resolved: implicit turn opening is removed entirely — item/stream deltas
+   require an open turn and fall back to their `noTurnFallback`
+   `provider/unhandled` payload (grammar gap 8), which is behavior-neutral
+   against the old translators. The ACP conversion confirmed no delta needs
+   implicit turn opening (its `onlyIfNoTurn` unhandled covers the last
+   guard case, grammar gap 9).
 5. `message.close.detach` (silent stream release) vs making
    tool-`item.open` auto-detach the only mechanism — the prototype
    implements both (pi relies on the auto-detach; `detach` exists for
