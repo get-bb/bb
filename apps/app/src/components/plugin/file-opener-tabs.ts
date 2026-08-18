@@ -2,9 +2,9 @@ import type {
   PluginFileOpenerProps,
   PluginFileOpenerSource,
 } from "@get-bb/plugin-sdk";
+import type { ThreadTabFileOpenerOwner } from "@bb/server-contract";
 import {
   createPluginPanelFixedPanelTab,
-  type FileOpenerOwnerRequest,
   type PluginPanelFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import type { FileOpenerPreferenceMap } from "@/lib/file-opener-preference";
@@ -37,7 +37,7 @@ export function fileOpenerIdFromActionId(actionId: string): string | null {
 export function buildFileOpenerPanelTab(
   opener: Pick<PluginFileOpenerSlot, "id" | "pluginId">,
   file: PluginFileOpenerFile,
-  owner: FileOpenerOwnerRequest,
+  owner: ThreadTabFileOpenerOwner,
 ): PluginPanelFixedPanelTab {
   return {
     ...createPluginPanelFixedPanelTab({
@@ -144,7 +144,7 @@ function ownerRequestForOpenRequest({
 }: Omit<
   CreateFileOpenerTabForRequestArgs,
   "fileOpeners" | "preference"
->): FileOpenerOwnerRequest | null {
+>): ThreadTabFileOpenerOwner | null {
   switch (request.kind) {
     case "workspace-file-preview": {
       // Same guard as the built-in path, plus live-content-only rules.
@@ -183,7 +183,7 @@ function ownerRequestForOpenRequest({
 }
 
 function fileForOwnerRequest(
-  owner: FileOpenerOwnerRequest,
+  owner: ThreadTabFileOpenerOwner,
 ): PluginFileOpenerFile {
   switch (owner.kind) {
     case "workspace-file-preview":

@@ -31,12 +31,66 @@ const threadTabEnvironmentFileSourceSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
+/**
+ * The native file preview a plugin file-opener panel diverted, retained so the
+ * tab can restore the built-in `Original` view. Present only on plugin-panel
+ * tabs that replaced a native file preview.
+ */
+export const threadTabFileOpenerOwnerSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      environmentId: z.string().min(1).nullable(),
+      kind: z.literal("workspace-file-preview"),
+      projectId: z.string().min(1).nullable(),
+      tab: z
+        .object({
+          lineRange: threadTabLineRangeSchema.nullable(),
+          path: threadTabPathSchema,
+          source: threadTabEnvironmentFileSourceSchema,
+          statusLabel: z.literal("deleted").nullable(),
+        })
+        .strict(),
+      threadId: z.string().min(1).nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      environmentId: z.string().min(1),
+      kind: z.literal("host-file-preview"),
+      tab: z
+        .object({
+          lineRange: threadTabLineRangeSchema.nullable(),
+          path: threadTabPathSchema,
+        })
+        .strict(),
+      threadId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      environmentId: z.string().min(1).nullable(),
+      kind: z.literal("thread-storage-file-preview"),
+      tab: z
+        .object({
+          lineRange: threadTabLineRangeSchema.nullable(),
+          path: threadTabPathSchema,
+        })
+        .strict(),
+      threadId: z.string().min(1),
+    })
+    .strict(),
+]);
+export type ThreadTabFileOpenerOwner = z.infer<
+  typeof threadTabFileOpenerOwnerSchema
+>;
+
 export const threadTabSchema = z.discriminatedUnion("kind", [
   z.object({ id: threadTabIdSchema, kind: z.literal("thread-info") }).strict(),
   z.object({ id: threadTabIdSchema, kind: z.literal("git-diff") }).strict(),
   z
     .object({
       actionId: z.string().min(1).max(THREAD_TAB_PATH_MAX_LENGTH),
+      fileOpenerOwner: threadTabFileOpenerOwnerSchema.optional(),
       id: threadTabIdSchema,
       kind: z.literal("plugin-panel"),
       paramsJson: z.string().max(THREAD_TAB_PARAMS_MAX_LENGTH).nullable(),

@@ -5,6 +5,10 @@ import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
 } from "@bb/desktop-contract";
 import {
+  threadTabFileOpenerOwnerSchema,
+  type ThreadTabFileOpenerOwner,
+} from "@bb/server-contract";
+import {
   areFilePreviewLineRangesEqual,
   areEnvironmentFilePreviewSourcesEqual,
   type EnvironmentFilePreviewSource,
@@ -24,28 +28,6 @@ const SECONDARY_PANEL_TAB_ID_ENVIRONMENT_NONE = "none";
 const THREAD_INFO_TAB_ID = "thread-info:thread-info:none";
 const GIT_DIFF_TAB_ID = "git-diff:git-diff:none";
 const NEW_TAB_TAB_ID = "new-tab:new-tab:none";
-
-/** Native preview state retained by a plugin file-opener tab for `Original`. */
-export type FileOpenerOwnerRequest =
-  | {
-      kind: "workspace-file-preview";
-      environmentId: string | null;
-      projectId: string | null;
-      tab: WorkspaceFileTabState;
-      threadId: string | null;
-    }
-  | {
-      kind: "host-file-preview";
-      environmentId: string;
-      tab: HostFileTabState;
-      threadId: string;
-    }
-  | {
-      kind: "thread-storage-file-preview";
-      environmentId: string | null;
-      tab: ThreadStorageFileTabState;
-      threadId: string;
-    };
 
 const environmentFilePreviewSourceSchema: z.ZodType<EnvironmentFilePreviewSource> =
   z.discriminatedUnion("kind", [
@@ -75,51 +57,6 @@ const filePreviewLineRangeSchema: z.ZodType<FilePreviewLineRange> = z
   })
   .strict()
   .refine((range) => range.startLineNumber <= range.endLineNumber);
-const fileOpenerOwnerRequestSchema: z.ZodType<FileOpenerOwnerRequest> =
-  z.discriminatedUnion("kind", [
-    z
-      .object({
-        kind: z.literal("workspace-file-preview"),
-        environmentId: z.string().min(1).nullable(),
-        projectId: z.string().min(1).nullable(),
-        tab: z
-          .object({
-            lineRange: filePreviewLineRangeSchema.nullable(),
-            path: z.string().min(1),
-            source: environmentFilePreviewSourceSchema,
-            statusLabel: workspaceFilePreviewStatusLabelSchema,
-          })
-          .strict(),
-        threadId: z.string().min(1).nullable(),
-      })
-      .strict(),
-    z
-      .object({
-        kind: z.literal("host-file-preview"),
-        environmentId: z.string().min(1),
-        tab: z
-          .object({
-            lineRange: filePreviewLineRangeSchema.nullable(),
-            path: z.string().min(1),
-          })
-          .strict(),
-        threadId: z.string().min(1),
-      })
-      .strict(),
-    z
-      .object({
-        kind: z.literal("thread-storage-file-preview"),
-        environmentId: z.string().min(1).nullable(),
-        tab: z
-          .object({
-            lineRange: filePreviewLineRangeSchema.nullable(),
-            path: z.string().min(1),
-          })
-          .strict(),
-        threadId: z.string().min(1),
-      })
-      .strict(),
-  ]);
 const threadInfoFixedPanelTabSchema = z
   .object({
     id: z.string().min(1),
@@ -213,7 +150,7 @@ const terminalFixedPanelTabSchema = z
 const pluginPanelFixedPanelTabSchema = z
   .object({
     actionId: z.string().min(1),
-    fileOpenerOwner: fileOpenerOwnerRequestSchema.optional(),
+    fileOpenerOwner: threadTabFileOpenerOwnerSchema.optional(),
     id: z.string().min(1),
     kind: z.literal("plugin-panel"),
     paramsJson: z.string().nullable(),
@@ -288,7 +225,7 @@ export interface GitDiffFixedPanelTab {
 export interface PluginPanelFixedPanelTab {
   actionId: string;
   /** Present only when this plugin panel diverted a native file preview. */
-  fileOpenerOwner?: FileOpenerOwnerRequest;
+  fileOpenerOwner?: ThreadTabFileOpenerOwner;
   id: string;
   kind: "plugin-panel";
   paramsJson: string | null;
@@ -915,16 +852,16 @@ function stripTransientFixedPanelTabForStorage(
         ? tab
         : {
             ...tab,
-            fileOpenerOwner: stripFileOpenerOwnerRequestForStorage(
+            fileOpenerOwner: stripFileOpenerOwnerForStorage(
               tab.fileOpenerOwner,
             ),
           };
   }
 }
 
-function stripFileOpenerOwnerRequestForStorage(
-  owner: FileOpenerOwnerRequest,
-): FileOpenerOwnerRequest {
+function stripFileOpenerOwnerForStorage(
+  owner: ThreadTabFileOpenerOwner,
+): ThreadTabFileOpenerOwner {
   switch (owner.kind) {
     case "workspace-file-preview":
       return { ...owner, tab: { ...owner.tab, lineRange: null } };
@@ -1114,7 +1051,7 @@ export function areFixedPanelTabsEquivalent(
         a.pluginId === b.pluginId &&
         a.actionId === b.actionId &&
         a.paramsJson === b.paramsJson &&
-        areFileOpenerOwnerRequestsEqual(a.fileOpenerOwner, b.fileOpenerOwner) &&
+        areFileOpenerOwnersEqual(a.fileOpenerOwner, b.fileOpenerOwner) &&
         a.title === b.title
       );
     case "workspace-file-preview":
@@ -1169,9 +1106,9 @@ export function areFixedPanelTabsEquivalent(
   }
 }
 
-function areFileOpenerOwnerRequestsEqual(
-  a: FileOpenerOwnerRequest | undefined,
-  b: FileOpenerOwnerRequest | undefined,
+function areFileOpenerOwnersEqual(
+  a: ThreadTabFileOpenerOwner | undefined,
+  b: ThreadTabFileOpenerOwner | undefined,
 ): boolean {
   if (a === undefined || b === undefined) return a === b;
   if (
