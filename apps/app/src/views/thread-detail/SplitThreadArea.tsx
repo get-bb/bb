@@ -1174,10 +1174,11 @@ function NonThreadPaneContent({
       className={cn(
         "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
         // Single-pane surfaces own their own padding (the compose page and
-        // plugin panels both re-apply it inside), so cancel the app layout's
-        // page padding here. Otherwise the right panel floats 20px off the
-        // window edges instead of sitting flush like it does on a thread.
-        !isBoundedPane && "-m-4 md:-m-5",
+        // plugin panels both re-apply it inside). Compose cancels the app
+        // layout's page padding here. Plugin pages leave that to
+        // PluginPagePanelHost so its main and secondary panels share the same
+        // full-bleed bounds instead of cancelling the inset twice.
+        !isBoundedPane && content.kind === "new-thread" && "-m-4 md:-m-5",
       )}
     >
       {isBoundedPane || panel ? (
@@ -1255,7 +1256,7 @@ function NonThreadPaneContent({
 
   return content.kind === "plugin-panel" ? (
     <PluginPagePanelHost
-      flushPageInsets
+      flushPageInsets={!isBoundedPane}
       pluginId={content.pluginId}
       panelPath={content.panelPath}
       subPath={content.subPath}

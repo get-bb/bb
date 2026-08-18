@@ -635,6 +635,7 @@ describe("SplitThreadArea", () => {
     const host = await screen.findByTestId("plugin-browser-host");
     expect(host.dataset.pluginId).toBe("docs");
     expect(host.dataset.panelPath).toBe("docs");
+    expect(host.dataset.flushPageInsets).toBe("true");
   });
 
   it("hosts Browser-tab navigation when split workspaces are disabled", async () => {
@@ -646,7 +647,10 @@ describe("SplitThreadArea", () => {
       routeContent: docsContent,
     });
 
-    expect(await screen.findByTestId("plugin-browser-host")).toBeTruthy();
+    expect(
+      (await screen.findByTestId("plugin-browser-host")).dataset
+        .flushPageInsets,
+    ).toBe("true");
   });
 
   it("applies spotlight pane actions to the targeted open split and preference", async () => {
@@ -1634,7 +1638,7 @@ describe("SplitThreadArea", () => {
     expect(
       screen
         .getAllByTestId("plugin-browser-host")
-        .every((host) => host.dataset.flushPageInsets === "true"),
+        .every((host) => host.dataset.flushPageInsets === "false"),
     ).toBe(true);
     expect(docsPanelContent.closest(".isolate")).not.toBeNull();
     expect(
@@ -1662,6 +1666,9 @@ describe("SplitThreadArea", () => {
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Close pane" })).toBeNull();
     expect(screen.queryByTestId("split-workspace-panel-toggle")).toBeNull();
+    const remainingHost = screen.getByTestId("plugin-browser-host");
+    expect(remainingHost.dataset.flushPageInsets).toBe("true");
+    expect(remainingHost.firstElementChild?.classList).not.toContain("-m-4");
   });
 
   it("mounts both panes with independent, threadId-keyed drafts", async () => {
