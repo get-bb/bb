@@ -29,6 +29,7 @@ import { createInterface } from "node:readline";
 let threadCounter = 0;
 let turnCounter = 0;
 const openTurnIdsByThreadId = new Map();
+const processInstanceId = `${process.pid}-${Date.now()}-${Math.random()}`;
 
 function send(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
@@ -170,6 +171,23 @@ async function handleRequest(message) {
       return;
     case "account/rateLimits/read":
       respond(id, { rateLimits: {} });
+      return;
+    case "model/list":
+      respond(id, {
+        data: [
+          {
+            id: `fake-model-${processInstanceId}`,
+            model: `fake-model-${processInstanceId}`,
+            displayName: "Fake model",
+            description: "Hermetic bridge fixture model",
+            supportedReasoningEfforts: [
+              { reasoningEffort: "medium", description: "Medium" },
+            ],
+            defaultReasoningEffort: "medium",
+            isDefault: true,
+          },
+        ],
+      });
       return;
     case "skills/extraRoots/set":
       respond(id, {});

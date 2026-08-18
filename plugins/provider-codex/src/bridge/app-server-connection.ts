@@ -1,9 +1,9 @@
 /**
  * JSON-RPC 2.0 endpoint over a spawned `codex app-server` child's stdio.
  *
- * The codex bridge supervises one app-server child per bb thread (plus
- * short-lived maintenance children). This module owns the child-process
- * exit races the runtime learned in #1402:
+ * The codex bridge supervises one app-server child per bb thread, a reusable
+ * model-list child, and short-lived thread-maintenance children. This module
+ * owns the child-process exit races the runtime learned in #1402:
  *
  * - Exit is finalized on `close`, not `exit`, with a bounded grace so a
  *   descendant holding an inherited pipe cannot delay teardown forever —

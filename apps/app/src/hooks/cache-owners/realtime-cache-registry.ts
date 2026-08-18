@@ -517,6 +517,8 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtyPluginContributionQueries,
       dirtyProjectCommandCatalogQueries,
       dirtyPluginManagementQueries,
+      dirtySystemProviderQueries, // Provider plugins add/remove picker entries.
+      dirtySystemExecutionOptionQueries, // Refresh a boot-time partial provider roster.
       reconcilePluginFrontendBundles,
     ],
   },

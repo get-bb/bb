@@ -1058,6 +1058,47 @@ describe("resolveSystemExecutionOptions", () => {
     );
   });
 
+  it("answers a provider-scoped picker request before unrelated plugins finish loading", async () => {
+    await withTestHarness(
+      { seedFirstPartyProviders: false },
+      async (harness) => {
+        const registry = createProviderRegistryService({
+          deferRegistrationsSettled: true,
+        });
+        harness.deps.providerRegistry = registry;
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-execution-options-provider-ready",
+        });
+        registerProviderHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+        });
+
+        const optionsPromise = resolveSystemExecutionOptions(harness.deps, {
+          hostId: host.id,
+          providerId: "pi",
+        });
+        await registerFirstPartyProviders(registry, {
+          excludePluginIds: [
+            "provider-acp",
+            "provider-claude-code",
+            "provider-codex",
+          ],
+        });
+
+        const response = await optionsPromise;
+        expect(response.providers.map((provider) => provider.id)).toEqual([
+          "pi",
+        ]);
+        expect(response.modelLoadError).toBeNull();
+
+        // Full plugin startup is intentionally still outstanding. It may
+        // complete later and invalidate this partial boot-time roster.
+        registry.markRegistrationsSettled();
+      },
+    );
+  });
+
   // Dynamic ACP ids run on the ACP plugin's bridge and are never registered
   // themselves, so with that plugin disabled they have no bridge anywhere:
   // listing them would offer agents whose first turn fails on the daemon.

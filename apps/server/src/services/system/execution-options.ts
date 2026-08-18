@@ -312,7 +312,7 @@ export async function resolveSystemProviderModels(
   deps: LoggedWorkSessionDeps,
   args: ResolveSystemProviderModelsArgs,
 ): Promise<ModelListResult> {
-  await deps.providerRegistry.whenRegistrationsSettled();
+  await deps.providerRegistry.whenProviderRegistered(args.providerId);
   const configuredProvider = listConfiguredSystemProviderInfos(deps, []).find(
     (provider) => provider.id === args.providerId,
   );
@@ -433,7 +433,11 @@ export async function resolveSystemExecutionOptions(
   deps: LoggedWorkSessionDeps,
   query: SystemExecutionOptionsRequest,
 ): Promise<SystemExecutionOptionsResponse> {
-  await deps.providerRegistry.whenRegistrationsSettled();
+  if (query.providerId === undefined) {
+    await deps.providerRegistry.whenRegistrationsSettled();
+  } else {
+    await deps.providerRegistry.whenProviderRegistered(query.providerId);
+  }
   const cwd =
     query.environmentId === undefined
       ? undefined
