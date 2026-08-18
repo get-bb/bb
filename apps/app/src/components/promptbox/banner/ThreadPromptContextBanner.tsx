@@ -1,4 +1,9 @@
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import {
+  forwardRef,
+  useState,
+  type ButtonHTMLAttributes,
+  type ReactNode,
+} from "react";
 import { NavLink } from "react-router-dom";
 import type {
   EnvironmentStatus,
@@ -668,6 +673,15 @@ function AnimatedBody({
   isExpanded: boolean;
   children: ReactNode;
 }) {
+  // Realize the body only after the first expand, then retain it. A collapsed
+  // body still costs layout for every node inside it, and the changed-files
+  // list can be large, so the DOM must not carry it before anyone opens it.
+  const [hasRealizedBody, setHasRealizedBody] = useState(isExpanded);
+  if (isExpanded && !hasRealizedBody) {
+    setHasRealizedBody(true);
+  }
+  const isBodyRealized = hasRealizedBody || isExpanded;
+
   return (
     <section
       id={id}
@@ -681,7 +695,9 @@ function AnimatedBody({
           : "pointer-events-none grid-rows-[0fr] border-t border-transparent opacity-0",
       )}
     >
-      <div className="overflow-hidden bg-popover">{children}</div>
+      <div className="overflow-hidden bg-popover">
+        {isBodyRealized ? children : null}
+      </div>
     </section>
   );
 }
@@ -759,9 +775,7 @@ function ActiveChildThreadsCard({
           />
           <span className="min-w-0 flex-1 truncate text-left">
             <span className="text-muted-foreground">
-              {needsApproval
-                ? "Needs your input: "
-                : "Active child thread: "}
+              {needsApproval ? "Needs your input: " : "Active child thread: "}
             </span>
             <span className="font-medium text-foreground/80">
               {primary.title}
@@ -858,10 +872,7 @@ function ReadOnlyContextBanner({
             className="size-3.5 shrink-0"
             aria-hidden="true"
           />
-          <span
-            className="min-w-0 truncate"
-            aria-hidden="true"
-          >
+          <span className="min-w-0 truncate" aria-hidden="true">
             {statusLabel}
           </span>
         </div>
@@ -916,9 +927,7 @@ export function ThreadPromptContextBanner({
         statusAriaLabel={
           environmentGoneCopy?.ariaLabel ?? ARCHIVED_THREAD_STATUS_LABEL
         }
-        statusLabel={
-          environmentGoneCopy?.label ?? ARCHIVED_THREAD_STATUS_LABEL
-        }
+        statusLabel={environmentGoneCopy?.label ?? ARCHIVED_THREAD_STATUS_LABEL}
         statusAction={
           archivedSection?.onUnarchive && !environmentGone ? (
             <ThreadUnarchiveTextAction
@@ -1017,8 +1026,7 @@ export function ThreadPromptContextBanner({
   // inline as "Parent <name>" with the name as a link. There's no other
   // context to compete for the row, so the icon-only toggle would be a strict
   // downgrade in legibility.
-  const isParentThreadOnly =
-    showParentThread && !showGit && !showPullRequest;
+  const isParentThreadOnly = showParentThread && !showGit && !showPullRequest;
 
   const pullRequest = pullRequestSection?.pullRequest ?? null;
   const showPullRequestLabel =

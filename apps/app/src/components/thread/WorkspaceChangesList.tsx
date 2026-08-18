@@ -34,6 +34,19 @@ interface WorkspaceChangesListItemProps {
 const WORKSPACE_CHANGE_ROW_CLASS =
   "grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-start gap-x-3";
 
+/**
+ * Upper bound on rows the scrollable (non-`limit`) mode renders. Workspace
+ * status carries every changed path, and a stray untracked build directory
+ * can produce tens of thousands of files. Rendering all of them makes every
+ * layout on the page cost hundreds of milliseconds, so the list shows the
+ * leading slice and reports how many rows it left out.
+ */
+export const WORKSPACE_CHANGES_LIST_MAX_ROWS = 200;
+
+function formatHiddenFileCount(count: number): string {
+  return `${count.toLocaleString()} more ${count === 1 ? "file" : "files"} not shown`;
+}
+
 function fileKey(file: WorkspaceChangedFile): string {
   return `${file.status}:${file.path}`;
 }
@@ -108,13 +121,24 @@ export function WorkspaceChangesList({
     );
   }
 
+  const visibleFiles =
+    files.length > WORKSPACE_CHANGES_LIST_MAX_ROWS
+      ? files.slice(0, WORKSPACE_CHANGES_LIST_MAX_ROWS)
+      : files;
+  const hiddenFileCount = files.length - visibleFiles.length;
+
   return (
     <ul className={cn("space-y-1 overflow-auto", className)}>
-      {files.map((file) => (
+      {visibleFiles.map((file) => (
         <li key={fileKey(file)}>
           <WorkspaceChangesListItem file={file} onFileClick={onFileClick} />
         </li>
       ))}
+      {hiddenFileCount > 0 ? (
+        <li className="px-1 text-xs leading-5 text-muted-foreground">
+          {formatHiddenFileCount(hiddenFileCount)}
+        </li>
+      ) : null}
     </ul>
   );
 }
