@@ -164,6 +164,21 @@ const piCompactionEndEventSchema = z
   })
   .passthrough();
 
+/**
+ * Pi refuses a manual compaction before it calls the model when the session
+ * has nothing to summarize. Pi reports the refusal through the same
+ * `compaction_end.errorMessage` field as a real failure, so bb must tell them
+ * apart: a refusal is a no-op, not a failed turn.
+ */
+const piCompactionNoopMessages = new Set([
+  "Compaction failed: Nothing to compact (session too small)",
+  "Compaction failed: Already compacted",
+]);
+
+function isPiCompactionNoop(errorMessage: string): boolean {
+  return piCompactionNoopMessages.has(errorMessage.trim());
+}
+
 const piMessageUpdateEventSchema = z
   .object({
     type: z.literal("message_update"),
@@ -655,6 +670,24 @@ export function createPiDeltaTranslator(
         };
         if (parsed.data.reason === "manual") {
           clearThreadToolShapes(context);
+          const compactionNoopDetail =
+            !parsed.data.aborted &&
+            parsed.data.errorMessage !== undefined &&
+            isPiCompactionNoop(parsed.data.errorMessage)
+              ? parsed.data.errorMessage
+              : undefined;
+          if (compactionNoopDetail !== undefined) {
+            return [
+              {
+                kind: "provider.warning",
+                category: "compaction-skipped",
+                summary: "Context compaction skipped",
+                details: compactionNoopDetail,
+                vouchedTurn: true,
+              },
+              { kind: "turn.boundary", status: "completed" },
+            ];
+          }
           return [
             ...(succeeded ? [compacted] : []),
             {

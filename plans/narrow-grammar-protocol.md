@@ -29,11 +29,13 @@ the known pre-existing codex pre-turn usage drops; process sweep clean.
 Findings to track (neither is a cutover regression; both are byte-identical
 to pre-cutover behavior):
 
-1. pi manual `/compact` on a too-small session yields
-   `turn/completed{failed}` and an `error`-status thread (recoverable via
-   send `mode:"start"`), not a graceful no-op
-   (`packages/agent-runtime/src/pi/delta-translation.ts` maps manual
-   `compaction_end` errors to a failed turn boundary, enshrined by its test).
+1. FIXED (issue #1721, PR #1807 on main; ported to the delta translator):
+   pi manual `/compact` on a too-small session used to yield
+   `turn/completed{failed}` and an `error`-status thread. The pi delta
+   translator now recognizes pi's known refusal messages on a manual,
+   non-aborted `compaction_end` and emits a turn-scoped
+   `provider.warning{category: "compaction-skipped"}` plus a completed turn
+   boundary instead of a failed one.
 2. acp-cursor is advertised with `supportsFork: true` but cursor-agent does
    not advertise ACP session/fork, so every fork attempt creates a thread
    that immediately errors ("does not advertise session/fork support",
