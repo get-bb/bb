@@ -67,6 +67,17 @@ describe.sequential("fake provider session continuity integration", () => {
       const eventsAfter = await getThreadEvents(harness.api, thread.id);
       expect(eventsAfter.length).toBeGreaterThan(eventsBefore.length);
       assertMonotonicSequences(eventsAfter);
+      const reusedMessageLifecycle = eventsAfter.filter(
+        (event) =>
+          (event.type === "item/started" || event.type === "item/completed") &&
+          event.data.item.id === "msg-1",
+      );
+      expect(reusedMessageLifecycle.map((event) => event.type)).toEqual([
+        "item/started",
+        "item/completed",
+        "item/started",
+        "item/completed",
+      ]);
       expect(
         eventsAfter.filter((event) => event.type === "turn/completed"),
       ).toHaveLength(baselineCompletedCount + 1);

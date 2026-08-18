@@ -343,6 +343,7 @@ function translateEventMessage(event: ProviderRuntimeEvent): ThreadEvent[] {
         },
       ];
     }
+    case "item/started":
     case "item/completed": {
       const item = threadEventItemSchema.parse(message.params.item);
       if (item.type === "userMessage") {
@@ -350,7 +351,7 @@ function translateEventMessage(event: ProviderRuntimeEvent): ThreadEvent[] {
       }
       return [
         {
-          type: "item/completed",
+          type: message.method,
           threadId,
           providerThreadId,
           scope: turnScope(turnId),
