@@ -197,14 +197,14 @@ function translateClaudeToolUseItem(
         arguments: parsed.data,
       });
     }
-    return withParent({
-      ...buildFileChangeItem({
+    return withParent(
+      buildFileChangeItem({
+        callId: input.callId,
         path,
         oldText: parsed.data.old_string,
         newText: parsed.data.new_string ?? parsed.data.content,
       }),
-      id: input.callId,
-    });
+    );
   }
 
   return withParent(

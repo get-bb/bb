@@ -154,3 +154,33 @@ describe("createPendingToolCallTracker", () => {
     await expect(resultB).resolves.toEqual({ content: "b", isError: false });
   });
 });
+
+describe("createPendingToolCallTracker send failures", () => {
+  it("resolves an error result instead of rejecting when the sender throws", async () => {
+    const tracker = createPendingToolCallTracker({
+      sendToolCall: () => {
+        throw new Error("transport closed");
+      },
+    });
+    const scope = {};
+
+    const result = await tracker.forwardToolCall({
+      arguments: {},
+      providerThreadId: "provider-1",
+      scope,
+      threadId: "thread-1",
+      toolName: "my_tool",
+    });
+    expect(result).toEqual({ content: "transport closed", isError: true });
+
+    // The failed call must not linger: a later scope-wide resolution finds
+    // nothing to settle, proving the pending entry was removed.
+    tracker.resolvePendingToolCalls(scope, "closing");
+    const response = tracker.handleToolCallResponse({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { content: "late" },
+    });
+    expect(response).toBe(false);
+  });
+});

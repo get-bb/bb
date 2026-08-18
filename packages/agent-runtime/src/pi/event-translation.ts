@@ -339,14 +339,14 @@ function translatePiToolUseItem(
         arguments: parsed.data,
       });
     }
-    return withParent({
-      ...buildFileChangeItem({
+    return withParent(
+      buildFileChangeItem({
+        callId: input.callId,
         path: parsed.data.path,
         oldText: parsed.data.oldText,
         newText: parsed.data.newText ?? parsed.data.content,
       }),
-      id: input.callId,
-    });
+    );
   }
 
   return genericToolCall();

@@ -728,8 +728,8 @@ declare const instructionModeSchema: z.ZodEnum<{
 type InstructionMode = z.infer<typeof instructionModeSchema>;
 declare const permissionModeSchema: z.ZodEnum<{
     full: "full";
-    auto: "auto";
     "accept-edits": "accept-edits";
+    auto: "auto";
 }>;
 type PermissionMode = z.infer<typeof permissionModeSchema>;
 declare const permissionEscalationValues: readonly ["ask", "deny"];
@@ -3427,8 +3427,8 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
         permissionMode: z.ZodEnum<{
             readonly: "readonly";
             full: "full";
-            auto: "auto";
             "accept-edits": "accept-edits";
+            auto: "auto";
             "workspace-write": "workspace-write";
         }>;
     }, z.core.$strip>;
@@ -4239,6 +4239,7 @@ declare function buildGenericToolCallItem(args: {
     toolName: string;
 }): ToolCallItem;
 declare function buildFileChangeItem(args: {
+    callId: string;
     newText?: string;
     oldText?: string;
     path: string;

@@ -30,6 +30,7 @@ export function buildGenericToolCallItem(args: {
 }
 
 export function buildFileChangeItem(args: {
+  callId: string;
   newText?: string;
   oldText?: string;
   path: string;
@@ -37,7 +38,7 @@ export function buildFileChangeItem(args: {
   const diff = buildEditDiff(args.path, args.oldText, args.newText);
   return {
     type: "fileChange",
-    id: "",
+    id: args.callId,
     changes: [
       {
         path: args.path,

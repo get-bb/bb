@@ -61,19 +61,29 @@ export function createPendingToolCallTracker(options: {
         requestIdCounter += 1;
         const requestId = requestIdCounter;
         pendingToolCalls.set(requestId, { resolve, scope: args.scope });
-        options.sendToolCall({
-          jsonrpc: "2.0",
-          id: requestId,
-          method: "item/tool/call",
-          params: {
-            threadId: args.threadId,
-            providerThreadId: args.providerThreadId,
-            turnId: null,
-            callId: `call-${requestId}`,
-            tool: args.toolName,
-            arguments: args.arguments,
-          },
-        });
+        try {
+          options.sendToolCall({
+            jsonrpc: "2.0",
+            id: requestId,
+            method: "item/tool/call",
+            params: {
+              threadId: args.threadId,
+              providerThreadId: args.providerThreadId,
+              turnId: null,
+              callId: `call-${requestId}`,
+              tool: args.toolName,
+              arguments: args.arguments,
+            },
+          });
+        } catch (error) {
+          // A throwing sender would otherwise reject the promise (breaking
+          // the never-rejects contract) and strand the pending entry.
+          pendingToolCalls.delete(requestId);
+          resolve({
+            content: error instanceof Error ? error.message : String(error),
+            isError: true,
+          });
+        }
       });
     },
     handleToolCallResponse: (response) => {
