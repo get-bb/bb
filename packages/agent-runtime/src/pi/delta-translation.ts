@@ -259,15 +259,19 @@ function classifyPiToolUse(toolName: string, args: unknown): DeltaItemShape {
     if (!parsed.data.path) {
       return { type: "tool", tool: toolName, args: parsed.data };
     }
+    const newText = parsed.data.newText ?? parsed.data.content;
     return {
       type: "fileChange",
-      path: parsed.data.path,
-      ...(parsed.data.oldText === undefined
-        ? {}
-        : { oldText: parsed.data.oldText }),
-      ...((parsed.data.newText ?? parsed.data.content) === undefined
-        ? {}
-        : { newText: parsed.data.newText ?? parsed.data.content }),
+      changes: [
+        {
+          path: parsed.data.path,
+          kind: parsed.data.oldText === undefined ? "add" : "update",
+          ...(parsed.data.oldText === undefined
+            ? {}
+            : { oldText: parsed.data.oldText }),
+          ...(newText === undefined ? {} : { newText }),
+        },
+      ],
     };
   }
 
@@ -280,7 +284,7 @@ function classifyPiToolResultFallback(toolName: string): DeltaItemShape {
     return { type: "command", command: "", cwd: "" };
   }
   if (PI_FILE_CHANGE_TOOL_NAMES.has(toolName)) {
-    return { type: "fileChange" };
+    return { type: "fileChange", changes: [] };
   }
   return { type: "tool", tool: toolName };
 }
@@ -376,15 +380,59 @@ export interface CreatePiDeltaTranslatorOptions {
   resolveModelContextWindow?: PiModelContextWindowResolver;
 }
 
+/** Bound on remembered started-tool shapes (calls that never report an end). */
+const MAX_STARTED_TOOL_SHAPES = 1024;
+
 /**
- * Stateless per-process translator: the pi dialect carries every join key the
- * assembler needs, so no per-thread turn or item state lives here.
+ * Per-process translator. The pi dialect carries every join key the assembler
+ * needs, so no turn or id state lives here — the one dialect memory is the
+ * started-tool shape cache: `tool_execution_end` omits the call's args, and
+ * `item.close` must carry the full terminal item shape (the uniform close
+ * rule), so the shape classified at `tool_execution_start` is remembered per
+ * call until its end event replays it.
  */
 export function createPiDeltaTranslator(
   options: CreatePiDeltaTranslatorOptions = {},
 ) {
   const resolveModelContextWindow =
     options.resolveModelContextWindow ?? createPiModelContextWindowResolver();
+
+  /** `${threadId} ${toolCallId}` → shape emitted on the call's item.open. */
+  const startedToolShapes = new Map<string, DeltaItemShape>();
+
+  function toolShapeKey(
+    context: PiDeltaTranslationContext | undefined,
+    toolCallId: string,
+  ): string {
+    return `${context?.threadId ?? ""} ${toolCallId}`;
+  }
+
+  function rememberStartedToolShape(key: string, shape: DeltaItemShape): void {
+    startedToolShapes.set(key, shape);
+    while (startedToolShapes.size > MAX_STARTED_TOOL_SHAPES) {
+      const oldest = startedToolShapes.keys().next();
+      if (oldest.done === true) {
+        break;
+      }
+      startedToolShapes.delete(oldest.value);
+    }
+  }
+
+  /**
+   * A settled turn abandons its unfinished calls (the old per-turn state was
+   * cleared at every turn finish): a late end after the boundary falls back
+   * to the bare classification instead of replaying a stale start.
+   */
+  function clearThreadToolShapes(
+    context: PiDeltaTranslationContext | undefined,
+  ): void {
+    const prefix = `${context?.threadId ?? ""} `;
+    for (const key of [...startedToolShapes.keys()]) {
+      if (key.startsWith(prefix)) {
+        startedToolShapes.delete(key);
+      }
+    }
+  }
 
   function toRawEvent(rawEvent: JsonRpcMessage): ProviderRawEvent {
     const parsed = providerRawEventSchema.safeParse(rawEvent);
@@ -499,6 +547,7 @@ export function createPiDeltaTranslator(
     const promptSettledEnvelope =
       piPromptSettledEnvelopeSchema.safeParse(event);
     if (promptSettledEnvelope.success) {
+      clearThreadToolShapes(context);
       return [
         {
           kind: "turn.boundary",
@@ -536,6 +585,7 @@ export function createPiDeltaTranslator(
 
     const errorEnvelope = errorEnvelopeSchema.safeParse(event);
     if (errorEnvelope.success) {
+      clearThreadToolShapes(context);
       return [
         {
           kind: "provider.error",
@@ -604,6 +654,7 @@ export function createPiDeltaTranslator(
           noTurnFallback: noTurnFallbackFor(event, context),
         };
         if (parsed.data.reason === "manual") {
+          clearThreadToolShapes(context);
           return [
             ...(succeeded ? [compacted] : []),
             {
@@ -655,6 +706,7 @@ export function createPiDeltaTranslator(
           return [];
         }
         if (lastAssistant && isPiAssistantError(lastAssistant)) {
+          clearThreadToolShapes(context);
           return [
             {
               kind: "provider.error",
@@ -664,6 +716,7 @@ export function createPiDeltaTranslator(
             },
           ];
         }
+        clearThreadToolShapes(context);
         const deltas: ThreadDelta[] = [];
         if (lastAssistant) {
           const text = extractAssistantText(lastAssistant);
@@ -761,6 +814,14 @@ export function createPiDeltaTranslator(
         if (!piEvent.success) {
           return unexpectedSdkEventDeltas(event, context);
         }
+        const shape = classifyPiToolUse(
+          piEvent.data.toolName,
+          piEvent.data.args,
+        );
+        rememberStartedToolShape(
+          toolShapeKey(context, piEvent.data.toolCallId),
+          shape,
+        );
         return [
           {
             kind: "item.open",
@@ -768,7 +829,7 @@ export function createPiDeltaTranslator(
               providerItemId: piEvent.data.toolCallId,
               ...parentRefField,
             },
-            item: classifyPiToolUse(piEvent.data.toolName, piEvent.data.args),
+            item: shape,
             noTurnFallback: noTurnFallbackFor(piEvent.data, context),
           },
         ];
@@ -785,6 +846,14 @@ export function createPiDeltaTranslator(
         )
           ? extractPiCommandExecutionOutput(piEvent.data.result)
           : undefined;
+        // The end event omits the call's args: the terminal shape is the one
+        // classified at tool_execution_start, or the bare fallback when this
+        // process never saw the start.
+        const shapeKey = toolShapeKey(context, piEvent.data.toolCallId);
+        const terminalShape =
+          startedToolShapes.get(shapeKey) ??
+          classifyPiToolResultFallback(piEvent.data.toolName);
+        startedToolShapes.delete(shapeKey);
         return [
           {
             kind: "item.close",
@@ -796,7 +865,7 @@ export function createPiDeltaTranslator(
             resultText,
             exitCode: piEvent.data.isError ? 1 : 0,
             ...(aggregatedOutput === undefined ? {} : { aggregatedOutput }),
-            item: classifyPiToolResultFallback(piEvent.data.toolName),
+            item: terminalShape,
             noTurnFallback: noTurnFallbackFor(piEvent.data, context),
           },
         ];

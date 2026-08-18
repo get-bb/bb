@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ClientTurnRequestId, ThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
-import type { ThreadDelta } from "@bb/provider-bridge-protocol";
+import type {
+  DeltaItemShape,
+  ThreadDelta,
+} from "@bb/provider-bridge-protocol";
 import {
   createDeltaAssembler,
   diffCumulativeText,
@@ -137,7 +140,7 @@ describe("delta assembler", () => {
 
   // -- items: open/close pairing --------------------------------------------
 
-  it("echoes started command fields onto the paired close", () => {
+  it("settles a paired close from its terminal shape under the opened id", () => {
     const assembler = createAssembler();
     assemble(assembler, { kind: "turn.open" });
     const started = assemble(assembler, bashOpen("tc-1"));
@@ -159,8 +162,9 @@ describe("delta assembler", () => {
       status: "failed",
       exitCode: 1,
       aggregatedOutput: "tests failed",
-      // Fallback classification is present but the opened item's fields win.
-      item: { type: "command", command: "", cwd: "" },
+      // The uniform close rule: the carried shape is the full terminal shape
+      // and it wins (bridges replay the started fields they cached).
+      item: { type: "command", command: "npm test", cwd: "/repo" },
     });
     expect(closed).toEqual([
       expect.objectContaining({
@@ -207,26 +211,45 @@ describe("delta assembler", () => {
     ]);
   });
 
-  it("falls back to an unknown toolCall when a close has no classification", () => {
+  it("settles both shapes when the terminal shape differs from the opened one", () => {
+    // ACP's mid-flight reclassification: a generic toolCall's terminal update
+    // reveals a diff. The opened shape settles first, then the terminal shape
+    // follows, both under the same minted id (today's dual-complete).
     const assembler = createAssembler();
     assemble(assembler, { kind: "turn.open" });
+    const started = assemble(assembler, {
+      kind: "item.open",
+      key: { providerItemId: "tc-re" },
+      item: { type: "tool", tool: "Read file" },
+    });
     const events = assemble(assembler, {
       kind: "item.close",
-      key: { providerItemId: "tc-x" },
+      key: { providerItemId: "tc-re" },
       status: "completed",
-      resultText: "output",
+      item: {
+        type: "fileChange",
+        changes: [
+          { path: "/tmp/a.ts", kind: "update", oldText: "old", newText: "new" },
+        ],
+      },
     });
-    expect(events).toEqual([
-      expect.objectContaining({
-        type: "item/completed",
-        item: expect.objectContaining({
-          type: "toolCall",
-          tool: "unknown",
-          result: "output",
-          status: "completed",
-        }),
-      }),
+    expect(events.map((event) => event.type)).toEqual([
+      "item/completed",
+      "item/completed",
     ]);
+    const settled = events.flatMap((event) =>
+      event.type === "item/completed" ? [event.item] : [],
+    );
+    expect(settled.map((item) => item.type)).toEqual([
+      "toolCall",
+      "fileChange",
+    ]);
+    const startedId =
+      started[0]?.type === "item/started" ? started[0].item.id : "";
+    for (const item of settled) {
+      expect(item.id).toBe(startedId);
+      expect("status" in item && item.status).toBe("completed");
+    }
   });
 
   it("clears pairing state at the turn boundary so late closes get bare items", () => {
@@ -254,18 +277,24 @@ describe("delta assembler", () => {
     ]);
   });
 
-  it("builds file-change items with diffs and echoes changes onto the close", () => {
+  it("builds file-change items with diffs from the carried changes", () => {
     const assembler = createAssembler();
     assemble(assembler, { kind: "turn.open" });
+    const editShape: DeltaItemShape = {
+      type: "fileChange",
+      changes: [
+        {
+          path: "src/app.ts",
+          kind: "update",
+          oldText: "const enabled = false;\n",
+          newText: "const enabled = true;\n",
+        },
+      ],
+    };
     const started = assemble(assembler, {
       kind: "item.open",
       key: { providerItemId: "tc-edit" },
-      item: {
-        type: "fileChange",
-        path: "src/app.ts",
-        oldText: "const enabled = false;\n",
-        newText: "const enabled = true;\n",
-      },
+      item: editShape,
     });
     expect(started[0]).toMatchObject({
       type: "item/started",
@@ -285,6 +314,7 @@ describe("delta assembler", () => {
       kind: "item.close",
       key: { providerItemId: "tc-edit" },
       status: "completed",
+      item: editShape,
     });
     expect(closed[0]).toMatchObject({
       type: "item/completed",
@@ -812,6 +842,139 @@ describe("delta assembler", () => {
     ]);
   });
 
+  it("drops onlyIfNoTurn unhandled events while a turn is open", () => {
+    const assembler = createAssembler();
+    const raw = {
+      jsonrpc: "2.0" as const,
+      method: "acp/update",
+      params: { update: { sessionUpdate: "tool_call_update" } },
+    };
+    assemble(assembler, { kind: "turn.open" });
+    expect(
+      assemble(assembler, {
+        kind: "unhandled",
+        raw,
+        rawType: "acp/update:tool_call_update",
+        vouchedTurn: false,
+        onlyIfNoTurn: true,
+      }),
+    ).toEqual([]);
+    assemble(assembler, { kind: "turn.boundary", status: "completed" });
+    expect(
+      assemble(assembler, {
+        kind: "unhandled",
+        raw,
+        rawType: "acp/update:tool_call_update",
+        vouchedTurn: false,
+        onlyIfNoTurn: true,
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        type: "provider/unhandled",
+        scope: threadScope(),
+      }),
+    ]);
+  });
+
+  it("scopes vouched warnings to the open turn and idle warnings to the thread", () => {
+    const assembler = createAssembler();
+    expect(
+      assemble(assembler, {
+        kind: "provider.warning",
+        summary: "History not restored",
+        vouchedTurn: true,
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        type: "provider/warning",
+        summary: "History not restored",
+        category: "general",
+        scope: threadScope(),
+      }),
+    ]);
+    assemble(assembler, { kind: "turn.open" });
+    const turnId = assembler.getOpenTurnId(THREAD_ID) ?? "";
+    expect(
+      assemble(assembler, {
+        kind: "provider.warning",
+        summary: "Mid-turn warning",
+        vouchedTurn: true,
+      }),
+    ).toEqual([expect.objectContaining({ scope: turnScope(turnId) })]);
+  });
+
+  it("emits turn/plan/updated for the open turn and falls back when idle", () => {
+    const assembler = createAssembler();
+    const raw = {
+      jsonrpc: "2.0" as const,
+      method: "acp/update",
+      params: { update: { sessionUpdate: "plan" } },
+    };
+    expect(
+      assemble(assembler, {
+        kind: "turn.plan",
+        steps: [{ step: "Fix bug", status: "active" }],
+        noTurnFallback: { raw, rawType: "acp/update:plan" },
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        type: "provider/unhandled",
+        rawType: "acp/update:plan",
+        scope: threadScope(),
+      }),
+    ]);
+    assemble(assembler, { kind: "turn.open" });
+    const turnId = assembler.getOpenTurnId(THREAD_ID) ?? "";
+    expect(
+      assemble(assembler, {
+        kind: "turn.plan",
+        steps: [
+          { step: "Read files", status: "completed" },
+          { step: "Fix bug", status: "active" },
+        ],
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        type: "turn/plan/updated",
+        scope: turnScope(turnId),
+        plan: [
+          { step: "Read files", status: "completed" },
+          { step: "Fix bug", status: "active" },
+        ],
+      }),
+    ]);
+  });
+
+  it("releases a whitespace-only accumulated stream without completing an item", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    assemble(assembler, {
+      kind: "message.delta",
+      channel: "assistant",
+      streamKey: "assistant",
+      text: "  \n",
+    });
+    // Accumulated settle: whitespace-only text completes nothing…
+    expect(
+      assemble(assembler, {
+        kind: "message.close",
+        channel: "assistant",
+        streamKey: "assistant",
+      }),
+    ).toEqual([]);
+    // …and the stream is released: later text mints a fresh item.
+    const restart = assemble(assembler, {
+      kind: "message.delta",
+      channel: "assistant",
+      streamKey: "assistant",
+      text: "real text",
+    });
+    expect(restart.map((event) => event.type)).toEqual([
+      "item/started",
+      "item/agentMessage/delta",
+    ]);
+  });
+
   // -- turnless item/stream deltas --------------------------------------------
 
   it("never fabricates a turn for turnless item deltas: fallback surfaces, no fallback drops", () => {
@@ -856,6 +1019,7 @@ describe("delta assembler", () => {
         kind: "item.close",
         key: { providerItemId: "tc-1" },
         status: "completed",
+        item: { type: "command", command: "", cwd: "" },
       }),
     ).toEqual([]);
     // The claim still belongs to the lifecycle closer.

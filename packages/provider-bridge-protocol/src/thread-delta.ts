@@ -17,6 +17,7 @@ import {
   providerErrorCategorySchema,
   providerRawEventSchema,
   threadEventItemStatusSchema,
+  threadEventPlanStepSchema,
   threadEventTokenUsageBreakdownSchema,
   threadEventTurnStatusSchema,
   threadEventWarningCategorySchema,
@@ -44,6 +45,16 @@ export type DeltaItemKey = z.infer<typeof deltaItemKeySchema>;
  * into. Everything richer (diffs, pending statuses, echoed fields on close)
  * is assembler-owned construction.
  */
+export const deltaFileChangeSchema = z.object({
+  path: z.string(),
+  /** The bridge states the change kind; the assembler never derives it. */
+  kind: z.enum(["add", "update", "delete"]),
+  oldText: z.string().optional(),
+  /** When present the assembler builds the unified diff from old/new text. */
+  newText: z.string().optional(),
+});
+export type DeltaFileChange = z.infer<typeof deltaFileChangeSchema>;
+
 export const deltaItemShapeSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("command"),
@@ -52,10 +63,8 @@ export const deltaItemShapeSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("fileChange"),
-    /** Absent only on bare close-without-open fallbacks. */
-    path: z.string().optional(),
-    oldText: z.string().optional(),
-    newText: z.string().optional(),
+    /** Empty only on bare close-without-open fallbacks (path unknown). */
+    changes: z.array(deltaFileChangeSchema),
   }),
   z.object({
     type: z.literal("tool"),
@@ -128,9 +137,13 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
   }),
 
   /**
-   * The item settled. `item` carries the terminal classification: on a paired
-   * close the opened item's fields win (close-echo), on close-without-open the
-   * assembler builds the bare completed item from it.
+   * The item settled. `item` is REQUIRED and always carries the full terminal
+   * item shape (Michael's uniform close rule, 2026-08-18): the assembler
+   * builds the completed item from it. With a same-shaped item open under the
+   * key, the terminal shape wins and the opened item contributes only its
+   * minted id; with a different-shaped item open, the assembler closes the
+   * opened shape and then emits the terminal shape (ACP's dual-complete);
+   * with nothing open it builds the bare completed item.
    */
   z.object({
     kind: z.literal("item.close"),
@@ -139,7 +152,17 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     resultText: z.string().optional(),
     exitCode: z.number().optional(),
     aggregatedOutput: z.string().optional(),
-    item: deltaItemShapeSchema.optional(),
+    item: deltaItemShapeSchema,
+    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
+  }),
+
+  /**
+   * The provider's plan for the open turn (ACP `plan` updates). Mirrors
+   * `turn/plan/updated`; requires an open turn.
+   */
+  z.object({
+    kind: z.literal("turn.plan"),
+    steps: z.array(threadEventPlanStepSchema),
     noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
 
@@ -234,23 +257,32 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     settlesTurn: z.boolean().optional(),
   }),
 
+  /**
+   * `vouchedTurn: true` scopes the warning to the open turn when one exists
+   * (ACP warnings are turn-scoped mid-turn); default is thread scope.
+   */
   z.object({
     kind: z.literal("provider.warning"),
     summary: z.string().optional(),
     details: z.string().optional(),
     category: threadEventWarningCategorySchema.optional(),
+    vouchedTurn: z.boolean().optional(),
   }),
 
   /**
    * The bridge's visibility classification decided this raw event is unknown.
    * `vouchedTurn: true` scopes it to the open turn if one exists — the
-   * only-caller-vouched-turn-ids rule.
+   * only-caller-vouched-turn-ids rule. `onlyIfNoTurn: true` inverts the
+   * guard: the event surfaces only when NO turn is open (the old translators'
+   * "known event, no active turn" visibility fallback for events that
+   * otherwise translate to silence) and is dropped entirely mid-turn.
    */
   z.object({
     kind: z.literal("unhandled"),
     raw: providerRawEventSchema,
     rawType: z.string(),
     vouchedTurn: z.boolean(),
+    onlyIfNoTurn: z.boolean().optional(),
     parentRef: z.string().min(1).optional(),
   }),
 
