@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo, useRef } from "react";
 import type { TimelineUserConversationRow } from "@bb/server-contract";
 import type {
+  PromptMentionResource,
   PromptTextMention,
   SystemMessageKind,
   SystemMessageSubject,
@@ -36,6 +37,8 @@ import { TurnRequestLabel } from "./TurnRequestLabel.js";
 import { useOverflowMeasurement } from "./conversation-message-overflow.js";
 import { PromptMentionPill } from "./ConversationMessageMentions.js";
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions.js";
+import { useThreadMentionResource } from "@/components/thread/ThreadTitleMentions.js";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import {
   boundedMarkdownPreview,
   closeUnterminatedMarkdownCodeSpan,
@@ -374,29 +377,40 @@ function generatedConversationIconName(
 
 interface GeneratedAgentSourceTitleProps {
   onTitleAction?: TimelineTitleActionResolver;
-  resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   sourceIsPluginSideChat: boolean;
   sourceName: string;
   sourceThreadId: string | null;
   title: TimelineTitle;
 }
 
-function GeneratedAgentSourceTitle({
+interface GeneratedAgentSourceTitleContentProps extends GeneratedAgentSourceTitleProps {
+  sourceResource: PromptMentionResource | null;
+}
+
+function GeneratedAgentSourceTitleContent({
   onTitleAction,
-  resolveSegmentLinkHref,
   sourceIsPluginSideChat,
   sourceName,
+  sourceResource,
   sourceThreadId,
   title,
-}: GeneratedAgentSourceTitleProps) {
-  const sourceDisplayName = useThreadTitleDisplayText(sourceName);
+}: GeneratedAgentSourceTitleContentProps) {
+  const sourceDisplayName = useThreadTitleDisplayText(
+    sourceResource?.kind === "thread" ? sourceResource.label : sourceName,
+  );
   const sourceTitleAction =
     title.action && onTitleAction ? onTitleAction(title.action) : null;
   // A side chat opens in the plugin's panel (a title action), so its name
   // carries no route link; other sources navigate to the source thread.
   const sourceLinkHref =
-    sourceThreadId !== null && !sourceIsPluginSideChat && resolveSegmentLinkHref
-      ? resolveSegmentLinkHref({ kind: "thread", threadId: sourceThreadId })
+    sourceThreadId !== null &&
+    !sourceIsPluginSideChat &&
+    sourceResource?.kind === "thread" &&
+    sourceResource.projectId
+      ? getThreadRoutePath({
+          projectId: sourceResource.projectId,
+          threadId: sourceThreadId,
+        })
       : null;
   const leadIn = title.segments[0]?.text ?? "Message from";
 
@@ -417,6 +431,9 @@ function GeneratedAgentSourceTitle({
           resource={{
             kind: "thread",
             threadId: sourceThreadId,
+            ...(sourceResource?.kind === "thread" && sourceResource.projectId
+              ? { projectId: sourceResource.projectId }
+              : {}),
             label: sourceDisplayName,
           }}
           serializedText={`@thread:${sourceThreadId}`}
@@ -425,6 +442,32 @@ function GeneratedAgentSourceTitle({
         />
       )}
     </span>
+  );
+}
+
+function ResolvedGeneratedAgentSourceTitle(
+  props: GeneratedAgentSourceTitleProps & { sourceThreadId: string },
+) {
+  const sourceResource = useThreadMentionResource(props.sourceThreadId);
+  return (
+    <GeneratedAgentSourceTitleContent
+      {...props}
+      sourceResource={sourceResource}
+    />
+  );
+}
+
+function GeneratedAgentSourceTitle(props: GeneratedAgentSourceTitleProps) {
+  if (props.sourceThreadId === null || props.sourceIsPluginSideChat) {
+    return (
+      <GeneratedAgentSourceTitleContent {...props} sourceResource={null} />
+    );
+  }
+  return (
+    <ResolvedGeneratedAgentSourceTitle
+      {...props}
+      sourceThreadId={props.sourceThreadId}
+    />
   );
 }
 
@@ -518,7 +561,6 @@ export const GeneratedConversationMessage = memo(
       sourceKind === "agent" ? (
         <GeneratedAgentSourceTitle
           onTitleAction={onTitleAction}
-          resolveSegmentLinkHref={resolveSegmentLinkHref}
           sourceIsPluginSideChat={sourceIsPluginSideChat}
           sourceName={sourceName}
           sourceThreadId={sourceThreadId}
