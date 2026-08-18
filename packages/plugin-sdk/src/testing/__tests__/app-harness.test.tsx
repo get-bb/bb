@@ -25,7 +25,6 @@ const {
   ThreadChat,
   useComposer,
   useComposerView,
-  useBbNavigate,
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
@@ -57,7 +56,6 @@ afterEach(() => {
 
 function Panel({ subPath }: PluginNavPanelProps) {
   const rpc = useRpc();
-  const navigate = useBbNavigate();
   const [items, setItems] = useState<string[] | null>(null);
   const refresh = () => {
     void rpc
@@ -74,17 +72,6 @@ function Panel({ subPath }: PluginNavPanelProps) {
   if (items === null) return <div>Loading…</div>;
   return (
     <div>
-      <button
-        type="button"
-        onClick={() =>
-          navigate.experimental_openRightPanel({
-            kind: "browser",
-            url: "https://example.com",
-          })
-        }
-      >
-        Open right panel
-      </button>
       {items.map((item) => (
         <div key={item}>{item}</div>
       ))}
@@ -886,26 +873,6 @@ describe("typed rpc test runtime", () => {
 });
 
 describe("renderSlot", () => {
-  it("records and controls consolidated right-panel navigation", async () => {
-    const slot = renderSlot(
-      app.navPanels[0]!,
-      { subPath: "" },
-      {
-        rpc: { listItems: () => [] },
-        experimental_openRightPanel: () => true,
-      },
-    );
-    fireEvent.click(
-      await slot.findByRole("button", { name: "Open right panel" }),
-    );
-    expect(slot.navigateCalls).toEqual([
-      {
-        method: "experimental_openRightPanel",
-        request: { kind: "browser", url: "https://example.com" },
-      },
-    ]);
-  });
-
   it("drives the shared realtime connection lifecycle", async () => {
     const slot = renderSlot(
       app.homepageSections[0]!,

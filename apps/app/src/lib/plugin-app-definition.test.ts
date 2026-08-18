@@ -278,19 +278,6 @@ describe("collectPluginAppRegistrations", () => {
         icon: "columns",
         path: "board",
         component: Component,
-        experimental_rightPanel: {
-          views: [
-            {
-              id: "navigation",
-              title: "Navigation",
-              icon: "ListTree",
-              component: Component,
-              layout: "flush",
-            },
-          ],
-          defaultViewId: "navigation",
-          tools: ["browser", "terminal"],
-        },
       });
       app.slots.threadPanelAction({
         id: "issue",
@@ -358,19 +345,6 @@ describe("collectPluginAppRegistrations", () => {
         icon: "columns",
         path: "board",
         component: Component,
-        experimental_rightPanel: {
-          views: [
-            {
-              id: "navigation",
-              title: "Navigation",
-              icon: "ListTree",
-              component: Component,
-              layout: "flush",
-            },
-          ],
-          defaultViewId: "navigation",
-          tools: ["browser", "terminal"],
-        },
       },
     ]);
     expect(registrations.threadPanelActions).toEqual([
@@ -876,40 +850,5 @@ describe("collectPluginAppRegistrations", () => {
     ).toMatchObject({
       experimental_sidebarAccessory: SidebarAccessory,
     });
-  });
-
-  it("validates nav-panel right-panel structure", () => {
-    const invalidDefault = definePluginApp((app) => {
-      app.slots.navPanel({
-        id: "board",
-        title: "Board",
-        icon: "Columns",
-        path: "board",
-        component: Component,
-        experimental_rightPanel: {
-          views: [
-            { id: "navigation", title: "Navigation", component: Component },
-          ],
-          defaultViewId: "missing",
-        },
-      });
-    });
-    expect(() => collectPluginAppRegistrations(invalidDefault)).toThrow(
-      '"defaultViewId" must reference a registered view',
-    );
-
-    const duplicateTool = definePluginApp((app) => {
-      app.slots.navPanel({
-        id: "board",
-        title: "Board",
-        icon: "Columns",
-        path: "board",
-        component: Component,
-        experimental_rightPanel: { tools: ["browser", "browser"] },
-      });
-    });
-    expect(() => collectPluginAppRegistrations(duplicateTool)).toThrow(
-      "duplicate tool",
-    );
   });
 });

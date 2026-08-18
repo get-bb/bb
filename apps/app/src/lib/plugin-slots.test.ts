@@ -6,7 +6,6 @@ import type {
 } from "@get-bb/plugin-sdk";
 import {
   getPluginSlotSnapshot,
-  markPluginFrontendLoadSettled,
   removePluginSlotRegistrations,
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -45,20 +44,6 @@ afterEach(() => {
 });
 
 describe("plugin slot store", () => {
-  it("publishes when initial frontend loading becomes authoritative", () => {
-    const listener = vi.fn();
-    const unsubscribe = subscribePluginSlots(listener);
-
-    expect(getPluginSlotSnapshot().frontendLoadState).toBe("loading");
-    markPluginFrontendLoadSettled();
-
-    expect(getPluginSlotSnapshot().frontendLoadState).toBe("settled");
-    expect(listener).toHaveBeenCalledTimes(1);
-    markPluginFrontendLoadSettled();
-    expect(listener).toHaveBeenCalledTimes(1);
-    unsubscribe();
-  });
-
   it("registers per plugin and flattens sorted by plugin id", () => {
     setPluginSlotRegistrations(
       "zeta",

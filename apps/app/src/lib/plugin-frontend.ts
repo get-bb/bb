@@ -39,7 +39,6 @@ import {
 import { setPluginLogoUrls, type PluginLogoUrls } from "./plugin-logos";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 import {
-  markPluginFrontendLoadSettled,
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
@@ -482,7 +481,6 @@ async function deactivateCommittedGeneration(
   pluginId: string,
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
-  options?: { retainPresentation?: boolean },
 ): Promise<PluginFrontendFailure[]> {
   const active = state.activeGenerations.get(pluginId);
   if (active === undefined) {
@@ -493,10 +491,8 @@ async function deactivateCommittedGeneration(
   clearPluginThreadRowStatuses(pluginId);
   state.activeGenerations.delete(pluginId);
   state.appliedHashes.delete(pluginId);
-  if (options?.retainPresentation !== true) {
-    deps.removeRegistrations(pluginId);
-    deps.applyCss(pluginId, null);
-  }
+  deps.removeRegistrations(pluginId);
+  deps.applyCss(pluginId, null);
   return failures;
 }
 
@@ -767,7 +763,6 @@ export async function reconcilePluginFrontends(
         pluginId,
         state,
         deps,
-        { retainPresentation: true },
       );
       const controller = new AbortController();
       const statusOwner = Symbol(
@@ -793,8 +788,6 @@ export async function reconcilePluginFrontends(
         return;
       }
       if (!activationResult.ok) {
-        deps.removeRegistrations(pluginId);
-        deps.applyCss(pluginId, null);
         const failed: PluginFrontendRecord = {
           pluginId,
           status: "failed",
@@ -829,9 +822,6 @@ export async function reconcilePluginFrontends(
       });
     }),
   );
-  // A failed boot can recover through live reconciliation, so readiness
-  // belongs to every successful authoritative inventory pass.
-  if (!state.tornDown) markPluginFrontendLoadSettled();
 }
 
 /**

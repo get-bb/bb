@@ -1477,18 +1477,7 @@ describe("plugin panel shared title bar and full-bleed body", () => {
   });
 
   it("keys the right-panel toggle target to its owning pane", () => {
-    const panel = panelSlot({
-      experimental_rightPanel: {
-        defaultViewId: "navigation",
-        views: [
-          {
-            id: "navigation",
-            title: "Navigation",
-            component: () => null,
-          },
-        ],
-      },
-    });
+    const panel = panelSlot({});
     render(
       <PluginPanelHeaderActions panel={panel} paneId="pane-docs" subPath="" />,
     );

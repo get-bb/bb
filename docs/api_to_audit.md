@@ -76,39 +76,6 @@ unexpected-exit recovery without feature-specific core hooks.
     limits without pretending to model process startup, crashes, native watcher
     recovery, or reconnect behavior.
 
-## Nav-panel `experimental_rightPanel` (`@get-bb/plugin-sdk/app`)
-
-**What it does.** `PluginNavPanelRegistration.experimental_rightPanel`
-registers plugin-defined views and explicitly enabled Browser or Terminal
-tools in BB's shared right-panel chrome. A default view is pinned and opens
-initially on wide surfaces; compact drawers stay transient and closed until
-explicitly opened. `useBbNavigate().experimental_openRightPanel(request)` opens
-a registered view or enabled tool while the plugin page stays mounted; invalid
-or unavailable requests return `false`.
-
-**Audit before stabilizing.**
-
-1. **Registration shape.** Confirm real plugins need multiple custom views,
-   per-tab JSON params, a pinned default, and explicit tool allowlisting.
-   Revisit whether `layout`, `defaultViewId`, and the retained-active-view
-   `isVisible` signal are the right stable concepts.
-2. **Surface scope.** Verify standalone pages, compact drawers, split panes,
-   pane focus/maximize transitions, multiple windows, and plugin reload or
-   disable all retain coherent ownership and cleanup.
-3. **Tool contracts.** Revisit Browser URL validation and native security;
-   revisit Terminal target scope, shell-only startup, close behavior, and
-   whether plugin-opened sessions should outlive their tab.
-4. **Persistence and migration.** Confirm view/tab identity, removed-view
-   recovery, default-view initialization, plugin version changes, and stale
-   Browser or Terminal tabs degrade safely.
-5. **Result semantics.** Confirm a synchronous boolean gives plugins enough
-   information, or replace it with a typed result distinguishing invalid input,
-   unavailable native support, a disabled tool, and an unsupported surface.
-6. **Relationship to thread panels.** Keep the nav-panel contract separate
-   from `threadPanelAction` unless actual consumers need a shared lifecycle;
-   thread panels have required thread context, launcher actions, and server-tab
-   synchronization that nav pages deliberately do not inherit.
-
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
 **What it does.** Lets a nav panel register a no-props, presentational React

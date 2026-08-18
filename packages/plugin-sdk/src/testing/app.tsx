@@ -107,10 +107,6 @@ export type NavigateCall =
   | {
       method: "openThreadPanel";
       options: Parameters<BbNavigate["openThreadPanel"]>[0];
-    }
-  | {
-      method: "experimental_openRightPanel";
-      request: Parameters<BbNavigate["experimental_openRightPanel"]>[0];
     };
 
 export interface ComposerLog {
@@ -739,10 +735,6 @@ export interface RenderSlotOptions<
   openThreadPanel?: (
     options: Parameters<BbNavigate["openThreadPanel"]>[0],
   ) => boolean;
-  /** Host acceptance for `useBbNavigate().experimental_openRightPanel`. */
-  experimental_openRightPanel?: (
-    request: Parameters<BbNavigate["experimental_openRightPanel"]>[0],
-  ) => boolean;
 }
 
 /** Host-originated inputs a slot test can drive deterministically. */
@@ -954,13 +946,6 @@ export function renderSlot<
         options: panelOptions,
       });
       return options.openThreadPanel?.(panelOptions) ?? false;
-    },
-    experimental_openRightPanel(request) {
-      navigateCalls.push({
-        method: "experimental_openRightPanel",
-        request,
-      });
-      return options.experimental_openRightPanel?.(request) ?? false;
     },
   };
 

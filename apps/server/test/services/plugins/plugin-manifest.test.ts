@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
-import { isPluginSdkRangeSatisfied } from "../../../src/services/plugins/sdk-compat.js";
 
 describe("plugin manifest", () => {
   let rootDir: string;
@@ -44,20 +43,6 @@ describe("plugin manifest", () => {
     expect((await readPluginManifest(rootDir)).bbPluginSdkRange).toBe(
       "^0.2.0 || >=2.0.0",
     );
-  });
-
-  it("keeps a persisted plugin scaffolded with the shipped 0.4.6 SDK compatible", async () => {
-    // This is the manifest shape persisted by `bb plugin new` in the last
-    // published SDK release. It is intentionally literal upgrade evidence,
-    // rather than a fixture rewritten from the current SDK constant.
-    await writeManifest(">=0.4.6");
-
-    const persistedManifest = await readPluginManifest(rootDir);
-
-    expect(persistedManifest.bbPluginSdkRange).toBe(">=0.4.6");
-    expect(
-      isPluginSdkRangeSatisfied(persistedManifest.bbPluginSdkRange ?? ""),
-    ).toBe(true);
   });
 
   it("rejects an invalid engines.bbPluginSdk range clearly", async () => {

@@ -1514,20 +1514,12 @@ Slot props contracts (versioned, additive-only):
   back/forward then walks panel-internal history (prefer this over hash
   routing).
   Registration:
-  `{ id, title, icon, path, component, experimental_rightPanel?, experimental_sidebarAccessory?, headerContent? }`.
-  `experimental_rightPanel` registers BB-owned secondary-panel structure:
-  `{ views?, defaultViewId?, tools? }`. Each custom view is
-  `{ id, title, icon?, component, layout? }` and receives
-  `{ subPath, params }`; `defaultViewId` pins and initially opens one of those
-  views on wide surfaces, while compact drawers stay closed until explicitly
-  opened. `tools` explicitly enables host tabs (`"browser"` and/or
-  `"terminal"`). Open a registered view or enabled tool from plugin React via
-  `useBbNavigate().experimental_openRightPanel(request)`: `{ kind: "view",
-viewId, title?, params? }`, `{ kind: "browser", url }`, or
-  `{ kind: "terminal", target, title? }`. BB owns the shared tab strip,
-  resizing, responsive drawer, persistence, chrome, and focus lifecycle.
-  Unsupported/invalid requests return false. Experimental: see
-  `docs/api_to_audit.md`.
+  `{ id, title, icon, path, component, experimental_sidebarAccessory?, headerContent? }`.
+  BB automatically wraps every plugin page in the same host-owned App panel
+  used by first-party pages. Browser and Terminal are native page capabilities;
+  plugins do not opt into them or mount panel layout themselves. A generic
+  plugin page has no implicit execution target, so starting a terminal asks the
+  user to choose a connected machine.
   `experimental_sidebarAccessory` is a no-props, presentational component at
   the trailing edge of the sidebar row. It can own SDK hooks for a live count
   or short status without lifting state into the host sidebar. The host does

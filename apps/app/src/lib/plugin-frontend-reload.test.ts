@@ -24,7 +24,6 @@ import {
   removePluginSlotRegistrations,
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
-  subscribePluginSlots,
 } from "./plugin-slots";
 import {
   getPluginThreadRowStatus,
@@ -70,7 +69,6 @@ function contentScriptModule(
 }
 
 afterEach(() => {
-  resetPluginSlotStoreForTest();
   resetPluginThreadRowStatusesForTest();
   uninstallForeignDomMutationGuardForTest();
 });
@@ -93,29 +91,6 @@ function makeDeps(initial: PluginFrontendCandidate[] = []) {
 }
 
 describe("reconcilePluginFrontends", () => {
-  it("keeps frontend readiness loading after an initial failure, then publishes settled when live reconciliation recovers", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps();
-    const readinessChanged = vi.fn();
-    const unsubscribe = subscribePluginSlots(readinessChanged);
-    deps.fetchCandidates.mockRejectedValueOnce(
-      new Error("inventory temporarily unavailable"),
-    );
-
-    await expect(reconcilePluginFrontends(state, deps)).rejects.toThrow(
-      "inventory temporarily unavailable",
-    );
-    expect(getPluginSlotSnapshot().frontendLoadState).toBe("loading");
-    expect(readinessChanged).not.toHaveBeenCalled();
-
-    await expect(
-      reconcilePluginFrontends(state, deps),
-    ).resolves.toBeUndefined();
-    expect(getPluginSlotSnapshot().frontendLoadState).toBe("settled");
-    expect(readinessChanged).toHaveBeenCalledTimes(1);
-    unsubscribe();
-  });
-
   it("re-imports a plugin exactly once when its bundle hash changes, replacing registrations wholesale", async () => {
     const state = createPluginFrontendReconcileState();
     const deps = makeDeps([
@@ -153,9 +128,6 @@ describe("reconcilePluginFrontends", () => {
         homepageSections: [expect.objectContaining({ id: "section" })],
       }),
     );
-    // A valid replacement never publishes an empty registration generation:
-    // mounted panel resources remain owned until the wholesale swap commits.
-    expect(deps.removeRegistrations).not.toHaveBeenCalled();
     // Crashed-slot latches reset before the new registrations remount.
     expect(deps.resetCrashedSlots).toHaveBeenCalledWith("hello");
     // The CSS link is swapped to the fresh-hash URL.

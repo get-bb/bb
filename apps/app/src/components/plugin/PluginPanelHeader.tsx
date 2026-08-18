@@ -2,11 +2,8 @@ import { Component, type ReactNode } from "react";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
 import { PluginIcon } from "./PluginIcon";
 import { PluginContext } from "./plugin-context";
-import {
-  getPluginPanelRightPanelStateId,
-  PluginRightPanelNavigationBridgeProvider,
-} from "./plugin-right-panel-navigation";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
+import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 
 /**
  * The plugin navPanel slices of the shared app header (AppPageHeader via
@@ -76,13 +73,11 @@ export function PluginPanelHeaderActions({
 }) {
   const paneContext = useOptionalPaneContext();
   const HeaderContent = panel.headerContent;
-  const hasRightPanel = panel.experimental_rightPanel !== undefined;
-  const panelStateId = getPluginPanelRightPanelStateId({
+  const panelStateId = getPluginPagePanelStateId({
     panelPath: panel.path,
     paneId: paneId ?? paneContext?.paneId,
     pluginId: panel.pluginId,
   });
-  if (HeaderContent === undefined && !hasRightPanel) return null;
   return (
     <div className="flex shrink-0 items-center gap-2">
       {HeaderContent === undefined ? null : (
@@ -92,24 +87,20 @@ export function PluginPanelHeaderActions({
           key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
           pluginId={panel.pluginId}
         >
-          <PluginRightPanelNavigationBridgeProvider panelStateId={panelStateId}>
-            <PluginContext.Provider value={panel.pluginId}>
-              {/* data-bb-plugin-root: the accessory is plugin code, so the
-                  plugin's @scope'd stylesheet must apply here too. */}
-              <div
-                data-bb-plugin-root=""
-                data-bb-plugin={panel.pluginId}
-                className="flex shrink-0 items-center gap-2"
-              >
-                <HeaderContent subPath={subPath} />
-              </div>
-            </PluginContext.Provider>
-          </PluginRightPanelNavigationBridgeProvider>
+          <PluginContext.Provider value={panel.pluginId}>
+            {/* data-bb-plugin-root: the accessory is plugin code, so the
+                plugin's @scope'd stylesheet must apply here too. */}
+            <div
+              data-bb-plugin-root=""
+              data-bb-plugin={panel.pluginId}
+              className="flex shrink-0 items-center gap-2"
+            >
+              <HeaderContent subPath={subPath} />
+            </div>
+          </PluginContext.Provider>
         </HeaderContentBoundary>
       )}
-      {hasRightPanel ? (
-        <div data-plugin-right-panel-toggle-portal={panelStateId} />
-      ) : null}
+      <div data-plugin-right-panel-toggle-portal={panelStateId} />
     </div>
   );
 }

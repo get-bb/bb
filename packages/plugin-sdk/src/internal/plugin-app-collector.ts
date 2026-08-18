@@ -7,7 +7,6 @@ import type {
   PluginMessageActionRegistration,
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
-  PluginNavPanelRightPanelViewRegistration,
   PluginNewThreadPanelActionRegistration,
   PluginPendingInteractionRegistration,
   PluginProviderIconRegistration,
@@ -149,87 +148,12 @@ export function collectPluginAppRegistrations(
             `${kind}: "experimental_sidebarAccessory" must be a React component function when set`,
           );
         }
-        const rightPanel = registration.experimental_rightPanel;
-        let experimentalRightPanel:
-          | NonNullable<typeof registration.experimental_rightPanel>
-          | undefined;
-        if (rightPanel !== undefined) {
-          const viewIds = new Set<string>();
-          const views: PluginNavPanelRightPanelViewRegistration[] = (
-            rightPanel.views ?? []
-          ).map((view) => {
-            const viewKind = `${kind}.experimental_rightPanel.views`;
-            const viewId = requireSlotId(viewKind, view?.id);
-            requireUniqueId(viewKind, viewIds, viewId);
-            if (
-              view.layout !== undefined &&
-              view.layout !== "padded" &&
-              view.layout !== "flush"
-            ) {
-              throw new Error(
-                `${viewKind}: "layout" must be "padded" or "flush" when set`,
-              );
-            }
-            return {
-              id: viewId,
-              title: requireNonEmptyString(viewKind, "title", view.title),
-              ...(view.icon !== undefined
-                ? {
-                    icon: requireNonEmptyString(viewKind, "icon", view.icon),
-                  }
-                : {}),
-              component: requireComponent(viewKind, view.component),
-              ...(view.layout !== undefined ? { layout: view.layout } : {}),
-            };
-          });
-          const tools = [...(rightPanel.tools ?? [])];
-          const seenTools = new Set<string>();
-          for (const tool of tools) {
-            if (tool !== "browser" && tool !== "terminal") {
-              throw new Error(
-                `${kind}.experimental_rightPanel: unsupported tool ${JSON.stringify(tool)}`,
-              );
-            }
-            if (seenTools.has(tool)) {
-              throw new Error(
-                `${kind}.experimental_rightPanel: duplicate tool ${JSON.stringify(tool)}`,
-              );
-            }
-            seenTools.add(tool);
-          }
-          const defaultViewId = requireOptionalString(
-            `${kind}.experimental_rightPanel`,
-            "defaultViewId",
-            rightPanel.defaultViewId,
-          );
-          if (
-            defaultViewId !== undefined &&
-            !views.some((view) => view.id === defaultViewId)
-          ) {
-            throw new Error(
-              `${kind}.experimental_rightPanel: "defaultViewId" must reference a registered view`,
-            );
-          }
-          if (views.length === 0 && tools.length === 0) {
-            throw new Error(
-              `${kind}.experimental_rightPanel: register at least one view or tool`,
-            );
-          }
-          experimentalRightPanel = {
-            ...(views.length > 0 ? { views } : {}),
-            ...(defaultViewId !== undefined ? { defaultViewId } : {}),
-            ...(tools.length > 0 ? { tools } : {}),
-          };
-        }
         collected.navPanels.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           icon: requireNonEmptyString(kind, "icon", registration.icon),
           path,
           component: requireComponent(kind, registration.component),
-          ...(experimentalRightPanel !== undefined
-            ? { experimental_rightPanel: experimentalRightPanel }
-            : {}),
           ...(registration.experimental_sidebarAccessory !== undefined
             ? {
                 experimental_sidebarAccessory:
