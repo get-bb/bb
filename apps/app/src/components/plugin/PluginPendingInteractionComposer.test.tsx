@@ -9,6 +9,7 @@ import {
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
+import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginPendingInteractionComposer } from "./PluginPendingInteractionComposer";
 
 function registrations(
@@ -49,7 +50,13 @@ const interaction: PluginPendingInteraction = {
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
-  vi.clearAllMocks();
+  // A crashed slot instance is remembered for the lifetime of the module, so
+  // without this a renderer that throws in one test disables that same
+  // plugin/slot pair for every test that runs after it.
+  resetAllCrashedPluginSlotsForTest();
+  // restore, not clear: `vi.clearAllMocks` only drops recorded calls, leaving
+  // the `console` spies below installed and silencing later tests.
+  vi.restoreAllMocks();
 });
 
 describe("PluginPendingInteractionComposer", () => {

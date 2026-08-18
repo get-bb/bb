@@ -10,6 +10,7 @@ import {
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
@@ -382,6 +383,9 @@ describe("PluginPanelRightPanelHost", () => {
     fixedTabState.panelRegistered = true;
     fixedTabState.registrations = [];
     localStorage.clear();
+    // Clearing storage is not enough on its own: the per-thread atoms cache
+    // whatever storage held when they were first created.
+    resetFixedPanelTabsStateForTest();
   });
 
   afterEach(() => {

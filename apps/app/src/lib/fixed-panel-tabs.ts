@@ -95,6 +95,21 @@ const fixedPanelTabsStateAtomFamily = atomFamily((threadId: string) =>
   ),
 );
 
+/**
+ * Drops every per-thread atom the family has cached.
+ *
+ * `atomWithStorage(..., { getOnInit: true })` reads storage once, when the atom
+ * is created, and `atomFamily` then caches that atom for the lifetime of the
+ * module. A test that seeds storage therefore bakes its value into the atom's
+ * initial state, and a later test using the same key gets it back even after
+ * clearing storage and building a fresh jotai store. Only evicting the family
+ * forces the next read to see current storage.
+ */
+export function resetFixedPanelTabsStateForTest(): void {
+  fixedPanelTabsStateAtomFamily.setShouldRemove(() => true);
+  fixedPanelTabsStateAtomFamily.setShouldRemove(null);
+}
+
 function getFixedPanelTabsStateAtom(threadId: string | null | undefined) {
   return hasThreadId(threadId)
     ? fixedPanelTabsStateAtomFamily(threadId)

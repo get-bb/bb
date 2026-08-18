@@ -271,10 +271,29 @@ function expectNativeBrowserVisibility(visible: boolean) {
   ).toBe(String(visible));
 }
 
+// `installAnimationFrameQueue` overwrites these with `Object.defineProperty`
+// before spying on them, so `vi.restoreAllMocks` restores the spy to that
+// overwrite rather than to the real function — leaving every test that runs
+// afterwards with a `requestAnimationFrame` that never invokes its callback.
+// Captured once at module load, before any test has had a chance to replace
+// them.
+const PRISTINE_REQUEST_ANIMATION_FRAME = window.requestAnimationFrame;
+const PRISTINE_CANCEL_ANIMATION_FRAME = window.cancelAnimationFrame;
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.clearAllMocks();
+  Object.defineProperty(window, "requestAnimationFrame", {
+    configurable: true,
+    writable: true,
+    value: PRISTINE_REQUEST_ANIMATION_FRAME,
+  });
+  Object.defineProperty(window, "cancelAnimationFrame", {
+    configurable: true,
+    writable: true,
+    value: PRISTINE_CANCEL_ANIMATION_FRAME,
+  });
   drawerShellState.onContentAnimationEnd = undefined;
 });
 
