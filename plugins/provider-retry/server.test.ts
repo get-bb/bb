@@ -304,10 +304,33 @@ function createRetryHost(args: {
             status: "error",
           }),
         events: {
-          list: async ({ threadId, afterSeq }) => {
+          list: async ({
+            threadId,
+            afterSeq,
+            beforeSeq,
+            limit,
+            order,
+            types,
+          }) => {
             const inspection = await args.inspect({ threadId });
             const after = afterSeq === undefined ? 0 : Number(afterSeq);
-            return inspection.events.filter((row) => row.seq > after);
+            const before =
+              beforeSeq === undefined
+                ? Number.POSITIVE_INFINITY
+                : Number(beforeSeq);
+            const matching = inspection.events.filter(
+              (row) =>
+                row.seq > after &&
+                row.seq < before &&
+                (types === undefined || types.includes(row.type)),
+            );
+            matching.sort((left, right) =>
+              order === "desc" ? right.seq - left.seq : left.seq - right.seq,
+            );
+            return matching.slice(
+              0,
+              limit === undefined ? undefined : Number(limit),
+            );
           },
         },
         send: args.continueFailedTurn ?? (async () => ({ ok: true as const })),
@@ -411,6 +434,20 @@ describe("provider retry scheduler", () => {
       thread: makeThreadResponse({ id: "thread-limited", status: "error" }),
       error: "Usage limit reached",
     });
+    expect(
+      host.harness.inspection.sdk.callsTo("threads.events.list")[0]?.[0],
+    ).toMatchObject({
+      limit: "500",
+      order: "desc",
+      types: [
+        "client/turn/requested",
+        "provider/error",
+        "provider/rateLimits/updated",
+        "system/thread/interrupted",
+        "turn/completed",
+        "turn/input/accepted",
+      ],
+    });
     await expect(
       host.harness.runCli(["status", "thread-limited"]),
     ).resolves.toMatchObject({
@@ -422,6 +459,47 @@ describe("provider retry scheduler", () => {
     expect(continueFailedTurn).toHaveBeenCalledWith(
       expectedContinuation("thread-limited"),
     );
+    await host.harness.dispose();
+  });
+
+  it("pages backward until it reaches the latest request and rate-limit state", async () => {
+    const threadId = "thread-long-history";
+    const inspection = failedTurnInspection(threadId);
+    for (let index = 0; index < 500; index += 1) {
+      inspection.events.push({
+        id: `trailing-error-${index}`,
+        threadId,
+        seq: 6 + index,
+        createdAt: NOW_MS + index,
+        scope: { kind: "turn", turnId: `turn-${threadId}` },
+        type: "provider/error",
+        data: {
+          providerThreadId: `provider-thread-${threadId}`,
+          message: "Trailing provider diagnostic",
+          willRetry: false,
+          errorInfo: {
+            category: "internal",
+            providerCode: "trailing_diagnostic",
+            httpStatusCode: null,
+          },
+        },
+      });
+    }
+    inspection.events.sort((left, right) => left.seq - right.seq);
+    const host = createRetryHost({ inspect: async () => inspection });
+    await plugin(host.bb);
+
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: threadId, status: "error" }),
+      error: "Usage limit reached",
+    });
+
+    const calls = host.harness.inspection.sdk.callsTo("threads.events.list");
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.[0]).toMatchObject({ beforeSeq: "6", order: "desc" });
+    await expect(
+      host.harness.callRpc("providerRetryStatus", { threadId }),
+    ).resolves.toMatchObject({ view: { threadId } });
     await host.harness.dispose();
   });
 

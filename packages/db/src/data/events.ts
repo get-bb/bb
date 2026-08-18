@@ -954,8 +954,11 @@ function storedEventRowFieldsWithInlineOutputLimit(
 
 export interface ListStoredEventRowsArgs {
   afterSequence?: number;
+  beforeSequence?: number;
   limit?: number;
+  order?: "asc" | "desc";
   threadId: string;
+  types?: readonly ThreadEventType[];
 }
 
 export interface FindStoredEventRowArgs {
@@ -1209,18 +1212,28 @@ export function listStoredEventRows(
   db: DbConnection,
   args: ListStoredEventRowsArgs,
 ): StoredEventRow[] {
+  if (args.types?.length === 0) {
+    return [];
+  }
+
   return db
     .select(storedEventRowFields)
     .from(events)
     .where(
-      args.afterSequence === undefined
-        ? eq(events.threadId, args.threadId)
-        : and(
-            eq(events.threadId, args.threadId),
-            gt(events.sequence, args.afterSequence),
-          ),
+      and(
+        eq(events.threadId, args.threadId),
+        args.afterSequence === undefined
+          ? undefined
+          : gt(events.sequence, args.afterSequence),
+        args.beforeSequence === undefined
+          ? undefined
+          : lt(events.sequence, args.beforeSequence),
+        args.types === undefined
+          ? undefined
+          : inArray(events.type, [...args.types]),
+      ),
     )
-    .orderBy(events.sequence)
+    .orderBy(args.order === "desc" ? desc(events.sequence) : events.sequence)
     .limit(args.limit ?? Number.MAX_SAFE_INTEGER)
     .all();
 }

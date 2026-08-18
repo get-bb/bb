@@ -4677,6 +4677,69 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("filters and reverse-pages thread events", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "system/error",
+        scope: threadScope(),
+        data: { message: "first" },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-1"),
+        sequence: 2,
+        type: "item/completed",
+        data: { item: { type: "agentMessage", id: "msg-1", text: "Reply" } },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 3,
+        type: "system/error",
+        scope: threadScope(),
+        data: { message: "second" },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 4,
+        type: "system/manager/user_message",
+        scope: threadScope(),
+        data: { text: "excluded" },
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/events?types=system%2Ferror%2Citem%2Fcompleted&order=desc&beforeSeq=4&limit=2`,
+      );
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject([
+        { seq: 3, type: "system/error" },
+        { seq: 2, type: "item/completed" },
+      ]);
+    });
+  });
+
+  it("rejects invalid thread event list filters", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness);
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/events?types=not-a-real-event`,
+      );
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "invalid_request",
+        message: "Invalid thread event types",
+      });
+    });
+  });
+
   it("fails loudly when stored queued message content is malformed", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedThreadFixture(harness);

@@ -20,6 +20,7 @@ import {
   threadTimelineGoalSchema,
   threadTimelineModelFallbackSchema,
   threadTimelinePendingTodosSchema,
+  threadEventTypeValues,
   threadVisibilitySchema,
   threadWithRuntimeSchema,
 } from "@bb/domain";
@@ -712,7 +713,17 @@ export type TimelineTurnSummaryDetailsQuery = z.infer<
 export const threadEventsQuerySchema = z
   .object({
     afterSeq: z.string().regex(/^\d+$/),
+    beforeSeq: z.string().regex(/^\d+$/),
     limit: z.string().regex(/^\d+$/),
+    order: z.enum(["asc", "desc"]),
+    types: z.string().refine(
+      (value) =>
+        isCommaSeparatedIncludeQueryValue({
+          allowedValues: threadEventTypeValues,
+          value,
+        }),
+      "Invalid thread event types",
+    ),
   })
   .partial();
 export type ThreadEventsQuery = z.infer<typeof threadEventsQuerySchema>;

@@ -978,6 +978,25 @@ describe("events", () => {
     ]);
 
     expect(
+      listStoredEventRows(db, {
+        beforeSequence: 3,
+        order: "desc",
+        threadId: thread.id,
+        types: ["system/error"],
+      }),
+    ).toMatchObject([
+      { sequence: 2, type: "system/error" },
+      { sequence: 1, type: "system/error" },
+    ]);
+
+    expect(
+      listStoredEventRows(db, {
+        threadId: thread.id,
+        types: [],
+      }),
+    ).toEqual([]);
+
+    expect(
       findStoredEventRow(db, {
         afterSequence: 1,
         threadId: thread.id,

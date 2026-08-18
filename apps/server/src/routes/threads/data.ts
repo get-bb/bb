@@ -6,7 +6,11 @@ import {
   listQueuedThreadMessages,
 } from "@bb/db";
 import type { Hono } from "hono";
-import { PROMPT_HISTORY_ENTRY_LIMIT, threadEventTypeSchema } from "@bb/domain";
+import {
+  PROMPT_HISTORY_ENTRY_LIMIT,
+  threadEventTypeSchema,
+  type ThreadEventType,
+} from "@bb/domain";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -118,6 +122,19 @@ const RAW_FILE_HTML_CONTENT_TYPE = "text/html; charset=utf-8";
 const RAW_FILE_CONTENT_TYPE_OPTIONS = "nosniff";
 const HTML_PREVIEW_MAX_BYTES = 5 * 1024 * 1024;
 const GENERIC_HTML_PREVIEW_CSP = "sandbox allow-scripts";
+
+function parseThreadEventTypes(
+  value: string | undefined,
+): ThreadEventType[] | undefined {
+  if (value === undefined) return undefined;
+  return value.split(",").map((type) => {
+    const parsed = threadEventTypeSchema.safeParse(type);
+    if (!parsed.success) {
+      throw new ApiError(400, "invalid_request", "Invalid event type");
+    }
+    return parsed.data;
+  });
+}
 
 function parseThreadTimelineSegmentLimit(
   defaultLimit: number,
@@ -482,7 +499,10 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       listThreadEventRows(deps.db, {
         threadId: context.req.param("id"),
         afterSeq: parseOptionalInteger(query.afterSeq, "afterSeq"),
+        beforeSeq: parseOptionalInteger(query.beforeSeq, "beforeSeq"),
         limit: parseOptionalInteger(query.limit, "limit") ?? 100,
+        order: query.order,
+        types: parseThreadEventTypes(query.types),
       }),
     );
   });

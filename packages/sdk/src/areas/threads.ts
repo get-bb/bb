@@ -6,6 +6,7 @@ import {
   type JsonValue,
   type ResolvedThreadExecutionOptions,
   type ThreadEventRow,
+  type ThreadEventType,
   type ThreadQueuedMessage,
   type ThreadStatus,
 } from "@bb/domain";
@@ -266,10 +267,17 @@ export interface ThreadPaneActionArgs {
 }
 
 export interface ThreadEventsListArgs {
+  /** Return only events with a sequence greater than this value. */
   afterSeq?: string;
+  /** Return only events with a sequence less than this value. */
+  beforeSeq?: string;
   limit?: string;
+  /** Defaults to ascending sequence order. */
+  order?: "asc" | "desc";
   signal?: AbortSignal;
   threadId: string;
+  /** Return only these event types. */
+  types?: readonly [ThreadEventType, ...ThreadEventType[]];
 }
 
 export interface ThreadEventWaitArgs {
@@ -562,7 +570,10 @@ function forkJson(args: ThreadForkArgs): ForkThreadRequest {
 function eventsListQuery(args: ThreadEventsListArgs): ThreadEventsQuery {
   return {
     ...(args.afterSeq !== undefined ? { afterSeq: args.afterSeq } : {}),
+    ...(args.beforeSeq !== undefined ? { beforeSeq: args.beforeSeq } : {}),
     ...(args.limit !== undefined ? { limit: args.limit } : {}),
+    ...(args.order !== undefined ? { order: args.order } : {}),
+    ...(args.types !== undefined ? { types: args.types.join(",") } : {}),
   };
 }
 

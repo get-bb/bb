@@ -632,6 +632,10 @@ await bb.sdk.threads.update({ threadId, title: "Fix the flaky test" });
 `threads.update` writes `title`, `sectionId`, `parentThreadId`, `model`,
 `reasoningLevel`, and `visibility`. Use `threads.timeline` (or
 `threads.output` for the last assistant text) to read a thread's messages.
+For raw history, `threads.events.list` defaults to ascending order and supports
+exclusive `afterSeq` / `beforeSeq` cursors, `order: "asc" | "desc"`, and a
+non-empty typed `types` array. Combine `order: "desc"` with `beforeSeq` to page
+backward from the newest matching events without reading unrelated payloads.
 
 Use `visibility: "hidden"` for background workers. Hidden threads stay
 out of sidebar organization and do not contribute unread/pending favicon

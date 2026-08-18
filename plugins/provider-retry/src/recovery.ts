@@ -81,6 +81,17 @@ type FailedTurnInspection =
     };
 
 const EVENT_PAGE_SIZE = 500;
+const PROVIDER_RETRY_EVENT_TYPES = [
+  "client/turn/requested",
+  "provider/error",
+  "provider/rateLimits/updated",
+  "system/thread/interrupted",
+  "turn/completed",
+  "turn/input/accepted",
+] as const satisfies readonly [
+  ThreadEventRow["type"],
+  ...ThreadEventRow["type"][],
+];
 
 function emptyInspection(
   reason: Exclude<ProviderRetryReason, "eligible" | "manual-only">,
@@ -296,18 +307,36 @@ export function classifyProviderRetry(args: {
 async function listThreadEvents(
   bb: BbPluginApi,
   threadId: string,
+  providerId: string,
 ): Promise<ThreadEventRows> {
-  const events: ThreadEventRow[] = [];
-  let afterSeq: string | undefined;
+  const descendingEvents: ThreadEventRow[] = [];
+  let beforeSeq: string | undefined;
   while (true) {
     const page = await bb.sdk.threads.events.list({
       threadId,
-      ...(afterSeq === undefined ? {} : { afterSeq }),
+      ...(beforeSeq === undefined ? {} : { beforeSeq }),
       limit: String(EVENT_PAGE_SIZE),
+      order: "desc",
+      types: PROVIDER_RETRY_EVENT_TYPES,
     });
-    events.push(...page);
-    if (page.length < EVENT_PAGE_SIZE) return events;
-    afterSeq = String(page.at(-1)?.seq);
+    descendingEvents.push(...page);
+    const hasLatestRequest = descendingEvents.some(
+      (row) => row.type === "client/turn/requested",
+    );
+    const hasProviderRateLimits = descendingEvents.some(
+      (row) =>
+        row.type === "provider/rateLimits/updated" &&
+        row.data.rateLimits.providerId === providerId,
+    );
+    if (
+      page.length < EVENT_PAGE_SIZE ||
+      (hasLatestRequest && hasProviderRateLimits)
+    ) {
+      return descendingEvents.reverse();
+    }
+    const oldestRow = page.at(-1);
+    if (oldestRow === undefined) return descendingEvents.reverse();
+    beforeSeq = String(oldestRow.seq);
   }
 }
 
@@ -315,16 +344,16 @@ export async function inspectProviderRetry(
   bb: BbPluginApi,
   threadId: string,
 ): Promise<ProviderRetryInspection> {
-  const [thread, events] = await Promise.all([
-    bb.sdk.threads.get({ threadId }),
-    listThreadEvents(bb, threadId),
-  ]);
+  const thread = await bb.sdk.threads.get({ threadId });
   if (thread.environmentId === null) {
     return emptyInspection("execution-unavailable");
   }
-  const environment = await bb.sdk.environments.get({
-    environmentId: thread.environmentId,
-  });
+  const [environment, events] = await Promise.all([
+    bb.sdk.environments.get({
+      environmentId: thread.environmentId,
+    }),
+    listThreadEvents(bb, threadId, thread.providerId),
+  ]);
   return classifyProviderRetry({
     events,
     hostId: environment.hostId,

@@ -211,10 +211,13 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Thread event queries may omit pagination parameters to start from the beginning with the default page size.",
+      "Thread event queries may omit filters and pagination to read the default ascending page from the beginning.",
     fields: [
       "threadEventsQuerySchema.afterSeq",
+      "threadEventsQuerySchema.beforeSeq",
       "threadEventsQuerySchema.limit",
+      "threadEventsQuerySchema.order",
+      "threadEventsQuerySchema.types",
     ],
   },
   {
