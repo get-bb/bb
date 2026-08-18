@@ -287,6 +287,7 @@ const CODEX_INITIALIZE_PARAMS = {
 };
 
 const CHILD_REQUEST_TIMEOUT_MS = 60_000;
+const MAX_TRACKED_ITEM_IDS_PER_SESSION = 512;
 const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
   /\b(?:session|thread)\s+\S+\s+is archived\b/i;
 const MISSING_CODEX_CLI_GUIDANCE =
@@ -345,14 +346,13 @@ interface CodexBridgeSession {
   translator: CodexEventTranslator;
   construction: CodexSessionConstruction;
   constructionSignature: string;
-  /** Codex-id space; feeds delta-first item/started synthesis. */
+  /** Bounded Codex-id space; feeds delta-first item/started synthesis. */
   openedItemIds: Set<string>;
   /**
-   * Exact normalized terminal events already emitted for this session. Codex
-   * can repeat a terminal notification after resolving an approval; preserve
-   * later corrected completions while suppressing byte-equivalent retries.
+   * Bounded Codex-id space for item incarnations already settled. An explicit
+   * item/started reopens an id, matching the runtime event grammar.
    */
-  completedItemFingerprints: Set<string>;
+  settledItemIds: Set<string>;
   /** Codex-id space; open turns settle as failed if the child dies. */
   openCodexTurnIds: Set<string>;
   identityAnnounced: boolean;
@@ -615,6 +615,17 @@ function isSynthesizableDeltaType(
   );
 }
 
+function rememberTrackedItemId(itemIds: Set<string>, itemId: string): void {
+  itemIds.add(itemId);
+  while (itemIds.size > MAX_TRACKED_ITEM_IDS_PER_SESSION) {
+    const oldest = itemIds.values().next();
+    if (oldest.done) {
+      return;
+    }
+    itemIds.delete(oldest.value);
+  }
+}
+
 /**
  * Stamp one translated (Codex-id-space) event into canonical form, tracking
  * open turns/items and synthesizing `item/started` when Codex streams a
@@ -629,16 +640,16 @@ function toCanonicalEvents(
 ): ThreadEvent[] {
   const out: ThreadEvent[] = [];
 
-  if (event.type === "item/completed") {
-    const fingerprint = JSON.stringify({
-      item: event.item,
-      providerThreadId: event.providerThreadId,
-      scope: event.scope,
-    });
-    if (session.completedItemFingerprints.has(fingerprint)) {
+  if (event.type === "item/started") {
+    session.settledItemIds.delete(event.item.id);
+  } else if (
+    event.type === "item/completed" ||
+    event.type === "item/backgroundTask/completed"
+  ) {
+    if (session.settledItemIds.has(event.item.id)) {
       return out;
     }
-    session.completedItemFingerprints.add(fingerprint);
+    rememberTrackedItemId(session.settledItemIds, event.item.id);
   }
 
   if (event.type === "turn/started" && event.scope.kind === "turn") {
@@ -647,8 +658,12 @@ function toCanonicalEvents(
   if (event.type === "turn/completed" && event.scope.kind === "turn") {
     session.openCodexTurnIds.delete(event.scope.turnId);
   }
-  if (event.type === "item/started" || event.type === "item/completed") {
-    session.openedItemIds.add(event.item.id);
+  if (
+    event.type === "item/started" ||
+    event.type === "item/completed" ||
+    event.type === "item/backgroundTask/completed"
+  ) {
+    rememberTrackedItemId(session.openedItemIds, event.item.id);
   }
 
   if (
@@ -656,7 +671,7 @@ function toCanonicalEvents(
     "itemId" in event &&
     !session.openedItemIds.has(event.itemId)
   ) {
-    session.openedItemIds.add(event.itemId);
+    rememberTrackedItemId(session.openedItemIds, event.itemId);
     const item = synthesizeOpeningItem(event.type, event.itemId);
     out.push(
       remapEvent(session, {
@@ -1083,7 +1098,7 @@ async function constructThreadSession(
       decoded.sessionOptions,
     ),
     openedItemIds: new Set(),
-    completedItemFingerprints: new Set(),
+    settledItemIds: new Set(),
     openCodexTurnIds: new Set(),
     identityAnnounced: false,
     pendingPreIdentityEvents: [],
