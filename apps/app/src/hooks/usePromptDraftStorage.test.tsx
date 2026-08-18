@@ -79,6 +79,47 @@ describe("usePromptDraftStorage", () => {
     );
   });
 
+  it("keeps the in-memory draft when localStorage rejects the write", () => {
+    const scope = uniqueScope();
+    const { result } = renderHook(() => usePromptDraftStorage(scope));
+    act(() => {
+      result.current.setDraft({ text: "small", mentions: [], attachments: [] });
+    });
+    expect(window.localStorage.getItem(result.current.storageKey)).toBe(
+      storedDraft("small"),
+    );
+
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new DOMException("quota", "QuotaExceededError");
+      });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      act(() => {
+        result.current.setDraft({
+          text: "too large for storage",
+          mentions: [],
+          attachments: [],
+        });
+      });
+    } finally {
+      setItem.mockRestore();
+    }
+
+    // Storage still holds the old draft, but readers see the newer one.
+    expect(window.localStorage.getItem(result.current.storageKey)).toBe(
+      storedDraft("small"),
+    );
+    expect(result.current.text).toBe("too large for storage");
+    expect(result.current.getCurrent().text).toBe("too large for storage");
+    expect(getPromptDraftAccessor(scope).getCurrent().text).toBe(
+      "too large for storage",
+    );
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
   it("flushes a deferred write when the page is hidden", () => {
     vi.useFakeTimers();
     const scope = uniqueScope();

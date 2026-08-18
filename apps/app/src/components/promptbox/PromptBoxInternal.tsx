@@ -1649,16 +1649,30 @@ export function PromptBoxInternal({
     [richTextEditing],
   );
 
+  // TipTap reads `content` only when it (re)creates the editor, which happens
+  // on the `[richTextEditing]` deps below. Building it on every render parsed
+  // the whole prompt each keystroke (~7 ms for a 1 MB rich-text draft). The
+  // value the content was built from travels with it so onCreate records the
+  // matching "last synced" value; the controlled-value effect then applies any
+  // newer props through setContent.
+  const initialEditorContent = useMemo(() => {
+    const initialValue: PromptEditorValueKey = {
+      text: value,
+      mentions: mentionRanges,
+    };
+    return {
+      value: initialValue,
+      content: promptEditorContentFromValue(initialValue, {
+        richTextMarkdown: richTextEditing,
+      }),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- value/mentionRanges are read once per editor instance on purpose (see above).
+  }, [richTextEditing]);
+
   const editor = useEditor(
     {
       extensions: editorExtensions,
-      content: promptEditorContentFromValue(
-        {
-          text: value,
-          mentions: mentionRanges,
-        },
-        { richTextMarkdown: richTextEditing },
-      ),
+      content: initialEditorContent.content,
       immediatelyRender: false,
       editorProps: {
         attributes: {
@@ -1830,10 +1844,7 @@ export function PromptBoxInternal({
       },
       onCreate({ editor: createdEditor }) {
         editorRef.current = createdEditor;
-        lastSyncedEditorValueRef.current = {
-          text: value,
-          mentions: mentionRanges,
-        };
+        lastSyncedEditorValueRef.current = initialEditorContent.value;
       },
       onSelectionUpdate({ editor: updatedEditor, transaction }) {
         // A typing transaction changes both the document and the selection, so

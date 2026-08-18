@@ -5,7 +5,12 @@ import type {
 } from "@get-bb/plugin-sdk";
 import { Extension, type Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
+import {
+  Plugin,
+  PluginKey,
+  type EditorState,
+  type Transaction,
+} from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { PromptTextMention } from "@bb/domain";
 import {
@@ -76,6 +81,14 @@ interface PromptDecorationPluginState {
 const promptDecorationPluginKey = new PluginKey<PromptDecorationPluginState>(
   "promptDecorations",
 );
+
+/**
+ * Transaction meta values understood by the plugin. `refresh` is the public
+ * signal that decoration sources changed (bumps `revision`, so draft observers
+ * re-run); `deferred-rebuild` only re-applies the current rules to a large doc
+ * and must not look like a source change.
+ */
+type PromptDecorationMeta = "refresh" | "deferred-rebuild";
 
 /**
  * Above this ProseMirror doc size (≈ characters), a doc edit no longer
@@ -309,8 +322,18 @@ export function composerStructuredDraftFromDoc(
 
 export function refreshPromptDecorations(editor: Editor): void {
   editor.view.dispatch(
-    editor.state.tr.setMeta(promptDecorationPluginKey, true),
+    editor.state.tr.setMeta(
+      promptDecorationPluginKey,
+      "refresh" satisfies PromptDecorationMeta,
+    ),
   );
+}
+
+function promptDecorationMeta(
+  transaction: Transaction,
+): PromptDecorationMeta | null {
+  const meta: unknown = transaction.getMeta(promptDecorationPluginKey);
+  return meta === "refresh" || meta === "deferred-rebuild" ? meta : null;
 }
 
 /** Testing/diagnostic access to this extension's current decoration set. */
@@ -348,11 +371,11 @@ export const PromptDecorationExtension =
               rebuildPending: false,
             }),
             apply(transaction, previous, _oldState, newState) {
-              const refreshed =
-                transaction.getMeta(promptDecorationPluginKey) === true;
-              if (!refreshed && !transaction.docChanged) return previous;
+              const meta = promptDecorationMeta(transaction);
+              const refreshed = meta === "refresh";
+              if (meta === null && !transaction.docChanged) return previous;
               if (
-                !refreshed &&
+                meta === null &&
                 newState.doc.content.size > PROMPT_DECORATION_LARGE_DOC_SIZE
               ) {
                 return {
@@ -396,7 +419,10 @@ export const PromptDecorationExtension =
                 rebuildTimeout = null;
                 if (view.isDestroyed) return;
                 view.dispatch(
-                  view.state.tr.setMeta(promptDecorationPluginKey, true),
+                  view.state.tr.setMeta(
+                    promptDecorationPluginKey,
+                    "deferred-rebuild" satisfies PromptDecorationMeta,
+                  ),
                 );
               }, PROMPT_DECORATION_LARGE_DOC_REBUILD_DELAY_MS);
             };
@@ -405,9 +431,13 @@ export const PromptDecorationExtension =
               if (timeout !== null) clearTimeout(timeout);
               timeout = setTimeout(() => {
                 timeout = null;
+                const observers =
+                  options.getDraftObservers?.() ?? EMPTY_OBSERVERS;
+                // Serializing the whole doc is the expensive part; skip it
+                // when no plugin is listening.
+                if (observers.length === 0) return;
                 const draft = composerStructuredDraftFromDoc(latestDoc);
-                for (const observer of options.getDraftObservers?.() ??
-                  EMPTY_OBSERVERS) {
+                for (const observer of observers) {
                   try {
                     observer.onDraftChange(draft, observer.getView());
                   } catch (error) {

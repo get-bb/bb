@@ -109,7 +109,27 @@ function persistPromptDraftCache(storageKey: string): void {
     return;
   }
 
-  window.localStorage.setItem(storageKey, serialized);
+  try {
+    window.localStorage.setItem(storageKey, serialized);
+  } catch (error) {
+    // Quota exceeded (a multi-megabyte paste) or storage disabled. Keep the
+    // in-memory draft authoritative: point rawValue at what storage actually
+    // holds so readPromptDraft keeps returning the cached draft instead of
+    // re-parsing the stale stored value and silently reverting the composer.
+    cachedEntry.rawValue = readStoredPromptDraftValue(storageKey);
+    console.warn(
+      `[prompt-draft] could not persist draft for ${storageKey}; keeping it in memory only`,
+      error,
+    );
+  }
+}
+
+function readStoredPromptDraftValue(storageKey: string): string | null {
+  try {
+    return window.localStorage.getItem(storageKey);
+  } catch {
+    return null;
+  }
 }
 
 function schedulePromptDraftPersist(storageKey: string): void {

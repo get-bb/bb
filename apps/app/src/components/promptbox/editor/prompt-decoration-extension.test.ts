@@ -397,6 +397,42 @@ describe("PromptDecorationExtension", () => {
     editor.destroy();
   });
 
+  it("does not re-run draft observers for a deferred large-doc rebuild", () => {
+    vi.useFakeTimers();
+    const onDraftChange = vi.fn();
+    const composerView: ComposerView = {
+      scope: { kind: "thread", threadId: "thr_1" },
+      layout: "expanded",
+      draft: { text: "", isEmpty: true, attachmentCount: 0 },
+      run: { isRunning: false, isSubmitting: false },
+    };
+    const editor = createEditor(
+      false,
+      paragraphContent("x".repeat(PROMPT_DECORATION_LARGE_DOC_SIZE + 100)),
+      {
+        draftObserverDebounceMs: 25,
+        getDraftObservers: () => [
+          { id: "sample:observer", getView: () => composerView, onDraftChange },
+        ],
+      },
+    );
+    vi.advanceTimersByTime(25);
+    onDraftChange.mockClear();
+
+    editor.commands.insertContent("y");
+    vi.advanceTimersByTime(25);
+    expect(onDraftChange).toHaveBeenCalledTimes(1);
+
+    // The throttled rebuild fires at 200 ms; it changes no text and no
+    // sources, so observers stay quiet. An explicit refresh still notifies.
+    vi.advanceTimersByTime(PROMPT_DECORATION_LARGE_DOC_REBUILD_DELAY_MS + 25);
+    expect(onDraftChange).toHaveBeenCalledTimes(1);
+    refreshPromptDecorations(editor);
+    vi.advanceTimersByTime(25);
+    expect(onDraftChange).toHaveBeenCalledTimes(2);
+    editor.destroy();
+  });
+
   it("cancels a pending large-doc rebuild after an explicit refresh", () => {
     vi.useFakeTimers();
     const match = vi.fn(() => []);
