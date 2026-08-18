@@ -58,6 +58,14 @@ export {
   BRIDGE_NOTIFICATION_METHODS,
   BRIDGE_REQUEST_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_NOTIFICATION_METHOD,
+  deltaFileChangeSchema,
+  deltaItemKeySchema,
+  deltaItemShapeSchema,
+  deltaMessageChannelSchema,
+  deltaNoTurnFallbackSchema,
+  threadDeltaNotificationParamsSchema,
+  threadDeltaSchema,
   initializeParamsSchema,
   modelListParamsSchema,
   skillsConfigureParamsSchema,
@@ -76,7 +84,15 @@ export {
 } from "@bb/provider-bridge-protocol";
 export type {
   BridgeExecutionOptions,
+  DeltaFileChange,
+  DeltaItemKey,
+  DeltaItemShape,
+  DeltaMessageChannel,
+  DeltaNoTurnFallback,
   InitializeResult,
+  ThreadDelta,
+  ThreadDeltaKind,
+  ThreadDeltaNotificationParams,
 } from "@bb/provider-bridge-protocol";
 
 // ---------------------------------------------------------------------------
