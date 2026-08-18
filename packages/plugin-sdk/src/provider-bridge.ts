@@ -83,7 +83,6 @@ export {
   threadUnarchiveParamsSchema,
   turnStartParamsSchema,
   turnSteerParamsSchema,
-  threadEventNotificationSchema,
 } from "@bb/provider-bridge-protocol";
 export type {
   BridgeExecutionOptions,

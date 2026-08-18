@@ -13,6 +13,16 @@ export interface BridgeConformanceTransport {
   close?(): Promise<void> | void;
 }
 
+/**
+ * The kit-internal assembled-event lane. The wire carries `thread/delta`, but
+ * the grammar checks run over canonical `ThreadEvent`s, so a conformance
+ * transport assembles the bridge's deltas (through the runtime's real delta
+ * assembler) and re-emits each assembled event as a notification with this
+ * method and `{ threadId, event }` params. It is not a protocol method — it
+ * exists only between a conformance transport and this kit.
+ */
+export const CONFORMANCE_ASSEMBLED_EVENT_METHOD = "conformance/assembledEvent";
+
 export type ConformanceStatus = "pass" | "fail" | "skipped";
 
 export interface ConformanceCheckResult {

@@ -1,7 +1,7 @@
 /**
  * Test-side view of the runtime's delta assembly: bridge tests capture raw
- * JSON-RPC output, and pi now emits `thread/delta` notifications instead of
- * finished `thread/event`s. These helpers run captured notifications through
+ * JSON-RPC output, and bridges emit `thread/delta` notifications rather than
+ * finished `ThreadEvent`s. These helpers run captured notifications through
  * a real delta assembler — the exact translation the bridge protocol adapter
  * performs — so assertions keep working against canonical `ThreadEvent`s.
  */
@@ -10,6 +10,7 @@ import {
   THREAD_DELTA_NOTIFICATION_METHOD,
   threadDeltaNotificationParamsSchema,
 } from "@bb/provider-bridge-protocol";
+import { CONFORMANCE_ASSEMBLED_EVENT_METHOD } from "@bb/provider-bridge-protocol/conformance";
 import {
   createDeltaAssembler,
   type DeltaAssembler,
@@ -66,4 +67,31 @@ export function assembleCapturedThreadEvents(
 ): ThreadEvent[] {
   const collector = createBridgeDeltaEventCollector(providerId);
   return messages.flatMap((message) => collector.assembleMessage(message));
+}
+
+/**
+ * Map one captured bridge message for the conformance kit's transport: a
+ * `thread/delta` notification is assembled (statefully, through the
+ * collector's real assembler — hold one collector for the whole run) and each
+ * assembled event is re-emitted on the kit's internal assembled-event lane;
+ * every other message passes through untouched.
+ */
+export function toConformanceMessages(
+  message: CapturedBridgeNotification,
+  collector: BridgeDeltaEventCollector,
+): unknown[] {
+  if (message.method !== THREAD_DELTA_NOTIFICATION_METHOD) {
+    return [message];
+  }
+  const threadId =
+    typeof (message.params as { threadId?: unknown } | undefined)?.threadId ===
+    "string"
+      ? (message.params as { threadId: string }).threadId
+      : "";
+  return collector.assembleMessage(message).map((event) => ({
+    jsonrpc: "2.0" as const,
+    method: CONFORMANCE_ASSEMBLED_EVENT_METHOD,
+    // ThreadEvents are JSON data; the capture type demands JsonValue.
+    params: JSON.parse(JSON.stringify({ threadId, event })) as unknown,
+  }));
 }

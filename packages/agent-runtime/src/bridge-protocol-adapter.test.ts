@@ -26,7 +26,7 @@ function completeHandshake(
 ): void {
   const requests = adapter.buildPostInitializeRequests?.() ?? [];
   expect(requests).toHaveLength(1);
-  requests[0]?.onResult({ protocolVersion: 1, capabilities });
+  requests[0]?.onResult({ protocolVersion: 2, capabilities });
 }
 
 const fullModeOptions: ProviderExecutionContext = {
@@ -37,6 +37,24 @@ const fullModeOptions: ProviderExecutionContext = {
   claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   workflowsEnabled: false,
 };
+
+describe("handshake version gate", () => {
+  // The bump to version 2 removed thread/event; a version-1 bridge would
+  // connect and then produce a silently empty timeline. The required
+  // post-initialize request throws instead, which aborts the spawn with a
+  // legible startup error naming both versions and the plugin to update.
+  it("rejects a bridge on another protocol version with a legible error", () => {
+    const adapter = makeAdapter();
+    const requests = adapter.buildPostInitializeRequests?.() ?? [];
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.required).toBe(true);
+    expect(() =>
+      requests[0]?.onResult({ protocolVersion: 1, capabilities: {} }),
+    ).toThrowError(
+      /speaks Provider Bridge Protocol version 1.*requires version 2.*fake-bridge/s,
+    );
+  });
+});
 
 describe("handshake gating", () => {
   it("never sends capability-gated methods a bridge did not advertise", () => {
@@ -253,23 +271,16 @@ describe("translateEvent", () => {
     scope: { kind: "turn", turnId: "bturn_1" },
   };
 
-  it("passes valid thread/event payloads through and drops invalid ones", () => {
+  // The narrow-grammar cutover removed the `thread/event` lane entirely: a
+  // version-1 bridge still emitting it must be ignored like any unknown
+  // notification (its handshake is rejected before real traffic anyway).
+  it("ignores the retired thread/event notification", () => {
     const adapter = makeAdapter();
     expect(
       adapter.translateEvent({
         jsonrpc: "2.0",
         method: "thread/event",
         params: { threadId: "thr_1", event: validEvent },
-      }),
-    ).toStrictEqual([validEvent]);
-    expect(
-      adapter.translateEvent({
-        jsonrpc: "2.0",
-        method: "thread/event",
-        params: {
-          threadId: "thr_1",
-          event: { type: "not/a/real/event", threadId: "thr_1" },
-        },
       }),
     ).toStrictEqual([]);
   });
@@ -442,7 +453,8 @@ describe("provider-native id translation", () => {
       params: { intent: "interrupt", activeTurnId: "codex-turn-1" },
     });
 
-    // No mapping (thread/event bridges, pi/acp): the bb id passes through.
+    // No mapping (bridges without native turn ids, pi/acp): the bb id
+    // passes through.
     const passthrough = adapter.buildCommandPlan({
       type: "turn/steer",
       threadId: "t_1",

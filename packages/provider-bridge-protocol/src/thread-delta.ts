@@ -1,16 +1,13 @@
 /**
- * The narrow-grammar `thread/delta` notification (prototype).
+ * The narrow-grammar `thread/delta` notification: the protocol's one and only
+ * timeline lane (protocol version 2).
  *
- * A bridge that speaks this dialect emits parsed *semantic deltas* instead of
- * finished `ThreadEvent`s: the runtime's delta assembler owns turn/item id
- * minting, accepted-input correlation, item pairing and settlement, text and
- * usage accumulation, and every canonical event construction. Deltas carry
- * provider-native join keys (tool-call ids, stream keys, parent refs, provider
- * turn ids) so the assembler can hold the bidirectional provider↔bb id maps.
- *
- * Additive to the existing protocol: `thread/event` bridges are untouched and
- * the protocol version is deliberately not bumped while the grammar is a
- * prototype (plans/narrow-grammar-protocol.md).
+ * A bridge emits parsed *semantic deltas* instead of finished `ThreadEvent`s:
+ * the runtime's delta assembler owns turn/item id minting, accepted-input
+ * correlation, item pairing and settlement, text and usage accumulation, and
+ * every canonical event construction. Deltas carry provider-native join keys
+ * (tool-call ids, stream keys, parent refs, provider turn ids) so the
+ * assembler can hold the bidirectional provider↔bb id maps.
  */
 import {
   backgroundTaskStatusSchema,

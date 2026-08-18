@@ -351,7 +351,7 @@ function emitForSession(
 }
 
 /**
- * A session announces identity before any `thread/event`. Pi sessions always
+ * A session announces identity before any `thread/delta`. Pi sessions always
  * persist to the file named by their stable provider identity, so every
  * session is restorable even when bb resumes it under a new thread id.
  */

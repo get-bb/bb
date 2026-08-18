@@ -12,6 +12,7 @@ import {
   type ConformanceCheckResult,
   type ConformanceReport,
 } from "./types.js";
+export { CONFORMANCE_ASSEMBLED_EVENT_METHOD } from "./types.js";
 
 export type {
   BridgeConformanceTransport,

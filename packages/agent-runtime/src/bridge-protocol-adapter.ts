@@ -19,7 +19,7 @@ import type {
   ThreadEvent,
 } from "@bb/domain";
 import { PROVIDER_FORK_VALUES } from "@bb/domain";
-import { pendingInteractionPayloadSchema, threadEventSchema } from "@bb/domain";
+import { pendingInteractionPayloadSchema } from "@bb/domain";
 import {
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_NOTIFICATION_METHODS,
@@ -79,10 +79,6 @@ export interface BridgeProtocolAdapterOptions {
    */
   staticProviderOptions?: Record<string, unknown>;
 }
-
-const threadEventNotificationParamsSchema = z
-  .object({ threadId: z.string().min(1), event: threadEventSchema })
-  .passthrough();
 
 const threadIdentityNotificationParamsSchema = z
   .object({
@@ -227,9 +223,8 @@ export function createBridgeProtocolAdapter(
   // Last `thread/openWork` value per bb thread. Level-triggered, so a missed
   // intermediate notification cannot strand the runtime on a stale answer.
   const threadIdsWithOpenWork = new Set<string>();
-  // Narrow-grammar dual path: bridges that emit parsed semantic deltas
-  // (`thread/delta`) are assembled into canonical events here; `thread/event`
-  // bridges pass through untouched below.
+  // The narrow grammar: bridges emit parsed semantic deltas (`thread/delta`)
+  // and this assembler constructs every canonical timeline event.
   const deltaAssembler = createDeltaAssembler({ providerId: options.id });
 
   function gate(
@@ -394,11 +389,11 @@ export function createBridgeProtocolAdapter(
             params: {
               threadId: command.threadId,
               providerThreadId: command.providerThreadId,
-              // Central minting made turn ids runtime-owned: a delta bridge
+              // Central minting made turn ids runtime-owned: a bridge
               // receives its provider's own turn id back (the assembler's
-              // reverse map) and does zero id translation. thread/event
-              // bridges (and delta bridges without native turn ids) have no
-              // mapping, so the bb id passes through unchanged.
+              // reverse map) and does zero id translation. Bridges without
+              // native turn ids (pi, acp) have no mapping, so the bb id
+              // passes through unchanged.
               expectedTurnId:
                 deltaAssembler.getProviderTurnId(
                   command.threadId,
@@ -497,9 +492,23 @@ export function createBridgeProtocolAdapter(
           },
           onResult(result) {
             const parsed = initializeResultSchema.safeParse(result);
-            if (parsed.success) {
-              handshake = parsed.data.capabilities;
+            if (!parsed.success) {
+              return;
             }
+            // The version gates the handshake: a bridge on another major
+            // revision speaks a timeline dialect this runtime does not
+            // (version 1 emitted `thread/event`, which no longer exists), so
+            // failing startup legibly beats a silently empty timeline. The
+            // post-initialize request is `required`, so this throw aborts the
+            // provider spawn and surfaces the message as the startup error.
+            if (
+              parsed.data.protocolVersion !== PROVIDER_BRIDGE_PROTOCOL_VERSION
+            ) {
+              throw new Error(
+                `Provider bridge "${options.id}" speaks Provider Bridge Protocol version ${parsed.data.protocolVersion}, but this runtime requires version ${PROVIDER_BRIDGE_PROTOCOL_VERSION}. Update the "${options.id}" provider plugin to a build published for protocol version ${PROVIDER_BRIDGE_PROTOCOL_VERSION}.`,
+              );
+            }
+            handshake = parsed.data.capabilities;
           },
         },
       ];
@@ -521,12 +530,6 @@ export function createBridgeProtocolAdapter(
 
     translateEvent(event: ProviderRuntimeEvent): ThreadEvent[] {
       const method = event.method;
-      if (method === BRIDGE_NOTIFICATION_METHODS.threadEvent) {
-        const parsed = threadEventNotificationParamsSchema.safeParse(
-          event.params,
-        );
-        return parsed.success ? [parsed.data.event] : [];
-      }
       if (method === THREAD_DELTA_NOTIFICATION_METHOD) {
         const parsed = threadDeltaNotificationParamsSchema.safeParse(
           event.params,
@@ -616,8 +619,8 @@ export function createBridgeProtocolAdapter(
       return [];
     },
 
-    // Canonical bridges emit turn/input/accepted and session-lifecycle events
-    // themselves; the adapter synthesizes nothing.
+    // Input acceptance rides `input.accepted` deltas through the assembler;
+    // the adapter synthesizes nothing on command dispatch.
     translateAcceptedCommand: () => [],
 
     decodeToolCallRequest(

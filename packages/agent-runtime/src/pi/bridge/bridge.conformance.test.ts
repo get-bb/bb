@@ -12,8 +12,10 @@ import {
   captureBridgeJsonRpcOutput,
   type CapturedBridgeJsonRpcOutput,
 } from "@bb/provider-bridge-protocol/testing";
-import { THREAD_DELTA_NOTIFICATION_METHOD } from "@bb/provider-bridge-protocol";
-import { createBridgeDeltaEventCollector } from "../../test/bridge-delta-assembly.js";
+import {
+  createBridgeDeltaEventCollector,
+  toConformanceMessages,
+} from "../../test/bridge-delta-assembly.js";
 
 /**
  * The pi bridge's conformance run: drives the bridge through the canonical
@@ -241,32 +243,19 @@ afterEach(async () => {
 
 it("passes the canonical protocol suite against the scripted pi session", async () => {
   let drained = 0;
-  // The conformance kit speaks the thread/event grammar; the pi bridge now
-  // emits thread/delta. Run deltas through a real assembler (the runtime
-  // adapter's exact translation, held stateful across the whole run) and hand
-  // the kit the canonical thread/event notifications it expects.
+  // The conformance kit's grammar checks run over canonical ThreadEvents; the
+  // pi bridge emits thread/delta. Run deltas through a real assembler (the
+  // runtime adapter's exact translation, held stateful across the whole run)
+  // and hand the kit its assembled-event notifications.
   const collector = createBridgeDeltaEventCollector();
   const transport: BridgeConformanceTransport = {
     send: (line) => handleLine(line),
     takeMessages: () => {
       const fresh = output.messages.slice(drained);
       drained = output.messages.length;
-      return fresh.flatMap((message) => {
-        if (message.method !== THREAD_DELTA_NOTIFICATION_METHOD) {
-          return [message];
-        }
-        const threadId =
-          typeof (message.params as { threadId?: unknown } | undefined)
-            ?.threadId === "string"
-            ? ((message.params as { threadId: string }).threadId)
-            : "";
-        return collector.assembleMessage(message).map((event) => ({
-          jsonrpc: "2.0" as const,
-          method: "thread/event",
-          // ThreadEvents are JSON data; the capture type demands JsonValue.
-          params: JSON.parse(JSON.stringify({ threadId, event })) as never,
-        }));
-      });
+      return fresh.flatMap((message) =>
+        toConformanceMessages(message, collector),
+      );
     },
   };
 

@@ -69,8 +69,8 @@ export const interactionRequestParamsSchema = z
      * provider's native id space (a `thread/delta` bridge holds no bb ids):
      * the runtime adapter translates them through the delta assembler's maps
      * before the interaction reaches the app. Omission means the ids are
-     * already app-visible (thread/event bridges, and delta bridges whose
-     * approval subjects never referenced timeline ids).
+     * already app-visible (bridges whose approval subjects never referenced
+     * timeline ids — ACP's approval ids never matched timeline ids).
      */
     providerNativeIds: z.boolean().optional(),
   })

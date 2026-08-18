@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
 import type { DynamicTool, ReasoningLevel } from "@bb/domain";
+import { PROVIDER_BRIDGE_PROTOCOL_VERSION } from "@bb/provider-bridge-protocol";
 import {
   captureBridgeJsonRpcOutput,
   type BridgeJsonRpcOutputMessage,
@@ -471,11 +472,11 @@ afterEach(async () => {
 describe("acp bridge", () => {
   it("answers initialize and lists grouped models without spawning an agent", async () => {
     const initializeId = sendRequest("initialize", {
-      protocolVersion: 1,
+      protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
       client: { name: "bb", version: "1.0.0" },
     });
     expect((await waitForResponse(initializeId)).result).toMatchObject({
-      protocolVersion: 1,
+      protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
       capabilities: { fork: "tip", approvalEnforcedBy: "runtime" },
     });
 

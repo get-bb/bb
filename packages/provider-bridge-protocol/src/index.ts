@@ -7,8 +7,8 @@
  *
  * Parsing discipline: lenient at the edges (all wire schemas are
  * passthrough; unknown fields and unknown capabilities tolerate forward
- * skew), strict at the core (a `thread/event` payload must be a valid
- * `ThreadEvent`; malformed requests are answered with INVALID_PARAMS, never
+ * skew), strict at the core (a `thread/delta` payload must be a valid
+ * delta; malformed requests are answered with INVALID_PARAMS, never
  * dropped).
  */
 export * from "./version.js";

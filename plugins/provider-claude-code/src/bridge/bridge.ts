@@ -2170,7 +2170,7 @@ async function handleThreadResume(
   threadSession.session.start(requestedProviderThreadId);
 
   // A resume always names the session it reopens, so identity is known before
-  // any thread/event for it.
+  // any thread/delta for it.
   if (requestedProviderThreadId === undefined) {
     sendError(
       id,
