@@ -356,12 +356,12 @@ interface CodexBridgeSession {
   /** Codex-id space; open turns settle as failed if the child dies. */
   openCodexTurnIds: Set<string>;
   /**
-   * Codex-id space; every turn this session has emitted turn/started for.
-   * Thread-state snapshots for any other turn are replays (codex re-emits the
-   * rollout's last-turn usage on thread/resume and thread/fork) and must not
-   * carry a bridge-minted turn id that bb has never seen (#1727).
+   * True from thread/resume or thread/fork construction until this session's
+   * first turn/started. Codex replays the rollout's last-turn usage in that
+   * window, scoped to a turn this session never started; the bridge must not
+   * emit it under a bridge-minted turn id bb has never seen (#1727).
    */
-  startedCodexTurnIds: Set<string>;
+  awaitingReplayedUsage: boolean;
   identityAnnounced: boolean;
   /**
    * Events translated before the session's identity is known (codex can emit
@@ -663,7 +663,7 @@ function toCanonicalEvents(
 
   if (event.type === "turn/started" && event.scope.kind === "turn") {
     session.openCodexTurnIds.add(event.scope.turnId);
-    session.startedCodexTurnIds.add(event.scope.turnId);
+    session.awaitingReplayedUsage = false;
   }
   // Replayed thread-state snapshot (thread/resume, thread/fork): the turn it
   // names was never started in this session, so its bridge-minted turn id
@@ -672,10 +672,10 @@ function toCanonicalEvents(
   // usage is turn-only and, on resume, duplicates the snapshot bb already
   // persisted for that turn, so drop it.
   if (
+    session.awaitingReplayedUsage &&
     (event.type === "thread/tokenUsage/updated" ||
       event.type === "thread/contextWindowUsage/updated") &&
-    event.scope.kind === "turn" &&
-    !session.startedCodexTurnIds.has(event.scope.turnId)
+    event.scope.kind === "turn"
   ) {
     if (event.type === "thread/contextWindowUsage/updated") {
       out.push(remapEvent(session, { ...event, scope: { kind: "thread" } }));
@@ -1127,7 +1127,7 @@ async function constructThreadSession(
     openedItemIds: new Set(),
     settledItemIds: new Set(),
     openCodexTurnIds: new Set(),
-    startedCodexTurnIds: new Set(),
+    awaitingReplayedUsage: args.request.kind !== "start",
     identityAnnounced: false,
     pendingPreIdentityEvents: [],
     openWorkReported: false,

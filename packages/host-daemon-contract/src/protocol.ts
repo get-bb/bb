@@ -1,3 +1,11 @@
+// Version 134 keeps replayed Codex usage snapshots off unknown turn ids: the
+// Codex bridge drops the turn-only token usage that codex replays on
+// thread/resume and thread/fork and emits the replayed context-window usage
+// thread-scoped, instead of naming a turn id bb never stored a turn/started
+// for. Older daemons still send those orphan snapshots and the server drops
+// them, so enrolled machines must update for the replayed context usage to
+// land.
+//
 // Version 133 carries Claude's terminal-failure drain suppression through the
 // provider bridge. Older daemons can otherwise keep translating trailing SDK
 // output under the prior event semantics after the server has accepted the
@@ -31,7 +39,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 133 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 134 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

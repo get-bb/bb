@@ -1122,6 +1122,9 @@ describe("host-daemon command schemas", () => {
   // Version 118 rejects successful provider update results when the daemon
   // cannot verify a version change. Older daemons can report a no-op Claude
   // update as successful, so enrolled machines must update for honest results.
+  // Version 134 keeps replayed Codex resume/fork usage snapshots off turn ids
+  // bb never stored a turn/started for (token usage dropped, context usage
+  // thread-scoped).
   // Version 133 suppresses Claude's terminal-failure drain before it can open
   // a provider-only turn. Version 132 deduplicates exact Codex terminal-item
   // retries before they cross the daemon boundary. Version 131 preserves Pi
@@ -1139,7 +1142,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(133);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(134);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

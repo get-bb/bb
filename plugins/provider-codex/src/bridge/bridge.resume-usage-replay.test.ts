@@ -165,3 +165,50 @@ it("drops replayed token usage and thread-scopes replayed context usage on resum
   ).at(-1)!;
   expect(replayedContext.scope).toEqual({ kind: "thread" });
 }, 30_000);
+
+it("drops replayed token usage and thread-scopes replayed context usage on fork", async () => {
+  // A native fork opens a new session for a new bb thread; codex replays the
+  // SOURCE rollout's last-turn usage under the forked thread id, naming a
+  // turn that neither this session nor bb ever started for that thread.
+  harness.sendRequest(1, "thread/fork", {
+    threadId: THREAD_ID,
+    sourceProviderThreadId: PROVIDER_THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: { ...sessionOptions },
+  });
+  const forked = await harness.waitForResponse(1);
+  expect(forked.error).toBeUndefined();
+  const forkedProviderThreadId = (forked.result as { providerThreadId: string })
+    .providerThreadId;
+
+  await waitFor(
+    () => threadEventsOfType("thread/contextWindowUsage/updated").length === 1,
+    "replayed context usage after fork",
+  );
+  expect(threadEventsOfType("thread/tokenUsage/updated")).toHaveLength(0);
+  expect(
+    threadEventsOfType("thread/contextWindowUsage/updated")[0]!.scope,
+  ).toEqual({
+    kind: "thread",
+  });
+
+  // The forked thread's own first turn still reports turn-scoped usage.
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId: forkedProviderThreadId,
+    clientRequestId: "creq_fkr2k3d4e5",
+    input: [{ type: "text", text: "Reply only with ok.", mentions: [] }],
+    options: { ...sessionOptions },
+  });
+  const turnResponse = await harness.waitForResponse(2);
+  expect(turnResponse.error).toBeUndefined();
+  await waitFor(
+    () => threadEventsOfType("turn/completed").length === 1,
+    "fork turn/completed",
+  );
+  const [turnStarted] = threadEventsOfType("turn/started");
+  const ownUsage = threadEventsOfType("thread/tokenUsage/updated");
+  expect(ownUsage.length).toBeGreaterThan(0);
+  expect(turnIdOf(ownUsage.at(-1)!)).toBe(turnIdOf(turnStarted!));
+}, 30_000);

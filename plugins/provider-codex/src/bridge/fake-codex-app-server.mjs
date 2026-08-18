@@ -73,6 +73,24 @@ function firstInputText(input) {
   return first && first.type === "text" ? first.text : undefined;
 }
 
+const FIXED_TOKEN_USAGE = {
+  total: {
+    totalTokens: 39970,
+    inputTokens: 39960,
+    cachedInputTokens: 0,
+    outputTokens: 10,
+    reasoningOutputTokens: 0,
+  },
+  last: {
+    totalTokens: 19993,
+    inputTokens: 19988,
+    cachedInputTokens: 0,
+    outputTokens: 5,
+    reasoningOutputTokens: 0,
+  },
+  modelContextWindow: 258400,
+};
+
 function runScriptedTurn(threadId) {
   turnCounter += 1;
   const turnId = `turn-fx-${turnCounter}`;
@@ -92,6 +110,15 @@ function runScriptedTurn(threadId) {
     turnId,
     item: { type: "agentMessage", id: itemId, text },
   });
+  if (String(threadId).startsWith("usage-replay-")) {
+    // Usage-replay threads also report the turn's own usage, like the real
+    // app-server, so tests can tell a replay from live turn usage (#1727).
+    notify("thread/tokenUsage/updated", {
+      threadId,
+      turnId,
+      tokenUsage: FIXED_TOKEN_USAGE,
+    });
+  }
   notify("turn/completed", {
     threadId,
     turn: { id: turnId, status: "completed" },
@@ -162,6 +189,14 @@ async function runScriptFileTurn(threadId) {
   }
 }
 
+function replayLastTurnUsage(threadId) {
+  notify("thread/tokenUsage/updated", {
+    threadId,
+    turnId: "turn-fx-1",
+    tokenUsage: FIXED_TOKEN_USAGE,
+  });
+}
+
 async function handleRequest(message) {
   const { id, method } = message;
   const params = message.params ?? {};
@@ -216,35 +251,24 @@ async function handleRequest(message) {
       // scoped to that PREVIOUS turn's id, before any new turn is started.
       // Opt-in via a `usage-replay-` provider-thread-id prefix.
       if (String(params.threadId).startsWith("usage-replay-")) {
-        notify("thread/tokenUsage/updated", {
-          threadId: params.threadId,
-          turnId: "turn-fx-1",
-          tokenUsage: {
-            total: {
-              totalTokens: 39970,
-              inputTokens: 39960,
-              cachedInputTokens: 0,
-              outputTokens: 10,
-              reasoningOutputTokens: 0,
-            },
-            last: {
-              totalTokens: 19993,
-              inputTokens: 19988,
-              cachedInputTokens: 0,
-              outputTokens: 5,
-              reasoningOutputTokens: 0,
-            },
-            modelContextWindow: 258400,
-          },
-        });
+        replayLastTurnUsage(params.threadId);
       }
       respond(id, { thread: { id: params.threadId } });
       return;
     }
     case "thread/fork": {
       threadCounter += 1;
-      const threadId = `codex-fx-${process.pid}-fork-${threadCounter}`;
+      const replaysUsage = String(params.threadId).startsWith("usage-replay-");
+      const threadId = replaysUsage
+        ? `usage-replay-fork-${process.pid}-${threadCounter}`
+        : `codex-fx-${process.pid}-fork-${threadCounter}`;
       respond(id, { thread: { id: threadId } });
+      // thread/fork replays the source rollout's last-turn usage the same way,
+      // after the response, under the NEW thread id but the SOURCE turn id
+      // (#1727).
+      if (replaysUsage) {
+        replayLastTurnUsage(threadId);
+      }
       return;
     }
     case "turn/start": {
