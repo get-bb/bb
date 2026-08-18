@@ -164,6 +164,39 @@ describe("task attachments", () => {
     }
   });
 
+  it("downloads a non-Latin-1 file name with an ASCII fallback in filename= (issue #1621)", async () => {
+    const { harness, store, task } = setup();
+    try {
+      const emDashName = "report \u2014 final.txt";
+      const uploaded = await upload(
+        harness,
+        task.id,
+        new TextEncoder().encode("hello"),
+        emDashName,
+        "text/plain",
+      );
+      expect(uploaded.status).toBe(201);
+      const { attachmentId } = (await uploaded.json()) as {
+        attachmentId: string;
+      };
+      // sanitizeFileName keeps the em dash, so the stored name is unchanged.
+      expect(store.getAttachment(attachmentId)?.fileName).toBe(emDashName);
+
+      const response = await harness.fetchHttp(
+        "GET",
+        `/attachments/download?attachmentId=${attachmentId}`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-disposition")).toBe(
+        `attachment; filename="report - final.txt"; filename*=UTF-8''report%20%E2%80%94%20final.txt`,
+      );
+      await expect(response.text()).resolves.toBe("hello");
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   it("forces SVG downloads and never marks them as embeddable images", async () => {
     const { harness, store, task } = setup();
     try {

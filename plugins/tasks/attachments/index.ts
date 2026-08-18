@@ -151,6 +151,24 @@ export async function removeAttachmentBlobs(
   }
 }
 
+/**
+ * RFC 6266 Content-Disposition. Header values must be ByteStrings, so the
+ * legacy `filename=` parameter carries an ASCII-only fallback and the real
+ * name travels percent-encoded in `filename*`. A raw name with an em dash,
+ * CJK, or emoji in `filename=` makes the Response constructor throw and turns
+ * every download of that attachment into a 500 (issue #1621).
+ */
+function buildContentDisposition(
+  disposition: "inline" | "attachment",
+  fileName: string,
+): string {
+  const asciiFallback = fileName
+    .replace(/[^\x20-\x7e]/g, "-")
+    .replace(/["\\]/g, "_");
+  const encodedName = encodeURIComponent(fileName).replaceAll("'", "%27");
+  return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encodedName}`;
+}
+
 function sanitizeFileName(fileName: string): string {
   const baseName = fileName
     .normalize("NFC")
@@ -531,15 +549,14 @@ export function registerAttachments(
     const disposition = isInlineRasterMime(attachment.mime)
       ? "inline"
       : "attachment";
-    const encodedName = encodeURIComponent(attachment.fileName).replaceAll(
-      "'",
-      "%27",
-    );
     return new Response(new Uint8Array(await readFile(absolutePath)), {
       headers: {
         "Content-Type": attachment.mime,
         "Content-Length": String(attachment.sizeBytes),
-        "Content-Disposition": `${disposition}; filename="${attachment.fileName}"; filename*=UTF-8''${encodedName}`,
+        "Content-Disposition": buildContentDisposition(
+          disposition,
+          attachment.fileName,
+        ),
         "X-Content-Type-Options": "nosniff",
       },
     });
