@@ -45,6 +45,7 @@ import {
   type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
+import { QueuedEditorTypeaheadLayoutProvider } from "@/components/promptbox/queued-editor-typeahead-layout";
 import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
@@ -2781,6 +2782,47 @@ describe("PromptBoxInternal mention triggers", () => {
     icon: null,
     replacement: "#42 Fix login bug",
   };
+
+  it("reports the queued editor typeahead's open state and measured height", async () => {
+    const layouts: Array<{ height: number; isOpen: boolean }> = [];
+    const nativeGetBoundingClientRect =
+      HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.hasAttribute("data-promptbox-typeahead-menu")) {
+          return new DOMRect(0, 0, 600, 144);
+        }
+        return nativeGetBoundingClientRect.call(this);
+      },
+    );
+    const promptBoxRef = createRef<PromptBoxHandle>();
+
+    render(
+      <QueuedEditorTypeaheadLayoutProvider
+        onLayoutChange={(layout) => layouts.push(layout)}
+      >
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "@fix",
+            typeahead: buildTypeaheadConfig({
+              mentionSuggestions: [githubIssueSuggestion],
+            }),
+          })}
+          promptBoxRef={promptBoxRef}
+        />
+      </QueuedEditorTypeaheadLayoutProvider>,
+    );
+
+    await focusPromptEnd(promptBoxRef);
+    await waitFor(() =>
+      expect(layouts).toContainEqual({ height: 144, isOpen: true }),
+    );
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
+    await waitFor(() =>
+      expect(layouts.at(-1)).toEqual({ height: 0, isOpen: false }),
+    );
+  });
 
   it("renders a plugin mention's named icon hint", async () => {
     const suggestion = { ...githubIssueSuggestion, icon: "FileText" };

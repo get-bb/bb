@@ -76,6 +76,10 @@ import {
   substitutePromptMentions,
 } from "@/components/ui/markdown-prompt-mentions";
 import { normalizePromptBlockquoteBoundaries } from "@/components/ui/markdown-prompt-blockquote-boundaries";
+import {
+  QueuedEditorTypeaheadLayoutProvider,
+  type QueuedEditorTypeaheadLayout,
+} from "@/components/promptbox/queued-editor-typeahead-layout";
 
 /** Which in-flight action the processing message is running, for its label. */
 export type QueuedMessageProcessingAction = "send" | "edit" | "delete";
@@ -141,6 +145,7 @@ const WORKSPACE_MIN_HEIGHT = 240;
 const WORKSPACE_MAX_HEIGHT = 360;
 const WORKSPACE_CHROME_HEIGHT = 56;
 const WORKSPACE_ROW_HEIGHT = 40;
+const TYPEAHEAD_MENU_GAP = 8;
 const SURFACE_DRAG_THRESHOLD = 72;
 const QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS =
   "relative bg-surface-raised-solid before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-gradient-to-r before:from-transparent before:to-surface-raised-solid before:content-['']";
@@ -928,22 +933,38 @@ function clamp(value: number, minimum: number, maximum: number): number {
 
 function QueuedMessageInlineEditorSlot({
   editor,
+  onTypeaheadLayoutChange,
+  typeaheadLayout,
 }: {
   editor: QueuedMessageInlineEditor;
+  onTypeaheadLayoutChange: (layout: QueuedEditorTypeaheadLayout) => void;
+  typeaheadLayout: QueuedEditorTypeaheadLayout;
 }) {
+  const typeaheadReservation = typeaheadLayout.isOpen
+    ? Math.ceil(typeaheadLayout.height) + TYPEAHEAD_MENU_GAP
+    : 0;
   return (
     <li
       data-queued-message-inline-editor=""
       className="relative z-10 border-b border-border/35 px-2.5 py-1 last:border-b-0"
     >
       <OverflowFade placement="above" tone="surface-raised" className="z-10" />
-      <InlineMessageEditorFrame
-        cancelLabel="Stop editing queued message"
-        label={`Editing queued message ${editor.queuedMessageIndex + 1}`}
-        onCancel={editor.onDismiss}
+      <QueuedEditorTypeaheadLayoutProvider
+        onLayoutChange={onTypeaheadLayoutChange}
       >
-        {editor.content}
-      </InlineMessageEditorFrame>
+        <div
+          data-queued-editor-typeahead-reservation=""
+          style={{ paddingTop: typeaheadReservation }}
+        >
+          <InlineMessageEditorFrame
+            cancelLabel="Stop editing queued message"
+            label={`Editing queued message ${editor.queuedMessageIndex + 1}`}
+            onCancel={editor.onDismiss}
+          >
+            {editor.content}
+          </InlineMessageEditorFrame>
+        </div>
+      </QueuedEditorTypeaheadLayoutProvider>
       <OverflowFade placement="below" tone="surface-raised" className="z-10" />
     </li>
   );
@@ -988,7 +1009,30 @@ export function QueuedMessagesList({
   const [inlineEditorDesiredHeight, setInlineEditorDesiredHeight] = useState<
     number | null
   >(null);
+  const [reportedTypeaheadLayout, setReportedTypeaheadLayout] = useState<
+    QueuedEditorTypeaheadLayout & { editorId: string | null }
+  >({ editorId: null, height: 0, isOpen: false });
   const inlineEditorActive = inlineEditor !== undefined;
+  const inlineEditorId = inlineEditor?.queuedMessageId ?? null;
+  const inlineEditorTypeaheadLayout: QueuedEditorTypeaheadLayout =
+    reportedTypeaheadLayout.editorId === inlineEditorId
+      ? reportedTypeaheadLayout
+      : { height: 0, isOpen: false };
+  const handleTypeaheadLayoutChange = useCallback(
+    (layout: QueuedEditorTypeaheadLayout) => {
+      setReportedTypeaheadLayout((current) => {
+        if (
+          current.editorId === inlineEditorId &&
+          current.height === layout.height &&
+          current.isOpen === layout.isOpen
+        ) {
+          return current;
+        }
+        return { ...layout, editorId: inlineEditorId };
+      });
+    },
+    [inlineEditorId],
+  );
   const getScrollElement = useBottomAnchoredScroll()?.getScrollElement;
   const surfaceRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -1152,7 +1196,13 @@ export function QueuedMessagesList({
       resizeObserver?.disconnect();
       window.removeEventListener("resize", measureInlineEditorMaxHeight);
     };
-  }, [getScrollElement, inlineEditorActive, measureInlineEditorMaxHeight]);
+  }, [
+    getScrollElement,
+    inlineEditorActive,
+    inlineEditorTypeaheadLayout.height,
+    inlineEditorTypeaheadLayout.isOpen,
+    measureInlineEditorMaxHeight,
+  ]);
 
   // Render from a local order so a drag can reorder synchronously in the drop
   // event (no snap-back). The prop is re-adopted only when the queue's
@@ -1454,6 +1504,8 @@ export function QueuedMessagesList({
         <QueuedMessageInlineEditorSlot
           key={`inline-editor:${inlineEditor.queuedMessageId}`}
           editor={inlineEditor}
+          onTypeaheadLayoutChange={handleTypeaheadLayoutChange}
+          typeaheadLayout={inlineEditorTypeaheadLayout}
         />,
       );
       inlineEditorInserted = true;
@@ -1485,6 +1537,8 @@ export function QueuedMessagesList({
       <QueuedMessageInlineEditorSlot
         key={`inline-editor:${inlineEditor.queuedMessageId}`}
         editor={inlineEditor}
+        onTypeaheadLayoutChange={handleTypeaheadLayoutChange}
+        typeaheadLayout={inlineEditorTypeaheadLayout}
       />,
     );
   }

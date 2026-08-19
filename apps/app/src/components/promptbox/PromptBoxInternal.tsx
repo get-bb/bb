@@ -113,6 +113,7 @@ import { applyPromptParagraphNewline } from "./editor/prompt-editor-paragraph";
 import { MentionMenu, type TypeaheadSuggestion } from "./mentions/MentionMenu";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 import { ComposerEditorSlot } from "./ComposerEditorSlot";
+import { useQueuedEditorTypeaheadLayoutReporter } from "./queued-editor-typeahead-layout";
 
 const PROMPTBOX_MIN_HEIGHT = 68;
 const PROMPTBOX_SELECTION_REVEAL_MARGIN = 12;
@@ -1213,6 +1214,9 @@ export function PromptBoxInternal({
   // Passive text autofocus opens the soft keyboard on coarse-pointer devices.
   const shouldAvoidSoftKeyboardAutofocus = isPointerCoarse;
   const formRef = useRef<HTMLFormElement>(null);
+  const typeaheadMenuRef = useRef<HTMLDivElement>(null);
+  const reportQueuedEditorTypeaheadLayout =
+    useQueuedEditorTypeaheadLayoutReporter();
   const blurAfterPointerSubmitRef = useRef(false);
   const heightAnimationFromRef = useRef<number | null>(null);
   const capturePromptBoxHeight = useCallback(() => {
@@ -2199,6 +2203,32 @@ export function PromptBoxInternal({
     activeTriggerKind === "command"
       ? { trigger: "command", state: commandMenuState }
       : { trigger: "mention", state: mentionMenuState };
+
+  useLayoutEffect(() => {
+    if (reportQueuedEditorTypeaheadLayout === null) return;
+    const menu = typeaheadMenuRef.current;
+    if (!showTypeaheadMenu || menu === null) {
+      reportQueuedEditorTypeaheadLayout({ height: 0, isOpen: false });
+      return;
+    }
+
+    const reportOpenLayout = () => {
+      reportQueuedEditorTypeaheadLayout({
+        height: menu.getBoundingClientRect().height,
+        isOpen: true,
+      });
+    };
+    reportOpenLayout();
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(reportOpenLayout);
+    resizeObserver?.observe(menu);
+    return () => {
+      resizeObserver?.disconnect();
+      reportQueuedEditorTypeaheadLayout({ height: 0, isOpen: false });
+    };
+  }, [reportQueuedEditorTypeaheadLayout, showTypeaheadMenu]);
 
   useEffect(() => {
     if (activeSuggestions.length === 0) {
@@ -3247,6 +3277,8 @@ export function PromptBoxInternal({
 
           {showTypeaheadMenu ? (
             <div
+              ref={typeaheadMenuRef}
+              data-promptbox-typeahead-menu=""
               className={cn(
                 // Zen mode: menu floats inside the form, anchored just above
                 // the action footer so it stays visible. The form's pb-3 +

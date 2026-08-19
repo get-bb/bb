@@ -7,6 +7,7 @@ import {
   render,
   waitFor,
 } from "@testing-library/react";
+import { useLayoutEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type { Active, DroppableContainer } from "@dnd-kit/core";
@@ -19,6 +20,10 @@ import {
   resolveQueuedMessageDrag,
   snapGroupBoundaryDragTransform,
 } from "./QueuedMessagesList";
+import {
+  useQueuedEditorTypeaheadLayoutReporter,
+  type QueuedEditorTypeaheadLayout,
+} from "@/components/promptbox/queued-editor-typeahead-layout";
 
 const bottomAnchorMocks = vi.hoisted(() => ({
   scrollElement: null as HTMLElement | null,
@@ -34,6 +39,18 @@ vi.mock("@/components/ui/bottom-anchored-scroll-body", () => ({
 }));
 
 const noop = () => {};
+
+function TypeaheadLayoutFixture({
+  layout,
+}: {
+  layout: QueuedEditorTypeaheadLayout;
+}) {
+  const reportLayout = useQueuedEditorTypeaheadLayoutReporter();
+  useLayoutEffect(() => {
+    reportLayout?.(layout);
+  }, [layout, reportLayout]);
+  return <div>Inline editor</div>;
+}
 
 function makeQueuedMessage(id: string, text: string): ThreadQueuedMessage {
   return {
@@ -558,7 +575,11 @@ describe("QueuedMessagesList", () => {
                 ? {
                     queuedMessageId: "q_one",
                     queuedMessageIndex: 0,
-                    content: <div>Inline editor</div>,
+                    content: (
+                      <TypeaheadLayoutFixture
+                        layout={{ height: 120, isOpen: true }}
+                      />
+                    ),
                     onDismiss: noop,
                   }
                 : undefined
@@ -575,6 +596,11 @@ describe("QueuedMessagesList", () => {
     const composer = container.querySelector("[data-test-bottom-composer]");
 
     await waitFor(() => expect(surface?.style.height).toBe("140px"));
+    expect(
+      container.querySelector<HTMLElement>(
+        "[data-queued-editor-typeahead-reservation]",
+      )?.style.paddingTop,
+    ).toBe("128px");
     expect(surface?.compareDocumentPosition(composer as Node) ?? 0).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
@@ -763,7 +789,7 @@ describe("QueuedMessagesList", () => {
         makeQueuedMessage("q_neighbor", "Following queued message"),
       ],
       editorTop: 32,
-      neighborTop: 182,
+      neighborTop: 310,
     },
     {
       label: "last",
@@ -797,7 +823,7 @@ describe("QueuedMessagesList", () => {
           return new DOMRect(0, 32, 600, 180);
         }
         if (this.hasAttribute("data-queued-message-inline-editor")) {
-          return new DOMRect(0, editorTop, 600, 150);
+          return new DOMRect(0, editorTop, 600, 278);
         }
         if (this.getAttribute("data-queued-message-id") === "q_neighbor") {
           return new DOMRect(0, neighborTop, 600, 80);
@@ -815,7 +841,11 @@ describe("QueuedMessagesList", () => {
                 queuedMessageIndex: messages.findIndex(
                   (message) => message.id === "q_editing",
                 ),
-                content: <div>Inline editor</div>,
+                content: (
+                  <TypeaheadLayoutFixture
+                    layout={{ height: 120, isOpen: true }}
+                  />
+                ),
                 onDismiss: noop,
               }}
               sendDisabled={false}
@@ -836,7 +866,12 @@ describe("QueuedMessagesList", () => {
         'section[aria-label="Queued messages"]',
       );
 
-      await waitFor(() => expect(surface?.style.height).toBe("290px"));
+      await waitFor(() => expect(surface?.style.height).toBe("400px"));
+      expect(
+        container.querySelector<HTMLElement>(
+          "[data-queued-editor-typeahead-reservation]",
+        )?.style.paddingTop,
+      ).toBe("128px");
     },
   );
 
