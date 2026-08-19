@@ -559,7 +559,9 @@
   --sidebar-ring: var(--primary);
   --font-sans: "Inter Variable", Inter, sans-serif;
   --font-serif: Georgia, serif;
-  --font-mono: "Fira Code", monospace;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
   --radius: 0.5rem;
   --bb-sidebar-row-height: 1.75rem;
   --bb-sidebar-row-height-coarse: 2.5rem;
@@ -790,7 +792,9 @@
   --sidebar-ring: var(--primary);
   --font-sans: "Inter Variable", Inter, sans-serif;
   --font-serif: Georgia, serif;
-  --font-mono: "Fira Code", monospace;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
   --radius: 0.5rem;
   /* Dark shadows are pure black at higher alpha — a 20%-gray shadow is
    * invisible on the dark canvas, so floating surfaces (popovers, dropdowns)

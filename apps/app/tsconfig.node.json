@@ -11,6 +11,7 @@
     "vite.config.ts",
     "vite.dev.config.ts",
     "vite-bundle-stats.ts",
+    "vite-font-preload.ts",
     "vite-shared-ui-seam.ts"
   ]
 }
