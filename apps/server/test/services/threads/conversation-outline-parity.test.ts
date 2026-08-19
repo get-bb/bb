@@ -47,6 +47,7 @@ function agentMessage(
     providerThreadId: "provider-thread-1",
     itemId: `message-${sequence}`,
     itemKind: "agentMessage",
+    parentToolCallId: null,
     data: JSON.stringify({
       item: { id: `message-${sequence}`, type: "agentMessage", text },
     }),
@@ -65,6 +66,7 @@ function userQuestionLifecycle(
     scope: turnScope("turn-1"),
     itemId: null,
     itemKind: null,
+    parentToolCallId: null,
     data: JSON.stringify({
       interactionId: "pi-user-question",
       providerId: "claude-code",
@@ -110,6 +112,7 @@ describe("thread conversation outline parity", () => {
         scope: threadScope(),
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         data: JSON.stringify({
           direction: "outbound",
           requestId,
@@ -135,6 +138,7 @@ describe("thread conversation outline parity", () => {
         providerThreadId: "provider-thread-1",
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         data: JSON.stringify({}),
       },
       {
@@ -145,6 +149,7 @@ describe("thread conversation outline parity", () => {
         providerThreadId: "provider-thread-1",
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         data: JSON.stringify({ clientRequestId: requestId }),
       },
       userQuestionLifecycle(thread.id, 4, "pending"),
@@ -161,6 +166,7 @@ describe("thread conversation outline parity", () => {
         providerThreadId: "provider-thread-1",
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         data: JSON.stringify({ status: "completed" }),
       },
     ]);
