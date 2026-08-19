@@ -2030,6 +2030,7 @@ function RootComposeSurface({
           activePath={activeWorkspaceFilePath}
           copyPath={workspaceFileCopyPath}
           environmentId={activeWorkspaceFileEnvironmentId}
+          isPanelOpen={isSecondaryPanelOpen}
           lineRange={activeWorkspaceFileLineRange}
           onOpenInEditor={handleOpenWorkspaceFileInEditor}
           onSelectionAddToChat={handleRootPanelSelectionAddToChat}
@@ -2046,6 +2047,7 @@ function RootComposeSurface({
           copyPath={projectFileCopyPath}
           environmentId={rootPanelEnvironmentId}
           hostId={rootProjectHostId}
+          isPanelOpen={isSecondaryPanelOpen}
           lineRange={activeWorkspaceFileLineRange}
           onOpenInEditor={handleOpenProjectFileInEditor}
           onSelectionAddToChat={handleRootPanelSelectionAddToChat}
@@ -2059,6 +2061,7 @@ function RootComposeSurface({
             activePath={activeHostFilePath}
             copyPath={activeHostFilePath}
             environmentId={activeRootHostFileEnvironmentId}
+            isPanelOpen={isSecondaryPanelOpen}
             lineRange={activeHostFileLineRange}
             onOpenInEditor={handleOpenHostFileInEditor}
             onSelectionAddToChat={handleRootPanelSelectionAddToChat}
@@ -2079,6 +2082,7 @@ function RootComposeSurface({
           <ThreadStorageFilePreviewTabContent
             activePath={activeStorageFilePath}
             copyPath={storageFileCopyPath}
+            isPanelOpen={isSecondaryPanelOpen}
             lineRange={activeStorageFileLineRange}
             onOpenInEditor={handleOpenStorageFileInEditor}
             onSelectionAddToChat={handleRootPanelSelectionAddToChat}

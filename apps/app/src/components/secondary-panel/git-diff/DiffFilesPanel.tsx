@@ -46,6 +46,12 @@ export interface DiffFilesPanelProps {
   diffViewOptions: Record<string, string | boolean | number>;
   filePathRoot?: string | null;
   /**
+   * Whether the secondary panel is open. While closed the list stays mounted
+   * (and virtualized rows still resolve), but visible-row patch requests pause;
+   * they resume for the current visible set when the panel reopens.
+   */
+  isPanelOpen: boolean;
+  /**
    * True while the TOC query is serving cross-target placeholder data (the
    * previous diff target's slice). The scroll-to-file effect waits for the real
    * slice so it never lands on a stale index.
@@ -80,6 +86,7 @@ export function DiffFilesPanel({
   filesUpdatedAt,
   diffViewOptions,
   filePathRoot,
+  isPanelOpen,
   isPlaceholderData,
   scrollToPath,
   onScrolledToPath,
@@ -159,6 +166,13 @@ export function DiffFilesPanel({
   const visibleKey = visiblePaths.join("\n");
   const overscanKey = overscanPaths.join("\n");
   useEffect(() => {
+    // A closed panel requests nothing: realtime workspace events evict the
+    // patch cache while it is hidden, and refetching those patches off-screen is
+    // wasted work. Reopening re-runs this effect (`isPanelOpen` flips) and
+    // re-requests the current visible set, which dedupes against the cache.
+    if (!isPanelOpen) {
+      return;
+    }
     requestPaths({ visible: visiblePaths, overscan: overscanPaths });
     // visiblePaths/overscanPaths are derived from the keys; depend on the keys
     // so we skip re-requesting identical membership. Also re-fire when the TOC
@@ -166,7 +180,7 @@ export function DiffFilesPanel({
     // paths but evicts the patch cache, so the same visible set must be
     // re-requested to fetch the fresh patch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestPaths, visibleKey, overscanKey, filesUpdatedAt]);
+  }, [isPanelOpen, requestPaths, visibleKey, overscanKey, filesUpdatedAt]);
 
   // Scroll a file requested from the info tab / prompt banner to the top of the
   // panel. The request persists until the path is in the *real* slice: opening a

@@ -2747,6 +2747,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         activePath={activeWorkspaceFilePath}
         copyPath={workspaceFileCopyPath}
         environmentId={thread.environmentId}
+        isPanelOpen={isSecondaryPanelOpen}
         lineRange={activeWorkspaceFileLineRange}
         markdownLinkRouting={workspaceMarkdownLinkRouting}
         onOpenInEditor={handleOpenFileInEditor}
@@ -2762,6 +2763,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         activePath={activeHostFilePath}
         copyPath={activeHostFilePath}
         environmentId={thread.environmentId}
+        isPanelOpen={isSecondaryPanelOpen}
         lineRange={activeHostFileLineRange}
         markdownLinkRouting={hostMarkdownLinkRouting}
         onOpenInEditor={handleOpenHostFileInEditor}
@@ -2774,6 +2776,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       <ThreadStorageFilePreviewTabContent
         activePath={activeStorageFilePath}
         copyPath={storageFileCopyPath}
+        isPanelOpen={isSecondaryPanelOpen}
         lineRange={activeStorageFileLineRange}
         markdownLinkRouting={storageMarkdownLinkRouting}
         onOpenInEditor={handleOpenStorageFileInEditor}

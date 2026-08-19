@@ -513,6 +513,12 @@ export function ThreadSecondaryPanel({
   const isDiffPanelActive =
     resolvedGitDiffTabStatus === "eligible" &&
     activeFixedTab?.tab.kind === "git-diff";
+  // The diff body stays mounted while the panel is closed (see the retained
+  // content note below), but its live queries must not: every workspace write
+  // invalidates the diff TOC, evicts patches, and would otherwise refetch and
+  // re-render pierre into an off-screen panel. Gate the diff-tab data on the
+  // panel actually being open; the DOM stays, the network and diff work stop.
+  const isDiffPanelLive = isDiffPanelActive && isLayoutOpen;
   const isDiffEligibilityPending =
     activeFixedTab?.tab.kind === "git-diff" &&
     (resolvedGitDiffTabStatus === "loading" ||
@@ -529,7 +535,7 @@ export function ThreadSecondaryPanel({
     onGitDiffSelectionChange,
   } = useGitDiffPanelState({
     environmentId,
-    isDiffPanelActive,
+    isDiffPanelActive: isDiffPanelLive,
     requestedMergeBaseBranch,
     onClearPendingGitDiffIntent,
     pendingGitDiffCommitSha,
@@ -543,7 +549,7 @@ export function ThreadSecondaryPanel({
   const { data: diffFilesResponse, isLoading: isDiffFilesLoading } =
     useEnvironmentDiffFiles(environmentId ?? "", {
       enabled:
-        isDiffPanelActive &&
+        isDiffPanelLive &&
         Boolean(environmentId) &&
         gitDiffTarget !== undefined,
       target: gitDiffTarget,
@@ -914,6 +920,7 @@ export function ThreadSecondaryPanel({
             environmentId={environmentId}
             target={gitDiffTarget}
             isDiffPanelActive={isDiffPanelActive}
+            isPanelOpen={isLayoutOpen}
             gitDiffViewOptions={gitDiffViewOptions}
             onClearPendingGitDiffIntent={onClearPendingGitDiffIntent}
             onOpenFileInEditor={onOpenFileInEditor}
