@@ -195,6 +195,15 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   }),
 }));
 
+// The lazy secondary panel's inline placeholder registers a real `Panel`
+// while the chunk loads; the layout mock below has no PanelGroup to host it.
+vi.mock("react-resizable-panels", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-resizable-panels")>()),
+  Panel: ({ children }: { children?: ReactNode }) => (
+    <div data-testid="panel-placeholder">{children}</div>
+  ),
+}));
+
 vi.mock("@/components/secondary-panel/SecondaryPanelLayout", () => ({
   SecondaryPanelLayout: ({
     main,

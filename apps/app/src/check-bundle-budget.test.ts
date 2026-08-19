@@ -59,6 +59,7 @@ function buildStats({
       }),
       chunk("katex.js", { packages: ["katex"] }),
     ],
+    routeClosures: {},
   };
 }
 

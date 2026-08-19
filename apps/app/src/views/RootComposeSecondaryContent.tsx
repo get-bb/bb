@@ -5,7 +5,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginHomepageSections } from "@/components/plugin/PluginHomepageSections";
 import { usePluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
-import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
 import {
   CHROME_ROW_HEIGHT_CLASS,
@@ -42,8 +42,9 @@ export const ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS =
   "right-[calc(1rem+env(safe-area-inset-right))] top-[calc(0.625rem+env(safe-area-inset-top))] max-md:pointer-coarse:top-[calc(0.375rem+env(safe-area-inset-top))]";
 
 type RootSecondaryPanelProps = Omit<
-  ComponentProps<typeof ThreadSecondaryPanel>,
+  ComponentProps<typeof LazyThreadSecondaryPanel>,
   | "browserDeck"
+  | "drawerFallback"
   | "isConversationCollapsed"
   | "onToggleConversationCollapse"
   | "renderAsDrawer"
@@ -156,8 +157,9 @@ export function RootComposeSecondaryContent({
           onToggleMainCollapse,
           resizablePanelId,
         }) => (
-          <ThreadSecondaryPanel
+          <LazyThreadSecondaryPanel
             {...threadSecondaryPanelProps}
+            drawerFallback={<DrawerPanelLoadingSkeleton />}
             browserDeck={renderBrowserDeck?.({ canShowNativeBrowserView })}
             renderAsDrawer={presentation === "drawer"}
             isConversationCollapsed={false}

@@ -157,17 +157,18 @@ import {
 } from "@/components/secondary-panel/useThreadStorageViewer";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
-  HostFilePreviewTabContent,
-  ThreadStorageFilePreviewTabContent,
-  WorkspaceFilePreviewTabContent,
-} from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
-import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
+  LazyBrowserTabDeck,
+  LazyHostFilePreviewTabContent,
+  LazyNewTabPage,
+  LazyThreadStorageFilePreviewTabContent,
+  LazyThreadTerminalPanel,
+  LazyWorkspaceFilePreviewTabContent,
+} from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
 import {
   SIDE_CHAT_PLUGIN_ID,
   SIDE_CHAT_PLUGIN_PANEL_ACTION_ID,
 } from "@/lib/side-chat-plugin";
-import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
@@ -250,7 +251,6 @@ import {
 import { resolveGitDiffTabStatus } from "@/components/secondary-panel/gitDiffTabEligibility";
 import { isRootThread } from "./threadParentSelectorOptions";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { ThreadTerminalPanel } from "@/components/thread/terminal/ThreadTerminalPanel";
 import {
   DEFAULT_TERMINAL_COLS,
   DEFAULT_TERMINAL_ROWS,
@@ -757,7 +757,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         return null;
       }
       return (
-        <BrowserTabDeck
+        <LazyBrowserTabDeck
           browserTabs={browserTabs}
           activeBrowserTabId={activeBrowserTab?.id ?? null}
           addressFocusRequest={browserAddressFocusRequest}
@@ -2721,7 +2721,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       original
     );
   const fileTabContent = activeTerminalId ? (
-    <ThreadTerminalPanel
+    <LazyThreadTerminalPanel
       autoFocus={shouldAutoFocusTerminal}
       canCreateTerminal={canCreateTerminal}
       isPanelOpen={isSecondaryPanelOpen}
@@ -2733,7 +2733,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       target={{ kind: "thread", threadId: thread.id }}
     />
   ) : isNewTabActive ? (
-    <NewTabPage
+    <LazyNewTabPage
       autoFocus={shouldAutoFocusNewTab}
       projectId={projectId ?? undefined}
       environmentId={thread.environmentId ?? null}
@@ -2746,7 +2746,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     />
   ) : activeWorkspaceFilePath ? (
     renderFileOpenerReplacement(
-      <WorkspaceFilePreviewTabContent
+      <LazyWorkspaceFilePreviewTabContent
         activePath={activeWorkspaceFilePath}
         copyPath={workspaceFileCopyPath}
         environmentId={thread.environmentId}
@@ -2762,7 +2762,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     )
   ) : activeHostFilePath ? (
     renderFileOpenerReplacement(
-      <HostFilePreviewTabContent
+      <LazyHostFilePreviewTabContent
         activePath={activeHostFilePath}
         copyPath={activeHostFilePath}
         environmentId={thread.environmentId}
@@ -2776,7 +2776,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     )
   ) : activeStorageFilePath ? (
     renderFileOpenerReplacement(
-      <ThreadStorageFilePreviewTabContent
+      <LazyThreadStorageFilePreviewTabContent
         activePath={activeStorageFilePath}
         copyPath={storageFileCopyPath}
         isPanelOpen={isSecondaryPanelOpen}

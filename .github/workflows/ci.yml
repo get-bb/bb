@@ -65,10 +65,11 @@ jobs:
           fi
           exit "$guard_exit"
 
-      # Guards the JavaScript that blocks first paint in the web app. Heavy
-      # editor, diff and math code reaches that path through barrel re-exports,
-      # which typecheck and lint cannot see.
-      - name: Check app boot-payload budget
+      # Guards the JavaScript that blocks first paint in the web app, and the
+      # thread route's static closure that blocks first thread paint. Heavy
+      # editor, diff and math code reaches those paths through barrel
+      # re-exports, which typecheck and lint cannot see.
+      - name: Check app bundle budgets
         run: node apps/app/scripts/check-bundle-budget.mjs
 
       # Exceeding the Actions cache quota is silent: GitHub evicts entries

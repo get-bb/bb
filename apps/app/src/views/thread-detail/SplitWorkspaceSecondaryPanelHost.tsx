@@ -27,7 +27,7 @@ import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/thr
 import {
   THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
   THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
-} from "@/components/secondary-panel/ThreadSecondaryPanel";
+} from "@/components/secondary-panel/secondaryPanelSizing";
 import {
   SecondaryPanelHostLayoutContext,
   type SecondaryPanelHostLayout,

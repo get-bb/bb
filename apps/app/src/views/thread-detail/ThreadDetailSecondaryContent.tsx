@@ -6,7 +6,7 @@ import {
   usePluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
-import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import {
   ThreadMetadataCard,
   ThreadMetadataContent,
@@ -22,12 +22,13 @@ type ThreadTimelinePaneProps = Omit<
   "footer"
 >;
 type ThreadSecondaryPanelProps = Omit<
-  ComponentProps<typeof ThreadSecondaryPanel>,
+  ComponentProps<typeof LazyThreadSecondaryPanel>,
   | "metadataContent"
   | "renderAsDrawer"
   | "isConversationCollapsed"
   | "onToggleConversationCollapse"
   | "browserDeck"
+  | "drawerFallback"
 > & {
   renderBrowserDeck?: (args: {
     canShowNativeBrowserView: boolean;
@@ -141,8 +142,9 @@ function ThreadDetailSecondaryContentBody({
           onToggleMainCollapse,
           resizablePanelId,
         }) => (
-          <ThreadSecondaryPanel
+          <LazyThreadSecondaryPanel
             {...threadSecondaryPanelProps}
+            drawerFallback={<ThreadMetadataLoadingSkeleton />}
             browserDeck={renderBrowserDeck?.({ canShowNativeBrowserView })}
             renderAsDrawer={presentation === "drawer"}
             isConversationCollapsed={

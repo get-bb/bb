@@ -302,18 +302,20 @@ afterEach(() => {
   useThreadsMock.mockClear();
 });
 
+// The secondary panel chunk loads lazily, so the panel appears one tick
+// after the first render.
 describe("ThreadDetailSecondaryContent", () => {
-  it("keeps the standalone panel hide control in the panel toolbar", () => {
+  it("keeps the standalone panel hide control in the panel toolbar", async () => {
     renderThreadDetail(false);
 
     expect(
-      screen
-        .getByTestId("inline-secondary-panel")
-        .getAttribute("data-inline-panel-toggle"),
+      (await screen.findByTestId("inline-secondary-panel")).getAttribute(
+        "data-inline-panel-toggle",
+      ),
     ).toBe("button");
   });
 
-  it("places the hosted panel hide control at the outer edge of its toolbar", () => {
+  it("places the hosted panel hide control at the outer edge of its toolbar", async () => {
     renderThreadDetail(true, false, true);
 
     expect(screen.getByTestId("header").closest("[inert]")).toBeNull();
@@ -329,17 +331,17 @@ describe("ThreadDetailSecondaryContent", () => {
     });
     render(<>{publishedHostedPanel.panel}</>);
     expect(
-      screen
-        .getByTestId("inline-secondary-panel")
-        .getAttribute("data-inline-panel-toggle"),
+      (await screen.findByTestId("inline-secondary-panel")).getAttribute(
+        "data-inline-panel-toggle",
+      ),
     ).toBe("button");
   });
 
-  it("keeps the thread header inside the timeline column beside the panel", () => {
+  it("keeps the thread header inside the timeline column beside the panel", async () => {
     renderThreadDetail(false);
 
+    const sidePanel = await screen.findByTestId("inline-secondary-panel");
     const timelinePanel = screen.getByTestId("panel");
-    const sidePanel = screen.getByTestId("inline-secondary-panel");
     const panelGroup = screen.getByTestId("panel-group");
     expect(timelinePanel.contains(screen.getByTestId("header"))).toBe(true);
     expect(timelinePanel.contains(sidePanel)).toBe(false);
@@ -349,13 +351,13 @@ describe("ThreadDetailSecondaryContent", () => {
     expect(sidePanel.textContent).toContain("No thread details available.");
   });
 
-  it("keeps the thread metadata loading presentation in the panel", () => {
+  it("keeps the thread metadata loading presentation in the panel", async () => {
     renderThreadDetail(false, true);
 
     expect(
-      screen
-        .getByTestId("inline-secondary-panel")
-        .contains(screen.getByTestId("metadata-card")),
+      (await screen.findByTestId("inline-secondary-panel")).contains(
+        screen.getByTestId("metadata-card"),
+      ),
     ).toBe(true);
   });
 

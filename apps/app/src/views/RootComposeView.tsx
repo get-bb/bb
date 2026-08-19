@@ -46,16 +46,17 @@ import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import { FilePreview } from "@/components/secondary-panel/FilePreview";
 import {
-  HostFilePreviewTabContent,
-  ProjectFilePreviewTabContent,
-  ThreadStorageFilePreviewTabContent,
-  WorkspaceFilePreviewTabContent,
-} from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
-import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
+  LazyBrowserTabDeck,
+  LazyFilePreview,
+  LazyHostFilePreviewTabContent,
+  LazyNewTabPage,
+  LazyProjectFilePreviewTabContent,
+  LazyThreadStorageFilePreviewTabContent,
+  LazyThreadTerminalPanel,
+  LazyWorkspaceFilePreviewTabContent,
+} from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
-import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { PageShell } from "@/components/ui/page-shell.js";
@@ -156,7 +157,6 @@ import {
 } from "@/components/secondary-panel/useThreadFileTabs";
 import { isSecondaryFileTab } from "@/components/secondary-panel/secondaryPanelTabState";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
-import { ThreadTerminalPanel } from "@/components/thread/terminal/ThreadTerminalPanel";
 import {
   DEFAULT_TERMINAL_COLS,
   DEFAULT_TERMINAL_ROWS,
@@ -1427,7 +1427,7 @@ function RootComposeSurface({
         return null;
       }
       return (
-        <BrowserTabDeck
+        <LazyBrowserTabDeck
           browserTabs={browserTabs}
           activeBrowserTabId={activeBrowserTab?.id ?? null}
           addressFocusRequest={browserAddressFocusRequest}
@@ -1996,7 +1996,7 @@ function RootComposeSurface({
     );
   const fileTabContent: ReactNode =
     activeTerminalId && rootPanelTerminalTarget ? (
-      <ThreadTerminalPanel
+      <LazyThreadTerminalPanel
         autoFocus={shouldAutoFocusTerminal}
         canCreateTerminal={canCreateRootTerminal}
         isPanelOpen={isSecondaryPanelOpen}
@@ -2009,7 +2009,7 @@ function RootComposeSurface({
         target={rootPanelTerminalTarget}
       />
     ) : isNewTabActive ? (
-      <NewTabPage
+      <LazyNewTabPage
         autoFocus={shouldAutoFocusNewTab}
         projectId={isProjectless ? undefined : projectId}
         environmentId={rootPanelEnvironmentId}
@@ -2028,7 +2028,7 @@ function RootComposeSurface({
     ) : activeWorkspaceFilePath !== null &&
       activeWorkspaceFileEnvironmentId !== null ? (
       renderFileOpenerReplacement(
-        <WorkspaceFilePreviewTabContent
+        <LazyWorkspaceFilePreviewTabContent
           activePath={activeWorkspaceFilePath}
           copyPath={workspaceFileCopyPath}
           environmentId={activeWorkspaceFileEnvironmentId}
@@ -2044,7 +2044,7 @@ function RootComposeSurface({
     ) : activeWorkspaceFilePath !== null &&
       activeWorkspaceFileProjectPreviewId !== null ? (
       renderFileOpenerReplacement(
-        <ProjectFilePreviewTabContent
+        <LazyProjectFilePreviewTabContent
           activePath={activeWorkspaceFilePath}
           copyPath={projectFileCopyPath}
           environmentId={rootPanelEnvironmentId}
@@ -2059,7 +2059,7 @@ function RootComposeSurface({
     ) : activeHostFilePath !== null ? (
       renderFileOpenerReplacement(
         activeRootHostFileThreadId && activeRootHostFileEnvironmentId ? (
-          <HostFilePreviewTabContent
+          <LazyHostFilePreviewTabContent
             activePath={activeHostFilePath}
             copyPath={activeHostFilePath}
             environmentId={activeRootHostFileEnvironmentId}
@@ -2070,7 +2070,7 @@ function RootComposeSurface({
             threadId={activeRootHostFileThreadId}
           />
         ) : (
-          <FilePreview
+          <LazyFilePreview
             path={activeHostFilePath}
             copyPath={activeHostFilePath}
             onOpenInEditor={handleOpenHostFileInEditor}
@@ -2081,7 +2081,7 @@ function RootComposeSurface({
     ) : activeStorageFilePath !== null ? (
       renderFileOpenerReplacement(
         activeRootStorageFileThreadId ? (
-          <ThreadStorageFilePreviewTabContent
+          <LazyThreadStorageFilePreviewTabContent
             activePath={activeStorageFilePath}
             copyPath={storageFileCopyPath}
             isPanelOpen={isSecondaryPanelOpen}
@@ -2091,7 +2091,7 @@ function RootComposeSurface({
             threadId={activeRootStorageFileThreadId}
           />
         ) : (
-          <FilePreview
+          <LazyFilePreview
             path={activeStorageFilePath}
             copyPath={storageFileCopyPath}
             onOpenInEditor={handleOpenStorageFileInEditor}

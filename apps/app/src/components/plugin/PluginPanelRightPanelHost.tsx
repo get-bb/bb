@@ -1,6 +1,4 @@
 import {
-  lazy,
-  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -22,6 +20,12 @@ import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
+import {
+  LazyBrowserTabDeck,
+  LazyNewTabPage,
+  LazyThreadSecondaryPanel,
+  LazyThreadTerminalPanel,
+} from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import type { SecondaryPanelFixedTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/secondaryPanelFileTab";
 import { useThreadFileTabs } from "@/components/secondary-panel/useThreadFileTabs";
@@ -65,26 +69,6 @@ const TERMINAL_ROWS = 30;
 const EMPTY_TERMINAL_HOSTS: readonly Host[] = [];
 const RIGHT_PANEL_TOGGLE_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
 
-const LazyBrowserTabDeck = lazy(() =>
-  import("@/components/secondary-panel/BrowserTabDeck").then(
-    ({ BrowserTabDeck }) => ({ default: BrowserTabDeck }),
-  ),
-);
-const LazyNewTabPage = lazy(() =>
-  import("@/components/secondary-panel/NewTabPage").then(({ NewTabPage }) => ({
-    default: NewTabPage,
-  })),
-);
-const LazyThreadSecondaryPanel = lazy(() =>
-  import("@/components/secondary-panel/ThreadSecondaryPanel").then(
-    ({ ThreadSecondaryPanel }) => ({ default: ThreadSecondaryPanel }),
-  ),
-);
-const LazyThreadTerminalPanel = lazy(() =>
-  import("@/components/thread/terminal/ThreadTerminalPanel").then(
-    ({ ThreadTerminalPanel }) => ({ default: ThreadTerminalPanel }),
-  ),
-);
 const compactDrawerOpenAtomFamily = atomFamily((_panelStateId: string) =>
   atom(false),
 );
@@ -532,47 +516,43 @@ export function PluginPanelRightPanelHost({
   const activeContent = useMemo(
     () =>
       activeTerminalTab ? (
-        <Suspense fallback={null}>
-          <LazyThreadTerminalPanel
-            canCreateTerminal
-            fixedPanelTarget={activeTerminalTarget ?? undefined}
-            fixedTerminalId={activeTerminalTab.terminalId}
-            isPanelOpen={isOpen}
-            isPanelPersistedOpen={panelState.secondary.isOpen}
-            panelStateId={panelStateId}
-            syncThreadId={null}
-            target={activeTerminalTarget!}
-          />
-        </Suspense>
+        <LazyThreadTerminalPanel
+          canCreateTerminal
+          fixedPanelTarget={activeTerminalTarget ?? undefined}
+          fixedTerminalId={activeTerminalTab.terminalId}
+          isPanelOpen={isOpen}
+          isPanelPersistedOpen={panelState.secondary.isOpen}
+          panelStateId={panelStateId}
+          syncThreadId={null}
+          target={activeTerminalTarget!}
+        />
       ) : isNewTabActive ? (
-        <Suspense fallback={null}>
-          <LazyNewTabPage
-            autoFocus={false}
-            projectId={undefined}
-            environmentId={null}
-            currentThreadId=""
-            onAutoFocusHandled={() => undefined}
-            onSelect={() => undefined}
-            onOpenBrowser={
-              isDesktopBrowserAvailable() ? () => openBrowser() : undefined
-            }
-            onStartTerminal={startSelectedTerminal}
-            showFileSearch={false}
-            startTerminalDisabled={
-              createTerminal.isPending ||
-              selectedTerminalHost?.status !== "connected"
-            }
-            startTerminalTrailing={
-              <TerminalHostSelector
-                disabled={createTerminal.isPending}
-                hosts={terminalHosts}
-                isLoading={hostsQuery.isLoading}
-                onChange={setPreferredTerminalHostId}
-                selectedHostId={selectedTerminalHost?.id ?? null}
-              />
-            }
-          />
-        </Suspense>
+        <LazyNewTabPage
+          autoFocus={false}
+          projectId={undefined}
+          environmentId={null}
+          currentThreadId=""
+          onAutoFocusHandled={() => undefined}
+          onSelect={() => undefined}
+          onOpenBrowser={
+            isDesktopBrowserAvailable() ? () => openBrowser() : undefined
+          }
+          onStartTerminal={startSelectedTerminal}
+          showFileSearch={false}
+          startTerminalDisabled={
+            createTerminal.isPending ||
+            selectedTerminalHost?.status !== "connected"
+          }
+          startTerminalTrailing={
+            <TerminalHostSelector
+              disabled={createTerminal.isPending}
+              hosts={terminalHosts}
+              isLoading={hostsQuery.isLoading}
+              onChange={setPreferredTerminalHostId}
+              selectedHostId={selectedTerminalHost?.id ?? null}
+            />
+          }
+        />
       ) : null,
     [
       activeTerminalTab,
@@ -604,47 +584,44 @@ export function PluginPanelRightPanelHost({
     }) => {
       const deck =
         browserTabs.length === 0 ? null : (
-          <Suspense fallback={null}>
-            <LazyBrowserTabDeck
-              browserTabs={browserTabs}
-              activeBrowserTabId={activeBrowserTab?.id ?? null}
-              environmentId={null}
-              canShowNativeBrowserView={canShowNativeBrowserView}
-              threadId={panelStateId}
-              onUpdate={updateBrowserTab}
-            />
-          </Suspense>
+          <LazyBrowserTabDeck
+            browserTabs={browserTabs}
+            activeBrowserTabId={activeBrowserTab?.id ?? null}
+            environmentId={null}
+            canShowNativeBrowserView={canShowNativeBrowserView}
+            threadId={panelStateId}
+            onUpdate={updateBrowserTab}
+          />
         );
       return (
-        <Suspense fallback={deck}>
-          <LazyThreadSecondaryPanel
-            activeTab={activeTab}
-            canUseGitUi={false}
-            metadataContent={null}
-            fileTabs={fileTabs}
-            fileTabContent={activeContent}
-            fileTabContentFillsRegion={activeTerminalTab !== null}
-            onFileTabReorder={reorderFileTab}
-            browserDeck={deck}
-            isBrowserTabActive={activeBrowserTab !== null}
-            isOpen={isOpen}
-            fixedTabs={fixedTabs}
-            fixedTabContent={fixedTabContent}
-            fixedTabContentFillsRegion={
-              activeFixedTabRegistration?.layout === "flush"
-            }
-            showConversationCollapseControl={false}
-            showNewTabButton
-            onPanelFocus={() => undefined}
-            onCollapse={hidePanel}
-            onClose={hidePanel}
-            onOpenNewTab={openNewTab}
-            isConversationCollapsed={false}
-            onToggleConversationCollapse={() => undefined}
-            renderAsDrawer={presentation === "drawer"}
-            resizablePanelId={resizablePanelId}
-          />
-        </Suspense>
+        <LazyThreadSecondaryPanel
+          drawerFallback={deck}
+          activeTab={activeTab}
+          canUseGitUi={false}
+          metadataContent={null}
+          fileTabs={fileTabs}
+          fileTabContent={activeContent}
+          fileTabContentFillsRegion={activeTerminalTab !== null}
+          onFileTabReorder={reorderFileTab}
+          browserDeck={deck}
+          isBrowserTabActive={activeBrowserTab !== null}
+          isOpen={isOpen}
+          fixedTabs={fixedTabs}
+          fixedTabContent={fixedTabContent}
+          fixedTabContentFillsRegion={
+            activeFixedTabRegistration?.layout === "flush"
+          }
+          showConversationCollapseControl={false}
+          showNewTabButton
+          onPanelFocus={() => undefined}
+          onCollapse={hidePanel}
+          onClose={hidePanel}
+          onOpenNewTab={openNewTab}
+          isConversationCollapsed={false}
+          onToggleConversationCollapse={() => undefined}
+          renderAsDrawer={presentation === "drawer"}
+          resizablePanelId={resizablePanelId}
+        />
       );
     },
     [
