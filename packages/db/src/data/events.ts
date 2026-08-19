@@ -3244,8 +3244,13 @@ export function getLastStoredProviderThreadId(
   threadId: string,
 ): string | null {
   const latestProviderRow = db
-    .select({ providerThreadId: events.providerThreadId })
+    .select({
+      providerThreadId: events.providerThreadId,
+      recordedEnvironmentId: events.environmentId,
+      currentEnvironmentId: threads.environmentId,
+    })
     .from(events)
+    .innerJoin(threads, eq(threads.id, events.threadId))
     .where(
       sql`${events.threadId} = ${threadId}
         AND ${events.providerThreadId} IS NOT NULL`,
@@ -3257,10 +3262,28 @@ export function getLastStoredProviderThreadId(
     return null;
   }
 
-  // A directory switch changes the runtime cwd, not the provider thread's
-  // conversation identity. The host daemon releases the old runtime owner
-  // before the next turn is dispatched through `thread/resume` with the new
-  // workspace path, so keep the last provider id available across the switch.
+  // The provider CLI keys its own session storage by the cwd it was started
+  // in (e.g. Claude Code stores transcripts under a path derived from the
+  // working directory), so a session recorded under one environment cannot be
+  // resumed once the thread has moved to another: the provider reports "no
+  // conversation found" for a session id it never wrote under the new cwd.
+  // Once the thread's environment has moved on from the one this provider
+  // session was recorded under, don't offer it for resume — let the next turn
+  // start a fresh provider session in the current environment instead.
+  //
+  // Only a *recorded* mismatch disqualifies the id: rows written before
+  // environment tracking existed on this path (or synthetic/legacy rows with
+  // no environmentId) carry `null` here, and a missing value is not evidence
+  // of a switch, so it falls back to the historical "trust the last id"
+  // behavior instead of forcing every such row to start a fresh session.
+  if (
+    latestProviderRow.recordedEnvironmentId !== null &&
+    latestProviderRow.recordedEnvironmentId !==
+      latestProviderRow.currentEnvironmentId
+  ) {
+    return null;
+  }
+
   return latestProviderRow.providerThreadId;
 }
 
