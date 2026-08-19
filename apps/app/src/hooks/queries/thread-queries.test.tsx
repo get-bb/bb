@@ -530,6 +530,80 @@ describe("useChildThreads", () => {
     expect(sdk.threads.list).not.toHaveBeenCalled();
   });
 
+  it("keeps the derived list stable when unrelated sidebar rows change", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const child = makeThreadListEntry({
+      id: "child-1",
+      parentThreadId: "parent-1",
+    });
+    const unrelated = makeThreadListEntry({ id: "other", title: "Before" });
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation([child, unrelated]),
+    );
+    let renders = 0;
+    const { result } = renderHook(
+      () => {
+        renders += 1;
+        return useChildThreads({ enabled: true, parentThreadId: "parent-1" });
+      },
+      { wrapper },
+    );
+    const initialData = result.current.data;
+    const initialRenders = renders;
+    expect(initialData?.map((thread) => thread.id)).toEqual(["child-1"]);
+
+    // Sidebar patches land on every status/title change of any thread; a
+    // consumer as heavy as ThreadDetailView must not re-render for them.
+    act(() => {
+      queryClient.setQueryData(
+        sidebarNavigationQueryKey(),
+        makeSidebarNavigation([child, { ...unrelated, title: "After" }]),
+      );
+    });
+    // Query notifications flush on a macrotask; let them land first.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(result.current.data).toBe(initialData);
+    expect(renders).toBe(initialRenders);
+  });
+
+  it("waits for an in-flight sidebar bootstrap instead of racing it with a list request", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const child = makeThreadListEntry({
+      id: "child-1",
+      parentThreadId: "parent-1",
+    });
+    let resolveBootstrap: (value: SidebarBootstrapResponse) => void = () => {};
+    const bootstrapFetch = queryClient.prefetchQuery({
+      queryKey: sidebarNavigationQueryKey(),
+      queryFn: () =>
+        new Promise<SidebarBootstrapResponse>((resolve) => {
+          resolveBootstrap = resolve;
+        }),
+    });
+
+    const { result } = renderHook(
+      () => useChildThreads({ enabled: true, parentThreadId: "parent-1" }),
+      { wrapper },
+    );
+
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.isLoading).toBe(true);
+    expect(sdk.threads.list).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveBootstrap(makeSidebarNavigation([child]));
+      await bootstrapFetch;
+    });
+    await waitFor(() => {
+      expect(result.current.data).toEqual([child]);
+    });
+    expect(result.current.isLoading).toBe(false);
+    expect(sdk.threads.list).not.toHaveBeenCalled();
+  });
+
   it("falls back to the parent-keyed list request without a sidebar cache", async () => {
     const { wrapper } = createQueryClientTestHarness();
     const child = makeThreadListEntry({

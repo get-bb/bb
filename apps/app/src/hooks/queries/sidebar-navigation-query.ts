@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useCallback } from "react";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { listSidebarNavigationThreads } from "@/hooks/cache-owners/query-cache";
@@ -77,25 +77,51 @@ export function useProjectDisplayName(
   return data.projects.find((project) => project.id === projectId)?.name;
 }
 
+export interface SidebarNavigationThreadSelection<T> {
+  /** `select` applied to every thread row in the cache, or `undefined` while it holds nothing. */
+  data: T | undefined;
+  /**
+   * `true` while the cache is empty but the app shell's bootstrap request is
+   * in flight. Derived surfaces should wait for it rather than issue their own
+   * targeted list request on a cold open (a deep link races the bootstrap).
+   * Stays `false` when nothing is fetching the bootstrap or it already failed,
+   * so surfaces mounted without the shell still get their network fallback.
+   */
+  isBootstrapPending: boolean;
+}
+
 /**
- * Live view of every thread row in the sidebar-navigation cache, or
- * `undefined` while the bootstrap has not loaded. This is a read-only observer:
- * it never triggers the bootstrap fetch itself (the app shell owns that and the
- * realtime subscriptions), it only re-renders when the cached payload changes.
- * Thread-list surfaces that used to issue their own `GET /threads` can derive
- * from this instead and keep a network fallback for the `undefined` case.
+ * Live selection over every thread row in the sidebar-navigation cache. This
+ * is a read-only observer: it never triggers the bootstrap fetch itself (the
+ * app shell owns that and the realtime subscriptions). Thread-list surfaces
+ * that used to issue their own `GET /threads` can derive from this instead and
+ * keep a network fallback for the `undefined` case.
+ *
+ * The bootstrap payload changes on every sidebar patch (any thread's status,
+ * title, or unread badge), so callers pass a memoized `select` and only
+ * re-render when its structurally-shared result changes, not on every patch.
  */
-export function useSidebarNavigationThreadsFromCache():
-  | ThreadListEntry[]
-  | undefined {
-  const { data } = useQuery<SidebarBootstrapResponse>({
+export function useSidebarNavigationThreadSelection<T>(
+  select: (threads: ThreadListEntry[]) => T,
+): SidebarNavigationThreadSelection<T> {
+  const selectFromNavigation = useCallback(
+    (navigation: SidebarBootstrapResponse) =>
+      select(listSidebarNavigationThreads(navigation)),
+    [select],
+  );
+  const result = useQuery<SidebarBootstrapResponse, Error, T>({
     queryKey: sidebarNavigationQueryKey(),
     queryFn: ({ signal }) => fetchSidebarNavigation(signal),
     ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
     enabled: false,
+    select: selectFromNavigation,
   });
-  return useMemo(
-    () => (data ? listSidebarNavigationThreads(data) : undefined),
-    [data],
-  );
+  const data = result.data;
+  // Only read `isFetching` while there is nothing to derive from: react-query
+  // tracks accessed fields, so a populated cache does not re-render callers on
+  // every bootstrap refetch.
+  return {
+    data,
+    isBootstrapPending: data === undefined && result.isFetching,
+  };
 }

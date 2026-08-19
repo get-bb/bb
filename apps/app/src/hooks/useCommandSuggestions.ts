@@ -215,6 +215,9 @@ export function useCommandSuggestions(
         environmentId: prefetchEnvironmentId,
         hostId: prefetchHostId,
       }),
+      // Same no-retry policy as the typeahead observer: a failed warm-up must
+      // not turn into three daemon round-trips behind the user's back.
+      retry: false,
       staleTime: COMMAND_CATALOG_PREFETCH_STALE_TIME_MS,
     });
   }, [

@@ -38,7 +38,7 @@ import {
   getCachedSidebarNavigationThreads,
   getCachedThreadListPlaceholder,
 } from "../cache-owners/query-cache";
-import { useSidebarNavigationThreadsFromCache } from "./sidebar-navigation-query";
+import { useSidebarNavigationThreadSelection } from "./sidebar-navigation-query";
 import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
@@ -278,6 +278,16 @@ function buildThreadMentionCandidates(
   return Array.from(candidatesById.values()).slice(0, limit);
 }
 
+const EMPTY_THREAD_LIST: ThreadListResponse = [];
+
+function selectThreadMentionCandidates(
+  threads: ThreadListEntry[],
+): ThreadListResponse {
+  return buildThreadMentionCandidates(threads, {
+    limit: THREAD_MENTION_CANDIDATE_LIMIT,
+  });
+}
+
 function getThreadMentionCandidatePlaceholder({
   limit,
   queryClient,
@@ -405,9 +415,19 @@ export function useChildThreads({
 }: UseChildThreadsArgs): UseChildThreadsResult {
   const enabled = enabledOption && Boolean(parentThreadId);
   useThreadListRealtimeSubscription({ enabled });
-  const sidebarThreads = useSidebarNavigationThreadsFromCache();
-  const hasSidebarThreads = sidebarThreads !== undefined;
-  const shouldFetch = enabled && !hasSidebarThreads;
+  const selectChildren = useCallback(
+    (threads: ThreadListEntry[]) =>
+      parentThreadId === undefined
+        ? EMPTY_THREAD_LIST
+        : filterProjectThreadSubset(threads, { parentThreadId }),
+    [parentThreadId],
+  );
+  const { data: sidebarChildren, isBootstrapPending } =
+    useSidebarNavigationThreadSelection(selectChildren);
+  // A cold open (deep link) mounts the thread while the app shell's bootstrap
+  // is still in flight; wait for it instead of racing it with a list request.
+  const shouldFetch =
+    enabled && sidebarChildren === undefined && !isBootstrapPending;
   const fallbackQuery = useQuery<ThreadListResponse>({
     queryKey:
       shouldFetch && parentThreadId
@@ -425,13 +445,7 @@ export function useChildThreads({
     enabled: shouldFetch,
     staleTime: THREAD_LIST_STALE_TIME_MS,
   });
-  const derivedChildren = useMemo(
-    () =>
-      enabled && sidebarThreads && parentThreadId
-        ? filterProjectThreadSubset(sidebarThreads, { parentThreadId })
-        : undefined,
-    [enabled, parentThreadId, sidebarThreads],
-  );
+  const derivedChildren = enabled ? sidebarChildren : undefined;
   if (derivedChildren !== undefined) {
     return {
       data: derivedChildren,
@@ -440,11 +454,12 @@ export function useChildThreads({
       isLoading: false,
     };
   }
+  const waitingForBootstrap = enabled && isBootstrapPending;
   return {
     data: fallbackQuery.data,
     isError: fallbackQuery.isError,
-    isFetching: fallbackQuery.isFetching,
-    isLoading: fallbackQuery.isLoading,
+    isFetching: fallbackQuery.isFetching || waitingForBootstrap,
+    isLoading: fallbackQuery.isLoading || waitingForBootstrap,
   };
 }
 
@@ -539,8 +554,10 @@ export function useThreadMentionCandidates({
   const queryClient = useQueryClient();
   const enabled = enabledOption ?? true;
   useThreadListRealtimeSubscription({ enabled });
-  const sidebarThreads = useSidebarNavigationThreadsFromCache();
-  const shouldFetch = enabled && sidebarThreads === undefined;
+  const { data: sidebarCandidates, isBootstrapPending } =
+    useSidebarNavigationThreadSelection(selectThreadMentionCandidates);
+  const shouldFetch =
+    enabled && sidebarCandidates === undefined && !isBootstrapPending;
   const queryKey = shouldFetch
     ? threadListQueryKey(THREAD_MENTION_CANDIDATE_FILTERS)
     : disabledThreadListQueryKey(THREAD_MENTION_CANDIDATE_FILTERS);
@@ -557,15 +574,7 @@ export function useThreadMentionCandidates({
       }),
     staleTime: THREAD_LIST_STALE_TIME_MS,
   });
-  const derivedCandidates = useMemo(
-    () =>
-      enabled && sidebarThreads
-        ? buildThreadMentionCandidates(sidebarThreads, {
-            limit: THREAD_MENTION_CANDIDATE_LIMIT,
-          })
-        : undefined,
-    [enabled, sidebarThreads],
-  );
+  const derivedCandidates = enabled ? sidebarCandidates : undefined;
 
   if (derivedCandidates !== undefined) {
     return {
@@ -575,11 +584,12 @@ export function useThreadMentionCandidates({
       isLoading: false,
     };
   }
+  const waitingForBootstrap = enabled && isBootstrapPending;
   return {
     data: threadsQuery.data,
     isError: threadsQuery.isError,
-    isFetching: threadsQuery.isFetching,
-    isLoading: threadsQuery.isLoading,
+    isFetching: threadsQuery.isFetching || waitingForBootstrap,
+    isLoading: threadsQuery.isLoading || waitingForBootstrap,
   };
 }
 

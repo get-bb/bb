@@ -1318,6 +1318,7 @@ export function NewThreadComposer({
       handleClearBranch,
       handleCreateBranch,
       handleCreateBranchFrom,
+      handleEditorFocus,
       handleModelChange,
       handlePermissionChange,
       handleProjectChange,
