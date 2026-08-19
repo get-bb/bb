@@ -23,7 +23,9 @@ function createHarnessApp(): Hono {
   );
   app.get("/api/v1/large", (context) => context.json(LARGE_PAYLOAD));
   app.get("/api/v1/small", (context) => context.json(SMALL_PAYLOAD));
-  app.get("/api/v1/plugins/demo/http/stream", () => {
+  // Hono's `/http/*` also answers the bare `/http` path, as the real plugin
+  // wire route does.
+  app.get("/api/v1/plugins/demo/http/*", () => {
     let pushed = false;
     const body = new ReadableStream<Uint8Array>({
       pull(controller) {
@@ -95,7 +97,11 @@ describe("API JSON compression", () => {
 
   it("does not buffer plugin http handlers or internal routes", async () => {
     const app = createHarnessApp();
-    for (const path of ["/api/v1/plugins/demo/http/stream", "/internal/tool"]) {
+    for (const path of [
+      "/api/v1/plugins/demo/http/stream",
+      "/api/v1/plugins/demo/http",
+      "/internal/tool",
+    ]) {
       const response = await app.request(path, {
         headers: { "accept-encoding": "gzip, br" },
       });

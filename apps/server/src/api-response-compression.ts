@@ -48,7 +48,10 @@ const API_RESPONSE_ENCODINGS = [
  * streaming body open on purpose, so neither may be buffered here; they keep
  * the streaming gzip fallback.
  */
-const BUFFERED_API_JSON_PATH_PATTERN = /^\/api\/v1\/(?!plugins\/[^/]+\/http\/)/u;
+// Mirrors PLUGIN_WIRE_HTTP_PATH in server.ts: Hono's `/http/*` route also
+// answers the bare `/http` path, so that one must not be buffered either.
+const BUFFERED_API_JSON_PATH_PATTERN =
+  /^\/api\/v1\/(?!plugins\/[^/]+\/http(?:\/|$))/u;
 const NO_TRANSFORM_PATTERN = /(?:^|,)\s*no-transform\s*(?:,|$)/iu;
 
 function isBufferedApiJsonResponse(context: Context): boolean {
