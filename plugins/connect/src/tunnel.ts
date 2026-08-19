@@ -461,12 +461,14 @@ export class ConnectTunnel {
     this.tunnel = tunnel;
     let connectedAt = 0;
     let retryScheduled = false;
+    let handshakeDeadline: ReturnType<typeof setTimeout> | undefined;
 
     const scheduleReconnect = (detail: string): void => {
       if (retryScheduled || this.stopped || this.tunnel !== tunnel) {
         return;
       }
       retryScheduled = true;
+      clearTimeout(handshakeDeadline);
       this.connected = false;
       this.session?.dispose();
       this.session = undefined;
@@ -488,10 +490,22 @@ export class ConnectTunnel {
       this.publish();
     };
 
+    // `ws`'s handshakeTimeout is a socket idle timeout: a peer that drips
+    // header bytes resets it and can hold this dial in CONNECTING forever.
+    // Enforce an absolute per-dial deadline as well.
+    handshakeDeadline = setTimeout(() => {
+      if (retryScheduled || this.stopped || this.tunnel !== tunnel) return;
+      this.lastError = `can't reach ${connectApexHost(credential.serverUrl)} — handshake timed out`;
+      scheduleReconnect(this.lastError);
+      tunnel.terminate();
+    }, TUNNEL_HANDSHAKE_TIMEOUT_MS);
+    handshakeDeadline.unref?.();
+
     tunnel.on("open", () => {
       if (retryScheduled || this.stopped || this.tunnel !== tunnel) {
         return;
       }
+      clearTimeout(handshakeDeadline);
       connectedAt = Date.now();
       this.connected = true;
       this.lastError = null;

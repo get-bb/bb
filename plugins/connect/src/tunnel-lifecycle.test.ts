@@ -8,7 +8,9 @@ interface FakeWebSocketOptions {
 }
 
 interface FakeTunnelSocket {
+  readyState: number;
   emit(eventName: string, ...args: unknown[]): boolean;
+  terminate(): void;
 }
 
 const fakeWebSockets = vi.hoisted(() => ({
@@ -162,6 +164,33 @@ describe("ConnectTunnel socket lifecycle", () => {
       expect(fakeWebSockets.options[0]!.handshakeTimeout).toBeGreaterThan(0);
     } finally {
       tunnel.stop();
+      await fakeHost.harness.dispose();
+    }
+  });
+
+  it("retries when the handshake never completes within the deadline", async () => {
+    vi.useFakeTimers();
+    const { fakeHost, tunnel } = createTunnelFixture();
+
+    try {
+      await tunnel.start();
+      const socket = fakeWebSockets.instances[0]!;
+      const terminate = vi.spyOn(socket, "terminate");
+
+      // No open/error/close arrives: a peer that drips header bytes keeps
+      // ws's idle handshakeTimeout from firing. The absolute deadline must.
+      await vi.advanceTimersByTimeAsync(15_000);
+
+      expect(terminate).toHaveBeenCalledOnce();
+      expect(tunnel.status().lastError).toContain("handshake timed out");
+      const nextRetryAt = tunnel.status().nextRetryAt;
+      expect(nextRetryAt).not.toBeNull();
+
+      await vi.advanceTimersByTimeAsync(nextRetryAt! - Date.now());
+      expect(fakeWebSockets.instances).toHaveLength(2);
+    } finally {
+      tunnel.stop();
+      vi.useRealTimers();
       await fakeHost.harness.dispose();
     }
   });
