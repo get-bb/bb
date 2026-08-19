@@ -3,11 +3,19 @@ import type { PluginAttentionEntry } from "@bb/server-contract";
 import { usePluginAttention as usePluginAttentionQuery } from "@/hooks/queries/plugin-settings-queries";
 
 /**
- * Longest `statusDetail` the sidebar glyph quotes verbatim. The server's
- * engines message ("requires bb >=0.38.0 <0.39.0, this is 0.39.0") fits; a
- * factory stack trace does not and falls back to the status word.
+ * Longest `statusDetail` the sidebar glyph quotes verbatim. The server caps
+ * the summary detail at `PLUGIN_ATTENTION_DETAIL_MAX_LENGTH` (200); a
+ * tooltip wants less, so a longer detail falls back to the status word.
  */
 const SHORT_DETAIL_MAX_LENGTH = 80;
+
+/**
+ * The server's `engines.bb` mismatch detail ("requires bb >=0.38.0 <0.39.0,
+ * this is 0.39.0"). `incompatible` also covers a plugin SDK range mismatch
+ * ("requires bb plugin SDK …") and a broken packaged artifact, so only this
+ * shape may be phrased as a conflict with the running bb version.
+ */
+const BB_ENGINE_MISMATCH_DETAIL = /^requires bb (?!plugin SDK)/u;
 
 function pluginDisplayName(plugin: PluginAttentionEntry): string {
   return plugin.name ?? plugin.id;
@@ -15,9 +23,9 @@ function pluginDisplayName(plugin: PluginAttentionEntry): string {
 
 /**
  * Tooltip / accessible name for the sidebar warning glyph. One plugin is
- * named with its reason ("Notify is incompatible with bb 0.39.0", or the
- * server's short `statusDetail` for the other statuses); several plugins
- * collapse to a count, and the Installed plugins view lists each one.
+ * named with its reason ("Notify is incompatible with bb 0.39.0" for an
+ * engines mismatch, otherwise the server's short `statusDetail`); several
+ * plugins collapse to a count, and the Installed plugins view lists each one.
  */
 export function pluginAttentionLabel(
   plugins: readonly PluginAttentionEntry[],
@@ -28,11 +36,20 @@ export function pluginAttentionLabel(
   }
   const plugin = plugins[0]!;
   const name = pluginDisplayName(plugin);
-  if (plugin.status === "incompatible" && bbVersion !== undefined) {
+  const detail = plugin.statusDetail?.trim() ?? "";
+  if (
+    plugin.status === "incompatible" &&
+    bbVersion !== undefined &&
+    BB_ENGINE_MISMATCH_DETAIL.test(detail)
+  ) {
     return `${name} is incompatible with bb ${bbVersion}`;
   }
-  const detail = plugin.statusDetail?.trim();
-  if (detail && detail.length <= SHORT_DETAIL_MAX_LENGTH) {
+  if (plugin.status === "incompatible") {
+    return detail.length > 0 && detail.length <= SHORT_DETAIL_MAX_LENGTH
+      ? `${name} is incompatible: ${detail}`
+      : `${name} is incompatible`;
+  }
+  if (detail.length > 0 && detail.length <= SHORT_DETAIL_MAX_LENGTH) {
     return `${name} is not running: ${detail}`;
   }
   return `${name} is not running (${plugin.status})`;

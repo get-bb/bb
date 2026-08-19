@@ -19,6 +19,25 @@ describe("pluginAttentionLabel", () => {
     );
   });
 
+  it("does not blame the bb version for an SDK or artifact incompatibility", () => {
+    expect(
+      pluginAttentionLabel(
+        [
+          entry({
+            statusDetail:
+              "requires bb plugin SDK >=2.0.0, running SDK is 1.4.0",
+          }),
+        ],
+        "0.39.0",
+      ),
+    ).toBe(
+      "Notify is incompatible: requires bb plugin SDK >=2.0.0, running SDK is 1.4.0",
+    );
+    expect(
+      pluginAttentionLabel([entry({ statusDetail: "x".repeat(200) })], "0.39.0"),
+    ).toBe("Notify is incompatible");
+  });
+
   it("falls back to the id when the manifest never parsed", () => {
     expect(
       pluginAttentionLabel(

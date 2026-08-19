@@ -238,25 +238,40 @@ export const PLUGIN_ATTENTION_STATUSES = [
   "error",
   "missing",
 ] as const satisfies readonly PluginRuntimeStatus[];
+export const pluginAttentionStatusSchema = z.enum(PLUGIN_ATTENTION_STATUSES);
+export type PluginAttentionStatus = z.infer<typeof pluginAttentionStatusSchema>;
+
+export function isPluginAttentionStatus(
+  status: PluginRuntimeStatus,
+): status is PluginAttentionStatus {
+  return (PLUGIN_ATTENTION_STATUSES as readonly PluginRuntimeStatus[]).includes(
+    status,
+  );
+}
 
 export function pluginNeedsAttention(plugin: {
   enabled: boolean;
   status: PluginRuntimeStatus;
 }): boolean {
-  return (
-    plugin.enabled &&
-    (PLUGIN_ATTENTION_STATUSES as readonly PluginRuntimeStatus[]).includes(
-      plugin.status,
-    )
-  );
+  return plugin.enabled && isPluginAttentionStatus(plugin.status);
 }
+
+/**
+ * Longest `statusDetail` the attention summary carries. The engines message
+ * ("requires bb >=0.38.0 <0.39.0, this is 0.39.0") fits with room to spare; a
+ * factory stack trace does not, and the summary is polled by every app page
+ * and by `bb status`, so the server cuts it here and keeps the full text in
+ * the plugin log and in the full plugin list.
+ */
+export const PLUGIN_ATTENTION_DETAIL_MAX_LENGTH = 200;
 
 export const pluginAttentionEntrySchema = z.object({
   id: z.string(),
   /** Manifest display name; null when the manifest never parsed. */
   name: z.string().nullable(),
-  status: pluginRuntimeStatusSchema,
-  statusDetail: z.string().nullable(),
+  /** Only the statuses that need attention; the server filters the rest. */
+  status: pluginAttentionStatusSchema,
+  statusDetail: z.string().max(PLUGIN_ATTENTION_DETAIL_MAX_LENGTH).nullable(),
 });
 export type PluginAttentionEntry = z.infer<typeof pluginAttentionEntrySchema>;
 
