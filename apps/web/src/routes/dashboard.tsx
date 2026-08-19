@@ -10,9 +10,9 @@ import {
 import { MAX_PER_ACCOUNT } from "@bb/connect-db";
 import type { HandleValidationError, LabelAvailability } from "@bb/connect-db";
 import appCss from "../styles.css?url";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@bb/shared-ui/button";
+import { Input } from "@bb/shared-ui/input";
+import { Label } from "@bb/shared-ui/label";
 import { cn } from "@/lib/utils";
 import {
   checkAvailabilityFn,

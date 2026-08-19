@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @source "../..";
+@source "../../../../../packages/shared-ui/src";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -35,6 +36,7 @@
   --color-warning: var(--warning);
   --color-warning-text: var(--warning-text);
   --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --color-diff-added: var(--diff-added);
   /* GitHub's merged-PR purple — the one chromatic exception in the PR state
    * dots, matching the universal merged-PR color language. */
@@ -48,10 +50,13 @@
   --color-ring: var(--ring);
   --color-surface-recessed: var(--surface-recessed);
   --color-surface-recessed-solid: var(--surface-recessed-solid);
+  --color-surface-recessed-soft-solid: var(--surface-recessed-soft-solid);
   --color-surface-raised: var(--surface-raised);
+  --color-surface-raised-solid: var(--surface-raised-solid);
   --color-surface-scrim: var(--surface-scrim);
   --color-surface-destructive: var(--surface-destructive);
   --color-surface-destructive-border: var(--surface-destructive-border);
+  --color-surface-attention: var(--surface-attention);
   --color-surface-selected: var(--surface-selected);
   --color-surface-selected-border: var(--surface-selected-border);
   --color-sidebar: var(--sidebar);
@@ -363,6 +368,7 @@
   --warning: oklch(0.7 0.16 50);
   --warning-text: oklch(0.55 0.14 50);
   --success: oklch(0.7 0.15 155);
+  --success-foreground: color-mix(in oklch, var(--success) 45%, var(--ink));
   --diff-added: oklch(0.4 0.13 163);
   --pr-merged: oklch(0.53 0.2 295);
   --diff-removed: oklch(0.4 0.17 28);
@@ -382,7 +388,13 @@
   /* Opaque twin of --surface-recessed over the page bg, for overlays (e.g. the
      queued-list scroll fades) that must not double the translucent tint. */
   --surface-recessed-solid: color-mix(in oklab, var(--ink) 6%, var(--canvas));
+  --surface-recessed-soft-solid: color-mix(
+    in oklch,
+    var(--ink) 4.2%,
+    var(--canvas)
+  );
   --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
+  --surface-raised-solid: color-mix(in oklab, var(--ink) 2.5%, var(--canvas));
   --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
   --surface-destructive: color-mix(
     in oklab,
@@ -394,6 +406,7 @@
     var(--destructive) 25%,
     transparent
   );
+  --surface-attention: color-mix(in oklab, var(--attention) 14%, transparent);
   --surface-selected: color-mix(in oklab, var(--primary) 16%, transparent);
   --surface-selected-border: color-mix(
     in oklab,
@@ -561,6 +574,7 @@
   --warning: oklch(0.75 0.16 50);
   --warning-text: oklch(0.75 0.16 50);
   --success: oklch(0.74 0.15 155);
+  --success-foreground: color-mix(in oklch, var(--success) 45%, var(--ink));
   --diff-added: oklch(0.77 0.17 163);
   --diff-removed: oklch(0.72 0.19 22);
   --pr-merged: oklch(0.68 0.18 295);
@@ -577,7 +591,13 @@
   /* Opaque twin of --surface-recessed over the page bg, for overlays (e.g. the
      queued-list scroll fades) that must not double the translucent tint. */
   --surface-recessed-solid: color-mix(in oklab, var(--ink) 6%, var(--canvas));
+  --surface-recessed-soft-solid: color-mix(
+    in oklch,
+    var(--ink) 4.2%,
+    var(--canvas)
+  );
   --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
+  --surface-raised-solid: color-mix(in oklab, var(--ink) 2.5%, var(--canvas));
   --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
   --surface-destructive: color-mix(
     in oklab,
@@ -589,6 +609,7 @@
     var(--destructive) 30%,
     transparent
   );
+  --surface-attention: color-mix(in oklab, var(--attention) 12%, transparent);
   --surface-selected: color-mix(in oklab, var(--primary) 12%, transparent);
   --surface-selected-border: color-mix(
     in oklab,
