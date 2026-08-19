@@ -557,6 +557,105 @@ the same plugin again.
 4. Verify the owner renderer remains independent of provider precedence and
    cannot recurse through file-opener resolution.
 
+## `experimental_SourceCode` / `experimental_Diff` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Two host-owned renderers for supplied code content.
+`experimental_SourceCode` takes source text plus a path and owns syntax
+highlighting, gutters, wrapping, highlighted-line presentation, and the live BB
+code theme. `experimental_Diff` takes a single-file patch plus a path and owns
+patch normalization (a patch without a `diff --git` header is completed from
+`path`, which is what makes GitHub's REST patches and bare `@@` hunks render),
+syntax highlighting, unified/split presentation, gutters, and the same live
+theme. Patch content that will not parse degrades to plain monospace text.
+
+These are the same components BB's own file preview, timeline file diffs, and
+environment diff panel render through, so an active
+`experimental_sourceCodeRenderer` / `experimental_diffRenderer` replacement
+covers first-party surfaces and plugin surfaces at once. Fetching files or git
+data, multi-file lists, tabs, card headers, git actions, and add-to-prompt
+behavior deliberately stay with the caller.
+
+**Audit before stabilizing.**
+
+1. **Prop surface.** Confirm content + path + presentation is the right minimal
+   contract, and decide whether `className` belongs in it at all — a
+   replacement never receives it today, so a `className` that only styles BB's
+   renderer is a quiet inconsistency.
+2. **Diff input shape.** Confirm single-file patch text is the right currency.
+   Multi-file patches, `processFile`-style pre-parsed input, and per-hunk
+   rendering are all things callers have wanted; none are expressible now.
+3. **Language selection.** Highlighting is inferred from `path` only. Confirm
+   an explicit language override is not needed before the names freeze, and
+   that no implementation-library language union leaks in when it is added.
+4. **Worker pool.** Highlighting needs BB's Pierre worker pool from React
+   context. Thread panes and plugin nav panels provide one; homepage and
+   settings sections do not, so a diff rendered there is unhighlighted rather
+   than broken. Decide whether the host should provide the pool at the
+   component instead of the surface.
+5. **Selection to chat.** BB's own surfaces pass a selection-to-composer
+   handler that the public component withholds. Confirm plugins should reach
+   that through `useComposer()` rather than a renderer prop.
+6. **Size and virtualization.** Neither component caps input size or
+   virtualizes. Audit against a plugin that renders a very large file or patch.
+
+## `app.slots.experimental_sourceCodeRenderer` / `app.slots.experimental_diffRenderer` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Replaces BB's source or diff renderer everywhere it draws
+supplied content — the native file preview, timeline file diffs, the
+environment diff panel's file bodies, and every plugin calling the public
+components. Like `experimental_threadList` these slots are **exclusive**: one
+renderer each. Registering activates it while the plugin is enabled; if several
+are registered the first in slot snapshot order wins (plugin ids sorted, then
+each plugin's registration order). There are deliberately no scope, extension,
+or enabled-by-setting filters on the registration — conditional behavior
+belongs in the component, which decides per call from its semantic props and
+renders `experimental_Original` when it does not want the render.
+
+Fallbacks: no registration renders BB's renderer; a disabled or uninstalled
+plugin reveals the next registration or BB's renderer; a component that throws
+renders BB's renderer through the slot's crash fallback.
+
+**Audit before stabilizing.**
+
+1. **Arbitration.** Unlike the thread list there is no user-facing pin under
+   Settings. Confirm automatic-only selection is right for a renderer, or add
+   the same pinning model before stabilizing.
+2. **Crash signal.** The thread list toasts when a crash swaps the sidebar
+   back. These slots fall back silently, because a diff card is not a whole
+   sidebar. Confirm silence is right, especially when many cards crash at once.
+3. **Scope.** One registration replaces BB's own surfaces and other plugins'
+   surfaces alike. Confirm a plugin should be able to change how *another*
+   plugin's `experimental_Diff` renders, and whether a first-party-only or
+   own-surfaces-only scope is ever needed.
+4. **Capability parity.** A replacement cannot implement context expansion,
+   selection-to-chat, or the deleted-file gate, because those inputs are
+   host-only. Confirm that asymmetry is acceptable, or promote the ones that
+   should be part of the contract.
+5. **Two slots or one.** Confirm source and diff should stay separately
+   replaceable rather than one "code renderer" registration.
+
+## `PluginSourceCodeRendererProps.experimental_Original` / `PluginDiffRendererProps.experimental_Original` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Supplies a renderer replacement with BB's renderer bound to
+the current render. Rendering it delegates without re-entering replacement
+resolution; the host renders the same component as the crash fallback. BB's
+renderers are behind `lazy()`, so a replacement that never delegates never
+downloads them.
+
+**Audit before stabilizing.**
+
+1. Confirm a no-props bound component stays the right delegation contract as
+   the host-only inputs (pre-parsed files, selection-to-chat) grow.
+2. Verify delegation preserves everything the owner path does on BB's own
+   surfaces — context expansion, line selection, highlighted-line scrolling —
+   when the replacement delegates from inside a first-party card.
+3. Confirm the lazy boundary stays lazy: a replacement that never delegates
+   must not pull BB's renderer chunk, and the Suspense fallback must not
+   flash on the owner path.
+4. Decide whether this field should stabilize together with the shared
+   replacement primitive that `PluginThreadListProps` and
+   `PluginFileOpenerProps` also use, rather than per surface.
+
 ## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Gives a plugin component the sidebar's live thread view and

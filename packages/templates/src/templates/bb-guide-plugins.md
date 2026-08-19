@@ -535,10 +535,13 @@ components/ui/ and `npx shadcn add @bb/<name>` pulls more from the BB
 component registry (the full stock shadcn set, version-matched to the
 running BB via the pinned ref in components.json). `import { toast } from
 "sonner"` reaches the host toaster; react, the portaling radix families,
-sonner, vaul, @pierre/diffs (the app's syntax-highlighted diff
-renderer), and the host-resident clsx, tailwind-merge, and
-class-variance-authority libraries are runtime-shimmed (never bundled),
-everything else (zod included) bundles from the plugin's node_modules (`npm install` for authors; BB installs
+sonner, vaul, @pierre/diffs, and the host-resident clsx, tailwind-merge, and
+class-variance-authority libraries are runtime-shimmed (never bundled) —
+though source and diffs should go through the host's own
+experimental_SourceCode / experimental_Diff components rather than
+@pierre/diffs directly, so bb owns patch normalization, syntax
+highlighting, and the live code theme.
+Everything else (zod included) bundles from the plugin's node_modules (`npm install` for authors; BB installs
 release packages with their declared production dependencies). A crashing slot collapses to a
 "plugin <id> crashed" chip without
 touching the rest of the app. Installed plugins and their declared settings

@@ -1682,6 +1682,33 @@ projectId }` (nullable fields) and `path` follows the source (workspace:
   always use the built-in preview, and a removed/disabled opener degrades
   back to it. Pair with `bb.sdk.files` (rpc from your server) to load and
   CAS-save the content.
+- `experimental_sourceCodeRenderer` / `experimental_diffRenderer` →
+  replace bb's source or diff renderer everywhere it draws supplied content:
+  the native file preview, timeline file diffs, the environment diff panel's
+  file bodies, and every plugin calling the host components. Registration:
+  `{ id, title, description?, component }`. Like `experimental_threadList`
+  each slot is **exclusive** — one renderer at a time, first in slot order
+  wins, and a missing, disabled, or crashing replacement falls back to bb's
+  renderer. Installing and enabling the plugin activates it; there are no
+  scope or extension filters on the registration, so conditional behavior
+  belongs in the component. Source props:
+  `{ content, path, overflow, highlightedLines, experimental_Original }`;
+  diff props:
+  `{ patch, path, view, overflow, showLineNumbers, experimental_Original }`.
+  Every value is already resolved. Render `experimental_Original` (bb's
+  renderer, bound to this call) to delegate without re-entering resolution —
+  behind a plugin setting, by language, over a size threshold:
+
+  ```tsx
+  app.slots.experimental_diffRenderer({
+    id: "compact",
+    title: "Compact diffs",
+    component: ({ patch, path, experimental_Original: Original }) =>
+      patch.length > 20_000 ? <Original /> : <MyDiff patch={patch} path={path} />,
+  });
+  ```
+
+  Experimental: see `docs/api_to_audit.md`.
 - `messageDirective` → `{ attributes, source, message,
 openWorkspaceFile }` — register a leaf
   assistant-message directive. Registration:
@@ -1772,6 +1799,32 @@ className?, leadingContent?, messageActions? }` —
   host owns timeline loading, streaming, drafts, send/queue/steer/stop,
   attachments, execution controls, pending interactions, and read tracking —
   do not proxy thread data through your own RPC or rebuild the composer.
+- `experimental_SourceCode` — bb's source viewer. Props:
+  `{ content, path, overflow?, highlightedLines?, className? }` — `path`
+  drives language detection, `overflow` is `"scroll"` (default) or `"wrap"`,
+  and `highlightedLines` is a 1-based inclusive `{ start, end }` (default
+  null). bb owns syntax highlighting, gutters, and the live code theme.
+- `experimental_Diff` — bb's diff viewer. Props:
+  `{ patch, path, view?, overflow?, showLineNumbers?, className? }` —
+  `patch` is a unified patch for exactly ONE file and `view` is `"unified"`
+  (default) or `"split"`. bb normalizes the patch, so a GitHub REST patch or
+  a bare `@@` hunk works without synthesizing a `diff --git` header
+  yourself; unparseable content degrades to plain monospace text. Reference:
+  `plugins/github/app.tsx`.
+
+  Alias both on import — JSX reads a lowercase-initial name as an intrinsic
+  element:
+
+  ```tsx
+  import { experimental_Diff as Diff } from "@get-bb/plugin-sdk/app";
+
+  <Diff patch={file.patch} path={file.path} />;
+  ```
+
+  Highlighting uses the host's shared worker pool from React context. Thread
+  panels and plugin nav panels have one; homepage and settings sections do
+  not, so code there renders unhighlighted rather than broken.
+  Experimental: see `docs/api_to_audit.md`.
 - `Markdown` — bb's chat-message markdown renderer (same typography,
   spacing, and code styling as timeline messages). Props:
   `{ content, className? }`. Use it wherever plugin UI quotes or previews
@@ -1973,16 +2026,12 @@ only `definePluginApp` + the hooks):
   its namespace would bloat the host's boot payload) — it bundles from your
   `node_modules` in both `app.tsx` and `server.ts`, so keep it in
   `dependencies`.
-- Syntax-highlighted diffs: `parsePatchFiles` from `@pierre/diffs` +
-  `FileDiff` from `@pierre/diffs/react` render patches exactly like the
-  app's own diff panel (the host provides the highlighting worker pool via
-  React context on every plugin surface; add `@pierre/diffs` to
-  devDependencies for types). Pass
-  `theme: { dark: document.documentElement.dataset.bbCodeThemeDark,
-light: document.documentElement.dataset.bbCodeThemeLight }` so a custom
-  UI theme's Pierre JSON applies. Synthesize a `diff --git a/<p> b/<p>`
-  header when your patch source (e.g. the GitHub REST API) omits it — see
-  `plugins/github/app.tsx`.
+- Source and diffs: use the host components
+  `experimental_SourceCode` / `experimental_Diff` (see "Host components"),
+  NOT a direct
+  `@pierre/diffs` import. The shim stays for compatibility, but hand-rolled
+  Pierre usage means owning patch normalization and the code theme yourself,
+  and it opts you out of any installed renderer replacement.
 - Everything else bundles from YOUR `node_modules` (hugeicons, lucide,
   non-portal radix, zod, form/calendar/chart libs): run `npm install`
   after adding components (`bb plugin new` runs the first one; `shadcn add`

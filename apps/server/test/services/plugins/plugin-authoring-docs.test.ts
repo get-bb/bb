@@ -8,6 +8,7 @@ import {
   type PluginAppSlots,
   type PluginContentScriptContext,
   type PluginContentScriptRegistration,
+  type PluginDiffRendererProps,
   type PluginFileOpenerProps,
   type PluginHomepageSectionProps,
   type PluginHttpAuthMode,
@@ -22,6 +23,7 @@ import {
   type PluginSettingDescriptor,
   type PluginSettingsSectionProps,
   type PluginSidebarFooterActionProps,
+  type PluginSourceCodeRendererProps,
   type PluginThreadHeaderActionProps,
   type PluginThreadListProps,
   type PluginSidebarFooterActionRegistration,
@@ -162,6 +164,8 @@ type SlotPropsByName = {
   experimental_threadList: PluginThreadListProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   fileOpener: PluginFileOpenerProps;
+  experimental_sourceCodeRenderer: PluginSourceCodeRendererProps;
+  experimental_diffRenderer: PluginDiffRendererProps;
   messageDirective: PluginMessageDirectiveProps;
   messageAction: PluginMessageActionContext;
   // Registration-object slot: the component receives only className, so the
@@ -240,6 +244,21 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "isCompactViewport",
   ],
   fileOpener: ["path", "source", "experimental_Original"],
+  experimental_sourceCodeRenderer: [
+    "content",
+    "path",
+    "overflow",
+    "highlightedLines",
+    "experimental_Original",
+  ],
+  experimental_diffRenderer: [
+    "patch",
+    "path",
+    "view",
+    "overflow",
+    "showLineNumbers",
+    "experimental_Original",
+  ],
   messageDirective: ["attributes", "source", "message", "openWorkspaceFile"],
   messageAction: ["threadId", "message", "selectedText", "openPanel"],
   experimental_providerIcon: ["providerId", "icon"],
