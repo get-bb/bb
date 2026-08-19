@@ -578,7 +578,15 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    child threads and running threads that `isUnreadDoneThread` excludes by
    design. Confirm that is the more useful primitive for a replaced list.
 4. **Scale.** Confirm one array of every thread is right at ten thousand
-   threads, versus a paged or windowed read.
+   threads, versus a paged or windowed read. Today the host memoizes each
+   thread DTO per unchanged `ThreadListEntry` (React Query structurally shares
+   the payload), so a refetch that changes one thread hands plugins the same
+   objects for every other thread and a `memo`/compiler-memoized row bails
+   out; the array itself is new whenever the payload changes. Plugin lists
+   are still expected to window their rows (the built-in sidebar does): the
+   host does not cap the array, and mounting one row per thread on a phone is
+   the plugin's cost. Decide whether that expectation should be enforced by
+   the contract (paged/windowed read) before stabilizing.
 5. **Draft indicators.** `indicator` never reports "draft" or "working-draft",
    because an unsubmitted draft is per-composer client state the host reads per
    row. An idle unread thread holding a draft therefore reads as

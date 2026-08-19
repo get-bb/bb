@@ -33,6 +33,31 @@ const EMPTY_PROJECTS: readonly PluginSidebarProject[] = [];
 const EMPTY_ENTRIES: ReadonlyMap<string, ThreadListEntry> = new Map();
 
 /**
+ * Per-entry DTO memo. React Query structurally shares the sidebar payload, so
+ * an unchanged `ThreadListEntry` keeps its identity across refetches; mapping
+ * it again produced a fresh DTO per thread per sidebar update, which defeats
+ * `memo`/compiler bailouts in every plugin row. The DTO also depends on the
+ * host-name map, so a cached DTO is reused only for the same map instance.
+ */
+const pluginSidebarThreadByEntry = new WeakMap<
+  ThreadListEntry,
+  { hostNamesById: ReadonlyMap<string, string>; thread: PluginSidebarThread }
+>();
+
+function toPluginSidebarThreadCached(
+  entry: ThreadListEntry,
+  hostNamesById: ReadonlyMap<string, string>,
+): PluginSidebarThread {
+  const cached = pluginSidebarThreadByEntry.get(entry);
+  if (cached !== undefined && cached.hostNamesById === hostNamesById) {
+    return cached.thread;
+  }
+  const thread = toPluginSidebarThread(entry, hostNamesById);
+  pluginSidebarThreadByEntry.set(entry, { hostNamesById, thread });
+  return thread;
+}
+
+/**
  * The sidebar's live thread view for plugin surfaces.
  *
  * Deliberately built on `useSidebarNavigation`, the same query the built-in
@@ -69,7 +94,7 @@ export function useSidebarThreads(): PluginSidebarThreadsState {
       status: "ready",
       threads: allProjects.flatMap((project) =>
         project.threads.map((thread) =>
-          toPluginSidebarThread(thread, hostNamesById),
+          toPluginSidebarThreadCached(thread, hostNamesById),
         ),
       ),
       projects: allProjects.map((project) => ({

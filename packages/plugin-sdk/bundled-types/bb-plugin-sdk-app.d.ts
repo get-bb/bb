@@ -1553,6 +1553,13 @@ interface PluginSdkApp {
      * The sidebar's live thread view (see {@link PluginSidebarThreadsState}).
      * Reads the host's own cache and realtime subscriptions, so it costs no
      * extra request and updates exactly when the built-in sidebar does.
+     *
+     * `threads` is one array of every visible thread and is not capped. Thread
+     * objects keep their identity across updates while the underlying entry is
+     * unchanged, so a memoized row re-renders only when its own thread changed;
+     * the array itself is new on every update. Window your rows (render only
+     * what is on screen) as the built-in sidebar does — a list that mounts one
+     * row per thread is slow on phones with many threads.
      * Experimental: see docs/api_to_audit.md.
      */
     experimental_useSidebarThreads(): PluginSidebarThreadsState;
