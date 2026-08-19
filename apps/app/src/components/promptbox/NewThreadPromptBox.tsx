@@ -145,6 +145,8 @@ export interface NewThreadProjectConfig {
   allowNoProject?: boolean;
   createProject?: ProjectSelectorCreateProjectConfig;
   disabled?: boolean;
+  /** The project list is still loading; the picker shows a loading label. */
+  isLoading?: boolean;
   /** Keep the chevron while `disabled`, for transient locks (submitting,
    * uploading) that must not change the trigger's width. */
   showChevronWhenDisabled?: boolean;
@@ -432,6 +434,7 @@ export const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
               allowNoProject={project.allowNoProject ?? false}
               createProject={project.createProject}
               disabled={project.disabled}
+              isLoading={project.isLoading}
               showChevronWhenDisabled={project.showChevronWhenDisabled}
               className="shrink-0"
             />

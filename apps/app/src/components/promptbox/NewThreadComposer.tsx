@@ -134,7 +134,6 @@ export interface NewThreadComposerState {
   isProjectless: boolean;
   projects: readonly SidebarProject[] | undefined;
   sidebarNavigation: SidebarBootstrapResponse | undefined;
-  sidebarNavigationSettled: boolean;
   sidebarNavigationError: boolean;
   currentProject: SidebarProject | undefined;
   projectSources: SidebarProject["sources"];
@@ -318,6 +317,12 @@ export function NewThreadComposer({
   const promptBoxRef = useRef<PromptBoxHandle>(null);
 
   const sidebarNavigationQuery = useSidebarNavigation();
+  // Until the sidebar bootstrap settles, `projectId` below is only the
+  // requested candidate: it may not exist and would then fall back to the
+  // personal project. Queries keyed by projectId wait for the settled value
+  // so a cold start does not fetch (and cache) data for the wrong project.
+  const sidebarNavigationSettled =
+    sidebarNavigationQuery.isSuccess || sidebarNavigationQuery.isError;
   const projects = useMemo(
     () => sidebarNavigationQuery.data?.projects.map(stripProjectThreads),
     [sidebarNavigationQuery.data],
@@ -384,8 +389,10 @@ export function NewThreadComposer({
     return navigation.projects.find((project) => project.id === projectId)
       ?.threads;
   }, [isProjectless, projectId, sidebarNavigationQuery.data]);
+  // While the bootstrap is still in flight the picker shows a loading label
+  // and no per-project request is issued (see B28).
   const reuseThreadOptionsLoading =
-    projectThreads === undefined && sidebarNavigationQuery.isLoading;
+    projectThreads === undefined && !sidebarNavigationSettled;
   const reuseThreadOptions = useMemo(
     () => buildReuseThreadOptions(projectThreads ?? [], worktreeHostNameById),
     [projectThreads, worktreeHostNameById],
@@ -913,7 +920,7 @@ export function NewThreadComposer({
   const promptHistoryEnabled = usePromptHistoryEnabled();
   const { data: projectPromptHistory = [] } = useProjectPromptHistory(
     projectId,
-    { enabled: promptHistoryEnabled },
+    { enabled: promptHistoryEnabled && sidebarNavigationSettled },
   );
   const promptHistoryDrafts = useMemo(
     () => promptHistoryEntriesToDrafts(projectPromptHistory),
@@ -1256,6 +1263,7 @@ export function NewThreadComposer({
             onChange: handleProjectChange,
             allowNoProject: options.allowNoProject,
             createProject: options.createProject,
+            isLoading: !sidebarNavigationSettled,
             disabled:
               locks.project ||
               isUploading ||
@@ -1358,6 +1366,7 @@ export function NewThreadComposer({
       selectedProviderId,
       serviceTier,
       serviceTierSupportByProvider,
+      sidebarNavigationSettled,
       supportsPermissionModeSelection,
       supportsServiceTier,
       textEffects,
@@ -1371,8 +1380,6 @@ export function NewThreadComposer({
     isProjectless,
     projects,
     sidebarNavigation: sidebarNavigationQuery.data,
-    sidebarNavigationSettled:
-      sidebarNavigationQuery.isSuccess || sidebarNavigationQuery.isError,
     sidebarNavigationError: sidebarNavigationQuery.isError,
     currentProject,
     projectSources,

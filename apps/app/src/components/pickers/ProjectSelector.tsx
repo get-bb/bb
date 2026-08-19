@@ -48,6 +48,12 @@ export interface ProjectSelectorProps {
   /** Render as a non-interactive label while preserving the selected project. */
   disabled?: boolean;
   /**
+   * The project list has not loaded yet. The trigger shows a neutral
+   * "Loading projects" label (never the misleading "Work in a project" empty
+   * state) and stays non-interactive until the list settles.
+   */
+  isLoading?: boolean;
+  /**
    * Keep the chevron visible while disabled. Use it when the picker is only
    * transiently locked (submitting, uploading) so the trigger keeps the same
    * width and the pickers beside it don't shift.
@@ -66,20 +72,27 @@ export function ProjectSelector({
   onChange,
   allowNoProject = false,
   createProject,
-  disabled = false,
+  disabled: disabledProp = false,
+  isLoading = false,
   showChevronWhenDisabled = false,
   className,
   defaultOpen,
   modal,
 }: ProjectSelectorProps) {
+  const disabled = disabledProp || isLoading;
   const selected = value !== null ? projects.find((p) => p.id === value) : null;
   // When allowNoProject is false and the caller's value doesn't match any
   // project (shouldn't happen in normal use), the trigger falls back to the
   // first project so it's never blank.
   const fallback = !allowNoProject && !selected ? projects[0] : null;
-  const triggerLabel = selected?.name ?? fallback?.name ?? "Work in a project";
-  const compactTriggerLabel = selected?.name ?? fallback?.name ?? "No project";
-  const triggerIcon = selected || fallback ? "Folder" : "FolderPlus";
+  const triggerLabel = isLoading
+    ? "Loading projects…"
+    : (selected?.name ?? fallback?.name ?? "Work in a project");
+  const compactTriggerLabel = isLoading
+    ? "Loading…"
+    : (selected?.name ?? fallback?.name ?? "No project");
+  const triggerIcon =
+    isLoading || selected || fallback ? "Folder" : "FolderPlus";
   const createProjectAction = createProject;
   const createProjectLabel = createProjectAction?.isCreating
     ? "Creating..."
@@ -95,6 +108,7 @@ export function ProjectSelector({
           variant="ghost"
           size="sm"
           aria-label="Project"
+          aria-busy={isLoading || undefined}
           disabled={disabled}
           data-promptbox-project-control=""
           className={cn(
@@ -150,9 +164,7 @@ export function ProjectSelector({
             />
           </DropdownMenuItem>
         ))}
-        {showActionSeparator ? (
-          <DropdownMenuSeparator />
-        ) : null}
+        {showActionSeparator ? <DropdownMenuSeparator /> : null}
         {createProjectAction ? (
           <DropdownMenuItem
             disabled={createProjectAction.disabled}

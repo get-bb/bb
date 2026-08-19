@@ -766,7 +766,6 @@ function RootComposeSurface({
     isProjectless,
     projects,
     sidebarNavigation,
-    sidebarNavigationSettled,
     sidebarNavigationError,
     currentProject,
     projectSources,
@@ -2271,9 +2270,10 @@ function RootComposeSurface({
     runningJobKey,
   ]);
 
-  if (!sidebarNavigationSettled) {
-    return <RouteLoadingSkeleton />;
-  }
+  // The composer renders immediately with loading pickers; only a failed
+  // bootstrap with no projects at all replaces it (see B28). While the
+  // bootstrap is in flight the project picker shows a loading label and the
+  // projectId-dependent queries inside NewThreadComposer stay disabled.
   if (!projects && sidebarNavigationError) {
     return (
       <PageShell contentClassName="min-h-full items-center justify-center">
