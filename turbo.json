@@ -246,7 +246,11 @@
       ]
     },
     "@bb/host-daemon#dev": {
+      // The source daemon injects apps/cli/bin/bb into agent shells. Build its
+      // gitignored runtime before the daemon starts so a sandboxed thread never
+      // has to write back into the daemon's checkout to bootstrap `bb`.
       "dependsOn": [
+        "@bb/cli#build",
         "@bb/templates#generate:templates",
         "@bb/plugin-build#generate"
       ],

@@ -8,6 +8,7 @@ import { assignIfDefined } from "@bb/config/objects";
 
 interface ResolveLocalBbExecutablePathOptions {
   cliExecutablePath?: string;
+  cliRuntimePath?: string;
 }
 
 export interface PrepareRuntimeShellEnvOptions {
@@ -63,6 +64,10 @@ function getDefaultCliExecutablePath(): string {
   return fileURLToPath(new URL("../../cli/bin/bb", import.meta.url));
 }
 
+function getDefaultCliRuntimePath(): string {
+  return fileURLToPath(new URL("../../cli/dist/index.js", import.meta.url));
+}
+
 function getErrorCode(error: unknown): string | undefined {
   if (
     error &&
@@ -105,6 +110,26 @@ async function resolveCliEntryPath(cliExecutablePath: string): Promise<string> {
   }
 
   return cliEntryPath;
+}
+
+async function requireCliRuntimePath(cliRuntimePath: string): Promise<void> {
+  const resolvedCliRuntimePath = resolve(cliRuntimePath);
+
+  try {
+    const stats = await fs.stat(resolvedCliRuntimePath);
+    if (!stats.isFile()) {
+      throw new Error(
+        `Resolved bb CLI runtime is not a file: ${resolvedCliRuntimePath}`,
+      );
+    }
+  } catch (error) {
+    if (getErrorCode(error) === "ENOENT") {
+      throw new Error(
+        `Missing built bb CLI runtime at ${resolvedCliRuntimePath}. Build @bb/cli before starting the host daemon.`,
+      );
+    }
+    throw error;
+  }
 }
 
 function prependPath(
@@ -344,7 +369,16 @@ export async function resolveLocalBbExecutablePath(
 ): Promise<string> {
   const resolvedCliExecutablePath =
     options.cliExecutablePath ?? getDefaultCliExecutablePath();
-  return resolveCliEntryPath(resolvedCliExecutablePath);
+  const cliEntryPath = await resolveCliEntryPath(resolvedCliExecutablePath);
+  const cliRuntimePath =
+    options.cliRuntimePath ??
+    (options.cliExecutablePath === undefined
+      ? getDefaultCliRuntimePath()
+      : undefined);
+  if (cliRuntimePath !== undefined) {
+    await requireCliRuntimePath(cliRuntimePath);
+  }
+  return cliEntryPath;
 }
 
 /** Platform-stable name of the bb CLI file inside `BB_CLI_DIR` / daemon dist. */
