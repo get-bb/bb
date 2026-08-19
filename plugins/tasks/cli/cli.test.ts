@@ -840,7 +840,7 @@ describe("bb tasks CLI", () => {
           "update",
           "CLI worker",
           "--reasoning",
-          "xhigh",
+          "ultra",
           "--name",
           "CLI reviewer",
           "--environment",
@@ -852,7 +852,7 @@ describe("bb tasks CLI", () => {
     expect(updated).toMatchObject({
       id: created.id,
       name: "CLI reviewer",
-      reasoningLevel: "xhigh",
+      reasoningLevel: "ultra",
       environmentKind: "project-default",
       baseBranch: null,
       machineId: null,

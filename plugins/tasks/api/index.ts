@@ -54,6 +54,7 @@ const PRESET_REASONING_LEVELS = [
   "high",
   "xhigh",
   "max",
+  "ultra",
 ] as const;
 
 const MAX_THREAD_SEARCH_RESULTS = 10;

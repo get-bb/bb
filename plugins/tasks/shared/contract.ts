@@ -48,6 +48,7 @@ const presetReasoningLevelSchema = z.enum([
   "high",
   "xhigh",
   "max",
+  "ultra",
 ]);
 export const PRESET_PERMISSION_MODES = [
   "accept-edits",

@@ -36,6 +36,7 @@ export const REASONING_LEVELS = [
   "high",
   "xhigh",
   "max",
+  "ultra",
 ] as const;
 export const PERMISSION_MODES = PRESET_PERMISSION_MODES;
 export type ReasoningLevel = (typeof REASONING_LEVELS)[number];

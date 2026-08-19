@@ -463,6 +463,7 @@ describe("Tasks RPC domain API", () => {
                 supportedReasoningEfforts: [
                   { reasoningEffort: "medium" },
                   { reasoningEffort: "high" },
+                  { reasoningEffort: "ultra" },
                 ],
               },
               {
@@ -502,7 +503,7 @@ describe("Tasks RPC domain API", () => {
         { id: "gpt-5.6-sol", name: "GPT-5.6", isDefault: true },
         { id: "gpt-5.5", name: "GPT-5.5", isDefault: false },
       ],
-      reasoningLevels: ["low", "medium", "high"],
+      reasoningLevels: ["low", "medium", "high", "ultra"],
     });
     expect(harness.sdk.callsTo("providers.list")).toEqual([[]]);
     expect(harness.sdk.callsTo("providers.models")).toEqual([
@@ -567,7 +568,7 @@ describe("Tasks RPC domain API", () => {
     await expect(
       harness.callRpc("listProviderModels", { providerId: "test" }),
     ).resolves.toMatchObject({
-      reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+      reasoningLevels: ["low", "medium", "high", "xhigh", "max", "ultra"],
     });
     await harness.dispose();
   });
