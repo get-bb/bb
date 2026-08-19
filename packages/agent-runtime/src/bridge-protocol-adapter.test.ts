@@ -54,6 +54,20 @@ describe("handshake version gate", () => {
       /speaks Provider Bridge Protocol version 1.*requires version 2.*fake-bridge/s,
     );
   });
+
+  it("rejects a malformed initialize result instead of defaulting capabilities", () => {
+    const adapter = makeAdapter();
+    const requests = adapter.buildPostInitializeRequests?.() ?? [];
+    expect(requests).toHaveLength(1);
+    // A bridge that answers initialize with garbage must be a legible startup
+    // failure, not a session silently running on default capabilities.
+    expect(() =>
+      requests[0]?.onResult({ nonsense: true }),
+    ).toThrowError(/malformed result.*fake-bridge/s);
+    expect(() => requests[0]?.onResult(null)).toThrowError(
+      /malformed result/,
+    );
+  });
 });
 
 describe("handshake gating", () => {

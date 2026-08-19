@@ -493,7 +493,18 @@ export function createBridgeProtocolAdapter(
           onResult(result) {
             const parsed = initializeResultSchema.safeParse(result);
             if (!parsed.success) {
-              return;
+              // A malformed handshake is as fatal as a wrong version: falling
+              // back to the default capabilities would run the bridge on
+              // guesses (and silently mask the shape drift that produced it).
+              // The post-initialize request is `required`, so this throw
+              // aborts the provider spawn as a legible startup error.
+              throw new Error(
+                `Provider bridge "${options.id}" answered initialize with a malformed result (${parsed.error.issues
+                  .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+                  .join(
+                    "; ",
+                  )}). The bridge and this runtime cannot negotiate a handshake; update or fix the "${options.id}" provider plugin.`,
+              );
             }
             // The version gates the handshake: a bridge on another major
             // revision speaks a timeline dialect this runtime does not
