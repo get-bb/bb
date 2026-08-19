@@ -1980,7 +1980,7 @@ light: document.documentElement.dataset.bbCodeThemeLight }` so a custom
   header when your patch source (e.g. the GitHub REST API) omits it — see
   `plugins/github/app.tsx`.
 - Everything else bundles from YOUR `node_modules` (hugeicons, lucide,
-  cva/clsx/tailwind-merge, form/calendar/chart libs): run `npm install`
+  non-portal radix, zod, form/calendar/chart libs): run `npm install`
   after adding components (`bb plugin new` runs the first one; `shadcn add`
   installs each item's declared deps). Consumers never need npm — ship your
   built `dist/`.
