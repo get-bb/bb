@@ -58,6 +58,40 @@ describe("file-preview", () => {
     });
   });
 
+  it("builds pdf previews for the pdf mime type", () => {
+    const preview = buildFilePreview({
+      contentBytes: Uint8Array.from([37, 80, 68, 70, 45, 49, 46, 52]),
+      mimeType: "application/pdf",
+      name: "resume.pdf",
+      path: "resume.pdf",
+      url: "/files/resume.pdf",
+    });
+
+    expect(preview).toEqual({
+      kind: "pdf",
+      mimeType: "application/pdf",
+      name: "resume.pdf",
+      path: "resume.pdf",
+      url: "/files/resume.pdf",
+    });
+  });
+
+  // A PDF with no compressed streams is all printable ASCII, so the UTF-8
+  // fallback would happily decode it and render the file's markers as source.
+  it("keeps an all-ASCII pdf a pdf rather than falling back to text", () => {
+    const preview = buildFilePreview({
+      contentBytes: new TextEncoder().encode(
+        "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n",
+      ),
+      mimeType: "application/pdf",
+      name: "flat.pdf",
+      path: "flat.pdf",
+      url: "/files/flat.pdf",
+    });
+
+    expect(preview.kind).toBe("pdf");
+  });
+
   it("builds video previews for video mime types", () => {
     const preview = buildFilePreview({
       contentBytes: Uint8Array.from([0, 0, 0, 24]),

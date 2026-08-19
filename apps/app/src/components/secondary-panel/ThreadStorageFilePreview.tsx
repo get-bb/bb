@@ -238,6 +238,21 @@ export function SecondaryPanelFilePreview({
     );
   }
 
+  if (filePreview.kind === "pdf") {
+    return (
+      <FilePreviewSurface
+        path={activePath}
+        copyPath={copyPath}
+        onSelectionAddToChat={onSelectionAddToChat}
+        onOpenInEditor={onOpenInEditor}
+        onRefresh={onRefresh}
+        isRefreshing={isRefreshing}
+        statusLabel={statusLabel}
+        state={{ kind: "pdf", url: filePreview.url }}
+      />
+    );
+  }
+
   if (filePreview.kind === "video") {
     return (
       <FilePreviewSurface
