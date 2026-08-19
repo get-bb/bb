@@ -1760,6 +1760,28 @@ describe("delta assembler background tasks and progress policy", () => {
     expect(assembler.getBbItemId(THREAD_ID, "task:wf-1")).toBe(itemId);
   });
 
+  it("keeps queued accepted input across LRU pressure (pending input pins the thread)", () => {
+    const { assembler } = createClockedAssembler();
+    // Accepted input with no turn yet: the acceptance queues, and evicting
+    // the thread now would drop it — the eventual turn.open would emit no
+    // turn/input/accepted, stranding the terminal-turn invariant.
+    assemble(assembler, { kind: "input.accepted", clientRequestId: CREQ });
+    for (let index = 0; index < 300; index += 1) {
+      assembler.assemble({
+        threadId: `filler-${index}`,
+        deltas: [
+          { kind: "turn.open" },
+          { kind: "turn.boundary", status: "completed" },
+        ],
+      });
+    }
+    const events = assemble(assembler, { kind: "turn.open" });
+    expect(events.map((event) => event.type)).toEqual([
+      "turn/started",
+      "turn/input/accepted",
+    ]);
+  });
+
   it("scopes provider.modelFallback to the current-or-last turn, thread when idle", () => {
     const assembler = createAssembler();
     const fallback = {

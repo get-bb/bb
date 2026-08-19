@@ -300,10 +300,17 @@ export function createDeltaAssembler(
     while (states.size > MAX_THREAD_STATES) {
       let removed = false;
       for (const [threadId, state] of states) {
-        // Eviction guard: a thread with an open turn or open items (notably
-        // thread-attached background tasks awaiting their terminal event) must
-        // keep its state — evicting it would orphan the open work's ids.
-        if (state.currentTurnId !== undefined || state.openItemsByKey.size > 0) {
+        // Eviction guard: a thread with an open turn, open items (notably
+        // thread-attached background tasks awaiting their terminal event), or
+        // queued accepted input must keep its state — evicting it would
+        // orphan the open work's ids, and a dropped input.accepted would
+        // strand the terminal-turn invariant (the acceptance could never
+        // drain into its turn).
+        if (
+          state.currentTurnId !== undefined ||
+          state.openItemsByKey.size > 0 ||
+          state.pendingAccepted.length > 0
+        ) {
           continue;
         }
         states.delete(threadId);
