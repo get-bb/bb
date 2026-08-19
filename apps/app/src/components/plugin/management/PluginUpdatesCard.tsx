@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
@@ -70,6 +71,7 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
             className="h-7 px-2.5 text-xs"
             onClick={() => setUpdateOpen(true)}
           >
+            <Icon name={UPDATE_ACTION_ICON} className="size-3.5" aria-hidden />
             Update
           </Button>
         }
@@ -180,7 +182,7 @@ export function PluginDetailReleaseControl({
         aria-label={`Update ${plugin.name ?? plugin.id} to ${displayPluginVersion(availableVersion)}`}
         onClick={() => setDetailsOpen(true)}
       >
-        <Icon name="PackageReceive" className="size-3.5" aria-hidden />
+        <Icon name={UPDATE_ACTION_ICON} className="size-3.5" aria-hidden />
         Update
       </Button>
       <UpdatePluginDialog

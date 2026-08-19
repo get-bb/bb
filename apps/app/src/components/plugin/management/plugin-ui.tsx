@@ -22,7 +22,7 @@ import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
  */
 
 /**
- * The update control's icon accent: a quiet neutral button whose up-arrow
+ * The update control's icon accent: a quiet neutral button whose download mark
  * carries the "improvement available" tone, instead of a full green pill
  * shouting over the row.
  */

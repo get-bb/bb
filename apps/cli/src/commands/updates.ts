@@ -1,5 +1,9 @@
 import { Command } from "commander";
 import type { Host } from "@bb/domain";
+import {
+  UPDATE_STATE_PRESENTATION,
+  type UpdateState,
+} from "@bb/domain/update-state";
 import type { HostProviderCliStatusResponse } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
@@ -30,15 +34,27 @@ interface MachineUpdatesEntry {
   statusError: string | null;
 }
 
-function providerStateLabel(status: ProviderCliStatus): string {
-  if (!status.installed) return "not installed";
-  if (status.versionUnsupported) return "update needed";
-  if (status.needsUpdate) {
+/**
+ * The same state ladder Settings → Updates draws, printed as words.
+ *
+ * Both surfaces read `UPDATE_STATE_PRESENTATION` so a CLI that reads "Update
+ * in terminal" reads the same way in the app. This used to
+ * be a second, hand-maintained list of phrases here, and the two had already
+ * drifted — the app said "Update needed" where the CLI said "update needed"
+ * for one case and "update manually" for another.
+ */
+function providerState(status: ProviderCliStatus): UpdateState {
+  if (!status.installed) return "not-installed";
+  if (status.needsUpdate || status.versionUnsupported) {
     return status.installAction === null
-      ? "update manually"
-      : "update available";
+      ? "update-manually"
+      : "update-available";
   }
-  return "up to date";
+  return "up-to-date";
+}
+
+function providerStateLabel(status: ProviderCliStatus): string {
+  return UPDATE_STATE_PRESENTATION[providerState(status)].label;
 }
 
 function providerVersionLabel(status: ProviderCliStatus): string {
@@ -186,8 +202,8 @@ export function registerUpdatesCommands(
         const appState = version.isDevelopment
           ? "development mode"
           : version.updateAvailable
-            ? `update available (run: ${version.upgradeCommand})`
-            : "up to date";
+            ? `${UPDATE_STATE_PRESENTATION["update-available"].label} (run: ${version.upgradeCommand})`
+            : UPDATE_STATE_PRESENTATION["up-to-date"].label;
         const appVersionLabel =
           version.latestVersion !== null &&
           version.latestVersion !== version.currentVersion
@@ -271,8 +287,7 @@ export function registerUpdatesCommands(
               hostName: target.host.name,
               provider: target.provider,
               success,
-              message:
-                errorEvent?.type === "error" ? errorEvent.message : null,
+              message: errorEvent?.type === "error" ? errorEvent.message : null,
             });
             if (!opts.json) {
               console.log(

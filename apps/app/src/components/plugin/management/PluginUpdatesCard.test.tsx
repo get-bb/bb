@@ -95,9 +95,11 @@ describe("PluginDetailReleaseControl", () => {
       { wrapper },
     );
 
-    expect(
-      screen.getByRole("button", { name: "Update Linear to 1.9.0" }),
-    ).toBeTruthy();
+    const update = screen.getByRole("button", {
+      name: "Update Linear to 1.9.0",
+    });
+    expect(update).toBeTruthy();
+    expect(update.querySelector('[data-icon="Download"]')).not.toBeNull();
     expect(screen.queryByText("Compatible with your bb.")).toBeNull();
   });
 

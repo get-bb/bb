@@ -8,6 +8,24 @@ import { displayPluginVersion } from "./plugin-ui";
 afterEach(cleanup);
 
 describe("PluginRowSignalView", () => {
+  it("uses the shared update-action icon", () => {
+    render(
+      <PluginRowSignalView
+        signal={{ kind: "update", version: "1.9.0" }}
+        onUpdateClick={vi.fn()}
+        onStatusClick={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen
+        .getByRole("button", {
+          name: "Update available: version 1.9.0",
+        })
+        .querySelector('[data-icon="Download"]'),
+    ).not.toBeNull();
+  });
+
   it("keeps runtime health icon-only until hover or focus and opens details", async () => {
     const onStatusClick = vi.fn();
     render(

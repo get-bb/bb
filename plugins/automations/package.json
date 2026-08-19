@@ -36,7 +36,8 @@
     "@radix-ui/react-slot": "^1.3.0",
     "cron-parser": "^5.5.0",
     "cronstrue": "^3.14.0",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "@bb/domain": "workspace:*"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "workspace:*",

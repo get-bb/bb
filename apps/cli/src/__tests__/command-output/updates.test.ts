@@ -115,11 +115,11 @@ describe("bb updates command output", () => {
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
     expect(output).toContain("bb-app");
     expect(output).toContain("0.0.32 -> 0.0.33");
-    expect(output).toContain("update available (run: npx bb-app@latest)");
+    expect(output).toContain("Update available (run: npx bb-app@latest)");
     expect(output).toContain("workstation · Codex");
     expect(output).toContain("0.140.0 -> 0.141.0");
     expect(output).toContain("workstation · Claude Code");
-    expect(output).toContain("up to date");
+    expect(output).toContain("Up to date");
     expect(output).toContain("laptop");
     expect(output).toContain("offline");
   });
@@ -208,7 +208,7 @@ describe("bb updates command output", () => {
 
     await runCommand(["updates"], register);
     expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
-      "update manually",
+      "Update in terminal",
     );
 
     vi.mocked(console.log).mockClear();

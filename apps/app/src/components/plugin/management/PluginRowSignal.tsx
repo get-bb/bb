@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -72,7 +73,7 @@ export function PluginRowSignalView({
               aria-label={updateDescription}
               onClick={onUpdateClick}
             >
-              <Icon name="PackageReceive" className="size-4" aria-hidden />
+              <Icon name={UPDATE_ACTION_ICON} className="size-4" aria-hidden />
             </Button>
           </TooltipTrigger>
           <TooltipContent>{updateDescription}</TooltipContent>
