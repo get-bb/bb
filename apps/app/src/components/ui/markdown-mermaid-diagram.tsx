@@ -8,8 +8,9 @@ import {
   type CSSProperties,
   type ComponentPropsWithoutRef,
   type PointerEventHandler,
+  type Ref,
 } from "react";
-import type { MermaidConfig, RenderResult } from "mermaid";
+import type { MermaidConfig } from "mermaid";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +21,15 @@ import { Button } from "@bb/shared-ui/button";
 import { CopyButton } from "./copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { loadMermaid } from "./markdown-mermaid-loader.js";
+import {
+  buildMermaidRenderCacheKey,
+  MERMAID_SOURCE_RENDER_DEBOUNCE_MS,
+  observeMermaidViewportEntry,
+  peekMermaidRenderCache,
+  readMermaidRenderCache,
+  storeMermaidRenderCache,
+  type RenderedMermaidDiagram,
+} from "./markdown-mermaid-render-cache.js";
 import { useAppThemeEpoch } from "@/hooks/useAppTheme";
 import type { Theme } from "@/hooks/useTheme";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -27,11 +37,6 @@ import { cn } from "@bb/shared-ui/lib/utils";
 export interface MarkdownMermaidDiagramProps {
   preferredTheme: Theme;
   source: string;
-}
-
-interface RenderedMermaidDiagram {
-  bindFunctions: RenderResult["bindFunctions"];
-  svg: string;
 }
 
 interface MermaidThemePalette {
@@ -205,7 +210,9 @@ type MermaidRenderState =
   | { kind: "source" };
 
 type MermaidTheme = NonNullable<MermaidConfig["theme"]>;
-type MermaidDiagramContainerProps = ComponentPropsWithoutRef<"div">;
+type MermaidDiagramContainerProps = ComponentPropsWithoutRef<"div"> & {
+  ref?: Ref<HTMLDivElement>;
+};
 type MermaidDiagramPointerHandler = PointerEventHandler<HTMLDivElement>;
 
 const MERMAID_THEME: MermaidTheme = "base";
@@ -557,11 +564,13 @@ function createMermaidDialogDiagramStyle({
 function MermaidDiagramContainer({
   children,
   className,
+  ref,
   ...containerProps
 }: MermaidDiagramContainerProps) {
   return (
     <div
       {...containerProps}
+      ref={ref}
       className={cn(
         "my-2 overflow-hidden rounded-md border border-border bg-surface-recessed",
         className,
@@ -973,53 +982,124 @@ export function MarkdownMermaidDiagram({
   source,
 }: MarkdownMermaidDiagramProps) {
   const reactId = useId();
+  const containerElementRef = useRef<HTMLDivElement>(null);
   const diagramElementRef = useRef<HTMLDivElement>(null);
   const renderId = useMemo(() => buildMermaidRenderId(reactId), [reactId]);
   // Re-render the SVG (which has baked-in colors) when the app palette changes,
   // not just on light/dark mode toggles.
   const appThemeEpoch = useAppThemeEpoch();
-  const [renderState, setRenderState] = useState<MermaidRenderState>({
-    kind: "loading",
-  });
+  // A diagram that was rendered before (a remount during the streaming
+  // settled/tail hand-off, a re-expanded turn, navigating back) paints its
+  // cached SVG on the first frame instead of flashing the placeholder.
+  const [initialCachedDiagram] = useState(() =>
+    peekMermaidRenderCache(
+      buildMermaidRenderCacheKey({ appThemeEpoch, preferredTheme, source }),
+    ),
+  );
+  const [renderState, setRenderState] = useState<MermaidRenderState>(() =>
+    initialCachedDiagram === null
+      ? { kind: "loading" }
+      : { kind: "rendered", diagram: initialCachedDiagram },
+  );
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [displayMode, setDisplayMode] =
     useState<MermaidDiagramDisplayMode>("preview");
+  // Diagrams render only once they come near the viewport (shared observer);
+  // a long thread with many diagrams does not run Mermaid for all of them on
+  // mount.
+  const [hasEnteredViewport, setHasEnteredViewport] = useState(
+    initialCachedDiagram !== null,
+  );
+  // The source last handed to the renderer for this instance. Source changes
+  // after the first render are streaming deltas and are debounced; the first
+  // render and theme changes run immediately.
+  const renderedSourceRef = useRef<string | null>(
+    initialCachedDiagram === null ? null : source,
+  );
 
   useEffect(() => {
+    const containerElement = containerElementRef.current;
+    if (hasEnteredViewport || containerElement === null) {
+      return;
+    }
+    return observeMermaidViewportEntry(containerElement, () => {
+      setHasEnteredViewport(true);
+    });
+  }, [hasEnteredViewport]);
+
+  useEffect(() => {
+    if (!hasEnteredViewport) {
+      return;
+    }
+    const cacheKey = buildMermaidRenderCacheKey({
+      appThemeEpoch,
+      preferredTheme,
+      source,
+    });
+    const cachedDiagram = readMermaidRenderCache(cacheKey);
+    const isSourceUpdate =
+      renderedSourceRef.current !== null &&
+      renderedSourceRef.current !== source;
+    renderedSourceRef.current = source;
+    if (cachedDiagram !== null) {
+      setRenderState((currentState) =>
+        currentState.kind === "rendered" &&
+        currentState.diagram === cachedDiagram
+          ? currentState
+          : { kind: "rendered", diagram: cachedDiagram },
+      );
+      setDisplayMode("preview");
+      return;
+    }
+
     let isCurrentRender = true;
-
-    setRenderState({ kind: "loading" });
-    setDisplayMode("preview");
-    loadMermaid()
-      .then((mermaid) => {
-        mermaid.initialize(buildMermaidConfig(preferredTheme));
-        return mermaid.render(renderId, source);
-      })
-      .then((renderResult) => {
-        if (!isCurrentRender) {
-          return;
-        }
-
-        setRenderState({
-          kind: "rendered",
-          diagram: {
+    const runRender = () => {
+      loadMermaid()
+        .then((mermaid) => {
+          if (!isCurrentRender) {
+            return null;
+          }
+          mermaid.initialize(buildMermaidConfig(preferredTheme));
+          return mermaid.render(renderId, source);
+        })
+        .then((renderResult) => {
+          if (!isCurrentRender || renderResult === null) {
+            return;
+          }
+          const diagram: RenderedMermaidDiagram = {
             bindFunctions: renderResult.bindFunctions,
             svg: renderResult.svg,
-          },
+          };
+          storeMermaidRenderCache(cacheKey, diagram);
+          setRenderState({ kind: "rendered", diagram });
+        })
+        .catch(() => {
+          if (!isCurrentRender) {
+            return;
+          }
+          setRenderState({ kind: "source" });
         });
-      })
-      .catch(() => {
-        if (!isCurrentRender) {
-          return;
-        }
+    };
 
-        setRenderState({ kind: "source" });
-      });
-
+    if (!isSourceUpdate) {
+      setRenderState({ kind: "loading" });
+      setDisplayMode("preview");
+      runRender();
+      return () => {
+        isCurrentRender = false;
+      };
+    }
+    // Streaming delta: keep the previous render on screen and re-render once
+    // the source has been stable for the debounce window.
+    const timeoutId = window.setTimeout(
+      runRender,
+      MERMAID_SOURCE_RENDER_DEBOUNCE_MS,
+    );
     return () => {
       isCurrentRender = false;
+      window.clearTimeout(timeoutId);
     };
-  }, [preferredTheme, renderId, source, appThemeEpoch]);
+  }, [appThemeEpoch, hasEnteredViewport, preferredTheme, renderId, source]);
 
   useEffect(() => {
     if (renderState.kind !== "rendered" || displayMode !== "preview") {
@@ -1045,7 +1125,7 @@ export function MarkdownMermaidDiagram({
   };
 
   return (
-    <MermaidDiagramContainer>
+    <MermaidDiagramContainer ref={containerElementRef}>
       <div className="flex items-center justify-between pl-3 pr-1.5 pt-1.5">
         <span className="font-mono text-xs uppercase text-muted-foreground">
           mermaid
