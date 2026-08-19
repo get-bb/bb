@@ -832,9 +832,9 @@ export function createTimelineEventFactory(
         ...base,
         type: "system/userQuestion/lifecycle",
         data: {
-          interactionId: args.interactionId ?? "pint_question_1",
+          interactionId: args.interactionId ?? "pi-user-question",
           providerId: args.providerId ?? "claude-code",
-          providerRequestId: args.providerRequestId ?? "request-question-1",
+          providerRequestId: args.providerRequestId ?? "request-user-question",
           status: args.status ?? "pending",
           resolution: args.resolution ?? null,
           statusReason: args.statusReason ?? null,
@@ -844,14 +844,15 @@ export function createTimelineEventFactory(
               {
                 id: "question-1",
                 prompt:
-                  args.questionPrompt ?? "Which changes should I include?",
-                shortLabel: "Scope",
+                  args.questionPrompt ??
+                  "Which deployment target should I use?",
+                shortLabel: "Target",
                 multiSelect: false,
                 options: [
-                  { value: "all", label: "All of them" },
-                  { value: "none", label: "None" },
+                  { value: "staging", label: "Staging" },
+                  { value: "production", label: "Production" },
                 ],
-                allowFreeText: false,
+                allowFreeText: true,
               },
             ],
           },

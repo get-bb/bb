@@ -37,7 +37,6 @@ describe("completed turn user input visibility", () => {
       target: { kind: "steer", expectedTurnId: "turn-1" },
       source: "tell",
       text: "explore but do not apply changes",
-      requestId: "creq_steersteer" as never,
     });
     const events: ThreadEventRow[] = [
       request,
@@ -147,6 +146,82 @@ describe("completed turn user input visibility", () => {
     ]);
   });
 
+  it("keeps the direct reply after an answered question that is the turn's first output", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "Audit the router",
+    });
+    const timeline = renderTimeline(
+      [
+        request,
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: request.data.requestId }),
+        event.userQuestionLifecycle(),
+        event.userQuestionLifecycle({
+          status: "resolved",
+          resolution: {
+            kind: "user_answer",
+            answers: { "question-1": { selected: ["staging"] } },
+          },
+        }),
+        event.assistantCompleted({ itemId: "a1", text: "Staging it is." }),
+        event.commandCompleted({ itemId: "tool-1", command: "ssh router" }),
+        event.assistantCompleted({ itemId: "a2", text: "Login works." }),
+        event.assistantCompleted({ itemId: "a3", text: "Audit complete." }),
+        event.assistantCompleted({ itemId: "a4", text: "Final runbook." }),
+        event.turnCompleted(),
+      ],
+      "idle",
+    );
+
+    const texts = topLevelAssistantTexts(timeline.rows);
+    expect(texts).toContain("Staging it is.");
+    expect(texts).toContain("Audit complete.");
+    expect(texts).toContain("Final runbook.");
+    expect(texts).not.toContain("Login works.");
+  });
+
+  it("keeps interim messages folded around a rejected steer", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "Check my router setup",
+    });
+    const steer = event.clientTurnRequested({
+      target: { kind: "steer", expectedTurnId: "turn-1" },
+      source: "tell",
+      text: "explore but do not apply changes",
+    });
+    const timeline = renderTimeline(
+      [
+        request,
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: request.data.requestId }),
+        event.assistantCompleted({ itemId: "a1", text: "Starting the audit." }),
+        steer,
+        event.clientTurnRejected({ requestId: steer.data.requestId }),
+        event.assistantCompleted({ itemId: "a2", text: "Checking config." }),
+        event.commandCompleted({ itemId: "tool-1", command: "ssh router" }),
+        event.assistantCompleted({ itemId: "a3", text: "Login works." }),
+        event.assistantCompleted({ itemId: "a4", text: "Audit complete." }),
+        event.turnCompleted(),
+      ],
+      "idle",
+    );
+
+    const steerRow = timeline.rows.find(
+      (row) =>
+        row.kind === "conversation" &&
+        row.role === "user" &&
+        row.text === "explore but do not apply changes",
+    );
+    expect(steerRow).toMatchObject({
+      turnRequest: { kind: "steer", status: "rejected" },
+    });
+    expect(topLevelAssistantTexts(timeline.rows)).toEqual(["Audit complete."]);
+  });
+
   it("keeps an answered question and the report preceding it visible after the turn completes", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const request = event.clientTurnRequested({
@@ -163,9 +238,8 @@ describe("completed turn user input visibility", () => {
           itemId: "a1",
           text: "Audit complete. Which changes should I include?",
         }),
-        event.userQuestionLifecycle({ interactionId: "pint_question_1" }),
+        event.userQuestionLifecycle(),
         event.userQuestionLifecycle({
-          interactionId: "pint_question_1",
           status: "resolved",
           resolution: {
             kind: "user_answer",

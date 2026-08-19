@@ -402,6 +402,7 @@ describe("slow query index plans", () => {
       "system/thread/interrupted",
       "system/error",
       "provider/error",
+      "system/userQuestion/lifecycle",
       "item/agentMessage/delta",
       "item/plan/delta",
       thread.id,

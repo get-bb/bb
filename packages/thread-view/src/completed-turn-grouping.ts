@@ -8,8 +8,8 @@ import {
   findLastTerminalTimelineMessage,
   isSingletonContextManagementOperation,
   isTimelineTerminalMessage,
+  isMidTurnUserInputBoundaryMessage,
   isTimelineUngroupableMessage,
-  isTimelineUserInputBoundaryMessage,
 } from "./timeline-message-helpers.js";
 
 export interface CompletedTurnSummaryGroup {
@@ -171,10 +171,7 @@ function groupCompletedTurnSummaryMessages(
   let externalBoundaryIndex = 0;
   let preserveNextTerminalMessage = false;
   let sawMidTurnUserInput = false;
-  // True once the turn has produced assistant/tool output. User input that
-  // precedes any output (the turn-starting row, or several initial rows from a
-  // grouped `inputGroups` request) is initial input, not a mid-turn follow-up.
-  let sawTurnOutput = false;
+  const phase = { sawTurnOutput: false };
 
   function appendSummaryGroup(sourceMessages: EventProjectionMessage[]): void {
     if (sourceMessages.length === 0) {
@@ -243,8 +240,10 @@ function groupCompletedTurnSummaryMessages(
   for (const message of summaryMessages) {
     flushExternalBoundariesBefore(message);
     if (isTimelineUngroupableMessage(message)) {
-      const isUserInputBoundary = isTimelineUserInputBoundaryMessage(message);
-      const isMidTurnUserInput = isUserInputBoundary && sawTurnOutput;
+      const isMidTurnUserInput = isMidTurnUserInputBoundaryMessage(
+        message,
+        phase,
+      );
       flushGroupedMessages(isMidTurnUserInput);
       items.push({
         kind: "ungrouped-message",
@@ -253,10 +252,13 @@ function groupCompletedTurnSummaryMessages(
       if (isMidTurnUserInput) {
         preserveNextTerminalMessage = true;
         sawMidTurnUserInput = true;
+        // An answered question is provider output too; a user request that
+        // follows it is a mid-turn follow-up even with no assistant text yet.
+        phase.sawTurnOutput = true;
       }
       continue;
     }
-    sawTurnOutput = true;
+    phase.sawTurnOutput = true;
     if (preserveNextTerminalMessage && isTimelineTerminalMessage(message)) {
       flushGroupedMessages();
       items.push({
