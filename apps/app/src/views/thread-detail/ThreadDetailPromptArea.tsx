@@ -35,9 +35,7 @@ import type {
 import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
-import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
 import {
-  PluginComposerHostProvider,
   type PluginComposerHost,
   usePublishPluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
@@ -1670,60 +1668,65 @@ export function ThreadDetailPromptArea({
     ],
   );
 
-  const bottomContent =
-    activePendingInteraction && !shouldHideComposer ? (
-      <div className="grid gap-2">
+  // A pending permission/question takes the composer's place, but the
+  // composer itself stays mounted (hidden) inside FollowUpPromptBox so the
+  // TipTap editor, draft and pickers survive every approval instead of being
+  // rebuilt per interaction (submitMode is already "blocked" here). The
+  // interaction shows as the last stack item above a reduced stack: child
+  // banners, plan mode and goal cards, plus plugin banners.
+  const pendingInteractionNode = useMemo(() => {
+    if (!activePendingInteraction || shouldHideComposer) {
+      return null;
+    }
+    return isPluginPendingInteraction(activePendingInteraction) ? (
+      <PluginPendingInteractionComposer
+        interaction={activePendingInteraction}
+      />
+    ) : (
+      <ThreadPendingInteractionBanner
+        interaction={activePendingInteraction}
+        threadId={thread.id}
+      />
+    );
+  }, [activePendingInteraction, shouldHideComposer, thread.id]);
+  const pendingInteractionStack = useMemo(
+    () => (
+      <>
         {childPendingInteractionBanners}
         {activePromptMode ? activePromptModeCard : null}
         {goal ? activeGoalCard : null}
-        <PluginComposerHostProvider value={normalPluginComposerHost}>
-          <ComposerBannersSlot
-            view={{
-              scope: normalPluginComposerHost.scope,
-              layout: "expanded",
-              draft: {
-                text: normalPluginComposerHost.draft.text,
-                isEmpty:
-                  normalPluginComposerHost.draft.text.trim().length === 0 &&
-                  normalPluginComposerHost.draft.attachments.length === 0,
-                attachmentCount:
-                  normalPluginComposerHost.draft.attachments.length,
-              },
-              run: { isRunning: false, isSubmitting: false },
-            }}
-          />
-        </PluginComposerHostProvider>
-        {isPluginPendingInteraction(activePendingInteraction) ? (
-          <PluginPendingInteractionComposer
-            interaction={activePendingInteraction}
-          />
-        ) : (
-          <ThreadPendingInteractionBanner
-            interaction={activePendingInteraction}
-            threadId={thread.id}
-          />
-        )}
-      </div>
-    ) : (
-      <FollowUpPromptBox
-        id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
-        attachments={bottomAttachmentsConfig}
-        stack={promptStack}
-        activePromptMode={activePromptMode}
-        composer={shouldHideComposer ? null : bottomComposerConfig}
-        pluginComposerHost={normalPluginComposerHost}
-        pluginComposerScope={normalPluginComposerHost.scope}
-        textEffects={promptTextEffects}
-        zenModeResetKey={thread.id}
-        focusEndKey={bottomFocusEndKey}
-        environmentSummary={environmentSummary}
-        contextWindowUsage={contextWindowUsage ?? null}
-        execution={bottomExecutionConfig}
-        permission={bottomPermissionConfig}
-        typeahead={typeaheadConfig}
-        promptActions={promptActions}
-      />
-    );
+      </>
+    ),
+    [
+      activeGoalCard,
+      activePromptMode,
+      activePromptModeCard,
+      childPendingInteractionBanners,
+      goal,
+    ],
+  );
+
+  const bottomContent = (
+    <FollowUpPromptBox
+      id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
+      attachments={bottomAttachmentsConfig}
+      stack={pendingInteractionNode ? pendingInteractionStack : promptStack}
+      pendingInteraction={pendingInteractionNode}
+      activePromptMode={activePromptMode}
+      composer={shouldHideComposer ? null : bottomComposerConfig}
+      pluginComposerHost={normalPluginComposerHost}
+      pluginComposerScope={normalPluginComposerHost.scope}
+      textEffects={promptTextEffects}
+      zenModeResetKey={thread.id}
+      focusEndKey={bottomFocusEndKey}
+      environmentSummary={environmentSummary}
+      contextWindowUsage={contextWindowUsage ?? null}
+      execution={bottomExecutionConfig}
+      permission={bottomPermissionConfig}
+      typeahead={typeaheadConfig}
+      promptActions={promptActions}
+    />
+  );
 
   return (
     <>

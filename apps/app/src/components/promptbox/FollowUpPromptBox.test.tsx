@@ -507,6 +507,56 @@ describe("FollowUpPromptBox", () => {
     expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
   });
 
+  it("keeps the editor mounted and hidden while a pending interaction takes its place", () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    const { container, rerender } = render(<FollowUpPromptBox {...props} />);
+    const promptBox = screen.getByTestId("prompt-box");
+    const input = screen.getByLabelText<HTMLInputElement>("Follow-up prompt");
+    input.value = "Draft typed before the approval";
+    const composerShell = container.querySelector<HTMLElement>(
+      "[data-follow-up-composer]",
+    );
+    expect(composerShell?.hidden).toBe(false);
+
+    rerender(
+      <FollowUpPromptBox
+        {...props}
+        composer={{
+          ...props.composer!,
+          submitMode: { kind: "blocked", reason: "pending-interaction" },
+        }}
+        stack={<div data-testid="pending-stack">Plan mode</div>}
+        pendingInteraction={
+          <div data-testid="pending-interaction">Allow file write?</div>
+        }
+      />,
+    );
+
+    // Same component instance and DOM: no TipTap teardown per approval.
+    expect(screen.getByTestId("prompt-box")).toBe(promptBox);
+    expect(screen.getByLabelText("Follow-up prompt")).toBe(input);
+    expect(input.value).toBe("Draft typed before the approval");
+    expect(composerShell?.hidden).toBe(true);
+    // The interaction renders below the (reduced) stack, above the composer.
+    const interaction = screen.getByTestId("pending-interaction");
+    const stackItem = screen.getByTestId("pending-stack");
+    expect(
+      stackItem.compareDocumentPosition(interaction) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      interaction.compareDocumentPosition(promptBox) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+
+    rerender(<FollowUpPromptBox {...props} />);
+
+    expect(screen.getByTestId("prompt-box")).toBe(promptBox);
+    expect(screen.getByLabelText("Follow-up prompt")).toBe(input);
+    expect(composerShell?.hidden).toBe(false);
+    expect(screen.queryByTestId("pending-interaction")).toBeNull();
+  });
+
   it.each([
     ["main-thread", true],
     ["side-chat", false],
