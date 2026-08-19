@@ -1,9 +1,5 @@
 import type { WorkTogetherRoomTaskProjectionPortV1 } from "./binding-backed-room-distribution.js";
-import {
-  RoomDistributionUnavailableError,
-  type RoomJsonObject,
-  type RoomJsonValue,
-} from "./room-distribution-port.js";
+import { RoomDistributionUnavailableError, type RoomJsonObject } from "./room-distribution-port.js";
 
 export interface WorkTogetherRoomTaskSqlPool {
   connect(): Promise<{
@@ -15,52 +11,11 @@ export interface WorkTogetherRoomTaskSqlPool {
 const CANONICAL_UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const SUBJECT = /^user_[A-Za-z0-9]{1,128}$/u;
-const BIGINT = /^[1-9][0-9]{0,18}$/u;
-const PRIORITIES = new Set(["Now", "Next", "Later"]);
-const STATUSES = new Set([
-  "Not started",
-  "Ready",
-  "In progress",
-  "Waiting",
-  "In review",
-  "Done",
-  "Killed",
-]);
-const WORK_KINDS = new Set([
-  "conversation",
-  "research",
-  "plan",
-  "writing",
-  "code",
-  "other",
-]);
-const ROW_KEYS = [
-  "acceptance",
-  "assignee_display_name",
-  "brief",
-  "objective",
-  "priority",
-  "status",
-  "task_id",
-  "task_version",
-  "title",
-  "work_kind",
-] as const;
+const DIGEST = /^[0-9a-f]{64}$/u;
+const ROW_KEYS = ["context_digest", "context_version", "task_id"] as const;
 
 function unavailable(kind: "not_found" | "unavailable" = "unavailable"): never {
   throw new RoomDistributionUnavailableError(kind);
-}
-
-function boundedText(value: unknown, maxCodePoints: number): string {
-  if (
-    typeof value !== "string" ||
-    value.normalize("NFC") !== value ||
-    [...value].length > maxCodePoints ||
-    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)
-  ) {
-    unavailable();
-  }
-  return value;
 }
 
 function exactRow(value: unknown): Record<string, unknown> {
@@ -69,7 +24,7 @@ function exactRow(value: unknown): Record<string, unknown> {
   }
   const record = value as Record<string, unknown>;
   const actual = Object.keys(record).sort();
-  const expected = [...ROW_KEYS].sort();
+  const expected = [...ROW_KEYS];
   if (
     actual.length !== expected.length ||
     actual.some((key, index) => key !== expected[index])
@@ -79,60 +34,32 @@ function exactRow(value: unknown): Record<string, unknown> {
   return record;
 }
 
-function jsonValue(value: unknown): RoomJsonValue {
-  let serialized: string;
-  try {
-    serialized = JSON.stringify(value);
-  } catch {
-    unavailable();
-  }
-  if (Buffer.byteLength(serialized, "utf8") > 32_768) unavailable();
-  try {
-    return JSON.parse(serialized) as RoomJsonValue;
-  } catch {
-    unavailable();
-  }
+function contextVersion(value: unknown): number {
+  const n = typeof value === "bigint" ? Number(value) : Number(value);
+  if (!Number.isSafeInteger(n) || n < 1) unavailable();
+  return n;
 }
 
+/**
+ * Cell read of the applied Room-context receipt. Does not select live Goal or
+ * Workstream drafts. Bootstrap still needs a closed `task` object; WT chrome
+ * carries digest/version on `roomContext`.
+ */
 function project(rowValue: unknown, taskId: string): RoomJsonObject {
   const row = exactRow(rowValue);
-  const taskVersion = String(row.task_version);
-  const title = boundedText(row.title, 240);
-  const brief = boundedText(row.brief, 20_000);
-  const assigneeDisplayName =
-    row.assignee_display_name === null
-      ? null
-      : boundedText(row.assignee_display_name, 100);
-  if (
-    row.task_id !== taskId ||
-    !BIGINT.test(taskVersion) ||
-    typeof row.priority !== "string" ||
-    !PRIORITIES.has(row.priority) ||
-    typeof row.status !== "string" ||
-    !STATUSES.has(row.status) ||
-    typeof row.work_kind !== "string" ||
-    !WORK_KINDS.has(row.work_kind)
-  ) {
+  const digest = row.context_digest;
+  contextVersion(row.context_version);
+  if (row.task_id !== taskId || typeof digest !== "string" || !DIGEST.test(digest)) {
     unavailable();
   }
   return Object.freeze({
     id: taskId,
-    version: taskVersion,
-    title,
-    brief,
-    acceptance: jsonValue(row.acceptance),
-    objective: jsonValue(row.objective),
-    priority: row.priority,
-    status: row.status,
-    workKind: row.work_kind,
-    assignee:
-      assigneeDisplayName === null
-        ? null
-        : { displayName: assigneeDisplayName },
+    status: "In progress",
+    objective: null,
   });
 }
 
-/** Read canonical task display state through the cell login's single SQL function. */
+/** Read applied Room-context identity through the cell login's single SQL function. */
 export function createWorkTogetherRoomTaskProjection(input: {
   pool: WorkTogetherRoomTaskSqlPool;
 }): WorkTogetherRoomTaskProjectionPortV1 {
@@ -154,8 +81,7 @@ export function createWorkTogetherRoomTaskProjection(input: {
       try {
         client = await input.pool.connect();
         const result = await client.query(
-          `select task_id,task_version,title,brief,acceptance,objective,priority,status,
-                  work_kind,assignee_display_name
+          `select task_id, context_version, context_digest
              from work_together.bb_cell_room_task($1,$2,$3)`,
           [request.cellId, request.bindingId, request.principal.id],
         );

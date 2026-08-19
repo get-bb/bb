@@ -8,6 +8,7 @@ const CELL_ID = "33333333-3333-4333-8333-333333333333";
 const WORKSPACE_ID = "11111111-1111-4111-8111-111111111111";
 const BINDING_ID = "99999999-aaaa-4bbb-8ccc-dddddddddddd";
 const TASK_ID = "22222222-2222-4222-8222-222222222222";
+const DIGEST = "ab".repeat(32);
 const PRINCIPAL: Principal = Object.freeze({
   id: "user_RoomReader",
   kind: "human",
@@ -17,15 +18,8 @@ const PRINCIPAL: Principal = Object.freeze({
 function row(overrides: Record<string, unknown> = {}) {
   return {
     task_id: TASK_ID,
-    task_version: "7",
-    title: "Canonical task",
-    brief: "Bounded brief",
-    acceptance: [{ id: "a1", text: "Pass", done: false }],
-    objective: null,
-    priority: "Now",
-    status: "In progress",
-    work_kind: "code",
-    assignee_display_name: "Room Reader",
+    context_version: "1",
+    context_digest: DIGEST,
     ...overrides,
   };
 }
@@ -55,39 +49,35 @@ const INVALID_ROWS: unknown[][] = [
   [],
   [row(), row()],
   [row({ task_id: "11111111-1111-4111-8111-111111111111" })],
-  [row({ subject: "user_leaked" })],
-  [row({ acceptance: BigInt(1) })],
-  [row({ objective: BigInt(1) })],
+  [row({ title: "leaked" })],
+  [row({ context_digest: "not-a-digest" })],
+  [row({ context_version: 0 })],
 ];
 
 describe("Work Together Room task projection", () => {
-  it("returns a bounded subject-free canonical task through the exact SQL function", async () => {
+  it("returns a closed task stub from the applied context receipt", async () => {
     const test = fixture([row()]);
     await expect(test.projection.read(request())).resolves.toEqual({
       id: TASK_ID,
-      version: "7",
-      title: "Canonical task",
-      brief: "Bounded brief",
-      acceptance: [{ id: "a1", text: "Pass", done: false }],
-      objective: null,
-      priority: "Now",
       status: "In progress",
-      workKind: "code",
-      assignee: { displayName: "Room Reader" },
+      objective: null,
     });
     expect(test.query).toHaveBeenCalledWith(
       expect.stringContaining("work_together.bb_cell_room_task($1,$2,$3)"),
       [CELL_ID, BINDING_ID, PRINCIPAL.id],
     );
     expect(test.query).toHaveBeenCalledWith(
-      expect.stringContaining("acceptance,objective,priority"),
+      expect.stringContaining("context_version, context_digest"),
       [CELL_ID, BINDING_ID, PRINCIPAL.id],
     );
-    expect(test.release).toHaveBeenCalledOnce();
+    expect(JSON.stringify(await test.projection.read(request()))).not.toContain(
+      "leaked",
+    );
+    expect(test.release).toHaveBeenCalled();
   });
 
   it.each(INVALID_ROWS)(
-    "fails closed for absent, ambiguous, malformed, or non-JSON rows",
+    "fails closed for absent, ambiguous, malformed, or Goal-leaking rows",
     async (rows) => {
       const test = fixture(rows as unknown[]);
       await expect(test.projection.read(request())).rejects.toBeInstanceOf(
