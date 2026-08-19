@@ -455,6 +455,32 @@ describe("WebSocketManager liveness", () => {
     expect(fakeSocketState.instances).toHaveLength(3);
   });
 
+  it("reconnects immediately when the socket closes while a probe is outstanding", () => {
+    const { browserEvents, connectedEvents, socket } = createLiveManager();
+    const openedAt = Date.now();
+
+    // Backgrounded for a while, then resumed: the probe goes out first and the
+    // browser reports the close a moment later (before the pong timeout).
+    browserEvents.setVisible(false);
+    vi.advanceTimersByTime(60_000);
+    browserEvents.setVisible(true);
+    expect(pingCount(socket)).toBe(1);
+    vi.advanceTimersByTime(1000);
+    socket.close();
+
+    // No partysocket backoff: the replacement is created synchronously, and
+    // the watermark is the last inbound frame (here: the open), not the close.
+    expect(fakeSocketState.instances).toHaveLength(2);
+    getSocketAt(1).open();
+    expect(connectedEvents.at(-1)).toEqual({
+      reconnected: true,
+      disconnectedAt: openedAt,
+    });
+    // The pong timer of the dead socket must not fire against the new one.
+    vi.advanceTimersByTime(REALTIME_PONG_TIMEOUT_MS);
+    expect(fakeSocketState.instances).toHaveLength(2);
+  });
+
   it("re-sends subscriptions on the replacement socket after a failed probe", () => {
     const { manager } = createLiveManager();
     manager.subscribe(THREAD_TARGET);

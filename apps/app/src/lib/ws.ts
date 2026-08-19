@@ -159,6 +159,15 @@ export class WebSocketManager {
     };
 
     socket.onclose = () => {
+      if (this.pongTimer !== null) {
+        // The close confirms what the unanswered probe suspected: the socket
+        // was already dead when the ping went out (iOS resume typically
+        // delivers visibilitychange first and the close a moment later).
+        // Reconnect right away instead of waiting out partysocket's first
+        // backoff, and watermark from the last inbound frame.
+        this.replaceSocket(this.lastServerActivityAt);
+        return;
+      }
       this.markSocketLost(Date.now());
     };
 
@@ -175,14 +184,22 @@ export class WebSocketManager {
     if (!socket) {
       return;
     }
-    if (socket.readyState === WebSocket.OPEN) {
-      // A live-looking socket that failed its probe: use the watermark from
-      // the last inbound frame, not "now" — anything fetched after it may have
-      // raced a dead connection.
-      this.markSocketLost(this.lastServerActivityAt);
-    } else {
-      this.markSocketLost(Date.now());
+    // A live-looking socket that failed its probe: use the watermark from the
+    // last inbound frame, not "now" — anything fetched after it may have raced
+    // a dead connection. A closed socket was already watermarked by its close.
+    this.replaceSocket(
+      socket.readyState === WebSocket.OPEN
+        ? this.lastServerActivityAt
+        : Date.now(),
+    );
+  }
+
+  private replaceSocket(disconnectedAt: number): void {
+    const socket = this.socket;
+    if (!socket) {
+      return;
     }
+    this.markSocketLost(disconnectedAt);
     // partysocket ignores reconnect() while a backoff wait holds its connect
     // lock, so replace the instance instead of asking it to retry.
     socket.onopen = null;
