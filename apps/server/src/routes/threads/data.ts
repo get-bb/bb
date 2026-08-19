@@ -387,8 +387,9 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       },
     );
 
-    // Delta: when the client tells us the revision it currently holds and our
-    // last-sent snapshot still matches it exactly, return only the changed rows.
+    // Delta: when the client tells us the revision it currently holds and we
+    // still hold the snapshot we sent at exactly that revision, return only the
+    // changed rows.
     // Reprojecting the full window first keeps every collapse/eviction/finalize
     // case correct by construction; the diff is the cheap part.
     const afterSequence = parseOptionalInteger(
@@ -396,13 +397,14 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       "afterSequence",
     );
     const paramsKey = buildThreadTimelineParamsKey(keyArgs);
-    const previous = timelineLatestRowsCache.get(paramsKey);
+    const previous =
+      afterSequence === undefined
+        ? undefined
+        : timelineLatestRowsCache.get(paramsKey, afterSequence);
     const delta =
-      afterSequence !== undefined &&
-      previous !== undefined &&
-      previous.maxSeq === afterSequence
-        ? computeTimelineRowDelta(previous.rows, full.rows)
-        : undefined;
+      previous === undefined
+        ? undefined
+        : computeTimelineRowDelta(previous.rows, full.rows);
     timelineLatestRowsCache.set(paramsKey, { maxSeq, rows: full.rows });
 
     return context.json(
