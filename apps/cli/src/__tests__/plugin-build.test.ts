@@ -149,16 +149,18 @@ describe("buildPluginApp", () => {
     // Host typography scale: the utility reads the token, and the plugin
     // sheet carries the host's override (0.8125rem, not Tailwind's 0.875rem).
     expect(css).toMatch(/\.text-sm\s*\{[^}]*var\(--text-sm/);
-    expect(css).toContain("--text-sm: 0.8125rem");
+    expect(css).toContain("--text-sm:.8125rem");
     // tw-animate-css utilities (host idiom for overlay open/close animation).
     expect(css).toContain(".animate-in");
     expect(css).toContain(".fade-in-0");
     // Utilities stay scoped to this plugin's own mounts, with a generic-root
     // fallback for hosts whose portals predate the per-plugin id attribute.
     // Two arms per selector: the self arm styles portaled overlays, which
-    // carry the scope attribute on the styled element itself.
+    // carry the scope attribute on the styled element itself. (Minified
+    // selector text: no quotes around an identifier attribute value, no
+    // space after the list comma.)
     const scope =
-      ':where([data-bb-plugin="fixture"], [data-bb-plugin-root]:not([data-bb-plugin]))';
+      ":where([data-bb-plugin=fixture],[data-bb-plugin-root]:not([data-bb-plugin]))";
     expect(css).toContain(`${scope} .animate-in`);
     expect(css).toContain(`${scope}.animate-in`);
     expect(css).not.toContain("@scope");
@@ -196,15 +198,18 @@ describe("buildPluginApp", () => {
     );
     const css = await readFile(cssPath, "utf8");
 
-    expect(css).toContain(".fixture-highlight");
-    expect(css).toContain("background: hotpink");
+    // Minified by the same lightningcss pass as the utilities.
+    expect(css).toContain(".fixture-highlight{background:#ff69b4}");
     expect(css).toContain("@keyframes fixture-pulse");
     // Authored CSS is appended after the scoped Tailwind layer and keeps its
     // own selectors: they may target editor decorations outside the mount.
-    expect(css).toMatch(/^\.fixture-highlight/m);
-    expect(css).not.toContain(
-      ':where([data-bb-plugin="fixture"], [data-bb-plugin-root]:not([data-bb-plugin])) .fixture-highlight',
+    expect(css.indexOf(".fixture-highlight{")).toBeGreaterThan(
+      css.lastIndexOf("@layer utilities{"),
     );
+    const scope =
+      ":where([data-bb-plugin=fixture],[data-bb-plugin-root]:not([data-bb-plugin]))";
+    expect(css).not.toContain(`${scope} .fixture-highlight`);
+    expect(css).not.toContain(`${scope}.fixture-highlight`);
   });
 
   it("throws at import time without the BB runtime and loads once slots are set", async () => {

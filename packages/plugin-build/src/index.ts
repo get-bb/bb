@@ -17,6 +17,7 @@
 export {
   buildPluginApp,
   RUNTIME_SLOT_BY_SPECIFIER,
+  type PluginAppBuildOptions,
   type PluginAppBuildResult,
 } from "./build-plugin-app.js";
 export {

@@ -886,7 +886,8 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     Re-running on a migrated plugin is a no-op. Needs no server.
   - `bb plugin dev [path]` — watch loop for an installed plugin (default:
     cwd): on every change it rebuilds the frontend bundle (when `bb.app` is
-    declared) and reloads the plugin; open app pages pick the new UI up live.
+    declared; unminified, unlike `bb plugin build`) and reloads the plugin;
+    open app pages pick the new UI up live.
     Build/reload failures print and keep watching; Ctrl+C stops.
   - Frontend entries default-export `definePluginApp` from
     `@get-bb/plugin-sdk/app` and register UI slots (homepageSection,

@@ -1531,7 +1531,7 @@ export function registerPluginCommands(
   plugin
     .command("dev [path]")
     .description(
-      "Watch a plugin's sources: rebuild its frontend, host, and provider-bridge bundles when declared, then reload it on every change (Ctrl+C to stop)",
+      "Watch a plugin's sources: rebuild its frontend (unminified, for readable stack traces), host, and provider-bridge bundles when declared, then reload it on every change (Ctrl+C to stop)",
     )
     .action(
       action(async (path: string | undefined) => {
@@ -1562,10 +1562,14 @@ export function registerPluginCommands(
           hasApp,
           hasHost,
           buildApp: async () => {
+            // Readable output while iterating: stack traces and the emitted
+            // CSS map back to source. `bb plugin build` and server installs
+            // minify.
             await buildPluginApp(
               rootDir,
               resolveBbCliVersion(),
               await cliBuildToolchain(),
+              { minify: false },
             );
           },
           buildHost: async () => {

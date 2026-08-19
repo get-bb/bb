@@ -5,12 +5,13 @@
 //   node packages/plugin-build/scripts/generate-plugin-theme.mjs
 
 /**
- * The host app's `@theme` blocks, verbatim: the semantic-token bridge
- * (`--color-background: var(--background)`, radius, fonts, shadows) plus the
+ * The host app's `@theme` blocks: the semantic-token bridge
+ * (`--color-background: var(--background)`, radius, fonts, shadows — as
+ * `inline reference`, so no plugin sheet re-declares them on `:root`) plus the
  * typography-scale overrides. Values resolve against the host's live CSS
  * variables at runtime, so plugin-compiled utilities track the active theme.
  */
-export const PLUGIN_THEME_CSS = `@theme inline {
+export const PLUGIN_THEME_CSS = `@theme inline reference {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

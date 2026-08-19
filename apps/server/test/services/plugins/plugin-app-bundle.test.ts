@@ -200,12 +200,14 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     // plugins (a later sheet's `.grid` beating an earlier sheet's
     // `@md:flex`). The second arm keeps portals styled on hosts whose
     // portal-scope predates the per-plugin id attribute.
+    // (Minified selector text: no quotes around an identifier attribute
+    // value, no space after the list comma.)
     const scope =
-      ':where([data-bb-plugin="appy"], [data-bb-plugin-root]:not([data-bb-plugin]))';
+      ":where([data-bb-plugin=appy],[data-bb-plugin-root]:not([data-bb-plugin]))";
     expect(cssText).toContain(`${scope} .line-clamp-2`);
     expect(cssText).toContain(`${scope}.line-clamp-2`);
     // And no utility rule sits in the utilities layer outside that scope.
-    expect(cssText).not.toMatch(/@layer utilities \{\s*\./);
+    expect(cssText).not.toMatch(/@layer utilities\{\./);
 
     const gzipCss = await harness.app.request(`${BASE}${bundle.cssUrl}`, {
       headers: { "accept-encoding": "br;q=0, gzip;q=1" },
