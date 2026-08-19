@@ -255,6 +255,7 @@ function buildClaudeTaskShape(
   const workflow = buildWorkflowSnapshot(task);
   return {
     type: "backgroundTask",
+    familyId: task.taskId,
     taskType: task.taskType,
     description: task.description,
     status: backgroundTaskItemStatus(task.taskStatus),

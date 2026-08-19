@@ -240,11 +240,21 @@ function getBackgroundAgentModel(
     : null;
 }
 
-function getBackgroundTaskFamilyId(itemId: string): string {
-  // Claude keeps the provider task id when a settled task restarts and makes
-  // each persisted item unique with a `#N` generation suffix. The restarted
-  // task may omit its original spawning call, so use the stable family id to
-  // carry forward metadata already correlated from an earlier generation.
+function getBackgroundTaskFamilyId(
+  message: EventProjectionWorkflowMessage,
+): string {
+  // A restarted settled task mints a fresh timeline item but may omit its
+  // original spawning call, so the stable family id carries forward metadata
+  // already correlated from an earlier generation. The item's explicit
+  // `familyId` (the provider's task id) is that key; it is namespaced under a
+  // prefix so it can never collide with a legacy item-id-derived key.
+  if (message.familyId !== null) {
+    return `family:${message.familyId}`;
+  }
+  // Legacy fallback for events persisted before `familyId` existed: claude's
+  // bridge minted item ids as `task:<taskId>#<generation>` (suffix only for
+  // generation > 1), smuggling the family through the id text.
+  const itemId = message.itemId;
   const generationMatch = /#(\d+)$/.exec(itemId);
   if (!generationMatch) {
     return itemId;
@@ -268,7 +278,7 @@ function enrichBackgroundAgentModels(
       continue;
     }
 
-    const taskFamilyId = getBackgroundTaskFamilyId(message.itemId);
+    const taskFamilyId = getBackgroundTaskFamilyId(message);
     const model =
       getBackgroundAgentModel(message, callMessageById) ??
       message.model ??

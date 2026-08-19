@@ -714,6 +714,7 @@ export function createDeltaAssembler(
       {
         type: "backgroundTask",
         id: bbItemId,
+        familyId: shape.familyId,
         taskType: shape.taskType,
         description: shape.description,
         status: shape.status,

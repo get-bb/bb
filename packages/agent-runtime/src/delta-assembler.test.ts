@@ -1532,6 +1532,7 @@ describe("delta assembler background tasks and progress policy", () => {
   ): Extract<DeltaItemShape, { type: "backgroundTask" }> {
     return {
       type: "backgroundTask",
+      familyId: "wf-1",
       taskType: "local_workflow",
       description: "run the workflow",
       status: "pending",
@@ -1559,6 +1560,7 @@ describe("delta assembler background tasks and progress policy", () => {
         scope: turnScope(turnId),
         item: expect.objectContaining({
           type: "backgroundTask",
+          familyId: "wf-1",
           taskType: "local_workflow",
           status: "pending",
         }),
@@ -1588,7 +1590,11 @@ describe("delta assembler background tasks and progress policy", () => {
       expect.objectContaining({
         type: "item/backgroundTask/progress",
         scope: threadScope(),
-        item: expect.objectContaining({ id: itemId, summary: "still going" }),
+        item: expect.objectContaining({
+          id: itemId,
+          familyId: "wf-1",
+          summary: "still going",
+        }),
       }),
     ]);
 
@@ -1606,6 +1612,7 @@ describe("delta assembler background tasks and progress policy", () => {
         scope: threadScope(),
         item: expect.objectContaining({
           id: itemId,
+          familyId: "wf-1",
           status: "completed",
           taskStatus: "completed",
         }),

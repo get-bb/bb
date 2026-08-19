@@ -280,6 +280,14 @@ export const toolCallProgressEventSchema = z.object({
 export const threadEventBackgroundTaskItemSchema = z.object({
   type: z.literal("backgroundTask"),
   id: z.string(),
+  /**
+   * The provider's stable task id, shared by every generation (restart) of
+   * the same task; consumers use it to correlate a restarted task with its
+   * earlier generations. Absent only on events persisted before the field
+   * existed — those encoded the family in the item id's legacy `#N`
+   * generation suffix instead.
+   */
+  familyId: z.string().optional(),
   /** Raw SDK task discriminant (e.g. "local_workflow"); "unknown" when the provider omitted it. */
   taskType: z.string(),
   description: z.string(),

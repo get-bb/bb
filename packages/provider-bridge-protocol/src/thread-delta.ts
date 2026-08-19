@@ -111,6 +111,14 @@ export type DeltaFileChange = z.infer<typeof deltaFileChangeSchema>;
  */
 export const deltaBackgroundTaskShapeSchema = z.object({
   type: z.literal("backgroundTask"),
+  /**
+   * The provider's stable task id, shared by every generation (restart) of
+   * the same task. Rides through to the canonical item so consumers can
+   * correlate a restarted task with its earlier generations — the assembler
+   * mints fresh item ids per generation, so identity must travel as data,
+   * never as id text.
+   */
+  familyId: z.string().min(1),
   taskType: z.string(),
   description: z.string(),
   status: threadEventItemStatusSchema,

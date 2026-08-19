@@ -511,6 +511,10 @@ describe("claude-code background task translation", () => {
     );
     expect(backgroundTaskItem(reopenedStarted[0]!)).toMatchObject({
       id: secondGenerationId,
+      // Both generations share the provider task id as the explicit family
+      // identity — consumers correlate restarts through it, never through the
+      // assembler-minted item id text.
+      familyId: "wu7ol9ras",
       // The spawning tool call was never seen opening; the assembler mints
       // its bb id on first reference instead of leaking the provider id.
       parentToolCallId: harness.itemId("toolu_send_message_1", "bb-thread-1"),
@@ -540,6 +544,7 @@ describe("claude-code background task translation", () => {
     const startedItem = backgroundTaskItem(startedTask[0]!);
     expect(startedItem).toMatchObject({
       id: harness.itemId("task:bmn5wv33k", "bb-thread-1"),
+      familyId: "bmn5wv33k",
       taskType: "local_bash",
       description: "Count ticks from 1 to 6 with 1 second delays",
       status: "pending",
