@@ -1381,10 +1381,22 @@ function useMarkdownTableContentWidthVariable() {
     }
     const clip = findHorizontalClipAncestor(content);
 
+    // Streamed text grows the preview and the clip ancestor in height only.
+    // Skip those events: every table would otherwise read layout and write a
+    // style, and the write forces the next table's read to recalculate.
+    let lastContentWidth = -1;
+    let lastClipWidth = -1;
     const measure = () => {
+      const contentWidth = content.getBoundingClientRect().width;
+      const clipWidth = clip?.clientWidth ?? -1;
+      if (contentWidth === lastContentWidth && clipWidth === lastClipWidth) {
+        return;
+      }
+      lastContentWidth = contentWidth;
+      lastClipWidth = clipWidth;
       setMarkdownContentWidthVariable({
         element: breakout,
-        width: content.getBoundingClientRect().width,
+        width: contentWidth,
       });
       setMarkdownTableBreakoutLimitVariable({ breakout, clip });
     };
@@ -1413,13 +1425,14 @@ const HORIZONTAL_CLIP_OVERFLOW_VALUES = new Set([
 ]);
 
 /**
- * The nearest ancestor whose horizontal overflow is clipped or scrolled. A
- * table breakout that extends past this element's padding box is lost: the
- * clipped side is invisible and a scroll container cannot scroll to a
- * negative offset.
+ * The nearest element, starting at `element` itself, whose horizontal overflow
+ * is clipped or scrolled. A table breakout that extends past this element's
+ * padding box is lost: the clipped side is invisible and a scroll container
+ * cannot scroll to a negative offset. The preview root counts because callers
+ * can clip it through `className`.
  */
 function findHorizontalClipAncestor(element: HTMLElement): HTMLElement | null {
-  let current = element.parentElement;
+  let current: HTMLElement | null = element;
   while (current && current !== document.body) {
     if (
       HORIZONTAL_CLIP_OVERFLOW_VALUES.has(getComputedStyle(current).overflowX)

@@ -133,6 +133,71 @@ describe("MarkdownPreview", () => {
     expect(
       roomyBreakout?.style.getPropertyValue("--md-table-breakout-max"),
     ).toBe("500px");
+    roomy.unmount();
+
+    // The preview root itself clips: the table must not leave the preview.
+    const sheet = document.createElement("style");
+    sheet.textContent = ".overflow-x-hidden { overflow-x: hidden; }";
+    document.head.appendChild(sheet);
+    const rooted = render(
+      <div data-left="0" data-width="600">
+        <MarkdownPreview
+          className="overflow-x-hidden"
+          content={"| A |\n| - |\n| B |"}
+        />
+      </div>,
+    );
+    const rootedBreakout =
+      rooted.container.querySelector("table")?.parentElement?.parentElement;
+    expect(
+      rootedBreakout?.style.getPropertyValue("--md-table-breakout-max"),
+    ).toBe("300px");
+    sheet.remove();
+  });
+
+  it("skips height-only resize events for tables", () => {
+    let callback: ResizeObserverCallback | null = null;
+    class ResizeObserverMock {
+      constructor(cb: ResizeObserverCallback) {
+        callback = cb;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    let width = 320;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      () => ({
+        bottom: 0,
+        height: 0,
+        left: 0,
+        right: width,
+        top: 0,
+        width,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
+    );
+
+    const { container } = render(
+      <MarkdownPreview content={"| A |\n| - |\n| B |"} />,
+    );
+    const breakout = container.querySelector("table")?.parentElement
+      ?.parentElement as HTMLElement;
+    expect(breakout.style.getPropertyValue("--md-content-w")).toBe("320px");
+    expect(callback).not.toBeNull();
+
+    // Same width, different height: no style write.
+    breakout.style.setProperty("--md-content-w", "sentinel");
+    callback!([], {} as ResizeObserver);
+    expect(breakout.style.getPropertyValue("--md-content-w")).toBe("sentinel");
+
+    // A width change re-measures.
+    width = 480;
+    callback!([], {} as ResizeObserver);
+    expect(breakout.style.getPropertyValue("--md-content-w")).toBe("480px");
   });
 
   it("keeps the starting number of an ordered list", () => {
