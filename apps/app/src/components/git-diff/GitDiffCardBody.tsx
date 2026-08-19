@@ -19,6 +19,7 @@ import { useRequirePierreWorkerPool } from "@/lib/pierre-worker-pool-gate";
 import { FileDiff as DiffView } from "@pierre/diffs/react";
 import { useIntersectionObserver } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { usePierreLineSelectionActions } from "./PierreLineSelectionActions.js";
 import {
   getWrappedImageIndex,
@@ -104,6 +105,62 @@ type DiffFileEnrichmentState =
     }
   | { status: "unavailable" }
   | { status: "error" };
+
+/**
+ * The app-owned expand-context affordance for a text card. Full old/new file
+ * contents are only needed so `@pierre/diffs` can offer expand-context buttons
+ * between hunks; fetching them eagerly costs two whole-file reads and a second
+ * tokenize/render pass per card, which phones cannot afford. So the card
+ * renders from the patch alone and fetches the contents on demand (`request`),
+ * or during idle time on fine-pointer devices where the eager behavior is
+ * cheap enough to keep.
+ *
+ * - `unavailable`: no fetcher, no patch text, or the change kind has nothing
+ *   to expand (added/deleted files already carry every line) — render nothing.
+ * - `idle`: offer the "Expand context" action.
+ * - `loading` / `error`: show progress or a retry.
+ * - `ready`: pierre now owns expansion; the affordance retires.
+ */
+export type DiffContextExpansionStatus =
+  | "unavailable"
+  | "idle"
+  | "loading"
+  | "ready"
+  | "error";
+
+export interface DiffContextExpansionState {
+  status: DiffContextExpansionStatus;
+  request: () => void;
+}
+
+/**
+ * Change kinds whose patch omits lines the user might want to see. Added and
+ * deleted files carry the whole file in the patch, so there is no surrounding
+ * context to reach for.
+ */
+function canExpandContextForChangeKind(
+  changeKind: GitDiffFileChangeKind,
+): boolean {
+  return (
+    changeKind === "modified" ||
+    changeKind === "renamed" ||
+    changeKind === "copied"
+  );
+}
+
+/**
+ * Run `work` when the main thread is idle. Falls back to a short timeout where
+ * `requestIdleCallback` is unavailable so the fine-pointer auto-expansion still
+ * happens, just after the current paint.
+ */
+function scheduleIdleWork(work: () => void): () => void {
+  if (typeof window.requestIdleCallback === "function") {
+    const handle = window.requestIdleCallback(work, { timeout: 2_000 });
+    return () => window.cancelIdleCallback(handle);
+  }
+  const handle = window.setTimeout(work, 200);
+  return () => window.clearTimeout(handle);
+}
 
 function buildDiffFileContentPlan(
   fileDiff: ParsedGitDiffFile,
@@ -233,6 +290,8 @@ export interface GitDiffCardBodyState {
   loadDeletedDiff: () => void;
   /** The header's `+/-` byte delta for an image card; `null` for text cards. */
   imageSizeStat: DiffImageSizeStat | null;
+  /** On-demand full-file context for text cards; see {@link DiffContextExpansionState}. */
+  contextExpansion: DiffContextExpansionState;
 }
 
 /**
@@ -280,6 +339,11 @@ export function useGitDiffCardBody({
   const enrichmentStatusRef = useRef<DiffFileEnrichmentState["status"]>("idle");
   const [hasBodyEnteredViewport, setHasBodyEnteredViewport] = useState(false);
   const [hasLoadedDeletedDiff, setHasLoadedDeletedDiff] = useState(false);
+  // Bumped by each explicit (or idle-scheduled) expand-context request. Zero
+  // means nobody has asked for context yet; the fetch effect keys on the
+  // version so a retry after an error re-runs it.
+  const [contextRequestVersion, setContextRequestVersion] = useState(0);
+  const isPointerCoarse = usePointerCoarse();
   // Reset cached enrichment when the body swaps to different diff contents. Keep
   // the viewport-entry flag: an already-visible sentinel does not emit another
   // intersection change when only the diff hunk identity changes.
@@ -287,6 +351,7 @@ export function useGitDiffCardBody({
     enrichmentStatusRef.current = "idle";
     setEnrichment({ status: "idle" });
     setHasLoadedDeletedDiff(false);
+    setContextRequestVersion(0);
   }, [fileContentPlan.identity, isImageCard, isSvgCard]);
   useEffect(() => {
     if (isBodyVisible) {
@@ -301,11 +366,46 @@ export function useGitDiffCardBody({
     isDeletedFile && !isImageCard && !isSvgCard && !hasLoadedDeletedDiff;
   const shouldRenderDiffView =
     hasBodyEnteredViewport && !isRendering && !shouldGateDeletedDiff;
-  // Fire the fetch once the diff view is actually renderable. Effect deps
-  // deliberately exclude `onRequestFileContents` (we read the latest via the
-  // ref) so stable visibility doesn't re-trigger when the panel re-renders.
+  // Image and SVG cards cannot render anything without the file contents, so
+  // they fetch on viewport entry. Text cards render from the patch alone; their
+  // contents are only fetched once context expansion is requested.
+  const needsContentsToRender = isImageCard || isSvgCard;
+  const canExpandContext =
+    !needsContentsToRender &&
+    onRequestFileContents !== undefined &&
+    patchText !== undefined &&
+    fileDiff.hunks.length > 0 &&
+    canExpandContextForChangeKind(changeKind);
+  const shouldFetchContents =
+    shouldRenderDiffView &&
+    (needsContentsToRender || (canExpandContext && contextRequestVersion > 0));
+  // Fine-pointer devices keep the zero-click expand-context experience: once
+  // the card is renderable, request the contents during idle time. Coarse
+  // pointers (phones, tablets) wait for the explicit affordance.
   useEffect(() => {
-    if (!shouldRenderDiffView || enrichmentStatusRef.current !== "idle") {
+    if (
+      isPointerCoarse ||
+      !shouldRenderDiffView ||
+      !canExpandContext ||
+      contextRequestVersion > 0
+    ) {
+      return;
+    }
+    return scheduleIdleWork(() => {
+      setContextRequestVersion((version) => (version === 0 ? 1 : version));
+    });
+  }, [
+    canExpandContext,
+    contextRequestVersion,
+    isPointerCoarse,
+    shouldRenderDiffView,
+  ]);
+  // Fire the fetch once the diff view is actually renderable and the contents
+  // are wanted. Effect deps deliberately exclude `onRequestFileContents` (we
+  // read the latest via the ref) so stable visibility doesn't re-trigger when
+  // the panel re-renders.
+  useEffect(() => {
+    if (!shouldFetchContents || enrichmentStatusRef.current !== "idle") {
       return;
     }
     const fetcher = fetcherRef.current;
@@ -373,7 +473,33 @@ export function useGitDiffCardBody({
         enrichmentStatusRef.current = "idle";
       }
     };
-  }, [fileContentPlan, fileDiff, isSvgCard, patchText, shouldRenderDiffView]);
+  }, [
+    contextRequestVersion,
+    fileContentPlan,
+    fileDiff,
+    isSvgCard,
+    patchText,
+    shouldFetchContents,
+  ]);
+
+  const requestContextExpansion = useCallback(() => {
+    // A retry after a failed fetch must clear the terminal error first so the
+    // fetch effect sees an idle slot when the version bump re-runs it.
+    if (enrichmentStatusRef.current === "error") {
+      enrichmentStatusRef.current = "idle";
+      setEnrichment({ status: "idle" });
+    }
+    setContextRequestVersion((version) => version + 1);
+  }, []);
+  const contextExpansionStatus = getDiffContextExpansionStatus({
+    canExpandContext,
+    contextRequested: contextRequestVersion > 0,
+    enrichmentStatus: enrichment.status,
+  });
+  const contextExpansion = useMemo<DiffContextExpansionState>(
+    () => ({ status: contextExpansionStatus, request: requestContextExpansion }),
+    [contextExpansionStatus, requestContextExpansion],
+  );
 
   const enrichedFileDiff = useMemo<ParsedGitDiffFile>(() => {
     if (enrichment.status !== "ready" && enrichment.status !== "ready-svg") {
@@ -402,7 +528,38 @@ export function useGitDiffCardBody({
     shouldRenderDiffView,
     loadDeletedDiff,
     imageSizeStat,
+    contextExpansion,
   };
+}
+
+function getDiffContextExpansionStatus({
+  canExpandContext,
+  contextRequested,
+  enrichmentStatus,
+}: {
+  canExpandContext: boolean;
+  contextRequested: boolean;
+  enrichmentStatus: DiffFileEnrichmentState["status"];
+}): DiffContextExpansionStatus {
+  if (!canExpandContext) return "unavailable";
+  switch (enrichmentStatus) {
+    case "idle":
+      return contextRequested ? "loading" : "idle";
+    case "loading":
+      return "loading";
+    case "ready":
+      return "ready";
+    case "error":
+      return "error";
+    case "ready-image":
+    case "ready-svg":
+    case "unavailable":
+      return "unavailable";
+    default: {
+      const _exhaustive: never = enrichmentStatus;
+      return _exhaustive;
+    }
+  }
 }
 
 function GitDiffCardBodySkeleton() {
@@ -1268,6 +1425,7 @@ export function GitDiffCardBody({
     shouldGateDeletedDiff,
     shouldRenderDiffView,
     loadDeletedDiff,
+    contextExpansion,
   } = state;
   const codeTheme = useResolvedCodeThemePair();
   const fileDiffOptions = useMemo<DiffViewOptions>(
@@ -1320,12 +1478,69 @@ export function GitDiffCardBody({
           onSelectionAddToChat={onSelectionAddToChat}
         />
       ) : (
-        <GitDiffCardRawDiffBody
-          fileDiff={enrichedFileDiff}
-          fileDiffOptions={fileDiffOptions}
-          onSelectionAddToChat={onSelectionAddToChat}
-        />
+        <>
+          <GitDiffCardRawDiffBody
+            fileDiff={enrichedFileDiff}
+            fileDiffOptions={fileDiffOptions}
+            onSelectionAddToChat={onSelectionAddToChat}
+          />
+          <GitDiffCardContextExpansionFooter
+            contextExpansion={contextExpansion}
+            reservesCollapseGutter={reservesCollapseGutter}
+          />
+        </>
       )}
+    </div>
+  );
+}
+
+interface GitDiffCardContextExpansionFooterProps {
+  contextExpansion: DiffContextExpansionState;
+  reservesCollapseGutter: boolean;
+}
+
+/**
+ * The on-demand "Expand context" row under a text diff. Once the contents are
+ * in (`ready`) pierre renders its own expand buttons between hunks, so the row
+ * retires; when there is nothing to expand (`unavailable`) it never shows.
+ */
+function GitDiffCardContextExpansionFooter({
+  contextExpansion,
+  reservesCollapseGutter,
+}: GitDiffCardContextExpansionFooterProps) {
+  const { status, request } = contextExpansion;
+  if (status === "unavailable" || status === "ready") {
+    return null;
+  }
+  return (
+    <div className="flex items-center py-2 pl-2 pr-3 text-xs text-muted-foreground">
+      {reservesCollapseGutter ? (
+        <span aria-hidden className="w-8 shrink-0" />
+      ) : null}
+      <span className="pl-[1ch]">
+        {status === "loading" ? (
+          <span role="status">Loading context…</span>
+        ) : (
+          <>
+            {status === "error" ? (
+              <>
+                <span className="text-destructive">
+                  Couldn&apos;t load surrounding context.
+                </span>{" "}
+              </>
+            ) : null}
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs underline underline-offset-4 hover:underline"
+              onClick={request}
+            >
+              {status === "error" ? "Retry" : "Expand context"}
+            </Button>
+          </>
+        )}
+      </span>
     </div>
   );
 }
