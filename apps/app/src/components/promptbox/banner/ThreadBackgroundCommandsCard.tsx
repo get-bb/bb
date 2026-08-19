@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
 import { isBackgroundAgentTaskType } from "@bb/domain";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import { durationToCompactString } from "@bb/thread-view";
+import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import { useSecondTick } from "@/hooks/useSecondTick";
 import { Icon } from "@bb/shared-ui/icon";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
@@ -89,14 +90,7 @@ function compactBackgroundActivityLabel(
  * workflow card's duration treatment.
  */
 function BackgroundActivityDuration({ startedAt }: { startedAt: number }) {
-  const [elapsed, setElapsed] = useState(() => Date.now() - startedAt);
-  useEffect(() => {
-    setElapsed(Date.now() - startedAt);
-    const interval = window.setInterval(() => {
-      setElapsed(Date.now() - startedAt);
-    }, 1_000);
-    return () => window.clearInterval(interval);
-  }, [startedAt]);
+  const elapsed = useSecondTick() - startedAt;
   if (elapsed <= 1_000) {
     return null;
   }
@@ -280,66 +274,58 @@ export function ThreadBackgroundCommandsCard({
         )}
       </div>
       {canExpand ? (
-        <section
+        <AnimatedBody
           id={BODY_ID}
-          role="region"
-          aria-labelledby={TOGGLE_ID}
-          aria-hidden={!isExpanded}
-          className={cn(
-            "grid overflow-hidden transition-[grid-template-rows,opacity,border-color] duration-200 ease-out",
-            isExpanded
-              ? "grid-rows-[1fr] border-t border-border opacity-100"
-              : "pointer-events-none grid-rows-[0fr] opacity-0",
-          )}
+          labelledBy={TOGGLE_ID}
+          isExpanded={isExpanded}
+          collapsedBorder="none"
         >
-          <div className="overflow-hidden bg-popover">
-            <div className="flex flex-col gap-0.5 py-1">
-              {expandedRows.map((row) => {
-                const display = backgroundActivityDisplay(row);
-                const model = backgroundActivityModel(row);
-                return (
-                  <div
-                    key={row.id}
-                    // px-3 matches the full-width header row's padding so the
-                    // icon lines up under the header icon.
+          <div className="flex flex-col gap-0.5 py-1">
+            {expandedRows.map((row) => {
+              const display = backgroundActivityDisplay(row);
+              const model = backgroundActivityModel(row);
+              return (
+                <div
+                  key={row.id}
+                  // px-3 matches the full-width header row's padding so the
+                  // icon lines up under the header icon.
+                  className={cn(
+                    "flex min-w-0 gap-1.5 px-3 py-0.5 text-xs",
+                    useCompactSummary ? "items-start" : "items-center",
+                  )}
+                >
+                  <Icon
+                    name={display.icon}
+                    className="size-3.5 shrink-0 text-muted-foreground/60"
+                    aria-hidden="true"
+                  />
+                  <span
                     className={cn(
-                      "flex min-w-0 gap-1.5 px-3 py-0.5 text-xs",
-                      useCompactSummary ? "items-start" : "items-center",
+                      "min-w-0 flex-1 text-muted-foreground",
+                      useCompactSummary
+                        ? "whitespace-normal [overflow-wrap:anywhere]"
+                        : "truncate",
                     )}
+                    title={row.description}
                   >
-                    <Icon
-                      name={display.icon}
-                      className="size-3.5 shrink-0 text-muted-foreground/60"
-                      aria-hidden="true"
-                    />
+                    {row.description}
+                  </span>
+                  {model ? (
                     <span
-                      className={cn(
-                        "min-w-0 flex-1 text-muted-foreground",
-                        useCompactSummary
-                          ? "whitespace-normal [overflow-wrap:anywhere]"
-                          : "truncate",
-                      )}
-                      title={row.description}
+                      className="shrink-0 whitespace-nowrap font-mono text-2xs text-subtle-foreground"
+                      title={`Model: ${model}`}
                     >
-                      {row.description}
+                      {model}
                     </span>
-                    {model ? (
-                      <span
-                        className="shrink-0 whitespace-nowrap font-mono text-2xs text-subtle-foreground"
-                        title={`Model: ${model}`}
-                      >
-                        {model}
-                      </span>
-                    ) : null}
-                    <span className="shrink-0 whitespace-nowrap text-subtle-foreground">
-                      <BackgroundActivityDuration startedAt={row.startedAt} />
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+                  ) : null}
+                  <span className="shrink-0 whitespace-nowrap text-subtle-foreground">
+                    <BackgroundActivityDuration startedAt={row.startedAt} />
+                  </span>
+                </div>
+              );
+            })}
           </div>
-        </section>
+        </AnimatedBody>
       ) : null}
     </PromptStackCard>
   );

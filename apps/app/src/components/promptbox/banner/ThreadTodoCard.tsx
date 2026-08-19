@@ -3,6 +3,7 @@ import type {
   ThreadTimelinePendingTodoItemStatus,
   ThreadTimelinePendingTodos,
 } from "@bb/domain";
+import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import {
   activityIconClass,
@@ -187,22 +188,14 @@ export function ThreadTodoCard({
           />
         </button>
       </div>
-      <section
+      <AnimatedBody
         id={BODY_ID}
-        role="region"
-        aria-labelledby={TOGGLE_ID}
-        aria-hidden={!isExpanded}
-        className={cn(
-          "grid overflow-hidden transition-[grid-template-rows,opacity,border-color] duration-200 ease-out",
-          isExpanded
-            ? "grid-rows-[1fr] border-t border-border opacity-100"
-            : "pointer-events-none grid-rows-[0fr] opacity-0",
-        )}
+        labelledBy={TOGGLE_ID}
+        isExpanded={isExpanded}
+        collapsedBorder="none"
       >
-        <div className="overflow-hidden bg-popover">
-          <TodoBody items={items} />
-        </div>
-      </section>
+        <TodoBody items={items} />
+      </AnimatedBody>
     </PromptStackCard>
   );
 }

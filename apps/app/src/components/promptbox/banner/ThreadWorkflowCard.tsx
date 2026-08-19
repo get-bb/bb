@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
 import { isSettledWorkflowAgentState } from "@bb/domain";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import { durationToCompactString } from "@bb/thread-view";
+import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import { useSecondTick } from "@/hooks/useSecondTick";
 import { WorkflowWorkRowBody } from "@/components/thread/timeline/WorkflowWorkRowBody";
 import {
   activityIconClass,
@@ -28,14 +29,7 @@ const WORKFLOW_HEADER_BUTTON_CLASS = activityRowClass(
  * sub-second flicker on entry.
  */
 function WorkflowDuration({ startedAt }: { startedAt: number }) {
-  const [elapsed, setElapsed] = useState(() => Date.now() - startedAt);
-  useEffect(() => {
-    setElapsed(Date.now() - startedAt);
-    const interval = window.setInterval(() => {
-      setElapsed(Date.now() - startedAt);
-    }, 1_000);
-    return () => window.clearInterval(interval);
-  }, [startedAt]);
+  const elapsed = useSecondTick() - startedAt;
   if (elapsed <= 1_000) {
     return null;
   }
@@ -148,22 +142,14 @@ export function ThreadWorkflowCard({
           className="px-3 pb-2"
         />
       ) : null}
-      <section
+      <AnimatedBody
         id={BODY_ID}
-        role="region"
-        aria-labelledby={TOGGLE_ID}
-        aria-hidden={!isExpanded}
-        className={cn(
-          "grid overflow-hidden transition-[grid-template-rows,opacity,border-color] duration-200 ease-out",
-          isExpanded
-            ? "grid-rows-[1fr] border-t border-border opacity-100"
-            : "pointer-events-none grid-rows-[0fr] opacity-0",
-        )}
+        labelledBy={TOGGLE_ID}
+        isExpanded={isExpanded}
+        collapsedBorder="none"
       >
-        <div className="overflow-hidden bg-popover">
-          <WorkflowWorkRowBody row={workflow} size="base" collapsiblePhases />
-        </div>
-      </section>
+        <WorkflowWorkRowBody row={workflow} size="base" collapsiblePhases />
+      </AnimatedBody>
     </PromptStackCard>
   );
 }

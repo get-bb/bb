@@ -1,9 +1,4 @@
-import {
-  forwardRef,
-  useState,
-  type ButtonHTMLAttributes,
-  type ReactNode,
-} from "react";
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import type {
   EnvironmentStatus,
@@ -41,6 +36,7 @@ import {
   PULL_REQUEST_STATE_DISPLAY,
 } from "@/lib/pull-request-display";
 import { PullRequestStatusPill } from "@/components/pull-request/PullRequestStatusPill";
+import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -662,46 +658,6 @@ function PullRequestBannerLink({
   );
 }
 
-function AnimatedBody({
-  id,
-  labelledBy,
-  isExpanded,
-  children,
-}: {
-  id: string;
-  labelledBy: string;
-  isExpanded: boolean;
-  children: ReactNode;
-}) {
-  // Realize the body only after the first expand, then retain it. A collapsed
-  // body still costs layout for every node inside it, and the changed-files
-  // list can be large, so the DOM must not carry it before anyone opens it.
-  const [hasRealizedBody, setHasRealizedBody] = useState(isExpanded);
-  if (isExpanded && !hasRealizedBody) {
-    setHasRealizedBody(true);
-  }
-  const isBodyRealized = hasRealizedBody || isExpanded;
-
-  return (
-    <section
-      id={id}
-      role="region"
-      aria-labelledby={labelledBy}
-      aria-hidden={!isExpanded}
-      className={cn(
-        "grid overflow-hidden transition-[grid-template-rows,opacity,border-color] duration-200 ease-out",
-        isExpanded
-          ? "grid-rows-[1fr] border-t border-border opacity-100"
-          : "pointer-events-none grid-rows-[0fr] border-t border-transparent opacity-0",
-      )}
-    >
-      <div className="overflow-hidden bg-popover">
-        {isBodyRealized ? children : null}
-      </div>
-    </section>
-  );
-}
-
 const CHILD_THREADS_HEADER_BUTTON_CLASS =
   "flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80";
 
@@ -797,6 +753,7 @@ function ActiveChildThreadsCard({
         </button>
       </div>
       <AnimatedBody
+        collapsedBorder="reserve"
         id={SECTION_IDS.childThreads.body}
         labelledBy={SECTION_IDS.childThreads.toggle}
         isExpanded={isExpanded}
@@ -882,6 +839,7 @@ function ReadOnlyContextBanner({
       </div>
       {parentThreadSection ? (
         <AnimatedBody
+          collapsedBorder="reserve"
           id={SECTION_IDS.parentThread.body}
           labelledBy={SECTION_IDS.parentThread.toggle}
           isExpanded={isParentThreadExpanded}
@@ -1142,6 +1100,7 @@ export function ThreadPromptContextBanner({
         </div>
         {showParentThread && parentThreadSection && !isParentThreadOnly ? (
           <AnimatedBody
+            collapsedBorder="reserve"
             id={SECTION_IDS.parentThread.body}
             labelledBy={SECTION_IDS.parentThread.toggle}
             isExpanded={isParentThreadExpanded}
@@ -1155,6 +1114,7 @@ export function ThreadPromptContextBanner({
         ) : null}
         {showGit ? (
           <AnimatedBody
+            collapsedBorder="reserve"
             id={SECTION_IDS.git.body}
             labelledBy={SECTION_IDS.git.toggle}
             isExpanded={isGitExpanded}
