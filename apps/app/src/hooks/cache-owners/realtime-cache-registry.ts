@@ -50,9 +50,11 @@ import {
   getCachedRootOrderThreadListInvalidationQueryKeys,
   getCachedSidebarNavigationThreads,
   getCachedThreadListPlaceholder,
+  getCachedThreadListQueryKeys,
   getEnvironmentBranchListInvalidationQueryKeys,
   getEnvironmentRecordInvalidationQueryKeys,
   getEnvironmentWorkspaceStateInvalidationQueryKeys,
+  isArchivedThreadListQueryKey,
   removeEnvironmentDiffPatchQueries,
   updateCachedThreadListPendingInteractionState,
 } from "./query-cache";
@@ -92,6 +94,7 @@ import {
   threadStorageFilePreviewQueryKeyPrefix,
   threadStorageFilesForThreadQueryKeyPrefix,
   threadStoragePathsForThreadQueryKeyPrefix,
+  threadTimelineQueryKeyPrefix,
 } from "../queries/query-keys";
 import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend-lazy";
 import {
@@ -132,6 +135,32 @@ const trailingActiveRefetchUnsubscribers = new WeakMap<
   Map<string, () => void>
 >();
 
+interface ThrottledActiveRefetchEntry {
+  lastRunAt: number;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+const throttledActiveRefetchEntries = new WeakMap<
+  QueryClient,
+  Map<string, ThrottledActiveRefetchEntry>
+>();
+
+interface ThrottledActiveRefetchArgs {
+  minIntervalMs: number;
+  queryClient: QueryClient;
+  queryKey: QueryKey;
+}
+
+/**
+ * `work-status-changed` arrives on every file-change burst while an agent
+ * edits. Each active work-status refetch is a `git status` probe on the host,
+ * and the default invalidation aborts the probe already in flight. Compact
+ * clients render the tally/branch from this query, so it must stay live —
+ * but one probe per second is enough. Changes inside the interval coalesce
+ * into a single trailing refetch, and an in-flight probe is never cancelled.
+ */
+const WORK_STATUS_REFETCH_MIN_INTERVAL_MS = 1_000;
+
 /**
  * The trailing refetch is self-clocking: it fires as soon as the in-flight
  * fetch settles and any event arrived meanwhile. During a streaming turn events
@@ -168,6 +197,69 @@ function hasActiveFetchingQueries(
     .getQueryCache()
     .findAll({ queryKey, type: "active" })
     .some((query) => query.state.fetchStatus !== "idle");
+}
+
+function hasActiveQueries(
+  queryClient: QueryClient,
+  queryKey: QueryKey,
+): boolean {
+  return (
+    queryClient.getQueryCache().findAll({ queryKey, type: "active" }).length >
+    0
+  );
+}
+
+function refetchActiveQueriesWithoutCanceling({
+  queryClient,
+  queryKey,
+}: ScheduleTrailingActiveRefetchArgs): void {
+  const hadActiveFetch = hasActiveFetchingQueries(queryClient, queryKey);
+  void queryClient
+    .refetchQueries({ queryKey, type: "active" }, { cancelRefetch: false })
+    .catch(() => {
+      // Individual query state already captures the refetch error.
+    });
+  if (hadActiveFetch) {
+    // A change that raced the in-flight read must not be lost.
+    scheduleTrailingActiveRefetch({ queryClient, queryKey });
+  }
+}
+
+/**
+ * Marks matching queries stale immediately (so a remount refetches) and
+ * refetches the active ones at most once per `minIntervalMs`: the first change
+ * after a quiet period refetches right away, later changes inside the interval
+ * coalesce into one trailing refetch. Never cancels an in-flight fetch.
+ */
+function invalidateQueryKeyWithThrottledActiveRefetch({
+  minIntervalMs,
+  queryClient,
+  queryKey,
+}: ThrottledActiveRefetchArgs): void {
+  queryClient.invalidateQueries({ queryKey, refetchType: "none" });
+
+  const scheduleKey = timelineInvalidationKey(queryKey);
+  let entries = throttledActiveRefetchEntries.get(queryClient);
+  if (!entries) {
+    entries = new Map();
+    throttledActiveRefetchEntries.set(queryClient, entries);
+  }
+  const entry = entries.get(scheduleKey);
+  if (entry?.timer) {
+    // A trailing refetch is already pending; this change rides along.
+    return;
+  }
+  const run = () => {
+    entries.set(scheduleKey, { lastRunAt: Date.now(), timer: null });
+    refetchActiveQueriesWithoutCanceling({ queryClient, queryKey });
+  };
+  const lastRunAt = entry?.lastRunAt ?? Number.NEGATIVE_INFINITY;
+  const delayMs = Math.max(0, lastRunAt + minIntervalMs - Date.now());
+  if (delayMs === 0) {
+    run();
+    return;
+  }
+  entries.set(scheduleKey, { lastRunAt, timer: setTimeout(run, delayMs) });
 }
 
 function scheduleTrailingActiveRefetch({
@@ -263,6 +355,15 @@ function invalidateTerminalTimelineQueryKeys({
 }
 
 export function disposeTrailingActiveRefetches(queryClient: QueryClient): void {
+  const throttled = throttledActiveRefetchEntries.get(queryClient);
+  if (throttled) {
+    for (const entry of throttled.values()) {
+      if (entry.timer) {
+        clearTimeout(entry.timer);
+      }
+    }
+    throttledActiveRefetchEntries.delete(queryClient);
+  }
   const unsubscribers = trailingActiveRefetchUnsubscribers.get(queryClient);
   if (!unsubscribers) {
     return;
@@ -297,7 +398,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
     dirty: [
       dirtyThreadListQueriesForBackgroundActivity, // Sidebar rows render active workflow/background task state.
       dirtyThreadDetailQueriesForBackgroundActivity, // Detail indicator reads activeBackgroundAgentCount.
-      dirtyThreadSearchQueries, // Indexed conversation content may now match a search query.
+      dirtyThreadSearchQueriesForCompletedTurn, // Indexed conversation content may match a search query once the turn settles.
       dirtyThreadTimelineQueries, // Timeline rows are built from appended events.
       dirtyThreadPullRequestQueryForCompletedTurn, // A turn may create a remote PR without changing the workspace.
       dirtyThreadPromptHistoryQueriesForTurnRequests, // Follow-up recall is built from client turn requests.
@@ -326,14 +427,14 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "status-changed": {
     flush: "immediate",
     dirty: [
-      dirtyThreadListQueries, // List rows render status/runtime badges.
+      dirtyActiveThreadListQueries, // List rows render status/runtime badges; archived pages only go stale.
       dirtyThreadDetailQueries, // Detail controls and banners depend on status.
     ],
   },
   "title-changed": {
     flush: "debounced",
     dirty: [
-      dirtyThreadListQueries, // List rows render display title.
+      dirtyActiveThreadListQueries, // List rows render display title; archived pages only go stale.
       dirtyThreadDetailQueries, // Detail headers and breadcrumbs render display title.
     ],
   },
@@ -368,7 +469,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "environment-changed": {
     flush: "immediate",
     dirty: [
-      dirtyThreadListQueries, // Thread rows render environment/worktree metadata.
+      dirtyActiveThreadListQueries, // Thread rows render environment/worktree metadata; archived pages only go stale.
       dirtyThreadDetailQueries, // Detail views use the attached environment for workspace UI.
       dirtyThreadDefaultExecutionOptionsQueries, // Environment changes can change inherited thread defaults.
       dirtyThreadStorageQueriesForThread, // Thread storage is resolved through the attached environment.
@@ -432,7 +533,7 @@ export const REALTIME_ENVIRONMENT_CHANGE_REGISTRY = {
   },
   "work-status-changed": {
     dirty: [
-      dirtyEnvironmentLiveWorkspaceStateQueries, // Refresh live workspace-derived views after file edits.
+      dirtyEnvironmentLiveWorkspaceStateQueries, // Refresh live workspace-derived views after file edits (PR state is remote and unaffected).
     ],
   },
   "git-refs-changed": {
@@ -537,9 +638,26 @@ export interface RealtimeDirtyContext {
 export interface ThreadRealtimeDirtyContext extends RealtimeDirtyContext {
   backgroundActivityChanged: boolean | undefined;
   eventTypes: readonly ThreadEventType[] | undefined;
+  /**
+   * `true` the first time a key is seen within the current flush of batched
+   * thread changes, `false` afterwards. Handlers whose effect is global (not
+   * thread-scoped) use it to run once per flush instead of once per thread.
+   */
+  flushOnce: (key: string) => boolean;
   hasPendingInteraction: boolean | undefined;
   projectId: string | undefined;
   threadId: string | undefined;
+}
+
+export function createFlushOncePredicate(): (key: string) => boolean {
+  const seen = new Set<string>();
+  return (key) => {
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  };
 }
 
 export interface EnvironmentRealtimeDirtyContext extends RealtimeDirtyContext {
@@ -663,13 +781,44 @@ function dirtyThreadListQueries({
   return getThreadListInvalidationQueryKeys({ projectId, queryClient });
 }
 
+/**
+ * Same scope as {@link dirtyThreadListQueries}, but archived list pages are
+ * only marked stale (`refetchType: "none"`): a status/title/environment change
+ * on one thread does not justify refetching every un-windowed archived page
+ * that the settings screen holds open. They refresh on the next mount.
+ */
+function dirtyActiveThreadListQueries({
+  projectId,
+  queryClient,
+}: ThreadRealtimeDirtyContext): QueryKey[] {
+  const listQueryKeys = projectId
+    ? [
+        ...getCachedProjectThreadListInvalidationQueryKeys({
+          projectId,
+          queryClient,
+        }),
+        ...getCachedGlobalThreadListInvalidationQueryKeys({ queryClient }),
+      ]
+    : getCachedThreadListQueryKeys(queryClient);
+  for (const queryKey of listQueryKeys) {
+    queryClient.invalidateQueries({
+      exact: true,
+      queryKey,
+      ...(isArchivedThreadListQueryKey(queryKey)
+        ? { refetchType: "none" }
+        : {}),
+    });
+  }
+  return [sidebarNavigationQueryKey(), threadSearchQueryKeyPrefix()];
+}
+
 function dirtyThreadListQueriesForBackgroundActivity(
   context: ThreadRealtimeDirtyContext,
 ): QueryKey[] {
   if (context.backgroundActivityChanged !== true) {
     return [];
   }
-  return dirtyThreadListQueries(context);
+  return dirtyActiveThreadListQueries(context);
 }
 
 function dirtyThreadDetailQueriesForBackgroundActivity(
@@ -722,6 +871,30 @@ function dirtyThreadSearchQueries(): QueryKey[] {
   return [threadSearchQueryKeyPrefix()];
 }
 
+/**
+ * Every client's list subscription receives every streaming thread's
+ * `events-appended` batches. Re-issuing (and, by default, aborting) the open
+ * search request on each 50-100 ms flush can starve it forever on a slow link,
+ * so search only goes stale when a turn completes, once per flush, and without
+ * cancelling a request in flight. Thread list changes cover the rest.
+ */
+function dirtyThreadSearchQueriesForCompletedTurn({
+  eventTypes,
+  flushOnce,
+  queryClient,
+}: ThreadRealtimeDirtyContext): void {
+  if (!eventTypes?.includes("turn/completed")) {
+    return;
+  }
+  if (!flushOnce("thread-search:turn-completed")) {
+    return;
+  }
+  queryClient.invalidateQueries(
+    { queryKey: threadSearchQueryKeyPrefix() },
+    { cancelRefetch: false },
+  );
+}
+
 function dirtyThreadTimelineQueries({
   eventTypes,
   queryClient,
@@ -730,6 +903,18 @@ function dirtyThreadTimelineQueries({
   // Window only: completed turn-summary-details are immutable, so realtime
   // event batches must not refetch open detail panels (see helper docs).
   const queryKeys = getThreadTimelineWindowInvalidationQueryKeys({ threadId });
+  if (
+    threadId !== undefined &&
+    !hasActiveQueries(queryClient, threadTimelineQueryKeyPrefix(threadId))
+  ) {
+    // Nobody is viewing this thread: mark the cached window stale so a remount
+    // refetches, but skip the fetch pacing/cancel machinery. List
+    // subscriptions deliver every streaming thread's batches to every client.
+    for (const queryKey of queryKeys) {
+      queryClient.invalidateQueries({ queryKey, refetchType: "none" });
+    }
+    return;
+  }
   if (eventTypes?.includes("turn/completed")) {
     invalidateTerminalTimelineQueryKeys({ queryClient, queryKeys });
     return;
@@ -899,12 +1084,14 @@ function dirtyEnvironmentLiveWorkspaceStateQueries({
   environmentId,
   queryClient,
 }: EnvironmentRealtimeDirtyContext): void {
-  queryClient.invalidateQueries({
+  invalidateQueryKeyWithThrottledActiveRefetch({
+    minIntervalMs: WORK_STATUS_REFETCH_MIN_INTERVAL_MS,
+    queryClient,
     queryKey: environmentWorkStatusQueryKeyPrefix(environmentId),
   });
-  queryClient.invalidateQueries({
-    queryKey: environmentPullRequestQueryKey(environmentId),
-  });
+  // The pull request is remote state: a local file edit cannot change it, so
+  // it is deliberately not refetched here (`turn/completed` and the pending
+  // check poll cover it).
   queryClient.invalidateQueries({
     queryKey: environmentFilePreviewQueryKeyPrefix(environmentId),
   });

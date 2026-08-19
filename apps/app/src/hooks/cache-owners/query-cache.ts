@@ -197,6 +197,32 @@ function getArchivedThreadListFiltersFromQueryKey(
   return filters;
 }
 
+export function isArchivedThreadListQueryKey(queryKey: QueryKey): boolean {
+  return getArchivedThreadListFiltersFromQueryKey(queryKey) !== undefined;
+}
+
+/**
+ * Every cached thread-list key (active and archived, all projects). Used by
+ * handlers that must treat archived lists differently from active ones and so
+ * cannot rely on a bare `threadsQueryKey()` prefix invalidation.
+ */
+export function getCachedThreadListQueryKeys(
+  queryClient: QueryClient,
+): QueryKey[] {
+  const queryKeys: QueryKey[] = [];
+  for (const [queryKey] of queryClient.getQueriesData({
+    queryKey: threadsQueryKey(),
+  })) {
+    if (
+      getThreadListFiltersFromQueryKey(queryKey) !== undefined ||
+      getArchivedThreadListFiltersFromQueryKey(queryKey) !== undefined
+    ) {
+      queryKeys.push(queryKey);
+    }
+  }
+  return queryKeys;
+}
+
 function getThreadListProjectIdFromQueryKey(
   queryKey: QueryKey,
 ): string | undefined {

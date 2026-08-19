@@ -35,6 +35,7 @@ import {
   terminalsQueryKey,
   threadStorageFilePreviewQueryKey,
   threadTimelineQueryKey,
+  threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKey,
 } from "./queries/query-keys";
 import { pluginContributionsQueryKey } from "./queries/query-keys";
@@ -422,7 +423,7 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("invalidates cached thread search results when indexed thread content changes", () => {
+  it("invalidates cached thread search results only once a turn completes, not on every appended batch", () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const threadSearchKey = threadSearchQueryKey({
@@ -444,9 +445,215 @@ describe("createRealtimeCacheEffects", () => {
     vi.advanceTimersByTime(50);
 
     expect(queryClient.getQueryState(threadSearchKey)?.isInvalidated).toBe(
+      false,
+    );
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: {
+        eventTypes: ["item/completed", "turn/completed"],
+        projectId: "project-1",
+      },
+      changes: ["events-appended"],
+    });
+    vi.advanceTimersByTime(50);
+
+    expect(queryClient.getQueryState(threadSearchKey)?.isInvalidated).toBe(
       true,
     );
 
+    effects.dispose();
+  });
+
+  it("refreshes an open search once per flush without aborting the request in flight", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const threadSearchKey = threadSearchQueryKey({
+      limitPerGroup: 20,
+      query: "needle",
+    });
+    const signals: AbortSignal[] = [];
+    const resolveFetches: Array<(value: unknown) => void> = [];
+    const searchQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
+      signals.push(signal);
+      return new Promise((resolve) => {
+        resolveFetches.push(resolve);
+      });
+    });
+    const searchObserver = new QueryObserver(queryClient, {
+      queryKey: threadSearchKey,
+      queryFn: searchQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribeSearch = searchObserver.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(searchQueryFn).toHaveBeenCalledTimes(1);
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    // Two threads complete a turn inside one debounce window.
+    for (const threadId of ["thr_1", "thr_2"]) {
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: threadId,
+        metadata: { eventTypes: ["turn/completed"], projectId: "project-1" },
+        changes: ["events-appended"],
+      });
+    }
+    await vi.advanceTimersByTimeAsync(50);
+
+    const searchInvalidations = invalidateSpy.mock.calls.filter(
+      ([filters]) =>
+        JSON.stringify(filters?.queryKey) ===
+        JSON.stringify([threadSearchKey[0]]),
+    );
+    expect(searchInvalidations).toHaveLength(1);
+    expect(searchInvalidations[0]?.[1]).toEqual({ cancelRefetch: false });
+    // The in-flight search keeps running; it is not aborted and re-issued.
+    expect(signals[0]?.aborted).toBe(false);
+    expect(searchQueryFn).toHaveBeenCalledTimes(1);
+
+    resolveFetches[0]?.({
+      active: { results: [], total: 0 },
+      archived: { results: [], total: 0 },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    invalidateSpy.mockRestore();
+    unsubscribeSearch();
+    effects.dispose();
+  });
+
+  it("marks the timeline of an unviewed thread stale without scheduling a refetch", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const viewedTimelineKey = threadTimelineQueryKey("thr_viewed");
+    const unviewedTimelineKey = threadTimelineQueryKey("thr_unviewed");
+    queryClient.setQueryData(unviewedTimelineKey, { rows: [] });
+    const viewedTimelineQueryFn = vi.fn(async () => ({ rows: [] }));
+    const viewedObserver = new QueryObserver(queryClient, {
+      queryKey: viewedTimelineKey,
+      queryFn: viewedTimelineQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribeViewed = viewedObserver.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    viewedTimelineQueryFn.mockClear();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    for (const threadId of ["thr_viewed", "thr_unviewed"]) {
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: threadId,
+        metadata: { eventTypes: ["item/completed"], projectId: "project-1" },
+        changes: ["events-appended"],
+      });
+    }
+    await vi.advanceTimersByTimeAsync(50);
+
+    // The unviewed thread's cached window is stale for its next mount...
+    expect(
+      queryClient.getQueryState(unviewedTimelineKey)?.isInvalidated,
+    ).toBe(true);
+    const unviewedInvalidations = invalidateSpy.mock.calls.filter(
+      ([filters]) =>
+        JSON.stringify(filters?.queryKey) ===
+        JSON.stringify(threadTimelineQueryKeyPrefix("thr_unviewed")),
+    );
+    expect(unviewedInvalidations).toHaveLength(1);
+    expect(unviewedInvalidations[0]?.[0]?.refetchType).toBe("none");
+    // ...while the viewed thread refetches through the paced path.
+    const viewedInvalidations = invalidateSpy.mock.calls.filter(
+      ([filters]) =>
+        JSON.stringify(filters?.queryKey) ===
+        JSON.stringify(threadTimelineQueryKeyPrefix("thr_viewed")),
+    );
+    expect(viewedInvalidations).toHaveLength(1);
+    expect(viewedInvalidations[0]?.[0]?.refetchType).toBeUndefined();
+    expect(viewedTimelineQueryFn).toHaveBeenCalledTimes(1);
+
+    invalidateSpy.mockRestore();
+    unsubscribeViewed();
+    effects.dispose();
+  });
+
+  it("marks archived thread lists stale without refetching them for status changes", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const activeListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+    const archivedListKey = archivedThreadsListQueryKey({
+      projectId: "project-1",
+    });
+    const globalArchivedListKey = archivedThreadsListQueryKey({});
+    const activeListQueryFn = vi.fn(async () => []);
+    const archivedListQueryFn = vi.fn(async () => []);
+    const globalArchivedListQueryFn = vi.fn(async () => []);
+    const observers = [
+      new QueryObserver(queryClient, {
+        queryKey: activeListKey,
+        queryFn: activeListQueryFn,
+        staleTime: Infinity,
+      }),
+      new QueryObserver(queryClient, {
+        queryKey: archivedListKey,
+        queryFn: archivedListQueryFn,
+        staleTime: Infinity,
+      }),
+      new QueryObserver(queryClient, {
+        queryKey: globalArchivedListKey,
+        queryFn: globalArchivedListQueryFn,
+        staleTime: Infinity,
+      }),
+    ];
+    const unsubscribers = observers.map((observer) =>
+      observer.subscribe(() => {}),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    activeListQueryFn.mockClear();
+    archivedListQueryFn.mockClear();
+    globalArchivedListQueryFn.mockClear();
+
+    for (const change of ["status-changed", "title-changed"] as const) {
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: { projectId: "project-1" },
+        changes: [change],
+      });
+      await vi.advanceTimersByTimeAsync(50);
+    }
+
+    expect(activeListQueryFn).toHaveBeenCalledTimes(2);
+    expect(archivedListQueryFn).not.toHaveBeenCalled();
+    expect(globalArchivedListQueryFn).not.toHaveBeenCalled();
+    expect(queryClient.getQueryState(archivedListKey)?.isInvalidated).toBe(
+      true,
+    );
+    expect(
+      queryClient.getQueryState(globalArchivedListKey)?.isInvalidated,
+    ).toBe(true);
+
+    // Archive membership changes still refetch archived pages.
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { projectId: "project-1" },
+      changes: ["archived-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(archivedListQueryFn).toHaveBeenCalledTimes(1);
+    expect(globalArchivedListQueryFn).toHaveBeenCalledTimes(1);
+
+    for (const unsubscribe of unsubscribers) {
+      unsubscribe();
+    }
     effects.dispose();
   });
 
@@ -836,6 +1043,99 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryData(diffPatchKey)).toBeUndefined();
 
     unsubscribeDiffFiles();
+    unsubscribeWorkStatus();
+    effects.dispose();
+  });
+
+  it("does not refetch the environment pull request for work-status changes", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const pullRequestKey = environmentPullRequestQueryKey("env-1");
+    const pullRequestQueryFn = vi.fn(async () => ({ outcome: "absent" }));
+    const pullRequestObserver = new QueryObserver(queryClient, {
+      queryFn: pullRequestQueryFn,
+      queryKey: pullRequestKey,
+      staleTime: Infinity,
+    });
+    const unsubscribePullRequest = pullRequestObserver.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    pullRequestQueryFn.mockClear();
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "environment",
+      id: "env-1",
+      changes: ["work-status-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(pullRequestQueryFn).not.toHaveBeenCalled();
+    expect(queryClient.getQueryState(pullRequestKey)?.isInvalidated).toBe(
+      false,
+    );
+
+    unsubscribePullRequest();
+    effects.dispose();
+  });
+
+  it("paces work-status refetches to one per second and never aborts the probe in flight", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const workStatusKey = environmentWorkStatusQueryKey("env-1", "main");
+    const signals: AbortSignal[] = [];
+    const resolveFetches: Array<(value: unknown) => void> = [];
+    const workStatusQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
+      signals.push(signal);
+      return new Promise((resolve) => {
+        resolveFetches.push(resolve);
+      });
+    });
+    const workStatusObserver = new QueryObserver(queryClient, {
+      queryKey: workStatusKey,
+      queryFn: workStatusQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribeWorkStatus = workStatusObserver.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(workStatusQueryFn).toHaveBeenCalledTimes(1);
+    resolveFetches[0]?.(null);
+    await vi.advanceTimersByTimeAsync(0);
+
+    const emitWorkStatusChanged = () => {
+      effects.handleChanged({
+        type: "changed",
+        entity: "environment",
+        id: "env-1",
+        changes: ["work-status-changed"],
+      });
+    };
+
+    // t=0: first change after a quiet period refetches on the next flush.
+    emitWorkStatusChanged();
+    await vi.advanceTimersByTimeAsync(250);
+    expect(workStatusQueryFn).toHaveBeenCalledTimes(2);
+
+    // t=300 and t=600: two more file-change bursts while the probe is still
+    // running. Neither aborts it, and neither starts a probe of its own.
+    await vi.advanceTimersByTimeAsync(50);
+    emitWorkStatusChanged();
+    await vi.advanceTimersByTimeAsync(300);
+    emitWorkStatusChanged();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(signals[1]?.aborted).toBe(false);
+    expect(workStatusQueryFn).toHaveBeenCalledTimes(2);
+
+    // The probe lands; the coalesced changes fire one trailing refetch, no
+    // sooner than one second after the previous run.
+    resolveFetches[1]?.(null);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(workStatusQueryFn).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(workStatusQueryFn).toHaveBeenCalledTimes(3);
+    resolveFetches[2]?.(null);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(workStatusQueryFn).toHaveBeenCalledTimes(3);
+
     unsubscribeWorkStatus();
     effects.dispose();
   });

@@ -16,6 +16,7 @@ import {
 import { createBufferedEnvironmentInvalidator } from "./buffered-environment-invalidator";
 import {
   collectCachedThreadIdsForEnvironment,
+  createFlushOncePredicate,
   disposeTrailingActiveRefetches,
   executeRealtimeDirtyHandlers,
   REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
@@ -138,11 +139,13 @@ function flushThreadInvalidations(
   queryClient: QueryClient,
   state: ThreadChangeState,
 ): void {
+  const flushOnce = createFlushOncePredicate();
   for (const changeKind of state.globalChangeKinds) {
     executeRealtimeDirtyHandlers({
       context: {
         backgroundActivityChanged: undefined,
         eventTypes: undefined,
+        flushOnce,
         hasPendingInteraction: undefined,
         projectId: undefined,
         queryClient,
@@ -158,8 +161,9 @@ function flushThreadInvalidations(
       executeRealtimeDirtyHandlers({
         context: {
           backgroundActivityChanged: metadata?.backgroundActivityChanged,
-          hasPendingInteraction: metadata?.hasPendingInteraction,
           eventTypes: metadata?.eventTypes,
+          flushOnce,
+          hasPendingInteraction: metadata?.hasPendingInteraction,
           projectId: metadata?.projectId,
           queryClient,
           threadId,
