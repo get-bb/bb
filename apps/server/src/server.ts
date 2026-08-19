@@ -87,6 +87,7 @@ import {
  */
 const PLUGIN_WIRE_HTTP_PATH = /^\/api\/v1\/plugins\/[^/]+\/http(?:\/|$)/u;
 import { rankAcceptedAssetEncodings } from "./asset-content-encoding.js";
+import { apiJsonCompression } from "./api-response-compression.js";
 
 export type CloseWebSockets = () => Promise<void>;
 type NodeWebSocketServer = ReturnType<typeof createNodeWebSocket>["wss"];
@@ -318,6 +319,7 @@ export function createApp(
     }),
   );
   const compressResponse = compress();
+  const compressApiJson = apiJsonCompression();
   app.use("*", (context, next) => {
     // Plugin JS/CSS negotiates Brotli and gzip itself and caches immutable
     // variants. Letting this outer middleware transform an identity fallback
@@ -325,7 +327,12 @@ export function createApp(
     if (PLUGIN_APP_ASSET_PATH_PATTERN.test(context.req.path)) {
       return next();
     }
-    return compressResponse(context, next);
+    // Core API JSON is buffered and Brotli-encoded (gzip fallback) with an
+    // exact Content-Length by the inner middleware; the streaming gzip
+    // fallback then only touches what the inner one leaves untransformed.
+    return compressResponse(context, async () => {
+      await compressApiJson(context, next);
+    });
   });
   app.onError((error) => errorToResponse(error, deps.logger));
   app.get("/health", (context) => context.json({ ok: true }));
