@@ -15,6 +15,7 @@ import {
   getCsvTruncationNote,
 } from "./FilePreview";
 import { SOURCE_CODE_MAX_LINES } from "@/components/code/source-code-budget";
+import { AppSelectAllController } from "@/components/AppSelectAllController";
 import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
 import {
   PierreWorkerPoolGateContext,
@@ -27,6 +28,7 @@ interface MockPierreFileProps {
     contents: string;
     name: string;
   };
+  options?: { unsafeCSS?: string };
   selectedLines?: {
     end: number;
     start: number;
@@ -67,6 +69,8 @@ const pierreMock = vi.hoisted(() => {
     cachedFileKeys: new Set<string>(),
     initialStats: createStats(),
     lastFile: null as MockPierreFileProps["file"] | null,
+    lastOptions: null as MockPierreFileProps["options"] | null,
+    maxRenderedLines: Number.POSITIVE_INFINITY,
     mountCount: 0,
     renderCount: 0,
     statsCallback: null as StatsCallback | null,
@@ -95,13 +99,14 @@ vi.mock("@pierre/diffs/react", async () => {
   const React = await import("react");
 
   return {
-    File: ({ file, selectedLines = null }: MockPierreFileProps) => {
+    File: ({ file, options, selectedLines = null }: MockPierreFileProps) => {
       const [instanceId] = React.useState(() => {
         pierreMock.state.mountCount += 1;
         return pierreMock.state.mountCount;
       });
       const hostRef = React.useRef<HTMLElement>(null);
       pierreMock.state.lastFile = file;
+      pierreMock.state.lastOptions = options ?? null;
       pierreMock.state.renderCount += 1;
 
       React.useLayoutEffect(() => {
@@ -113,38 +118,41 @@ vi.mock("@pierre/diffs/react", async () => {
         code.dataset.code = "";
         code.scrollLeft = 240;
         code.replaceChildren(
-          ...file.contents.split("\n").map((lineContents, index) => {
-            const lineNumber = index + 1;
-            const line = document.createElement("div");
-            line.dataset.line = String(lineNumber);
-            line.dataset.lineIndex = String(index);
-            line.textContent = lineContents;
-            line.getBoundingClientRect = () => ({
-              bottom: 718 + index * 18,
-              height: 18,
-              left: 0,
-              right: 800,
-              top: 700 + index * 18,
-              width: 800,
-              x: 0,
-              y: 700 + index * 18,
-              toJSON: () => ({}),
-            });
-            // Model the native behavior that caused the regression: asking a
-            // long line to scroll into view can also move Pierre's horizontal
-            // code scroller.
-            line.scrollIntoView = () => {
-              code.scrollLeft = 0;
-            };
-            if (
-              selectedLines !== null &&
-              lineNumber >= selectedLines.start &&
-              lineNumber <= selectedLines.end
-            ) {
-              line.dataset.selectedLine = "single";
-            }
-            return line;
-          }),
+          ...file.contents
+            .split("\n")
+            .slice(0, pierreMock.state.maxRenderedLines)
+            .map((lineContents, index) => {
+              const lineNumber = index + 1;
+              const line = document.createElement("div");
+              line.dataset.line = String(lineNumber);
+              line.dataset.lineIndex = String(index);
+              line.textContent = lineContents;
+              line.getBoundingClientRect = () => ({
+                bottom: 718 + index * 18,
+                height: 18,
+                left: 0,
+                right: 800,
+                top: 700 + index * 18,
+                width: 800,
+                x: 0,
+                y: 700 + index * 18,
+                toJSON: () => ({}),
+              });
+              // Model the native behavior that caused the regression: asking a
+              // long line to scroll into view can also move Pierre's horizontal
+              // code scroller.
+              line.scrollIntoView = () => {
+                code.scrollLeft = 0;
+              };
+              if (
+                selectedLines !== null &&
+                lineNumber >= selectedLines.start &&
+                lineNumber <= selectedLines.end
+              ) {
+                line.dataset.selectedLine = "single";
+              }
+              return line;
+            }),
         );
         shadowRoot.replaceChildren(code);
       }, [file.contents, selectedLines]);
@@ -201,6 +209,8 @@ describe("FilePreview", () => {
     pierreMock.state.cachedFileKeys.clear();
     pierreMock.state.initialStats = pierreMock.createStats();
     pierreMock.state.lastFile = null;
+    pierreMock.state.lastOptions = null;
+    pierreMock.state.maxRenderedLines = Number.POSITIVE_INFINITY;
     pierreMock.state.mountCount = 0;
     pierreMock.state.renderCount = 0;
     pierreMock.state.statsCallback = null;
@@ -275,6 +285,12 @@ describe("FilePreview", () => {
     expect(
       screen.getByTestId("pierre-file").closest(".select-text"),
     ).not.toBeNull();
+    expect(pierreMock.state.lastOptions?.unsafeCSS).toContain(
+      "[data-merge-conflict-action]",
+    );
+    expect(pierreMock.state.lastOptions?.unsafeCSS).toContain(
+      "user-select: none",
+    );
     const renderCountBeforeStatsChange = Number(
       screen.getByTestId("pierre-file").dataset.renderCount,
     );
@@ -298,6 +314,67 @@ describe("FilePreview", () => {
         Number(screen.getByTestId("pierre-file").dataset.renderCount),
       ).toBeGreaterThan(renderCountBeforeStatsChange);
     });
+  });
+
+  it("copies every loaded line after Select All in a virtualized code preview", async () => {
+    const contents = [
+      "FIRST_VISIBLE_LINE",
+      "OFFSCREEN_MIDDLE_LINE",
+      "OFFSCREEN_LAST_LINE",
+    ].join("\n");
+    pierreMock.state.maxRenderedLines = 1;
+    renderWithWorkerPool(
+      <>
+        <AppSelectAllController />
+        <FilePreview
+          headerMode="none"
+          path="src/virtualized.ts"
+          state={{
+            kind: "ready",
+            file: {
+              name: "virtualized.ts",
+              contents,
+            },
+            lineRange: null,
+            textPreviewKind: null,
+          }}
+        />
+      </>,
+    );
+
+    const pierreFile = await screen.findByTestId("pierre-file");
+    const visibleLine =
+      pierreFile.shadowRoot?.querySelector<HTMLElement>('[data-line="1"]');
+    expect(visibleLine?.textContent).toBe("FIRST_VISIBLE_LINE");
+    expect(pierreFile.shadowRoot?.textContent).not.toContain(
+      "OFFSCREEN_LAST_LINE",
+    );
+    visibleLine?.dispatchEvent(
+      new Event("pointerdown", { bubbles: true, composed: true }),
+    );
+    const selectAllEvent = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      key: "a",
+      metaKey: true,
+    });
+    visibleLine?.dispatchEvent(selectAllEvent);
+    expect(selectAllEvent.defaultPrevented).toBe(true);
+
+    const setData = vi.fn();
+    const copyEvent = new Event("copy", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    });
+    Object.defineProperty(copyEvent, "clipboardData", {
+      value: { setData },
+    });
+    document.dispatchEvent(copyEvent);
+
+    expect(setData).toHaveBeenCalledWith("text/plain", contents);
+    expect(copyEvent.defaultPrevented).toBe(true);
   });
 
   it("waits for the Pierre worker pool before mounting the code view", async () => {

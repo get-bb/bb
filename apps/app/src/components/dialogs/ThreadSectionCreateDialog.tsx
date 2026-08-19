@@ -162,7 +162,12 @@ function ThreadSectionDialogContent({
             }}
           />
           {displayedMessage ? (
-            <p className="text-sm text-destructive">{displayedMessage}</p>
+            <p
+              className="select-text text-sm text-destructive"
+              data-select-all-scope=""
+            >
+              {displayedMessage}
+            </p>
           ) : null}
         </div>
         <DialogFooter>

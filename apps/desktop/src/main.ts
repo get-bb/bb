@@ -141,10 +141,14 @@ import {
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
-  BB_DESKTOP_SELECT_ALL_CHANNEL,
+  BB_DESKTOP_SELECT_ALL_FALLBACK_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
   CLOSE_WINDOW_REQUEST_TIMEOUT_MS,
 } from "./desktop-window-command-ipc.js";
+import {
+  handleDesktopSelectAllFallback,
+  requestDesktopSelectAll,
+} from "./desktop-select-all.js";
 import {
   createDesktopBrowserViewManager,
   type DesktopBrowserViewManager,
@@ -673,6 +677,10 @@ function buildMenuServerItems(): Array<{
   return items;
 }
 
+function selectAllInWebContents(targetWebContents: WebContents): void {
+  requestDesktopSelectAll(targetWebContents, applicationWindowWebContentsIds);
+}
+
 function installCurrentApplicationMenu(): void {
   installApplicationMenu({
     accelerators: currentApplicationMenuAccelerators,
@@ -733,18 +741,7 @@ function installCurrentApplicationMenu(): void {
       if (focusedWebContents === null) {
         return;
       }
-      if (applicationWindowWebContentsIds.has(focusedWebContents.id)) {
-        const browserWindow = BrowserWindow.fromWebContents(focusedWebContents);
-        if (browserWindow !== null) {
-          sendToApplicationRenderer(
-            browserWindow,
-            BB_DESKTOP_SELECT_ALL_CHANNEL,
-            null,
-          );
-        }
-        return;
-      }
-      focusedWebContents.selectAll();
+      selectAllInWebContents(focusedWebContents);
     },
     closeWindowOrSideTab(browserWindow) {
       if (browserWindow === undefined) {
@@ -988,11 +985,13 @@ function startRemoteSystemConfigSync(serverUrl: string): void {
 
 function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
   const webContentsId = browserWindow.webContents.id;
+  const nativeWebContents = (browserWindow as BrowserWindow).webContents;
   applicationWindowWebContentsIds.add(webContentsId);
-  registerApplicationRendererReloadShortcut(
-    (browserWindow as BrowserWindow).webContents,
-  );
-  registerDesktopContextMenu({ webContents: browserWindow.webContents });
+  registerApplicationRendererReloadShortcut(nativeWebContents);
+  registerDesktopContextMenu({
+    selectAll: () => selectAllInWebContents(nativeWebContents),
+    webContents: browserWindow.webContents,
+  });
   browserWindow.on("enter-full-screen", () => {
     sendDesktopWindowStateChanged(browserWindow);
   });
@@ -1631,6 +1630,12 @@ function registerDesktopUpdateIpc(): void {
     if (payload === false) {
       resolveApplicationWindow(event.sender)?.close();
     }
+  });
+  ipcMain.on(BB_DESKTOP_SELECT_ALL_FALLBACK_CHANNEL, (event) => {
+    handleDesktopSelectAllFallback(
+      event.sender,
+      applicationWindowWebContentsIds,
+    );
   });
   // The in-app browser tab hands off the current address to the system
   // browser. The URL originates from a possibly-hostile page, so only open

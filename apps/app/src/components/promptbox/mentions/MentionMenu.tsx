@@ -578,7 +578,10 @@ export function MentionMenu({
             </span>
           </div>
         ) : innerState.kind === "error" ? (
-          <div className="px-3 py-2 text-xs text-destructive">
+          <div
+            className="select-text px-3 py-2 text-xs text-destructive"
+            data-select-all-scope=""
+          >
             {state.trigger === "command"
               ? "Failed to load commands"
               : "Failed to load suggestions"}

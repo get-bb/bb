@@ -369,11 +369,12 @@ export function ThreadGitActionDialogContent({
           {footerMergeBaseMessage ? (
             <p
               className={cn(
-                "m-0 flex min-w-0 flex-1 items-center justify-end gap-1.5 text-right text-xs leading-5",
+                "select-text m-0 flex min-w-0 flex-1 items-center justify-end gap-1.5 text-right text-xs leading-5",
                 footerMergeBaseMessageIsError
                   ? "text-destructive"
                   : "text-muted-foreground",
               )}
+              data-select-all-scope=""
               role={footerMergeBaseMessageIsError ? "alert" : "status"}
               aria-live={footerMergeBaseMessageIsError ? undefined : "polite"}
             >

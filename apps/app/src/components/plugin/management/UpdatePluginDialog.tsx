@@ -127,7 +127,7 @@ function UpdatePluginDialogContent({
               : `Failed on ${formatAbsoluteDate(failure.at)}.`}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="select-text space-y-3" data-select-all-scope="">
           <div className="flex items-start gap-2 text-sm">
             <Icon
               name="CircleX"

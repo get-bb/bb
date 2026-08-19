@@ -32,6 +32,7 @@ export interface DesktopContextMenuSpellcheckContext {
 
 export interface BuildDesktopContextMenuTemplateArgs {
   params: ContextMenuParams;
+  selectAll: () => void;
   spellcheckContext?: DesktopContextMenuSpellcheckContext | null;
   webContents: Pick<
     DesktopContextMenuWebContents,
@@ -39,7 +40,13 @@ export interface BuildDesktopContextMenuTemplateArgs {
   >;
 }
 
+type ResolveDesktopSpellcheckFallbackArgs = Pick<
+  BuildDesktopContextMenuTemplateArgs,
+  "params" | "webContents"
+>;
+
 export interface RegisterDesktopContextMenuArgs {
+  selectAll: () => void;
   webContents: DesktopContextMenuWebContents;
 }
 
@@ -90,7 +97,7 @@ function selectedSpellcheckWord(params: ContextMenuParams): string | null {
 export async function resolveDesktopSpellcheckFallback({
   params,
   webContents,
-}: BuildDesktopContextMenuTemplateArgs): Promise<DesktopContextMenuSpellcheckContext | null> {
+}: ResolveDesktopSpellcheckFallbackArgs): Promise<DesktopContextMenuSpellcheckContext | null> {
   if (
     getSpellcheckContextFromParams(params) !== null ||
     !params.isEditable ||
@@ -121,6 +128,7 @@ export async function resolveDesktopSpellcheckFallback({
 
 export function buildDesktopContextMenuTemplate({
   params,
+  selectAll,
   spellcheckContext,
   webContents,
 }: BuildDesktopContextMenuTemplateArgs): MenuItemConstructorOptions[] {
@@ -183,7 +191,7 @@ export function buildDesktopContextMenuTemplate({
   }
   if (params.editFlags.canSelectAll) {
     pushSeparatorIfNeeded(template);
-    template.push({ role: "selectAll", enabled: true });
+    template.push({ label: "Select All", click: selectAll });
   }
 
   return trimTrailingSeparator(template);
@@ -191,6 +199,7 @@ export function buildDesktopContextMenuTemplate({
 
 async function showDesktopContextMenu({
   params,
+  selectAll,
   webContents,
 }: RegisterDesktopContextMenuArgs & {
   params: ContextMenuParams;
@@ -201,6 +210,7 @@ async function showDesktopContextMenu({
   });
   const template = buildDesktopContextMenuTemplate({
     params,
+    selectAll,
     spellcheckContext,
     webContents,
   });
@@ -211,10 +221,11 @@ async function showDesktopContextMenu({
 }
 
 export function registerDesktopContextMenu({
+  selectAll,
   webContents,
 }: RegisterDesktopContextMenuArgs): void {
   webContents.session.setSpellCheckerEnabled(true);
   webContents.on("context-menu", (_event, params) => {
-    void showDesktopContextMenu({ params, webContents });
+    void showDesktopContextMenu({ params, selectAll, webContents });
   });
 }

@@ -306,7 +306,8 @@ export function SkillDetailView({
               >
                 <div
                   role="alert"
-                  className="flex items-start justify-center gap-2 text-foreground"
+                  className="select-text flex items-start justify-center gap-2 text-foreground"
+                  data-select-all-scope=""
                 >
                   <Icon
                     name="CircleX"

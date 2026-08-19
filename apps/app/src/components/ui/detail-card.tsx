@@ -1,4 +1,8 @@
-import { type CSSProperties, type ReactNode } from "react";
+import {
+  type ComponentPropsWithoutRef,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -46,7 +50,10 @@ function labelWidthStyle(
 
 export type DetailCardAppearance = "card" | "flat";
 
-export interface DetailCardProps {
+export interface DetailCardProps extends Omit<
+  ComponentPropsWithoutRef<"dl">,
+  "children"
+> {
   children: ReactNode;
   className?: string;
   /**
@@ -71,15 +78,18 @@ export function DetailCard({
   className,
   labelWidth,
   appearance = "card",
+  style,
+  ...props
 }: DetailCardProps) {
   return (
     <dl
+      {...props}
       className={cn(
         DETAIL_CARD_BASE_CLASS,
         appearance === "card" && DETAIL_CARD_CARD_CLASS,
         className,
       )}
-      style={labelWidthStyle(labelWidth)}
+      style={{ ...style, ...labelWidthStyle(labelWidth) }}
     >
       {children}
     </dl>

@@ -64,7 +64,10 @@ export function PluginPendingInteractionComposer({
   }, [interaction.id, interaction.threadId]);
 
   return (
-    <section className="mb-2 rounded-lg border border-border bg-surface-recessed px-4 py-3 text-xs text-muted-foreground">
+    <section
+      className="select-text mb-2 rounded-lg border border-border bg-surface-recessed px-4 py-3 text-xs text-muted-foreground"
+      data-select-all-scope=""
+    >
       <header className="mb-4 min-w-0">
         <h3 className="text-pretty text-sm font-semibold text-foreground">
           {interaction.payload.title}

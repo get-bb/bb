@@ -2,7 +2,10 @@ import type { HTMLAttributes } from "react";
 import { cn } from "../../lib/utils";
 import { Icon, type IconName } from "./icon";
 
-export interface EmptyStateProps {
+export interface EmptyStateProps extends Omit<
+  HTMLAttributes<HTMLDivElement>,
+  "children"
+> {
   message: string;
   icon?: IconName;
   className?: string;
@@ -16,9 +19,10 @@ export function EmptyState({
   className,
   iconClassName,
   messageClassName,
+  ...props
 }: EmptyStateProps) {
   return (
-    <div className={cn("flex items-center gap-2", className)}>
+    <div className={cn("flex items-center gap-2", className)} {...props}>
       {icon ? (
         <Icon
           name={icon}

@@ -66,6 +66,7 @@ import {
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
   BB_DESKTOP_SELECT_ALL_CHANNEL,
+  BB_DESKTOP_SELECT_ALL_FALLBACK_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
 } from "./desktop-window-command-ipc.js";
 import {
@@ -415,6 +416,10 @@ ipcRenderer.on(BB_DESKTOP_APP_COMMAND_CHANNEL, (_event, payload: unknown) => {
 });
 
 ipcRenderer.on(BB_DESKTOP_SELECT_ALL_CHANNEL, () => {
+  if (selectAllListeners.size === 0) {
+    ipcRenderer.send(BB_DESKTOP_SELECT_ALL_FALLBACK_CHANNEL, null);
+    return;
+  }
   for (const listener of selectAllListeners) {
     listener();
   }

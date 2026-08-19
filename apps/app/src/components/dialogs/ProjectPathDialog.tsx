@@ -355,7 +355,12 @@ export function ProjectPathDialogContent({
               </p>
             ) : null}
             {validationMessage ? (
-              <p className="text-sm text-destructive">{validationMessage}</p>
+              <p
+                className="select-text text-sm text-destructive"
+                data-select-all-scope=""
+              >
+                {validationMessage}
+              </p>
             ) : null}
           </div>
         ) : null}

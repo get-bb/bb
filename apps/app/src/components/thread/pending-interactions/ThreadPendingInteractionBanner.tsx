@@ -111,7 +111,10 @@ function BannerShell({
   sourceThread,
 }: BannerShellProps) {
   return (
-    <div className="mb-2 min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-surface-recessed px-4 py-3 text-xs text-muted-foreground">
+    <div
+      className="select-text mb-2 min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-surface-recessed px-4 py-3 text-xs text-muted-foreground"
+      data-select-all-scope=""
+    >
       {sourceThread ? (
         <NavLink
           to={sourceThread.href}

@@ -14,11 +14,19 @@ import { DiffFileCard } from "./DiffFileCard";
 // `fileDiff` reaches the renderer and when the file contents are requested.
 const diffViewMock = vi.hoisted(() => ({
   renderedFileDiffs: [] as unknown[],
+  renderedOptions: [] as Array<{ unsafeCSS?: string } | undefined>,
 }));
 
 vi.mock("@pierre/diffs/react", () => ({
-  FileDiff: ({ fileDiff }: { fileDiff: unknown }) => {
+  FileDiff: ({
+    fileDiff,
+    options,
+  }: {
+    fileDiff: unknown;
+    options?: { unsafeCSS?: string };
+  }) => {
     diffViewMock.renderedFileDiffs.push(fileDiff);
+    diffViewMock.renderedOptions.push(options);
     return <div data-testid="diff-view" />;
   },
 }));
@@ -148,6 +156,7 @@ function renderModifiedCard(onRequestFileContents: RequestDiffFileContents) {
 describe("DiffFileCard context expansion", () => {
   beforeEach(() => {
     diffViewMock.renderedFileDiffs.length = 0;
+    diffViewMock.renderedOptions.length = 0;
     intersectionCallbacks.clear();
     vi.stubGlobal(
       "IntersectionObserver",
@@ -195,6 +204,9 @@ describe("DiffFileCard context expansion", () => {
     expect(diffScope).not.toBeNull();
     expect(contextScope).not.toBeNull();
     expect(diffScope).not.toBe(contextScope);
+    expect(diffViewMock.renderedOptions.at(-1)?.unsafeCSS).toContain(
+      "[data-merge-conflict-action]",
+    );
     // Nothing was fetched just because the card scrolled into view.
     await new Promise((resolve) => setTimeout(resolve, 250));
     expect(onRequestFileContents).not.toHaveBeenCalled();

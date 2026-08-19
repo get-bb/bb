@@ -450,7 +450,7 @@ export function UserQuestionAnswerForm({
     <div
       ref={rootRef}
       className={cn(
-        "flex min-h-0 flex-col text-xs text-muted-foreground",
+        "select-text flex min-h-0 flex-col text-xs text-muted-foreground",
         // Fallback outside a bottom-anchored scroll body (stories, tests). In
         // the thread view the measured footer space wins: it accounts for the
         // header, safe-area insets, keyboard, and sibling footer content.
@@ -465,6 +465,7 @@ export function UserQuestionAnswerForm({
             // are `shrink-0`, so they stay visible even when only they fit.
             { maxHeight: `${availableHeight}px` }
       }
+      data-select-all-scope=""
     >
       {totalQuestions > 1 ? (
         <QuestionTabs

@@ -19,7 +19,10 @@ export function AuthCallbackView() {
 
   return (
     <div className="flex justify-center bg-background px-4 pt-12">
-      <div className="w-full max-w-sm rounded-lg border border-border bg-card px-4 py-3">
+      <div
+        className="select-text w-full max-w-sm rounded-lg border border-border bg-card px-4 py-3"
+        data-select-all-scope=""
+      >
         <div className="flex items-center gap-2">
           {status === "error" ? (
             <Icon name="CircleX" className="size-4 shrink-0 text-destructive" />

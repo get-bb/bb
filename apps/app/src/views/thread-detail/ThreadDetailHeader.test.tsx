@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { ReactNode, Ref } from "react";
+import type { BbDesktopApi } from "@bb/desktop-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
@@ -72,6 +73,7 @@ afterEach(() => {
   mocks.renameThread.mockReset();
   vi.restoreAllMocks();
   window.localStorage.clear();
+  delete window.bbDesktop;
 });
 
 describe("ThreadDetailHeader", () => {
@@ -97,6 +99,28 @@ describe("ThreadDetailHeader", () => {
     expect(
       screen.getByText("Selectable thread title").closest("p")?.classList,
     ).toContain("select-text");
+  });
+
+  it("keeps a macOS window-drag title unselectable", () => {
+    window.bbDesktop = { platform: "macos" } as BbDesktopApi;
+    render(
+      <PaneContext.Provider value={PANE_CONTEXT}>
+        <ThreadDetailHeader
+          actionsMenu={null}
+          childPillLabel={null}
+          isSecondaryPanelOpen={false}
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[]}
+          threadId={THREAD_ID}
+          threadTitle="Draggable desktop title"
+        />
+      </PaneContext.Provider>,
+    );
+
+    expect(
+      screen.getByText("Draggable desktop title").closest("p")?.classList,
+    ).not.toContain("select-text");
   });
 
   it("leaves the open right-panel collapse control to the panel header", () => {

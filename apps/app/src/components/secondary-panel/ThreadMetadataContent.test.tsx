@@ -148,7 +148,9 @@ describe("ThreadMetadataCard", () => {
     );
 
     const path = screen.getByText("/workspace");
-    expect(path.closest("dl")?.classList).toContain("select-text");
+    const card = path.closest("dl");
+    expect(card?.classList).toContain("select-text");
+    expect(card?.hasAttribute("data-select-all-scope")).toBe(true);
     expect(path.closest("button")?.classList).toContain("select-text");
   });
 });

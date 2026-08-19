@@ -322,9 +322,11 @@ describe("AddMachineDialog", () => {
     // A 503 says nothing about pairing. Do not print a command that dials the
     // new machine itself, and do not claim connect is unpaired: let the user
     // retry.
-    expect(
-      await screen.findByText("Remote access isn't ready yet."),
-    ).toBeDefined();
+    const diagnostic = await screen.findByText(
+      "Remote access isn't ready yet.",
+    );
+    expect(diagnostic.classList).toContain("select-text");
+    expect(diagnostic.hasAttribute("data-select-all-scope")).toBe(true);
     expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
     expect(screen.queryByText(/--join-code jc_test123/)).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();

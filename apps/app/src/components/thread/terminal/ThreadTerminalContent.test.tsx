@@ -134,4 +134,19 @@ describe("ThreadTerminalContent", () => {
 
     expect(rendered.queryByTestId("terminal-view")).toBeNull();
   });
+
+  it("keeps terminal loading diagnostics selectable", () => {
+    const errorController = {
+      ...controller(true),
+      hasTerminalQueryError: true,
+    };
+
+    const rendered = render(
+      <ThreadTerminalContent autoFocus={false} controller={errorController} />,
+    );
+    const diagnostic = rendered.getByText("Failed to load terminals.");
+
+    expect(diagnostic.classList).toContain("select-text");
+    expect(diagnostic.hasAttribute("data-select-all-scope")).toBe(true);
+  });
 });

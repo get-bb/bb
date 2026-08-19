@@ -156,6 +156,10 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(compatibilityStatus.textContent).toContain(
       "Requires bb 0.20 or newer.",
     );
+    expect(compatibilityStatus.classList).toContain("select-text");
+    expect(compatibilityStatus.hasAttribute("data-select-all-scope")).toBe(
+      true,
+    );
     expect(
       screen
         .getByRole("button", { name: "Install GitHub" })

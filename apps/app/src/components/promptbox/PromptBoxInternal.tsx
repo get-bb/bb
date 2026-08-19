@@ -3417,7 +3417,10 @@ export function PromptBoxInternal({
                 />
 
                 {attachmentError ? (
-                  <div className="mx-3 mb-1 mt-1 text-xs text-destructive">
+                  <div
+                    className="select-text mx-3 mb-1 mt-1 text-xs text-destructive"
+                    data-select-all-scope=""
+                  >
                     {attachmentError}
                   </div>
                 ) : null}

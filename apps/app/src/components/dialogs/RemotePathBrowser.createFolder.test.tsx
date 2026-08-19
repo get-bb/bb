@@ -232,7 +232,9 @@ describe("RemotePathBrowser new folder", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Create folder" }));
 
-    expect(await screen.findByText(/already exists/)).toBeTruthy();
+    const diagnostic = await screen.findByText(/already exists/);
+    expect(diagnostic.closest(".select-text")).not.toBeNull();
+    expect(diagnostic.closest("[data-select-all-scope]")).not.toBeNull();
     expect(onDirectoryChange).not.toHaveBeenCalledWith("/home/me/existing");
   });
 });

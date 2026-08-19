@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import {
   closestEventElement,
   findSelectAllScope,
+  getSelectAllCopyText,
   isEditableTarget,
   resolveSelectAllRoot,
   selectAllScopeContents,
@@ -36,28 +37,86 @@ function isSelectAllKey(event: KeyboardEvent): boolean {
 
 export function AppSelectAllController() {
   useEffect(() => {
+    interface CopyOverride {
+      anchorNode: Node | null;
+      anchorOffset: number;
+      focusNode: Node | null;
+      focusOffset: number;
+      text: string;
+    }
+
     let activeScope: HTMLElement | null = null;
-    let activeSelectionRoot: Document | ShadowRoot | null = null;
+    let activePreferredRoot: Document | ShadowRoot | null = null;
     let activeSelectionAnchor: Element | null = null;
+    let copyOverride: CopyOverride | null = null;
+
+    function selectionMatchesCopyOverride(override: CopyOverride): boolean {
+      const selection = window.getSelection();
+      return (
+        selection !== null &&
+        selection.anchorNode === override.anchorNode &&
+        selection.anchorOffset === override.anchorOffset &&
+        selection.focusNode === override.focusNode &&
+        selection.focusOffset === override.focusOffset
+      );
+    }
+
+    function captureCopyOverride(text: string | null): void {
+      const selection = window.getSelection();
+      copyOverride =
+        text !== null && selection !== null
+          ? {
+              anchorNode: selection.anchorNode,
+              anchorOffset: selection.anchorOffset,
+              focusNode: selection.focusNode,
+              focusOffset: selection.focusOffset,
+              text,
+            }
+          : null;
+    }
 
     function selectActiveScopeOrEditor() {
+      copyOverride = null;
+      const activeElement = getDeepActiveElement();
+      if (activeElement !== null && isEditableTarget(activeElement)) {
+        copyOverride = null;
+        selectEditorContents(activeElement);
+        return;
+      }
       if (
         activeScope !== null &&
         activeScope.isConnected &&
-        activeSelectionRoot !== null &&
-        activeSelectionAnchor !== null
+        activePreferredRoot !== null &&
+        activeSelectionAnchor !== null &&
+        activeSelectionAnchor.isConnected
       ) {
-        selectAllScopeContents(
+        const selectionRoot = resolveSelectAllRoot(
           activeScope,
-          activeSelectionRoot,
+          activePreferredRoot,
+        );
+        const didSelect = selectAllScopeContents(
+          activeScope,
+          selectionRoot,
           activeSelectionAnchor,
         );
+        captureCopyOverride(
+          didSelect ? getSelectAllCopyText(activeScope) : null,
+        );
+      }
+    }
+
+    function handleCopy(event: ClipboardEvent) {
+      const override = copyOverride;
+      if (
+        override === null ||
+        !selectionMatchesCopyOverride(override) ||
+        event.clipboardData === null
+      ) {
+        copyOverride = null;
         return;
       }
-      const activeElement = getDeepActiveElement();
-      if (activeElement !== null && isEditableTarget(activeElement)) {
-        selectEditorContents(activeElement);
-      }
+      event.clipboardData.setData("text/plain", override.text);
+      event.preventDefault();
     }
 
     function handleSelectAll(event: KeyboardEvent) {
@@ -85,24 +144,25 @@ export function AppSelectAllController() {
       );
       if (target === null || isEditableTarget(target)) {
         activeScope = null;
-        activeSelectionRoot = null;
+        activePreferredRoot = null;
         activeSelectionAnchor = null;
         return;
       }
       activeScope = findSelectAllScope(event.composedPath());
       activeSelectionAnchor = target;
       const selectionRoot = target.getRootNode();
-      activeSelectionRoot =
+      activePreferredRoot =
         activeScope !== null &&
         (selectionRoot instanceof Document ||
           selectionRoot instanceof ShadowRoot)
-          ? resolveSelectAllRoot(activeScope, selectionRoot)
+          ? selectionRoot
           : null;
     }
 
     window.addEventListener("pointerdown", updateActiveScope, true);
     window.addEventListener("focusin", updateActiveScope, true);
     window.addEventListener("keydown", handleSelectAll);
+    document.addEventListener("copy", handleCopy, true);
     const unsubscribeDesktopSelectAll = getBbDesktopInfo()?.onSelectAll?.(
       selectActiveScopeOrEditor,
     );
@@ -110,6 +170,7 @@ export function AppSelectAllController() {
       window.removeEventListener("pointerdown", updateActiveScope, true);
       window.removeEventListener("focusin", updateActiveScope, true);
       window.removeEventListener("keydown", handleSelectAll);
+      document.removeEventListener("copy", handleCopy, true);
       unsubscribeDesktopSelectAll?.();
     };
   }, []);

@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { BbDesktopApi } from "@bb/desktop-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppSelectAllController } from "@/components/AppSelectAllController";
+import { registerSelectAllCopyText } from "@/lib/select-all-scope";
 
 interface SelectionFixture {
   composer: HTMLDivElement;
@@ -155,6 +156,26 @@ describe("AppSelectAllController", () => {
     expect(input.selectionEnd).toBe(input.value.length);
   });
 
+  it("prefers the focused editor over a stale reading scope for desktop Select All", () => {
+    const requestSelectAll = installDesktopSelectAllBridge();
+    render(<AppSelectAllController />);
+    const fixture = createFixture();
+    const editor = document.createElement("textarea");
+    editor.value = "focused draft";
+    document.body.append(editor);
+    editor.focus();
+    editor.setSelectionRange(4, 4);
+
+    fireEvent.pointerDown(fixture.mainMessage);
+    act(requestSelectAll);
+
+    expect(editor.selectionStart).toBe(0);
+    expect(editor.selectionEnd).toBe(editor.value.length);
+    expect(window.getSelection()?.toString()).not.toContain(
+      "Main timeline message",
+    );
+  });
+
   it("activates a content boundary when keyboard focus enters it", () => {
     render(<AppSelectAllController />);
     const fixture = createFixture();
@@ -304,6 +325,31 @@ describe("AppSelectAllController", () => {
     expect(window.getSelection()?.isCollapsed).toBe(true);
   });
 
+  it("clears a scoped copy override when Select All moves to app chrome", () => {
+    render(<AppSelectAllController />);
+    const fixture = createFixture();
+    const unregister = registerSelectAllCopyText(
+      fixture.mainRegion,
+      () => "AUTHORITATIVE_VIRTUALIZED_TEXT",
+    );
+
+    fireEvent.pointerDown(fixture.mainMessage);
+    dispatchSelectAll(fixture.mainMessage);
+    fireEvent.pointerDown(fixture.sidebar);
+    dispatchSelectAll(fixture.sidebar);
+
+    const setData = vi.fn();
+    const copyEvent = new Event("copy", { bubbles: true, cancelable: true });
+    Object.defineProperty(copyEvent, "clipboardData", {
+      value: { setData },
+    });
+    document.dispatchEvent(copyEvent);
+
+    expect(setData).not.toHaveBeenCalled();
+    expect(copyEvent.defaultPrevented).toBe(false);
+    unregister();
+  });
+
   it("suppresses native app-wide Select All when an event has no element target", () => {
     render(<AppSelectAllController />);
     const event = new KeyboardEvent("keydown", {
@@ -400,6 +446,51 @@ describe("AppSelectAllController", () => {
       shadowText,
       "shadow-only file contents".length,
     );
+  });
+
+  it("resolves the selection root when Select All is requested", () => {
+    render(<AppSelectAllController />);
+    const scope = document.createElement("section");
+    scope.dataset.selectAllScope = "";
+    const shadowHost = document.createElement("div");
+    shadowHost.attachShadow({ mode: "open" }).innerHTML =
+      "<code>shadow-only file contents</code>";
+    scope.append(shadowHost);
+    document.body.append(scope);
+
+    fireEvent.pointerDown(scope);
+    const lateText = document.createElement("p");
+    lateText.textContent = "content rendered before Select All";
+    scope.append(lateText);
+    const lateTextNode = lateText.firstChild!;
+    const setBaseAndExtent = vi.spyOn(
+      window.getSelection()!,
+      "setBaseAndExtent",
+    );
+
+    dispatchSelectAll(scope);
+
+    expect(setBaseAndExtent).toHaveBeenCalledWith(
+      lateTextNode,
+      0,
+      lateTextNode,
+      "content rendered before Select All".length,
+    );
+  });
+
+  it("does not select a different segment after the interaction anchor is removed", () => {
+    render(<AppSelectAllController />);
+    const fixture = createFixture();
+    const setBaseAndExtent = vi.spyOn(
+      window.getSelection()!,
+      "setBaseAndExtent",
+    );
+
+    fireEvent.pointerDown(fixture.mainLink);
+    fixture.mainLink.remove();
+    dispatchSelectAll(fixture.mainRegion);
+
+    expect(setBaseAndExtent).not.toHaveBeenCalled();
   });
 
   it("excludes an inline editor between reading-content endpoints", () => {

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { SELECTION_CONTROL_SELECTORS } from "./lib/select-all-scope";
 
 const css = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "app.css"),
@@ -30,7 +31,7 @@ describe("app text selection policy", () => {
 
   it("keeps nested controls out of selectable content", () => {
     expect(compactCss).toContain(
-      'body.bb-app-shell .select-text :where( button, select, [role="button"], [role="checkbox"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="radio"], [role="switch"], [role="tab"] ):not(.select-text) { user-select: none; }',
+      `body.bb-app-shell .select-text :where( ${SELECTION_CONTROL_SELECTORS.join(", ")} ):not(.select-text) { user-select: none; }`,
     );
   });
 });

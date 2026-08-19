@@ -2277,7 +2277,10 @@ function RootComposeSurface({
   if (!projects && sidebarNavigationError) {
     return (
       <PageShell contentClassName="min-h-full items-center justify-center">
-        <p className="py-12 text-center text-sm text-destructive">
+        <p
+          className="select-text py-12 text-center text-sm text-destructive"
+          data-select-all-scope=""
+        >
           Failed to load projects.
         </p>
       </PageShell>

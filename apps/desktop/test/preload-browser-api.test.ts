@@ -44,6 +44,7 @@ import {
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
   BB_DESKTOP_SELECT_ALL_CHANNEL,
+  BB_DESKTOP_SELECT_ALL_FALLBACK_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
 } from "../src/desktop-window-command-ipc.js";
 import { BB_DESKTOP_SPELLCHECK_GLOBAL_NAME } from "../src/desktop-spellcheck-contract.js";
@@ -577,5 +578,19 @@ describe("desktop preload browser API", () => {
     });
 
     expect(selectAllRequests).toBe(1);
+  });
+
+  it("requests native Select All when no renderer subscriber is installed", async () => {
+    await loadPreload();
+
+    emitIpcPayload({
+      channel: BB_DESKTOP_SELECT_ALL_CHANNEL,
+      payload: null,
+    });
+
+    expect(electronMock.sendCalls).toContainEqual({
+      channel: BB_DESKTOP_SELECT_ALL_FALLBACK_CHANNEL,
+      payload: null,
+    });
   });
 });

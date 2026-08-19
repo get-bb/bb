@@ -484,7 +484,12 @@ export function resolveHostFilePreviewLinkRootPath({
 function ThreadDetailNotFound() {
   return (
     <PageShell contentClassName="min-h-full items-center justify-center">
-      <p className="py-12 text-center text-sm text-destructive">Not found</p>
+      <p
+        className="select-text py-12 text-center text-sm text-destructive"
+        data-select-all-scope=""
+      >
+        Not found
+      </p>
     </PageShell>
   );
 }
@@ -2416,7 +2421,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   if (!thread || thread.projectId !== projectId) {
     return (
       <PageShell contentClassName="min-h-full items-center justify-center">
-        <p className="py-12 text-center text-sm text-destructive">
+        <p
+          className="select-text py-12 text-center text-sm text-destructive"
+          data-select-all-scope=""
+        >
           {error ? "Failed to load thread." : "Not found"}
         </p>
       </PageShell>

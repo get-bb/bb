@@ -73,7 +73,10 @@ export function ThreadTerminalContent({
 
   if (controller.hasTerminalQueryError) {
     return (
-      <div className="flex h-full items-center justify-center px-4 text-center text-sm text-destructive-text">
+      <div
+        className="flex h-full items-center justify-center px-4 text-center text-sm text-destructive-text select-text"
+        data-select-all-scope=""
+      >
         Failed to load terminals.
       </div>
     );

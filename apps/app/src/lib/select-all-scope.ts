@@ -1,6 +1,8 @@
 const SELECT_ALL_SCOPE_SELECTOR = "[data-select-all-scope]";
 
-const SELECTION_CONTROL_SELECTOR = [
+const selectAllCopyTextProviders = new WeakMap<HTMLElement, () => string>();
+
+export const SELECTION_CONTROL_SELECTORS = [
   "button",
   "select",
   '[role="button"]',
@@ -12,7 +14,9 @@ const SELECTION_CONTROL_SELECTOR = [
   '[role="radio"]',
   '[role="switch"]',
   '[role="tab"]',
-].join(", ");
+] as const;
+
+const SELECTION_CONTROL_SELECTOR = SELECTION_CONTROL_SELECTORS.join(", ");
 
 const NON_EDITING_INPUT_TYPES = new Set([
   "button",
@@ -59,11 +63,30 @@ export function findSelectAllScope(
   composedPath: readonly EventTarget[],
 ): HTMLElement | null {
   for (const target of composedPath) {
-    if (!(target instanceof Element)) continue;
-    const scope = target.closest<HTMLElement>(SELECT_ALL_SCOPE_SELECTOR);
-    if (scope !== null) return scope;
+    if (
+      target instanceof HTMLElement &&
+      target.matches(SELECT_ALL_SCOPE_SELECTOR)
+    ) {
+      return target;
+    }
   }
   return null;
+}
+
+export function registerSelectAllCopyText(
+  scope: HTMLElement,
+  getText: () => string,
+): () => void {
+  selectAllCopyTextProviders.set(scope, getText);
+  return () => {
+    if (selectAllCopyTextProviders.get(scope) === getText) {
+      selectAllCopyTextProviders.delete(scope);
+    }
+  };
+}
+
+export function getSelectAllCopyText(scope: HTMLElement): string | null {
+  return selectAllCopyTextProviders.get(scope)?.() ?? null;
 }
 
 function isSkippedSelectionSubtree(element: Element): boolean {
@@ -130,7 +153,8 @@ function getComposedTextEndpoints(
   }
 
   visit(scope);
-  const selectedText = textBySegment.get(anchorSegment ?? 0) ?? [];
+  if (anchorSegment === null) return null;
+  const selectedText = textBySegment.get(anchorSegment) ?? [];
   first = selectedText[0] ?? null;
   last = selectedText.at(-1) ?? null;
   return first === null || last === null ? null : { first, last };
@@ -142,21 +166,25 @@ export function resolveSelectAllRoot(
 ): Document | ShadowRoot {
   const textRoots = new Set<Document | ShadowRoot>();
 
-  function visit(node: Node) {
+  function visit(node: Node): boolean {
     if (node instanceof Text) {
-      if (node.data.trim().length === 0) return;
+      if (node.data.trim().length === 0) return false;
       const root = node.getRootNode();
       if (root instanceof Document || root instanceof ShadowRoot) {
         textRoots.add(root);
+        if (root === preferredRoot || textRoots.size > 1) return true;
       }
-      return;
+      return false;
     }
     if (node !== scope && node instanceof Element) {
       if (isEditableSelectionSubtree(node) || isSkippedSelectionSubtree(node)) {
-        return;
+        return false;
       }
     }
-    for (const child of getComposedChildren(node)) visit(child);
+    for (const child of getComposedChildren(node)) {
+      if (visit(child)) return true;
+    }
+    return false;
   }
 
   visit(scope);
@@ -170,18 +198,19 @@ export function selectAllScopeContents(
   scope: HTMLElement,
   selectionRoot: Document | ShadowRoot,
   selectionAnchor: Element,
-): void {
+): boolean {
   const endpoints = getComposedTextEndpoints(
     scope,
     selectionRoot,
     selectionAnchor,
   );
   const selection = window.getSelection();
-  if (endpoints === null || selection === null) return;
+  if (endpoints === null || selection === null) return false;
   selection.setBaseAndExtent(
     endpoints.first,
     0,
     endpoints.last,
     endpoints.last.data.length,
   );
+  return true;
 }

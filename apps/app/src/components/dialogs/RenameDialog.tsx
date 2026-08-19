@@ -136,7 +136,12 @@ export function RenameDialogContent({
             }}
           />
           {displayedErrorMessage ? (
-            <p className="text-sm text-destructive">{displayedErrorMessage}</p>
+            <p
+              className="select-text text-sm text-destructive"
+              data-select-all-scope=""
+            >
+              {displayedErrorMessage}
+            </p>
           ) : null}
         </div>
         <DialogFooter>

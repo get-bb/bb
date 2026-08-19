@@ -328,7 +328,10 @@ function AddMachineDialogContent({
        <div className="space-y-3">
         {mintJoinCode.isError || connectUnavailable ? (
           <div className="space-y-2">
-            <p className="text-sm text-destructive">
+            <p
+              className="select-text text-sm text-destructive"
+              data-select-all-scope=""
+            >
               {connectUnavailable
                 ? "Remote access isn't ready yet."
                 : getMutationErrorMessage({
