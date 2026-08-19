@@ -2,12 +2,7 @@
 
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useSelectableContentRegionTracking } from "./useSelectableContentRegionTracking";
-
-function SelectionTracker() {
-  useSelectableContentRegionTracking();
-  return null;
-}
+import { AppSelectAllController } from "@/components/AppSelectAllController";
 
 interface SelectionFixture {
   composer: HTMLDivElement;
@@ -19,6 +14,7 @@ interface SelectionFixture {
   sidebar: HTMLElement;
   sideMessage: HTMLParagraphElement;
   sideRegion: HTMLElement;
+  standaloneText: HTMLParagraphElement;
 }
 
 function createFixture(): SelectionFixture {
@@ -26,19 +22,20 @@ function createFixture(): SelectionFixture {
   shell.innerHTML = `
     <aside data-testid="sidebar">Sidebar chrome</aside>
     <main>
-      <section data-testid="main-region" data-selectable-content-region>
+      <section data-testid="main-region" data-select-all-scope>
         <p data-testid="main-message">Main timeline message</p>
         <a data-testid="main-link" href="#details">Message details</a>
         <button data-testid="main-action">Message action</button>
       </section>
       <div data-testid="composer" contenteditable="true">Composer draft</div>
     </main>
-    <section data-testid="side-region" data-selectable-content-region>
+    <section data-testid="side-region" data-select-all-scope>
       <p data-testid="side-message">Side chat message</p>
     </section>
-    <button class="select-text" data-testid="diagnostic">
+    <button class="select-text" data-select-all-scope data-testid="diagnostic">
       Workspace: /tmp/selection-qa
     </button>
+    <p class="select-text" data-testid="standalone-text">Standalone text</p>
   `;
   document.body.append(shell);
 
@@ -58,6 +55,7 @@ function createFixture(): SelectionFixture {
     sidebar: requireElement("sidebar"),
     sideMessage: requireElement("side-message"),
     sideRegion: requireElement("side-region"),
+    standaloneText: requireElement("standalone-text"),
   };
 }
 
@@ -79,9 +77,9 @@ afterEach(() => {
   window.getSelection()?.removeAllRanges();
 });
 
-describe("useSelectableContentRegionTracking", () => {
+describe("AppSelectAllController", () => {
   it("tracks pointer interaction without changing selectable-content styles", () => {
-    render(<SelectionTracker />);
+    render(<AppSelectAllController />);
     const fixture = createFixture();
     const regionMarkup = fixture.mainRegion.outerHTML;
 
@@ -90,7 +88,7 @@ describe("useSelectableContentRegionTracking", () => {
   });
 
   it("scopes Select All to the active content boundary", () => {
-    render(<SelectionTracker />);
+    render(<AppSelectAllController />);
     const fixture = createFixture();
 
     fireEvent.pointerDown(fixture.mainMessage);
@@ -107,7 +105,7 @@ describe("useSelectableContentRegionTracking", () => {
   });
 
   it("activates a content boundary when keyboard focus enters it", () => {
-    render(<SelectionTracker />);
+    render(<AppSelectAllController />);
     const fixture = createFixture();
 
     fixture.mainLink.focus();
@@ -121,7 +119,7 @@ describe("useSelectableContentRegionTracking", () => {
   });
 
   it("suppresses Select All in app chrome but leaves editors and controls native", () => {
-    render(<SelectionTracker />);
+    render(<AppSelectAllController />);
     const fixture = createFixture();
 
     for (const target of [fixture.composer, fixture.mainAction]) {
@@ -134,7 +132,7 @@ describe("useSelectableContentRegionTracking", () => {
   });
 
   it("allows an explicitly selectable control to scope Select All", () => {
-    render(<SelectionTracker />);
+    render(<AppSelectAllController />);
     const fixture = createFixture();
 
     fireEvent.pointerDown(fixture.diagnostic);
@@ -146,8 +144,19 @@ describe("useSelectableContentRegionTracking", () => {
     );
   });
 
-  it("delegates shadow-root Select All to the browser's composed-tree selection", () => {
-    render(<SelectionTracker />);
+  it("does not infer a Select All scope from drag-selectable text", () => {
+    render(<AppSelectAllController />);
+    const fixture = createFixture();
+
+    fireEvent.pointerDown(fixture.standaloneText);
+    const event = dispatchSelectAll(fixture.standaloneText);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(window.getSelection()?.isCollapsed).toBe(true);
+  });
+
+  it("selects through an open shadow root at the browser boundary", () => {
+    render(<AppSelectAllController />);
     const fixture = createFixture();
     const shadowHost = document.createElement("div");
     shadowHost.attachShadow({ mode: "open" }).innerHTML =
@@ -172,8 +181,8 @@ describe("useSelectableContentRegionTracking", () => {
     );
   });
 
-  it("removes document-level event behavior when unmounted", () => {
-    const { unmount } = render(<SelectionTracker />);
+  it("removes app-level event behavior when unmounted", () => {
+    const { unmount } = render(<AppSelectAllController />);
     const fixture = createFixture();
 
     fireEvent.pointerDown(fixture.mainMessage);

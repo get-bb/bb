@@ -607,6 +607,7 @@ function QueuedMessagePreview({
   return (
     <div
       className="min-w-0 flex-1 select-text overflow-hidden text-foreground"
+      data-select-all-scope=""
       title={preview}
     >
       {markdownPreview.text.length > 0 ? (

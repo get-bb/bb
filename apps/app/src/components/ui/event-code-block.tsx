@@ -21,6 +21,7 @@ export function EventCodeBlock({
 }: EventCodeBlockProps) {
   return (
     <pre
+      data-select-all-scope=""
       className={cn(
         "select-text whitespace-pre-wrap break-words rounded-md px-2 py-1.5 font-mono text-xs leading-tight",
         tone === "danger"

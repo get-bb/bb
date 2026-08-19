@@ -28,8 +28,9 @@ export function ProviderCliInstallLogDialog({
   state,
   onClose,
 }: ProviderCliInstallLogDialogProps) {
-  const renderedStateRef =
-    useRef<ProviderCliInstallLogDialogState | null>(state);
+  const renderedStateRef = useRef<ProviderCliInstallLogDialogState | null>(
+    state,
+  );
   const isOpen = state !== null;
 
   if (state !== null) {
@@ -74,7 +75,10 @@ export function ProviderCliInstallLogDialogContent({
           className="absolute right-2 top-2 z-10 opacity-70 transition-opacity hover:opacity-100 focus-visible:opacity-100"
           iconClassName="size-3"
         />
-        <pre className="max-h-80 min-h-32 select-text overflow-auto whitespace-pre-wrap break-words p-3 pr-12 text-xs text-foreground">
+        <pre
+          className="max-h-80 min-h-32 select-text overflow-auto whitespace-pre-wrap break-words p-3 pr-12 text-xs text-foreground"
+          data-select-all-scope=""
+        >
           {state.log}
         </pre>
       </div>

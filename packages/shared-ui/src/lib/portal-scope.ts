@@ -13,8 +13,6 @@
  * overlays stay out of plugin scopes. The portaled-overlay marker is shared
  * with the host copy and lets Electron route pointer input to visible
  * overlay controls instead of an underlying window-drag region.
- * The selectable-content marker similarly restores the host's text-selection
- * boundary after plugin content moves outside its panel mount.
  */
 declare const __BB_PLUGIN_ID__: string | undefined;
 
@@ -22,14 +20,12 @@ export function usePortalScopeProps(): {
   "data-bb-portaled-overlay": "";
   "data-bb-plugin-root"?: "";
   "data-bb-plugin"?: string;
-  "data-selectable-content-region": "";
 } {
   const pluginId =
     typeof __BB_PLUGIN_ID__ === "string" ? __BB_PLUGIN_ID__ : undefined;
   return {
     "data-bb-portaled-overlay": "",
     "data-bb-plugin-root": "",
-    "data-selectable-content-region": "",
     ...(pluginId !== undefined ? { "data-bb-plugin": pluginId } : {}),
   };
 }

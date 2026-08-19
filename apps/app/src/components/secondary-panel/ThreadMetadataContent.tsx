@@ -989,6 +989,7 @@ export function ThreadMetadataCard({ children }: DetailCardWrapperProps) {
     <DetailCard
       appearance="flat"
       className="min-h-0 flex-1 select-text gap-1.5 overflow-x-hidden overflow-y-auto px-4 py-3"
+      data-select-all-scope=""
     >
       {children}
     </DetailCard>

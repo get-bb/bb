@@ -94,7 +94,10 @@ export function ToolCallDetailBlock({
   const hasOutput = output.trim().length > 0;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card select-text">
+    <div
+      className="overflow-hidden rounded-lg border border-border bg-card select-text"
+      data-select-all-scope=""
+    >
       <TimelineDetailScroll
         size="base"
         overflowX="hidden"
@@ -105,7 +108,9 @@ export function ToolCallDetailBlock({
         <CollapsibleHeader toolName={toolName} argEntries={argEntries} />
         {hasOutput ? (
           <div className="mt-2 border-t border-border pt-2">
-            <pre className="m-0 min-w-0 overflow-x-auto whitespace-pre">{output}</pre>
+            <pre className="m-0 min-w-0 overflow-x-auto whitespace-pre">
+              {output}
+            </pre>
           </div>
         ) : null}
       </TimelineDetailScroll>

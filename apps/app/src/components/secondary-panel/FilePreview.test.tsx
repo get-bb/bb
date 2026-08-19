@@ -606,6 +606,11 @@ describe("FilePreview", () => {
         .getByRole("table", { name: "customers.csv CSV preview" })
         .classList.contains("select-text"),
     ).toBe(true);
+    expect(
+      screen
+        .getByRole("table", { name: "customers.csv CSV preview" })
+        .closest("[data-select-all-scope]"),
+    ).not.toBeNull();
     expect(screen.getByRole("columnheader", { name: "Name" })).not.toBeNull();
     expect(screen.getByRole("columnheader", { name: "Note" })).not.toBeNull();
     expect(screen.getByRole("cell", { name: "Ada, Lovelace" })).not.toBeNull();

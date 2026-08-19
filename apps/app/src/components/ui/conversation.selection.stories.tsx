@@ -1,5 +1,5 @@
 import { useLayoutEffect } from "react";
-import { useSelectableContentRegionTracking } from "@/hooks/useSelectableContentRegionTracking";
+import { AppSelectAllController } from "@/components/AppSelectAllController";
 import { ConversationTimeline } from "./conversation.js";
 
 export default {
@@ -7,7 +7,6 @@ export default {
 };
 
 export const Policy = () => {
-  useSelectableContentRegionTracking();
   useLayoutEffect(() => {
     document.documentElement.classList.add("bb-app-shell-root");
     document.body.classList.add("bb-app-shell");
@@ -19,6 +18,7 @@ export const Policy = () => {
 
   return (
     <div className="grid min-h-screen grid-cols-[180px_minmax(0,1fr)_280px] bg-background text-foreground">
+      <AppSelectAllController />
       <aside
         data-testid="sidebar"
         className="border-r border-border bg-sidebar p-4"
@@ -27,6 +27,7 @@ export const Policy = () => {
         <button
           type="button"
           className="mt-8 block select-text font-mono"
+          data-select-all-scope=""
           data-testid="diagnostic-value"
         >
           Workspace: /tmp/selection-qa

@@ -2,7 +2,7 @@
 import { createRoot } from "react-dom/client";
 import { act } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SelectableContentRegionTracker } from "../hooks/useSelectableContentRegionTracking";
+import { AppSelectAllController } from "./AppSelectAllController";
 import { AppErrorBoundary } from "./AppErrorBoundary";
 
 afterEach(() => {
@@ -64,7 +64,7 @@ describe("AppErrorBoundary", () => {
     }
     render(
       <>
-        <SelectableContentRegionTracker />
+        <AppSelectAllController />
         <AppErrorBoundary>
           <Boom />
         </AppErrorBoundary>

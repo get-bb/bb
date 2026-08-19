@@ -57,18 +57,9 @@
   }
 
   /* Reading surfaces are statically selectable so beginning a drag does not
-   * invalidate styles across a long timeline. The document-level tracker
-   * scopes Select All without changing selection styles. */
+   * invalidate styles across a long timeline. Select All scopes are declared
+   * separately with `data-select-all-scope`. */
   body.bb-app-shell .select-text {
-    user-select: text !important;
-  }
-
-  body.bb-app-shell
-    :where(
-      input,
-      textarea,
-      [contenteditable]:not([contenteditable="false"])
-    ):focus {
     user-select: text !important;
   }
 

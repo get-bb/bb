@@ -70,6 +70,7 @@ export function PluginPanelView(props: PluginPanelViewProps = {}) {
   return (
     <div
       className="-m-4 flex min-h-0 flex-1 select-text flex-col overflow-hidden md:-m-5"
+      data-select-all-scope=""
       data-testid="plugin-panel-body"
     >
       <PluginSlotMount

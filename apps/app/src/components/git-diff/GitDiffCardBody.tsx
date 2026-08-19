@@ -498,7 +498,10 @@ export function useGitDiffCardBody({
     enrichmentStatus: enrichment.status,
   });
   const contextExpansion = useMemo<DiffContextExpansionState>(
-    () => ({ status: contextExpansionStatus, request: requestContextExpansion }),
+    () => ({
+      status: contextExpansionStatus,
+      request: requestContextExpansion,
+    }),
     [contextExpansionStatus, requestContextExpansion],
   );
 
@@ -862,6 +865,7 @@ export function GitDiffCardBody({
     <div
       ref={bodySentinelRef}
       className="overflow-hidden rounded-b-lg bg-background select-text"
+      data-select-all-scope=""
       style={GIT_DIFF_CARD_BODY_STYLE}
     >
       {shouldGateDeletedDiff ? (
