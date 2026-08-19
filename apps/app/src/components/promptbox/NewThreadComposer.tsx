@@ -321,20 +321,30 @@ export function NewThreadComposer({
   // requested candidate: it may not exist and would then fall back to the
   // personal project. Queries keyed by projectId wait for the settled value
   // so a cold start does not fetch (and cache) data for the wrong project.
-  const sidebarNavigationSettled =
-    sidebarNavigationQuery.isSuccess || sidebarNavigationQuery.isError;
   const projects = useMemo(
     () => sidebarNavigationQuery.data?.projects.map(stripProjectThreads),
     [sidebarNavigationQuery.data],
   );
+  const requestedCandidate = requestedProjectId ?? PERSONAL_PROJECT_ID;
+  const candidateKnown =
+    isProjectlessProjectId(requestedCandidate) ||
+    (projects?.some((project) => project.id === requestedCandidate) ?? false);
+  // Replayed bootstrap data (a placeholder from the last page load) may not
+  // know a project that was created since. It must not demote that project
+  // to the personal project: a submit in that window would create the thread
+  // in the wrong project. Treat the replay as settled only when it already
+  // knows the requested project; otherwise hold the candidate and wait for
+  // the live response.
+  const replayKnowsCandidate =
+    !sidebarNavigationQuery.isPlaceholderData || candidateKnown;
+  const sidebarNavigationSettled =
+    sidebarNavigationQuery.isError ||
+    (sidebarNavigationQuery.isSuccess && replayKnowsCandidate);
   const projectId = useMemo(() => {
-    const candidate = requestedProjectId ?? PERSONAL_PROJECT_ID;
-    if (isProjectlessProjectId(candidate)) return PERSONAL_PROJECT_ID;
-    if (!projects) return candidate;
-    return projects.some((project) => project.id === candidate)
-      ? candidate
-      : PERSONAL_PROJECT_ID;
-  }, [projects, requestedProjectId]);
+    if (isProjectlessProjectId(requestedCandidate)) return PERSONAL_PROJECT_ID;
+    if (!projects || !replayKnowsCandidate) return requestedCandidate;
+    return candidateKnown ? requestedCandidate : PERSONAL_PROJECT_ID;
+  }, [candidateKnown, projects, replayKnowsCandidate, requestedCandidate]);
   const isProjectless = isProjectlessProjectId(projectId);
   const currentProject = useMemo(() => {
     if (isProjectless) {

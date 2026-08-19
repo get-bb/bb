@@ -49,6 +49,10 @@ const mocks = vi.hoisted(() => ({
   uploadAttachment: vi.fn(),
   projectThreads: [] as ThreadListEntry[],
   sidebarNavigationSettled: true,
+  // When true, the settled data is a replayed placeholder from the last page
+  // load (TanStack reports `isSuccess` for placeholders too).
+  sidebarNavigationReplayed: false,
+  extraProjects: [] as Array<Record<string, unknown>>,
   promptHistoryQueryOptions: [] as Array<{ enabled?: boolean } | undefined>,
 }));
 
@@ -105,6 +109,7 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
             projects: [
               { ...PROJECT, threads: mocks.projectThreads },
               OTHER_PROJECT,
+              ...mocks.extraProjects,
             ],
             personalProject: {
               id: "personal",
@@ -116,8 +121,15 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
           isError: false,
           isLoading: false,
           isSuccess: true,
+          isPlaceholderData: mocks.sidebarNavigationReplayed,
         }
-      : { data: undefined, isError: false, isLoading: true, isSuccess: false },
+      : {
+          data: undefined,
+          isError: false,
+          isLoading: true,
+          isSuccess: false,
+          isPlaceholderData: false,
+        },
 }));
 
 vi.mock("@/hooks/queries/host-queries", () => ({
@@ -391,6 +403,8 @@ describe("PluginNewThreadComposer seeding", () => {
     mocks.uploadAttachment.mockReset();
     mocks.projectThreads = [];
     mocks.sidebarNavigationSettled = true;
+    mocks.sidebarNavigationReplayed = false;
+    mocks.extraProjects = [];
     window.localStorage.clear();
     getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
       text: "",
@@ -447,6 +461,62 @@ describe("PluginNewThreadComposer seeding", () => {
         "updated through the Composer API",
       );
     });
+  });
+
+  it("does not demote a project the replayed bootstrap does not know yet", async () => {
+    // A replayed bootstrap is a snapshot from the last page load. A project
+    // created since is absent from it. The composer must hold the requested
+    // project (picker loading, submit blocked) instead of treating it as
+    // personal, so the thread lands in the right project once live data
+    // arrives.
+    mocks.sidebarNavigationReplayed = true;
+    const submitted: NewThreadRequest[] = [];
+    const onSubmit = (request: NewThreadRequest) => {
+      submitted.push(request);
+    };
+    const seed = { ...STORED_REQUEST, projectId: "proj_new" };
+    const { rerender } = render(
+      composerElement(seed, onSubmit, "replay-unknown-project"),
+    );
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().project.value).toBe("proj_new");
+    });
+    expect(latestPromptBoxProps().project.isLoading).toBe(true);
+    expect(latestPromptBoxProps().disabled).toBe(true);
+
+    mocks.sidebarNavigationReplayed = false;
+    mocks.extraProjects = [
+      {
+        ...PROJECT,
+        id: "proj_new",
+        name: "Project New",
+        sources: [
+          { ...PROJECT.sources[0], id: "src_new", projectId: "proj_new" },
+        ],
+      },
+    ];
+    rerender(composerElement(seed, onSubmit, "replay-unknown-project"));
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().project.isLoading).toBe(false);
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]?.projectId).toBe("proj_new");
+  });
+
+  it("treats a replayed bootstrap that knows the project as settled", async () => {
+    mocks.sidebarNavigationReplayed = true;
+    renderComposer(STORED_REQUEST, () => {}, "replay-known-project");
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    expect(latestPromptBoxProps().project.isLoading).toBe(false);
+    expect(latestPromptBoxProps().project.value).toBe("proj_1");
   });
 
   it("allows submitting a projectless thread", async () => {
