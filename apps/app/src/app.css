@@ -103,6 +103,17 @@
   body[data-sidebar-dragging="true"] * {
     cursor: grabbing !important;
   }
+
+  /* A sidebar drag projects the dragged row into the hovered list, which can
+   * grow or shrink content above the scrolled viewport. Scroll anchoring would
+   * then move scrollTop to keep the visible rows still, but dnd-kit offsets
+   * its measured droppable rects by that scroll delta even though nothing
+   * moved on screen, so `over` resolves against the wrong rows and the
+   * projection flips back and forth (#1830). Keep scrollTop stable while a
+   * sidebar drag is active so the measured geometry matches the pointer. */
+  body[data-sidebar-dragging="true"] [data-sidebar="content"] {
+    overflow-anchor: none;
+  }
 }
 
 @layer components {
