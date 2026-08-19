@@ -145,6 +145,21 @@ function AnimatedExpandablePanelContent({
 }: AnimatedExpandablePanelContentProps) {
   const regionRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  // Only an expand/collapse toggle eases the region height. Content growth
+  // inside an already-open body (a streaming tool result, a todo list gaining
+  // rows) snaps: easing it would restart the 200ms tween on every delta, and
+  // that tween never registers with `layoutAnimationInFlightCountAtom`, so the
+  // timeline's AutoHeightContainer would run its own tween on top of it.
+  const toggleAnimationDeadlineRef = useRef(0);
+  const isFirstToggleEffectRef = useRef(true);
+  useBrowserLayoutEffect(() => {
+    if (isFirstToggleEffectRef.current) {
+      isFirstToggleEffectRef.current = false;
+      return;
+    }
+    toggleAnimationDeadlineRef.current =
+      performance.now() + EXPANDABLE_PANEL_TRANSITION_MS;
+  }, [isExpanded]);
 
   useBrowserLayoutEffect(() => {
     const region = regionRef.current;
@@ -154,6 +169,9 @@ function AnimatedExpandablePanelContent({
     }
 
     const syncHeight = () => {
+      const isToggleAnimating =
+        performance.now() < toggleAnimationDeadlineRef.current;
+      region.style.transitionDuration = isToggleAnimating ? "" : "0s";
       region.style.height = `${target.offsetHeight}px`;
     };
 
@@ -327,7 +345,10 @@ export function ExpandablePanel({
           <div className="overflow-hidden">
             <div
               className={cn(
-                "px-2 pb-1 pt-0 transition-[transform,opacity] duration-200 ease-out will-change-transform",
+                // No `will-change-transform` here: it would pin a compositing
+                // layer on every collapsed body in the timeline for the
+                // lifetime of the row, only to speed a 200ms toggle.
+                "px-2 pb-1 pt-0 transition-[transform,opacity] duration-200 ease-out",
                 isExpanded
                   ? "translate-y-0 opacity-100"
                   : "-translate-y-1 opacity-0",

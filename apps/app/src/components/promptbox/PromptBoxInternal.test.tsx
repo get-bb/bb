@@ -2008,6 +2008,47 @@ describe("PromptBoxInternal compact layout", () => {
     fireEvent.transitionEnd(form, { propertyName: "height" });
   });
 
+  it("snaps an external layout change on a coarse-pointer compact viewport", () => {
+    // Phones get the layout change together with the soft keyboard and
+    // shell resize; tweening the sticky footer's height 240ms on top of
+    // that re-lays out the timeline behind it every frame.
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query === "(pointer: coarse)" || query === "(max-width: 767px)",
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    try {
+      const promptBoxRef = createRef<PromptBoxHandle>();
+      const baseProps = createPromptBoxProps({ promptBoxRef });
+      const view = render(
+        <PromptBoxInternal {...baseProps} heightAnimationKey="compact" />,
+      );
+      const form = document.querySelector("[data-promptbox]");
+      if (!(form instanceof HTMLFormElement)) {
+        throw new Error("Prompt box form was not rendered");
+      }
+      vi.spyOn(form, "getBoundingClientRect")
+        .mockReturnValueOnce(new DOMRect(0, 0, 320, 48))
+        .mockReturnValue(new DOMRect(0, 0, 320, 144));
+
+      act(() => promptBoxRef.current?.captureHeightForLayoutChange());
+      view.rerender(
+        <PromptBoxInternal {...baseProps} heightAnimationKey="expanded" />,
+      );
+
+      expect(form.style.transition).toBe("");
+      expect(form.style.height).toBe("");
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
   it("skips an external layout animation when the height did not change", () => {
     const promptBoxRef = createRef<PromptBoxHandle>();
     const baseProps = createPromptBoxProps({ promptBoxRef });

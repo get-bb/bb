@@ -59,6 +59,7 @@ import {
   COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   getMediaQuerySnapshot,
   REDUCED_MOTION_QUERY,
@@ -2084,6 +2085,13 @@ export function PromptBoxInternal({
     if (fromHeight === null || !formElement) return;
     heightAnimationFromRef.current = null;
     if (getMediaQuerySnapshot(REDUCED_MOTION_QUERY)) return;
+    // On a phone the layout change that requests this tween (follow-up
+    // compact -> expanded, zen toggle) lands together with the soft keyboard
+    // and shell resize. Tweening the sticky footer's height for 240ms on top
+    // of that re-lays out the timeline behind it every frame, so snap.
+    if (isPointerCoarse && getMediaQuerySnapshot(COMPACT_VIEWPORT_QUERY)) {
+      return;
+    }
 
     const previousTransition = formElement.style.transition;
     const previousWillChange = formElement.style.willChange;
@@ -2126,7 +2134,13 @@ export function PromptBoxInternal({
     formElement.addEventListener("transitionend", handleTransitionEnd);
 
     return cleanup;
-  }, [heightAnimationKey, isZenMode, showCompactLayout, zenModeLayout]);
+  }, [
+    heightAnimationKey,
+    isPointerCoarse,
+    isZenMode,
+    showCompactLayout,
+    zenModeLayout,
+  ]);
 
   const trimmedValue = value.trim();
   const hasAttachments = attachments.length > 0;
