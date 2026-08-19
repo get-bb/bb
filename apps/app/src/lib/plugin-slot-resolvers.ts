@@ -8,7 +8,6 @@ import type {
   PluginFileOpenerSlot,
   PluginMessageDirectiveSlot,
   PluginPendingInteractionSlot,
-  PluginThreadListSlot,
 } from "./plugin-slots";
 
 type ComposerAction = NonNullable<ComposerCustomization["actions"]>[number];
@@ -263,13 +262,6 @@ export function resolveReplacement<Registration>(
   return registration === undefined
     ? OWNER_REPLACEMENT
     : { kind: "plugin", registration };
-}
-
-export function resolveThreadListReplacement(
-  registrations: readonly PluginThreadListSlot[],
-  applies?: (registration: PluginThreadListSlot) => boolean,
-): ResolvedReplacement<PluginThreadListSlot> {
-  return resolveReplacement(registrations, applies);
 }
 
 export type FileOpenerOverride =

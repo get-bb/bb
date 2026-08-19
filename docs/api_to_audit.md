@@ -606,20 +606,27 @@ environment diff panel's file bodies, and every plugin calling the public
 components. Like `experimental_threadList` these slots are **exclusive**: one
 renderer each. Registering activates it while the plugin is enabled; if several
 are registered the first in slot snapshot order wins (plugin ids sorted, then
-each plugin's registration order). There are deliberately no scope, extension,
-or enabled-by-setting filters on the registration — conditional behavior
-belongs in the component, which decides per call from its semantic props and
-renders `experimental_Original` when it does not want the render.
+each plugin's registration order). The user can override that under
+Settings → Appearance ("Source code" and "Diffs") by pinning BB's renderer or
+a specific provider; the choice is per client, and it is the same
+automatic/built-in/named-provider model the sidebar thread list uses. There are
+deliberately no scope, extension, or enabled-by-setting filters on the
+registration — conditional behavior belongs in the component, which decides per
+call from its semantic props and renders `experimental_Original` when it does
+not want the render.
 
 Fallbacks: no registration renders BB's renderer; a disabled or uninstalled
 plugin reveals the next registration or BB's renderer; a component that throws
-renders BB's renderer through the slot's crash fallback.
+renders BB's renderer through the slot's crash fallback. A pinned provider that
+is temporarily unavailable renders BB's renderer without erasing the pin.
 
 **Audit before stabilizing.**
 
-1. **Arbitration.** Unlike the thread list there is no user-facing pin under
-   Settings. Confirm automatic-only selection is right for a renderer, or add
-   the same pinning model before stabilizing.
+1. **Arbitration.** Confirm automatic/pinned/built-in is the right long-term
+   selection model here as it is for the thread list, and that a per-client
+   choice is the right scope for something as visible as every diff in the app.
+   The two renderers pin independently; confirm users do not instead expect one
+   "code rendering" choice.
 2. **Crash signal.** The thread list toasts when a crash swaps the sidebar
    back. These slots fall back silently, because a diff card is not a whole
    sidebar. Confirm silence is right, especially when many cards crash at once.

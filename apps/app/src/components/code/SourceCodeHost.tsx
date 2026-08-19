@@ -1,7 +1,6 @@
 import { Suspense, lazy, type ReactNode } from "react";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
-import { resolveReplacement } from "@/lib/plugin-slot-resolvers";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { useSourceCodeRendererReplacement } from "./codeRendererProvider";
 import {
   DEFAULT_CODE_OVERFLOW,
   type BbSourceCodeProps,
@@ -40,8 +39,7 @@ export function SourceCodeHost({
   scrollToHighlightedLines,
   onSelectionAddToChat,
 }: SourceCodeHostProps) {
-  const { sourceCodeRenderers } = usePluginSlots();
-  const replacement = resolveReplacement(sourceCodeRenderers);
+  const replacement = useSourceCodeRendererReplacement();
 
   const original = (
     <Suspense fallback={fallback}>

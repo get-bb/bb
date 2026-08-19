@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
+import { createStore, Provider as JotaiProvider } from "jotai";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginDiffRendererProps } from "@get-bb/plugin-sdk";
@@ -12,6 +13,11 @@ import {
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { parseGitDiffFiles } from "@/components/git-diff/git-diff-parsing";
 import { PluginDiff } from "@/components/plugin/PluginDiff";
+import {
+  BUILT_IN_REPLACEMENT_PROVIDER,
+  replacementProviderKey,
+} from "@/lib/plugin-replacement-preference";
+import { diffRendererProviderAtom } from "./codeRendererProvider";
 import { DiffHost } from "./DiffHost";
 
 /**
@@ -173,6 +179,63 @@ describe("DiffHost", () => {
     expect(bbDiff.loaded).toBe(true);
     // Delegation must reach BB's renderer with the host-only inputs intact.
     expect(bbDiff.lastProps?.file).toBeDefined();
+  });
+
+  it("honours a pin to BB's renderer without disabling the plugin", async () => {
+    registerDiffRenderer((props) => {
+      receivedProps.push(props);
+      return <div data-testid="plugin-diff">plugin diff</div>;
+    });
+    const store = createStore();
+    store.set(diffRendererProviderAtom, BUILT_IN_REPLACEMENT_PROVIDER);
+
+    render(
+      <JotaiProvider store={store}>
+        <DiffHost file={parseFixture()} patchText={PATCH} />
+      </JotaiProvider>,
+    );
+
+    expect(await screen.findByTestId("bb-diff")).toBeDefined();
+    expect(receivedProps).toHaveLength(0);
+  });
+
+  it("keeps a pinned provider selected once another plugin sorts ahead of it", async () => {
+    registerDiffRenderer((props) => {
+      receivedProps.push(props);
+      return <div data-testid="plugin-diff">first plugin</div>;
+    });
+    setPluginSlotRegistrations("aardvark", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [],
+      threadPanelActions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+      diffRenderers: [
+        {
+          id: "diffs",
+          title: "Aardvark diffs",
+          component: () => <div data-testid="aardvark-diff">aardvark</div>,
+        },
+      ],
+    });
+    const store = createStore();
+    // "aardvark" sorts before "demo", so automatic would switch the user's
+    // renderer out from under them; an explicit pin must not.
+    store.set(
+      diffRendererProviderAtom,
+      replacementProviderKey({ pluginId: "demo", id: "diffs" }),
+    );
+
+    render(
+      <JotaiProvider store={store}>
+        <DiffHost file={parseFixture()} patchText={PATCH} />
+      </JotaiProvider>,
+    );
+
+    expect(await screen.findByTestId("plugin-diff")).toBeDefined();
+    expect(screen.queryByTestId("aardvark-diff")).toBeNull();
   });
 
   it("falls back to BB's renderer when the replacement crashes", async () => {

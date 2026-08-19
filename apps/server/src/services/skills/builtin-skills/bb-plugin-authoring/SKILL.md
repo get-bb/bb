@@ -1689,7 +1689,9 @@ projectId }` (nullable fields) and `path` follows the source (workspace:
   `{ id, title, description?, component }`. Like `experimental_threadList`
   each slot is **exclusive** — one renderer at a time, first in slot order
   wins, and a missing, disabled, or crashing replacement falls back to bb's
-  renderer. Installing and enabling the plugin activates it; there are no
+  renderer. Installing and enabling the plugin activates it, and the user can
+  pin bb's renderer or a specific provider under
+  **Settings → Appearance** ("Source code" / "Diffs"), per client. There are no
   scope or extension filters on the registration, so conditional behavior
   belongs in the component. Source props:
   `{ content, path, overflow, highlightedLines, experimental_Original }`;

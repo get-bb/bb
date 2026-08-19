@@ -41,6 +41,7 @@ import {
 } from "@/hooks/useTheme";
 import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
 import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
+import { CodeRendererSettings } from "@/components/settings/CodeRendererSettings";
 import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadListSetting";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
@@ -684,6 +685,7 @@ export function AppearanceSettingsSection({
     <SettingsSection title="Appearance">
       <div className="space-y-5">
         <SidebarThreadListSetting />
+        <CodeRendererSettings />
         <SettingsWithControl label="Theme">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

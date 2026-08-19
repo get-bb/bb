@@ -4,7 +4,6 @@ import type {
   PluginFileOpenerSlot,
   PluginMessageDirectiveSlot,
   PluginPendingInteractionSlot,
-  PluginThreadListSlot,
 } from "./plugin-slots";
 import {
   BUILT_IN_FILE_OPENER_PREFERENCE,
@@ -19,7 +18,6 @@ import {
   resolveMessageDirectiveRegistry,
   resolvePendingInteraction,
   resolveReplacement,
-  resolveThreadListReplacement,
 } from "./plugin-slot-resolvers";
 
 function Component() {
@@ -162,22 +160,6 @@ describe("replacement resolvers", () => {
       ),
     ).toEqual({ kind: "plugin", registration: gamma });
     expect(resolveReplacement([], () => true)).toEqual({ kind: "owner" });
-  });
-
-  it("automatically activates the first thread-list replacement", () => {
-    const threadList: PluginThreadListSlot = {
-      pluginId: "inbox",
-      generation: 1,
-      id: "threads",
-      title: "Inbox",
-      component: Component,
-    };
-
-    expect(resolveThreadListReplacement([threadList])).toEqual({
-      kind: "plugin",
-      registration: threadList,
-    });
-    expect(resolveThreadListReplacement([])).toEqual({ kind: "owner" });
   });
 
   it("activates the first matching file opener and preserves per-open overrides", () => {

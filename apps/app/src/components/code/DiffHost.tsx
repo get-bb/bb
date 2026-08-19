@@ -2,8 +2,7 @@ import { Suspense, lazy, useMemo, type ReactNode } from "react";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
 import type { ParsedGitDiffFile } from "@/components/git-diff/git-diff-parsing";
 import { buildFileDiffPatchText } from "@/components/git-diff/git-diff-patch-text";
-import { resolveReplacement } from "@/lib/plugin-slot-resolvers";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { useDiffRendererReplacement } from "./codeRendererProvider";
 import {
   DEFAULT_CODE_OVERFLOW,
   DEFAULT_DIFF_VIEW,
@@ -55,8 +54,7 @@ export function DiffHost({
   fallback = null,
   onSelectionAddToChat,
 }: DiffHostProps) {
-  const { diffRenderers } = usePluginSlots();
-  const replacement = resolveReplacement(diffRenderers);
+  const replacement = useDiffRendererReplacement();
   const isReplaced = replacement.kind === "plugin";
   // Only reconstructed when a replacement will actually read it: the walk is
   // proportional to the rendered hunks, and BB's own renderer never needs it.
