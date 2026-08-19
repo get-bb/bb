@@ -679,7 +679,9 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           rootPath: target.storagePath,
         },
       });
-      return createDaemonFileContentResponse(result);
+      return createDaemonFileContentResponse(result, {
+        ifNoneMatch: context.req.header("if-none-match"),
+      });
     } catch (error) {
       return remapDaemonFileRouteError(error);
     }
@@ -703,7 +705,9 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           path: query.path,
         },
       });
-      return createDaemonFileContentResponse(result);
+      return createDaemonFileContentResponse(result, {
+        ifNoneMatch: context.req.header("if-none-match"),
+      });
     } catch (error) {
       return remapDaemonFileRouteError(error);
     }

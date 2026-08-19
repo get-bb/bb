@@ -169,11 +169,22 @@ export async function storeAttachment(
   };
 }
 
+export interface StoredAttachmentContent {
+  content: Buffer;
+  /**
+   * Strong validator for the stored bytes. Stored names embed a timestamp and
+   * a random suffix, so a name never maps to different bytes; the size and
+   * mtime pair still guards a copied file's identity without hashing it.
+   */
+  etag: string;
+  mimeType?: string;
+}
+
 export async function readAttachment(
   dataDir: string,
   projectId: string,
   relativePath: string,
-): Promise<{ content: Buffer; mimeType?: string }> {
+): Promise<StoredAttachmentContent> {
   const dir = projectAttachmentDir(dataDir, projectId);
   const resolved = resolveAttachmentPath(dir, relativePath);
 
@@ -184,6 +195,7 @@ export async function readAttachment(
 
   return {
     content: await readFile(resolved),
+    etag: `"${fileStat.size.toString(16)}-${Math.floor(fileStat.mtimeMs).toString(16)}"`,
     mimeType: mimeTypes.lookup(resolved) || undefined,
   };
 }

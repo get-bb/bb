@@ -61,6 +61,7 @@ import {
 import {
   createDaemonFileContentResponse,
   remapDaemonFileRouteError,
+  requestMatchesEntityTag,
 } from "../services/hosts/daemon-file-response.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
 import {
@@ -93,6 +94,9 @@ import {
 type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
 type ProjectResponseRow = ProjectResponseProjectFields;
 const PROJECT_CLONE_TIMEOUT_MS = 20 * 60 * 1000;
+// Stored attachment names embed a timestamp and a random suffix, so the bytes
+// behind a name never change: cache for a year but keep it private.
+const ATTACHMENT_CONTENT_CACHE_CONTROL = "private, immutable, max-age=31536000";
 
 function toProjectResponseProjectFields(
   project: ProjectResponseRow,
@@ -645,6 +649,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       });
       return createDaemonFileContentResponse(result, {
         headers: { "x-bb-content-encoding": result.contentEncoding },
+        ifNoneMatch: context.req.header("if-none-match"),
       });
     } catch (error) {
       return remapDaemonFileRouteError(error);
@@ -908,11 +913,27 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       context.req.param("id"),
       query.path,
     );
+    const headers = new Headers({
+      // Stored attachment names are unique per upload (timestamp + random
+      // suffix) and the bytes never change, so the browser may keep them for
+      // a year: PWA relaunches and timeline scroll-back reuse the cached
+      // image instead of refetching multi-megabyte screenshots.
+      "cache-control": ATTACHMENT_CONTENT_CACHE_CONTROL,
+      "content-type": attachment.mimeType ?? "application/octet-stream",
+      etag: attachment.etag,
+    });
+    if (
+      requestMatchesEntityTag(
+        context.req.header("if-none-match"),
+        attachment.etag,
+      )
+    ) {
+      return new Response(null, { status: 304, headers });
+    }
+    headers.set("content-length", String(attachment.content.byteLength));
     return new Response(new Uint8Array(attachment.content), {
       status: 200,
-      headers: {
-        "content-type": attachment.mimeType ?? "application/octet-stream",
-      } as HeadersInit,
+      headers,
     });
   });
 }

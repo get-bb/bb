@@ -64,13 +64,28 @@ describe("public project attachments", () => {
           sizeBytes: fixture.bytes.byteLength,
         });
 
-        const content = await harness.app.request(
-          `/api/v1/projects/${project.id}/attachments/content?path=${encodeURIComponent(uploaded.path)}`,
-        );
+        const contentUrl = `/api/v1/projects/${project.id}/attachments/content?path=${encodeURIComponent(uploaded.path)}`;
+        const content = await harness.app.request(contentUrl);
         expect(content.status).toBe(200);
         expect(new Uint8Array(await content.arrayBuffer())).toEqual(
           fixture.bytes,
         );
+        // Stored names are unique per upload, so the bytes are immutable and
+        // the browser may keep them; the validator still answers 304.
+        expect(content.headers.get("cache-control")).toBe(
+          "private, immutable, max-age=31536000",
+        );
+        expect(content.headers.get("content-length")).toBe(
+          String(fixture.bytes.byteLength),
+        );
+        const etag = content.headers.get("etag");
+        expect(etag).toMatch(/^"[^"]+"$/u);
+        const revalidated = await harness.app.request(contentUrl, {
+          headers: { "if-none-match": etag ?? "" },
+        });
+        expect(revalidated.status).toBe(304);
+        expect(revalidated.headers.get("etag")).toBe(etag);
+        expect((await revalidated.arrayBuffer()).byteLength).toBe(0);
       }
     });
   });

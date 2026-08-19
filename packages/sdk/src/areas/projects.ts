@@ -360,9 +360,15 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
       const filename = resolveAttachmentFilename(input);
       const mimeType =
         input.mimeType ?? embeddedAttachmentMimeType(input.clientFile) ?? "";
-      const file = new Blob([await attachmentBytes(input.clientFile)], {
-        type: mimeType,
-      });
+      // A Blob/File whose type already matches streams straight into the
+      // form; copying it through arrayBuffer() first doubles the memory of a
+      // multi-megabyte photo on the main thread for nothing.
+      const file =
+        input.clientFile instanceof Blob && input.clientFile.type === mimeType
+          ? input.clientFile
+          : new Blob([await attachmentBytes(input.clientFile)], {
+              type: mimeType,
+            });
       const form = new FormData();
       form.set("file", file, filename);
       const baseUrl = transport.baseUrl.replace(/\/$/u, "");

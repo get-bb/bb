@@ -154,6 +154,7 @@ export function ConversationAttachments({
                   align === "end" ? "h-20 max-w-36" : "h-16 w-24",
                 )}
                 loading="lazy"
+                decoding="async"
               />
             </button>
           ))}
