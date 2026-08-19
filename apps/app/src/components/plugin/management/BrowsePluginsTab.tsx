@@ -407,10 +407,16 @@ function BrowseCard({
         target="_blank"
         rel="noreferrer"
         aria-label={`Open ${entry.displayName} repository`}
-        className="pointer-events-auto inline-flex items-center gap-0.5 underline underline-offset-2 hover:text-foreground"
+        className="pointer-events-auto inline-flex items-center gap-0.5 leading-none underline underline-offset-2 hover:text-foreground"
       >
         repo
-        <Icon name="ExternalLink" className="size-2.5" aria-hidden />
+        {/* Optical nudge: centered against the line box, the glyph sits a
+            pixel above the x-height of the lowercase label beside it. */}
+        <Icon
+          name="ExternalLink"
+          className="size-2.5 shrink-0 translate-y-px"
+          aria-hidden
+        />
       </a>
     );
   const footerMeta =
