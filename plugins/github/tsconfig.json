@@ -16,7 +16,11 @@
   "include": [
     "server.ts",
     "server.test.ts",
+    "server.auth-latch.test.ts",
+    "project-order.ts",
+    "project-order.test.ts",
     "app.tsx",
+    "app.test.tsx",
     "vitest.config.ts",
     "components"
   ]

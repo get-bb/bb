@@ -10,6 +10,7 @@
 import { execFile } from "node:child_process";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { projectNamesByRepo, sortByProjectName } from "./project-order.js";
 
 const SYNC_INTERVAL_MS = 5 * 60_000;
 // Retry cadence while the sync fails for a reason that is not a configuration
@@ -34,7 +35,11 @@ const nonBlankStringSchema = z
   .string()
   .refine((value) => value.trim().length > 0, "must not be blank");
 const repoInfoSchema = z
-  .object({ repo: repoNameSchema, projectId: z.string().nullable() })
+  .object({
+    repo: repoNameSchema,
+    projectId: z.string().nullable(),
+    projectName: z.string().nullable(),
+  })
   .strict();
 const itemSchema = z
   .object({
@@ -265,6 +270,8 @@ export const githubRpcContract = defineRpcContract({
 interface RepoInfo {
   repo: string; // "owner/name"
   projectId: string | null;
+  /** Name of the BB project this repo belongs to; null for `extraRepos`. */
+  projectName: string | null;
 }
 
 interface CachedItem {
@@ -305,6 +312,7 @@ interface ThreadLink {
 
 interface BbProjectSummary {
   id: string;
+  name: string;
   sources?: Array<{ type: string; path: string }>;
 }
 
@@ -601,7 +609,11 @@ export default async function plugin(bb: BbPluginApi) {
             );
             const repo = parseGithubRemote(stdout);
             if (repo !== null && !byRepo.has(repo)) {
-              byRepo.set(repo, { repo, projectId: project.id });
+              byRepo.set(repo, {
+                repo,
+                projectId: project.id,
+                projectName: project.name,
+              });
             }
           } catch {
             // no remote / not a git checkout — skip this source
@@ -616,7 +628,7 @@ export default async function plugin(bb: BbPluginApi) {
     const { extraRepos } = await settings.get();
     for (const raw of extraRepos.split(/[\s,]+/)) {
       if (isRepoName(raw) && !byRepo.has(raw)) {
-        byRepo.set(raw, { repo: raw, projectId: null });
+        byRepo.set(raw, { repo: raw, projectId: null, projectName: null });
       }
     }
     const repos = [...byRepo.values()];
@@ -1533,7 +1545,7 @@ export default async function plugin(bb: BbPluginApi) {
     "Usage:",
     "  bb github repos              List tracked repositories",
     "  bb github issues [repo]      List cached open issues",
-    "  bb github prs [repo]         List cached open pull requests",
+    "  bb github prs [repo]         List cached open PRs, grouped by BB project",
     "  bb github sync               Refresh the cache from GitHub now",
   ].join("\n");
 
@@ -1543,7 +1555,11 @@ export default async function plugin(bb: BbPluginApi) {
     commands: [
       { name: "repos", summary: "List tracked repositories", usage: "bb github repos" },
       { name: "issues", summary: "List cached open issues", usage: "bb github issues [owner/repo]" },
-      { name: "prs", summary: "List cached open pull requests", usage: "bb github prs [owner/repo]" },
+      {
+        name: "prs",
+        summary: "List cached open pull requests, grouped by BB project",
+        usage: "bb github prs [owner/repo]",
+      },
       { name: "sync", summary: "Refresh the cache from GitHub now", usage: "bb github sync" },
     ],
     async run(argv) {
@@ -1564,7 +1580,11 @@ export default async function plugin(bb: BbPluginApi) {
           return {
             exitCode: 0,
             stdout: repos
-              .map((entry) => `${entry.repo}${entry.projectId !== null ? `\t(${entry.projectId})` : ""}`)
+              .map((entry) =>
+                entry.projectId !== null
+                  ? `${entry.repo}\t${entry.projectName ?? "-"}\t(${entry.projectId})`
+                  : entry.repo,
+              )
               .join("\n"),
           };
         }
@@ -1577,10 +1597,27 @@ export default async function plugin(bb: BbPluginApi) {
           if (items.length === 0) {
             return { exitCode: 0, stdout: "Nothing cached. Run `bb github sync` first." };
           }
+          // Pull requests carry their BB project and group by it, matching the
+          // panel's PR table; issues stay newest-updated first.
+          if (sub === "issues") {
+            return {
+              exitCode: 0,
+              stdout: items
+                .map((item) => `${item.repo}#${item.number}\t[${item.state}]\t${item.title}`)
+                .join("\n"),
+            };
+          }
+          const repos = await discoverRepos();
+          const projectNames = projectNamesByRepo(repos);
           return {
             exitCode: 0,
-            stdout: items
-              .map((item) => `${item.repo}#${item.number}\t[${item.state}]\t${item.title}`)
+            stdout: sortByProjectName(items, repos)
+              .map(
+                (item) =>
+                  `${item.repo}#${item.number}\t[${item.state}]\t${
+                    projectNames.get(item.repo) ?? "-"
+                  }\t${item.title}`,
+              )
               .join("\n"),
           };
         }

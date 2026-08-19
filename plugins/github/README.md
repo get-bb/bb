@@ -12,7 +12,10 @@ bb plugin install github
 
 - **Sidebar panel** (GitHub logo, full width): Issues and Pull requests tabs
   across every tracked repo, with a repo filter (persisted in localStorage)
-  and a New issue form.
+  and a New issue form. The Pull requests table carries a Project column and
+  is ordered by BB project name (newest-updated first inside each project), so
+  a list spanning several projects stays readable; repos tracked through
+  `extraRepos` have no project and sort last.
 - **Issue detail**: markdown body, comments, comment box, status,
   assignee, and label editing, plus "Send agent".
   Deep-linkable via the URL hash: `#/issues/<owner>/<repo>/<number>`.
@@ -23,7 +26,9 @@ bb plugin install github
 - **Mentions**: `@` or `#` in any composer completes GitHub issues and PRs; the
   selected item's title/body/state is attached as agent context at send time.
 - **`bb github` CLI**: `repos`, `issues [repo]`, `prs [repo]`, `sync` — also
-  discoverable by agents through the plugin-commands skill.
+  discoverable by agents through the plugin-commands skill. `repos` prints repo,
+  project name, project id; `prs` prints `repo#number`, state, project name,
+  title, in the panel's project-name order (`-` where a repo has no project).
 
 ## Auth
 

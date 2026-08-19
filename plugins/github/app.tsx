@@ -58,6 +58,7 @@ import { Textarea } from "@bb/shared-ui/textarea";
 import { EmptyState } from "@/components/empty-state";
 import { Markdown } from "@/components/markdown-lite";
 import { PageBody } from "@/components/page-body";
+import { projectNamesByRepo, sortByProjectName } from "./project-order.js";
 
 interface Item {
   repo: string;
@@ -141,6 +142,8 @@ interface PullDetail {
 interface RepoInfo {
   repo: string;
   projectId: string | null;
+  /** Name of the BB project this repo belongs to; null for `extraRepos`. */
+  projectName: string | null;
 }
 
 interface ThreadLink {
@@ -811,11 +814,20 @@ function FilterBar({
 // switches modes against its own width, not the browser viewport.
 const COL = {
   id: "shrink-0 @[48rem]:w-12",
+  project: "min-w-0 truncate @[48rem]:w-24 @[48rem]:shrink-0",
   assignee: "shrink-0 @[48rem]:w-20",
   status: "shrink-0 @[48rem]:w-24",
   updated: "hidden w-14 shrink-0 text-right @[48rem]:block",
   actions: "ml-auto flex shrink-0 items-center justify-end gap-1 @[48rem]:ml-0 @[48rem]:w-24",
 } as const;
+
+/** The BB project a repo belongs to; em dash for an untracked `extraRepos`. */
+function ProjectCell({ projectName }: { projectName: string | null }) {
+  if (projectName === null) {
+    return <span className="text-muted-foreground/50">—</span>;
+  }
+  return <>{projectName}</>;
+}
 
 function AssigneeCell({ assignees }: { assignees: string[] }) {
   if (assignees.length === 0) {
@@ -943,10 +955,14 @@ function RowMenu({ item }: { item: Item }) {
 function ItemRow({
   item,
   links,
+  showProject,
+  projectName,
   onOpen,
 }: {
   item: Item;
   links: ThreadLink[] | undefined;
+  showProject: boolean;
+  projectName: string | null;
   onOpen: () => void;
 }) {
   const { spawn, spawningKey } = useSpawn();
@@ -956,7 +972,7 @@ function ItemRow({
       className="grid cursor-pointer grid-cols-1 gap-y-2 px-3 py-3 hover:bg-accent/50 @[48rem]:flex @[48rem]:items-center @[48rem]:gap-3 @[48rem]:py-2"
       onClick={onOpen}
     >
-      <span className="flex min-w-0 flex-col items-start gap-1.5 @[48rem]:order-2 @[48rem]:flex-1 @[48rem]:flex-row @[48rem]:items-center @[48rem]:gap-2">
+      <span className="flex min-w-0 flex-col items-start gap-1.5 @[48rem]:order-3 @[48rem]:flex-1 @[48rem]:flex-row @[48rem]:items-center @[48rem]:gap-2">
         <span className="min-w-0 flex-1 line-clamp-3 text-sm font-medium leading-snug text-foreground @[48rem]:line-clamp-1 @[48rem]:leading-normal">
           {item.title}
         </span>
@@ -967,18 +983,26 @@ function ItemRow({
         <span className={`${COL.id} font-mono text-xs text-muted-foreground @[48rem]:order-1`}>
           #{item.number}
         </span>
+        {showProject ? (
+          <span
+            className={`${COL.project} text-xs text-muted-foreground @[48rem]:order-2`}
+            title={projectName ?? undefined}
+          >
+            <ProjectCell projectName={projectName} />
+          </span>
+        ) : null}
         <span
-          className={`${COL.assignee} ${item.assignees.length === 0 ? "hidden @[48rem]:flex" : "flex"} text-xs text-muted-foreground @[48rem]:order-3`}
+          className={`${COL.assignee} ${item.assignees.length === 0 ? "hidden @[48rem]:flex" : "flex"} text-xs text-muted-foreground @[48rem]:order-4`}
         >
           <AssigneeCell assignees={item.assignees} />
         </span>
-        <span className={`${COL.status} @[48rem]:order-4`}>
+        <span className={`${COL.status} @[48rem]:order-5`}>
           <StatusCell item={item} />
         </span>
-        <span className={`${COL.updated} text-xs text-muted-foreground @[48rem]:order-5`}>
+        <span className={`${COL.updated} text-xs text-muted-foreground @[48rem]:order-6`}>
           {relativeTime(item.updatedAt)}
         </span>
-        <span className={`${COL.actions} @[48rem]:order-6`}>
+        <span className={`${COL.actions} @[48rem]:order-7`}>
           <Button
             size="sm"
             variant="outline"
@@ -998,7 +1022,7 @@ function ItemRow({
   );
 }
 
-function TableSkeleton() {
+function TableSkeleton({ showProject }: { showProject: boolean }) {
   return (
     <DelayedLoading>
       <div className="divide-y divide-border">
@@ -1007,21 +1031,26 @@ function TableSkeleton() {
             key={row}
             className="grid grid-cols-1 gap-y-3 px-3 py-3 @[48rem]:flex @[48rem]:items-center @[48rem]:gap-3"
           >
-            <Skeleton className="h-3 w-4/5 @[48rem]:order-2 @[48rem]:flex-1" />
+            <Skeleton className="h-3 w-4/5 @[48rem]:order-3 @[48rem]:flex-1" />
             <span className="flex items-center gap-2 @[48rem]:contents">
               <span className={`${COL.id} @[48rem]:order-1`}>
                 <Skeleton className="h-3 w-10" />
               </span>
-              <span className={`${COL.assignee} flex @[48rem]:order-3`}>
+              {showProject ? (
+                <span className={`${COL.project} @[48rem]:order-2`}>
+                  <Skeleton className="h-3 w-16" />
+                </span>
+              ) : null}
+              <span className={`${COL.assignee} flex @[48rem]:order-4`}>
                 <Skeleton className="size-5 rounded-full @[48rem]:h-3 @[48rem]:w-16" />
               </span>
-              <span className={`${COL.status} @[48rem]:order-4`}>
+              <span className={`${COL.status} @[48rem]:order-5`}>
                 <Skeleton className="h-3 w-16" />
               </span>
-              <span className={`${COL.updated} @[48rem]:order-5`}>
+              <span className={`${COL.updated} @[48rem]:order-6`}>
                 <Skeleton className="ml-auto h-3 w-12" />
               </span>
-              <span className={`${COL.actions} @[48rem]:order-6`}>
+              <span className={`${COL.actions} @[48rem]:order-7`}>
                 <Skeleton className="h-7 w-20" />
               </span>
             </span>
@@ -1049,21 +1078,28 @@ function ItemsTable({
   items,
   error,
   hasFilter,
+  repos,
   onOpenItem,
 }: {
   kind: "issue" | "pr";
   items: Item[] | null;
   error: string | null;
   hasFilter: boolean;
+  repos: RepoInfo[];
   onOpenItem: (repo: string, number: number) => void;
 }) {
   const links = useLinks();
+  // A cached item only knows its repo, so its project comes from the tracked-
+  // repo list. Only the PR list shows the column — that is the list that spans
+  // every project and is ordered by project name.
+  const showProject = kind === "pr";
+  const projectNames = useMemo(() => projectNamesByRepo(repos), [repos]);
 
   let body: React.ReactNode;
   if (error !== null) {
     body = <EmptyState message={error} />;
   } else if (items === null) {
-    body = <TableSkeleton />;
+    body = <TableSkeleton showProject={showProject} />;
   } else if (items.length === 0) {
     body = (
       <EmptyState
@@ -1082,6 +1118,8 @@ function ItemsTable({
             key={`${item.repo}#${item.number}`}
             item={item}
             links={links[`${kind}:${item.repo}#${item.number}`]}
+            showProject={showProject}
+            projectName={projectNames.get(item.repo) ?? null}
             onOpen={() => onOpenItem(item.repo, item.number)}
           />
         ))}
@@ -1093,6 +1131,7 @@ function ItemsTable({
     <div className="@container overflow-hidden rounded-lg border border-border bg-card">
       <div className="hidden items-center gap-3 border-b border-border bg-muted/50 px-3 py-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground @[48rem]:flex">
         <span className={COL.id}>ID</span>
+        {showProject ? <span className={COL.project}>Project</span> : null}
         <span className="min-w-0 flex-1">Title</span>
         <span className={COL.assignee}>Assignee</span>
         <span className={COL.status}>Status</span>
@@ -2377,14 +2416,24 @@ function ListView({
     () => (items === null ? null : items.filter((item) => matchesQuery(item, parsed, viewer))),
     [items, parsed, viewer],
   );
+  // Pull requests span every tracked repo, so they group by BB project —
+  // newest-updated first inside each project. Issues keep the cache's order.
+  const ordered = useMemo(
+    () =>
+      filtered === null || kind !== "pr"
+        ? filtered
+        : sortByProjectName(filtered, repos),
+    [filtered, kind, repos],
+  );
   return (
     <>
       <FilterBar value={query} onChange={setQuery} items={items} repos={repos} kind={kind} />
       <ItemsTable
         kind={kind}
-        items={filtered}
+        items={ordered}
         error={error}
         hasFilter={query.trim().length > 0}
+        repos={repos}
         onOpenItem={onOpenItem}
       />
     </>
