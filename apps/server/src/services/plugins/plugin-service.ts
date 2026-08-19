@@ -240,6 +240,9 @@ export interface PluginService {
   >;
   installPath(path: string): Promise<PluginListEntry>;
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
+  /** Check every plugin for updates every 6 hours; see PluginUpdates. */
+  startPeriodicUpdateChecks(): void;
+  stopPeriodicUpdateChecks(): void;
   listUpdateResults(): PluginUpdateCheckEntry[];
   getSource(id: string): Promise<PluginSourceView | undefined>;
   applyUpdate(id: string): Promise<PluginApplyUpdateOutcome>;

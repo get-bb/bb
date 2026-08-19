@@ -22,6 +22,7 @@ import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { Link } from "react-router-dom";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
+import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import {
   PluginDetailReleaseControl,
   PluginDetailReleaseStatus,
@@ -436,6 +437,11 @@ export function PluginDetail({
           actions={
             hasReleaseControl ? (
               <PluginDetailReleaseControl plugin={plugin} />
+            ) : hasUpdateManagement ? (
+              <CheckPluginUpdatesButton
+                pluginId={plugin.id}
+                appearance="inline"
+              />
             ) : undefined
           }
         >

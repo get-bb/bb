@@ -39,8 +39,20 @@ import type {
   PluginUpdateCheckEntry,
 } from "./plugin-service-internal.js";
 
+export const PLUGIN_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
+
 export interface PluginUpdates {
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
+  /**
+   * Check every installed plugin for updates on a fixed interval. The first
+   * check runs at once when no plugin has a recorded check, or when the
+   * newest recorded check is older than the interval; otherwise it waits
+   * for the remainder, so a restart does not trigger a check. Bundled and
+   * path installs resolve locally, so a sweep only reaches the network for
+   * npm, git, and marketplace installs.
+   */
+  startPeriodicUpdateChecks(): void;
+  stopPeriodicUpdateChecks(): void;
   listUpdateResults(): PluginUpdateCheckEntry[];
   getSource(id: string): Promise<PluginSourceView | undefined>;
   applyUpdate(id: string): Promise<PluginApplyUpdateOutcome>;
@@ -77,6 +89,7 @@ export function createPluginUpdates(
     managedArtifacts: { applyNpmCandidate, stageGitCandidate },
     runArtifactGc,
   } = context;
+  const now = deps.now ?? Date.now;
   // A commit is immutable. Keep its manifest compatibility result for this
   // server process so the six-hour sweep does not clone the same releases.
   const gitCandidateProbeCache = new Map<string, GitCandidateProbeResult>();
@@ -127,7 +140,7 @@ export function createPluginUpdates(
 
   function persistUpdateEntry(entry: PluginUpdateCheckEntry): void {
     const changed = setInstalledPluginUpdateState(deps.db, entry.id, {
-      lastCheckAt: Date.now(),
+      lastCheckAt: now(),
       availableCompatibleVersion: entry.candidate?.version ?? null,
       newestIncompatibleVersion: entry.blocked?.version ?? null,
       statusDetail: JSON.stringify(entry),
@@ -372,7 +385,75 @@ export function createPluginUpdates(
     };
   }
 
-  return {
+  const scheduleUpdateCheck =
+    deps.scheduleUpdateCheck ??
+    ((delayMs: number, onElapsed: () => void) => {
+      const timer = setTimeout(onElapsed, delayMs);
+      timer.unref();
+      return () => clearTimeout(timer);
+    });
+  let cancelPeriodicCheck: (() => void) | null = null;
+  let periodicChecksStopped = true;
+
+  function scheduleNextPeriodicCheck(): void {
+    if (periodicChecksStopped) return;
+    cancelPeriodicCheck?.();
+    const lastCheckAt = listInstalledPlugins(deps.db).reduce<number | null>(
+      (newest, row) =>
+        row.lastUpdateCheckAt === null
+          ? newest
+          : Math.max(newest ?? 0, row.lastUpdateCheckAt),
+      null,
+    );
+    const delay =
+      lastCheckAt === null
+        ? 0
+        : Math.max(
+            0,
+            PLUGIN_UPDATE_CHECK_INTERVAL_MS - Math.max(0, now() - lastCheckAt),
+          );
+    cancelPeriodicCheck = scheduleUpdateCheck(delay, runPeriodicCheck);
+  }
+
+  function runPeriodicCheck(): void {
+    if (periodicChecksStopped) return;
+    cancelPeriodicCheck = null;
+    const startedAt = now();
+    void updates
+      .checkForUpdates()
+      .catch((error: unknown) => {
+        deps.logger.warn(
+          { err: error },
+          "periodic plugin update check failed",
+        );
+      })
+      .finally(() => {
+        if (periodicChecksStopped) return;
+        // A failed sweep persists nothing, so the recorded check time would
+        // schedule an immediate retry loop; wait a full interval instead.
+        cancelPeriodicCheck = scheduleUpdateCheck(
+          Math.max(
+            0,
+            PLUGIN_UPDATE_CHECK_INTERVAL_MS - Math.max(0, now() - startedAt),
+          ),
+          runPeriodicCheck,
+        );
+      });
+  }
+
+  const updates: PluginUpdates = {
+    startPeriodicUpdateChecks() {
+      if (!periodicChecksStopped) return;
+      periodicChecksStopped = false;
+      scheduleNextPeriodicCheck();
+    },
+
+    stopPeriodicUpdateChecks() {
+      periodicChecksStopped = true;
+      cancelPeriodicCheck?.();
+      cancelPeriodicCheck = null;
+    },
+
     async checkForUpdates(id) {
       const rows =
         id === undefined
@@ -634,4 +715,5 @@ export function createPluginUpdates(
       });
     },
   };
+  return updates;
 }

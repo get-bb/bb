@@ -737,9 +737,13 @@ an unselected install and lists its entry names.
 ### Plugin updates
 
 Bundled builtin and official plugins update with BB app releases. For direct
-`git:`/`npm:` installs, updates are manual: `bb plugin outdated` checks
-tracking sources and `bb plugin update <id>` / `bb plugin update --all`
-applies compatible candidates; there is no automatic plugin update
+`git:`/`npm:` installs, update application is manual: `bb plugin outdated` or
+the "Check for updates" key on the Plugins page checks tracking sources, and
+`bb plugin update <id>` / `bb plugin update --all` or the "Update x.y.z" pill
+applies compatible candidates. The server also checks every installed plugin
+every 6 hours (the first check runs when no check has been recorded or the
+last one is older than 6 hours); a check only records what is available and
+never installs or runs plugin code. There is no automatic plugin update
 application or update audit feed. Reinstalling an already-installed managed plugin is
 refused — use `bb plugin update`. Before activation bb snapshots the plugin
 database, host-managed settings/storage/schedules, secrets, and registration.

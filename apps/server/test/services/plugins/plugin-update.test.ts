@@ -706,6 +706,78 @@ describe("plugin update service and routes", () => {
     ]);
   }, 60_000);
 
+  it("sweeps for updates on start, then waits a full interval across restarts", async () => {
+    await service.stop();
+    let clock = Date.now();
+    const scheduled: Array<{ delayMs: number; onElapsed: () => void }> = [];
+    const makeService = () =>
+      createPluginService({
+        telemetry: createNoopTelemetryService(),
+        db,
+        hub: {
+          getDaemonSessionIdForHost: () => null,
+          notifyPluginSignal: () => 0,
+          notifySystem: () => {},
+        },
+        logger,
+        dataDir: join(workDir, "data"),
+        appVersion: "1.0.0",
+        stabilizationWindowMs: 0,
+        now: () => clock,
+        scheduleUpdateCheck: (delayMs, onElapsed) => {
+          const entry = { delayMs, onElapsed };
+          scheduled.push(entry);
+          return () => {
+            const index = scheduled.indexOf(entry);
+            if (index !== -1) scheduled.splice(index, 1);
+          };
+        },
+      });
+    const settle = async () => {
+      // The sweep runs off the timer callback; wait for its persisted state.
+      for (let i = 0; i < 200; i += 1) {
+        if (getInstalledPlugin(db, "updater")?.lastUpdateCheckAt !== null) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+    };
+    expect(getInstalledPlugin(db, "updater")?.lastUpdateCheckAt).toBeNull();
+
+    // No plugin has been checked: the first sweep is due at once.
+    service = makeService();
+    await service.start();
+    const nextCommit = await commitPlugin(repo, "1.1.0");
+    service.startPeriodicUpdateChecks();
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0]?.delayMs).toBe(0);
+    scheduled.shift()?.onElapsed();
+    await settle();
+    expect(getInstalledPlugin(db, "updater")).toMatchObject({
+      lastUpdateCheckAt: clock,
+      availableCompatibleVersion: nextCommit,
+    });
+    // Wait for the sweep's follow-up to be scheduled a full interval out.
+    for (let i = 0; i < 200 && scheduled.length === 0; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0]?.delayMs).toBe(6 * 60 * 60 * 1_000);
+
+    // Stop cancels the pending timer; a restart 2h later waits the remaining 4h
+    // instead of checking again.
+    service.stopPeriodicUpdateChecks();
+    expect(scheduled).toHaveLength(0);
+    await service.stop();
+    clock += 2 * 60 * 60 * 1_000;
+    service = makeService();
+    await service.start();
+    service.startPeriodicUpdateChecks();
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0]?.delayMs).toBe(4 * 60 * 60 * 1_000);
+    service.stopPeriodicUpdateChecks();
+  }, 60_000);
+
   it("retains rollback state through the grace period and collects it afterward", async () => {
     await service.stop();
     let clock = Date.now();

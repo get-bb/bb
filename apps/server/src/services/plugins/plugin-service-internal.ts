@@ -142,6 +142,8 @@ export interface PluginServiceDeps {
     durationMs: number,
     onElapsed: () => void,
   ) => () => void;
+  /** Test seam for the periodic update-check timer. */
+  scheduleUpdateCheck?: (delayMs: number, onElapsed: () => void) => () => void;
   /** Test failpoint after state replay but before pointer restoration. */
   afterPluginRollbackStateRestored?: (args: {
     pluginId: string;

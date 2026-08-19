@@ -250,6 +250,9 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       // Success or failure, the registry now holds whatever loaded: release
       // the requests waiting for providers rather than stalling them out.
       providerRegistry.markRegistrationsSettled();
+      // Check installed plugins for updates every 6 hours. A check only
+      // records what is available; it never installs or runs plugin code.
+      pluginService.startPeriodicUpdateChecks();
     });
   // Discovery metadata only: a refresh never installs, updates, or runs
   // plugin code, and a failure keeps the last-known-good catalog.
@@ -269,6 +272,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       eventLoopStallMonitor.stop();
       clearInterval(sweepInterval);
       pluginCatalogService.stopPeriodicRefresh();
+      pluginService.stopPeriodicUpdateChecks();
       await pluginService.stop().catch((error: unknown) => {
         logger.warn({ err: error }, "Plugin shutdown failed");
       });
