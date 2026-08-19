@@ -146,17 +146,12 @@ describe("system provider host routing", () => {
         "remote-model",
       ]);
       // Only the routing facts matter here; `bridgeLaunch` rides every
-      // command and has its own tests.
+      // command and has its own tests. The Codex catalog is host-scoped, so
+      // the environment read carries no workspace path and is served from the
+      // memo filled by the explicit-host read: one probe on the remote host.
       expect(
         remoteModelCommands.map(({ bridgeLaunch: _ignored, ...rest }) => rest),
-      ).toEqual([
-        { type: "provider.list_models", providerId: "codex" },
-        {
-          type: "provider.list_models",
-          providerId: "codex",
-          cwd: "/tmp/test-environment",
-        },
-      ]);
+      ).toEqual([{ type: "provider.list_models", providerId: "codex" }]);
     });
   });
 

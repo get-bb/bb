@@ -13,11 +13,16 @@ import {
   type CustomProviderModel,
 } from "@bb/config/bb-app-managed-config";
 import {
+  providerModelCatalogDependsOnWorkspace,
   reasoningEffortsForLevels,
   type AvailableModel,
   type ProviderInfo,
 } from "@bb/domain";
-import { normalizeHostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+import {
+  normalizeHostDaemonAcpLaunchSpec,
+  type HostDaemonRetryableOnlineRpcCommand,
+} from "@bb/host-daemon-contract";
+import type { ProviderModelListMemoValue } from "../../lifecycle-dedupers.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
@@ -574,29 +579,30 @@ async function loadSystemProviderModels(
       ? findKnownAcpAgentForProviderId(provider.id)
       : undefined;
   const bridgeLaunch = requireBridgeLaunchForProviderId(deps, provider.id);
+  const command: ProviderListModelsCommand = {
+    type: "provider.list_models",
+    providerId: provider.id,
+    // Only a workspace-scoped catalog gets the path: the other bridges ignore
+    // it, and leaving it out lets every environment on the host share one
+    // memo entry.
+    ...(cwd !== undefined && providerModelCatalogDependsOnWorkspace(provider.id)
+      ? { cwd }
+      : {}),
+    ...(customAcpAgent !== undefined
+      ? {
+          acpLaunchSpec: normalizeHostDaemonAcpLaunchSpec(customAcpAgent),
+        }
+      : knownAcpAgent !== undefined
+        ? {
+            acpLaunchSpec: normalizeHostDaemonAcpLaunchSpec(knownAcpAgent),
+          }
+        : {}),
+    bridgeLaunch,
+  };
   try {
-    const { models, selectedOnlyModels } = await callHostRetryableOnlineRpc(
+    const { models, selectedOnlyModels } = await listProviderModelsMemoized(
       deps,
-      {
-        hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "provider.list_models",
-          providerId: provider.id,
-          ...(cwd !== undefined ? { cwd } : {}),
-          ...(customAcpAgent !== undefined
-            ? {
-                acpLaunchSpec: normalizeHostDaemonAcpLaunchSpec(customAcpAgent),
-              }
-            : knownAcpAgent !== undefined
-              ? {
-                  acpLaunchSpec:
-                    normalizeHostDaemonAcpLaunchSpec(knownAcpAgent),
-                }
-              : {}),
-          bridgeLaunch,
-        },
-      },
+      { command, hostId },
     );
     return {
       models,
@@ -631,6 +637,47 @@ async function loadSystemProviderModels(
       modelLoadError,
     };
   }
+}
+
+type ProviderListModelsCommand = Extract<
+  HostDaemonRetryableOnlineRpcCommand,
+  { type: "provider.list_models" }
+>;
+
+/**
+ * Runs the host model probe through the process-wide memo. The key carries
+ * everything the answer depends on: the host, the daemon session serving it
+ * (a reconnected daemon may have a new CLI or account, so its first probe is
+ * fresh), the provider registration revision (a plugin reload can change the
+ * bridge), and the full command (provider, launch spec, bridge launch, and the
+ * workspace path when the catalog is workspace-scoped). Concurrent callers for
+ * one key share the in-flight probe; failures are not memoized.
+ *
+ * The probe is skipped only when no daemon session is registered yet: the
+ * retryable RPC waits for one, and its answer would then belong to a session
+ * this call cannot name.
+ */
+async function listProviderModelsMemoized(
+  deps: LoggedWorkSessionDeps,
+  { command, hostId }: { command: ProviderListModelsCommand; hostId: string },
+): Promise<ProviderModelListMemoValue> {
+  const probe = (): Promise<ProviderModelListMemoValue> =>
+    callHostRetryableOnlineRpc(deps, {
+      hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command,
+    });
+  const daemonSessionId = deps.hub.getDaemonSessionIdForHost(hostId);
+  if (daemonSessionId === null) {
+    return probe();
+  }
+  const memoKey = JSON.stringify([
+    hostId,
+    daemonSessionId,
+    deps.providerRegistry.getRegistrationRevision(),
+    command,
+  ]);
+  return deps.lifecycleDedupers.providerModelList.run(memoKey, probe);
 }
 
 // A transient probe failure is not evidence that a model was retired, so the

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  hostDaemonServerWsMessageSchema,
+  type HostDaemonOnlineRpcRequestMessage,
+} from "@bb/host-daemon-contract";
+import {
   appendCustomModels,
   listSystemProviderInfos,
   resolveSystemExecutionOptions,
@@ -10,8 +14,13 @@ import {
   registerHostRpcResponder,
   registerProviderHostRpcResponder,
 } from "../helpers/host-rpc.js";
-import { seedHostSession } from "../helpers/seed.js";
-import { withTestHarness } from "../helpers/test-app.js";
+import {
+  seedEnvironment,
+  seedHostSession,
+  seedProjectWithSource,
+  seedSession,
+} from "../helpers/seed.js";
+import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 import {
   createTestProviderRegistry,
   registerFirstPartyProviders,
@@ -1240,4 +1249,303 @@ describe("resolveSystemExecutionOptions", () => {
       );
     },
   );
+});
+
+/**
+ * A daemon socket that holds every `provider.list_models` request until the
+ * test releases it, so two callers can be observed sharing one probe.
+ */
+function registerHeldModelListResponder(
+  harness: TestAppHarness,
+  args: { hostId: string; sessionId: string; modelId: string },
+): {
+  requests: HostDaemonOnlineRpcRequestMessage[];
+  release(): void;
+} {
+  const requests: HostDaemonOnlineRpcRequestMessage[] = [];
+  harness.hub.registerDaemon(args.sessionId, args.hostId, {
+    close() {},
+    send(data: string) {
+      const message = hostDaemonServerWsMessageSchema.parse(JSON.parse(data));
+      if (message.type !== "host-rpc.request") {
+        throw new Error(`Unexpected daemon websocket message ${message.type}`);
+      }
+      if (message.command.type === "known_acp_agents.status") {
+        harness.hub.recordHostOnlineRpcResponse({
+          sessionId: args.sessionId,
+          message: {
+            type: "host-rpc.response",
+            requestId: message.requestId,
+            commandType: message.command.type,
+            ok: true,
+            result: {
+              agents: message.command.agents.map((agent) => ({
+                ...agent,
+                installed: false,
+                executablePath: null,
+              })),
+            },
+          },
+        });
+        return;
+      }
+      if (message.command.type !== "provider.list_models") {
+        throw new Error(`Unexpected RPC command ${message.command.type}`);
+      }
+      requests.push(message);
+    },
+  });
+  return {
+    requests,
+    release() {
+      for (const request of requests) {
+        harness.hub.recordHostOnlineRpcResponse({
+          sessionId: args.sessionId,
+          message: {
+            type: "host-rpc.response",
+            requestId: request.requestId,
+            commandType: "provider.list_models",
+            ok: true,
+            result: {
+              models: [availableModelFixture({ model: args.modelId })],
+              selectedOnlyModels: [],
+            },
+          },
+        });
+      }
+    },
+  };
+}
+
+function seedEnvironmentPath(
+  harness: TestAppHarness,
+  args: { hostId: string; path: string },
+): string {
+  const { project } = seedProjectWithSource(harness.deps, {
+    hostId: args.hostId,
+    path: args.path,
+  });
+  return seedEnvironment(harness.deps, {
+    hostId: args.hostId,
+    projectId: project.id,
+    path: args.path,
+  }).id;
+}
+
+describe("resolveSystemExecutionOptions model probe memo", () => {
+  it("serves a host-scoped catalog to every environment on the host from one probe without the workspace path", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-model-memo-shared",
+      });
+      const catalogModel = availableModelFixture({ model: "claude-opus-5" });
+      const responder = registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        modelsByProviderId: {
+          "claude-code": { models: [catalogModel], selectedOnlyModels: [] },
+        },
+      });
+      const environmentA = seedEnvironmentPath(harness, {
+        hostId: host.id,
+        path: "/tmp/memo-workspace-a",
+      });
+      const environmentB = seedEnvironmentPath(harness, {
+        hostId: host.id,
+        path: "/tmp/memo-workspace-b",
+      });
+
+      const responses = [
+        await resolveSystemExecutionOptions(harness.deps, {
+          environmentId: environmentA,
+          providerId: "claude-code",
+        }),
+        await resolveSystemExecutionOptions(harness.deps, {
+          environmentId: environmentB,
+          providerId: "claude-code",
+        }),
+        await resolveSystemExecutionOptions(harness.deps, {
+          hostId: host.id,
+          providerId: "claude-code",
+        }),
+      ];
+
+      for (const response of responses) {
+        expect(response.models).toEqual([catalogModel]);
+        expect(response.modelLoadError).toBeNull();
+      }
+      const modelListCommands = responder.requests
+        .map((request) => request.command)
+        .filter((command) => command.type === "provider.list_models");
+      expect(modelListCommands).toHaveLength(1);
+      expect(modelListCommands[0]).not.toHaveProperty("cwd");
+    });
+  });
+
+  it("keeps a workspace-scoped catalog keyed by workspace path", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-model-memo-workspace-scoped",
+      });
+      const responder = registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        modelsByProviderId: {
+          pi: {
+            models: [availableModelFixture({ model: "anthropic/opus" })],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+      const environmentA = seedEnvironmentPath(harness, {
+        hostId: host.id,
+        path: "/tmp/memo-pi-a",
+      });
+      const environmentB = seedEnvironmentPath(harness, {
+        hostId: host.id,
+        path: "/tmp/memo-pi-b",
+      });
+
+      for (const environmentId of [environmentA, environmentA, environmentB]) {
+        await resolveSystemExecutionOptions(harness.deps, {
+          environmentId,
+          providerId: "pi",
+        });
+      }
+
+      expect(
+        responder.requests
+          .map((request) => request.command)
+          .filter((command) => command.type === "provider.list_models")
+          .map((command) => command.cwd),
+      ).toEqual(["/tmp/memo-pi-a", "/tmp/memo-pi-b"]);
+    });
+  });
+
+  it("shares one in-flight probe between concurrent readers", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-model-memo-inflight",
+      });
+      const responder = registerHeldModelListResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        modelId: "gpt-5",
+      });
+
+      const pending = Promise.all([
+        resolveSystemExecutionOptions(harness.deps, {
+          hostId: host.id,
+          providerId: "codex",
+        }),
+        resolveSystemExecutionOptions(harness.deps, {
+          hostId: host.id,
+          providerId: "codex",
+        }),
+      ]);
+      await vi.waitFor(() => {
+        expect(responder.requests.length).toBeGreaterThan(0);
+      });
+      responder.release();
+      const [first, second] = await pending;
+
+      expect(first.models.map((model) => model.model)).toEqual(["gpt-5"]);
+      expect(second.models).toEqual(first.models);
+      expect(
+        responder.requests.filter(
+          (request) => request.command.type === "provider.list_models",
+        ),
+      ).toHaveLength(1);
+    });
+  });
+
+  it("does not memoize a failed probe and re-probes after the daemon reconnects", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-model-memo-invalidation",
+      });
+      const catalogModel = availableModelFixture({ model: "gpt-5" });
+      let failProbe = true;
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "known_acp_agents.status") {
+            return {
+              ok: true,
+              result: {
+                agents: request.command.agents.map((agent) => ({
+                  ...agent,
+                  installed: false,
+                  executablePath: null,
+                })),
+              },
+            };
+          }
+          if (request.command.type !== "provider.list_models") {
+            throw new Error(`Unexpected RPC command ${request.command.type}`);
+          }
+          if (failProbe) {
+            return {
+              ok: false,
+              errorCode: "command_timeout",
+              errorMessage: "Model probe timed out",
+            };
+          }
+          return {
+            ok: true,
+            result: { models: [catalogModel], selectedOnlyModels: [] },
+          };
+        },
+      });
+      const query = { hostId: host.id, providerId: "codex" };
+
+      const failed = await resolveSystemExecutionOptions(harness.deps, query);
+      expect(failed.modelLoadError).toEqual({
+        providerId: "codex",
+        code: "timeout",
+      });
+
+      failProbe = false;
+      const recovered = await resolveSystemExecutionOptions(
+        harness.deps,
+        query,
+      );
+      expect(recovered.modelLoadError).toBeNull();
+      expect(recovered.models).toEqual([catalogModel]);
+      await resolveSystemExecutionOptions(harness.deps, query);
+      expect(
+        responder.requests.filter(
+          (request) => request.command.type === "provider.list_models",
+        ),
+      ).toHaveLength(2);
+
+      // A reconnected daemon may run a different CLI or account: its first
+      // probe must not be answered from the previous session's memo.
+      harness.hub.unregisterDaemon(session.id);
+      const nextSession = seedSession(harness.deps, host.id);
+      const nextResponder = registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: nextSession.id,
+        modelsByProviderId: {
+          codex: {
+            models: [availableModelFixture({ model: "gpt-6" })],
+            selectedOnlyModels: [],
+          },
+        },
+      });
+      const afterReconnect = await resolveSystemExecutionOptions(
+        harness.deps,
+        query,
+      );
+      expect(afterReconnect.models.map((model) => model.model)).toEqual([
+        "gpt-6",
+      ]);
+      expect(
+        nextResponder.requests.filter(
+          (request) => request.command.type === "provider.list_models",
+        ),
+      ).toHaveLength(1);
+    });
+  });
 });
