@@ -197,3 +197,68 @@ describe("GET /threads/:id/timeline inline output preview", () => {
     });
   });
 });
+
+describe("GET /threads/:id/timeline inline output preview (tool rows)", () => {
+  it("previews a large tool result and row-scoped details return it whole", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const turn = {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "p1",
+        scope: turnScope("turn-1"),
+      } as const;
+      seedEvent(harness.deps, {
+        ...turn,
+        sequence: 1,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        ...turn,
+        sequence: 2,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "toolCall",
+            id: "tool-big",
+            tool: "read_many",
+            arguments: { paths: ["a"] },
+            status: "completed",
+            result: BIG_OUTPUT,
+          },
+        },
+      });
+
+      const timeline = await getTimeline(harness, thread.id);
+      const row = timeline.rows.find(
+        (candidate) =>
+          candidate.kind === "work" && candidate.workKind === "tool",
+      );
+      if (!row || row.kind !== "work" || row.workKind !== "tool") {
+        throw new Error("tool row not found");
+      }
+      expect(row.outputPreview).toBeDefined();
+      expect(row.output.length).toBeLessThan(
+        TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS,
+      );
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${row.turnId}&sourceSeqStart=${row.sourceSeqStart}&sourceSeqEnd=${row.sourceSeqEnd}`,
+      );
+      expect(response.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(response),
+      );
+      const full = details.rows.find((candidate) => candidate.id === row.id);
+      if (!full || full.kind !== "work" || full.workKind !== "tool") {
+        throw new Error("expected the previewed tool row in details");
+      }
+      expect(full.outputPreview).toBeUndefined();
+      expect(full.output.length).toBeGreaterThan(
+        TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS,
+      );
+      expect(full.output).toContain(BIG_OUTPUT.slice(0, 64));
+    });
+  });
+});
