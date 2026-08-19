@@ -305,7 +305,7 @@ describe("plugin catalog service", () => {
   });
 
   describe("refresh", () => {
-    it("keeps a logo's own colors: a listing marked logo or a raster icon is not tinted", async () => {
+    it("tints a catalog SVG but keeps a raster icon's own colors", async () => {
       const PNG = Buffer.from([
         0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
       ]);
@@ -313,10 +313,6 @@ describe("plugin catalog service", () => {
         if (url === MANIFEST_URL) {
           return jsonResponse(
             manifest([
-              remoteEntry({
-                id: "brand",
-                icon: { url: "./icons/brand.svg", logo: true },
-              }),
               remoteEntry({ id: "raster", icon: { url: "./icons/raster.png" } }),
               remoteEntry({ id: "glyph", icon: { url: "./icons/glyph.svg" } }),
             ]),
@@ -342,7 +338,6 @@ describe("plugin catalog service", () => {
         ]),
       );
       expect(tinted).toMatchObject({
-        brand: { iconUrl: true, iconTinted: false },
         raster: { iconUrl: true, iconTinted: false },
         glyph: { iconUrl: true, iconTinted: true },
       });

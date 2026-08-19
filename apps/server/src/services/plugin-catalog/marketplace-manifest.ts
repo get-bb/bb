@@ -112,16 +112,18 @@ const iconUrlSchema = z
   });
 
 /**
- * An image icon is single-color artwork by default: BB masks an SVG with the
- * surrounding text color, the same way it renders a plugin's own compact
- * `branding.icon`, so a black-on-transparent glyph stays visible on a dark
- * theme. `logo: true` opts out for multi-color artwork that must keep its own
- * colors. Raster icons (PNG, WebP) are always logos: a mask reads alpha only
- * and would flatten an opaque image into a solid block.
+ * An SVG icon is single-color artwork: BB masks it with the surrounding text
+ * color, the same way it renders a plugin's own compact `branding.icon`, so a
+ * black-on-transparent glyph stays visible on a dark theme. Raster icons
+ * (PNG, WebP) keep their own colors: a mask reads alpha only and would
+ * flatten an opaque image into a solid block, and a raster is the form for
+ * multi-color artwork. The object stays strict: an older desktop rejects the
+ * whole manifest on an unknown field, so a per-entry opt-out needs a new
+ * schemaVersion.
  */
 const iconSchema = z.union([
   z.string().regex(ICON_NAME_PATTERN, "must be a host icon name"),
-  z.object({ url: iconUrlSchema, logo: z.boolean().default(false) }).strict(),
+  z.object({ url: iconUrlSchema }).strict(),
 ]);
 
 const authorSchema = z
@@ -362,20 +364,12 @@ export function entryIconName(entry: MarketplaceEntry): string | null {
 }
 
 /**
- * Whether BB masks the entry's cached image icon with the surrounding text
- * color. Only an SVG the listing did not mark as a logo is tinted; see
- * {@link iconSchema}. `contentType` is the validated type BB serves the cached
- * bytes as.
+ * Whether BB masks a cached image icon with the surrounding text color. Only
+ * an SVG is tinted; see {@link iconSchema}. `contentType` is the validated
+ * type BB serves the cached bytes as.
  */
-export function entryIconTinted(
-  entry: MarketplaceEntry,
-  contentType: string,
-): boolean {
-  return (
-    typeof entry.icon !== "string" &&
-    !entry.icon.logo &&
-    contentType === "image/svg+xml"
-  );
+export function entryIconTinted(contentType: string): boolean {
+  return contentType === "image/svg+xml";
 }
 
 /**

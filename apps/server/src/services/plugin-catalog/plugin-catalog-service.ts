@@ -466,14 +466,14 @@ export function createPluginCatalogService(deps: {
   /** The cached icon's same-origin URL and how the app paints it. */
   function entryIconAsset(
     marketplace: string,
-    entry: MarketplaceEntry,
+    entryId: string,
   ): { iconUrl: string | null; iconTinted: boolean } {
-    const icon = getPluginMarketplaceIcon(deps.db, marketplace, entry.id);
+    const icon = getPluginMarketplaceIcon(deps.db, marketplace, entryId);
     return icon === undefined
       ? { iconUrl: null, iconTinted: false }
       : {
-          iconUrl: entryIconAssetUrl(marketplace, entry.id, icon.contentHash),
-          iconTinted: entryIconTinted(entry, icon.contentType),
+          iconUrl: entryIconAssetUrl(marketplace, entryId, icon.contentHash),
+          iconTinted: entryIconTinted(icon.contentType),
         };
   }
 
@@ -493,7 +493,7 @@ export function createPluginCatalogService(deps: {
       displayName: entry.displayName,
       description: entry.description,
       icon: entryIconName(entry),
-      ...entryIconAsset(row.name, entry),
+      ...entryIconAsset(row.name, entry.id),
       category: entryCategory(entry, official),
       source: entrySourceDisplay(entry),
       marketplace: row.name,

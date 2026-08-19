@@ -148,14 +148,9 @@ const fixtures: readonly Fixture[] = [
   iconFixture("unsupported extension", "https://cdn.example.com/a.gif", false),
   iconFixture("no extension", "https://cdn.example.com/a", false),
   {
-    label: "image icon marked as a logo",
-    valid: true,
-    manifest: manifestWith({ icon: { url: "./acme.svg", logo: true } }),
-  },
-  {
-    label: "logo flag that is not a boolean",
+    label: "unknown icon field",
     valid: false,
-    manifest: manifestWith({ icon: { url: "./acme.svg", logo: "yes" } }),
+    manifest: manifestWith({ icon: { url: "./acme.svg", logo: true } }),
   },
 
   rangeFixture("caret range", "^1.2.3", true),
