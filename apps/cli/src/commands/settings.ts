@@ -54,12 +54,20 @@ function parseShortcut(value: string): AppShortcut {
   });
 }
 
-/** Command-line values are text; `true`/`false`/`on`/`off`/`null` name themselves. */
-function parseGeneralSettingValue(value: string): boolean | string | null {
-  if (value === "true" || value === "on") return true;
-  if (value === "false" || value === "off") return false;
-  if (value === "null") return null;
-  return value;
+/**
+ * Command-line values are text, so read each one two ways: as JSON, which
+ * covers booleans, numbers, null, and structured values, and as the raw text a
+ * string setting wants. The setting's own schema picks between them below, so a
+ * string setting can still hold `true` or `null`.
+ */
+function generalSettingValueCandidates(value: string): unknown[] {
+  if (value === "on") return [true, value];
+  if (value === "off") return [false, value];
+  try {
+    return [JSON.parse(value), value];
+  } catch {
+    return [value];
+  }
 }
 
 /**
@@ -80,16 +88,17 @@ function updateGeneralSetting(
     );
   }
 
-  const updated = appSettingsSchema.safeParse({
-    ...settings,
-    [settingKey.data]: parseGeneralSettingValue(value),
-  });
-  if (!updated.success) {
-    throw new Error(
-      `Invalid value '${value}' for '${settingKey.data}'. Booleans take true, false, on, or off; use null to clear a nullable setting.`,
-    );
+  for (const candidate of generalSettingValueCandidates(value)) {
+    const updated = appSettingsSchema.safeParse({
+      ...settings,
+      [settingKey.data]: candidate,
+    });
+    if (updated.success) return updated.data;
   }
-  return updated.data;
+
+  throw new Error(
+    `Invalid value '${value}' for '${settingKey.data}'. Booleans take true, false, on, or off, null clears a nullable setting, and structured values take JSON.`,
+  );
 }
 
 function updateExperiment(

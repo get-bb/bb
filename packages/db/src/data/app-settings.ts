@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import {
   appKeybindingOverridesSchema,
   appSettingsSchema,
@@ -51,9 +51,12 @@ export function getAppSettings(db: DbConnection): AppSettings {
   const rows = db
     .select({ key: appSettingsValues.key, value: appSettingsValues.value })
     .from(appSettingsValues)
+    .where(inArray(appSettingsValues.key, [...appSettingsKeys]))
     .all();
 
   for (const row of rows) {
+    // The query already excludes keyboard and retired rows; this narrows the
+    // key so the value can be checked against that setting's own schema.
     const key = appSettingsKeySchema.safeParse(row.key);
     if (!key.success) continue;
     const value = appSettingsSchema.shape[key.data].safeParse(

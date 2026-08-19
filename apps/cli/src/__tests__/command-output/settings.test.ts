@@ -58,6 +58,17 @@ describe("bb settings commands", () => {
       json: { ...defaultAppSettings, onboardingCompletedAt: null },
     });
 
+    // "2026" reads as JSON, but this setting takes a string, so the raw text
+    // has to win: the setting's own schema decides which reading applies.
+    await runCommand(
+      ["settings", "general", "onboardingCompletedAt", "2026"],
+      register,
+    );
+
+    expect(put).toHaveBeenLastCalledWith({
+      json: { ...defaultAppSettings, onboardingCompletedAt: "2026" },
+    });
+
     await expect(
       runCommand(["settings", "general", "notASetting", "true"], register),
     ).rejects.toThrow("process.exit:1");

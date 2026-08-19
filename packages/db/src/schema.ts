@@ -164,10 +164,12 @@ export const appSettingsValues = sqliteTable("app_settings_values", {
 });
 
 // Superseded by `app_settings_values`, which holds every live preference.
-// Retained (unread by product code) so `seedKeepAwakePluginConfiguration` can
-// still drain `caffeinate` for installs upgrading from before the Keep Awake
-// plugin, and so a downgraded build reads stale settings instead of erroring
-// on missing columns. Drop the whole table with that seed step.
+// Retained, unread and never written, for exactly one reason: an install
+// upgrading from before the Keep Awake plugin still needs
+// `seedKeepAwakePluginConfiguration` to drain `caffeinate`. Drop the whole
+// table with that seed step. It is not a downgrade path: 0102 copies these
+// columns once and nothing refreshes them, so an older build reads settings
+// frozen at upgrade time and any change it makes is lost on the next upgrade.
 export const appSettings = sqliteTable("app_settings", {
   id: text("id").primaryKey(),
   caffeinate: integer("caffeinate", { mode: "boolean" })
