@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from "react";
 import { useSetAtom } from "jotai";
-import { useNavigate } from "react-router-dom";
 import { appToast } from "@/components/ui/app-toast";
 import {
   closePanesForThreadsAtom,
@@ -47,6 +46,7 @@ import { destroyPersistedBrowserViewsForThread } from "@/components/secondary-pa
 import { getThreadReadToggleAction } from "@/components/sidebar/threadReadState";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
+import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 
 export interface ThreadActionsContextValue {
   archiveThreadAndChildren: (thread: Thread) => void;
@@ -96,7 +96,9 @@ const ARCHIVE_UNDO_TOAST_DURATION_MS = 10_000;
 export function ThreadActionsProvider({
   children,
 }: ThreadActionsProviderProps) {
-  const navigate = useNavigate();
+  // Stable across navigations: the context value below must not change per
+  // pathname, or every mounted sidebar ThreadRow re-renders on each route change.
+  const navigate = useRouteNavigate();
   const { threadId: viewedThreadId } = useRouteState();
   // Read the currently-viewed thread live inside async mutation callbacks: a
   // pane's stale-prune (deleted/archived thread) can move the URL between a

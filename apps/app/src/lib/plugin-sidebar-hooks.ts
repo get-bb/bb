@@ -1,6 +1,5 @@
 import { useCallback, useMemo } from "react";
 import { useStore } from "jotai";
-import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type {
@@ -19,6 +18,7 @@ import { useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useUpdateThread } from "@/hooks/mutations/thread-state-mutations";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
+import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import { toPluginSidebarThread } from "./plugin-sidebar-threads";
 import { useSetRootComposeProjectId } from "./root-compose-selection";
 import { openThreadInSplit } from "./split-layout/openThreadInSplit";
@@ -111,7 +111,7 @@ export function useSidebarThreadEntry(
  * dead threads.
  */
 export function useSidebarThreadActions(): PluginSidebarThreadActions {
-  const navigate = useNavigate();
+  const navigate = useRouteNavigate();
   const store = useStore();
   const isCompact = useIsCompactViewport();
   const threadSplitsEnabled = useThreadSplitsEnabled();

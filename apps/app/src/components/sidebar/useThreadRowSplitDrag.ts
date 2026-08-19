@@ -1,8 +1,8 @@
 import { useCallback, type PointerEvent as ReactPointerEvent } from "react";
 import { useStore } from "jotai";
-import { useNavigate } from "react-router-dom";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
+import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
@@ -60,7 +60,7 @@ export function useThreadRowSplitDrag({
   openInSplit: () => void;
 } {
   const store = useStore();
-  const navigate = useNavigate();
+  const navigate = useRouteNavigate();
   const isCompact = useIsCompactViewport();
   const threadSplitsEnabled = useThreadSplitsEnabled();
 

@@ -1,4 +1,3 @@
-import type { useNavigate } from "react-router-dom";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { decideThreadDrop } from "@/lib/split-drag";
 import { splitLayoutAtom } from "./atoms";
@@ -20,7 +19,7 @@ interface SplitLayoutStore {
 
 export interface OpenThreadInSplitArgs {
   store: SplitLayoutStore;
-  navigate: ReturnType<typeof useNavigate>;
+  navigate: (route: string, options?: { replace?: boolean }) => void;
   projectId: string;
   threadId: string;
   /** Splits are off on compact viewports. */

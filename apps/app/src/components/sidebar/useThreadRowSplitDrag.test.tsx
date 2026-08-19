@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { countPanes, findPaneByThread, listPanes } from "@/lib/split-layout";
 import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
 
 const { navigateSpy, compactState, experimentState } = vi.hoisted(() => ({
@@ -70,7 +71,9 @@ function renderOpenInSplit(threadId: string, layout: SplitLayout | null) {
   const store = createStore();
   store.set(splitLayoutAtom, layout);
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <Provider store={store}>{children}</Provider>
+    <Provider store={store}>
+      <RouteNavigationProvider>{children}</RouteNavigationProvider>
+    </Provider>
   );
   const { result } = renderHook(
     () => useThreadRowSplitDrag({ projectId: "p1", threadId, title: "Thread" }),

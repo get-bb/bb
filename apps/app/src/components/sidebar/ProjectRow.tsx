@@ -16,7 +16,7 @@ import {
 import { createPortal } from "react-dom";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import type { ProjectResponse } from "@bb/server-contract";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import {
   usePromptDraftHasInput,
@@ -72,6 +72,7 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { getProjectSettingsRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { appToast } from "@/components/ui/app-toast";
+import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import {
   CollapsedThreadStatusGlyph,
   ThreadRow,
@@ -754,7 +755,7 @@ function useArchiveEnvironmentThreadGroupAction({
   selectedThreadId,
   threads,
 }: UseArchiveEnvironmentThreadGroupActionArgs): UseArchiveEnvironmentThreadGroupActionResult {
-  const navigate = useNavigate();
+  const navigate = useRouteNavigate();
   const archiveEnvironmentThreads = useArchiveEnvironmentThreads();
   const {
     isPending: archiveThreadsIsPending,
