@@ -431,7 +431,7 @@ describe("thread command dispatch", () => {
       "plugin-host-artifacts",
       "provider-echo",
       sha256,
-      "host.js",
+      "host.mjs",
     );
     expect(harness.runtimeState.startedBridgeLaunch).toEqual({
       pluginId: "provider-echo",
@@ -481,7 +481,7 @@ describe("thread command dispatch", () => {
       "plugin-host-artifacts",
       "provider-echo",
       sha256,
-      "host.js",
+      "host.mjs",
     ),
       },
       capabilities: {
@@ -601,7 +601,7 @@ describe("thread command dispatch", () => {
       "plugin-host-artifacts",
       "provider-echo",
       sha256,
-      "host.js",
+      "host.mjs",
     ),
       },
       capabilities: {

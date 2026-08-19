@@ -55,7 +55,7 @@ export interface EnsureCachedNodeArtifactArgs {
   cacheDir: string;
   digest: string;
   byteLength: number;
-  /** Basename inside the digest directory, e.g. `host.js`. */
+  /** Basename inside the digest directory, e.g. `host.mjs`. */
   fileName: string;
   fetchArtifact: FetchNodeArtifact;
   prune: NodeArtifactPruneStrategy;

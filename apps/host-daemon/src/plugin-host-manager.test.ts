@@ -1,5 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HostDaemonOnlineRpcCommand } from "@bb/host-daemon-contract";
@@ -166,7 +173,10 @@ describe("PluginHostManager", () => {
       info: vi.fn(),
       warn: vi.fn(),
     };
-    const manager = await createManager({ logger });
+    const { dataDir, manager } = await createManagerFixture({ logger });
+    // A host cache can live below a package owned by another tool. Its module
+    // type must not affect how the downloaded ESM artifact is classified.
+    await writeFile(join(dataDir, "package.json"), '{"private":true}\n');
     const command = callCommand();
 
     await manager.call(command);
