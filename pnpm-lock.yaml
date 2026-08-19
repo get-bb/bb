@@ -2482,6 +2482,9 @@ importers:
       '@bb/host-daemon-contract':
         specifier: workspace:*
         version: link:../host-daemon-contract
+      '@bb/provider-bridge-protocol':
+        specifier: workspace:*
+        version: link:../provider-bridge-protocol
       hono:
         specifier: ^4.7.0
         version: 4.11.9

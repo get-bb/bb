@@ -20,6 +20,7 @@
     "@bb/domain": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/hono-typed-routes": "workspace:*",
+    "@bb/provider-bridge-protocol": "workspace:*",
     "hono": "^4.7.0",
     "zod": "^4.3.6"
   },

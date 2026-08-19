@@ -8,6 +8,11 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./provider-maintenance": {
+      "source": "./src/provider-maintenance.ts",
+      "types": "./src/provider-maintenance.ts",
+      "default": "./src/provider-maintenance.ts"
+    },
     "./bridge-kit": {
       "source": "./src/bridge-kit/index.ts",
       "types": "./src/bridge-kit/index.ts",

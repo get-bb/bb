@@ -12,7 +12,9 @@ import {
   pluginThemeMetaSchema,
   providerInfoSchema,
 } from "@bb/domain";
-import { providerHealthSchema } from "@bb/host-daemon-contract";
+import {
+  experimental_providerHealthSchema as providerHealthSchema,
+} from "@bb/provider-bridge-protocol/provider-maintenance";
 import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
 
 export const systemExecutionOptionsModelLoadErrorCodeSchema = z.enum([
