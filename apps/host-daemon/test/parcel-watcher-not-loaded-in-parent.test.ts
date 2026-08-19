@@ -119,8 +119,10 @@ describe("daemon bundle keeps @parcel/watcher out of the parent process", () => 
     const loadedAddons = stdout
       .split("\n")
       .filter((line) => line.startsWith("[dlopen] "));
+    // Match both the package path (@parcel/watcher-<platform>/watcher.node)
+    // and the pnpm store path (.pnpm/@parcel+watcher-<platform>@<ver>/...).
     expect(
-      loadedAddons.filter((line) => line.includes("@parcel/watcher")),
+      loadedAddons.filter((line) => /@parcel[/+]watcher/u.test(line)),
       `@parcel/watcher addon loaded on import:\n${loadedAddons.join("\n")}`,
     ).toEqual([]);
   });
