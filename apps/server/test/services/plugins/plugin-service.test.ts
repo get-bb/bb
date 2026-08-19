@@ -122,6 +122,24 @@ describe("plugin service", () => {
     });
   });
 
+  function createTelemetryTrackedService(
+    captured: TelemetryEvent[],
+  ): PluginService {
+    return createPluginService({
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      telemetry: { capture: (event) => captured.push(event) },
+      dataDir: join(workDir, "data"),
+      appVersion: "0.9.0",
+      loadTimeoutMs: 2000,
+    });
+  }
+
   afterEach(async () => {
     await service.stop();
     await rm(workDir, { recursive: true, force: true });
@@ -631,28 +649,15 @@ describe("plugin service", () => {
 
   it("reports one anonymous plugin_installed event per user install", async () => {
     const captured: TelemetryEvent[] = [];
-    const tracked = createPluginService({
-      db,
-      hub: {
-        getDaemonSessionIdForHost: () => null,
-        notifyPluginSignal: () => 0,
-        notifySystem: () => {},
-      },
-      logger,
-      telemetry: { capture: (event) => captured.push(event) },
-      dataDir: join(workDir, "data"),
-      appVersion: "0.9.0",
-      loadTimeoutMs: 2000,
+    const tracked = createTelemetryTrackedService(captured);
+    // This test exercises registration and lifecycle transitions, not plugin
+    // execution. An engine-incompatible plugin keeps runtime loading out of
+    // its time budget while taking the same install/reload/enable paths.
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-tracked",
+      engines: ">=99.0.0",
+      serverSource: "export default function plugin() {}",
     });
-    // This test exercises repeated lifecycle transitions, not TypeScript
-    // transpilation. Use a native ESM fixture so full-suite CPU contention
-    // does not spend most of the lifecycle test's budget in jiti transforms.
-    const rootDir = join(workDir, "bb-plugin-tracked");
-    await writeEsmPlugin(rootDir, "tracked");
-    await writeFile(
-      join(rootDir, "server.js"),
-      "export default function plugin() {}\n",
-    );
     await tracked.installPath(rootDir);
     // A direct install may point at private code, so it reports no id.
     expect(captured).toEqual([
@@ -666,15 +671,31 @@ describe("plugin service", () => {
         },
       },
     ]);
-    // Reload, enable, and boot-time reconcile are not installs.
+    // Reload and enablement are not installs.
     await tracked.reload("tracked");
     await tracked.setEnabled("tracked", false);
     await tracked.setEnabled("tracked", true);
-    await tracked.stop();
-    await tracked.start();
     expect(captured).toHaveLength(1);
     await tracked.stop();
-  }, 15_000);
+  });
+
+  it("does not report plugin_installed during boot-time reconcile", async () => {
+    const captured: TelemetryEvent[] = [];
+    const tracked = createTelemetryTrackedService(captured);
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-reconciled",
+      engines: ">=99.0.0",
+      serverSource: "export default function plugin() {}",
+    });
+    await tracked.installPath(rootDir);
+    await tracked.stop();
+    captured.length = 0;
+
+    await tracked.start();
+
+    expect(captured).toEqual([]);
+    await tracked.stop();
+  }, 30_000);
 
   it("hides names of plugins from third-party catalogs in the install event", () => {
     // A local or private marketplace can name internal code, so only the
