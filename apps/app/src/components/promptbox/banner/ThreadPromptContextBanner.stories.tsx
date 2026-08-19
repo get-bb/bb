@@ -770,6 +770,17 @@ export function Overview() {
         <Row childThreads={childThreadsFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
+        label="active child + pull request + uncommitted"
+        hint="long child titles stay within the shared stack; compact rows hide pull request actions"
+      >
+        <Row
+          childThreads={childThreadsFixture}
+          pullRequest={pullRequestFixture}
+          pullRequestActions
+          section={uncommittedSection}
+        />
+      </StoryRow>
+      <StoryRow
         label="parent thread with active children (expanded)"
         hint="list of children with status + pending-approval marker on item 2"
       >

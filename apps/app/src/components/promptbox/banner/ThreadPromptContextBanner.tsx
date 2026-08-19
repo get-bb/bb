@@ -993,7 +993,7 @@ export function ThreadPromptContextBanner({
   const pullRequestAction =
     pullRequest && pullRequestActions ? (
       pullRequest.state === "draft" && pullRequestActions.onMarkReady ? (
-        <BannerActionSlot>
+        <BannerActionSlot hideInCompact>
           <PullRequestReadyTextAction
             disabled={pullRequestActions.isPending}
             onMarkReady={pullRequestActions.onMarkReady}
@@ -1002,7 +1002,7 @@ export function ThreadPromptContextBanner({
       ) : pullRequest.state === "open" &&
         pullRequest.mergeability.state === "mergeable" &&
         pullRequestActions.onMerge ? (
-        <BannerActionSlot>
+        <BannerActionSlot hideInCompact>
           <PullRequestMergeSplitButton
             disabled={pullRequestActions.isPending}
             onConvertToDraft={pullRequestActions.onConvertToDraft}
@@ -1136,7 +1136,7 @@ export function ThreadPromptContextBanner({
 
   if (activeChildThreadsCard && compactContextBanner) {
     return (
-      <div className="space-y-2">
+      <div className="min-w-0 space-y-2">
         {activeChildThreadsCard}
         {compactContextBanner}
       </div>

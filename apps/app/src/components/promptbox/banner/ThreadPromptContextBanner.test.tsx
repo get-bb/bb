@@ -69,6 +69,8 @@ function makeGitSection(
   };
 }
 
+afterEach(cleanup);
+
 describe("ThreadPromptContextBanner", () => {
   it("renders the archived read-only status without an action", () => {
     const markup = renderToStaticMarkup(
@@ -362,6 +364,41 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("+1 more");
   });
 
+  it("lets combined child and context cards shrink inside the composer stack", () => {
+    render(
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={makeGitSection("uncommitted")}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={{
+            items: [
+              {
+                id: "thr_child",
+                title: "Host-owned SourceCode and Diff renderers",
+                href: "/threads/thr_child",
+                hasPendingInteraction: false,
+              },
+            ],
+          }}
+          pullRequestSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    const childCard = screen.getByRole("region", { name: "Child threads" });
+    const contextCard = screen.getByRole("region", {
+      name: "Thread context before sending",
+    });
+
+    expect(childCard.parentElement).toBe(contextCard.parentElement);
+    expect(childCard.parentElement?.classList.contains("min-w-0")).toBe(true);
+  });
+
   it("uses neutral active copy for a child waiting for a host", () => {
     expect(isThreadDisplayStatusBannerActive("waiting-for-host")).toBe(true);
 
@@ -485,8 +522,8 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("1 file");
   });
 
-  it("keeps the pull request action visible beside other context segments", () => {
-    const markup = renderToStaticMarkup(
+  it("hides the pull request action in compact composer shells", () => {
+    render(
       <ThreadPromptContextBanner
         gitSection={makeGitSection("uncommitted")}
         gitSectionPending={false}
@@ -506,9 +543,20 @@ describe("ThreadPromptContextBanner", () => {
       />,
     );
 
-    expect(markup).toContain("PR #128");
-    expect(markup).toContain("Uncommitted");
-    expect(markup).toContain("Rebase and merge");
+    expect(
+      screen.getByRole("link", { name: "Pull request 128: Ready to merge" }),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: "Changed files: Uncommitted, 1 file, +2 -0",
+      }),
+    ).not.toBeNull();
+    expect(screen.getByText("Rebase and merge")).not.toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Choose pull request merge method" })
+        .closest("[data-promptbox-hide-compact]"),
+    ).not.toBeNull();
   });
 
   it("uses the shared committed git label beside pull request context", () => {
@@ -533,8 +581,6 @@ describe("ThreadPromptContextBanner", () => {
 });
 
 describe("ThreadPromptContextBanner git section body", () => {
-  afterEach(cleanup);
-
   function renderBanner(expandedSection: "git" | null) {
     return (
       <MemoryRouter>

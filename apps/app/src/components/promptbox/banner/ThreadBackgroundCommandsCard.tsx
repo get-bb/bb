@@ -174,8 +174,9 @@ export interface ThreadBackgroundCommandsCardProps {
 /**
  * Prompt-stack card for running non-workflow background tasks, independent of
  * the workflow card. Wide layouts show the most recent task and append "+N
- * more" when needed. Compact layouts summarize background agents by count and
- * expand even a single agent so its full description and model stay readable.
+ * more" when needed. Compact layouts summarize background activity by count
+ * and expand even a single item so its full description and model stay
+ * readable.
  * Each task also keeps its own timeline row carrying the terminal outcome;
  * this card only tracks the live ones and drops out once none remain.
  */
@@ -191,10 +192,7 @@ export function ThreadBackgroundCommandsCard({
   }
   const others = commands.slice(1);
   const hasMore = others.length > 0;
-  const hasAgent = commands.some((row) =>
-    isBackgroundAgentTaskType(row.taskType),
-  );
-  const useCompactSummary = isCompactViewport && hasAgent;
+  const useCompactSummary = isCompactViewport;
   const canExpand = hasMore || useCompactSummary;
   const expandedRows = useCompactSummary ? commands : others;
   const compactLabel = compactBackgroundActivityLabel(commands);
