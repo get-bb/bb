@@ -59,6 +59,7 @@ import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { PageShell } from "@/components/ui/page-shell.js";
+import { RouteLoadingSkeleton } from "@/components/ui/route-loading-skeleton";
 import { Button } from "@bb/shared-ui/button";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
@@ -605,13 +606,7 @@ export function LegacyProjectComposeRedirect({
     });
   }, [location.state, navigate, projectId, setRootComposeProjectId]);
 
-  return (
-    <PageShell contentClassName="min-h-full items-center justify-center">
-      <p className="py-12 text-center text-sm text-muted-foreground">
-        Loading…
-      </p>
-    </PageShell>
-  );
+  return <RouteLoadingSkeleton />;
 }
 
 export function RootComposeView() {
@@ -2277,13 +2272,7 @@ function RootComposeSurface({
   ]);
 
   if (!sidebarNavigationSettled) {
-    return (
-      <PageShell contentClassName="min-h-full items-center justify-center">
-        <p className="py-12 text-center text-sm text-muted-foreground">
-          Loading…
-        </p>
-      </PageShell>
-    );
+    return <RouteLoadingSkeleton />;
   }
   if (!projects && sidebarNavigationError) {
     return (

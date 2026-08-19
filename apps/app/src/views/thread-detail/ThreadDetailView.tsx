@@ -79,6 +79,7 @@ import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
+import { RouteLoadingSkeleton } from "@/components/ui/route-loading-skeleton";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import {
   ThreadActionsMenu,
@@ -2465,13 +2466,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   );
 
   if (threadQueryState.status === "loading") {
-    return (
-      <PageShell contentClassName="min-h-full items-center justify-center">
-        <p className="py-12 text-center text-sm text-muted-foreground">
-          Loading...
-        </p>
-      </PageShell>
-    );
+    return <RouteLoadingSkeleton />;
   }
   if (!thread || thread.projectId !== projectId) {
     return (

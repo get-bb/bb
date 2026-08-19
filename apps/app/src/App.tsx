@@ -54,6 +54,7 @@ import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import { OnboardingHost } from "@/components/onboarding/OnboardingHost";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
 import { PluginSettingsCompatibilityRoute } from "./components/settings/PluginSettingsCompatibilityRoute";
+import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
 
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
@@ -75,7 +76,17 @@ const ProjectSettingsView = lazy(() =>
     default: m.ProjectSettingsView,
   })),
 );
-const SplitWorkspaceRoute = lazy(() => import("./views/SplitWorkspaceRoute"));
+// Start fetching the split-workspace route chunk (and, through Vite's preload
+// helper, its static closure) as soon as the boot chunk evaluates instead of
+// waiting for the first React render to reach the lazy element. Nearly every
+// page load ends up on this route, so the request is never wasted, and on a
+// phone the boot parse + first render otherwise adds a serialized round trip
+// before the largest transfer even starts. The trailing catch only keeps a
+// failed fetch from surfacing as an unhandled rejection while no route has
+// rendered yet; React.lazy still receives the rejection when it renders.
+const splitWorkspaceRouteModule = import("./views/SplitWorkspaceRoute");
+splitWorkspaceRouteModule.catch(() => {});
+const SplitWorkspaceRoute = lazy(() => splitWorkspaceRouteModule);
 
 export function LegacyAutomationDetailRedirect() {
   const location = useLocation();
@@ -322,7 +333,18 @@ function AppRoutes() {
             path={LEGACY_SKILLS_ROUTE_PATH}
             element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
           />
-          <Route path="*" element={<SplitWorkspaceRoute />} />
+          <Route
+            path="*"
+            element={
+              // The thread / new-thread pane draws its own header, so while
+              // its chunk loads the content area would otherwise be blank.
+              // Settings and tools routes keep the outer null fallback: the
+              // AppLayout header is already on screen for them.
+              <Suspense fallback={<RouteLoadingSkeleton />}>
+                <SplitWorkspaceRoute />
+              </Suspense>
+            }
+          />
         </Routes>
       </Suspense>
     </AppLayout>
