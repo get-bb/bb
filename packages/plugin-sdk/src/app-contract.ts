@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ComponentType, ReactNode } from "react";
 import type {
   PermissionMode,
   PromptInput,
@@ -1559,6 +1559,18 @@ export interface MarkdownProps {
   className?: string;
 }
 
+/**
+ * Props for BB's semantic URL link. The host owns ordinary activation while
+ * retaining native anchor behavior for app routes, modifiers, copying, and
+ * unsupported schemes. Experimental: see docs/api_to_audit.md.
+ */
+export interface ExperimentalUrlLinkProps extends Omit<
+  ComponentPropsWithoutRef<"a">,
+  "href"
+> {
+  href: string;
+}
+
 /** Current app selection, derived from the route. */
 export interface BbContext {
   projectId: string | null;
@@ -1591,6 +1603,12 @@ export interface BbNavigate {
    * the action is unavailable.
    */
   openThreadPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
+  /**
+   * Open an HTTP(S) URL using this client's BB browser preference. Returns
+   * false for schemes the host does not own. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_openUrl(url: string): boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -1683,6 +1701,11 @@ export interface PluginSdkApp {
    * {@link MarkdownProps}).
    */
   Markdown: ComponentType<MarkdownProps>;
+  /**
+   * A real anchor whose ordinary HTTP(S) activation uses BB's URL preference.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_UrlLink: ComponentType<ExperimentalUrlLinkProps>;
   /**
    * The host-owned new-thread compose surface (see
    * {@link NewThreadComposerProps}). Experimental: see

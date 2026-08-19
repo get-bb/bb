@@ -34,6 +34,7 @@ import {
   PluginLogo,
 } from "@/components/plugin/management/plugin-ui";
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
+import { ExperimentalUrlLink } from "@/components/plugin/ExperimentalUrlLink";
 import {
   PluginHealthBanner,
   PluginIncludes,
@@ -147,14 +148,12 @@ export function CatalogPluginDetail({
               {entry.author.url === null ? (
                 entry.author.name
               ) : (
-                <a
+                <ExperimentalUrlLink
                   href={entry.author.url}
-                  target="_blank"
-                  rel="noreferrer"
                   className="underline underline-offset-2"
                 >
                   {entry.author.name}
-                </a>
+                </ExperimentalUrlLink>
               )}
             </span>
           )}

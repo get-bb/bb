@@ -22,10 +22,8 @@ import type {
 import { useAppThemeEpoch } from "@/hooks/useAppTheme";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
-import {
-  openUrlInExternalBrowser,
-  useOpenUrlByPreference,
-} from "@/lib/url-open-routing";
+import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import type { MessageProseSelection } from "@/components/thread/timeline/SelectableMessageProse.js";
 import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
@@ -633,10 +631,10 @@ export function ThreadTerminalView({
   // The xterm canvas bakes its palette, so re-apply the theme on app-palette
   // changes too, not just light/dark toggles.
   const appThemeEpoch = useAppThemeEpoch();
-  const openUrlByPreference = useOpenUrlByPreference();
+  const appNavigation = useAppNavigationHost();
   const handleOpenLinkByPreference = useCallback<MarkdownPreviewLinkHandler>(
-    ({ href }) => openUrlByPreference(href),
-    [openUrlByPreference],
+    ({ href }) => appNavigation.openUrl({ url: href }),
+    [appNavigation],
   );
   const effectiveOnOpenLink = onOpenLink ?? handleOpenLinkByPreference;
   const onOpenLinkRef = useRef<MarkdownPreviewLinkHandler>(effectiveOnOpenLink);

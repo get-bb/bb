@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
   type ComponentType,
   type ReactElement,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { act, render, type RenderResult } from "@testing-library/react";
@@ -53,6 +54,7 @@ import {
   type PluginRpcResult,
   type StandardSchemaV1InferInput,
   type MarkdownProps,
+  type ExperimentalUrlLinkProps,
   type NewThreadComposerProps,
   type ThreadChatProps,
   type DiffProps,
@@ -111,7 +113,8 @@ export type NavigateCall =
   | {
       method: "openThreadPanel";
       options: Parameters<BbNavigate["openThreadPanel"]>[0];
-    };
+    }
+  | { method: "experimental_openUrl"; url: string };
 
 export interface ComposerLog {
   /** Latest plain text in this isolated composer scope. */
@@ -286,6 +289,40 @@ function TestMarkdown({ content, className }: MarkdownProps) {
     <div data-testid="bb-markdown" className={className}>
       {content}
     </div>
+  );
+}
+
+/** Anchor-faithful stand-in backed by the same navigation recorder as the hook. */
+function TestUrlLink({
+  href,
+  onClick,
+  rel,
+  target,
+  ...anchorProps
+}: ExperimentalUrlLinkProps) {
+  const navigate = useSlotEnv("experimental_UrlLink").navigate;
+  return (
+    <a
+      {...anchorProps}
+      href={href}
+      target={target}
+      rel={target === "_blank" ? (rel ?? "noopener noreferrer") : rel}
+      onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
+        onClick?.(event);
+        if (
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.altKey ||
+          event.ctrlKey ||
+          event.metaKey ||
+          event.shiftKey ||
+          event.currentTarget.hasAttribute("download")
+        ) {
+          return;
+        }
+        if (navigate.experimental_openUrl(href)) event.preventDefault();
+      }}
+    />
   );
 }
 
@@ -483,6 +520,7 @@ const testPluginSdkApp = {
   },
   ThreadChat: TestThreadChat,
   Markdown: TestMarkdown,
+  experimental_UrlLink: TestUrlLink,
   experimental_NewThreadComposer: TestNewThreadComposer,
   experimental_SourceCode: TestSourceCode,
   experimental_Diff: TestDiff,
@@ -798,6 +836,8 @@ export interface RenderSlotOptions<
   openThreadPanel?: (
     options: Parameters<BbNavigate["openThreadPanel"]>[0],
   ) => boolean;
+  /** Host acceptance for URL intents from the hook or `experimental_UrlLink`. */
+  openUrl?: (url: string) => boolean;
 }
 
 /** Host-originated inputs a slot test can drive deterministically. */
@@ -1009,6 +1049,10 @@ export function renderSlot<
         options: panelOptions,
       });
       return options.openThreadPanel?.(panelOptions) ?? false;
+    },
+    experimental_openUrl(url) {
+      navigateCalls.push({ method: "experimental_openUrl", url });
+      return options.openUrl?.(url) ?? false;
     },
   };
 

@@ -671,19 +671,19 @@ function MarkdownAnchor({
       return;
     }
 
-    // Let timeline/terminal hosts claim web links first. Absolute app-origin
-    // URLs can still be browser destinations even though they resolve to an
-    // app route.
+    // Internal BB destinations belong to RouteAnchor so they participate in
+    // SPA history. URL preference routing only sees non-route destinations.
+    if (isAppRouteHref) {
+      return;
+    }
+
+    // Let timeline/terminal/navigation hosts claim ordinary web links.
     if (
       linkRouting?.onOpenLink &&
       rewrittenHref &&
       linkRouting.onOpenLink({ href: rewrittenHref })
     ) {
       event.preventDefault();
-      return;
-    }
-
-    if (isAppRouteHref) {
       return;
     }
   };

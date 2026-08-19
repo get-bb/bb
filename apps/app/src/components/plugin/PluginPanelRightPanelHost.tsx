@@ -56,6 +56,7 @@ import {
 } from "@/lib/bb-desktop";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import { isRoutePath } from "@/lib/route-paths";
+import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
@@ -670,7 +671,9 @@ export function PluginPanelRightPanelHost({
   );
 
   return (
-    <>
+    <UrlOpenRoutingProvider
+      openInAppBrowser={isDesktopBrowserAvailable() ? openBrowser : null}
+    >
       {panel !== null &&
       togglePortalTarget !== null &&
       !isOpen &&
@@ -696,6 +699,6 @@ export function PluginPanelRightPanelHost({
           )
         : null}
       {page}
-    </>
+    </UrlOpenRoutingProvider>
   );
 }

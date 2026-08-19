@@ -21,6 +21,13 @@ Any mounted plugin component can use
 same plugin's registered thread-panel actions; it returns false when the
 current surface has no thread side panel.
 
+Use `experimental_UrlLink` for a real anchor that applies BB's current
+in-app/external-browser preference on ordinary HTTP(S) activation, or
+`useBbNavigate().experimental_openUrl(url)` for a button or menu. Internal app
+routes, modifier clicks, explicit anchor targets, and unsupported schemes stay
+native. The frontend harness records both forms in `navigateCalls` and accepts
+an `openUrl` behavior option.
+
 Every panel-open entry point reports the same way: `openThreadPanel` and the
 `openPanel` handed to `threadPanelAction`, `experimental_newThreadPanelAction`,
 and `messageAction` `run` callbacks all return `boolean` — true when the host

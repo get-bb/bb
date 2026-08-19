@@ -407,7 +407,7 @@ describe("MarkdownPreview", () => {
     expect(resolveSrc).toHaveBeenCalledTimes(2);
   });
 
-  it("lets link routing open absolute app-origin URLs", () => {
+  it("keeps absolute app-origin URLs on the app-route path", () => {
     const onOpenLink = vi.fn(() => true);
     const href = `${window.location.origin}/threads/thr_localhost`;
 
@@ -420,7 +420,10 @@ describe("MarkdownPreview", () => {
 
     fireEvent.click(screen.getByRole("link", { name: "local thread" }));
 
-    expect(onOpenLink).toHaveBeenCalledWith({ href });
+    expect(onOpenLink).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("link", { name: "local thread" }).getAttribute("href"),
+    ).toBe(href);
   });
 
   it("rewrites localhost link hrefs without changing the visible text", () => {

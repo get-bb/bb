@@ -136,6 +136,7 @@ import {
   useOpenLinksInAppBrowserPreference,
 } from "@/lib/in-app-browser-link-preference";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
+import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
 import {
   useRootComposeProjectId,
   useSetRootComposeProjectId,
@@ -2349,76 +2350,83 @@ function RootComposeSurface({
       {machineSetupDialog}
       {rootPanelToggle}
       <PluginComposerHostProvider value={pluginComposerHost}>
-        <RootComposeSecondaryContent
-          contentClassName={
-            showEmptyWelcome
-              ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
-              : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
+        <UrlOpenRoutingProvider
+          openInAppBrowser={
+            desktopBrowserAvailable && rootPanelThreadId !== null
+              ? openBrowserTabAndReveal
+              : null
           }
-          isSecondaryPanelOpen={isSecondaryPanelOpen}
-          onToggleSecondaryPanel={handleToggleSecondaryPanel}
-          panelTogglePositionClassName={panelTogglePositionClassName}
-          secondaryPanel={{
-            activeTab: activeFixedSecondaryTab,
-            canUseGitUi: false,
-            environmentId: rootPanelEnvironmentId ?? undefined,
-            metadataContent: rootPanelMetadataContent,
-            workspaceRootPath:
-              rootPanelEnvironment?.path ??
-              (rootPanelTerminalTarget?.kind === "host_path"
-                ? (rootPanelTerminalTarget.cwd ?? undefined)
-                : undefined),
-            fileTabs,
-            fileTabContent,
-            fileTabContentFillsRegion:
-              activePluginPanelTab !== null &&
-              // See ThreadDetailView: a `fileOpener` tab owns its layout, and
-              // its `file-opener:<id>` actionId never matches a panel action.
-              (activePluginPanelTab.fileOpenerOwner !== undefined ||
-                rootPanelNewThreadPanelActions.find(
-                  (candidate) =>
-                    candidate.pluginId === activePluginPanelTab.pluginId &&
-                    candidate.id === activePluginPanelTab.actionId,
-                )?.layout === "flush"),
-            renderBrowserDeck,
-            isBrowserTabActive,
-            isOpen: isSecondaryPanelOpen,
-            fixedTabs: [],
-            // The shell, tab strip, launcher, resize, and drawer behavior are
-            // shared with threads. Info, Diff, and conversation full-screen
-            // stay thread-only because no thread exists on this surface yet.
-            showConversationCollapseControl: false,
-            inlinePanelToggle: panelTogglePlacement.inlinePanelToggle,
-            onClose: closeSecondaryPanel,
-            onCollapse: closeSecondaryPanel,
-            onOpenFileInEditor: handleOpenWorkspaceFileInEditor,
-            onFileTabReorder: reorderFileTab,
-            onOpenNewTab: handleOpenNewTab,
-            onOpenFilePreview: handleOpenFilePreview,
-            onSelectionAddToChat: handleRootPanelSelectionAddToChat,
-            onPanelFocus: handleSecondaryPanelFocus,
-          }}
         >
-          {showEmptyWelcome ? (
-            <RootComposeEmptyWelcome
-              onCompose={handleStartComposing}
-              onAddProject={quickCreateProject.openCreateDialog}
-              addProjectDisabled={
-                !quickCreateProject.isAvailable || quickCreateProject.isCreating
-              }
-            />
-          ) : (
-            <>
-              {promptBox}
-              <RootComposeMobileRecents
-                highlightedThreadId={lastCreatedThreadId}
-                projectNamesById={mobileRecentProjectNamesById}
-                showCreatingRow={isSubmitting}
-                threads={mobileRecentThreads}
+          <RootComposeSecondaryContent
+            contentClassName={
+              showEmptyWelcome
+                ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
+                : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
+            }
+            isSecondaryPanelOpen={isSecondaryPanelOpen}
+            onToggleSecondaryPanel={handleToggleSecondaryPanel}
+            panelTogglePositionClassName={panelTogglePositionClassName}
+            secondaryPanel={{
+              activeTab: activeFixedSecondaryTab,
+              canUseGitUi: false,
+              environmentId: rootPanelEnvironmentId ?? undefined,
+              metadataContent: rootPanelMetadataContent,
+              workspaceRootPath:
+                rootPanelEnvironment?.path ??
+                (rootPanelTerminalTarget?.kind === "host_path"
+                  ? (rootPanelTerminalTarget.cwd ?? undefined)
+                  : undefined),
+              fileTabs,
+              fileTabContent,
+              fileTabContentFillsRegion:
+                activePluginPanelTab !== null &&
+                (activePluginPanelTab.fileOpenerOwner !== undefined ||
+                  rootPanelNewThreadPanelActions.find(
+                    (candidate) =>
+                      candidate.pluginId === activePluginPanelTab.pluginId &&
+                      candidate.id === activePluginPanelTab.actionId,
+                  )?.layout === "flush"),
+              renderBrowserDeck,
+              isBrowserTabActive,
+              isOpen: isSecondaryPanelOpen,
+              fixedTabs: [],
+              // The shell, tab strip, launcher, resize, and drawer behavior are
+              // shared with threads. Info, Diff, and conversation full-screen
+              // stay thread-only because no thread exists on this surface yet.
+              showConversationCollapseControl: false,
+              inlinePanelToggle: panelTogglePlacement.inlinePanelToggle,
+              onClose: closeSecondaryPanel,
+              onCollapse: closeSecondaryPanel,
+              onOpenFileInEditor: handleOpenWorkspaceFileInEditor,
+              onFileTabReorder: reorderFileTab,
+              onOpenNewTab: handleOpenNewTab,
+              onOpenFilePreview: handleOpenFilePreview,
+              onSelectionAddToChat: handleRootPanelSelectionAddToChat,
+              onPanelFocus: handleSecondaryPanelFocus,
+            }}
+          >
+            {showEmptyWelcome ? (
+              <RootComposeEmptyWelcome
+                onCompose={handleStartComposing}
+                onAddProject={quickCreateProject.openCreateDialog}
+                addProjectDisabled={
+                  !quickCreateProject.isAvailable ||
+                  quickCreateProject.isCreating
+                }
               />
-            </>
-          )}
-        </RootComposeSecondaryContent>
+            ) : (
+              <>
+                {promptBox}
+                <RootComposeMobileRecents
+                  highlightedThreadId={lastCreatedThreadId}
+                  projectNamesById={mobileRecentProjectNamesById}
+                  showCreatingRow={isSubmitting}
+                  threads={mobileRecentThreads}
+                />
+              </>
+            )}
+          </RootComposeSecondaryContent>
+        </UrlOpenRoutingProvider>
       </PluginComposerHostProvider>
     </>
   );

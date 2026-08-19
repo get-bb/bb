@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useMemo,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
@@ -10,6 +11,7 @@ import {
   openUrlByPreference,
   useOpenLinksInAppBrowserPreference,
 } from "@/lib/in-app-browser-link-preference";
+import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 
 export type OpenInAppBrowserUrl = (url: string) => void;
 
@@ -22,8 +24,9 @@ type UrlAnchorClickHandler = (
   event: ReactMouseEvent<HTMLAnchorElement>,
 ) => void;
 
-const InAppBrowserUrlOpenContext =
-  createContext<OpenInAppBrowserUrl | null>(null);
+const InAppBrowserUrlOpenContext = createContext<OpenInAppBrowserUrl | null>(
+  null,
+);
 
 export function openUrlInExternalBrowser(url: string): void {
   const desktopInfo = getBbDesktopInfo();
@@ -42,8 +45,22 @@ export function UrlOpenRoutingProvider({
 }: UrlOpenRoutingProviderProps) {
   return (
     <InAppBrowserUrlOpenContext.Provider value={openInAppBrowser}>
-      {children}
+      <AppNavigationUrlHost>{children}</AppNavigationUrlHost>
     </InAppBrowserUrlOpenContext.Provider>
+  );
+}
+
+/** Installs URL opening for a window or a nested browser-capable surface. */
+export function AppNavigationUrlHost({ children }: { children: ReactNode }) {
+  const openUrl = useOpenUrlByPreference();
+  const capabilities = useMemo(
+    () => ({ openUrl: ({ url }: { url: string }) => openUrl(url) }),
+    [openUrl],
+  );
+  return (
+    <AppNavigationHostProvider capabilities={capabilities}>
+      {children}
+    </AppNavigationHostProvider>
   );
 }
 
@@ -74,6 +91,9 @@ export function useUrlAnchorClickHandler(
   return useCallback(
     (event) => {
       if (event.defaultPrevented || event.button !== 0 || url === undefined) {
+        return;
+      }
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
         return;
       }
       if (openUrl(url)) {

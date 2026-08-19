@@ -22,7 +22,9 @@ import { defineRpcContract } from "../../rpc-contract.js";
 installTestPluginRuntime();
 const {
   definePluginApp,
+  experimental_UrlLink: UrlLink,
   ThreadChat,
+  useBbNavigate,
   useComposer,
   useComposerView,
   useRealtime,
@@ -82,6 +84,23 @@ function Panel({ subPath }: PluginNavPanelProps) {
 function RealtimeConnectionProbe() {
   const state = useRealtimeConnectionState();
   return <div>Realtime: {state}</div>;
+}
+
+function UrlNavigationProbe() {
+  const navigate = useBbNavigate();
+  return (
+    <div>
+      <UrlLink href="https://example.com/from-link">Open link</UrlLink>
+      <button
+        type="button"
+        onClick={() =>
+          navigate.experimental_openUrl("https://example.com/imperative")
+        }
+      >
+        Open imperatively
+      </button>
+    </div>
+  );
 }
 
 let capturedComposerVisualSetters: Pick<
@@ -939,6 +958,23 @@ describe("typed rpc test runtime", () => {
 });
 
 describe("renderSlot", () => {
+  it("records URL intents from links and imperative navigation through one host boundary", () => {
+    const slot = renderSlot(
+      { component: UrlNavigationProbe },
+      {},
+      { openUrl: () => true },
+    );
+    fireEvent.click(slot.getByRole("link", { name: "Open link" }));
+    fireEvent.click(slot.getByRole("button", { name: "Open imperatively" }));
+    expect(slot.inspection.navigateCalls).toEqual([
+      { method: "experimental_openUrl", url: "https://example.com/from-link" },
+      {
+        method: "experimental_openUrl",
+        url: "https://example.com/imperative",
+      },
+    ]);
+  });
+
   it("drives the shared realtime connection lifecycle", async () => {
     const slot = renderSlot(
       app.homepageSections[0]!,

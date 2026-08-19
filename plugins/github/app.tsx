@@ -19,6 +19,7 @@ import {
 import {
   definePluginApp,
   experimental_Diff as Diff,
+  experimental_UrlLink as UrlLink,
   useBbNavigate,
   useRealtime,
   useRpc,
@@ -659,6 +660,7 @@ function StatusCell({ item }: { item: Item }) {
 }
 
 function RowMenu({ item }: { item: Item }) {
+  const navigate = useBbNavigate();
   const viewer = useViewer();
   const { setIssueState, setAssignees } = useIssueMutations();
   const assignedToMe = viewer !== null && item.assignees.includes(viewer);
@@ -703,7 +705,11 @@ function RowMenu({ item }: { item: Item }) {
           </DropdownMenuItem>
         ) : null}
         {item.kind === "issue" ? <DropdownMenuSeparator /> : null}
-        <DropdownMenuItem onSelect={() => window.open(item.url, "_blank")}>
+        <DropdownMenuItem
+          onSelect={() => {
+            navigate.experimental_openUrl(item.url);
+          }}
+        >
           Open on GitHub ↗
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -1139,14 +1145,9 @@ function IssueDetailView({
           {repo} · #{number}
         </span>
         <span className="flex-1" />
-        <a
-          href={detail.url}
-          target="_blank"
-          rel="noreferrer"
-          className="underline hover:text-foreground"
-        >
+        <UrlLink href={detail.url} className="underline hover:text-foreground">
           Open on GitHub ↗
-        </a>
+        </UrlLink>
       </div>
 
       <div className="flex items-start gap-3">
@@ -1369,14 +1370,12 @@ function ChecksSection({ checks }: { checks: PullCheck[] }) {
               <span className={`size-2 shrink-0 rounded-full ${checkDotClass(check.status)}`} />
               <span className="min-w-0 flex-1 truncate text-foreground">{check.name}</span>
               {check.url.length > 0 ? (
-                <a
+                <UrlLink
                   href={check.url}
-                  target="_blank"
-                  rel="noreferrer"
                   className="shrink-0 text-muted-foreground underline hover:text-foreground"
                 >
                   details ↗
-                </a>
+                </UrlLink>
               ) : null}
             </div>
           ))}
@@ -1418,9 +1417,9 @@ function FileDiffCard({ file, url }: { file: PullFile; url: string }) {
         ) : (
           <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
             Diff too large to inline —{" "}
-            <a href={`${url}/files`} target="_blank" rel="noreferrer" className="underline">
+            <UrlLink href={`${url}/files`} className="underline">
               view on GitHub ↗
-            </a>
+            </UrlLink>
           </p>
         )
       ) : null}
@@ -1665,14 +1664,12 @@ function PullDetailView({
           {repo} · #{number}
         </span>
         <span className="flex-1" />
-        <a
+        <UrlLink
           href={pull.url}
-          target="_blank"
-          rel="noreferrer"
           className="shrink-0 underline hover:text-foreground"
         >
           Open on GitHub ↗
-        </a>
+        </UrlLink>
       </div>
 
       <div className="flex items-start gap-3">

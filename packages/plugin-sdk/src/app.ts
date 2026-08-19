@@ -48,6 +48,7 @@ const runtime = ((globalThis as PluginRuntimeHost).__bbPluginRuntime
 export const definePluginApp = runtime.definePluginApp;
 export const ThreadChat = runtime.ThreadChat;
 export const Markdown = runtime.Markdown;
+export const experimental_UrlLink = runtime.experimental_UrlLink;
 export const experimental_NewThreadComposer =
   runtime.experimental_NewThreadComposer;
 // Host-owned code rendering (experimental — see docs/api_to_audit.md).

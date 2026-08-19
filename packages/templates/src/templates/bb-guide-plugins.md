@@ -519,7 +519,9 @@ useRpc, useRealtime, useRealtimeConnectionState (the shared realtime socket's
 connecting/connected/reconnecting lifecycle; reconcile on later connected
 transitions, not the initial connection), useSettings (secrets excluded),
 useBbContext,
-useBbNavigate, useComposer (read/replace/update/clear scoped composer text,
+useBbNavigate (including experimental_openUrl(url), which applies the current
+client's in-app/external-browser preference), useComposer
+(read/replace/update/clear scoped composer text,
 apply a class-based text effect, lock input, quote selections, insert mention
 pills, and focus the composer), and useComposerView (reactive bound scope,
 layout, draft, and run state). Plain-text edits preserve attachments and
@@ -533,7 +535,11 @@ error codes. Components are vendored shadcn source the plugin owns (the
 shadcn model): `bb plugin new --app` pre-vendors a starter set into
 components/ui/ and `npx shadcn add @bb/<name>` pulls more from the BB
 component registry (the full stock shadcn set, version-matched to the
-running BB via the pinned ref in components.json). `import { toast } from
+running BB via the pinned ref in components.json). Product capabilities are
+the exception: experimental_UrlLink renders a real anchor whose ordinary
+HTTP(S) activation uses the same client preference as first-party links while
+leaving app routes, modifiers, copying, and unsupported schemes native.
+`import { toast } from
 "sonner"` reaches the host toaster; react, the portaling radix families,
 sonner, vaul, @pierre/diffs, and the host-resident clsx, tailwind-merge, and
 class-variance-authority libraries are runtime-shimmed (never bundled) —

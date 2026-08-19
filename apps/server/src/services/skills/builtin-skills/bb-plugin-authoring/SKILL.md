@@ -1257,6 +1257,7 @@ import {
   useSettings,
   useBbContext,
   useBbNavigate,
+  experimental_UrlLink as UrlLink,
   useComposer,
   useComposerView,
 } from "@get-bb/plugin-sdk/app";
@@ -1863,6 +1864,13 @@ className?, leadingContent?, messageActions? }` —
   message content (e.g. a reply header) so it reads like the rest of the
   chat instead of a differently-styled bundled renderer. Renderer options
   beyond content/className stay host-internal.
+- `experimental_UrlLink` — a real anchor whose ordinary HTTP(S) activation
+  follows the current client's in-app/external-browser preference. It keeps
+  internal BB routes in SPA history, preserves modifier clicks, copying,
+  accessibility, and explicit anchor props, and leaves unsupported schemes to
+  normal browser behavior. Use `useBbNavigate().experimental_openUrl(url)` for
+  buttons, menus, and effects; its boolean reports whether the current app
+  accepted the intent, not whether a later OS launch completed.
 - `experimental_NewThreadComposer` — bb's complete compose surface for
   CREATING a thread (the create-side counterpart to `ThreadChat`): prompt
   editor with @-mentions and expand, `+` attachments,
@@ -1962,12 +1970,14 @@ Hooks:
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
 { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
-openThreadPanel({ actionId, title?, params? }) }`.
+openThreadPanel({ actionId, title?, params? }), experimental_openUrl(url) }`.
   `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
   composer draft and `focusPrompt: true` to focus it. The panel
   opener opens one of the current plugin's registered `threadPanelAction` tabs
   in the current thread surface and returns whether the host accepted it; it
   returns false on surfaces without a thread side panel.
+  `experimental_openUrl` owns HTTP(S) only and returns false for schemes BB
+  leaves to normal anchor behavior.
 - `useComposer()` → programmatic access to the chat composer draft (the
   same one the built-in "Add to chat" affordances write to):
   `text` is the current plain text; `setText(next)` replaces it;
@@ -2224,6 +2234,7 @@ const slot = renderSlot(
     settings: { greeting: "hi" }, // useSettings() values
     context: { projectId: "p1", threadId: null }, // useBbContext()
     realtimeConnectionState: "reconnecting", // useRealtimeConnectionState()
+    openUrl: (url) => url.startsWith("https://"),
   },
 );
 await slot.findByText("…"); // Testing Library queries

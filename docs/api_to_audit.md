@@ -49,6 +49,30 @@ enum, and that ACP's shared bridge can continue distinguishing built-in and
 custom agents without exposing provider-specific launch or installation
 details to clients.
 
+## URL navigation (`experimental_UrlLink` and `BbNavigate.experimental_openUrl`)
+
+**What it does.** Gives plugin UI the same semantic HTTP(S) opening path as
+first-party UI. Ordinary activation respects the current client's in-app
+browser preference and capability; app routes remain SPA navigation, modifier
+clicks and explicit anchor targets remain native, and unsupported schemes are
+left to the browser. The imperative method returns whether the current app
+accepted the intent. The frontend harness records link and imperative calls
+through the same navigation inspection log.
+
+**Audit before stabilizing.**
+
+1. Confirm HTTP(S)-only ownership and external fallback across desktop, web,
+   remote clients, and windows whose current surface cannot host Browser.
+2. Audit internal absolute and relative routes, fragments, modifier clicks,
+   keyboard activation, explicit targets, copied hrefs, and accessible names.
+3. Confirm the component should retain ordinary anchor props rather than a
+   smaller styled-link contract, and that explicit `target` continues to mean
+   native browser behavior rather than BB preference routing.
+4. Measure use across plugin pages, Settings sections, panel tabs, Markdown,
+   and menus before stabilizing the boolean acceptance contract.
+5. Keep the host implementation in the shell and verify plugin bundles contain
+   only the runtime indirection, not BB browser or panel code.
+
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 
 **What it does.** Lets one plugin package declare a singular `bb.host` Node

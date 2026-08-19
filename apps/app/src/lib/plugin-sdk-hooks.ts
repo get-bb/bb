@@ -52,6 +52,7 @@ import { useRouteState } from "@/hooks/useRouteState";
 import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { wsManager } from "@/lib/ws";
 import { pluginSdkSettingsQueryKey } from "@/hooks/queries/query-keys";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
 
 /**
  * Host implementations of the `@get-bb/plugin-sdk/app` hooks (plugin design
@@ -277,6 +278,7 @@ export function useBbNavigate(): BbNavigate {
   const location = useLocation();
   const openThreadPanelHandler = usePluginThreadPanelOpenHandler();
   const navigate = useNavigate();
+  const appNavigation = useAppNavigationHost();
   const toThread = useCallback(
     (threadId: string) => {
       // The canonical thread path carries the owning project, which the
@@ -334,6 +336,10 @@ export function useBbNavigate(): BbNavigate {
     (options) => openThreadPanelHandler?.({ ...options, pluginId }) ?? false,
     [openThreadPanelHandler, pluginId],
   );
+  const experimental_openUrl = useCallback<BbNavigate["experimental_openUrl"]>(
+    (url) => appNavigation.openUrl({ url }),
+    [appNavigation],
+  );
   return useMemo(
     () => ({
       toThread,
@@ -341,8 +347,16 @@ export function useBbNavigate(): BbNavigate {
       toPluginPanel,
       toCompose,
       openThreadPanel,
+      experimental_openUrl,
     }),
-    [toThread, toProject, toPluginPanel, toCompose, openThreadPanel],
+    [
+      toThread,
+      toProject,
+      toPluginPanel,
+      toCompose,
+      openThreadPanel,
+      experimental_openUrl,
+    ],
   );
 }
 
