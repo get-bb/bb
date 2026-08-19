@@ -21,6 +21,15 @@ import {
   type Modifier,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
+import {
+  getMediaQuerySnapshot,
+  subscribeMediaQuery,
+} from "@bb/shared-ui/hooks/use-media-query";
+import {
+  isCompactSidebarDrawerShowing,
+  subscribeCompactSidebarDrawerShowing,
+} from "@/components/ui/sidebar-mobile-drawer-visibility.js";
 import {
   useDragClickSuppression,
   type ConsumeDragClickSuppression,
@@ -98,6 +107,66 @@ interface UseSidebarReorderDndResult {
   onClickCapture: MouseEventHandler<HTMLElement>;
 }
 
+function shouldInstallSidebarTouchMoveListener(): boolean {
+  return (
+    !getMediaQuerySnapshot(COMPACT_VIEWPORT_QUERY) ||
+    isCompactSidebarDrawerShowing()
+  );
+}
+
+/**
+ * dnd-kit's `TouchSensor` with drawer-aware setup.
+ *
+ * `TouchSensor.setup()` registers a permanent NON-passive window `touchmove`
+ * no-op for as long as any `DndContext` using it is mounted; dnd-kit needs it
+ * so a `preventDefault` from a listener added mid-gesture still works on iOS
+ * Safari. The compact sidebar is mounted at boot inside its closed drawer, so
+ * on phones that listener used to exist on every page, and iOS Safari and
+ * Chrome Android then dispatched the first `touchmove` of EVERY scroll gesture
+ * synchronously through the main thread before compositor scrolling could
+ * start. This subclass installs the same listener only while the compact
+ * drawer is showing (touch reorder keeps working there) and always on wide
+ * layouts. It tracks the drawer through a tiny external store instead of the
+ * sidebar context, so no memoized row re-renders on drawer toggles.
+ */
+export class SidebarTouchSensor extends TouchSensor {
+  static override setup(): () => void {
+    if (typeof window === "undefined") {
+      return () => {};
+    }
+    const noop = () => {};
+    let installed = false;
+    const sync = () => {
+      const wanted = shouldInstallSidebarTouchMoveListener();
+      if (wanted && !installed) {
+        // Non-passive and non-capturing, exactly as dnd-kit installs it.
+        window.addEventListener("touchmove", noop, {
+          capture: false,
+          passive: false,
+        });
+        installed = true;
+      } else if (!wanted && installed) {
+        window.removeEventListener("touchmove", noop);
+        installed = false;
+      }
+    };
+    sync();
+    const unsubscribeDrawer = subscribeCompactSidebarDrawerShowing(sync);
+    const unsubscribeViewport = subscribeMediaQuery(
+      COMPACT_VIEWPORT_QUERY,
+      sync,
+    );
+    return () => {
+      unsubscribeDrawer();
+      unsubscribeViewport();
+      if (installed) {
+        window.removeEventListener("touchmove", noop);
+        installed = false;
+      }
+    };
+  }
+}
+
 /**
  * Container-side reorder plumbing shared by every sortable sidebar surface
  * (sections, projects, pinned roots, parent-thread roots): the activation-tuned
@@ -119,7 +188,7 @@ export function useSidebarReorderDnd({
   const isDraggingRef = useRef(false);
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, {
+    useSensor(SidebarTouchSensor, {
       activationConstraint: { delay: 200, tolerance: 6 },
     }),
     useSensor(KeyboardSensor, {

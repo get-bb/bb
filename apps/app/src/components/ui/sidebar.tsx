@@ -15,11 +15,17 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
+import { setCompactSidebarDrawerShowing } from "./sidebar-mobile-drawer-visibility.js";
 
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "min(90vw, 320px)";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX = 24;
+// Touches that start inside this band from the left edge get the scroll-
+// blocking (non-passive) touch path so a horizontal swipe can claim the
+// gesture from the browser; touches deeper in the content still open the
+// drawer, but through a passive listener that never delays a scroll start.
+const SIDEBAR_MOBILE_SWIPE_OPEN_EDGE_ZONE_PX = 72;
 const SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX = 12;
 const SIDEBAR_MOBILE_SWIPE_OPEN_RATIO = 0.33;
 const SIDEBAR_MOBILE_SWIPE_OPEN_FLING_MIN_RATIO = 0.12;
@@ -72,6 +78,13 @@ type SidebarInsetSwipeSession = {
   isDragging: boolean;
   selectionRoot: Element | null;
   startTarget: Element | null;
+  /**
+   * Whether the move listener for this session was registered non-passive,
+   * so `preventDefault` can stop the browser from scrolling once the swipe
+   * has horizontal intent. Passive sessions must not call it (the browser
+   * ignores it and Chrome logs an intervention warning).
+   */
+  canPreventDefault: boolean;
 };
 
 const sidebarMobileWidthStyle: SidebarMobileWidthStyle = {
@@ -179,6 +192,7 @@ function createSidebarInsetSwipeSession({
   startY,
   selectionRoot,
   startTarget,
+  canPreventDefault,
 }: {
   kind: "pointer" | "touch";
   id: number;
@@ -186,6 +200,7 @@ function createSidebarInsetSwipeSession({
   startY: number;
   selectionRoot: Element | null;
   startTarget: Element | null;
+  canPreventDefault: boolean;
 }): SidebarInsetSwipeSession {
   const nowMs = Date.now();
   return {
@@ -201,7 +216,20 @@ function createSidebarInsetSwipeSession({
     isDragging: false,
     selectionRoot,
     startTarget,
+    canPreventDefault,
   };
+}
+
+/**
+ * Whether a content-area touch swipe may register the scroll-blocking touch
+ * path. Only touches near the left edge (past the browser's own back-swipe
+ * guard) get it; see SIDEBAR_MOBILE_SWIPE_OPEN_EDGE_ZONE_PX.
+ */
+function isSidebarSwipeEdgeZoneTouch(clientX: number): boolean {
+  return (
+    clientX >= SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX &&
+    clientX < SIDEBAR_MOBILE_SWIPE_OPEN_EDGE_ZONE_PX
+  );
 }
 
 function shouldOpenSidebarMobileSwipe(
@@ -548,6 +576,15 @@ const SidebarProvider = React.forwardRef<
     React.useEffect(() => {
       openMobileRef.current = openMobile;
     }, [openMobile]);
+
+    // Publish drawer visibility for non-React readers (see
+    // sidebar-mobile-drawer-visibility.ts) without widening the context.
+    React.useEffect(() => {
+      setCompactSidebarDrawerShowing(isCompactViewport && openMobile);
+      return () => {
+        setCompactSidebarDrawerShowing(false);
+      };
+    }, [isCompactViewport, openMobile]);
 
     // Stable identity: sidebar rows close the drawer on navigation, and an
     // unstable callback would re-render every memoized row on each toggle.
@@ -1738,7 +1775,7 @@ const SidebarInset = React.forwardRef<
         });
       }
 
-      if (event.cancelable) {
+      if (session.canPreventDefault && event.cancelable) {
         event.preventDefault();
       }
 
@@ -1878,6 +1915,13 @@ const SidebarInset = React.forwardRef<
         clearSwipeSession();
       }
 
+      // Only an edge-zone touch may take the non-passive path. A touch that
+      // starts deeper in the timeline is almost always a scroll; registering
+      // a non-passive `touchmove` for it made iOS Safari and Chrome Android
+      // dispatch that scroll's first move synchronously through the main
+      // thread, which under streaming load delayed every scroll start. The
+      // deep touch keeps its swipe recognizer, but on a passive listener.
+      const canPreventDefault = isSidebarSwipeEdgeZoneTouch(touch.clientX);
       swipeSessionRef.current = createSidebarInsetSwipeSession({
         kind: "touch",
         id: touch.identifier,
@@ -1885,6 +1929,7 @@ const SidebarInset = React.forwardRef<
         startY: touch.clientY,
         selectionRoot: getSidebarSwipeSelectionRoot(event.target),
         startTarget: event.target instanceof Element ? event.target : null,
+        canPreventDefault,
       });
 
       const removeListeners = () => {
@@ -1893,7 +1938,7 @@ const SidebarInset = React.forwardRef<
         window.removeEventListener("touchcancel", handleTouchEnd);
       };
       window.addEventListener("touchmove", handleTouchMove, {
-        passive: false,
+        passive: !canPreventDefault,
       });
       window.addEventListener("touchend", handleTouchEnd);
       window.addEventListener("touchcancel", handleTouchEnd);
@@ -1931,6 +1976,8 @@ const SidebarInset = React.forwardRef<
         startY: event.clientY,
         selectionRoot: getSidebarSwipeSelectionRoot(event.target),
         startTarget: event.target instanceof Element ? event.target : null,
+        // `pointermove` is never scroll-blocking, so preventDefault is free.
+        canPreventDefault: true,
       });
 
       const removeListeners = () => {

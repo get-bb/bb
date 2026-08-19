@@ -571,6 +571,60 @@ describe("mobile sidebar persistence", () => {
   });
 });
 
+describe("mobile sidebar swipe-open touch listener scoping", () => {
+  function touchMoveRegistrations(spy: {
+    mock: { calls: readonly (readonly unknown[])[] };
+  }) {
+    return spy.mock.calls.filter(([type]) => type === "touchmove");
+  }
+
+  it("registers a passive touchmove for touches that start deep in the content", () => {
+    renderSelectableSwipeHarness();
+    const prose = screen.getByText("Selectable message prose");
+    const addSpy = vi.spyOn(window, "addEventListener");
+
+    // Deeper than the edge zone: this is a scroll far more often than a
+    // swipe, so it must never make the browser wait on the main thread.
+    fireTouch(prose, "touchstart", createTouch(120, 160));
+
+    const registrations = touchMoveRegistrations(addSpy);
+    expect(registrations).toHaveLength(1);
+    expect(registrations[0]?.[2]).toEqual({ passive: true });
+
+    // The passive session still recognizes and completes the swipe.
+    const move = new Event("touchmove", { bubbles: true, cancelable: true });
+    Object.defineProperties(move, {
+      touches: { value: createTouchList(createTouch(260, 164)) },
+      changedTouches: { value: createTouchList(createTouch(260, 164)) },
+    });
+    fireEvent(window, move);
+    expect(getMobilePanel()?.dataset.state).toBe("open");
+    // ... without calling preventDefault from the passive listener.
+    expect(move.defaultPrevented).toBe(false);
+  });
+
+  it("keeps the non-passive touchmove for edge-zone touches so the swipe can claim the gesture", () => {
+    renderSelectableSwipeHarness();
+    const prose = screen.getByText("Selectable message prose");
+    const addSpy = vi.spyOn(window, "addEventListener");
+
+    fireTouch(prose, "touchstart", createTouch(40, 160));
+
+    const registrations = touchMoveRegistrations(addSpy);
+    expect(registrations).toHaveLength(1);
+    expect(registrations[0]?.[2]).toEqual({ passive: false });
+
+    const move = new Event("touchmove", { bubbles: true, cancelable: true });
+    Object.defineProperties(move, {
+      touches: { value: createTouchList(createTouch(180, 164)) },
+      changedTouches: { value: createTouchList(createTouch(180, 164)) },
+    });
+    fireEvent(window, move);
+    expect(getMobilePanel()?.dataset.state).toBe("open");
+    expect(move.defaultPrevented).toBe(true);
+  });
+});
+
 describe("mobile sidebar text-selection arbitration", () => {
   it("opens from a right swipe that starts over selectable message prose", () => {
     renderSelectableSwipeHarness();

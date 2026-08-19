@@ -761,6 +761,7 @@ export function ThreadSecondaryPanel({
                 fileTabs={visibleFileTabs}
                 onReorderTab={onFileTabReorder}
                 usesDesktopChrome={usesDesktopChrome}
+                isPanelOpen={isOpen}
                 activeTreatment="fill"
               />
             ) : null}

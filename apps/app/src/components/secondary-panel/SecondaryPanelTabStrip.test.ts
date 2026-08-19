@@ -56,6 +56,7 @@ describe("secondary panel tab-strip edge fades", () => {
         ],
         onReorderTab: vi.fn(),
         usesDesktopChrome: false,
+        isPanelOpen: true,
       }),
     );
 

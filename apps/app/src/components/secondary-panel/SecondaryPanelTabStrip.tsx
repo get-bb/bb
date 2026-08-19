@@ -77,6 +77,13 @@ export interface SecondaryPanelTabStripProps {
   fileTabs: SecondaryPanelFileTab[];
   onReorderTab: SecondaryPanelTabReorderHandler;
   usesDesktopChrome: boolean;
+  /**
+   * Whether the hosting panel is open. The strip stays mounted inside a closed
+   * (retained) panel; touch reorder is only wired while it is open so the
+   * dnd-kit touch sensor's scroll-blocking window listener does not exist on
+   * every page.
+   */
+  isPanelOpen: boolean;
   activeTreatment?: "fill" | "underline";
 }
 
@@ -101,6 +108,7 @@ export function SecondaryPanelTabStrip({
   fileTabs,
   onReorderTab,
   usesDesktopChrome,
+  isPanelOpen,
   activeTreatment = "fill",
 }: SecondaryPanelTabStripProps) {
   const stripRef = useRef<HTMLDivElement>(null);
@@ -126,14 +134,23 @@ export function SecondaryPanelTabStrip({
     clearDragClickSuppressionSoon,
     consumeDragClickSuppression,
   } = useDragClickSuppression();
+  const dragDisabled = fileTabs.length < 2;
+  const mouseSensor = useSensor(MouseSensor, {
+    activationConstraint: { distance: 4 },
+  });
+  const touchSensor = useSensor(TouchSensor, {
+    activationConstraint: { delay: 200, tolerance: 6 },
+  });
+  // dnd-kit's TouchSensor keeps a NON-passive window `touchmove` listener
+  // installed while any DndContext using it is mounted, which makes every
+  // scroll start on phones wait for the main thread. Only wire it while there
+  // is something to reorder in an open panel; `useSensors` drops null entries
+  // and DndContext re-runs sensor setup when the list changes.
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 6 },
-    }),
+    mouseSensor,
+    isPanelOpen && !dragDisabled ? touchSensor : null,
   );
   const tabIds = useMemo(() => fileTabs.map((tab) => tab.id), [fileTabs]);
-  const dragDisabled = fileTabs.length < 2;
   const draggingTab =
     draggingTabId === null
       ? null
