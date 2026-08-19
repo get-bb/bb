@@ -24,11 +24,14 @@ import {
 export function ToolsSidebar({
   appRoutePath,
   isResizing,
+  mobileHosted,
   onResizeMouseDown,
   showTopReserve,
 }: {
   appRoutePath: string;
   isResizing: boolean;
+  /** Render the body only, inside a compact drawer panel owned by the caller. */
+  mobileHosted?: boolean;
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   showTopReserve: boolean;
 }) {
@@ -40,6 +43,7 @@ export function ToolsSidebar({
       backLabel="Back to app"
       backTo={appRoutePath}
       isResizing={isResizing}
+      mobileHosted={mobileHosted}
       onResizeMouseDown={onResizeMouseDown}
       showTopReserve={showTopReserve}
       testIdPrefix="tools"

@@ -21,6 +21,8 @@ interface SettingsSidebarProps {
   isResizing: boolean;
   showTopReserve: boolean;
   appRoutePath: string;
+  /** Render the body only, inside a compact drawer panel owned by the caller. */
+  mobileHosted?: boolean;
 }
 
 /** Focused Settings navigation using the shared section-sidebar shell. */
@@ -29,6 +31,7 @@ export function SettingsSidebar({
   isResizing,
   showTopReserve,
   appRoutePath,
+  mobileHosted,
 }: SettingsSidebarProps) {
   const {
     activePluginId,
@@ -44,6 +47,7 @@ export function SettingsSidebar({
       backLabel="Back to app"
       backTo={appRoutePath}
       isResizing={isResizing}
+      mobileHosted={mobileHosted}
       onResizeMouseDown={onResizeMouseDown}
       showTopReserve={showTopReserve}
       testIdPrefix="settings"

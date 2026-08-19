@@ -77,12 +77,20 @@ export function SectionSidebarLabel({ children }: { children: ReactNode }) {
   );
 }
 
-/** Shared shell for focused app sections such as Settings and Tools. */
+/**
+ * Shared shell for focused app sections such as Settings and Tools.
+ *
+ * `mobileHosted` renders the body without its own `<Sidebar>` shell: on
+ * compact viewports AppLayoutSidebar owns one persistent drawer panel and
+ * hosts this body inside it, so switching between the app sidebar and a
+ * section sidebar never remounts the panel or the app sidebar's thread list.
+ */
 export function SectionSidebar({
   backLabel,
   backTo,
   children,
   isResizing,
+  mobileHosted = false,
   onResizeMouseDown,
   showTopReserve,
   testIdPrefix,
@@ -91,6 +99,7 @@ export function SectionSidebar({
   backTo: string;
   children: ReactNode;
   isResizing: boolean;
+  mobileHosted?: boolean;
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   showTopReserve: boolean;
   testIdPrefix: string;
@@ -99,8 +108,8 @@ export function SectionSidebar({
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
 
-  return (
-    <Sidebar>
+  const body = (
+    <>
       {showTopReserve ? (
         <div
           data-testid={`${testIdPrefix}-sidebar-top-reserve-row`}
@@ -141,6 +150,19 @@ export function SectionSidebar({
         )}
         onMouseDown={onResizeMouseDown}
       />
-    </Sidebar>
+    </>
   );
+
+  if (mobileHosted) {
+    return (
+      <div
+        data-testid={`${testIdPrefix}-sidebar-body`}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        {body}
+      </div>
+    );
+  }
+
+  return <Sidebar>{body}</Sidebar>;
 }
