@@ -61,6 +61,8 @@ import {
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+  SIDEBAR_PAIRED_ACTION_LEADING_TARGET_CLASS,
+  SIDEBAR_PAIRED_ACTION_TRAILING_TARGET_CLASS,
   SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
@@ -840,6 +842,7 @@ function ThreadRowComponent({
                     // Tighter than two full margins: a half step between the
                     // two glyphs reads as one control group.
                     "-mr-0.5",
+                    SIDEBAR_PAIRED_ACTION_LEADING_TARGET_CLASS,
                   )}
                 />
                 <ThreadActionsMenu
@@ -847,6 +850,7 @@ function ThreadRowComponent({
                   triggerClassName={cn(
                     "text-subtle-foreground hover:bg-transparent hover:text-foreground",
                     SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+                    SIDEBAR_PAIRED_ACTION_TRAILING_TARGET_CLASS,
                   )}
                   onOpenInSplit={splitAvailable ? openInSplit : undefined}
                   onOpenChange={setIsDropdownActionsOpen}

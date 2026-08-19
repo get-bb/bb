@@ -67,8 +67,7 @@ export const SIDEBAR_ROW_INTERACTIVE_STATE_CLASS =
 export const SIDEBAR_ROW_STATIC_STATE_CLASS =
   "text-sidebar-foreground/85 dark:text-sidebar-foreground";
 
-export const SIDEBAR_ROW_SELECTED_STATE_CLASS =
-  `${CONTEXT_SELECTION_SURFACE_CLASS} bb-sidebar-selected-row text-sidebar-foreground`;
+export const SIDEBAR_ROW_SELECTED_STATE_CLASS = `${CONTEXT_SELECTION_SURFACE_CLASS} bb-sidebar-selected-row text-sidebar-foreground`;
 
 /**
  * A quieter marker for a thread that is open in an unfocused split pane.
@@ -80,6 +79,19 @@ export const SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS =
 
 export const SIDEBAR_MORE_ACTION_TRIGGER_CLASS =
   "relative m-1 h-5 w-5 after:absolute after:left-1/2 after:top-1/2 after:h-7 after:w-7 after:-translate-x-1/2 after:-translate-y-1/2 after:content-[''] max-md:pointer-coarse:m-0 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:after:hidden";
+
+/**
+ * When two `SIDEBAR_MORE_ACTION_TRIGGER_CLASS` buttons sit side by side, their
+ * centered 28px pseudo-targets would overlap and the later sibling would win
+ * clicks aimed at the earlier one. These variants re-anchor each target to
+ * stretch 4px outward but stop 1px short of the shared edge (the midpoint of
+ * a 2px gap), so every point between the glyphs belongs to exactly one button.
+ */
+export const SIDEBAR_PAIRED_ACTION_LEADING_TARGET_CLASS =
+  "after:-left-1 after:-right-px after:w-auto after:translate-x-0";
+
+export const SIDEBAR_PAIRED_ACTION_TRAILING_TARGET_CLASS =
+  "after:-left-px after:-right-1 after:w-auto after:translate-x-0";
 
 /**
  * Hairline that runs through an expanded project's thread list, sitting
