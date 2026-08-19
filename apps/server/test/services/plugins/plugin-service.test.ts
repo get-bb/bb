@@ -644,10 +644,15 @@ describe("plugin service", () => {
       appVersion: "0.9.0",
       loadTimeoutMs: 2000,
     });
-    const rootDir = await writePlugin(workDir, {
-      name: "bb-plugin-tracked",
-      serverSource: `export default function plugin() {}`,
-    });
+    // This test exercises repeated lifecycle transitions, not TypeScript
+    // transpilation. Use a native ESM fixture so full-suite CPU contention
+    // does not spend most of the lifecycle test's budget in jiti transforms.
+    const rootDir = join(workDir, "bb-plugin-tracked");
+    await writeEsmPlugin(rootDir, "tracked");
+    await writeFile(
+      join(rootDir, "server.js"),
+      "export default function plugin() {}\n",
+    );
     await tracked.installPath(rootDir);
     // A direct install may point at private code, so it reports no id.
     expect(captured).toEqual([
@@ -669,7 +674,7 @@ describe("plugin service", () => {
     await tracked.start();
     expect(captured).toHaveLength(1);
     await tracked.stop();
-  });
+  }, 15_000);
 
   it("hides names of plugins from third-party catalogs in the install event", () => {
     // A local or private marketplace can name internal code, so only the
