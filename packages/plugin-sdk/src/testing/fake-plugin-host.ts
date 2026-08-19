@@ -888,13 +888,14 @@ function createFakePluginHostInternal(
   const storageRoot = persistentState.storageRoot;
 
   // One shared temp-file handle: every database() call sees the same data,
-  // like the host's handles over one on-disk file.
+  // like the host's handles over one on-disk file. Like the host, a handle
+  // the plugin closed itself is replaced on the next call.
   let databaseHandle: Database.Database | undefined;
   const storage: PluginStorage = {
     kv,
     database() {
       assertLive();
-      if (!databaseHandle) {
+      if (!databaseHandle?.open) {
         databaseHandle = new Database(join(storageRoot, "data.db"));
         databaseHandle.pragma("busy_timeout = 5000");
       }

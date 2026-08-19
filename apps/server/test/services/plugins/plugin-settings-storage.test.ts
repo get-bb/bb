@@ -8,7 +8,8 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { platform, tmpdir } from "node:os";
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -421,12 +422,19 @@ describe("plugin settings + storage", () => {
         serverSource: `
           export default function plugin(bb: any) {
             const g = globalThis as any;
-            g.__chatty = { handles: [] as unknown[] };
+            g.__chatty = { handles: [] as unknown[], reopened: [] as unknown[] };
             for (let i = 0; i < ${CALLS}; i++) {
               const db = bb.storage.database();
               db.prepare("SELECT 1").get();
               g.__chatty.handles.push(db);
             }
+            // A plugin that closes the handle itself gets a fresh one next.
+            for (let i = 0; i < 3; i++) {
+              const db = bb.storage.database();
+              db.close();
+              g.__chatty.reopened.push(db);
+            }
+            g.__chatty.final = bb.storage.database();
           }
         `,
       });
@@ -435,11 +443,22 @@ describe("plugin settings + storage", () => {
 
       const state = (globalThis as Record<string, unknown>).__chatty as {
         handles: unknown[];
+        reopened: unknown[];
+        final: { open: boolean; prepare(sql: string): { get(): unknown } };
       };
       expect(state.handles).toHaveLength(CALLS);
       expect(new Set(state.handles).size).toBe(1);
+      // The first close round closes the shared handle; every later call
+      // vends a new handle, never a closed one: 1 shared + 2 reopened + final.
+      expect(
+        new Set([...state.handles, ...state.reopened, state.final]).size,
+      ).toBe(4);
+      expect(state.final.open).toBe(true);
+      expect(state.final.prepare("SELECT 1 AS one").get()).toEqual({ one: 1 });
 
-      if (platform() === "linux") {
+      // procfs is Linux-only and not always mounted; the identity assertion
+      // above already covers the regression without it.
+      if (existsSync("/proc/self/fd")) {
         const dbFile = join(dataDir, "plugins", "chatty", "data.db");
         expect(await countOpenFdsFor(dbFile)).toBeLessThanOrEqual(1);
       }

@@ -603,6 +603,12 @@ export function createPluginApi(options: {
     database() {
       assertLive();
       if (databaseHandle?.open) return databaseHandle;
+      if (databaseHandle) {
+        // The plugin closed it; drop the dead wrapper so repeated
+        // close-and-reopen calls do not grow the list until dispose.
+        const index = databaseHandles.indexOf(databaseHandle);
+        if (index !== -1) databaseHandles.splice(index, 1);
+      }
       const dir = join(dataDir, "plugins", pluginId);
       mkdirSync(dir, { recursive: true });
       const database = new Database(join(dir, "data.db"));

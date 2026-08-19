@@ -194,6 +194,22 @@ describe("storage", () => {
     const rows = again.prepare("SELECT body, starred FROM notes").all();
     expect(rows).toEqual([{ body: "hello", starred: 0 }]);
   });
+
+  it("database() replaces a handle the plugin closed itself, like the host", () => {
+    const { bb } = createFakePluginHost();
+    const db = bb.storage.database();
+    db.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)");
+    db.prepare("INSERT INTO notes (body) VALUES (?)").run("hello");
+    db.close();
+
+    const reopened = bb.storage.database();
+    expect(reopened).not.toBe(db);
+    expect(reopened.open).toBe(true);
+    expect(reopened.prepare("SELECT body FROM notes").all()).toEqual([
+      { body: "hello" },
+    ]);
+    expect(bb.storage.database()).toBe(reopened);
+  });
 });
 
 describe("settings", () => {
