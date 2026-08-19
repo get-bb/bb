@@ -21,6 +21,7 @@ import {
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredConversationOutlineEventRows,
   listStoredEventRows,
+  listStoredEventRowsByParentToolCallIds,
   pruneContextWindowUsageEventsBeforeSequence,
   pruneResolvedItemDeltas,
 } from "../src/data/events.js";
@@ -262,6 +263,7 @@ describe("slow query index plans", () => {
         scope: turnScope(turnId),
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         data: JSON.stringify({ providerThreadId: "provider-plan" }),
       },
       {
@@ -271,6 +273,7 @@ describe("slow query index plans", () => {
         scope: turnScope(turnId),
         itemId,
         itemKind: "agentMessage",
+        parentToolCallId: null,
         data: JSON.stringify({
           providerThreadId: "provider-plan",
           item: { type: "agentMessage", id: itemId, text: "done" },
@@ -288,6 +291,7 @@ describe("slow query index plans", () => {
             scope: turnScope(turnId),
             itemId,
             itemKind: "agentMessage",
+            parentToolCallId: null,
             providerThreadId: "provider-plan",
             data: JSON.stringify({
               providerThreadId: "provider-plan",
@@ -346,6 +350,30 @@ describe("slow query index plans", () => {
     });
     expect(details).toMatch(
       /SEARCH parent_event .*USING COVERING INDEX events_tool_call_parent_lookup_idx/u,
+    );
+
+    db.$client.close();
+  });
+
+  it("loads parented timeline rows through the normalized parent index", () => {
+    const { db, thread } = setup();
+
+    const [query] = captureStatements(db, () => {
+      expect(
+        listStoredEventRowsByParentToolCallIds(db, {
+          maxInlineOutputChars: null,
+          parentToolCallIds: ["parent-tool-call"],
+          threadId: thread.id,
+        }),
+      ).toEqual([]);
+    });
+    if (!query) {
+      throw new Error("Expected the parented timeline row lookup SQL");
+    }
+    expect(
+      queryPlanDetails({ db, params: query.params, sql: query.sql }),
+    ).toMatch(
+      /SEARCH events USING INDEX events_parent_tool_call_thread_parent_sequence_idx/u,
     );
 
     db.$client.close();
@@ -574,6 +602,7 @@ describe("slow query index plans", () => {
         }),
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         scope: turnScope("turn_query_plan"),
         sequence: 1,
         threadId: thread.id,
@@ -588,6 +617,7 @@ describe("slow query index plans", () => {
         }),
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         scope: turnScope("turn_query_plan"),
         sequence: 2,
         threadId: thread.id,
@@ -597,6 +627,7 @@ describe("slow query index plans", () => {
         data: "{}",
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         scope: threadScope(),
         sequence: 3,
         threadId: thread.id,
@@ -723,6 +754,7 @@ describe("slow query index plans", () => {
         }),
         itemId: "cmd-truncation-query-plan",
         itemKind: "commandExecution",
+        parentToolCallId: null,
         scope: turnScope("turn_truncation_query_plan"),
         sequence: 1,
         threadId: thread.id,
@@ -770,6 +802,7 @@ describe("slow query index plans", () => {
         data: JSON.stringify({ output: "first", parentToolCallId: "parent" }),
         itemId,
         itemKind: null,
+        parentToolCallId: "parent",
         scope: turnScope(turnId),
         sequence: 1,
         threadId: thread.id,
@@ -779,6 +812,7 @@ describe("slow query index plans", () => {
         data: JSON.stringify({ output: "second", parentToolCallId: "parent" }),
         itemId,
         itemKind: null,
+        parentToolCallId: "parent",
         scope: turnScope(turnId),
         sequence: 2,
         threadId: thread.id,
@@ -795,6 +829,7 @@ describe("slow query index plans", () => {
         }),
         itemId,
         itemKind: "commandExecution",
+        parentToolCallId: "parent",
         scope: turnScope(turnId),
         sequence: 3,
         threadId: thread.id,
@@ -854,6 +889,7 @@ describe("slow query index plans", () => {
         data: JSON.stringify({ goal: "guard the query plan" }),
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         scope: threadScope(),
         sequence: 1,
         threadId: thread.id,

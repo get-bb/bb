@@ -142,6 +142,7 @@ function seedTurns(
       scope: threadScope(),
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({
         direction: "outbound",
         source: "tell",
@@ -160,6 +161,7 @@ function seedTurns(
       providerThreadId,
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({}),
     });
     push({
@@ -168,6 +170,7 @@ function seedTurns(
       providerThreadId,
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({ clientRequestId }),
     });
 
@@ -178,6 +181,7 @@ function seedTurns(
         providerThreadId,
         itemId: BACKGROUND_TASK_ITEM_ID,
         itemKind: "backgroundTask",
+        parentToolCallId: null,
         data: backgroundTaskData("pending"),
       });
       if (options.backgroundTask === "completed") {
@@ -187,6 +191,7 @@ function seedTurns(
           providerThreadId,
           itemId: BACKGROUND_TASK_ITEM_ID,
           itemKind: "backgroundTask",
+          parentToolCallId: null,
           data: backgroundTaskData("completed"),
         });
       }
@@ -201,6 +206,7 @@ function seedTurns(
         providerThreadId,
         itemId: parentToolCallId,
         itemKind: "toolCall",
+        parentToolCallId: null,
         data: JSON.stringify({
           item: {
             type: "toolCall",
@@ -229,6 +235,7 @@ function seedTurns(
         providerThreadId,
         itemId,
         itemKind: "commandExecution",
+        parentToolCallId,
         data: JSON.stringify({
           item: {
             type: "commandExecution",
@@ -258,6 +265,7 @@ function seedTurns(
           // deriveStoredEventItemFieldsFromSource); seeding a kind here would
           // exercise a row shape production can never write.
           itemKind: null,
+          parentToolCallId: null,
           data: JSON.stringify({
             threadId: thread.id,
             providerThreadId,
@@ -272,6 +280,7 @@ function seedTurns(
         providerThreadId,
         itemId,
         itemKind: "commandExecution",
+        parentToolCallId,
         data: JSON.stringify({
           item: {
             type: "commandExecution",
@@ -298,6 +307,7 @@ function seedTurns(
         providerThreadId,
         itemId,
         itemKind: "commandExecution",
+        parentToolCallId,
         data: JSON.stringify({
           item: {
             type: "commandExecution",
@@ -327,6 +337,7 @@ function seedTurns(
         providerThreadId,
         itemId: parentToolCallId,
         itemKind: "toolCall",
+        parentToolCallId: null,
         data: JSON.stringify({
           item: {
             type: "toolCall",
@@ -347,6 +358,7 @@ function seedTurns(
         providerThreadId,
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         data: JSON.stringify({ status: "completed", providerThreadId }),
       });
     }
@@ -376,6 +388,7 @@ function appendCommandItems(
       providerThreadId,
       itemId,
       itemKind: "commandExecution",
+      parentToolCallId: null,
       data: JSON.stringify({
         item: {
           type: "commandExecution",
@@ -393,6 +406,7 @@ function appendCommandItems(
       providerThreadId,
       itemId,
       itemKind: "commandExecution",
+      parentToolCallId: null,
       data: JSON.stringify({
         item: {
           type: "commandExecution",
@@ -552,6 +566,7 @@ describe("in-turn timeline windows", () => {
         providerThreadId,
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         data: JSON.stringify({ status: "completed", providerThreadId }),
       },
     ]);
@@ -806,6 +821,7 @@ describe("in-turn timeline windows", () => {
         scope: threadScope(),
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         data: JSON.stringify({
           message: "x".repeat(THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT),
         }),
@@ -981,6 +997,7 @@ describe("timeline segment anchors", () => {
         scope: threadScope(),
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         data: JSON.stringify({
           direction: "outbound",
           source: "tell",
@@ -1001,6 +1018,7 @@ describe("timeline segment anchors", () => {
         providerThreadId,
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         data: JSON.stringify({}),
       },
     ]);
@@ -1028,6 +1046,7 @@ describe("timeline window event exclusions", () => {
         providerThreadId,
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         data: JSON.stringify({ diff: "x".repeat(50_000) }),
       },
     ]);
@@ -1056,6 +1075,7 @@ describe("timeline inline output reads", () => {
         providerThreadId,
         itemId: "big-item",
         itemKind: "commandExecution",
+        parentToolCallId: null,
         data: JSON.stringify({
           item: {
             type: "commandExecution",
@@ -1203,6 +1223,7 @@ describe("in-turn windows and items that only stream", () => {
               providerThreadId,
               itemId,
               itemKind: "agentMessage",
+              parentToolCallId: null,
               data: JSON.stringify({
                 item: { type: "agentMessage", id: itemId, text: "" },
                 providerThreadId,
@@ -1221,6 +1242,7 @@ describe("in-turn windows and items that only stream", () => {
           providerThreadId,
           itemId,
           itemKind: null,
+          parentToolCallId: null,
           data: JSON.stringify({
             delta,
             itemId,
@@ -1252,6 +1274,7 @@ describe("in-turn windows and items that only stream", () => {
           providerThreadId,
           itemId,
           itemKind: null,
+          parentToolCallId: null,
           data: JSON.stringify({
             delta,
             itemId,

@@ -70,6 +70,7 @@ function insertCrossWindowSubagentEvents(
       scope: threadScope(),
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({
         direction: "outbound",
         source: "spawn",
@@ -90,6 +91,7 @@ function insertCrossWindowSubagentEvents(
       providerThreadId,
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({}),
     },
     {
@@ -100,6 +102,7 @@ function insertCrossWindowSubagentEvents(
       providerThreadId,
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({ clientRequestId: firstRequestId }),
     },
     {
@@ -110,6 +113,7 @@ function insertCrossWindowSubagentEvents(
       providerThreadId,
       itemId: "toolu_agent_1",
       itemKind: "toolCall",
+      parentToolCallId: null,
       data: JSON.stringify({
         item: {
           type: "toolCall",
@@ -131,6 +135,7 @@ function insertCrossWindowSubagentEvents(
       providerThreadId,
       itemId: "toolu_agent_1",
       itemKind: "toolCall",
+      parentToolCallId: null,
       data: JSON.stringify({
         item: {
           type: "toolCall",
@@ -152,6 +157,7 @@ function insertCrossWindowSubagentEvents(
       scope: threadScope(),
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({
         direction: "outbound",
         source: "tell",
@@ -172,6 +178,7 @@ function insertCrossWindowSubagentEvents(
       providerThreadId,
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({}),
     },
     {
@@ -182,6 +189,7 @@ function insertCrossWindowSubagentEvents(
       providerThreadId,
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({ clientRequestId: secondRequestId }),
     },
     {
@@ -192,6 +200,7 @@ function insertCrossWindowSubagentEvents(
       providerThreadId,
       itemId: "middle-message",
       itemKind: "agentMessage",
+      parentToolCallId: null,
       data: JSON.stringify({
         item: {
           type: "agentMessage",
@@ -207,6 +216,7 @@ function insertCrossWindowSubagentEvents(
       scope: threadScope(),
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({
         direction: "outbound",
         source: "tell",
@@ -227,6 +237,7 @@ function insertCrossWindowSubagentEvents(
       providerThreadId,
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({}),
     },
     {
@@ -237,6 +248,7 @@ function insertCrossWindowSubagentEvents(
       providerThreadId,
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({ clientRequestId: thirdRequestId }),
     },
     {
@@ -247,6 +259,7 @@ function insertCrossWindowSubagentEvents(
       providerThreadId,
       itemId: "newest-message",
       itemKind: "agentMessage",
+      parentToolCallId: null,
       data: JSON.stringify({
         item: {
           type: "agentMessage",
@@ -263,6 +276,7 @@ function insertCrossWindowSubagentEvents(
       providerThreadId,
       itemId: null,
       itemKind: null,
+      parentToolCallId: "toolu_agent_1",
       data: JSON.stringify({ parentToolCallId: "toolu_agent_1" }),
     },
     {
@@ -273,6 +287,7 @@ function insertCrossWindowSubagentEvents(
       providerThreadId,
       itemId: "child-message",
       itemKind: "agentMessage",
+      parentToolCallId: "toolu_agent_1",
       data: JSON.stringify({
         item: {
           type: "agentMessage",

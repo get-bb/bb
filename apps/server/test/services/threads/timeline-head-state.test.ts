@@ -70,6 +70,7 @@ function seedThreadWithEarlyHeadState(
       scope: threadScope(),
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({
         direction: "outbound",
         source: "tell",
@@ -90,6 +91,7 @@ function seedThreadWithEarlyHeadState(
       providerThreadId,
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({}),
     });
     events.push({
@@ -100,6 +102,7 @@ function seedThreadWithEarlyHeadState(
       providerThreadId,
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({ clientRequestId }),
     });
 
@@ -111,6 +114,7 @@ function seedThreadWithEarlyHeadState(
         scope: threadScope(),
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         data: JSON.stringify({
           threadId: thread.id,
           providerThreadId,
@@ -129,6 +133,7 @@ function seedThreadWithEarlyHeadState(
         providerThreadId,
         itemId: "todo-1",
         itemKind: "toolCall",
+        parentToolCallId: null,
         data: JSON.stringify({
           item: {
             type: "toolCall",
@@ -158,6 +163,7 @@ function seedThreadWithEarlyHeadState(
         providerThreadId,
         itemId: "wf-1",
         itemKind: "backgroundTask",
+        parentToolCallId: null,
         data: JSON.stringify({
           providerThreadId,
           item: {
@@ -184,6 +190,7 @@ function seedThreadWithEarlyHeadState(
         providerThreadId,
         itemId: `${turnId}-item-${item}`,
         itemKind: "agentMessage",
+        parentToolCallId: null,
         data: JSON.stringify({
           item: {
             type: "agentMessage",
@@ -251,6 +258,7 @@ describe("timeline head state under a budgeted window", () => {
       scope: threadScope(),
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({
         direction: "outbound",
         source: "tell",

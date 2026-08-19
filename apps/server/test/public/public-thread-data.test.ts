@@ -1537,6 +1537,7 @@ describe("public thread data routes", () => {
           type: "turn/started",
           itemId: null,
           itemKind: null,
+          parentToolCallId: null,
           data: JSON.stringify({}),
         });
         push({
@@ -1545,6 +1546,7 @@ describe("public thread data routes", () => {
           type: "item/started",
           itemId: parentToolCallId,
           itemKind: "toolCall",
+          parentToolCallId: null,
           data: JSON.stringify({
             item: {
               type: "toolCall",
@@ -1564,6 +1566,7 @@ describe("public thread data routes", () => {
             type: "item/started",
             itemId,
             itemKind: "commandExecution",
+            parentToolCallId,
             data: JSON.stringify({
               item: {
                 type: "commandExecution",
@@ -1582,6 +1585,7 @@ describe("public thread data routes", () => {
             type: "item/completed",
             itemId,
             itemKind: "commandExecution",
+            parentToolCallId,
             data: JSON.stringify({
               item: {
                 type: "commandExecution",
@@ -1603,6 +1607,7 @@ describe("public thread data routes", () => {
           type: "item/completed",
           itemId: parentToolCallId,
           itemKind: "toolCall",
+          parentToolCallId: null,
           data: JSON.stringify({
             item: {
               type: "toolCall",
@@ -1620,6 +1625,7 @@ describe("public thread data routes", () => {
           type: "turn/completed",
           itemId: null,
           itemKind: null,
+          parentToolCallId: null,
           data: JSON.stringify({ status: "completed", providerThreadId }),
         });
         insertEvents(harness.deps.db, harness.deps.hub, eventInputs);

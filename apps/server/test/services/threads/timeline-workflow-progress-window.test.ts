@@ -128,6 +128,7 @@ function seedWorkflowThread(
     scope: threadScope(),
     itemId: null,
     itemKind: null,
+    parentToolCallId: null,
     data: JSON.stringify({
       direction: "outbound",
       source: "tell",
@@ -146,6 +147,7 @@ function seedWorkflowThread(
     providerThreadId,
     itemId: null,
     itemKind: null,
+    parentToolCallId: null,
     data: JSON.stringify({}),
   });
   push({
@@ -154,6 +156,7 @@ function seedWorkflowThread(
     providerThreadId,
     itemId: null,
     itemKind: null,
+    parentToolCallId: null,
     data: JSON.stringify({ clientRequestId }),
   });
   push({
@@ -162,6 +165,7 @@ function seedWorkflowThread(
     providerThreadId,
     itemId: WORKFLOW_CALL_ID,
     itemKind: "toolCall",
+    parentToolCallId: null,
     data: JSON.stringify({
       providerThreadId,
       item: {
@@ -179,6 +183,7 @@ function seedWorkflowThread(
     providerThreadId,
     itemId: WORKFLOW_TASK_ID,
     itemKind: "backgroundTask",
+    parentToolCallId: WORKFLOW_CALL_ID,
     data: workflowTaskData({ status: "pending", padding: 0 }),
   });
   push({
@@ -187,6 +192,7 @@ function seedWorkflowThread(
     providerThreadId,
     itemId: WORKFLOW_CALL_ID,
     itemKind: "toolCall",
+    parentToolCallId: null,
     data: JSON.stringify({
       providerThreadId,
       item: {
@@ -205,6 +211,7 @@ function seedWorkflowThread(
     providerThreadId,
     itemId: "assistant-1",
     itemKind: "agentMessage",
+    parentToolCallId: null,
     data: JSON.stringify({
       providerThreadId,
       item: {
@@ -221,6 +228,7 @@ function seedWorkflowThread(
     providerThreadId,
     itemId: null,
     itemKind: null,
+    parentToolCallId: null,
     data: JSON.stringify({ status: "completed", providerThreadId }),
   });
   push({
@@ -229,6 +237,7 @@ function seedWorkflowThread(
     providerThreadId,
     itemId: null,
     itemKind: null,
+    parentToolCallId: null,
     data: JSON.stringify({}),
   });
   for (let index = 0; index < (options.pendingTurnItems ?? 0); index += 1) {
@@ -240,6 +249,7 @@ function seedWorkflowThread(
       providerThreadId,
       itemId,
       itemKind: "commandExecution",
+      parentToolCallId: null,
       data: JSON.stringify({
         item: {
           type: "commandExecution",
@@ -257,6 +267,7 @@ function seedWorkflowThread(
       providerThreadId,
       itemId,
       itemKind: "commandExecution",
+      parentToolCallId: null,
       data: JSON.stringify({
         item: {
           type: "commandExecution",
@@ -278,6 +289,7 @@ function seedWorkflowThread(
       providerThreadId,
       itemId: WORKFLOW_TASK_ID,
       itemKind: "backgroundTask",
+      parentToolCallId: WORKFLOW_CALL_ID,
       data: workflowTaskData({ status: "pending", padding: SNAPSHOT_BYTES }),
     });
   }

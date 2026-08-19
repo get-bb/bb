@@ -404,41 +404,11 @@ function mergeStoredEventRowsById(
   );
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function parseStoredEventData(row: StoredEventRow): Record<string, unknown> {
-  return asRecord(JSON.parse(row.data)) ?? {};
-}
-
-const PARENT_TOOL_CALL_ID_JSON_KEY = '"parentToolCallId"';
-
 function getStoredEventParentToolCallId(
   row: StoredEventRow,
 ): string | undefined {
-  // Persisted event JSON is produced by JSON.stringify, so an event that can
-  // carry parent context always contains this exact property key. Most events
-  // do not. Avoid decoding every row once here and then again for projection.
-  if (!row.data.includes(PARENT_TOOL_CALL_ID_JSON_KEY)) {
-    return undefined;
-  }
-  const data = parseStoredEventData(row);
-  const item = asRecord(data.item);
-  const itemParentToolCallId = item?.parentToolCallId;
-  if (
-    typeof itemParentToolCallId === "string" &&
-    itemParentToolCallId.length > 0
-  ) {
-    return itemParentToolCallId;
-  }
-
-  const eventParentToolCallId = data.parentToolCallId;
-  return typeof eventParentToolCallId === "string" &&
-    eventParentToolCallId.length > 0
-    ? eventParentToolCallId
+  return row.parentToolCallId !== null && row.parentToolCallId.length > 0
+    ? row.parentToolCallId
     : undefined;
 }
 

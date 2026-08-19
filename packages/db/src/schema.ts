@@ -737,6 +737,7 @@ export const events = sqliteTable(
     type: text("type").$type<ThreadEventType>().notNull(),
     itemId: text("item_id"),
     itemKind: text("item_kind").$type<ThreadEventItemType>(),
+    parentToolCallId: text("parent_tool_call_id"),
     data: text("data").notNull().default("{}"),
     createdAt: integer("created_at").notNull(),
   },
@@ -752,6 +753,9 @@ export const events = sqliteTable(
     index("events_tool_call_parent_lookup_idx")
       .on(table.threadId, table.itemId, table.sequence)
       .where(sql`${table.itemKind} = 'toolCall'`),
+    index("events_parent_tool_call_thread_parent_sequence_idx")
+      .on(table.threadId, table.parentToolCallId, table.sequence)
+      .where(sql`${table.parentToolCallId} IS NOT NULL`),
     index("events_thread_type_item_kind_sequence_idx").on(
       table.threadId,
       table.type,

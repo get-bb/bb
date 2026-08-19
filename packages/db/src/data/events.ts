@@ -103,14 +103,14 @@ function queryInSqliteVariableBatches<TValue, TRow>(
   return rows;
 }
 
-const isRootTurnStartedEventData = sql`COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '') = ''`;
+const isRootTurnStartedEventData = isNull(events.parentToolCallId);
 const isNotNestedTurnUsageEvent = sql`NOT EXISTS (
   SELECT 1
   FROM events AS nested_turn_started
   WHERE nested_turn_started.thread_id = ${events.threadId}
     AND nested_turn_started.turn_id = ${events.turnId}
     AND nested_turn_started.type = 'turn/started'
-    AND COALESCE(json_extract(nested_turn_started.data, '$.parentToolCallId'), '') <> ''
+    AND nested_turn_started.parent_tool_call_id IS NOT NULL
 )`;
 
 /**
@@ -144,6 +144,7 @@ export interface InsertEventInput {
   type: ThreadEventType;
   itemId: string | null;
   itemKind: ThreadEventItemType | null;
+  parentToolCallId: string | null;
   createdAt?: number;
   data: string;
 }
@@ -158,6 +159,7 @@ export interface AppendDaemonEventInput {
   environmentId: string | null;
   itemId: string | null;
   itemKind: ThreadEventItemType | null;
+  parentToolCallId: string | null;
   providerThreadId: string | null;
   scope: ThreadEventScope;
   threadId: string;
@@ -407,8 +409,8 @@ export function insertEvents(
     const createdAt = input.createdAt ?? Date.now();
     const turnId = getThreadEventScopeTurnId(input.scope) ?? null;
     const result = db.run(
-      sql`INSERT OR IGNORE INTO events (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, data, created_at)
-          VALUES (${id}, ${input.threadId}, ${input.environmentId ?? null}, ${input.scope.kind}, ${turnId}, ${input.providerThreadId ?? null}, ${input.sequence}, ${input.type}, ${input.itemId}, ${input.itemKind}, ${input.data}, ${createdAt})`,
+      sql`INSERT OR IGNORE INTO events (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, parent_tool_call_id, data, created_at)
+          VALUES (${id}, ${input.threadId}, ${input.environmentId ?? null}, ${input.scope.kind}, ${turnId}, ${input.providerThreadId ?? null}, ${input.sequence}, ${input.type}, ${input.itemId}, ${input.itemKind}, ${input.parentToolCallId}, ${input.data}, ${createdAt})`,
     );
     if (result.changes > 0) {
       insertedCount++;
@@ -735,7 +737,7 @@ export function appendDaemonEventsInTransaction(
     }
     db.run(
       sql`INSERT INTO events
-        (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, data, created_at)
+        (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, parent_tool_call_id, data, created_at)
         VALUES (
           ${createEventId()},
           ${input.threadId},
@@ -747,6 +749,7 @@ export function appendDaemonEventsInTransaction(
           ${input.type},
           ${input.itemId},
           ${input.itemKind},
+          ${input.parentToolCallId},
           ${input.data},
           ${now}
         )`,
@@ -829,12 +832,16 @@ export function appendStoredThreadEventsInTransaction(
       type: args.type,
       item: "item" in args.data ? args.data.item : undefined,
       itemId: "itemId" in args.data ? args.data.itemId : undefined,
+      parentToolCallId:
+        "parentToolCallId" in args.data
+          ? args.data.parentToolCallId
+          : undefined,
     });
     const turnId = getThreadEventScopeTurnId(args.scope) ?? null;
 
     db.run(
       sql`INSERT INTO events
-        (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, data, created_at)
+        (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, parent_tool_call_id, data, created_at)
         VALUES (
           ${createEventId()},
           ${args.threadId},
@@ -846,6 +853,7 @@ export function appendStoredThreadEventsInTransaction(
           ${args.type},
           ${itemFields.itemId},
           ${itemFields.itemKind},
+          ${itemFields.parentToolCallId},
           ${JSON.stringify(args.data)},
           ${now}
         )`,
@@ -941,6 +949,7 @@ const storedEventRowFields = {
   id: events.id,
   itemId: events.itemId,
   itemKind: events.itemKind,
+  parentToolCallId: events.parentToolCallId,
   providerThreadId: events.providerThreadId,
   scopeKind: events.scopeKind,
   sequence: events.sequence,
@@ -1534,19 +1543,10 @@ function storedEventRowsByParentToolCallIdsConditions(
     return null;
   }
 
-  const eventParentToolCallId = sql<string>`json_extract(${events.data}, '$.parentToolCallId')`;
-  const itemParentToolCallId = sql<string>`json_extract(${events.data}, '$.item.parentToolCallId')`;
-  // The snapshot check goes before the JSON parent tests: it is a type
-  // comparison for most rows and an indexed probe for progress rows, while
-  // each `json_extract` parses the whole payload — hundreds of KB for a
-  // workflow snapshot. SQLite evaluates these terms in order.
   const conditions: SQL[] = [
     eq(events.threadId, args.threadId),
     isNotSupersededBackgroundTaskProgress,
-    or(
-      inArray(eventParentToolCallId, parentToolCallIds),
-      inArray(itemParentToolCallId, parentToolCallIds),
-    )!,
+    inArray(events.parentToolCallId, parentToolCallIds),
   ];
   if (args.excludedTypes && args.excludedTypes.length > 0) {
     conditions.push(notInArray(events.type, [...args.excludedTypes]));
@@ -2706,10 +2706,6 @@ export function hasParentedEventCrossingSequence(
   db: DbConnection,
   args: TimelineTurnBoundaryLookupArgs,
 ): boolean {
-  const parentToolCallId = sql<string | null>`COALESCE(
-    NULLIF(json_extract(${events.data}, '$.item.parentToolCallId'), ''),
-    NULLIF(json_extract(${events.data}, '$.parentToolCallId'), '')
-  )`;
   const row = db
     .select({ sequence: events.sequence })
     .from(events)
@@ -2717,12 +2713,12 @@ export function hasParentedEventCrossingSequence(
       and(
         eq(events.threadId, args.threadId),
         gte(events.sequence, args.sequence),
-        sql`${parentToolCallId} IS NOT NULL`,
+        isNotNull(events.parentToolCallId),
         sql`EXISTS (
           SELECT 1
           FROM events AS parent_event
           WHERE parent_event.thread_id = ${events.threadId}
-            AND parent_event.item_id = ${parentToolCallId}
+            AND parent_event.item_id = ${events.parentToolCallId}
             AND parent_event.item_kind = 'toolCall'
             AND parent_event.sequence < ${args.sequence}
         )`,

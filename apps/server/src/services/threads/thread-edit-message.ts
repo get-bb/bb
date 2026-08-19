@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, desc, eq, lt, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import {
   deleteThreadEventSuffixInTransaction,
   events,
@@ -242,7 +242,7 @@ function resolveEditableTurnCandidate(
         eq(events.threadId, thread.id),
         eq(events.type, "turn/started"),
         lt(events.sequence, requestRow.sequence),
-        sql`COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '') = ''`,
+        isNull(events.parentToolCallId),
       ),
     )
     .orderBy(desc(events.sequence))

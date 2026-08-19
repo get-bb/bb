@@ -130,6 +130,7 @@ describe("thread search data", () => {
           scope: threadScope(),
           itemId: null,
           itemKind: null,
+          parentToolCallId: null,
           data: JSON.stringify(
             turnRequestData([
               textInput("visiblebackfill"),
@@ -144,6 +145,7 @@ describe("thread search data", () => {
           scope: turnScope("turn-1"),
           itemId: "msg-1",
           itemKind: "agentMessage",
+          parentToolCallId: null,
           data: JSON.stringify({
             item: {
               id: "msg-1",
@@ -159,6 +161,7 @@ describe("thread search data", () => {
           scope: threadScope(),
           itemId: null,
           itemKind: null,
+          parentToolCallId: null,
           data: JSON.stringify({ text: "legacybackfill" }),
         },
       ]);

@@ -144,6 +144,11 @@ interface MigratedEventDataRow {
   data: string;
 }
 
+interface MigratedEventParentRow {
+  id: string;
+  parentToolCallId: string | null;
+}
+
 interface MigratedExperimentRow {
   key: string;
   updatedAt: number;
@@ -305,6 +310,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS plugin_catalog").run();
   db.$client.prepare("DROP TABLE IF EXISTS marketplaces").run();
   dropMarketplaceCatalogSchema(db);
+  dropEventParentToolCallIdColumn(db);
   db.$client.prepare("DROP TABLE IF EXISTS plugins").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
@@ -406,6 +412,7 @@ const queuedMessageGroupingMigrationWhen = 1782273194188;
 const pendingInteractionsMigrationWhen = 1783626227375;
 const permissionModesMigrationWhen = 1784311522462;
 const branchLocalThreadTabsMigrationWhen = 1783633750817;
+const eventParentToolCallMigrationWhen = 1787181956957;
 const eventLargeValuesPreOptimizationHash =
   "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f";
 const queuedMessageSortKeyMigrationPath = resolve(
@@ -671,6 +678,20 @@ function dropMarketplaceCatalogSchema(db: DbConnection): void {
   }
 }
 
+function dropEventParentToolCallIdColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(events)")
+    .all();
+  if (columns.some((column) => column.name === "parent_tool_call_id")) {
+    db.$client.exec(
+      "DROP INDEX IF EXISTS events_parent_tool_call_thread_parent_sequence_idx",
+    );
+    db.$client
+      .prepare("ALTER TABLE events DROP COLUMN parent_tool_call_id")
+      .run();
+  }
+}
+
 function dropEnvironmentNameColumn(db: DbConnection): void {
   db.$client.prepare("ALTER TABLE environments DROP COLUMN name").run();
 }
@@ -763,6 +784,7 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 
 /** Tables created by migrations after 0023, dropped so migrate() re-applies. */
 function dropPost0023Tables(db: DbConnection): void {
+  dropEventParentToolCallIdColumn(db);
   dropEnvironmentRetireRequestedAtColumn(db);
   dropPluginArtifactGitCheckoutRootColumn(db);
   dropProjectGitRemoteUrlColumn(db);
@@ -1672,6 +1694,7 @@ describe("migrate", () => {
     dropEnvironmentRetireRequestedAtColumn(db);
     dropPluginArtifactGitCheckoutRootColumn(db);
     dropMarketplaceCatalogSchema(db);
+    dropEventParentToolCallIdColumn(db);
     // Delete by the journal timestamp, not a hash substring: migration hashes
     // are hex and can contain "0085" by coincidence.
     db.$client
@@ -1966,6 +1989,7 @@ describe("migrate", () => {
       dropEnvironmentRetireRequestedAtColumn(db);
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
+      dropEventParentToolCallIdColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       migrate(db);
@@ -2369,6 +2393,7 @@ describe("migrate", () => {
       dropEnvironmentRetireRequestedAtColumn(db);
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
+      dropEventParentToolCallIdColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(
@@ -2469,6 +2494,7 @@ describe("migrate", () => {
       dropEnvironmentRetireRequestedAtColumn(db);
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
+      dropEventParentToolCallIdColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(() => migrate(db)).not.toThrow();
@@ -3999,6 +4025,7 @@ describe("migrate", () => {
         "item_kind",
         "data",
         "created_at",
+        "parent_tool_call_id",
       ]);
       const eventIndexNames = readIndexNames({
         db,
@@ -4010,6 +4037,7 @@ describe("migrate", () => {
         "events_environment_idx",
         "events_goal_thread_sequence_idx",
         "events_item_lifecycle_thread_item_sequence_idx",
+        "events_parent_tool_call_thread_parent_sequence_idx",
         "events_thread_sequence_idx",
         "events_thread_turn_type_item_sequence_idx",
         "events_thread_type_item_kind_sequence_idx",
@@ -5006,6 +5034,102 @@ describe("migrate", () => {
           { id: legacyOriginSideChat.id, visibility: "hidden" },
           { id: fork.id, visibility: "visible" },
         ].sort((left, right) => left.id.localeCompare(right.id)),
+      );
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("backfills normalized parent tool-call ids from legacy event payloads", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      const host = upsertHost(db, noopNotifier, {
+        name: "event-parent-migration-host",
+        type: "persistent",
+      });
+      const { project } = createProject(db, noopNotifier, {
+        name: "event-parent-migration-project",
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/event-parent-migration",
+        },
+      });
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+
+      dropEventParentToolCallIdColumn(db);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
+        )
+        .run(eventParentToolCallMigrationWhen);
+      db.$client.exec(`
+        INSERT INTO events (
+          id, thread_id, scope_kind, turn_id, sequence, type, item_id, item_kind, data, created_at
+        ) VALUES
+          (
+            'evt_top_level_parent',
+            '${thread.id}',
+            'turn',
+            'legacy-turn',
+            1,
+            'turn/started',
+            NULL,
+            NULL,
+            '{"parentToolCallId":"parent-top-level"}',
+            1
+          ),
+          (
+            'evt_item_parent',
+            '${thread.id}',
+            'turn',
+            'legacy-turn',
+            2,
+            'item/completed',
+            'child-message',
+            'agentMessage',
+            '{"item":{"id":"child-message","type":"agentMessage","parentToolCallId":"parent-item"}}',
+            2
+          ),
+          (
+            'evt_no_parent',
+            '${thread.id}',
+            'thread',
+            NULL,
+            3,
+            'system/error',
+            NULL,
+            NULL,
+            '{"message":"parentToolCallId is only text here"}',
+            3
+          );
+      `);
+
+      migrate(db);
+
+      expect(
+        db.$client
+          .prepare<[], MigratedEventParentRow>(
+            `
+              SELECT id, parent_tool_call_id AS parentToolCallId
+              FROM events
+              WHERE id LIKE 'evt_%_parent'
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ).toEqual([
+        { id: "evt_item_parent", parentToolCallId: "parent-item" },
+        { id: "evt_no_parent", parentToolCallId: null },
+        { id: "evt_top_level_parent", parentToolCallId: "parent-top-level" },
+      ]);
+      expect(readIndexNames({ db, tableName: "events" })).toContain(
+        "events_parent_tool_call_thread_parent_sequence_idx",
       );
     } finally {
       closeConnection(db);

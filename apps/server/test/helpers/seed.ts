@@ -55,6 +55,7 @@ export interface SeedStoredEventArgs {
   environmentId?: string | null;
   itemId?: string | null;
   itemKind?: ThreadEventItemType | null;
+  parentToolCallId?: string | null;
   providerThreadId?: string | null;
   scope: ThreadEventScope;
   sequence: number;
@@ -392,6 +393,7 @@ export function seedStoredEvent(
       type: args.type,
       itemId: args.itemId ?? null,
       itemKind: args.itemKind ?? null,
+      parentToolCallId: args.parentToolCallId ?? null,
       data: JSON.stringify(args.data),
     },
   ]);

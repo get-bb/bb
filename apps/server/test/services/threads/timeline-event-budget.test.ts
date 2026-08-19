@@ -76,6 +76,7 @@ function insertTurns(
       scope: threadScope(),
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({
         direction: "outbound",
         source: "tell",
@@ -97,6 +98,7 @@ function insertTurns(
       providerThreadId,
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({}),
     });
     sequence += 1;
@@ -108,6 +110,7 @@ function insertTurns(
       providerThreadId,
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({ clientRequestId }),
     });
     const items =
@@ -124,6 +127,7 @@ function insertTurns(
         providerThreadId,
         itemId: `${turnId}-item-${item}`,
         itemKind: "agentMessage",
+        parentToolCallId: null,
         data: JSON.stringify({
           item: {
             type: "agentMessage",
@@ -168,6 +172,7 @@ function insertTurnsWithReusedFileChangeItemId(
       scope: threadScope(),
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({
         direction: "outbound",
         source: "tell",
@@ -187,6 +192,7 @@ function insertTurnsWithReusedFileChangeItemId(
       providerThreadId,
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({}),
     });
     push({
@@ -196,6 +202,7 @@ function insertTurnsWithReusedFileChangeItemId(
       providerThreadId,
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
       data: JSON.stringify({ clientRequestId }),
     });
     for (let item = 0; item < fillerItemsPerTurn; item += 1) {
@@ -206,6 +213,7 @@ function insertTurnsWithReusedFileChangeItemId(
         providerThreadId,
         itemId: `${turnId}-item-${item}`,
         itemKind: "agentMessage",
+        parentToolCallId: null,
         data: JSON.stringify({
           item: {
             type: "agentMessage",
@@ -230,6 +238,7 @@ function insertTurnsWithReusedFileChangeItemId(
         providerThreadId,
         itemId: reusedItemId,
         itemKind: "fileChange",
+        parentToolCallId: null,
         data: JSON.stringify({
           item: {
             type: "fileChange",
