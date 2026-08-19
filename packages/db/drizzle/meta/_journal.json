@@ -715,6 +715,13 @@
       "when": 1787108435805,
       "tag": "0101_thread_search_prefix_fts",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "6",
+      "when": 1787163393338,
+      "tag": "0102_app_settings_key_value",
+      "breakpoints": true
     }
   ]
 }

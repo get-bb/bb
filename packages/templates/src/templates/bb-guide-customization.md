@@ -90,12 +90,16 @@ inserts a newline. iPadOS WebKit preserves these Enter shortcuts for a connected
 Magic Keyboard.
 
   bb settings show
-  bb settings general <key> <true|false>
+  bb settings general <key> <value>
   bb settings replay-onboarding
   bb settings experiment <key> <value>
   bb settings usage [--machine <id-or-name>]
   bb settings version [--force]
   bb settings reload
+
+`bb settings general` accepts any key from `generalSettings` in
+`bb settings show`. Boolean preferences take `true`, `false`, `on`, or `off`,
+and `null` clears a preference that can be unset.
 
 `bb settings replay-onboarding` enables the `newOnboarding` experiment and
 clears `onboardingCompletedAt`. The first-run setup guide then shows again on

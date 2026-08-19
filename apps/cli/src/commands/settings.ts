@@ -54,24 +54,42 @@ function parseShortcut(value: string): AppShortcut {
   });
 }
 
+/** Command-line values are text; `true`/`false`/`on`/`off`/`null` name themselves. */
+function parseGeneralSettingValue(value: string): boolean | string | null {
+  if (value === "true" || value === "on") return true;
+  if (value === "false" || value === "off") return false;
+  if (value === "null") return null;
+  return value;
+}
+
+/**
+ * Keys and value shapes both come from `appSettingsSchema`, so a preference
+ * added to `@bb/domain` is settable here with no change to this command.
+ */
 function updateGeneralSetting(
   settings: AppSettings,
   key: string,
-  value: boolean,
+  value: string,
 ): AppSettings {
-  switch (key) {
-    case "showKeyboardHints":
-    case "steerActiveThreadOnEnter":
-    case "showUnhandledProviderEvents":
-    case "codexMemoryEnabled":
-    case "claudeCodeMemoryEnabled":
-    case "codexSubagentsDisabled":
-    case "claudeCodeSubagentsDisabled":
-    case "claudeCodeWorkflowsDisabled":
-      return appSettingsSchema.parse({ ...settings, [key]: value });
-    default:
-      throw new Error(`Unknown general setting '${key}'.`);
+  const settingKey = appSettingsSchema.keyof().safeParse(key);
+  if (!settingKey.success) {
+    throw new Error(
+      `Unknown general setting '${key}'. Known settings: ${appSettingsSchema
+        .keyof()
+        .options.join(", ")}.`,
+    );
   }
+
+  const updated = appSettingsSchema.safeParse({
+    ...settings,
+    [settingKey.data]: parseGeneralSettingValue(value),
+  });
+  if (!updated.success) {
+    throw new Error(
+      `Invalid value '${value}' for '${settingKey.data}'. Booleans take true, false, on, or off; use null to clear a nullable setting.`,
+    );
+  }
+  return updated.data;
 }
 
 function updateExperiment(
@@ -112,18 +130,14 @@ export function registerSettingsCommands(
 
   settings
     .command("general <key> <value>")
-    .description("Set a boolean Settings → General preference")
+    .description("Set a Settings → General preference")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (key: string, value: string, opts: JsonOptions) => {
         const sdk = createCliBbSdk(getUrl());
         const config = await sdk.system.config();
         const result = await sdk.system.updateGeneralSettings(
-          updateGeneralSetting(
-            config.generalSettings,
-            key,
-            parseBoolean(value),
-          ),
+          updateGeneralSetting(config.generalSettings, key, value),
         );
         if (outputJson(opts, result)) return;
         console.log(`${key} updated`);
@@ -185,7 +199,7 @@ export function registerSettingsCommands(
           updateGeneralSetting(
             config.generalSettings,
             "showKeyboardHints",
-            parseBoolean(value),
+            value,
           ),
         );
         if (outputJson(opts, result)) return;

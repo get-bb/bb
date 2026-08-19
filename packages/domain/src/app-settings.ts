@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+// Adding a preference here plus its default below is the whole change: values
+// persist as key/value rows, the route and SDK carry the object as a whole,
+// and `bb settings general` takes its keys from this schema. Only the UI
+// control that exposes it is left.
 /**
  * App-wide server-backed preferences.
  * Client-local settings stay in the frontend localStorage helpers instead.

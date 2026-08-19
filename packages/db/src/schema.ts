@@ -151,10 +151,25 @@ export const systemExperiments = sqliteTable("system_experiments", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+// App-wide preferences: one row per `AppSettings` key, values as JSON text.
+// Key/value so a new preference costs a `@bb/domain` entry and nothing else —
+// no column, no migration, no snapshot churn. `appSettingsSchema` validates
+// each value on read, per key, so one bad row cannot reset the rest.
+// Settings → Keyboard overrides ride along under the `keybindingOverrides`
+// key; they are app settings with their own domain schema.
+export const appSettingsValues = sqliteTable("app_settings_values", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+// Superseded by `app_settings_values`, which holds every live preference.
+// Retained (unread by product code) so `seedKeepAwakePluginConfiguration` can
+// still drain `caffeinate` for installs upgrading from before the Keep Awake
+// plugin, and so a downgraded build reads stale settings instead of erroring
+// on missing columns. Drop the whole table with that seed step.
 export const appSettings = sqliteTable("app_settings", {
   id: text("id").primaryKey(),
-  // Retained internally until the Keep Awake plugin migration has shipped
-  // long enough to remove the legacy preference safely.
   caffeinate: integer("caffeinate", { mode: "boolean" })
     .notNull()
     .default(false),

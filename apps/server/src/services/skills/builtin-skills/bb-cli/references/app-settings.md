@@ -3,6 +3,15 @@
 Server-backed preferences in Settings. They are persisted on the server, so
 every window and client sees the same value.
 
+## Setting values
+
+- `bb settings general <key> <value>` accepts any key listed under
+  `generalSettings` in `bb settings show`. Boolean preferences take `true`,
+  `false`, `on`, or `off`; `null` clears a preference that can be unset, such
+  as `onboardingCompletedAt`.
+- Unknown keys and values of the wrong shape are rejected; the error names the
+  keys bb knows.
+
 ## Keyboard shortcuts
 
 - `showKeyboardHints` defaults to true. Set it with
