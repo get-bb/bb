@@ -362,4 +362,42 @@ describe("MessageActionBar", () => {
 
     expect(onFork).toHaveBeenCalledTimes(1);
   });
+  it("skips the desktop tooltip trees on touch phones", () => {
+    mockMobileCoarsePointer();
+    render(
+      <MessageActionBar
+        messageText="The latest answer."
+        alignment="start"
+        mobileActionDisplay="inline"
+        onAddToChat={vi.fn()}
+        onFork={vi.fn()}
+      />,
+    );
+
+    // Radix TooltipTrigger stamps `data-state` on its child; the mobile branch
+    // must render plain buttons (no tooltip tree per action).
+    const fork = screen.getByRole("button", { name: "Fork into new thread" });
+    expect(fork.hasAttribute("data-state")).toBe(false);
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Copy message", "Add to chat", "Fork into new thread"]);
+    expect(
+      screen.queryByRole("button", { name: "Message actions" }),
+    ).toBeNull();
+  });
+
+  it("mounts the tooltip bar on fine-pointer viewports", () => {
+    render(
+      <MessageActionBar
+        messageText="The latest answer."
+        alignment="start"
+        mobileActionDisplay="inline"
+        onFork={vi.fn()}
+      />,
+    );
+    const fork = screen.getByRole("button", { name: "Fork into new thread" });
+    expect(fork.getAttribute("data-state")).toBe("closed");
+  });
 });
