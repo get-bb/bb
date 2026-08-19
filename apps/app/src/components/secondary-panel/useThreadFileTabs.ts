@@ -94,9 +94,24 @@ export interface UpdateBrowserTabArgs {
 }
 
 export type OpenSecondaryPanelTabRequest =
-  | { kind: "workspace-file-preview"; tab: WorkspaceFileTabState }
-  | { kind: "host-file-preview"; tab: HostFileTabState }
-  | { kind: "thread-storage-file-preview"; tab: ThreadStorageFileTabState }
+  | {
+      kind: "workspace-file-preview";
+      tab: WorkspaceFileTabState;
+      /** Explicit identity; omission preserves the surface-context adapter. */
+      environmentId?: string;
+    }
+  | {
+      kind: "host-file-preview";
+      tab: HostFileTabState;
+      /** Explicit identity; omission preserves the thread-context adapter. */
+      hostId?: string;
+    }
+  | {
+      kind: "thread-storage-file-preview";
+      tab: ThreadStorageFileTabState;
+      /** Explicit identity; omission preserves the thread-context adapter. */
+      threadId?: string;
+    }
   | { kind: "browser"; url: string }
   | { kind: "new-tab" };
 
@@ -152,13 +167,28 @@ function createTabForOpenRequest({
 }: CreateTabForOpenRequestArgs): SecondaryPanelTab | null {
   switch (request.kind) {
     case "workspace-file-preview":
-      if (resolvedEnvironmentId === undefined) return null;
+      if (
+        request.environmentId === undefined &&
+        resolvedEnvironmentId === undefined
+      ) {
+        return null;
+      }
+      const workspaceEnvironmentId =
+        request.environmentId ?? resolvedEnvironmentId ?? null;
       return createWorkspaceFilePreviewFixedPanelTab({
-        environmentId: resolvedEnvironmentId,
-        projectId: resolvedEnvironmentId === null ? projectId : null,
+        environmentId: workspaceEnvironmentId,
+        projectId: workspaceEnvironmentId === null ? projectId : null,
         tab: request.tab,
       });
     case "host-file-preview":
+      if (request.hostId !== undefined) {
+        return createHostFilePreviewFixedPanelTab({
+          environmentId: null,
+          hostId: request.hostId,
+          tab: request.tab,
+          threadId: null,
+        });
+      }
       if (!threadId || !resolvedEnvironmentId) return null;
       return createHostFilePreviewFixedPanelTab({
         environmentId: resolvedEnvironmentId,
@@ -166,11 +196,12 @@ function createTabForOpenRequest({
         threadId,
       });
     case "thread-storage-file-preview":
-      if (!threadId) return null;
+      const storageThreadId = request.threadId ?? threadId;
+      if (!storageThreadId) return null;
       return createStorageTab(
         resolvedEnvironmentId ?? null,
         request.tab,
-        threadId,
+        storageThreadId,
       );
     case "browser":
       return createBrowserFixedPanelTab({
@@ -277,6 +308,7 @@ export function useThreadFileTabs({
         ) {
           nextTab = createHostFilePreviewFixedPanelTab({
             environmentId: resolvedEnvironmentId,
+            hostId: tab.hostId,
             tab: {
               lineRange: tab.lineRange,
               path: tab.path,
@@ -651,6 +683,11 @@ export function useThreadFileTabs({
       activeHostFileTab?.environmentId ??
       (activeFileOpenerOwner?.kind === "host-file-preview"
         ? activeFileOpenerOwner.environmentId
+        : null),
+    activeHostFileHostId:
+      activeHostFileTab?.hostId ??
+      (activeFileOpenerOwner?.kind === "host-file-preview"
+        ? activeFileOpenerOwner.hostId
         : null),
     activeHostFileLineRange:
       activeHostFileTab?.lineRange ??

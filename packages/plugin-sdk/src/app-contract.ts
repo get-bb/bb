@@ -1571,6 +1571,32 @@ export interface ExperimentalUrlLinkProps extends Omit<
   href: string;
 }
 
+/** A live file whose identity is complete without ambient route context. */
+export type ExperimentalLiveFileTarget =
+  | { kind: "workspace"; environmentId: string; path: string }
+  | { kind: "host"; hostId: string; path: string }
+  | { kind: "thread-storage"; threadId: string; path: string };
+
+/** One-based location to reveal after a live file opens. */
+export type ExperimentalFileLocation =
+  | { kind: "line"; line: number; column: number | null }
+  | { kind: "range"; startLine: number; endLine: number };
+
+/** Options shared by BB's preview and preferred-external file intents. */
+export interface ExperimentalFileOpenOptions {
+  target: ExperimentalLiveFileTarget;
+  location: ExperimentalFileLocation | null;
+}
+
+/** Props for BB's host-rendered semantic file link. */
+export interface ExperimentalFileLinkProps extends Omit<
+  ComponentPropsWithoutRef<"a">,
+  "href" | "target"
+> {
+  target: ExperimentalLiveFileTarget;
+  location?: ExperimentalFileLocation | null;
+}
+
 /** Current app selection, derived from the route. */
 export interface BbContext {
   projectId: string | null;
@@ -1609,6 +1635,12 @@ export interface BbNavigate {
    * docs/api_to_audit.md.
    */
   experimental_openUrl(url: string): boolean;
+  /** Open a live file in this surface's shared BB preview panel. */
+  experimental_openFilePreview(options: ExperimentalFileOpenOptions): boolean;
+  /** Open a live file in this client's preferred external file target. */
+  experimental_openFileExternally(
+    options: ExperimentalFileOpenOptions,
+  ): boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -1706,6 +1738,8 @@ export interface PluginSdkApp {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_UrlLink: ComponentType<ExperimentalUrlLinkProps>;
+  /** Host-rendered live-file link backed by the shared navigation controller. */
+  experimental_FileLink: ComponentType<ExperimentalFileLinkProps>;
   /**
    * The host-owned new-thread compose surface (see
    * {@link NewThreadComposerProps}). Experimental: see

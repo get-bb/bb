@@ -22,6 +22,7 @@ import { defineRpcContract } from "../../rpc-contract.js";
 installTestPluginRuntime();
 const {
   definePluginApp,
+  experimental_FileLink: FileLink,
   experimental_UrlLink: UrlLink,
   ThreadChat,
   useBbNavigate,
@@ -98,6 +99,30 @@ function UrlNavigationProbe() {
         }
       >
         Open imperatively
+      </button>
+    </div>
+  );
+}
+
+const fileIntent = {
+  target: {
+    kind: "workspace" as const,
+    environmentId: "env_42",
+    path: "src/example.ts",
+  },
+  location: { kind: "line" as const, line: 12, column: 4 },
+};
+
+function FileNavigationProbe() {
+  const navigate = useBbNavigate();
+  return (
+    <div>
+      <FileLink {...fileIntent}>Open file</FileLink>
+      <button
+        type="button"
+        onClick={() => navigate.experimental_openFileExternally(fileIntent)}
+      >
+        Open file externally
       </button>
     </div>
   );
@@ -972,6 +997,23 @@ describe("renderSlot", () => {
         method: "experimental_openUrl",
         url: "https://example.com/imperative",
       },
+    ]);
+  });
+
+  it("records file-link preview and imperative external intents through one host boundary", () => {
+    const slot = renderSlot(
+      { component: FileNavigationProbe },
+      {},
+      {
+        openFilePreview: () => true,
+        openFileExternally: () => true,
+      },
+    );
+    fireEvent.click(slot.getByRole("link", { name: "Open file" }));
+    fireEvent.click(slot.getByRole("button", { name: "Open file externally" }));
+    expect(slot.inspection.navigateCalls).toEqual([
+      { method: "experimental_openFilePreview", options: fileIntent },
+      { method: "experimental_openFileExternally", options: fileIntent },
     ]);
   });
 

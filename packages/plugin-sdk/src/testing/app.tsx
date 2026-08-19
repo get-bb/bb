@@ -55,6 +55,8 @@ import {
   type StandardSchemaV1InferInput,
   type MarkdownProps,
   type ExperimentalUrlLinkProps,
+  type ExperimentalFileLinkProps,
+  type ExperimentalFileOpenOptions,
   type NewThreadComposerProps,
   type ThreadChatProps,
   type DiffProps,
@@ -114,7 +116,15 @@ export type NavigateCall =
       method: "openThreadPanel";
       options: Parameters<BbNavigate["openThreadPanel"]>[0];
     }
-  | { method: "experimental_openUrl"; url: string };
+  | { method: "experimental_openUrl"; url: string }
+  | {
+      method: "experimental_openFilePreview";
+      options: ExperimentalFileOpenOptions;
+    }
+  | {
+      method: "experimental_openFileExternally";
+      options: ExperimentalFileOpenOptions;
+    };
 
 export interface ComposerLog {
   /** Latest plain text in this isolated composer scope. */
@@ -326,6 +336,39 @@ function TestUrlLink({
   );
 }
 
+/** Anchor-faithful file-link stand-in backed by the navigation recorder. */
+function TestFileLink({
+  target,
+  location = null,
+  onClick,
+  ...anchorProps
+}: ExperimentalFileLinkProps) {
+  const navigate = useSlotEnv("experimental_FileLink").navigate;
+  const options = { target, location };
+  return (
+    <a
+      {...anchorProps}
+      href={target.path}
+      onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
+        onClick?.(event);
+        if (
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.altKey ||
+          event.ctrlKey ||
+          event.metaKey ||
+          event.shiftKey ||
+          event.currentTarget.hasAttribute("download")
+        ) {
+          return;
+        }
+        event.preventDefault();
+        navigate.experimental_openFilePreview(options);
+      }}
+    />
+  );
+}
+
 /**
  * Stand-in for the host-owned new-thread composer: a textarea plus a submit
  * button that calls `onSubmit` with a fixed, obviously-synthetic request, so
@@ -520,6 +563,7 @@ const testPluginSdkApp = {
   },
   ThreadChat: TestThreadChat,
   Markdown: TestMarkdown,
+  experimental_FileLink: TestFileLink,
   experimental_UrlLink: TestUrlLink,
   experimental_NewThreadComposer: TestNewThreadComposer,
   experimental_SourceCode: TestSourceCode,
@@ -838,6 +882,10 @@ export interface RenderSlotOptions<
   ) => boolean;
   /** Host acceptance for URL intents from the hook or `experimental_UrlLink`. */
   openUrl?: (url: string) => boolean;
+  /** Host acceptance for preview intents from the hook or file link. */
+  openFilePreview?: (options: ExperimentalFileOpenOptions) => boolean;
+  /** Host acceptance for preferred-external file intents. */
+  openFileExternally?: (options: ExperimentalFileOpenOptions) => boolean;
 }
 
 /** Host-originated inputs a slot test can drive deterministically. */
@@ -1053,6 +1101,20 @@ export function renderSlot<
     experimental_openUrl(url) {
       navigateCalls.push({ method: "experimental_openUrl", url });
       return options.openUrl?.(url) ?? false;
+    },
+    experimental_openFilePreview(fileOptions) {
+      navigateCalls.push({
+        method: "experimental_openFilePreview",
+        options: fileOptions,
+      });
+      return options.openFilePreview?.(fileOptions) ?? false;
+    },
+    experimental_openFileExternally(fileOptions) {
+      navigateCalls.push({
+        method: "experimental_openFileExternally",
+        options: fileOptions,
+      });
+      return options.openFileExternally?.(fileOptions) ?? false;
     },
   };
 

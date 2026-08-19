@@ -94,6 +94,7 @@ const workspaceFilePreviewFixedPanelTabSchema = z
 const hostFilePreviewFixedPanelTabSchema = z
   .object({
     environmentId: z.string().min(1).nullable().default(null),
+    hostId: z.string().min(1).nullable().default(null),
     id: z.string().min(1),
     kind: z.literal("host-file-preview"),
     lineRange: filePreviewLineRangeSchema.nullable().default(null),
@@ -254,6 +255,7 @@ export interface WorkspaceFilePreviewFixedPanelTab {
 
 export interface HostFilePreviewFixedPanelTab {
   environmentId: string | null;
+  hostId: string | null;
   id: string;
   kind: "host-file-preview";
   lineRange: FilePreviewLineRange | null;
@@ -391,9 +393,10 @@ interface CreateThreadStorageFilePreviewFixedPanelTabArgs {
 }
 
 interface CreateHostFilePreviewFixedPanelTabArgs {
-  environmentId: string;
+  environmentId: string | null;
+  hostId?: string | null;
   tab: HostFileTabState;
-  threadId: string;
+  threadId: string | null;
 }
 
 interface CreateWorkspaceFilePreviewFixedPanelTabArgs {
@@ -434,6 +437,7 @@ interface BuildWorkspaceFilePreviewTabIdArgs {
 
 interface BuildHostFilePreviewTabIdArgs {
   environmentId: string | null;
+  hostId: string | null;
   path: string;
   threadId: string | null;
 }
@@ -488,9 +492,17 @@ function buildWorkspaceFilePreviewTabId({
 
 function buildHostFilePreviewTabId({
   environmentId,
+  hostId,
   path,
   threadId,
 }: BuildHostFilePreviewTabIdArgs): string {
+  if (hostId !== null) {
+    return buildFixedPanelTabId({
+      environmentId: `host:${hostId}`,
+      kind: "host-file-preview",
+      path,
+    });
+  }
   if (threadId === null || environmentId === null) {
     return buildFixedPanelTabId({
       environmentId: null,
@@ -594,13 +606,16 @@ export function createWorkspaceFilePreviewFixedPanelTab({
 
 export function createHostFilePreviewFixedPanelTab({
   environmentId,
+  hostId = null,
   tab,
   threadId,
 }: CreateHostFilePreviewFixedPanelTabArgs): HostFilePreviewFixedPanelTab {
   return {
     environmentId,
+    hostId,
     id: buildHostFilePreviewTabId({
       environmentId,
+      hostId,
       path: tab.path,
       threadId,
     }),
@@ -730,6 +745,7 @@ function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
     case "host-file-preview": {
       const id = buildHostFilePreviewTabId({
         environmentId: tab.environmentId,
+        hostId: tab.hostId,
         path: tab.path,
         threadId: tab.threadId,
       });
@@ -1094,6 +1110,7 @@ export function areFixedPanelTabsEquivalent(
       return (
         b.kind === "host-file-preview" &&
         a.environmentId === b.environmentId &&
+        a.hostId === b.hostId &&
         areFilePreviewLineRangesEqual({
           a: a.lineRange,
           b: b.lineRange,
@@ -1145,6 +1162,9 @@ function areFileOpenerOwnersEqual(
     })
   ) {
     return false;
+  }
+  if (a.kind === "host-file-preview") {
+    return b.kind === "host-file-preview" && a.hostId === b.hostId;
   }
   if (a.kind !== "workspace-file-preview") return true;
   return (

@@ -535,6 +535,7 @@ describe("useThreadFileTabs file opener diversion", () => {
     expect(result.current.activeFileOpenerOwner).toEqual({
       kind: "host-file-preview",
       environmentId: "env_1",
+      hostId: null,
       tab: {
         lineRange: { startLineNumber: 11, endLineNumber: 12 },
         path: "/tmp/readme.md",

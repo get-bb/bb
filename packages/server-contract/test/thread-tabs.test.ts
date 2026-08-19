@@ -38,6 +38,7 @@ const OWNERS = [
   },
   {
     environmentId: "env_docs",
+    hostId: null,
     kind: "host-file-preview",
     tab: { lineRange: null, path: "/Users/dev/notes.md" },
     threadId: "thr_docs",
@@ -84,12 +85,26 @@ describe("thread tab file-opener owner", () => {
     const result = threadTabsSchema.safeParse([
       {
         ...OPENER_TAB_BASE,
-        // `host-file-preview` owners require a concrete environment id.
+        // A host owner needs either an explicit host or its legacy thread pair.
         fileOpenerOwner: { ...OWNERS[1], environmentId: null },
       },
     ]);
 
     expect(result.success).toBe(false);
+  });
+
+  it("accepts an explicit host owner without ambient thread context", () => {
+    const fileOpenerOwner = {
+      ...OWNERS[1],
+      environmentId: null,
+      hostId: "host_docs",
+      threadId: null,
+    };
+    const parsed = threadTabsSchema.parse([
+      { ...OPENER_TAB_BASE, fileOpenerOwner },
+    ]);
+
+    expect(parsed[0]).toEqual({ ...OPENER_TAB_BASE, fileOpenerOwner });
   });
 });
 

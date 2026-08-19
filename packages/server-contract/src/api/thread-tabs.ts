@@ -56,7 +56,8 @@ export const threadTabFileOpenerOwnerSchema = z.discriminatedUnion("kind", [
     .strict(),
   z
     .object({
-      environmentId: z.string().min(1),
+      environmentId: z.string().min(1).nullable().default(null),
+      hostId: z.string().min(1).nullable().default(null),
       kind: z.literal("host-file-preview"),
       tab: z
         .object({
@@ -64,9 +65,15 @@ export const threadTabFileOpenerOwnerSchema = z.discriminatedUnion("kind", [
           path: threadTabPathSchema,
         })
         .strict(),
-      threadId: z.string().min(1),
+      threadId: z.string().min(1).nullable().default(null),
     })
-    .strict(),
+    .strict()
+    .refine(
+      (owner) =>
+        owner.hostId !== null ||
+        (owner.environmentId !== null && owner.threadId !== null),
+      { message: "hostId or threadId/environmentId is required" },
+    ),
   z
     .object({
       environmentId: z.string().min(1).nullable(),
@@ -114,6 +121,7 @@ export const threadTabSchema = z.discriminatedUnion("kind", [
   z
     .object({
       environmentId: z.string().min(1).nullable(),
+      hostId: z.string().min(1).nullable().default(null),
       id: threadTabIdSchema,
       kind: z.literal("host-file-preview"),
       lineRange: threadTabLineRangeSchema.nullable(),

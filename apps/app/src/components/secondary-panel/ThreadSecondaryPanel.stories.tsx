@@ -60,6 +60,7 @@ function createStoryFixedPanelTab(
 function createStoryFileTab(filename: string): HostFilePreviewFixedPanelTab {
   return {
     environmentId: "env_story",
+    hostId: null,
     id: `host-file-preview:${encodeURIComponent(filename)}:thread%3Athr_story%3Aenvironment%3Aenv_story`,
     kind: "host-file-preview",
     lineRange: null,

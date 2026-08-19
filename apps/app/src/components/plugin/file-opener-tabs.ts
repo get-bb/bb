@@ -168,33 +168,51 @@ function ownerRequestForOpenRequest({
   switch (request.kind) {
     case "workspace-file-preview": {
       // Same guard as the built-in path, plus live-content-only rules.
-      if (resolvedEnvironmentId === undefined) return null;
+      if (
+        request.environmentId === undefined &&
+        resolvedEnvironmentId === undefined
+      ) {
+        return null;
+      }
       if (request.tab.source.kind !== "working-tree") return null;
       if (request.tab.statusLabel === "deleted") return null;
+      const environmentId =
+        request.environmentId ?? resolvedEnvironmentId ?? null;
       return {
         kind: request.kind,
-        environmentId: resolvedEnvironmentId,
-        projectId: resolvedEnvironmentId === null ? projectId : null,
+        environmentId,
+        projectId: environmentId === null ? projectId : null,
         tab: request.tab,
         threadId: threadId ?? null,
       };
     }
     case "host-file-preview": {
+      if (request.hostId !== undefined) {
+        return {
+          kind: request.kind,
+          environmentId: null,
+          hostId: request.hostId,
+          tab: request.tab,
+          threadId: null,
+        };
+      }
       if (!threadId || !resolvedEnvironmentId) return null;
       return {
         kind: request.kind,
         environmentId: resolvedEnvironmentId,
+        hostId: null,
         tab: request.tab,
         threadId,
       };
     }
     case "thread-storage-file-preview": {
-      if (!threadId) return null;
+      const storageThreadId = request.threadId ?? threadId;
+      if (!storageThreadId) return null;
       return {
         kind: request.kind,
         environmentId: resolvedEnvironmentId ?? null,
         tab: request.tab,
-        threadId,
+        threadId: storageThreadId,
       };
     }
     default:
@@ -211,6 +229,7 @@ function fileForOwnerRequest(
         path: owner.tab.path,
         source: buildSource("workspace", {
           environmentId: owner.environmentId,
+          experimental_hostId: null,
           projectId: owner.projectId,
           threadId: owner.threadId,
         }),
@@ -220,6 +239,7 @@ function fileForOwnerRequest(
         path: owner.tab.path,
         source: buildSource("host", {
           environmentId: owner.environmentId,
+          experimental_hostId: owner.hostId,
           projectId: null,
           threadId: owner.threadId,
         }),
@@ -229,6 +249,7 @@ function fileForOwnerRequest(
         path: owner.tab.path,
         source: buildSource("thread-storage", {
           environmentId: owner.environmentId,
+          experimental_hostId: null,
           projectId: null,
           threadId: owner.threadId,
         }),
@@ -240,6 +261,7 @@ function buildSource(
   kind: PluginFileOpenerSource["kind"],
   fields: {
     environmentId: string | null;
+    experimental_hostId: string | null;
     projectId: string | null;
     threadId: string | null;
   },

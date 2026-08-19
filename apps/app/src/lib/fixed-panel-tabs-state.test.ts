@@ -377,6 +377,24 @@ describe("thread-owned file preview fixed panel tabs", () => {
     );
   });
 
+  it("does not collide explicit host previews for the same absolute path", () => {
+    const first = createHostFilePreviewFixedPanelTab({
+      environmentId: null,
+      hostId: "host_first",
+      tab: { lineRange: null, path: "/tmp/log.txt" },
+      threadId: null,
+    });
+    const second = createHostFilePreviewFixedPanelTab({
+      environmentId: null,
+      hostId: "host_second",
+      tab: { lineRange: null, path: "/tmp/log.txt" },
+      threadId: null,
+    });
+
+    expect(first.id).not.toBe(second.id);
+    expect(areFixedPanelTabsEquivalent(first, second)).toBe(false);
+  });
+
   it("keeps legacy ownerless host and storage preview tabs parseable", () => {
     const state = {
       version: FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
@@ -411,6 +429,7 @@ describe("thread-owned file preview fixed panel tabs", () => {
     expect(parsed.secondary.tabs).toMatchObject([
       {
         environmentId: null,
+        hostId: null,
         kind: "host-file-preview",
         threadId: null,
       },

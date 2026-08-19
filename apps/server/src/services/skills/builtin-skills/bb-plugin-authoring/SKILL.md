@@ -1257,6 +1257,7 @@ import {
   useSettings,
   useBbContext,
   useBbNavigate,
+  experimental_FileLink as FileLink,
   experimental_UrlLink as UrlLink,
   useComposer,
   useComposerView,
@@ -1871,6 +1872,20 @@ className?, leadingContent?, messageActions? }` —
   normal browser behavior. Use `useBbNavigate().experimental_openUrl(url)` for
   buttons, menus, and effects; its boolean reports whether the current app
   accepted the intent, not whether a later OS launch completed.
+- `experimental_FileLink` — a real anchor for an explicit live file target:
+  `{ kind: "workspace", environmentId, path }`,
+  `{ kind: "host", hostId, path }` (absolute), or
+  `{ kind: "thread-storage", threadId, path }`. Ordinary activation opens the
+  current surface's shared BB preview. Its lazy context menu offers the
+  built-in preview, matching plugin `fileOpener`s, the preferred external
+  target, available client apps, and copy actions. Optional `location` is a
+  one-based line/column or line range. For buttons and effects use
+  `useBbNavigate().experimental_openFilePreview({ target, location })` or
+  `.experimental_openFileExternally({ target, location })`; the boolean means
+  host acceptance, not completed I/O. Every identity is explicit—never invent
+  an environment id or turn a project id into a workspace target. The testing
+  harness records both calls in `navigateCalls` and gates them with the
+  `openFilePreview` / `openFileExternally` behavior options.
 - `experimental_NewThreadComposer` — bb's complete compose surface for
   CREATING a thread (the create-side counterpart to `ThreadChat`): prompt
   editor with @-mentions and expand, `+` attachments,

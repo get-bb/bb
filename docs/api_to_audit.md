@@ -73,6 +73,37 @@ through the same navigation inspection log.
 5. Keep the host implementation in the shell and verify plugin bundles contain
    only the runtime indirection, not BB browser or panel code.
 
+## Live-file navigation (`experimental_FileLink`, `BbNavigate.experimental_openFilePreview`, `BbNavigate.experimental_openFileExternally`, and `PluginFileOpenerSource.experimental_hostId`)
+
+**What it does.** Gives plugin UI explicit, source-safe references to live
+workspace, host, and thread-storage files. Ordinary `experimental_FileLink`
+activation and the preview method use the current surface's shared file-tab
+controller, including extension preferences and plugin file openers. The
+external method resolves the current client's preferred file target, absolute
+path, local/remote-SSH context, and line/column support. The boolean methods
+report host acceptance; later OS failures remain host-owned. The host id added
+to file-opener sources preserves explicit host identity when a plugin page
+opens a host file without ambient thread context.
+
+**Audit before stabilizing.**
+
+1. Verify strict target/path/location validation on POSIX, Windows drive, and
+   UNC paths, including stale environment, host, and thread identities.
+2. Confirm preview identity, persistence, opener preference, one-off Open with,
+   disabled opener fallback, and explicit-host migration on Thread, New-thread,
+   Settings, and plugin-page surfaces.
+3. Audit external opening across local and remote clients, disconnected hosts,
+   missing preferred apps, and targets with line but not column support.
+4. Confirm link anchor behavior, unavailable menu states, copy semantics, and
+   whether per-app external choices should remain host-owned menu affordances
+   rather than become plugin-selectable API.
+5. Measure the lazy boundary: mounting a file link must not start file reads,
+   preview imports, editor discovery, or panel-destination loading.
+6. Decide whether Git snapshots or deleted working-tree files merit separate
+   target variants; do not weaken live-file guarantees to accommodate them.
+7. Confirm `PluginFileOpenerSource.experimental_hostId` can become a stable
+   required `hostId` field without breaking older opener implementations.
+
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 
 **What it does.** Lets one plugin package declare a singular `bb.host` Node

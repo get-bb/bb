@@ -228,7 +228,18 @@ export const githubRpcContract = defineRpcContract({
   },
   pullForThread: {
     input: z.object({ threadId: z.string().min(1) }).strict(),
-    output: z.object({ pull: itemInputSchema.nullable() }).strict(),
+    output: z
+      .object({
+        pull: z
+          .object({
+            repo: repoNameSchema,
+            number: itemNumberSchema,
+            environmentId: z.string().nullable(),
+          })
+          .strict()
+          .nullable(),
+      })
+      .strict(),
   },
   commentIssue: {
     input: itemInputSchema.extend({ body: nonBlankStringSchema }).strict(),
@@ -1365,11 +1376,13 @@ export default async function plugin(bb: BbPluginApi) {
         environment PR (the branch the agent pushed) first, else a PR this
         thread was spawned to review. Null when neither exists. */
     async pullForThread({ threadId }) {
+      let environmentId: string | null = null;
       try {
         const thread = (await bb.sdk.threads.get({ threadId })) as unknown as {
           environmentId?: string | null;
         };
         if (thread?.environmentId) {
+          environmentId = thread.environmentId;
           const result = await bb.sdk.environments.pullRequest({
             environmentId: thread.environmentId,
           });
@@ -1380,7 +1393,13 @@ export default async function plugin(bb: BbPluginApi) {
               ? url.match(/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/)
               : null;
           if (match !== null) {
-            return { pull: { repo: match[1], number: Number(match[2]) } };
+            return {
+              pull: {
+                repo: match[1],
+                number: Number(match[2]),
+                environmentId,
+              },
+            };
           }
         }
       } catch {
@@ -1391,7 +1410,13 @@ export default async function plugin(bb: BbPluginApi) {
         const match = key.match(/^pr:([\w.-]+\/[\w.-]+)#(\d+)$/);
         if (match === null) continue;
         if (threadLinks.some((link) => link.threadId === threadId)) {
-          return { pull: { repo: match[1], number: Number(match[2]) } };
+          return {
+            pull: {
+              repo: match[1],
+              number: Number(match[2]),
+              environmentId,
+            },
+          };
         }
       }
       return { pull: null };

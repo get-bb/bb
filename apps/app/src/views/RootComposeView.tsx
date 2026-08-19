@@ -66,6 +66,7 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
+import type { FileTabViewerOverride } from "@/components/plugin/file-opener-tabs";
 import {
   PluginPanelTabContent,
   usePluginNewThreadPanelActions,
@@ -137,6 +138,14 @@ import {
 } from "@/lib/in-app-browser-link-preference";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
+import {
+  AppNavigationHostProvider,
+  type AppFilePreviewIntent,
+} from "@/lib/app-navigation-host";
+import {
+  normalizeExperimentalFileOpenOptions,
+  toFilePreviewLineRange,
+} from "@/lib/live-file-navigation";
 import {
   useRootComposeProjectId,
   useSetRootComposeProjectId,
@@ -1265,21 +1274,27 @@ function RootComposeSurface({
     environmentStatus: rootPanelEnvironment?.status,
   });
   const openPersistedWorkspaceFile = useCallback(
-    (file: WorkspaceFileTabState) => {
-      openTab({ kind: "workspace-file-preview", tab: file });
+    (
+      file: WorkspaceFileTabState,
+      options?: { viewer?: FileTabViewerOverride },
+    ) => {
+      openTab({ kind: "workspace-file-preview", tab: file }, options);
     },
     [openTab],
   );
   const openPersistedStorageFile = useCallback(
-    (file: ThreadStorageFileTabState) => {
-      openTab({ kind: "thread-storage-file-preview", tab: file });
+    (
+      file: ThreadStorageFileTabState,
+      options?: { viewer?: FileTabViewerOverride },
+    ) => {
+      openTab({ kind: "thread-storage-file-preview", tab: file }, options);
     },
     [openTab],
   );
   const openPersistedHostFile =
     useCallback<ThreadSecondaryPanelHostFileOpenHandler>(
-      (file: HostFileTabState) => {
-        openTab({ kind: "host-file-preview", tab: file });
+      (file: HostFileTabState, options) => {
+        openTab({ kind: "host-file-preview", tab: file }, options);
       },
       [openTab],
     );
@@ -1302,6 +1317,7 @@ function RootComposeSurface({
   const {
     closePanel: closeSecondaryPanel,
     openCompactDrawer,
+    openHostFile,
     openStorageFile,
     openWorkspaceFile,
   } = useThreadSecondaryPanelVisibility({
@@ -1318,6 +1334,56 @@ function RootComposeSurface({
     openPersistedWorkspaceFile,
     togglePersistedPanel: toggleRootPersistedSecondaryPanel,
   });
+  const handleOpenLiveFilePreview = useCallback(
+    (intent: AppFilePreviewIntent): boolean => {
+      const normalized = normalizeExperimentalFileOpenOptions(intent);
+      if (normalized === null) return false;
+      const lineRange = toFilePreviewLineRange(normalized.location);
+      const options =
+        intent.viewer === undefined ? undefined : { viewer: intent.viewer };
+      switch (normalized.target.kind) {
+        case "workspace":
+          if (normalized.target.environmentId !== rootPanelEnvironmentId) {
+            return false;
+          }
+          openWorkspaceFile(
+            {
+              lineRange,
+              path: normalized.target.path,
+              source: { kind: "working-tree" },
+              statusLabel: null,
+            },
+            options,
+          );
+          return true;
+        case "host":
+          if (
+            rootPanelThreadId === null ||
+            normalized.target.hostId !== rootPanelEnvironment?.hostId
+          ) {
+            return false;
+          }
+          openHostFile({ lineRange, path: normalized.target.path }, options);
+          return true;
+        case "thread-storage":
+          if (normalized.target.threadId !== rootPanelThreadId) return false;
+          openStorageFile({ lineRange, path: normalized.target.path }, options);
+          return true;
+      }
+    },
+    [
+      openHostFile,
+      openStorageFile,
+      openWorkspaceFile,
+      rootPanelEnvironment?.hostId,
+      rootPanelEnvironmentId,
+      rootPanelThreadId,
+    ],
+  );
+  const appNavigationCapabilities = useMemo(
+    () => ({ openFilePreview: handleOpenLiveFilePreview }),
+    [handleOpenLiveFilePreview],
+  );
   // Click handler for inserted mention pills in the root composer: threads
   // navigate, files open the root right-panel preview. Directories and commands
   // stay display-only.
@@ -1342,29 +1408,38 @@ function RootComposeSurface({
         if (rootPanelThreadId === null) {
           return null;
         }
-        return () =>
-          openStorageFile({
-            lineRange: null,
-            path: resource.path,
+        return () => {
+          handleOpenLiveFilePreview({
+            target: {
+              kind: "thread-storage",
+              threadId: rootPanelThreadId,
+              path: resource.path,
+            },
+            location: null,
           });
+        };
       }
       if (isProjectless) {
         return null;
       }
-      return () =>
-        openWorkspaceFile({
-          lineRange: null,
-          path: resource.path,
-          source: { kind: "working-tree" },
-          statusLabel: null,
+      if (rootPanelEnvironmentId === null) return null;
+      return () => {
+        handleOpenLiveFilePreview({
+          target: {
+            kind: "workspace",
+            environmentId: rootPanelEnvironmentId,
+            path: resource.path,
+          },
+          location: null,
         });
+      };
     },
     [
       isProjectless,
+      handleOpenLiveFilePreview,
       navigate,
-      openStorageFile,
-      openWorkspaceFile,
       projectId,
+      rootPanelEnvironmentId,
       rootPanelThreadId,
     ],
   );
@@ -2357,75 +2432,77 @@ function RootComposeSurface({
               : null
           }
         >
-          <RootComposeSecondaryContent
-            contentClassName={
-              showEmptyWelcome
-                ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
-                : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
-            }
-            isSecondaryPanelOpen={isSecondaryPanelOpen}
-            onToggleSecondaryPanel={handleToggleSecondaryPanel}
-            panelTogglePositionClassName={panelTogglePositionClassName}
-            secondaryPanel={{
-              activeTab: activeFixedSecondaryTab,
-              canUseGitUi: false,
-              environmentId: rootPanelEnvironmentId ?? undefined,
-              metadataContent: rootPanelMetadataContent,
-              workspaceRootPath:
-                rootPanelEnvironment?.path ??
-                (rootPanelTerminalTarget?.kind === "host_path"
-                  ? (rootPanelTerminalTarget.cwd ?? undefined)
-                  : undefined),
-              fileTabs,
-              fileTabContent,
-              fileTabContentFillsRegion:
-                activePluginPanelTab !== null &&
-                (activePluginPanelTab.fileOpenerOwner !== undefined ||
-                  rootPanelNewThreadPanelActions.find(
-                    (candidate) =>
-                      candidate.pluginId === activePluginPanelTab.pluginId &&
-                      candidate.id === activePluginPanelTab.actionId,
-                  )?.layout === "flush"),
-              renderBrowserDeck,
-              isBrowserTabActive,
-              isOpen: isSecondaryPanelOpen,
-              fixedTabs: [],
-              // The shell, tab strip, launcher, resize, and drawer behavior are
-              // shared with threads. Info, Diff, and conversation full-screen
-              // stay thread-only because no thread exists on this surface yet.
-              showConversationCollapseControl: false,
-              inlinePanelToggle: panelTogglePlacement.inlinePanelToggle,
-              onClose: closeSecondaryPanel,
-              onCollapse: closeSecondaryPanel,
-              onOpenFileInEditor: handleOpenWorkspaceFileInEditor,
-              onFileTabReorder: reorderFileTab,
-              onOpenNewTab: handleOpenNewTab,
-              onOpenFilePreview: handleOpenFilePreview,
-              onSelectionAddToChat: handleRootPanelSelectionAddToChat,
-              onPanelFocus: handleSecondaryPanelFocus,
-            }}
-          >
-            {showEmptyWelcome ? (
-              <RootComposeEmptyWelcome
-                onCompose={handleStartComposing}
-                onAddProject={quickCreateProject.openCreateDialog}
-                addProjectDisabled={
-                  !quickCreateProject.isAvailable ||
-                  quickCreateProject.isCreating
-                }
-              />
-            ) : (
-              <>
-                {promptBox}
-                <RootComposeMobileRecents
-                  highlightedThreadId={lastCreatedThreadId}
-                  projectNamesById={mobileRecentProjectNamesById}
-                  showCreatingRow={isSubmitting}
-                  threads={mobileRecentThreads}
+          <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
+            <RootComposeSecondaryContent
+              contentClassName={
+                showEmptyWelcome
+                  ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
+                  : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
+              }
+              isSecondaryPanelOpen={isSecondaryPanelOpen}
+              onToggleSecondaryPanel={handleToggleSecondaryPanel}
+              panelTogglePositionClassName={panelTogglePositionClassName}
+              secondaryPanel={{
+                activeTab: activeFixedSecondaryTab,
+                canUseGitUi: false,
+                environmentId: rootPanelEnvironmentId ?? undefined,
+                metadataContent: rootPanelMetadataContent,
+                workspaceRootPath:
+                  rootPanelEnvironment?.path ??
+                  (rootPanelTerminalTarget?.kind === "host_path"
+                    ? (rootPanelTerminalTarget.cwd ?? undefined)
+                    : undefined),
+                fileTabs,
+                fileTabContent,
+                fileTabContentFillsRegion:
+                  activePluginPanelTab !== null &&
+                  (activePluginPanelTab.fileOpenerOwner !== undefined ||
+                    rootPanelNewThreadPanelActions.find(
+                      (candidate) =>
+                        candidate.pluginId === activePluginPanelTab.pluginId &&
+                        candidate.id === activePluginPanelTab.actionId,
+                    )?.layout === "flush"),
+                renderBrowserDeck,
+                isBrowserTabActive,
+                isOpen: isSecondaryPanelOpen,
+                fixedTabs: [],
+                // The shell, tab strip, launcher, resize, and drawer behavior are
+                // shared with threads. Info, Diff, and conversation full-screen
+                // stay thread-only because no thread exists on this surface yet.
+                showConversationCollapseControl: false,
+                inlinePanelToggle: panelTogglePlacement.inlinePanelToggle,
+                onClose: closeSecondaryPanel,
+                onCollapse: closeSecondaryPanel,
+                onOpenFileInEditor: handleOpenWorkspaceFileInEditor,
+                onFileTabReorder: reorderFileTab,
+                onOpenNewTab: handleOpenNewTab,
+                onOpenFilePreview: handleOpenFilePreview,
+                onSelectionAddToChat: handleRootPanelSelectionAddToChat,
+                onPanelFocus: handleSecondaryPanelFocus,
+              }}
+            >
+              {showEmptyWelcome ? (
+                <RootComposeEmptyWelcome
+                  onCompose={handleStartComposing}
+                  onAddProject={quickCreateProject.openCreateDialog}
+                  addProjectDisabled={
+                    !quickCreateProject.isAvailable ||
+                    quickCreateProject.isCreating
+                  }
                 />
-              </>
-            )}
-          </RootComposeSecondaryContent>
+              ) : (
+                <>
+                  {promptBox}
+                  <RootComposeMobileRecents
+                    highlightedThreadId={lastCreatedThreadId}
+                    projectNamesById={mobileRecentProjectNamesById}
+                    showCreatingRow={isSubmitting}
+                    threads={mobileRecentThreads}
+                  />
+                </>
+              )}
+            </RootComposeSecondaryContent>
+          </AppNavigationHostProvider>
         </UrlOpenRoutingProvider>
       </PluginComposerHostProvider>
     </>

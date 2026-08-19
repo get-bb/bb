@@ -53,6 +53,7 @@ import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { wsManager } from "@/lib/ws";
 import { pluginSdkSettingsQueryKey } from "@/hooks/queries/query-keys";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { normalizeExperimentalFileOpenOptions } from "@/lib/live-file-navigation";
 
 /**
  * Host implementations of the `@get-bb/plugin-sdk/app` hooks (plugin design
@@ -340,6 +341,26 @@ export function useBbNavigate(): BbNavigate {
     (url) => appNavigation.openUrl({ url }),
     [appNavigation],
   );
+  const experimental_openFilePreview = useCallback<
+    BbNavigate["experimental_openFilePreview"]
+  >(
+    (options) => {
+      const normalized = normalizeExperimentalFileOpenOptions(options);
+      return normalized !== null && appNavigation.openFilePreview(normalized);
+    },
+    [appNavigation],
+  );
+  const experimental_openFileExternally = useCallback<
+    BbNavigate["experimental_openFileExternally"]
+  >(
+    (options) => {
+      const normalized = normalizeExperimentalFileOpenOptions(options);
+      return (
+        normalized !== null && appNavigation.openFileExternally(normalized)
+      );
+    },
+    [appNavigation],
+  );
   return useMemo(
     () => ({
       toThread,
@@ -347,6 +368,8 @@ export function useBbNavigate(): BbNavigate {
       toPluginPanel,
       toCompose,
       openThreadPanel,
+      experimental_openFileExternally,
+      experimental_openFilePreview,
       experimental_openUrl,
     }),
     [
@@ -355,6 +378,8 @@ export function useBbNavigate(): BbNavigate {
       toPluginPanel,
       toCompose,
       openThreadPanel,
+      experimental_openFileExternally,
+      experimental_openFilePreview,
       experimental_openUrl,
     ],
   );

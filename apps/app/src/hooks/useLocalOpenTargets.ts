@@ -58,6 +58,7 @@ export interface UseLocalOpenTargetsResult {
   canOpenPreferredFileTarget: boolean;
   directoryOpenTargets: WorkspaceOpenTarget[];
   fileOpenTargets: WorkspaceOpenTarget[];
+  isLoading: boolean;
   openPathInDirectoryTarget: (
     args: OpenPathInDirectoryTargetArgs,
   ) => Promise<boolean>;
@@ -235,6 +236,7 @@ export function useLocalOpenTargets(
   const { hasDaemon } = useHostDaemon();
   const {
     fetchWorkspaceOpenTargetsForPath,
+    isLoading,
     openWorkspace,
     workspaceOpenTargets,
   } = useWorkspaceOpenTargets(args);
@@ -449,6 +451,7 @@ export function useLocalOpenTargets(
     canOpenPreferredFileTarget: preferredFileTarget !== null,
     directoryOpenTargets,
     fileOpenTargets,
+    isLoading,
     openPathInDirectoryTarget,
     openPathInFileTarget,
     openPathInPreferredDirectoryTarget,

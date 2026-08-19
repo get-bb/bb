@@ -520,7 +520,10 @@ connecting/connected/reconnecting lifecycle; reconcile on later connected
 transitions, not the initial connection), useSettings (secrets excluded),
 useBbContext,
 useBbNavigate (including experimental_openUrl(url), which applies the current
-client's in-app/external-browser preference), useComposer
+client's in-app/external-browser preference, plus
+experimental_openFilePreview({ target, location }) and
+experimental_openFileExternally({ target, location }) for explicit live
+workspace/host/thread-storage files), useComposer
 (read/replace/update/clear scoped composer text,
 apply a class-based text effect, lock input, quote selections, insert mention
 pills, and focus the composer), and useComposerView (reactive bound scope,
@@ -539,6 +542,10 @@ running BB via the pinned ref in components.json). Product capabilities are
 the exception: experimental_UrlLink renders a real anchor whose ordinary
 HTTP(S) activation uses the same client preference as first-party links while
 leaving app routes, modifiers, copying, and unsupported schemes native.
+experimental_FileLink renders a real explicit live-file anchor whose ordinary
+activation uses the same preview/file-opener controller as first-party links;
+its lazy context menu adds Open with, preferred-external, installed-app, and
+copy actions without reading the file or discovering editors on mount.
 `import { toast } from
 "sonner"` reaches the host toaster; react, the portaling radix families,
 sonner, vaul, @pierre/diffs, and the host-resident clsx, tailwind-merge, and

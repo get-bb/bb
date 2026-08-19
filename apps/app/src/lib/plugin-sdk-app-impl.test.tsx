@@ -56,3 +56,32 @@ describe("plugin SDK Markdown", () => {
     expect(openUrl).toHaveBeenCalledWith({ url: "https://example.com/docs" });
   });
 });
+
+describe("plugin SDK navigation components", () => {
+  it("exposes the file link through the real runtime", () => {
+    const openFilePreview = vi.fn(() => true);
+    const FileLink = pluginSdkAppImplementation.experimental_FileLink;
+    render(
+      <AppNavigationHostProvider capabilities={{ openFilePreview }}>
+        <FileLink
+          target={{
+            kind: "thread-storage",
+            threadId: "thr_1",
+            path: "reports/result.md",
+          }}
+        >
+          result.md
+        </FileLink>
+      </AppNavigationHostProvider>,
+    );
+    fireEvent.click(screen.getByRole("link", { name: "result.md" }));
+    expect(openFilePreview).toHaveBeenCalledWith({
+      target: {
+        kind: "thread-storage",
+        threadId: "thr_1",
+        path: "reports/result.md",
+      },
+      location: null,
+    });
+  });
+});

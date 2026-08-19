@@ -11,6 +11,7 @@ import { AuthCallbackView } from "./views/AuthCallbackView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
 import { AppNavigationUrlHost } from "./lib/url-open-routing";
+import { AppFileExternalNavigationHost } from "./components/plugin/AppFileExternalNavigationHost";
 import { useAppTheme } from "./hooks/useAppTheme";
 import { useFaviconColorSync } from "./lib/favicon-color-preference";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
@@ -386,18 +387,20 @@ export function App() {
       <AppCommandProvider>
         <RouteNavigationProvider>
           <AppNavigationUrlHost>
-            <HashNavigationScroll />
-            <Routes>
-              <Route
-                path={AUTH_CALLBACK_ROUTE_PATH}
-                element={<AuthCallbackView />}
-              />
-              <Route path="*" element={<AppRoutes />} />
-            </Routes>
-            {/* Outside <Routes>: a provider CLI install outlives the page that
+            <AppFileExternalNavigationHost>
+              <HashNavigationScroll />
+              <Routes>
+                <Route
+                  path={AUTH_CALLBACK_ROUTE_PATH}
+                  element={<AuthCallbackView />}
+                />
+                <Route path="*" element={<AppRoutes />} />
+              </Routes>
+              {/* Outside <Routes>: a provider CLI install outlives the page that
                 started it, so its failure toast can be clicked from any route —
                 including auth callback, which renders no app shell. */}
-            <ProviderCliInstallLogDialogHost />
+               <ProviderCliInstallLogDialogHost />
+             </AppFileExternalNavigationHost>
           </AppNavigationUrlHost>
         </RouteNavigationProvider>
       </AppCommandProvider>

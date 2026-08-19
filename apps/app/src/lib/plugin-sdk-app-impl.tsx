@@ -5,6 +5,7 @@ import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComp
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
 import { ExperimentalUrlLink } from "@/components/plugin/ExperimentalUrlLink";
+import { ExperimentalFileLink } from "@/components/plugin/ExperimentalFileLink";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
 import type {
   MarkdownLinkRouting,
@@ -60,6 +61,7 @@ export const pluginSdkAppImplementation = {
   // exception to §5.5) — stable product capabilities, not a UI kit.
   ThreadChat: PluginThreadChat,
   Markdown: PluginMarkdown,
+  experimental_FileLink: ExperimentalFileLink,
   experimental_UrlLink: ExperimentalUrlLink,
   // Experimental (see docs/api_to_audit.md): the create-side counterpart to
   // ThreadChat.

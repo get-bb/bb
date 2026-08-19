@@ -46,6 +46,7 @@ const ALL_TAB_KINDS: readonly ThreadTab[] = [
   },
   {
     environmentId: "env_1",
+    hostId: null,
     id: "host-file",
     kind: "host-file-preview",
     lineRange: null,

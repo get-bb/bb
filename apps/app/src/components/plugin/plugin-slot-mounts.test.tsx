@@ -2062,6 +2062,7 @@ describe("plugin file opener tabs", () => {
         source: {
           kind: "workspace",
           environmentId: "env_1",
+          experimental_hostId: null,
           projectId: null,
           threadId: "thr_1",
         },

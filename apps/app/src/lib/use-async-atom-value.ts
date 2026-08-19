@@ -36,6 +36,26 @@ export function useAsyncAtomValue<T>(
   asyncAtom: Atom<T | Promise<T>>,
   fallback: T,
 ): T {
+  return useAsyncAtomState(asyncAtom, fallback).data;
+}
+
+export interface AsyncAtomState<T> {
+  data: T;
+  error: unknown | null;
+  isLoading: boolean;
+}
+
+/** Non-suspending async-atom state for consumers that must await discovery. */
+export function useAsyncAtomState<T>(
+  asyncAtom: Atom<T | Promise<T>>,
+  fallback: T,
+): AsyncAtomState<T> {
   const result = useAtomValue(loadableAtomFor(asyncAtom));
-  return result.state === "hasData" ? result.data : fallback;
+  if (result.state === "hasData") {
+    return { data: result.data, error: null, isLoading: false };
+  }
+  if (result.state === "hasError") {
+    return { data: fallback, error: result.error, isLoading: false };
+  }
+  return { data: fallback, error: null, isLoading: true };
 }

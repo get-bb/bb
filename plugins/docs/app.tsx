@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   definePluginApp,
+  experimental_FileLink as FileLink,
   useBbNavigate,
   useRpc,
   useRealtime,
@@ -15,6 +16,7 @@ import {
   type PluginMessageDirectiveProps,
   type PluginNavPanelProps,
   type PluginThreadPanelProps,
+  type ExperimentalLiveFileTarget,
 } from "@get-bb/plugin-sdk/app";
 import type { docsRpcContract } from "./server.js";
 import { parseMarkdownDocument } from "./markdown-document.js";
@@ -1139,6 +1141,31 @@ function NotePane({
 
 function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
   const rpc = useRpc<typeof docsRpcContract>();
+  const navigate = useBbNavigate();
+  const liveFileTarget = useMemo<ExperimentalLiveFileTarget | null>(() => {
+    switch (source.kind) {
+      case "workspace":
+        return source.environmentId === null
+          ? null
+          : {
+              kind: source.kind,
+              environmentId: source.environmentId,
+              path: filePath,
+            };
+      case "host":
+        return source.experimental_hostId === null
+          ? null
+          : {
+              kind: source.kind,
+              hostId: source.experimental_hostId,
+              path: filePath,
+            };
+      case "thread-storage":
+        return source.threadId === null
+          ? null
+          : { kind: source.kind, threadId: source.threadId, path: filePath };
+    }
+  }, [filePath, source]);
   const openerSource = useMemo(
     () => ({
       kind: source.kind,
@@ -1250,6 +1277,28 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
   }
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {liveFileTarget === null ? null : (
+        <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
+          <FileLink className="min-w-0 flex-1 truncate" target={liveFileTarget}>
+            {filePath}
+          </FileLink>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="size-7 shrink-0"
+            aria-label="Open file externally"
+            onClick={() =>
+              navigate.experimental_openFileExternally({
+                target: liveFileTarget,
+                location: null,
+              })
+            }
+          >
+            <HugeiconsIcon icon={ArrowUpRight01Icon} className="size-4" />
+          </Button>
+        </div>
+      )}
       {conflict ? (
         <div className="flex items-center gap-2 border-b border-border bg-muted px-4 py-2 text-xs">
           Changed on disk.

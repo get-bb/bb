@@ -28,6 +28,16 @@ routes, modifier clicks, explicit anchor targets, and unsupported schemes stay
 native. The frontend harness records both forms in `navigateCalls` and accepts
 an `openUrl` behavior option.
 
+Use `experimental_FileLink` for an explicit live workspace, host, or
+thread-storage file. Ordinary activation opens the shared BB preview and its
+context menu exposes built-in/plugin viewers, preferred external opening, and
+copy actions. Buttons and menus can call
+`experimental_openFilePreview({ target, location })` or
+`experimental_openFileExternally({ target, location })`; both return whether
+the current host accepted the intent. Targets never infer an ambient workspace.
+The frontend harness records both methods and accepts `openFilePreview` and
+`openFileExternally` behavior options.
+
 Every panel-open entry point reports the same way: `openThreadPanel` and the
 `openPanel` handed to `threadPanelAction`, `experimental_newThreadPanelAction`,
 and `messageAction` `run` callbacks all return `boolean` — true when the host

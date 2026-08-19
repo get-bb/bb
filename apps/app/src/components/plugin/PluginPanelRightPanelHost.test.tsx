@@ -21,6 +21,7 @@ import {
 } from "@/lib/fixed-panel-tabs-state";
 import { PluginPanelRightPanelHost } from "./PluginPanelRightPanelHost";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
 
 interface TestFixedTabRegistration {
   id: string;
@@ -354,6 +355,95 @@ vi.mock("@/components/thread/terminal/ThreadTerminalPanel", async () => {
   };
 });
 
+vi.mock("@/components/secondary-panel/ThreadSecondaryPanelTabContent", () => ({
+  WorkspaceFilePreviewTabContent: ({
+    activePath,
+    environmentId,
+  }: {
+    activePath: string;
+    environmentId: string;
+  }) => (
+    <div>
+      workspace:{environmentId}:{activePath}
+    </div>
+  ),
+  HostScopedFilePreviewTabContent: ({
+    activePath,
+    hostId,
+  }: {
+    activePath: string;
+    hostId: string;
+  }) => (
+    <div>
+      host:{hostId}:{activePath}
+    </div>
+  ),
+  ThreadStorageFilePreviewTabContent: ({
+    activePath,
+    threadId,
+  }: {
+    activePath: string;
+    threadId: string;
+  }) => (
+    <div>
+      storage:{threadId}:{activePath}
+    </div>
+  ),
+}));
+
+function FileIntentButtons() {
+  const navigation = useAppNavigationHost();
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() =>
+          navigation.openFilePreview({
+            target: {
+              kind: "workspace",
+              environmentId: "env-explicit",
+              path: "src/example.ts",
+            },
+            location: { kind: "line", line: 7, column: null },
+          })
+        }
+      >
+        Open workspace file
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          navigation.openFilePreview({
+            target: {
+              kind: "host",
+              hostId: "host-explicit",
+              path: "/tmp/example.log",
+            },
+            location: null,
+          })
+        }
+      >
+        Open host file
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          navigation.openFilePreview({
+            target: {
+              kind: "thread-storage",
+              threadId: "thr-explicit",
+              path: "reports/result.md",
+            },
+            location: { kind: "range", startLine: 2, endLine: 4 },
+          })
+        }
+      >
+        Open storage file
+      </button>
+    </>
+  );
+}
+
 function renderHost(panelPath = "board", subPath = "", store = createStore()) {
   const panelStateId = getPluginPagePanelStateId({
     panelPath,
@@ -373,6 +463,7 @@ function renderHost(panelPath = "board", subPath = "", store = createStore()) {
             subPath={subPath}
           >
             <div>Plugin page</div>
+            <FileIntentButtons />
           </PluginPanelRightPanelHost>
         </TooltipProvider>
       </JotaiProvider>
@@ -503,6 +594,27 @@ describe("PluginPanelRightPanelHost", () => {
         .getByTestId("shared-secondary-panel-region")
         .hasAttribute("hidden"),
     ).toBe(false);
+  });
+
+  it("opens every explicit live-file identity through the shared panel host", async () => {
+    renderHost();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open workspace file" }),
+    );
+    expect(
+      await screen.findByText("workspace:env-explicit:src/example.ts"),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open host file" }));
+    expect(
+      await screen.findByText("host:host-explicit:/tmp/example.log"),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open storage file" }));
+    expect(
+      await screen.findByText("storage:thr-explicit:reports/result.md"),
+    ).toBeTruthy();
   });
 
   it("does not reopen fixed tabs after navigating away and back", async () => {

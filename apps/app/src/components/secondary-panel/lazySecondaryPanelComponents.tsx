@@ -73,6 +73,13 @@ const HostFilePreviewTabContentChunk = lazy(() =>
     }),
   ),
 );
+const HostScopedFilePreviewTabContentChunk = lazy(() =>
+  import("./ThreadSecondaryPanelTabContent").then(
+    ({ HostScopedFilePreviewTabContent }) => ({
+      default: HostScopedFilePreviewTabContent,
+    }),
+  ),
+);
 const ProjectFilePreviewTabContentChunk = lazy(() =>
   import("./ThreadSecondaryPanelTabContent").then(
     ({ ProjectFilePreviewTabContent }) => ({
@@ -248,6 +255,18 @@ export function LazyHostFilePreviewTabContent(
   return (
     <Suspense fallback={<SecondaryPanelContentSkeleton />}>
       <HostFilePreviewTabContentChunk {...props} />
+    </Suspense>
+  );
+}
+
+export function LazyHostScopedFilePreviewTabContent(
+  props: ComponentProps<
+    ThreadSecondaryPanelTabContentModule["HostScopedFilePreviewTabContent"]
+  >,
+) {
+  return (
+    <Suspense fallback={<SecondaryPanelContentSkeleton />}>
+      <HostScopedFilePreviewTabContentChunk {...props} />
     </Suspense>
   );
 }
