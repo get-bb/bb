@@ -1,5 +1,90 @@
 # Changelog
 
+## 0.39.0
+
+Faster large threads, child threads across projects, and a long list of fixes.
+
+### New features
+
+- A child thread can now live in a different project from its parent. Run `bb thread spawn --project <other> --parent-self`. The sidebar nests the child under its parent and marks the other project.
+- bb connect now allows 20 servers and 20 machines for each account.
+- Cursor Grok 4.6 is in the primary model picker.
+- An ACP file write now shows as a file-change approval, not as a command approval.
+- `bb thread list` shows thread titles and project names.
+- The Tasks plugin remembers the List or Board choice for each project.
+- `bb automation create --script-file` and `update --script-file` read the file on the thread's host or `--host`, and print the stored copy path.
+- Keep Awake has its own plugin page under Extensions → Plugins and a `bb keep-awake` command.
+
+### Performance
+
+- Large streaming threads no longer stall for a second on each update. One CSS pattern made the browser restyle the whole page on every DOM insert.
+- Each keystroke in the prompt box no longer re-renders the timeline.
+- Side chat opens faster.
+- Model and reasoning pickers load faster, and the Codex model list recovers after a child failure.
+- Timeline parent lookups, background-task queries, and incremental vacuum are much faster on large databases.
+- The prompt banner shows at most 200 changed files, and collapsed sections mount their content on the first expand.
+- When bb destroys a managed worktree, it stops every process that still runs inside it, then removes the directory.
+- The first tap on Submit works on iPhone.
+
+### Fixes and polish
+
+- Automations: a failed run now settles instead of running again at once. A recurring automation retries after 30 s, then 60 s, and pauses after the third failure in a row. Only one execution runs for each automation at a time. A script timeout stops the whole process group. bb settles orphaned runs at startup.
+- A steer no longer disappears from a side chat timeline while a long command streams.
+- Grok 4.6 threads no longer fail on the workflow tool schema.
+- The plugin composer offers **Don't work in a project**.
+- The composer history no longer loops, and the sidebar section drag no longer loops into React.
+- Copy works on plain-HTTP origins.
+- Pi extension-triggered turns complete, and a Pi compaction refusal shows as skipped, not failed.
+- Post-turn compaction stays pending while the thread is idle instead of showing as interrupted.
+- The provider tabs stay stable while models load. When a provider fails to load, its tab stays visible, the picker shows the error, and bb blocks a submit to that provider.
+- The `github` plugin re-probes `gh auth` and no longer latches needs-configuration. GitHub sync no longer races on abort.
+- The Add machine dialog explains an unreachable loopback server.
+- Attachment names outside Latin-1 upload correctly, and home-relative chat links open the right file.
+- Thread mentions resolve in a reused worktree, and background command activity no longer stays orphaned.
+- The diff toolbar fits a narrow panel, duration counters use tabular numerals, and the collapsed activity glyph aligns.
+- Mobile fixes: file preview switch overflow, the background agent banner, and the user question form in the footer.
+- HTML file previews update live and open at the linked line by default.
+- App shortcuts stay alive next to a retained closed drawer, and the background-command banner keeps the command name.
+- The new-thread panel matches thread panels, and the project trigger stays stable while a submit runs.
+- Voice input shows when the running composer expands.
+- The Codex usage snapshot no longer lands in an unknown turn.
+- Plugin marketplaces refresh every 2 hours.
+- `bb plugin install <path>` no longer fails with HTTP 422, and the **New plugin** example no longer causes a render loop.
+- The Docs file opener no longer breaks thread tab sync.
+- Native add-on install scripts run under npm 12.
+- A stable release now republishes the nightly channel.
+
+### Plugin API changes
+
+- Every plugin page now gets the same right panel as a thread: New tab, Browser, and Terminal. Plugin terminal tabs stay local to the page.
+- Every plugin SDK `openPanel` returns a boolean.
+- Plugin HTTP routes accept a cross-realm `Response`.
+- The plugin SDK declaration bundles are deterministic.
+- Rate-limit retries now live in the `provider-retry` plugin. `bb thread retry` is replaced by `bb provider-retry retry`.
+
+**Experimental APIs.** These `experimental_` members are new in this release. Their shape will change. Do not build on them yet.
+
+- `navPanel.experimental_fixedTabs` declares ordered, non-closable tabs for a plugin page. The Tasks and Docs plugins use it.
+- `bb.agents.experimental_registerProvider`, `@get-bb/plugin-sdk/provider-bridge`, and `app.slots.experimental_providerIcon` are the infrastructure for agent providers as plugins. Codex, Claude Code, Pi, and ACP now run through this path internally.
+- `bb.host` entries, `bb.hosts.experimental_client`, `experimental_defineHostEntry`, `experimental_retainWorker`, and `experimental_createHostEntryHarness` let a plugin run code on an enrolled host. Keep Awake is the first plugin on this path.
+- `PluginThreadListProps.experimental_Original` and `PluginFileOpenerProps.experimental_Original` give a replacement component bb's own list or preview.
+
+### Thanks
+
+Nine changes came from outside the core team. Thank you:
+
+- **[@lnittman](https://github.com/lnittman)** made automation runs settle, back off, and recover at startup.
+- **[@Roystbeef](https://github.com/Roystbeef)** stopped the timeline from re-rendering on each keystroke.
+- **[@jshph](https://github.com/jshph)** fixed the lost first tap on the mobile Submit button.
+- **[@builtui](https://github.com/builtui)** made Tasks remember the List or Board choice per project.
+- **[@ryanbbrown](https://github.com/ryanbbrown)** fixed Pi extension-triggered turn completion.
+- **[@Willhong](https://github.com/Willhong)** made copy work on insecure origins.
+- **[@ratulsarna](https://github.com/ratulsarna)** added projectless threads to the plugin composer.
+- **[@mattwyckhouse](https://github.com/mattwyckhouse)** fixed the workflow tool schema for Grok 4.6.
+- **[@Flame119052](https://github.com/Flame119052)** stopped the composer history update loop.
+
+Thank you also to everyone who reported an issue that this release fixes: **[@arunsathiya](https://github.com/arunsathiya)**, **[@bottlecrow](https://github.com/bottlecrow)**, **[@jeyrb](https://github.com/jeyrb)**, **[@Joesirven](https://github.com/Joesirven)**, **[@jyc](https://github.com/jyc)**, **[@mattwyckhouse](https://github.com/mattwyckhouse)**, **[@MGrin](https://github.com/MGrin)**, **[@ryanbbrown](https://github.com/ryanbbrown)**, **[@wy3z](https://github.com/wy3z)**, and **[@yurilaguardia](https://github.com/yurilaguardia)**.
+
 ## 0.38.0
 
 This release adds the Extensions Page, community plugins, shareable plugin marketplaces, and a Linux desktop app.
