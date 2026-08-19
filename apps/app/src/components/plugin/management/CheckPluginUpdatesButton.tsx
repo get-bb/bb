@@ -16,30 +16,67 @@ import {
 } from "@/hooks/queries/plugin-catalog-queries";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 
-/** One-line toast summary of a full update check. */
+function namePlugins(ids: readonly string[]): string {
+  return [...ids].sort().join(", ");
+}
+
+function countPlugins(count: number): string {
+  return count === 1 ? "1 plugin" : `${count} plugins`;
+}
+
+/**
+ * One-line toast summary of an update check. Anything the check could not
+ * resolve (registry offline, moved tag, retired source) is a warning, never
+ * folded into "up to date": a 200 response still carries per-plugin failures.
+ */
 export function summarizeUpdateCheck(
   results: readonly PluginUpdatesEntry[],
   scope: { pluginId?: string } = {},
 ): {
-  tone: "success" | "message";
+  tone: "success" | "message" | "warning";
   title: string;
   description?: string;
 } {
   const available = results.filter(
     (result) => result.outcome === "update-available",
   );
-  const blocked = results.filter((result) => result.outcome === "incompatible");
+  const unavailable = results.filter(
+    (result) => result.outcome === "unavailable",
+  );
+  // A blocked newer release rides on `current` and `update-available` results
+  // too, so read the field rather than the `incompatible` outcome alone.
+  const blocked = results.filter(
+    (result) => result.outcome === "incompatible" || result.blocked !== null,
+  );
+  const unavailableNote =
+    unavailable.length === 0
+      ? null
+      : scope.pluginId !== undefined
+        ? (unavailable[0]?.detail ?? "The update check did not complete.")
+        : `Could not check ${countPlugins(unavailable.length)}: ${namePlugins(unavailable.map((result) => result.id))}.`;
   if (available.length > 0) {
     return {
-      tone: "success",
+      tone: unavailableNote === null ? "success" : "warning",
       title:
         available.length === 1
           ? "1 plugin update available"
           : `${available.length} plugin updates available`,
-      description: available
-        .map((result) => result.id)
-        .sort()
-        .join(", "),
+      description: [
+        namePlugins(available.map((result) => result.id)),
+        unavailableNote,
+      ]
+        .filter((part) => part !== null)
+        .join(" "),
+    };
+  }
+  if (unavailableNote !== null) {
+    return {
+      tone: "warning",
+      title:
+        scope.pluginId === undefined
+          ? "Update check incomplete"
+          : `Could not check ${scope.pluginId} for updates`,
+      description: unavailableNote,
     };
   }
   return {
@@ -53,7 +90,7 @@ export function summarizeUpdateCheck(
           description:
             blocked.length === 1
               ? `${blocked[0]?.id} has a newer release that needs a newer bb.`
-              : `${blocked.length} plugins have newer releases that need a newer bb.`,
+              : `${countPlugins(blocked.length)} have newer releases that need a newer bb.`,
         }
       : {}),
   };

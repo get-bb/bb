@@ -272,7 +272,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       eventLoopStallMonitor.stop();
       clearInterval(sweepInterval);
       pluginCatalogService.stopPeriodicRefresh();
-      pluginService.stopPeriodicUpdateChecks();
+      await pluginService.stopPeriodicUpdateChecks();
       await pluginService.stop().catch((error: unknown) => {
         logger.warn({ err: error }, "Plugin shutdown failed");
       });

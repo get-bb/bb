@@ -80,6 +80,53 @@ describe("summarizeUpdateCheck", () => {
     expect(summarizeUpdateCheck([blocked], { pluginId: "a" })).toMatchObject({
       title: "a is up to date",
     });
+    // A blocked newer release also rides on a `current` result.
+    expect(
+      summarizeUpdateCheck([
+        { ...blocked, outcome: "current" },
+        { ...blocked, id: "b", outcome: "current" },
+      ]),
+    ).toMatchObject({
+      description: "2 plugins have newer releases that need a newer bb.",
+    });
+  });
+
+  it("warns instead of reporting up to date when a check did not complete", () => {
+    const unavailable = {
+      id: "offline",
+      outcome: "unavailable" as const,
+      devMode: false,
+      installed,
+      candidate: null,
+      blocked: null,
+      detail: "registry request failed: network unreachable",
+    };
+    const current = { ...unavailable, id: "ok", outcome: "current" as const, detail: null };
+    expect(summarizeUpdateCheck([unavailable, current])).toEqual({
+      tone: "warning",
+      title: "Update check incomplete",
+      description: "Could not check 1 plugin: offline.",
+    });
+    expect(summarizeUpdateCheck([unavailable], { pluginId: "offline" })).toEqual({
+      tone: "warning",
+      title: "Could not check offline for updates",
+      description: "registry request failed: network unreachable",
+    });
+    expect(
+      summarizeUpdateCheck([
+        unavailable,
+        {
+          ...current,
+          id: "fresh",
+          outcome: "update-available",
+          candidate: { version: "2.0.0", display: "2.0.0" },
+        },
+      ]),
+    ).toEqual({
+      tone: "warning",
+      title: "1 plugin update available",
+      description: "fresh Could not check 1 plugin: offline.",
+    });
   });
 });
 

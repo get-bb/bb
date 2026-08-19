@@ -206,6 +206,31 @@ async function installNpmCandidate(args: {
   );
 }
 
+/**
+ * The npm resolver for a marketplace listing's registry: the guarded
+ * marketplace transport (public address only, no redirects, timeout) plus a
+ * bounded JSON reader. The URL check runs inside the request so an update
+ * sweep over a bad registry yields an `unavailable` result, not a crash.
+ */
+export function createListedRegistryNpmResolverRun(listedRegistry: string) {
+  return createNpmResolverRun({
+    fetch: (input, init) => {
+      assertPublicMarketplaceUrl(listedRegistry);
+      return publicMarketplaceFetch(input, {
+        ...init,
+        redirect: "error",
+        signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
+      });
+    },
+    readJson: (response) =>
+      boundedResponseJson(
+        response,
+        MARKETPLACE_PACKUMENT_MAX_BYTES,
+        "npm registry metadata",
+      ),
+  });
+}
+
 export function createManagedPluginArtifacts(
   context: ManagedPluginArtifactsContext,
 ) {
@@ -228,21 +253,10 @@ export function createManagedPluginArtifacts(
   /** Use the guarded network and byte policy only for a listing's registry. */
   function npmResolverRun(listedRegistry: string | undefined) {
     if (listedRegistry === undefined) return createNpmResolverRun();
+    // Installs refuse a non-public registry up front; the run below re-checks
+    // on every request so a later DNS or redirect answer cannot widen it.
     assertPublicMarketplaceUrl(listedRegistry);
-    return createNpmResolverRun({
-      fetch: (input, init) =>
-        publicMarketplaceFetch(input, {
-          ...init,
-          redirect: "error",
-          signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
-        }),
-      readJson: (response) =>
-        boundedResponseJson(
-          response,
-          MARKETPLACE_PACKUMENT_MAX_BYTES,
-          "npm registry metadata",
-        ),
-    });
+    return createListedRegistryNpmResolverRun(listedRegistry);
   }
 
   function assertExpectedPluginId(

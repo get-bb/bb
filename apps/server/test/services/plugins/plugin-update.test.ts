@@ -778,6 +778,138 @@ describe("plugin update service and routes", () => {
     service.stopPeriodicUpdateChecks();
   }, 60_000);
 
+  it("schedules the sweep from the stalest plugin, not a recent scoped check", async () => {
+    await service.stop();
+    let clock = Date.now();
+    const scheduled: Array<{ delayMs: number; onElapsed: () => void }> = [];
+    const makeService = () =>
+      createPluginService({
+        telemetry: createNoopTelemetryService(),
+        db,
+        hub: {
+          getDaemonSessionIdForHost: () => null,
+          notifyPluginSignal: () => 0,
+          notifySystem: () => {},
+        },
+        logger,
+        dataDir: join(workDir, "data"),
+        appVersion: "1.0.0",
+        stabilizationWindowMs: 0,
+        now: () => clock,
+        scheduleUpdateCheck: (delayMs, onElapsed) => {
+          scheduled.push({ delayMs, onElapsed });
+          return () => {};
+        },
+      });
+    // A second, never-checked npm plugin beside the git fixture.
+    upsertInstalledPlugin(db, {
+      id: "never-checked",
+      source: "npm:bb-plugin-never-checked",
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "npm",
+        packageName: "bb-plugin-never-checked",
+        registry: "https://never-checked.test",
+        requestedSpec: "",
+        specKind: "default",
+      },
+      exactResolution: {
+        kind: "npm",
+        version: "1.0.0",
+        integrity: "sha512-current",
+      },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: join(workDir, "never-checked"),
+      version: "1.0.0",
+      enabled: false,
+    });
+    service = makeService();
+    await service.start();
+
+    // A scoped check stamps only the git plugin.
+    await service.checkForUpdates("updater");
+    expect(getInstalledPlugin(db, "updater")?.lastUpdateCheckAt).toBe(clock);
+    expect(getInstalledPlugin(db, "never-checked")?.lastUpdateCheckAt).toBeNull();
+
+    // The sweep is still due now because one plugin was never checked.
+    service.startPeriodicUpdateChecks();
+    expect(scheduled.map((entry) => entry.delayMs)).toEqual([0]);
+    await service.stopPeriodicUpdateChecks();
+
+    // Once both are stamped, the oldest stamp drives the delay.
+    clock += 60_000;
+    db.$client
+      .prepare("UPDATE plugins SET last_update_check_at = ? WHERE id = ?")
+      .run(clock, "never-checked");
+    scheduled.length = 0;
+    service.startPeriodicUpdateChecks();
+    expect(scheduled.map((entry) => entry.delayMs)).toEqual([
+      6 * 60 * 60 * 1_000 - 60_000,
+    ]);
+    await service.stopPeriodicUpdateChecks();
+  }, 60_000);
+
+  it("shares one in-flight full sweep between concurrent callers", async () => {
+    const first = service.checkForUpdates();
+    const second = service.checkForUpdates();
+    expect(second).toBe(first);
+    await first;
+    // After it settles, a new call starts a new sweep.
+    expect(service.checkForUpdates()).not.toBe(first);
+  }, 60_000);
+
+  it("keeps the guarded registry policy for catalog installs during a check", async () => {
+    upsertInstalledPlugin(db, {
+      id: "listed",
+      source: "npm:bb-plugin-listed",
+      provenance: { kind: "catalog", marketplace: "bb-community", entryId: "listed" },
+      sourceIntent: {
+        kind: "npm",
+        packageName: "bb-plugin-listed",
+        // A listing that names a loopback registry must never be fetched.
+        registry: "https://127.0.0.1",
+        requestedSpec: "",
+        specKind: "default",
+      },
+      exactResolution: {
+        kind: "npm",
+        version: "1.0.0",
+        integrity: "sha512-current",
+      },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: join(workDir, "listed"),
+      version: "1.0.0",
+      enabled: false,
+    });
+    const fetchMock = vi.fn(async () => {
+      throw new Error("unexpected unguarded fetch");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const results = await service.checkForUpdates("listed");
+
+    expect(results).toEqual([
+      expect.objectContaining({
+        id: "listed",
+        outcome: "unavailable",
+        detail: expect.stringContaining("non-public address 127.0.0.1"),
+      }),
+    ]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("retains rollback state through the grace period and collects it afterward", async () => {
     await service.stop();
     let clock = Date.now();
