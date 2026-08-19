@@ -10,6 +10,7 @@ import {
   diffCumulativeText,
   type DeltaAssembler,
 } from "./delta-assembler.js";
+import { createBridgeDeltaEventCollector } from "./test/bridge-delta-assembly.js";
 
 const THREAD_ID = "thr_1";
 const CREQ = "creq_abcdefghjk" as ClientTurnRequestId;
@@ -1873,5 +1874,27 @@ describe("delta assembler background tasks and progress policy", () => {
         }),
       }),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The conformance/equivalence assembly helper (test-only surface)
+// ---------------------------------------------------------------------------
+
+describe("bridge delta assembly helper", () => {
+  it("throws on an invalid thread/delta notification instead of returning []", () => {
+    const collector = createBridgeDeltaEventCollector("pi");
+    // Swallowing the parse failure would let a bridge pass conformance while
+    // emitting garbage; the helper must fail the suite loudly.
+    expect(() =>
+      collector.assembleMessage({
+        method: "thread/delta",
+        params: { threadId: THREAD_ID, deltas: [{ kind: "nope" }] },
+      }),
+    ).toThrowError(/Invalid thread\/delta notification/);
+    // Non-delta traffic still routes through untouched (empty result).
+    expect(
+      collector.assembleMessage({ method: "thread/identity", params: {} }),
+    ).toEqual([]);
   });
 });

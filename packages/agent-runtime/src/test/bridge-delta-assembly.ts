@@ -46,7 +46,15 @@ export function createBridgeDeltaEventCollector(
         message.params,
       );
       if (!parsed.success) {
-        return [];
+        // Test-only surface: a bridge emitting an invalid thread/delta must
+        // fail its suite loudly. Swallowing it into an empty event list let a
+        // bridge pass conformance while emitting garbage the runtime adapter
+        // would drop.
+        throw new Error(
+          `Invalid thread/delta notification: ${parsed.error.issues
+            .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+            .join("; ")} (params: ${JSON.stringify(message.params)?.slice(0, 400)})`,
+        );
       }
       return assembler.assemble({
         threadId: parsed.data.threadId,
