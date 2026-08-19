@@ -807,6 +807,69 @@ describe("Manage folders", () => {
     expect(deleteCalls[0]).toMatchObject({ folderId: parentFolder.id });
   });
 
+  it("withholds the delete impact until the project list has loaded", async () => {
+    let releaseProjects: (() => void) | undefined;
+    const projectsLoaded = new Promise<void>((resolve) => {
+      releaseProjects = resolve;
+    });
+    const deleteCalls: Array<Record<string, unknown>> = [];
+    const slot = renderFolders({
+      listProjects: async () => {
+        await projectsLoaded;
+        return { projects: [{ ...project, folderId: parentFolder.id }] };
+      },
+      deleteFolder: (input: Record<string, unknown>) => {
+        deleteCalls.push(input);
+        return { deleted: true };
+      },
+    });
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Folders" }));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Delete folder bb" }),
+    );
+
+    // Folders are in, projects are not: the dialog must not claim the folder
+    // is empty, and confirming is blocked until the impact is known.
+    await slot.findByText("Checking what the folder contains…");
+    expect(slot.queryByText(/The folder is empty/)).toBeNull();
+    const confirm = slot.getByRole<HTMLButtonElement>("button", {
+      name: "Delete folder",
+    });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(confirm);
+    expect(deleteCalls).toHaveLength(0);
+
+    releaseProjects!();
+    await slot.findByText(
+      "1 project and 1 subfolder move to the top level. No tasks are deleted.",
+    );
+    await waitFor(() =>
+      expect(
+        slot.getByRole<HTMLButtonElement>("button", { name: "Delete folder" })
+          .disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Delete folder" }));
+    await waitFor(() => expect(deleteCalls).toHaveLength(1));
+  });
+
+  it("reports a failed project load instead of an empty folder", async () => {
+    const slot = renderFolders({
+      listProjects: () => {
+        throw new Error("projects unavailable");
+      },
+    });
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Folders" }));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Delete folder bb" }),
+    );
+    await slot.findByText("Could not load projects: projects unavailable");
+    expect(
+      slot.getByRole<HTMLButtonElement>("button", { name: "Delete folder" })
+        .disabled,
+    ).toBe(true);
+  });
+
   it("surfaces a failed delete instead of silently closing", async () => {
     const slot = renderFolders({
       deleteFolder: () => {

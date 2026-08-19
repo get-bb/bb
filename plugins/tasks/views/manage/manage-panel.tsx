@@ -563,10 +563,24 @@ function FoldersSection() {
     }
   };
 
+  // The folder and project queries load independently, so the impact text
+  // waits for both rather than treating a still-loading (or failed) project
+  // list as "no projects".
+  const impactReady =
+    folders.data !== undefined &&
+    !folders.isLoading &&
+    projects.data !== undefined &&
+    !projects.isLoading;
+
   // Deleting a folder only unfiles what it held: the schema's ON DELETE SET
   // NULL moves its projects and subfolders to the top level. Nothing else is
   // removed, so the confirmation names the move rather than warning about loss.
   function describeDeleteImpact(folder: Folder): string {
+    if (!impactReady) {
+      return projects.error !== null && projects.data === undefined
+        ? `Could not load projects: ${projects.error}`
+        : "Checking what the folder contains…";
+    }
     const projectCount = (projects.data ?? []).filter(
       (project) => project.folderId === folder.id,
     ).length;
@@ -634,6 +648,7 @@ function FoldersSection() {
         description={confirmDelete ? describeDeleteImpact(confirmDelete) : ""}
         confirmLabel="Delete folder"
         destructive
+        confirmDisabled={!impactReady}
         onConfirm={() => {
           const target = confirmDelete;
           if (target) {

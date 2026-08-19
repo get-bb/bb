@@ -65,23 +65,23 @@ resolve on the invoking machine: inside an agent thread that is the thread's
 machine, otherwise the server's machine; pass `--machine <id-or-name>` to
 target another enrolled machine.
 
-| Command                                        | Purpose                                                                                                                             |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `bb tasks status`                              | Show the installed Tasks plugin name and version.                                                                                   |
-| `bb tasks project create\|list\|show\|update`  | Manage tracker projects, folders, colors, prefixes, and bb-project links.                                                           |
-| `bb tasks folder create\|list\|update`         | Organize tracker projects into nested folders.                                                                                      |
-| `bb tasks create`                              | Create a task with description, priority, labels, due date, optional parent, and file attachments (repeatable `--attach <path>`).   |
-| `bb tasks list`                                | Page/filter tasks by project, status, priority, label, active agents, or search text; supports `--sort`, `--limit`, and `--cursor`. |
-| `bb tasks show <key-or-id>`                    | Show the complete task record, including comments, attachments, subtasks, and attached threads.                                     |
-| `bb tasks update <key-or-id>`                  | Update status, priority, title, description, due date, or labels.                                                                   |
-| `bb tasks comment <key-or-id>`                 | Add a Markdown comment from inline text or a file; optionally notify the latest responding task agent.                              |
-| `bb tasks attachment add\|get\|list\|remove`   | Add, fetch, list, or remove attachments. Referenced attachments require `remove --remove-references`.                               |
-| `bb tasks preset list\|create\|update\|delete` | Manage reusable agent execution presets.                                                                                            |
-| `bb tasks delegate <key>`                      | Start and attach a new agent thread using a preset.                                                                                 |
-| `bb tasks attach <key-or-id>`                  | Attach the current bb thread to a task when it was not delegated from Tasks.                                                        |
-| `bb tasks threads <key>`                       | List the bb threads attached to a task.                                                                                             |
-| `bb tasks label create\|list\|delete`          | Manage project-scoped labels.                                                                                                       |
-| `bb tasks seed-demo --yes`                     | Create sample folders, projects, labels, tasks, and comments for evaluation.                                                        |
+| Command                                        | Purpose                                                                                                                                    |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `bb tasks status`                              | Show the installed Tasks plugin name and version.                                                                                          |
+| `bb tasks project create\|list\|show\|update`  | Manage tracker projects, folders, colors, prefixes, and bb-project links.                                                                  |
+| `bb tasks folder create\|list\|update\|delete` | Organize tracker projects into nested folders. Deleting a folder moves its projects and subfolders to the top level; no tasks are deleted. |
+| `bb tasks create`                              | Create a task with description, priority, labels, due date, optional parent, and file attachments (repeatable `--attach <path>`).          |
+| `bb tasks list`                                | Page/filter tasks by project, status, priority, label, active agents, or search text; supports `--sort`, `--limit`, and `--cursor`.        |
+| `bb tasks show <key-or-id>`                    | Show the complete task record, including comments, attachments, subtasks, and attached threads.                                            |
+| `bb tasks update <key-or-id>`                  | Update status, priority, title, description, due date, or labels.                                                                          |
+| `bb tasks comment <key-or-id>`                 | Add a Markdown comment from inline text or a file; optionally notify the latest responding task agent.                                     |
+| `bb tasks attachment add\|get\|list\|remove`   | Add, fetch, list, or remove attachments. Referenced attachments require `remove --remove-references`.                                      |
+| `bb tasks preset list\|create\|update\|delete` | Manage reusable agent execution presets.                                                                                                   |
+| `bb tasks delegate <key>`                      | Start and attach a new agent thread using a preset.                                                                                        |
+| `bb tasks attach <key-or-id>`                  | Attach the current bb thread to a task when it was not delegated from Tasks.                                                               |
+| `bb tasks threads <key>`                       | List the bb threads attached to a task.                                                                                                    |
+| `bb tasks label create\|list\|delete`          | Manage project-scoped labels.                                                                                                              |
+| `bb tasks seed-demo --yes`                     | Create sample folders, projects, labels, tasks, and comments for evaluation.                                                               |
 
 Statuses are `backlog`, `todo`, `in_progress`, `in_review`, `done`, and
 `canceled`. Priorities are `urgent`, `high`, `medium`, `low`, and `none`.
