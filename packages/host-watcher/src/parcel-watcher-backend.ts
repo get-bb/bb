@@ -40,9 +40,16 @@ function createInProcessBackend(): ParcelWatcherBackend {
   return {
     async subscribe(dir, callback, opts) {
       // Lazy import keeps the native addon out of the parent unless we actually
-      // watch in-process.
-      const { realParcelWatcher } = await import("./real-parcel-watcher.js");
-      return realParcelWatcher.subscribe(dir, callback, opts);
+      // watch in-process. Import the EXTERNAL package directly: esbuild inlines
+      // a dynamic import of an internal module (./real-parcel-watcher.js) and
+      // hoists its static `import ... from "@parcel/watcher"` to the top of the
+      // daemon bundle, which loads watcher.node at daemon startup, before
+      // pty.node. On macOS dyld then coalesces node-pty's Napi wrapper symbol
+      // to watcher.node's exception-free copy and a failed pty spawn aborts the
+      // daemon (get-bb/bb#1873). A dynamic import of the external package stays
+      // a real `import("@parcel/watcher")` in the bundle.
+      const { default: parcelWatcher } = await import("@parcel/watcher");
+      return parcelWatcher.subscribe(dir, callback, opts);
     },
   };
 }
