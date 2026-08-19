@@ -65,6 +65,14 @@ export interface BrowserTabContentProps {
    */
   canShowNativeBrowserView: boolean;
   /**
+   * Whether browser commands target this tab. This is separate from native-view
+   * visibility because multiple split panes may remain visible while only the
+   * focused pane owns keyboard commands.
+   */
+  canHandleBrowserCommands?: boolean;
+  /** Called when focus enters this tab's native page surface. */
+  onNativeFocus?: () => void;
+  /**
    * Deck-owned coordinator that serializes view visibility so the previously
    * shown view is always hidden before this one is shown (no two native overlays
    * visible at once). Null on the web build, where there is no native view.
@@ -432,6 +440,8 @@ export function BrowserTabContent({
   addressFocusRequest,
   onAddressFocusRequestConsumed,
   canShowNativeBrowserView,
+  canHandleBrowserCommands = canShowNativeBrowserView,
+  onNativeFocus,
   visibilityCoordinator,
   environmentId,
   threadId,
@@ -491,6 +501,10 @@ export function BrowserTabContent({
     attachedBrowserViewIdentity.threadId === threadId;
 
   const hasPage = currentUrl.length > 0;
+  const supportsNativePaneFocus =
+    desktopBrowser?.focus !== undefined &&
+    desktopBrowser.onFocus !== undefined &&
+    desktopBrowser.setVisibleWithoutFocus !== undefined;
   const pageLoadErrorText = state?.errorText ?? null;
   const hasPageLoadError = pageLoadErrorText !== null && hasPage;
   // A blocking modal (e.g. the git-action dialog) dims the panel with a DOM
@@ -711,6 +725,7 @@ export function BrowserTabContent({
   // deactivation never reloads it.
   const isViewVisible =
     canShowNativeBrowserView &&
+    (canHandleBrowserCommands || supportsNativePaneFocus) &&
     hasPage &&
     !hasPageLoadError &&
     isBrowserViewAttached &&
@@ -725,13 +740,35 @@ export function BrowserTabContent({
       return;
     }
     if (isViewVisible) {
-      visibilityCoordinator.show(tabId, syncBounds);
+      visibilityCoordinator.show(tabId, syncBounds, {
+        focus: canHandleBrowserCommands,
+      });
       return () => {
         visibilityCoordinator.hide(tabId);
       };
     }
     visibilityCoordinator.hide(tabId);
-  }, [visibilityCoordinator, tabId, isViewVisible, syncBounds]);
+  }, [
+    canHandleBrowserCommands,
+    visibilityCoordinator,
+    tabId,
+    isViewVisible,
+    syncBounds,
+  ]);
+
+  useEffect(() => {
+    if (desktopBrowser?.onFocus === undefined || onNativeFocus === undefined) {
+      return;
+    }
+    return desktopBrowser.onFocus((focusedTabId) => {
+      if (focusedTabId === tabId) onNativeFocus();
+    });
+  }, [desktopBrowser, onNativeFocus, tabId]);
+
+  useEffect(() => {
+    if (!isViewVisible || !canHandleBrowserCommands) return;
+    desktopBrowser?.focus?.(tabId);
+  }, [canHandleBrowserCommands, desktopBrowser, isViewVisible, tabId]);
 
   useEffect(() => {
     if (addressFocusRequest === null) {
@@ -796,7 +833,7 @@ export function BrowserTabContent({
   }, [desktopBrowser, state?.isLoading, tabId]);
 
   const handleFocusLocation = useCallback((): boolean => {
-    if (!canShowNativeBrowserView || desktopBrowser === null) return false;
+    if (!canHandleBrowserCommands || desktopBrowser === null) return false;
     setAddressDraft(currentUrl);
     setIsEditing(true);
     addressInputRef.current?.focus({ preventScroll: true });
@@ -805,7 +842,7 @@ export function BrowserTabContent({
       addressInputRef.current?.select();
     });
     return true;
-  }, [canShowNativeBrowserView, currentUrl, desktopBrowser]);
+  }, [canHandleBrowserCommands, currentUrl, desktopBrowser]);
 
   useAppCommandHandler("browser.focusLocation", handleFocusLocation, 100);
 
@@ -889,7 +926,7 @@ export function BrowserTabContent({
   useAppCommandHandler(
     "browser.reload",
     () => {
-      if (!canShowNativeBrowserView || desktopBrowser === null || !hasPage) {
+      if (!canHandleBrowserCommands || desktopBrowser === null || !hasPage) {
         return false;
       }
       desktopBrowser.reload(tabId);

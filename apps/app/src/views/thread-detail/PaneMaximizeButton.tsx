@@ -6,6 +6,7 @@ import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider"
 import { HEADER_PANE_ACTION_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
 import { useHoverPopover } from "@/components/ui/hooks/use-hover-popover";
+import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import type { SplitSide } from "@/lib/split-layout";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePaneContext } from "./PaneContext";
@@ -58,6 +59,38 @@ export function PaneMaximizeButton({
 }) {
   const { isMaximized, onToggleMaximize, onMoveToSide } = usePaneContext();
   const shortcut = useAppCommandShortcut("pane.maximize.toggle");
+
+  if (onToggleMaximize === null) return null;
+
+  return (
+    <PaneArrangementButton
+      defaultMenuOpen={defaultMenuOpen}
+      defaultTooltipOpen={defaultTooltipOpen}
+      isFullScreen={isMaximized}
+      onMoveToSide={onMoveToSide ?? undefined}
+      onToggleFullScreen={onToggleMaximize}
+      shortcut={shortcut ?? undefined}
+    />
+  );
+}
+
+export function PaneArrangementButton({
+  className,
+  defaultMenuOpen = false,
+  defaultTooltipOpen = false,
+  isFullScreen,
+  onMoveToSide,
+  onToggleFullScreen,
+  shortcut,
+}: {
+  className?: string;
+  defaultMenuOpen?: boolean;
+  defaultTooltipOpen?: boolean;
+  isFullScreen: boolean;
+  onMoveToSide?: (side: SplitSide) => void;
+  onToggleFullScreen: () => void;
+  shortcut?: AppShortcutPresentation;
+}) {
   // The pointer crosses this button on the way to the close control, so the
   // menu waits before it appears.
   const {
@@ -67,11 +100,9 @@ export function PaneMaximizeButton({
     handleOpenChange,
   } = useHoverPopover({ openDelayMs: 400, closeDelayMs: 100 });
 
-  if (onToggleMaximize === null) return null;
-
-  const label = isMaximized ? "Exit Full Screen" : "Full Screen";
+  const label = isFullScreen ? "Exit Full Screen" : "Full Screen";
   const accessibleLabel = shortcut ? `${label} (${shortcut.label})` : label;
-  const menuOpen = !isMaximized && (defaultMenuOpen || hoverOpen);
+  const menuOpen = !isFullScreen && (defaultMenuOpen || hoverOpen);
   const button = (
     <Button
       type="button"
@@ -80,24 +111,25 @@ export function PaneMaximizeButton({
       className={cn(
         HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
         CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+        className,
       )}
       aria-label={accessibleLabel}
       aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
-      aria-pressed={isMaximized}
-      aria-haspopup={!isMaximized ? "menu" : undefined}
-      aria-expanded={!isMaximized ? menuOpen : undefined}
-      onFocus={!isMaximized ? () => handleOpenChange(true) : undefined}
+      aria-pressed={isFullScreen}
+      aria-haspopup={!isFullScreen ? "menu" : undefined}
+      aria-expanded={!isFullScreen ? menuOpen : undefined}
+      onFocus={!isFullScreen ? () => handleOpenChange(true) : undefined}
       onClick={() => {
         handleOpenChange(false);
-        onToggleMaximize();
+        onToggleFullScreen();
       }}
-      {...(!isMaximized ? triggerHoverProps : {})}
+      {...(!isFullScreen ? triggerHoverProps : {})}
     >
-      <Icon name={isMaximized ? "Minimize2" : "Maximize2"} />
+      <Icon name={isFullScreen ? "Minimize2" : "Maximize2"} />
     </Button>
   );
 
-  if (isMaximized) {
+  if (isFullScreen) {
     return (
       <Tooltip defaultOpen={defaultTooltipOpen}>
         <TooltipTrigger asChild>{button}</TooltipTrigger>
@@ -127,7 +159,7 @@ export function PaneMaximizeButton({
           className={MENU_ITEM_CLASS}
           onClick={() => {
             handleOpenChange(false);
-            onToggleMaximize();
+            onToggleFullScreen();
           }}
         >
           <Icon name="Maximize2" />

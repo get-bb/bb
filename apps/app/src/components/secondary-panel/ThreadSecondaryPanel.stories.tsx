@@ -12,13 +12,22 @@ import {
 } from "./ThreadSecondaryPanel";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { Icon } from "@bb/shared-ui/icon";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import {
   createGitDiffFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   type HostFilePreviewFixedPanelTab,
+  type SecondaryFileFixedPanelTab,
   type SecondaryFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
+import {
+  createSidebarSplitState,
+  moveSidebarTab,
+  serializeSidebarSplitState,
+  sidebarSplitStorageKey,
+} from "./sidebarSplitLayout";
 import type { WorkspaceFile } from "@bb/server-contract";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
@@ -473,6 +482,135 @@ function TerminalTabsShellInner({
 
 function TerminalTabsShellRow(props: TerminalTabsShellRowProps) {
   return <TerminalTabsShellInner {...props} />;
+}
+
+const SPLIT_STORY_PANEL_STATE_ID = "ladle-production-split-panes";
+const SPLIT_STORY_FILE = createStoryFileTab("ThreadSecondaryPanel.tsx");
+const SPLIT_STORY_TERMINAL = createTerminalFixedPanelTab({
+  terminalId: "term_story_running",
+});
+const SPLIT_STORY_FILE_TABS: readonly SecondaryFileFixedPanelTab[] = [
+  SPLIT_STORY_FILE,
+  SPLIT_STORY_TERMINAL,
+];
+const SPLIT_STORY_TABS: readonly SecondaryFixedPanelTab[] = [
+  createThreadInfoFixedPanelTab(),
+  createGitDiffFixedPanelTab(),
+  ...SPLIT_STORY_FILE_TABS,
+];
+
+function createSplitStoryState() {
+  let state = createSidebarSplitState(
+    SPLIT_STORY_TABS.map((tab) => tab.id),
+    createThreadInfoFixedPanelTab().id,
+  );
+  state = moveSidebarTab(
+    state,
+    "pane-primary",
+    SPLIT_STORY_FILE.id,
+    { paneId: "pane-primary", zone: "bottom" },
+    { groupId: "group-file" },
+  );
+  return moveSidebarTab(
+    state,
+    "pane-primary",
+    SPLIT_STORY_TERMINAL.id,
+    { paneId: "pane-primary", zone: "right" },
+    { groupId: "group-terminal" },
+  );
+}
+
+function ProductionSplitPanesStory() {
+  const [activeTab, setActiveTab] = useState<SecondaryFixedPanelTab>(() => {
+    window.localStorage.setItem(
+      sidebarSplitStorageKey(SPLIT_STORY_PANEL_STATE_ID),
+      serializeSidebarSplitState(createSplitStoryState()),
+    );
+    return SPLIT_STORY_TERMINAL;
+  });
+
+  const fileTabs = useMemo<SecondaryPanelFileTab[]>(
+    () =>
+      [SPLIT_STORY_FILE, SPLIT_STORY_TERMINAL].map((tab) => ({
+        id: tab.id,
+        filename:
+          tab.kind === "terminal" ? "pnpm dev" : "ThreadSecondaryPanel.tsx",
+        isActive: tab.id === activeTab.id,
+        leadingVisual: (
+          <Icon
+            name={tab.kind === "terminal" ? "Terminal" : "Code"}
+            className="size-3.5"
+            aria-hidden
+          />
+        ),
+        statusLabel: null,
+        onSelect: () => setActiveTab(tab),
+        onClose: noop,
+      })),
+    [activeTab.id],
+  );
+
+  return (
+    <TooltipProvider>
+      <SidebarProvider>
+        <PanelStage height="info">
+          <ThreadSecondaryPanel
+            activeTab={activeTab}
+            canUseGitUi
+            requestedMergeBaseBranch="main"
+            environmentId={undefined}
+            isOpen
+            metadataContent={<RepresentativeInfoContent />}
+            fileTabs={fileTabs}
+            fileTabContent={
+              activeTab.kind === "terminal" ? (
+                <RepresentativeTerminalContent title="pnpm dev" />
+              ) : (
+                representativeFileContent
+              )
+            }
+            splitPanelStateId={SPLIT_STORY_PANEL_STATE_ID}
+            splitTabModels={SPLIT_STORY_FILE_TABS}
+            renderSplitTabContent={(tab) =>
+              tab.kind === "terminal" ? (
+                <RepresentativeTerminalContent title="pnpm dev" />
+              ) : (
+                representativeFileContent
+              )
+            }
+            splitTabContentFillsRegion={(tab) => tab.kind === "terminal"}
+            showGitDiffTab
+            onPanelFocus={noop}
+            onPanelChange={(panel) =>
+              setActiveTab(createStoryFixedPanelTab(panel))
+            }
+            onCollapse={noop}
+            onClose={noop}
+            onFileTabReorder={noop}
+            onOpenNewTab={noop}
+            isConversationCollapsed={false}
+            onToggleConversationCollapse={noop}
+            renderAsDrawer={false}
+            inlinePanelToggle="hidden"
+            showConversationCollapseControl={false}
+          />
+        </PanelStage>
+      </SidebarProvider>
+    </TooltipProvider>
+  );
+}
+
+export function SplitPanes() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="production split panes"
+        hint="real right-panel tabs, pane focus, arrangement, maximize, close, and inner divider behavior"
+      >
+        <ProductionSplitPanesStory />
+      </StoryRow>
+    </StoryCard>
+  );
 }
 
 export function Overview() {

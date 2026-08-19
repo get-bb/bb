@@ -11,6 +11,7 @@ import {
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
@@ -18,6 +19,7 @@ import {
   BB_DESKTOP_BROWSER_RELOAD_CHANNEL,
   BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
+  BB_DESKTOP_BROWSER_SET_VISIBLE_WITHOUT_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
 } from "./desktop-browser-ipc.js";
@@ -117,6 +119,21 @@ export function registerDesktopBrowserIpc(
   );
 
   ipcMain.on(
+    BB_DESKTOP_BROWSER_SET_VISIBLE_WITHOUT_FOCUS_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) {
+        return;
+      }
+      const parsed = bbDesktopBrowserSetVisibleRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      manager.setVisibleWithoutFocus({ hostWindow, request: parsed.data });
+    },
+  );
+
+  ipcMain.on(
     BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
     (event, payload: unknown) => {
       const hostWindow = hostWindowFromBrowserIpcEvent(event);
@@ -150,6 +167,10 @@ export function registerDesktopBrowserIpc(
   registerTabCommand({
     channel: BB_DESKTOP_BROWSER_DETACH_CHANNEL,
     run: (args) => manager.detach(args),
+  });
+  registerTabCommand({
+    channel: BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
+    run: (args) => manager.focus(args),
   });
   registerTabCommand({
     channel: BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,

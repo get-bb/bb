@@ -18,6 +18,7 @@ interface ThreadTerminalPanelProps {
   onSelectionAddToChat?: (text: string) => void;
   panelStateId?: string;
   syncThreadId: string | null;
+  terminalId?: string;
   target: ThreadTerminalTarget;
 }
 
@@ -33,6 +34,7 @@ export function ThreadTerminalPanel({
   onSelectionAddToChat,
   panelStateId,
   syncThreadId,
+  terminalId,
   target,
 }: ThreadTerminalPanelProps) {
   const terminalController = useThreadTerminalController({
@@ -42,6 +44,7 @@ export function ThreadTerminalPanel({
     fixedPanelTarget,
     fixedTerminalId,
     panelStateId,
+    preferredTerminalId: terminalId,
     syncThreadId,
     target,
   });

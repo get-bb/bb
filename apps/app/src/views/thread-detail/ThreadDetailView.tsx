@@ -156,6 +156,7 @@ import {
   useThreadStorageViewer,
 } from "@/components/secondary-panel/useThreadStorageViewer";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { BrowserTabLifecycleObserver } from "@/components/secondary-panel/BrowserTabDeck";
 import {
   LazyBrowserTabDeck,
   LazyHostFilePreviewTabContent,
@@ -214,7 +215,6 @@ import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useThreadUnreadDividerState } from "./useThreadUnreadDividerState";
 import {
   buildTerminalSyncedSecondaryFileTabs,
-  findActiveTerminalIdInSecondaryFileTabs,
   getRetainedTerminalTabId,
   syncTerminalTabsInFixedPanelState,
 } from "@/components/secondary-panel/terminalPanelTabs";
@@ -247,6 +247,7 @@ import {
   createGitDiffFixedPanelTab,
   createNewTabFixedPanelTab,
   createThreadInfoFixedPanelTab,
+  type SecondaryFileFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { resolveGitDiffTabStatus } from "@/components/secondary-panel/gitDiffTabEligibility";
 import { isRootThread } from "./threadParentSelectorOptions";
@@ -693,21 +694,15 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   });
   const {
     activeBrowserTab,
-    activeFileOpenerOwner,
     activeHostFileLineRange,
     activeHostFilePath,
-    activeStorageFileLineRange,
     activeStorageFilePath,
-    activeWorkspaceFileLineRange,
     activeWorkspaceFilePath,
-    activeWorkspaceFileSource,
-    activeWorkspaceFileStatusLabel,
     activePluginPanelTab,
     browserTabs,
     clearActiveFileTabs,
     activateTab,
     closeTab,
-    isNewTabActive,
     openTab,
     openPluginPanel,
     orderedSecondaryFileTabs,
@@ -752,20 +747,32 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   // each one keeps a live native view that must persist across tab switches, so
   // the deck stays mounted independently of which tab is active.
   const renderBrowserDeck = useCallback(
-    ({ canShowNativeBrowserView }: { canShowNativeBrowserView: boolean }) => {
+    ({
+      canHandleBrowserCommands,
+      canShowNativeBrowserView,
+      onNativeFocus,
+      activeBrowserTabId = activeBrowserTab?.id ?? null,
+    }: {
+      canHandleBrowserCommands?: boolean;
+      canShowNativeBrowserView: boolean;
+      onNativeFocus?: () => void;
+      activeBrowserTabId?: string | null;
+    }) => {
       if (browserDeckThreadId === null) {
         return null;
       }
       return (
         <LazyBrowserTabDeck
           browserTabs={browserTabs}
-          activeBrowserTabId={activeBrowserTab?.id ?? null}
+          activeBrowserTabId={activeBrowserTabId}
           addressFocusRequest={browserAddressFocusRequest}
           onAddressFocusRequestConsumed={
             handleBrowserAddressFocusRequestConsumed
           }
           environmentId={browserDeckEnvironmentId}
           canShowNativeBrowserView={canShowNativeBrowserView}
+          canHandleBrowserCommands={canHandleBrowserCommands}
+          onNativeFocus={onNativeFocus}
           threadId={browserDeckThreadId}
           onUpdate={updateBrowserTab}
         />
@@ -2287,34 +2294,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     }
     return false;
   });
-  const workspaceFileCopyPath = activeWorkspaceFilePath
-    ? resolveAbsoluteFilePath({
-        path: activeWorkspaceFilePath,
-        rootPath: workspacePreviewRootPath,
-      })
-    : null;
-  const storageFileCopyPath = activeStorageFilePath
-    ? resolveAbsoluteFilePath({
-        path: activeStorageFilePath,
-        rootPath: threadStorageRootPath,
-      })
-    : null;
-  // Relative links inside a previewed markdown file resolve against the file's
-  // own directory, mirroring how the file's links would resolve on disk.
-  const workspaceFileLinkBaseDir = workspaceFileCopyPath
-    ? getAbsoluteDirname({ path: workspaceFileCopyPath })
-    : undefined;
-  const storageFileLinkBaseDir = storageFileCopyPath
-    ? getAbsoluteDirname({ path: storageFileCopyPath })
-    : undefined;
-  const hostFileLinkBaseDir = activeHostFilePath
-    ? getAbsoluteDirname({ path: activeHostFilePath })
-    : undefined;
-  const hostFileLinkRootPath = resolveHostFilePreviewLinkRootPath({
-    baseDir: hostFileLinkBaseDir,
-    threadStorageRootPath,
-    workspaceRootPath: workspacePreviewRootPath,
-  });
   // Right-click local file links: per-open native app choices, optional
   // preview/plugin viewer choices, and utility copy actions. Left-click behavior
   // stays unchanged.
@@ -2406,51 +2385,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       handleOpenTimelineLocalFileLink,
       openPathInFileTarget,
       pluginFileOpeners,
-    ],
-  );
-  const workspaceMarkdownLinkRouting = useMemo(
-    () =>
-      buildMarkdownPreviewLinkRouting({
-        baseDir: workspaceFileLinkBaseDir,
-        onOpenLink: handleOpenTimelineLink,
-        onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-        rootPath: workspacePreviewRootPath,
-      }),
-    [
-      handleOpenTimelineLink,
-      handleOpenTimelineLocalFileLink,
-      workspaceFileLinkBaseDir,
-      workspacePreviewRootPath,
-    ],
-  );
-  const hostMarkdownLinkRouting = useMemo(
-    () =>
-      buildMarkdownPreviewLinkRouting({
-        baseDir: hostFileLinkBaseDir,
-        onOpenLink: handleOpenTimelineLink,
-        onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-        rootPath: hostFileLinkRootPath,
-      }),
-    [
-      handleOpenTimelineLink,
-      handleOpenTimelineLocalFileLink,
-      hostFileLinkBaseDir,
-      hostFileLinkRootPath,
-    ],
-  );
-  const storageMarkdownLinkRouting = useMemo(
-    () =>
-      buildMarkdownPreviewLinkRouting({
-        baseDir: storageFileLinkBaseDir,
-        onOpenLink: handleOpenTimelineLink,
-        onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-        rootPath: threadStorageRootPath,
-      }),
-    [
-      handleOpenTimelineLink,
-      handleOpenTimelineLocalFileLink,
-      storageFileLinkBaseDir,
-      threadStorageRootPath,
     ],
   );
   const handleOpenFilePreview = useCallback<OpenFilePreviewHandler>(
@@ -2698,114 +2632,187 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       thread={thread}
     />
   );
-  const activeTerminalId = findActiveTerminalIdInSecondaryFileTabs({
-    activeTabId: activeFixedSecondaryTabId,
-    tabs: syncedOrderedSecondaryFileTabs,
-  });
-  const renderFileOpenerReplacement = (original: ReactNode): ReactNode =>
-    activeFileOpenerOwner !== null && activePluginPanelTab !== null ? (
-      <ThreadTimelineNavigationProvider
-        environmentId={thread.environmentId}
-        onOpenLink={handleOpenTimelineLink}
-        onOpenLocalFileLink={handleOpenTimelineLocalFileLink}
-        resolveMentionLink={resolveMentionLink}
-        workspaceRootPath={environment?.path ?? undefined}
-      >
-        <PluginPanelTabContent
-          tab={activePluginPanelTab}
-          context={{ kind: "thread", threadId: thread.id }}
-          fileOpenerOriginal={original}
-        />
-      </ThreadTimelineNavigationProvider>
-    ) : (
-      original
-    );
-  const fileTabContent = activeTerminalId ? (
-    <LazyThreadTerminalPanel
-      autoFocus={shouldAutoFocusTerminal}
-      canCreateTerminal={canCreateTerminal}
-      isPanelOpen={isSecondaryPanelOpen}
-      isPanelPersistedOpen={isPersistedSecondaryPanelOpen}
-      onAutoFocusHandled={handleTerminalAutoFocusHandled}
-      onOpenLink={handleOpenTimelineLink}
-      onSelectionAddToChat={handleSelectionAddToChat}
-      syncThreadId={thread.id}
-      target={{ kind: "thread", threadId: thread.id }}
-    />
-  ) : isNewTabActive ? (
-    <LazyNewTabPage
-      autoFocus={shouldAutoFocusNewTab}
-      projectId={projectId ?? undefined}
-      environmentId={thread.environmentId ?? null}
-      currentThreadId={thread.id}
-      onAutoFocusHandled={handleNewTabAutoFocusHandled}
-      onSelect={handleSelectFileSearchResult}
-      onOpenBrowser={handleOpenBrowser}
-      onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
-      pluginActions={pluginPanelActions}
-    />
-  ) : activeWorkspaceFilePath ? (
-    renderFileOpenerReplacement(
-      <LazyWorkspaceFilePreviewTabContent
-        activePath={activeWorkspaceFilePath}
-        copyPath={workspaceFileCopyPath}
-        environmentId={thread.environmentId}
-        isPanelOpen={isSecondaryPanelOpen}
-        lineRange={activeWorkspaceFileLineRange}
-        markdownLinkRouting={workspaceMarkdownLinkRouting}
-        onOpenInEditor={handleOpenFileInEditor}
-        onSelectionAddToChat={handleSelectionAddToChat}
-        source={activeWorkspaceFileSource}
-        statusLabel={activeWorkspaceFileStatusLabel}
-        threadId={thread.id}
-      />,
-    )
-  ) : activeHostFilePath ? (
-    renderFileOpenerReplacement(
-      <LazyHostFilePreviewTabContent
-        activePath={activeHostFilePath}
-        copyPath={activeHostFilePath}
-        environmentId={thread.environmentId}
-        isPanelOpen={isSecondaryPanelOpen}
-        lineRange={activeHostFileLineRange}
-        markdownLinkRouting={hostMarkdownLinkRouting}
-        onOpenInEditor={handleOpenHostFileInEditor}
-        onSelectionAddToChat={handleSelectionAddToChat}
-        threadId={thread.id}
-      />,
-    )
-  ) : activeStorageFilePath ? (
-    renderFileOpenerReplacement(
-      <LazyThreadStorageFilePreviewTabContent
-        activePath={activeStorageFilePath}
-        copyPath={storageFileCopyPath}
-        isPanelOpen={isSecondaryPanelOpen}
-        lineRange={activeStorageFileLineRange}
-        markdownLinkRouting={storageMarkdownLinkRouting}
-        onOpenInEditor={handleOpenStorageFileInEditor}
-        onSelectionAddToChat={handleSelectionAddToChat}
-        threadId={thread.id}
-      />,
-    )
-  ) : activePluginPanelTab ? (
-    <ThreadTimelineNavigationProvider
-      environmentId={thread.environmentId}
-      onOpenLink={handleOpenTimelineLink}
-      onOpenLocalFileLink={handleOpenTimelineLocalFileLink}
-      resolveMentionLink={resolveMentionLink}
-      workspaceRootPath={environment?.path ?? undefined}
-    >
-      <PluginPanelTabContent
-        tab={activePluginPanelTab}
-        context={{ kind: "thread", threadId: thread.id }}
-      />
-    </ThreadTimelineNavigationProvider>
-  ) : undefined;
+  const renderSplitTabContent = (
+    tab: SecondaryFileFixedPanelTab,
+  ): ReactNode => {
+    switch (tab.kind) {
+      case "browser":
+        return null;
+      case "terminal":
+        return (
+          <LazyThreadTerminalPanel
+            autoFocus={
+              tab.id === activeFixedSecondaryTabId && shouldAutoFocusTerminal
+            }
+            canCreateTerminal={canCreateTerminal}
+            isPanelOpen={isSecondaryPanelOpen}
+            isPanelPersistedOpen={isPersistedSecondaryPanelOpen}
+            onAutoFocusHandled={handleTerminalAutoFocusHandled}
+            onOpenLink={handleOpenTimelineLink}
+            onSelectionAddToChat={handleSelectionAddToChat}
+            syncThreadId={thread.id}
+            target={{ kind: "thread", threadId: thread.id }}
+            terminalId={tab.terminalId}
+          />
+        );
+      case "new-tab":
+        return (
+          <LazyNewTabPage
+            autoFocus={
+              tab.id === activeFixedSecondaryTabId && shouldAutoFocusNewTab
+            }
+            projectId={projectId ?? undefined}
+            environmentId={thread.environmentId ?? null}
+            currentThreadId={thread.id}
+            onAutoFocusHandled={handleNewTabAutoFocusHandled}
+            onSelect={handleSelectFileSearchResult}
+            onOpenBrowser={handleOpenBrowser}
+            onStartTerminal={
+              canCreateTerminal ? handleStartTerminal : undefined
+            }
+            pluginActions={pluginPanelActions}
+          />
+        );
+      case "workspace-file-preview": {
+        const copyPath = resolveAbsoluteFilePath({
+          path: tab.path,
+          rootPath: workspacePreviewRootPath,
+        });
+        return (
+          <LazyWorkspaceFilePreviewTabContent
+            activePath={tab.path}
+            copyPath={copyPath}
+            environmentId={tab.environmentId}
+            isPanelOpen={isSecondaryPanelOpen}
+            lineRange={tab.lineRange}
+            markdownLinkRouting={buildMarkdownPreviewLinkRouting({
+              baseDir: copyPath
+                ? getAbsoluteDirname({ path: copyPath })
+                : undefined,
+              onOpenLink: handleOpenTimelineLink,
+              onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
+              rootPath: workspacePreviewRootPath,
+            })}
+            onOpenInEditor={handleOpenFileInEditor}
+            onSelectionAddToChat={handleSelectionAddToChat}
+            source={tab.source}
+            statusLabel={tab.statusLabel}
+            threadId={thread.id}
+          />
+        );
+      }
+      case "host-file-preview": {
+        const baseDir = getAbsoluteDirname({ path: tab.path });
+        return (
+          <LazyHostFilePreviewTabContent
+            activePath={tab.path}
+            copyPath={tab.path}
+            environmentId={tab.environmentId}
+            isPanelOpen={isSecondaryPanelOpen}
+            lineRange={tab.lineRange}
+            markdownLinkRouting={buildMarkdownPreviewLinkRouting({
+              baseDir,
+              onOpenLink: handleOpenTimelineLink,
+              onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
+              rootPath: resolveHostFilePreviewLinkRootPath({
+                baseDir,
+                threadStorageRootPath,
+                workspaceRootPath: workspacePreviewRootPath,
+              }),
+            })}
+            onOpenInEditor={handleOpenHostFileInEditor}
+            onSelectionAddToChat={handleSelectionAddToChat}
+            threadId={thread.id}
+          />
+        );
+      }
+      case "thread-storage-file-preview": {
+        const copyPath = resolveAbsoluteFilePath({
+          path: tab.path,
+          rootPath: threadStorageRootPath,
+        });
+        return (
+          <LazyThreadStorageFilePreviewTabContent
+            activePath={tab.path}
+            copyPath={copyPath}
+            isPanelOpen={isSecondaryPanelOpen}
+            lineRange={tab.lineRange}
+            markdownLinkRouting={buildMarkdownPreviewLinkRouting({
+              baseDir: copyPath
+                ? getAbsoluteDirname({ path: copyPath })
+                : undefined,
+              onOpenLink: handleOpenTimelineLink,
+              onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
+              rootPath: threadStorageRootPath,
+            })}
+            onOpenInEditor={handleOpenStorageFileInEditor}
+            onSelectionAddToChat={handleSelectionAddToChat}
+            threadId={thread.id}
+          />
+        );
+      }
+      case "plugin-panel":
+        const fileOpenerOriginal =
+          tab.fileOpenerOwner === undefined
+            ? undefined
+            : renderSplitTabContent(
+                tab.fileOpenerOwner.kind === "workspace-file-preview"
+                  ? {
+                      ...tab.fileOpenerOwner.tab,
+                      environmentId: tab.fileOpenerOwner.environmentId,
+                      id: `${tab.id}:file-opener-original`,
+                      kind: "workspace-file-preview",
+                      projectId: tab.fileOpenerOwner.projectId,
+                    }
+                  : tab.fileOpenerOwner.kind === "host-file-preview"
+                    ? {
+                        ...tab.fileOpenerOwner.tab,
+                        environmentId: tab.fileOpenerOwner.environmentId,
+                        id: `${tab.id}:file-opener-original`,
+                        kind: "host-file-preview",
+                        threadId: tab.fileOpenerOwner.threadId,
+                      }
+                    : {
+                        ...tab.fileOpenerOwner.tab,
+                        environmentId: tab.fileOpenerOwner.environmentId,
+                        id: `${tab.id}:file-opener-original`,
+                        isPinned: false,
+                        kind: "thread-storage-file-preview",
+                        threadId: tab.fileOpenerOwner.threadId,
+                      },
+              );
+        return (
+          <ThreadTimelineNavigationProvider
+            environmentId={thread.environmentId}
+            onOpenLink={handleOpenTimelineLink}
+            onOpenLocalFileLink={handleOpenTimelineLocalFileLink}
+            resolveMentionLink={resolveMentionLink}
+            workspaceRootPath={environment?.path ?? undefined}
+          >
+            <PluginPanelTabContent
+              tab={tab}
+              context={{ kind: "thread", threadId: thread.id }}
+              fileOpenerOriginal={fileOpenerOriginal}
+            />
+          </ThreadTimelineNavigationProvider>
+        );
+    }
+  };
+  const activeFileTabModel = syncedOrderedSecondaryFileTabs.find(
+    (tab) => tab.id === activeFixedSecondaryTabId,
+  );
+  const fileTabContent = activeFileTabModel
+    ? renderSplitTabContent(activeFileTabModel)
+    : undefined;
   const isBrowserTabActive = activeBrowserTab !== null;
   const threadDetailContent = (
     <MarkdownLocalFileContextMenuContext.Provider
       value={getLocalFileContextMenuItems}
     >
+      <BrowserTabLifecycleObserver
+        browserTabs={browserTabs}
+        threadId={thread.id}
+      />
       <UrlOpenRoutingProvider
         openInAppBrowser={
           canOpenUrlsInAppBrowser ? openBrowserTabAndReveal : null
@@ -2882,6 +2889,16 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
                 (candidate) =>
                   candidate.pluginId === activePluginPanelTab.pluginId &&
                   candidate.id === activePluginPanelTab.actionId,
+              )?.layout === "flush",
+            splitPanelStateId: thread.id,
+            splitTabModels: syncedOrderedSecondaryFileTabs,
+            renderSplitTabContent,
+            splitTabContentFillsRegion: (tab) =>
+              tab.kind === "plugin-panel" &&
+              pluginThreadPanelActions.find(
+                (candidate) =>
+                  candidate.pluginId === tab.pluginId &&
+                  candidate.id === tab.actionId,
               )?.layout === "flush",
             renderBrowserDeck,
             isBrowserTabActive,

@@ -133,6 +133,7 @@ interface FakeFindInPageCall {
 }
 
 interface FakeWebContentsEventMap {
+  focus: FakeVoidWebContentsListener;
   "before-input-event": FakeBeforeInputListener;
   "will-frame-navigate": FakeWillFrameNavigateListener;
   "will-navigate": FakeWillNavigateListener;
@@ -260,6 +261,7 @@ const electronMock = vi.hoisted(() => {
       (image: FakeNativeImage) => void
     > = [];
     private readonly listeners: FakeWebContentsListeners = {
+      focus: [],
       "before-input-event": [],
       "will-frame-navigate": [],
       "will-navigate": [],
@@ -310,6 +312,7 @@ const electronMock = vi.hoisted(() => {
 
     focus(): void {
       this.focusCalls += 1;
+      this.emitFocus();
     }
 
     findInPage(
@@ -379,6 +382,10 @@ const electronMock = vi.hoisted(() => {
           args.isMainFrame,
         );
       }
+    }
+
+    emitFocus(): void {
+      for (const listener of this.listeners.focus) listener();
     }
 
     emitRenderProcessGone(details: FakeRenderProcessGoneDetails): void {
@@ -546,6 +553,7 @@ interface FakeHostWindowArgs {
 class FakeHostWebContents implements DesktopBrowserHostWebContents {
   public destroyed = false;
   public readonly sentPayloads: DesktopBrowserHostWebContentsPayload[] = [];
+  public readonly sentChannels: string[] = [];
   public readonly id: number;
 
   constructor(id: number) {
@@ -556,7 +564,8 @@ class FakeHostWebContents implements DesktopBrowserHostWebContents {
     return this.destroyed;
   }
 
-  send(_channel: string, payload: DesktopBrowserHostWebContentsPayload): void {
+  send(channel: string, payload: DesktopBrowserHostWebContentsPayload): void {
+    this.sentChannels.push(channel);
     this.sentPayloads.push(payload);
   }
 }
@@ -1280,6 +1289,43 @@ describe("DesktopBrowserViewManager", () => {
     expect(view.webContents.focusCalls).toBe(1);
   });
 
+  it("reports user focus but suppresses programmatic focus used for restoration", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 79,
+    });
+
+    manager.attach({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        url: "https://example.com",
+        bounds: { x: 100, y: 50, width: 500, height: 350 },
+        visible: true,
+      },
+    });
+    const view = requireFakeView(0);
+    expect(hostWindow.webContents.sentChannels).not.toContain(
+      "bb-desktop:browser:focused",
+    );
+
+    manager.focus({ hostWindow, tabId: "browser:a" });
+    expect(hostWindow.webContents.sentChannels).not.toContain(
+      "bb-desktop:browser:focused",
+    );
+
+    view.webContents.emitFocus();
+    expect(hostWindow.webContents.sentChannels).toContain(
+      "bb-desktop:browser:focused",
+    );
+    expect(hostWindow.webContents.sentPayloads.at(-1)).toEqual({
+      tabId: "browser:a",
+    });
+  });
+
   it("defers hidden memory-eviction recovery until the panel shows the current page", () => {
     vi.useFakeTimers();
     const { hostWindow, manager, view } = createRendererRecoveryFixture(75);
@@ -1469,6 +1515,119 @@ describe("DesktopBrowserViewManager", () => {
       request: { tabId: "browser:a", visible: true },
     });
     expect(view.webContents.focusCalls).toBe(2);
+  });
+
+  it("does not let an unfocused split view steal focus on mount or restore", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 900, height: 600 },
+      webContentsId: 80,
+    });
+
+    for (const [tabId, x] of [
+      ["browser:focused", 0],
+      ["browser:sibling", 450],
+    ] as const) {
+      manager.attach({
+        hostWindow,
+        request: {
+          tabId,
+          url: `https://example.com/${tabId}`,
+          bounds: { x, y: 0, width: 450, height: 600 },
+          visible: true,
+        },
+      });
+    }
+    const focusedView = requireFakeView(0);
+    const siblingView = requireFakeView(1);
+    expect(focusedView.webContents.focusCalls).toBe(1);
+    expect(siblingView.webContents.focusCalls).toBe(0);
+
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:sibling", visible: false },
+    });
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:sibling", visible: true },
+    });
+
+    expect(focusedView.webContents.focusCalls).toBe(1);
+    expect(siblingView.webContents.focusCalls).toBe(0);
+  });
+
+  it("shows a browser beside a focused non-browser pane without stealing focus", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 900, height: 600 },
+      webContentsId: 82,
+    });
+
+    manager.attach({
+      hostWindow,
+      request: {
+        tabId: "browser:sibling",
+        url: "https://example.com/browser",
+        bounds: { x: 450, y: 0, width: 450, height: 600 },
+        visible: false,
+      },
+    });
+    const browserView = requireFakeView(0);
+
+    manager.setVisibleWithoutFocus({
+      hostWindow,
+      request: { tabId: "browser:sibling", visible: true },
+    });
+    expect(browserView.visible).toBe(true);
+    expect(browserView.webContents.focusCalls).toBe(0);
+
+    manager.setVisibleWithoutFocus({
+      hostWindow,
+      request: { tabId: "browser:sibling", visible: false },
+    });
+    manager.setVisibleWithoutFocus({
+      hostWindow,
+      request: { tabId: "browser:sibling", visible: true },
+    });
+    expect(browserView.visible).toBe(true);
+    expect(browserView.webContents.focusCalls).toBe(0);
+  });
+
+  it("lets logical focus override first-visible mount order", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 900, height: 600 },
+      webContentsId: 81,
+    });
+
+    for (const [tabId, x] of [
+      ["browser:sibling", 0],
+      ["browser:focused", 450],
+    ] as const) {
+      manager.attach({
+        hostWindow,
+        request: {
+          tabId,
+          url: `https://example.com/${tabId}`,
+          bounds: { x, y: 0, width: 450, height: 600 },
+          visible: true,
+        },
+      });
+    }
+    const siblingView = requireFakeView(0);
+    const focusedView = requireFakeView(1);
+    expect(siblingView.webContents.focusCalls).toBe(1);
+    expect(focusedView.webContents.focusCalls).toBe(0);
+
+    manager.focus({ hostWindow, tabId: "browser:focused" });
+
+    expect(focusedView.webContents.focusCalls).toBe(1);
   });
 
   it("allows clipboard-sanitized-write but denies clipboard-read and device permissions", () => {

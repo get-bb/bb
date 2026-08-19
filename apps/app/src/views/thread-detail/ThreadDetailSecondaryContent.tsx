@@ -28,10 +28,14 @@ type ThreadSecondaryPanelProps = Omit<
   | "isConversationCollapsed"
   | "onToggleConversationCollapse"
   | "browserDeck"
+  | "browserDeckForTab"
   | "drawerFallback"
 > & {
   renderBrowserDeck?: (args: {
+    activeBrowserTabId?: string | null;
+    canHandleBrowserCommands?: boolean;
     canShowNativeBrowserView: boolean;
+    onNativeFocus?: () => void;
   }) => ReactNode;
 };
 
@@ -145,7 +149,20 @@ function ThreadDetailSecondaryContentBody({
           <LazyThreadSecondaryPanel
             {...threadSecondaryPanelProps}
             drawerFallback={<ThreadMetadataLoadingSkeleton />}
-            browserDeck={renderBrowserDeck?.({ canShowNativeBrowserView })}
+            browserDeck={renderBrowserDeck?.({
+              canHandleBrowserCommands: canShowNativeBrowserView,
+              canShowNativeBrowserView,
+            })}
+            browserDeckForTab={(activeBrowserTabId, pane) =>
+              renderBrowserDeck?.({
+                activeBrowserTabId,
+                canHandleBrowserCommands:
+                  canShowNativeBrowserView && pane.isVisible && pane.isFocused,
+                canShowNativeBrowserView:
+                  canShowNativeBrowserView && pane.isVisible,
+                onNativeFocus: pane.onFocusPane,
+              })
+            }
             renderAsDrawer={presentation === "drawer"}
             isConversationCollapsed={
               presentation === "inline" && isMainCollapsed

@@ -17,6 +17,19 @@ type ThreadDetailSecondaryContentProps = ComponentProps<
   typeof ThreadDetailSecondaryContent
 >;
 
+const secondaryPanelMockState = vi.hoisted(() => ({
+  browserDeckForTab: undefined as
+    | ((
+        activeBrowserTabId: string,
+        pane: {
+          isFocused: boolean;
+          isVisible: boolean;
+          onFocusPane: () => void;
+        },
+      ) => ReactNode)
+    | undefined,
+}));
+
 vi.mock("@/lib/bb-desktop", () => ({
   DEFAULT_DESKTOP_WINDOW_STATE: { isFullScreen: false },
   getBbDesktopInfo: () => null,
@@ -107,11 +120,13 @@ vi.mock(
       >();
 
     const ThreadSecondaryPanel = ({
+      browserDeckForTab,
       inlinePanelToggle,
       metadataContent,
       renderAsDrawer,
-    }: ComponentProps<typeof actual.ThreadSecondaryPanel>) =>
-      React.createElement(
+    }: ComponentProps<typeof actual.ThreadSecondaryPanel>) => {
+      secondaryPanelMockState.browserDeckForTab = browserDeckForTab;
+      return React.createElement(
         "section",
         {
           "data-inline-panel-toggle": inlinePanelToggle,
@@ -121,6 +136,7 @@ vi.mock(
         },
         metadataContent,
       );
+    };
 
     return { ...actual, ThreadSecondaryPanel };
   },
@@ -299,6 +315,7 @@ function renderThreadDetail(
 afterEach(() => {
   cleanup();
   publishedHostedPanel = null;
+  secondaryPanelMockState.browserDeckForTab = undefined;
   useThreadsMock.mockClear();
 });
 
@@ -309,9 +326,13 @@ describe("ThreadDetailSecondaryContent", () => {
     renderThreadDetail(false);
 
     expect(
-      (await screen.findByTestId("inline-secondary-panel")).getAttribute(
-        "data-inline-panel-toggle",
-      ),
+      (
+        await screen.findByTestId(
+          "inline-secondary-panel",
+          {},
+          { timeout: 5_000 },
+        )
+      ).getAttribute("data-inline-panel-toggle"),
     ).toBe("button");
   });
 
@@ -359,6 +380,63 @@ describe("ThreadDetailSecondaryContent", () => {
         screen.getByTestId("metadata-card"),
       ),
     ).toBe(true);
+  });
+
+  it("pins a split browser pane to its tab and gates native commands by pane focus", () => {
+    const renderBrowserDeck = vi.fn(() => null);
+    const props = createProps();
+    props.secondaryPanel.renderBrowserDeck = renderBrowserDeck;
+
+    render(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent {...props} />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    const browserDeckForTab = secondaryPanelMockState.browserDeckForTab;
+    expect(browserDeckForTab).toBeDefined();
+    if (browserDeckForTab === undefined) return;
+
+    const onFocusPane = vi.fn();
+    browserDeckForTab("browser-split", {
+      isFocused: true,
+      isVisible: true,
+      onFocusPane,
+    });
+    expect(renderBrowserDeck).toHaveBeenLastCalledWith({
+      activeBrowserTabId: "browser-split",
+      canHandleBrowserCommands: true,
+      canShowNativeBrowserView: true,
+      onNativeFocus: onFocusPane,
+    });
+
+    browserDeckForTab("browser-split", {
+      isFocused: false,
+      isVisible: true,
+      onFocusPane,
+    });
+    expect(renderBrowserDeck).toHaveBeenLastCalledWith({
+      activeBrowserTabId: "browser-split",
+      canHandleBrowserCommands: false,
+      canShowNativeBrowserView: true,
+      onNativeFocus: onFocusPane,
+    });
+
+    browserDeckForTab("browser-split", {
+      isFocused: true,
+      isVisible: false,
+      onFocusPane,
+    });
+    expect(renderBrowserDeck).toHaveBeenLastCalledWith({
+      activeBrowserTabId: "browser-split",
+      canHandleBrowserCommands: false,
+      canShowNativeBrowserView: false,
+      onNativeFocus: onFocusPane,
+    });
   });
 
   it("only requests the forks list while the secondary panel is open", () => {

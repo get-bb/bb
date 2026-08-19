@@ -148,6 +148,9 @@ export const bbDesktopBrowserTabRefSchema = z
     tabId: z.string().min(1),
   })
   .strict();
+export type BbDesktopBrowserTabRef = z.infer<
+  typeof bbDesktopBrowserTabRefSchema
+>;
 
 /**
  * Current navigation state of a browser view, pushed main → renderer on every
@@ -288,6 +291,7 @@ export type BbDesktopBrowserScopedOpenTabHandler = (
 export type BbDesktopBrowserSnapshotHandler = (
   snapshot: BbDesktopBrowserSnapshot,
 ) => void;
+export type BbDesktopBrowserFocusHandler = (tabId: string) => void;
 export type BbDesktopBrowserFindResultHandler = (
   result: BbDesktopBrowserFindResult,
 ) => void;
@@ -303,8 +307,15 @@ export interface BbDesktopBrowserApi {
   goForward(tabId: string): void;
   reload(tabId: string): void;
   stop(tabId: string): void;
+  /** Focus a visible view without treating that programmatic focus as a page click. */
+  focus?(tabId: string): void;
   setBounds(request: BbDesktopBrowserSetBoundsRequest): void;
   setVisible(request: BbDesktopBrowserSetVisibleRequest): void;
+  /**
+   * Set visibility without moving native keyboard focus. Optional for version
+   * skew; split panes use it for visible browser siblings that do not own focus.
+   */
+  setVisibleWithoutFocus?(request: BbDesktopBrowserSetVisibleRequest): void;
   /** Subscribe to navigation-state pushes for every view in this window. */
   onState(listener: BbDesktopBrowserStateHandler): BbDesktopBrowserUnsubscribe;
   /** Subscribe to popup requests that should open as a new in-panel browser tab. */
@@ -318,6 +329,11 @@ export interface BbDesktopBrowserApi {
   onScopedOpenTab?(
     listener: BbDesktopBrowserScopedOpenTabHandler,
   ): BbDesktopBrowserUnsubscribe;
+  /**
+   * Subscribe to user-driven focus entering a native browser page. Optional
+   * for version skew with desktop shells that predate split browser panes.
+   */
+  onFocus?(listener: BbDesktopBrowserFocusHandler): BbDesktopBrowserUnsubscribe;
   /**
    * Subscribe to resize-burst snapshot pushes. Optional purely for version
    * skew: the SPA routinely attaches to an older desktop shell whose preload

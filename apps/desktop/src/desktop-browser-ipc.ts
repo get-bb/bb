@@ -12,11 +12,15 @@ export const BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL =
   "bb-desktop:browser:go-forward";
 export const BB_DESKTOP_BROWSER_RELOAD_CHANNEL = "bb-desktop:browser:reload";
 export const BB_DESKTOP_BROWSER_STOP_CHANNEL = "bb-desktop:browser:stop";
+export const BB_DESKTOP_BROWSER_FOCUS_CHANNEL = "bb-desktop:browser:focus";
 export const BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL =
   "bb-desktop:browser:set-bounds";
 export const BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL =
   "bb-desktop:browser:set-visible";
+export const BB_DESKTOP_BROWSER_SET_VISIBLE_WITHOUT_FOCUS_CHANNEL =
+  "bb-desktop:browser:set-visible-without-focus";
 export const BB_DESKTOP_BROWSER_STATE_CHANNEL = "bb-desktop:browser:state";
+export const BB_DESKTOP_BROWSER_FOCUSED_CHANNEL = "bb-desktop:browser:focused";
 export const BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL =
   "bb-desktop:browser:open-tab";
 export const BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL =
