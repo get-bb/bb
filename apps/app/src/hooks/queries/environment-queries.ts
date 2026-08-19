@@ -39,6 +39,7 @@ import {
 import { requireEnabledQueryArg } from "./query-helpers";
 import {
   EXPENSIVE_MANUAL_QUERY_POLICY,
+  HEAVY_PAYLOAD_QUERY_POLICY,
   REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
   REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
   TYPEAHEAD_QUERY_POLICY,
@@ -292,6 +293,7 @@ export function useEnvironmentFilePreview(
     },
     enabled,
     ...EXPENSIVE_MANUAL_QUERY_POLICY,
+    ...HEAVY_PAYLOAD_QUERY_POLICY,
   });
 }
 

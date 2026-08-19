@@ -12,6 +12,7 @@ import {
   type PatchQueryIdentity,
   getDiffPatchEvictionGeneration,
   readDiffPatchEntry,
+  retainDiffPatchQueries,
   writeDiffPatchEntry,
 } from "../cache-owners/environment-diff-patch-cache-owner";
 import { environmentDiffTargetKey } from "./query-keys";
@@ -205,6 +206,15 @@ export function useEnvironmentDiffPatches(
       abortPatchRequests(abortControllers);
     };
   }, []);
+
+  // Cached patches have no query observers, so this reader lease is what keeps
+  // them resident; the last release schedules the bounded eviction.
+  useEffect(() => {
+    if (!environmentId) {
+      return;
+    }
+    return retainDiffPatchQueries({ queryClient, environmentId });
+  }, [environmentId, queryClient]);
 
   const fetchPage = useCallback(
     async (paths: string[], generationTarget: string) => {

@@ -1,6 +1,10 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { DiffPatchEntry } from "@bb/server-contract";
-import { environmentDiffPatchQueryKey } from "../queries/query-keys";
+import { HEAVY_PAYLOAD_GC_TIME_MS } from "../queries/query-policies";
+import {
+  environmentDiffPatchQueryKey,
+  environmentDiffPatchQueryKeyPrefix,
+} from "../queries/query-keys";
 
 /**
  * Identifies the diff-patch cache scope for one environment + diff target.
@@ -88,19 +92,101 @@ interface WriteDiffPatchEntryArgs {
   entry: DiffPatchEntry;
 }
 
-/** Cache one file's patch under the per-(target, path) diff-patch key. */
+/**
+ * Cache one file's patch under the per-(target, path) diff-patch key.
+ *
+ * Patch entries are observer-less (`getPatchState` reads them with
+ * `getQueryData`), so React Query's `gcTime` would count from the write, not
+ * from the last reader, and could drop a patch the panel is still showing.
+ * The query is therefore built without a gc timer; retention is owned by
+ * {@link retainDiffPatchQueries}, which evicts the environment's patches
+ * {@link HEAVY_PAYLOAD_GC_TIME_MS} after the last reader unmounts.
+ */
 export function writeDiffPatchEntry({
   queryClient,
   identity,
   entry,
 }: WriteDiffPatchEntryArgs): void {
-  queryClient.setQueryData<DiffPatchEntry>(
-    environmentDiffPatchQueryKey(
-      identity.environmentId,
-      identity.targetType,
-      identity.targetKey,
-      entry.path,
-    ),
-    entry,
+  const queryKey = environmentDiffPatchQueryKey(
+    identity.environmentId,
+    identity.targetType,
+    identity.targetKey,
+    entry.path,
   );
+  queryClient
+    .getQueryCache()
+    .build(queryClient, { queryKey, gcTime: Infinity });
+  queryClient.setQueryData<DiffPatchEntry>(queryKey, entry);
+}
+
+interface DiffPatchRetentionLease {
+  readers: number;
+  evictionTimer: ReturnType<typeof setTimeout> | null;
+}
+
+const diffPatchRetentionLeases = new WeakMap<
+  QueryClient,
+  Map<string, DiffPatchRetentionLease>
+>();
+
+function getDiffPatchRetentionLeases(
+  queryClient: QueryClient,
+): Map<string, DiffPatchRetentionLease> {
+  let leases = diffPatchRetentionLeases.get(queryClient);
+  if (leases === undefined) {
+    leases = new Map();
+    diffPatchRetentionLeases.set(queryClient, leases);
+  }
+  return leases;
+}
+
+/**
+ * Keep an environment's cached diff patches alive while a reader is mounted.
+ * When the last reader releases its lease, the patches are evicted after
+ * {@link HEAVY_PAYLOAD_GC_TIME_MS} — long enough for a quick thread
+ * back-and-forth to keep its loaded diff, short enough that a browsing session
+ * on a phone does not accumulate every visited thread's patches. A reader that
+ * mounts again inside that window cancels the pending eviction. Returns the
+ * release function.
+ */
+export function retainDiffPatchQueries({
+  queryClient,
+  environmentId,
+}: {
+  queryClient: QueryClient;
+  environmentId: string;
+}): () => void {
+  const leases = getDiffPatchRetentionLeases(queryClient);
+  let lease = leases.get(environmentId);
+  if (lease === undefined) {
+    lease = { readers: 0, evictionTimer: null };
+    leases.set(environmentId, lease);
+  }
+  if (lease.evictionTimer !== null) {
+    clearTimeout(lease.evictionTimer);
+    lease.evictionTimer = null;
+  }
+  lease.readers += 1;
+  let released = false;
+  return () => {
+    if (released) {
+      return;
+    }
+    released = true;
+    lease.readers -= 1;
+    if (lease.readers > 0) {
+      return;
+    }
+    lease.evictionTimer = setTimeout(() => {
+      lease.evictionTimer = null;
+      if (lease.readers > 0) {
+        return;
+      }
+      leases.delete(environmentId);
+      bumpDiffPatchEvictionGeneration(environmentId);
+      queryClient.removeQueries({
+        queryKey: environmentDiffPatchQueryKeyPrefix(environmentId),
+      });
+    }, HEAVY_PAYLOAD_GC_TIME_MS);
+  };
 }

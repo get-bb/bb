@@ -12,6 +12,7 @@ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { removeEnvironmentDiffPatchQueries } from "../cache-owners/query-cache";
 import { bumpAllDiffPatchEvictionGenerations } from "../cache-owners/environment-diff-patch-cache-owner";
 import { environmentDiffPatchQueryKey } from "./query-keys";
+import { HEAVY_PAYLOAD_GC_TIME_MS } from "./query-policies";
 import { useEnvironmentDiffPatches } from "./use-environment-diff-patches";
 
 vi.mock("@/lib/sdk", () => ({
@@ -333,5 +334,71 @@ describe("useEnvironmentDiffPatches", () => {
       expect(state.patch).toBe(patch.patch);
     });
     expect(queryClient.getQueryData<DiffPatchEntry>(patchKey())).toEqual(patch);
+  });
+});
+
+describe("useEnvironmentDiffPatches cache retention", () => {
+  it("keeps patches while a reader is mounted and evicts them one minute after the last reader leaves", () => {
+    vi.useFakeTimers();
+    try {
+      const { wrapper, queryClient } = createQueryClientTestHarness();
+      const patch: DiffPatchEntry = {
+        path: PATH,
+        patch: "diff --git a/file.ts b/file.ts\n+kept\n",
+        truncated: false,
+      };
+
+      const first = renderHook(
+        () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
+        { wrapper },
+      );
+      act(() => {
+        first.result.current.seedInitialPatches([patch]);
+      });
+      expect(queryClient.getQueryData(patchKey())).toEqual(patch);
+
+      // Observer-less entries must not gc out from under a mounted reader.
+      act(() => {
+        vi.advanceTimersByTime(HEAVY_PAYLOAD_GC_TIME_MS * 10);
+      });
+      expect(queryClient.getQueryData(patchKey())).toEqual(patch);
+
+      // A second reader (split pane) then the first leaving keeps the cache.
+      const second = renderHook(
+        () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
+        { wrapper },
+      );
+      first.unmount();
+      act(() => {
+        vi.advanceTimersByTime(HEAVY_PAYLOAD_GC_TIME_MS * 2);
+      });
+      expect(queryClient.getQueryData(patchKey())).toEqual(patch);
+
+      // Last reader leaves: still cached inside the retention window (a quick
+      // thread back-and-forth reuses the loaded diff) ...
+      second.unmount();
+      act(() => {
+        vi.advanceTimersByTime(HEAVY_PAYLOAD_GC_TIME_MS - 1);
+      });
+      expect(queryClient.getQueryData(patchKey())).toEqual(patch);
+
+      // ... and a remount inside the window cancels the pending eviction.
+      const third = renderHook(
+        () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
+        { wrapper },
+      );
+      act(() => {
+        vi.advanceTimersByTime(HEAVY_PAYLOAD_GC_TIME_MS * 2);
+      });
+      expect(queryClient.getQueryData(patchKey())).toEqual(patch);
+
+      third.unmount();
+      act(() => {
+        vi.advanceTimersByTime(HEAVY_PAYLOAD_GC_TIME_MS);
+      });
+      expect(queryClient.getQueryData(patchKey())).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

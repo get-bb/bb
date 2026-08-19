@@ -28,6 +28,7 @@ import {
 } from "./query-helpers";
 import {
   EXPENSIVE_MANUAL_QUERY_POLICY,
+  HEAVY_PAYLOAD_QUERY_POLICY,
   REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
   TYPEAHEAD_QUERY_POLICY,
 } from "./query-policies";
@@ -271,6 +272,7 @@ export function useProjectFilePreview(
     },
     enabled,
     ...EXPENSIVE_MANUAL_QUERY_POLICY,
+    ...HEAVY_PAYLOAD_QUERY_POLICY,
   });
 }
 

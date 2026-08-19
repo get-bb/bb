@@ -55,6 +55,7 @@ import {
   TRANSIENT_READ_RETRY_DELAY_MS,
 } from "./query-helpers";
 import {
+  HEAVY_PAYLOAD_QUERY_POLICY,
   REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
   REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
   RESUME_REFETCH_QUERY_POLICY,
@@ -855,6 +856,7 @@ export function useThreadStorageFilePreview(
       ),
     enabled,
     ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
+    ...HEAVY_PAYLOAD_QUERY_POLICY,
   });
 }
 
@@ -881,6 +883,7 @@ export function useThreadHostFilePreview(
       ),
     enabled,
     ...RESUME_REFETCH_QUERY_POLICY,
+    ...HEAVY_PAYLOAD_QUERY_POLICY,
   });
 }
 
@@ -1045,6 +1048,7 @@ export function useThreadTimelineTurnSummaryDetails(
     },
     refetchOnMount: options?.refetchOnMount ?? true,
     staleTime: options?.staleTime ?? Infinity,
+    ...HEAVY_PAYLOAD_QUERY_POLICY,
   });
 }
 
