@@ -19,6 +19,10 @@ import { RUNTIME_EXPORT_MANIFEST } from "./runtime-export-manifest.js";
 import { type PluginBuildToolchain } from "./toolchain.js";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import { validatePluginBuildManifest } from "./plugin-manifest.js";
+import {
+  pluginScopeRoots,
+  scopePluginUtilities,
+} from "./scope-plugin-utilities.js";
 
 /**
  * `bb plugin build` — compile a plugin's `bb.app` entry (app.tsx) into a
@@ -375,8 +379,8 @@ async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
  *   depends on it (`animate-in`/`fade-in-0`), and its style-only npm exports
  *   can't be require.resolve'd from the packaged CLI.
  *
- * The utilities are emitted inside `@scope` limited to THIS plugin's own
- * mounts — `[data-bb-plugin="<id>"]`, the attribute every plugin mount root
+ * The utilities are confined to THIS plugin's own mounts — the
+ * `[data-bb-plugin="<id>"]` attribute every plugin mount root
  * (PluginSlotMount) and plugin-rendered portal (portal-scope) carries — so
  * plugin utility rules can never touch host elements OR another plugin's
  * pane. Without any scope, a plugin's plain `.flex-col` (same `utilities`
@@ -384,15 +388,18 @@ async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
  * media query adds no specificity, so the later plain rule wins and host
  * layouts silently collapse. A generic `[data-bb-plugin-root]` scope shared
  * by all plugins has the same failure between plugins: every sheet matches
- * every pane, scope proximity ties, and whichever plugin's sheet loads last
- * overrides earlier plugins' container-variant rules with its own base
- * utilities (e.g. a later `.grid` beating an earlier `@md:flex`). The second
- * scope arm keeps portals styled on hosts whose portal-scope predates the
- * per-plugin id attribute. `@scope` adds no specificity of its own, so
- * cascade order WITHIN the plugin's sheet is unchanged. Theme variables and
- * `@property` registrations stay top-level: `:root` vars must land on the
- * document root (status quo — the host defines the same tokens) and
- * `@property` is invalid when nested.
+ * every pane and whichever plugin's sheet loads last overrides earlier
+ * plugins' container-variant rules with its own base utilities (e.g. a later
+ * `.grid` beating an earlier `@md:flex`).
+ *
+ * The confinement is a zero-specificity `:where()` selector rewrite
+ * (scopePluginUtilities), NOT the `@scope` at-rule this used to emit: `@scope`
+ * costs Safari ~300ms per style recalculation for a single plugin's utilities
+ * layer. See scope-plugin-utilities.ts for the measurements and the exact
+ * rewrite. Cascade order WITHIN the plugin's sheet is unchanged either way.
+ * Theme variables and `@property` registrations stay top-level and unscoped:
+ * `:root` vars must land on the document root (status quo — the host defines
+ * the same tokens) and `@property` is invalid when nested.
  */
 async function buildTailwindCss(
   rootDir: string,
@@ -418,9 +425,7 @@ async function buildTailwindCss(
     TW_ANIMATE_CSS,
     PLUGIN_THEME_CSS,
     `@layer utilities {`,
-    `  @scope ([data-bb-plugin="${pluginId}"], [data-bb-plugin-root]:not([data-bb-plugin])) {`,
-    `    @tailwind utilities;`,
-    `  }`,
+    `  @tailwind utilities;`,
     `}`,
     ``,
   ].join("\n");
@@ -449,7 +454,10 @@ async function buildTailwindCss(
   const scanner = new Scanner({
     sources: scannerSources,
   });
-  return compiler.build(scanner.scan());
+  return scopePluginUtilities(
+    compiler.build(scanner.scan()),
+    pluginScopeRoots(pluginId),
+  );
 }
 
 export interface PluginAppBuildResult {
@@ -511,7 +519,7 @@ export async function buildPluginApp(
         "process.env.NODE_ENV": '"production"',
         // Consumed by shared-ui's vendored portal-scope so plugin-rendered
         // portals (dialog, select, …) carry this plugin's own scope id and
-        // match the per-plugin `@scope` arm of app.css.
+        // match the per-plugin arm of app.css's scope selector.
         __BB_PLUGIN_ID__: JSON.stringify(pluginId),
       },
       logLevel: "error",

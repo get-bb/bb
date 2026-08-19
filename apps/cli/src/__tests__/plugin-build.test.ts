@@ -155,9 +155,13 @@ describe("buildPluginApp", () => {
     expect(css).toContain(".fade-in-0");
     // Utilities stay scoped to this plugin's own mounts, with a generic-root
     // fallback for hosts whose portals predate the per-plugin id attribute.
-    expect(css).toContain(
-      '@scope ([data-bb-plugin="fixture"], [data-bb-plugin-root]:not([data-bb-plugin]))',
-    );
+    // Two arms per selector: the self arm styles portaled overlays, which
+    // carry the scope attribute on the styled element itself.
+    const scope =
+      ':where([data-bb-plugin="fixture"], [data-bb-plugin-root]:not([data-bb-plugin]))';
+    expect(css).toContain(`${scope} .animate-in`);
+    expect(css).toContain(`${scope}.animate-in`);
+    expect(css).not.toContain("@scope");
 
     const meta = JSON.parse(await readFile(result.metaPath, "utf8"));
     expect(meta).toEqual({
@@ -195,7 +199,12 @@ describe("buildPluginApp", () => {
     expect(css).toContain(".fixture-highlight");
     expect(css).toContain("background: hotpink");
     expect(css).toContain("@keyframes fixture-pulse");
-    expect(css.match(/@scope/g)).toHaveLength(1);
+    // Authored CSS is appended after the scoped Tailwind layer and keeps its
+    // own selectors: they may target editor decorations outside the mount.
+    expect(css).toMatch(/^\.fixture-highlight/m);
+    expect(css).not.toContain(
+      ':where([data-bb-plugin="fixture"], [data-bb-plugin-root]:not([data-bb-plugin])) .fixture-highlight',
+    );
   });
 
   it("throws at import time without the BB runtime and loads once slots are set", async () => {

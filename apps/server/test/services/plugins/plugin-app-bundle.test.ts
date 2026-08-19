@@ -190,8 +190,8 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     expect(css.headers.get("content-type")).toContain("text/css");
     const cssText = await css.text();
     expect(cssText).toContain("line-clamp-2");
-    // Regression (plugin CSS leak): the utilities layer must open straight
-    // into @scope limited to this plugin's own mounts, so plugin utility
+    // Regression (plugin CSS leak): every selector in the utilities layer
+    // must be confined to this plugin's own mounts, so plugin utility
     // rules apply neither to host elements nor to other plugins' panes.
     // Unscoped, a plugin's plain `.flex-col` (same `utilities` layer, later
     // stylesheet) overrides the host's `sm:flex-row` on every host element —
@@ -200,9 +200,10 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     // plugins (a later sheet's `.grid` beating an earlier sheet's
     // `@md:flex`). The second arm keeps portals styled on hosts whose
     // portal-scope predates the per-plugin id attribute.
-    expect(cssText).toMatch(
-      /@layer utilities \{\s*@scope \(\[data-bb-plugin="appy"\], \[data-bb-plugin-root\]:not\(\[data-bb-plugin\]\)\) \{/,
-    );
+    const scope =
+      ':where([data-bb-plugin="appy"], [data-bb-plugin-root]:not([data-bb-plugin]))';
+    expect(cssText).toContain(`${scope} .line-clamp-2`);
+    expect(cssText).toContain(`${scope}.line-clamp-2`);
     // And no utility rule sits in the utilities layer outside that scope.
     expect(cssText).not.toMatch(/@layer utilities \{\s*\./);
 

@@ -15,29 +15,6 @@ function testToolchain() {
   return resolvePluginBuildToolchain(join(tmpdir(), "bb-toolchain-unused"));
 }
 
-function precedingScopeBounds(
-  css: string,
-  ruleIndex: number,
-): {
-  start: number;
-  bodyStart: number;
-  end: number;
-} {
-  const start = css.lastIndexOf("@scope", ruleIndex);
-  const bodyStart = css.indexOf("{", start);
-  let end = -1;
-  let braceDepth = 0;
-  for (let index = bodyStart; index < css.length; index += 1) {
-    if (css[index] === "{") braceDepth += 1;
-    if (css[index] === "}") braceDepth -= 1;
-    if (braceDepth === 0) {
-      end = index;
-      break;
-    }
-  }
-  return { start, bodyStart, end };
-}
-
 describe("plugin app runtime shim", () => {
   const tempDirs: string[] = [];
 
@@ -119,20 +96,15 @@ describe("plugin app runtime shim", () => {
     );
     const css = await readFile(result.cssPath, "utf8");
 
-    expect(css).toContain(
-      '@scope ([data-bb-plugin="css-fixture"], [data-bb-plugin-root]:not([data-bb-plugin]))',
-    );
-    const utilityRuleIndex = css.indexOf(".flex-col");
-    const utilityScope = precedingScopeBounds(css, utilityRuleIndex);
-    expect(utilityRuleIndex).toBeGreaterThan(utilityScope.start);
-    expect(utilityScope.end).toBeGreaterThan(utilityScope.bodyStart);
-    expect(utilityRuleIndex).toBeLessThan(utilityScope.end);
-
-    const authoredRuleIndex = css.indexOf(".bb71-authored-decoration");
-    const authoredScope = precedingScopeBounds(css, authoredRuleIndex);
-    expect(authoredRuleIndex).toBeGreaterThan(authoredScope.start);
-    expect(authoredScope.end).toBeGreaterThan(authoredScope.bodyStart);
-    expect(authoredRuleIndex).toBeGreaterThan(authoredScope.end);
+    // Tailwind utilities carry both scope arms; authored CSS stays global so
+    // it can still target editor decorations rendered outside the mount.
+    const scope =
+      ':where([data-bb-plugin="css-fixture"], [data-bb-plugin-root]:not([data-bb-plugin]))';
+    expect(css).toContain(`${scope} .flex-col`);
+    expect(css).toContain(`${scope}.flex-col`);
+    expect(css).not.toContain("@scope");
+    expect(css).not.toContain(`${scope} .bb71-authored-decoration`);
+    expect(css).toContain(".bb71-authored-decoration");
   });
 
   it.each([
