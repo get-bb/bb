@@ -61,7 +61,11 @@ describe("SecondaryPanelTabStrip touch sensor scoping", () => {
 
     // A single tab has nothing to reorder even in an open panel.
     rerender(
-      <SecondaryPanelTabStrip {...baseProps} fileTabs={makeTabs(1)} isPanelOpen />,
+      <SecondaryPanelTabStrip
+        {...baseProps}
+        fileTabs={makeTabs(1)}
+        isPanelOpen
+      />,
     );
     expect(touchMoveCalls(addSpy)).toHaveLength(1);
   });
