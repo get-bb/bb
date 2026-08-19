@@ -300,7 +300,13 @@ type MarkdownTableHeaderProps = ComponentPropsWithoutRef<"th"> & ExtraProps;
 type MarkdownUnorderedListProps = ComponentPropsWithoutRef<"ul"> & ExtraProps;
 type MarkdownRehypePlugins = NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 
-const MARKDOWN_TABLE_BREAKOUT_WIDTH = "max(100%, min(1100px, 100cqw - 2rem))";
+// A table may grow past its text column up to the container width, but never
+// past the nearest ancestor that clips or scrolls horizontally. The limit
+// variable is measured in `useMarkdownTableContentWidthVariable`; without it a
+// negative `marginInline` moves the table left of the scroll origin, where no
+// scroll can reach it (plan approval cards, message bubbles, side chat).
+const MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE = "--md-table-breakout-max";
+const MARKDOWN_TABLE_BREAKOUT_WIDTH = `max(100%, min(1100px, 100cqw - 2rem, var(${MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE}, 100cqw)))`;
 const MARKDOWN_CONTENT_WIDTH_VARIABLE = "--md-content-w";
 const MARKDOWN_SOURCE_COLOR_SCHEME_MEDIA_PATTERN =
   /^\(\s*prefers-color-scheme\s*:\s*(dark|light)\s*\)$/iu;
@@ -1373,31 +1379,104 @@ function useMarkdownTableContentWidthVariable() {
     if (!breakout || !content) {
       return;
     }
+    const clip = findHorizontalClipAncestor(content);
 
-    setMarkdownContentWidthVariable({
-      element: breakout,
-      width: content.getBoundingClientRect().width,
-    });
+    const measure = () => {
+      setMarkdownContentWidthVariable({
+        element: breakout,
+        width: content.getBoundingClientRect().width,
+      });
+      setMarkdownTableBreakoutLimitVariable({ breakout, clip });
+    };
+    measure();
 
     if (typeof ResizeObserver === "undefined") {
       return;
     }
 
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) {
-        return;
-      }
-      setMarkdownContentWidthVariable({
-        element: breakout,
-        width: entry.contentRect.width,
-      });
-    });
+    const observer = new ResizeObserver(measure);
     observer.observe(content);
+    if (clip) {
+      observer.observe(clip);
+    }
     return () => observer.disconnect();
   }, []);
 
   return breakoutRef;
+}
+
+const HORIZONTAL_CLIP_OVERFLOW_VALUES = new Set([
+  "hidden",
+  "clip",
+  "auto",
+  "scroll",
+]);
+
+/**
+ * The nearest ancestor whose horizontal overflow is clipped or scrolled. A
+ * table breakout that extends past this element's padding box is lost: the
+ * clipped side is invisible and a scroll container cannot scroll to a
+ * negative offset.
+ */
+function findHorizontalClipAncestor(element: HTMLElement): HTMLElement | null {
+  let current = element.parentElement;
+  while (current && current !== document.body) {
+    if (
+      HORIZONTAL_CLIP_OVERFLOW_VALUES.has(getComputedStyle(current).overflowX)
+    ) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
+/**
+ * Sets the widest breakout that keeps the table inside `clip`. The breakout is
+ * centered on its containing block (the breakout's parent), so the usable
+ * width is the parent content width plus twice the smaller side gap.
+ */
+function setMarkdownTableBreakoutLimitVariable({
+  breakout,
+  clip,
+}: {
+  breakout: HTMLElement;
+  clip: HTMLElement | null;
+}): void {
+  const parent = breakout.parentElement;
+  if (!clip || !parent) {
+    breakout.style.removeProperty(MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE);
+    return;
+  }
+  // Positions are taken at scroll offset 0 of `clip`, so a horizontally
+  // scrolled container does not change the result.
+  const parentStyle = getComputedStyle(parent);
+  const parentPaddingLeft =
+    parent.getBoundingClientRect().left + parent.clientLeft + clip.scrollLeft;
+  const parentLeft = parentPaddingLeft + cssPixels(parentStyle.paddingLeft);
+  const parentRight =
+    parentPaddingLeft +
+    parent.clientWidth -
+    cssPixels(parentStyle.paddingRight);
+  const parentWidth = parentRight - parentLeft;
+  if (parentWidth <= 0) {
+    return;
+  }
+  const clipLeft = clip.getBoundingClientRect().left + clip.clientLeft;
+  const clipRight = clipLeft + clip.clientWidth;
+  const room = Math.max(
+    0,
+    Math.min(parentLeft - clipLeft, clipRight - parentRight),
+  );
+  breakout.style.setProperty(
+    MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE,
+    `${parentWidth + 2 * room}px`,
+  );
+}
+
+function cssPixels(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 const FRONTMATTER_PATTERN =
