@@ -946,18 +946,64 @@ export function teardownPluginFrontends(): Promise<void> {
   return disposePluginFrontends(state, browserReconcileDeps);
 }
 
-let pageHideListenerInstalled = false;
+export interface PluginFrontendPageLifecycleDeps {
+  isTornDown: () => boolean;
+  /** Fresh boot after a teardown: resets boot state and reconciles. */
+  reboot: () => void;
+  /** Frontends survived the freeze; pick up plugin changes made meanwhile. */
+  reconcile: () => void;
+  teardown: () => void;
+}
 
-function installPluginFrontendTeardown(): void {
-  if (pageHideListenerInstalled) return;
-  pageHideListenerInstalled = true;
-  window.addEventListener(
-    "pagehide",
-    () => {
+/**
+ * Page lifecycle policy for plugin frontends. A `pagehide` with `persisted`
+ * means the page is entering the back/forward cache: WebKit may restore it
+ * without a reload, so the frontends stay mounted (tearing down would leave
+ * a restored page with no plugin UI). Only a real unload tears down. On a
+ * persisted `pageshow` the frontends either reconcile (still mounted) or,
+ * if a teardown did happen, boot again.
+ */
+export function createPluginFrontendPageLifecycle(
+  deps: PluginFrontendPageLifecycleDeps,
+): {
+  onPageHide: (event: { persisted: boolean }) => void;
+  onPageShow: (event: { persisted: boolean }) => void;
+} {
+  return {
+    onPageHide(event) {
+      if (event.persisted) return;
+      deps.teardown();
+    },
+    onPageShow(event) {
+      if (!event.persisted) return;
+      if (deps.isTornDown()) {
+        deps.reboot();
+        return;
+      }
+      deps.reconcile();
+    },
+  };
+}
+
+let pageLifecycleListenersInstalled = false;
+
+function installPluginFrontendPageLifecycle(): void {
+  if (pageLifecycleListenersInstalled) return;
+  pageLifecycleListenersInstalled = true;
+  const lifecycle = createPluginFrontendPageLifecycle({
+    isTornDown: () => state.tornDown,
+    reboot: () => {
+      state.tornDown = false;
+      bootPromise = null;
+      void bootPluginFrontends();
+    },
+    reconcile: () => schedulePluginFrontendReconcile(),
+    teardown: () => {
       void teardownPluginFrontends();
     },
-    { once: true },
-  );
+  });
+  window.addEventListener("pagehide", (event) => lifecycle.onPageHide(event));
+  window.addEventListener("pageshow", (event) => lifecycle.onPageShow(event));
 }
 
 /**
@@ -967,7 +1013,7 @@ function installPluginFrontendTeardown(): void {
 export function bootPluginFrontends(): Promise<void> {
   bootPromise ??= (async () => {
     installPluginRuntime();
-    installPluginFrontendTeardown();
+    installPluginFrontendPageLifecycle();
     await reconcilePluginFrontends(state, browserReconcileDeps);
   })().catch((error: unknown) => {
     // Inventory fetch/network failure — plugin UI is absent, app unharmed.

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as react from "react";
 import * as jsxRuntime from "react/jsx-runtime";
 import {
+  createPluginFrontendPageLifecycle,
   installPluginRuntime,
   loadPluginFrontends,
   type PluginFrontendCandidate,
@@ -186,5 +187,46 @@ describe("installPluginRuntime", () => {
     // A second call never replaces an installed runtime.
     installPluginRuntime();
     expect((globalThis as RuntimeHost).__bbPluginRuntime).toBe(runtime);
+  });
+});
+
+describe("createPluginFrontendPageLifecycle", () => {
+  function createDeps(tornDown: boolean) {
+    return {
+      isTornDown: vi.fn(() => tornDown),
+      reboot: vi.fn(),
+      reconcile: vi.fn(),
+      teardown: vi.fn(),
+    };
+  }
+
+  it("keeps frontends mounted when the page enters the back/forward cache", () => {
+    const deps = createDeps(false);
+    const lifecycle = createPluginFrontendPageLifecycle(deps);
+    lifecycle.onPageHide({ persisted: true });
+    expect(deps.teardown).not.toHaveBeenCalled();
+
+    // Restored from bfcache with plugins still mounted: only reconcile.
+    lifecycle.onPageShow({ persisted: true });
+    expect(deps.reconcile).toHaveBeenCalledTimes(1);
+    expect(deps.reboot).not.toHaveBeenCalled();
+  });
+
+  it("tears down on a real unload and reboots if a persisted restore follows a teardown", () => {
+    const deps = createDeps(true);
+    const lifecycle = createPluginFrontendPageLifecycle(deps);
+    lifecycle.onPageHide({ persisted: false });
+    expect(deps.teardown).toHaveBeenCalledTimes(1);
+
+    lifecycle.onPageShow({ persisted: true });
+    expect(deps.reboot).toHaveBeenCalledTimes(1);
+    expect(deps.reconcile).not.toHaveBeenCalled();
+  });
+
+  it("ignores the initial (non-persisted) pageshow", () => {
+    const deps = createDeps(false);
+    createPluginFrontendPageLifecycle(deps).onPageShow({ persisted: false });
+    expect(deps.reboot).not.toHaveBeenCalled();
+    expect(deps.reconcile).not.toHaveBeenCalled();
   });
 });
