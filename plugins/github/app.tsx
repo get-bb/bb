@@ -15,10 +15,10 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import {
   definePluginApp,
+  experimental_Diff as Diff,
   useBbNavigate,
   useRealtime,
   useRpc,
@@ -37,11 +37,6 @@ import {
   type SuggestionIcon,
 } from "./app-logic.js";
 import type { githubRpcContract } from "./server.js";
-// Shimmed to the host's copy at build time (shared worker-pool context +
-// shiki stays out of the plugin bundle) — diffs render with the same syntax
-// highlighting as the app's own diff panel.
-import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
-import { FileDiff as PierreFileDiff } from "@pierre/diffs/react";
 import { toast } from "sonner";
 import { Badge } from "@bb/shared-ui/badge";
 import { Button } from "@bb/shared-ui/button";
@@ -1391,114 +1386,14 @@ function ChecksSection({ checks }: { checks: PullCheck[] }) {
   );
 }
 
-function readHostCodeTheme(): { dark: string; light: string } {
-  const root = document.documentElement.dataset;
-  return {
-    dark: root.bbCodeThemeDark ?? "pierre-dark",
-    light: root.bbCodeThemeLight ?? "pierre-light",
-  };
-}
-
-/** Read lazily: this module also loads outside a DOM, such as in the plugin
-    bundle tests, where a module-eval `document` access throws. */
-let hostCodeTheme: { dark: string; light: string } | null = null;
-const hostCodeThemeListeners = new Set<() => void>();
-let hostCodeThemeObserver: MutationObserver | null = null;
-
-function getHostCodeTheme(): { dark: string; light: string } {
-  hostCodeTheme ??= readHostCodeTheme();
-  return hostCodeTheme;
-}
-
-function subscribeHostCodeTheme(onStoreChange: () => void): () => void {
-  hostCodeThemeListeners.add(onStoreChange);
-  if (hostCodeThemeObserver === null) {
-    hostCodeThemeObserver = new MutationObserver(() => {
-      const next = readHostCodeTheme();
-      const current = getHostCodeTheme();
-      if (next.dark === current.dark && next.light === current.light) {
-        return;
-      }
-      hostCodeTheme = next;
-      for (const listener of hostCodeThemeListeners) listener();
-    });
-    hostCodeThemeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["data-bb-code-theme-dark", "data-bb-code-theme-light"],
-    });
-  }
-  return () => {
-    hostCodeThemeListeners.delete(onStoreChange);
-  };
-}
-
-function useHostCodeTheme(): { dark: string; light: string } {
-  return useSyncExternalStore(
-    subscribeHostCodeTheme,
-    getHostCodeTheme,
-    getHostCodeTheme,
-  );
-}
-
-/** The host toggles dark mode via a `dark` class on <html>; pierre's diff
-    themes are picked per render, so track it live. */
-function useIsDarkTheme(): boolean {
-  const [dark, setDark] = useState(() =>
-    document.documentElement.classList.contains("dark"),
-  );
-  useEffect(() => {
-    const observer = new MutationObserver(() =>
-      setDark(document.documentElement.classList.contains("dark")),
-    );
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-    return () => observer.disconnect();
-  }, []);
-  return dark;
-}
-
 /**
- * A patch (or single `@@` hunk) rendered through the host's @pierre/diffs —
- * syntax highlighting included (the host provides the worker pool via
- * context). GitHub's REST patches lack the `diff --git` header, so one is
- * synthesized; unparseable input falls back to plain mono text.
+ * A patch (or single `@@` hunk) rendered through the host's own diff
+ * component. It owns patch normalization (GitHub's REST patches arrive
+ * without a `diff --git` header), syntax highlighting, the live BB code
+ * theme, and the plain-text fallback for content that will not parse.
  */
 function DiffPatch({ path, patch }: { path: string; patch: string }) {
-  const dark = useIsDarkTheme();
-  const codeTheme = useHostCodeTheme();
-  const fileDiff = useMemo<FileDiffMetadata | null>(() => {
-    const normalized = patch.replace(/\r\n/g, "\n").trimEnd();
-    if (normalized.length === 0) return null;
-    const text = normalized.startsWith("diff --git")
-      ? `${normalized}\n`
-      : `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${normalized}\n`;
-    try {
-      return parsePatchFiles(text)[0]?.files[0] ?? null;
-    } catch {
-      return null;
-    }
-  }, [path, patch]);
-  const options = useMemo(
-    () =>
-      ({
-        diffStyle: "unified",
-        overflow: "scroll",
-        disableFileHeader: true,
-        themeType: dark ? "dark" : "light",
-        theme: codeTheme,
-      }) as const,
-    [codeTheme, dark],
-  );
-  if (fileDiff === null) {
-    return (
-      <pre className="overflow-x-auto px-3 py-2 font-mono text-xs leading-5 text-foreground/80">
-        {patch}
-      </pre>
-    );
-  }
-  return <PierreFileDiff fileDiff={fileDiff} options={options} />;
+  return <Diff patch={patch} path={path} />;
 }
 
 function FileDiffCard({ file, url }: { file: PullFile; url: string }) {
