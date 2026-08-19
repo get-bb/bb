@@ -334,6 +334,9 @@ export type ThreadSearchHighlightRange = z.infer<
 export const threadSearchMatchSchema = z
   .object({
     sourceKind: threadSearchSourceKindSchema,
+    // Title matches carry the whole title. Message matches carry a bounded
+    // snippet around the first hit (an ellipsis marks each cut side), and the
+    // highlight ranges are offsets into that snippet.
     text: z.string(),
     highlightRanges: z.array(threadSearchHighlightRangeSchema),
     // Event sequence of the message this match came from, so the UI can deep-link
