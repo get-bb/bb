@@ -89,10 +89,7 @@ import {
   ZoomInAreaIcon,
   ZoomOutAreaIcon,
 } from "@hugeicons/core-free-icons";
-import {
-  type ExtendedIconMap,
-  registerExtendedIcons,
-} from "./icon-registry";
+import { type ExtendedIconMap, registerExtendedIcons } from "./icon-registry";
 
 // Extended glyph registry: every named icon the shell does not need before
 // first paint. `./icon` keeps only the core map on the boot path; this module

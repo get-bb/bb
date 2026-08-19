@@ -104,7 +104,9 @@ export const EXTENDED_ICON_NAMES = [
 
 export type ExtendedIconName = (typeof EXTENDED_ICON_NAMES)[number];
 
-export type ExtendedIconMap = Readonly<Record<ExtendedIconName, IconSvgElement>>;
+export type ExtendedIconMap = Readonly<
+  Record<ExtendedIconName, IconSvgElement>
+>;
 
 let extendedIcons: ExtendedIconMap | null = null;
 const listeners = new Set<() => void>();

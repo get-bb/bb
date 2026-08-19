@@ -69,11 +69,18 @@ describe("Icon core/extended split", () => {
     expect(pending?.getAttribute("width")).toBe("24");
     expect(pending?.getAttribute("height")).toBe("24");
 
+    // Rendering the placeholder is what kicks off the on-demand load: no
+    // caller preloads here, so a regression that stops `Icon` from requesting
+    // the registry would leave this waiting forever.
     await act(async () => {
-      await icon.preloadExtendedIcons();
+      await vi.waitUntil(() => registry.getExtendedIcons() !== null, {
+        timeout: 5000,
+      });
     });
 
     expect(registry.getExtendedIcons()).not.toBeNull();
+    // Idempotent once the registry is in: resolves without a second load.
+    await expect(icon.preloadExtendedIcons()).resolves.toBeUndefined();
     const loaded = view.container.querySelector("svg[data-icon=Palette]");
     expect(loaded?.hasAttribute("data-icon-pending")).toBe(false);
     expect(loaded?.childElementCount).toBeGreaterThan(0);
@@ -81,9 +88,8 @@ describe("Icon core/extended split", () => {
 
   it("keeps ICON_NAMES equal to the disjoint union of the core and extended maps", async () => {
     const { icon, registry } = await freshIconModules();
-    const extended: IconExtendedModule = await import(
-      "@bb/shared-ui/icon-extended"
-    );
+    const extended: IconExtendedModule =
+      await import("@bb/shared-ui/icon-extended");
 
     const extendedKeys = Object.keys(extended.EXTENDED_ICON_MAP).sort();
     expect(extendedKeys).toEqual([...registry.EXTENDED_ICON_NAMES].sort());
