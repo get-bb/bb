@@ -1501,7 +1501,7 @@ export function createClaudeDeltaTranslator() {
     if (state.mirror.turnOpen) {
       deltas.push(
         ...withMirror(state, [
-          { kind: "session.ended", reason: "interrupted" },
+          { kind: "session.ended" },
         ]),
       );
     }

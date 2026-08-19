@@ -1593,10 +1593,6 @@ export function createDeltaAssembler(
           streamKey: delta.streamKey,
         });
         const stream = state.openStreamsByKey.get(streamKey);
-        if (delta.text === undefined && delta.detach === true) {
-          state.openStreamsByKey.delete(streamKey);
-          return;
-        }
         const turnId = state.currentTurnId;
         if (turnId === undefined) {
           pushNoTurnFallback(
@@ -1990,14 +1986,6 @@ export function createDeltaAssembler(
         if (turnId === undefined) {
           return;
         }
-        const turnStatus: "failed" | "interrupted" =
-          delta.reason === "interrupted"
-            ? "interrupted"
-            : delta.error !== undefined
-              ? "failed"
-              : "interrupted";
-        const itemStatus: ThreadEventItemStatus =
-          turnStatus === "failed" ? "failed" : "interrupted";
         for (const stream of state.openStreamsByKey.values()) {
           const item: ThreadEventItem =
             stream.channel === "assistant"
@@ -2034,19 +2022,9 @@ export function createDeltaAssembler(
             scope: turnScope(turnId),
             item: completeStartedItem(
               open.item,
-              { status: itemStatus },
+              { status: "interrupted" },
               undefined,
             ),
-          });
-        }
-        if (delta.error !== undefined) {
-          events.push({
-            type: "provider/error",
-            threadId: UNSTAMPED_THREAD_ID,
-            providerThreadId: "",
-            scope: turnScope(turnId),
-            message: "Provider error",
-            detail: delta.error.message,
           });
         }
         events.push({
@@ -2054,8 +2032,7 @@ export function createDeltaAssembler(
           threadId: UNSTAMPED_THREAD_ID,
           providerThreadId: "",
           scope: turnScope(turnId),
-          status: turnStatus,
-          ...(delta.error === undefined ? {} : { error: delta.error }),
+          status: "interrupted",
         });
         finishTurn(state);
         return;
@@ -2130,8 +2107,8 @@ export function createDeltaAssembler(
           delta.kind === "session.ended"
         ) {
           // A settling stream (or session) flushes its coalesced text even
-          // when the delta itself emits nothing (detached release, deduped
-          // provider retry, session end on an idle thread).
+          // when the delta itself emits nothing (deduped provider retry,
+          // session end on an idle thread).
           const state = states.get(args.threadId);
           if (state !== undefined) {
             flushPendingText(state, events);

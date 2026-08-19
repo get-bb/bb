@@ -987,7 +987,7 @@ async function handleThreadStop(
     // assembler settles only a turn it actually holds open (or one owed to
     // pending accepted input), so an idle interrupt fabricates nothing.
     sendThreadDeltas(params.threadId, [
-      { kind: "session.ended", reason: "interrupted" },
+      { kind: "session.ended" },
     ]);
   }
   // A release detaches the idle session and must not fabricate an

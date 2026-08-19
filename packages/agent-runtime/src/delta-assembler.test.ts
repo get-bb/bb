@@ -466,45 +466,6 @@ describe("delta assembler", () => {
     ]);
   });
 
-  it("detach closes the stream silently and later text mints a fresh item", () => {
-    const assembler = createAssembler();
-    assemble(assembler, { kind: "turn.open" });
-    const pre = assemble(assembler, {
-      kind: "message.delta",
-      channel: "assistant",
-      streamKey: "assistant",
-      text: "before tool",
-    });
-    const preId = pre[0]?.type === "item/started" ? pre[0].item.id : "";
-    expect(
-      assemble(assembler, {
-        kind: "message.close",
-        channel: "assistant",
-        streamKey: "assistant",
-        detach: true,
-      }),
-    ).toEqual([]);
-    const post = assemble(assembler, {
-      kind: "message.delta",
-      channel: "assistant",
-      streamKey: "assistant",
-      text: "after tool",
-    });
-    const postId = post[0]?.type === "item/started" ? post[0].item.id : "";
-    expect(postId).not.toBe(preId);
-    // A provider-final close after a detach mints a fresh completed item.
-    const closed = assemble(assembler, {
-      kind: "message.close",
-      channel: "assistant",
-      streamKey: "assistant",
-      text: "final",
-    });
-    expect(closed[0]).toMatchObject({
-      type: "item/completed",
-      item: { type: "agentMessage", id: postId, text: "final" },
-    });
-  });
-
   it("a tool item.open detaches the open assistant stream in the same scope", () => {
     const assembler = createAssembler();
     assemble(assembler, { kind: "turn.open" });
@@ -1059,10 +1020,7 @@ describe("delta assembler", () => {
     const assembler = createAssembler();
     assemble(assembler, { kind: "turn.open" }, bashOpen("tc-1"));
     const turnId = assembler.getOpenTurnId(THREAD_ID) ?? "";
-    const events = assemble(assembler, {
-      kind: "session.ended",
-      reason: "interrupted",
-    });
+    const events = assemble(assembler, { kind: "session.ended" });
     expect(events).toEqual([
       expect.objectContaining({
         type: "item/completed",
@@ -1094,10 +1052,7 @@ describe("delta assembler", () => {
       },
     );
 
-    const events = assemble(assembler, {
-      kind: "session.ended",
-      reason: "interrupted",
-    });
+    const events = assemble(assembler, { kind: "session.ended" });
 
     expect(events).toEqual([
       expect.objectContaining({
@@ -1114,38 +1069,15 @@ describe("delta assembler", () => {
     ]);
   });
 
-  it("session.ended with an error fails the turn and surfaces the error first", () => {
-    const assembler = createAssembler();
-    assemble(assembler, { kind: "turn.open" });
-    const events = assemble(assembler, {
-      kind: "session.ended",
-      reason: "exited",
-      error: { message: "child died" },
-    });
-    expect(events.map((event) => event.type)).toEqual([
-      "provider/error",
-      "turn/completed",
-    ]);
-    expect(events[1]).toMatchObject({
-      status: "failed",
-      error: { message: "child died" },
-    });
-  });
-
   it("session.ended on an idle thread with no pending input settles nothing", () => {
     const assembler = createAssembler();
-    expect(
-      assemble(assembler, { kind: "session.ended", reason: "interrupted" }),
-    ).toEqual([]);
+    expect(assemble(assembler, { kind: "session.ended" })).toEqual([]);
   });
 
   it("session.ended claims and settles a turn owed to pending accepted input", () => {
     const assembler = createAssembler();
     assemble(assembler, { kind: "input.accepted", clientRequestId: CREQ });
-    const events = assemble(assembler, {
-      kind: "session.ended",
-      reason: "interrupted",
-    });
+    const events = assemble(assembler, { kind: "session.ended" });
     expect(events.map((event) => event.type)).toEqual([
       "turn/started",
       "turn/input/accepted",
@@ -2102,28 +2034,6 @@ describe("delta assembler text-delta batching", () => {
     });
   });
 
-  it("a detached stream release still flushes its buffered tail", () => {
-    const { assembler, advance } = createBatchingAssembler();
-    assemble(assembler, { kind: "turn.open" });
-    assemble(assembler, assistantDelta("pre-tool"));
-    advance(10);
-    expect(assemble(assembler, assistantDelta(" tail"))).toEqual([]);
-
-    // Silent release (pi's tool-start detach): no completed item, but the
-    // buffered tail must not be lost.
-    const events = assemble(assembler, {
-      kind: "message.close",
-      channel: "assistant",
-      detach: true,
-    });
-    expect(events).toEqual([
-      expect.objectContaining({
-        type: "item/agentMessage/delta",
-        delta: " tail",
-      }),
-    ]);
-  });
-
   it("window 0 disables batching entirely (one event per delta)", () => {
     const { assembler, advance } = createBatchingAssembler(0);
     assemble(assembler, { kind: "turn.open" });
@@ -2302,10 +2212,7 @@ describe("delta assembler text-delta batching", () => {
     advance(10);
     expect(assemble(assembler, assistantDelta(" answer"))).toEqual([]);
 
-    const events = assemble(assembler, {
-      kind: "session.ended",
-      reason: "interrupted",
-    });
+    const events = assemble(assembler, { kind: "session.ended" });
     expect(events.map((event) => event.type)).toEqual([
       "item/agentMessage/delta",
       "item/completed",

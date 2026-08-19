@@ -749,8 +749,8 @@ function handleChildExit(
   // terminal state, so settle open turns as failed before reporting. The
   // boundaries ride keyed turn.boundary deltas — the bridge owns the
   // open-turn set anyway for the zero-work gate, and the generic
-  // session-ended settlement would add item completions and a provider/error
-  // event codex never emitted here.
+  // session-ended settlement would add item completions codex never emitted
+  // here (and settles turns as interrupted, not failed).
   const openTurnIds = [...session.openCodexTurnIds];
   const message = `codex app-server exited unexpectedly (code ${info.code ?? "null"}, signal ${info.signal ?? "null"})${info.stderrTail ? `: ${info.stderrTail}` : ""}`;
   sendThreadDeltas(

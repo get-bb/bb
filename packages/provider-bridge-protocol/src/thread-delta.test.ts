@@ -34,7 +34,7 @@ describe("thread delta schemas", () => {
         streamKey: "assistant",
         text: "hi",
       },
-      { kind: "message.close", channel: "assistant", detach: true },
+      { kind: "message.close", channel: "assistant" },
       {
         kind: "command.outputSnapshot",
         key: { providerItemId: "tc-1" },
@@ -68,7 +68,7 @@ describe("thread delta schemas", () => {
         rawType: "sdk/unknown",
         vouchedTurn: true,
       },
-      { kind: "session.ended", reason: "interrupted" },
+      { kind: "session.ended" },
     ];
     for (const delta of deltas) {
       const parsed = threadDeltaSchema.safeParse(delta);

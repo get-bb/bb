@@ -84,8 +84,12 @@ const providerTurnIdSchema = deltaKeyPartSchema;
  * into. Everything richer (diffs, pending statuses, echoed fields on close)
  * is assembler-owned construction. Output-ish optional fields (aggregated
  * output, exit code, results) exist for providers whose native item payloads
- * carry them wholesale (codex); the generic close fields win when both are
- * present.
+ * carry them wholesale (codex). When both a shape field and its generic close
+ * counterpart are present, precedence is per-shape: for `command` the generic
+ * close fields (`aggregatedOutput`, `exitCode`) win over the shape's, but for
+ * `tool` the shape's `result` wins over the close's `resultText`. The
+ * asymmetry is deliberate — it preserves byte-equivalence with the original
+ * codex-vs-pi translator conversions.
  */
 export const deltaFileChangeSchema = z.object({
   path: z.string(),
@@ -358,17 +362,16 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
 
   /**
    * Close a message stream. `text` present: settle with the provider's final
-   * text (preferred over accumulation). `text` absent with `detach: true`:
-   * release the stream silently so later text mints a fresh item (pi closes
-   * the assistant stream when a tool call starts). `text` absent otherwise:
-   * settle with the accumulated stream text (ACP-style).
+   * text (preferred over accumulation). `text` absent: settle with the
+   * accumulated stream text (ACP-style). Silent stream release needs no
+   * delta: a tool `item.open` in the same scope auto-detaches the open
+   * assistant stream so later text mints a fresh item.
    */
   z.object({
     kind: z.literal("message.close"),
     channel: deltaMessageChannelSchema,
     streamKey: deltaKeyPartSchema.optional(),
     text: z.string().optional(),
-    detach: z.boolean().optional(),
     parentRef: deltaKeyPartSchema.optional(),
     noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
@@ -553,15 +556,10 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
   }),
 
   /**
-   * Lifecycle settlement: the session ended (interrupt, replacement, child
-   * exit). The assembler closes the open turn and open items with statuses
-   * derived from the reason.
+   * Lifecycle settlement: the session was interrupted. The assembler closes
+   * the open turn and open items as interrupted.
    */
-  z.object({
-    kind: z.literal("session.ended"),
-    reason: z.enum(["interrupted", "replaced", "exited"]),
-    error: deltaErrorSchema.optional(),
-  }),
+  z.object({ kind: z.literal("session.ended") }),
 
   /**
    * Provider-native id-space boundary: a new provider session was constructed
