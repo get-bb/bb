@@ -47,6 +47,7 @@
     "drizzle-studio:prod": "cross-env NODE_ENV=production pnpm --filter @bb/db db:studio"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "4.1.1",
     "cross-env": "^10.1.0",
     "dotenv-cli": "^11.0.0",
     "esbuild": "^0.28.0",
