@@ -62,6 +62,11 @@ export const THREAD_DETAIL_ROUTE_PATH =
 // Trailing splat: the remainder is the panel's `subPath` (empty at the root).
 export const PLUGIN_PANEL_ROUTE_PATH = "/plugins/:pluginId/:panelPath/*";
 
+/** The plugin whose panel `pathname` shows, or null off the panel route. */
+export function getPluginPanelRoutePluginId(pathname: string): string | null {
+  return matchPath(PLUGIN_PANEL_ROUTE_PATH, pathname)?.params.pluginId ?? null;
+}
+
 export interface ThreadRoutePathArgs {
   projectId: string;
   threadId: string;

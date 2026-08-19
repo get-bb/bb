@@ -145,6 +145,7 @@ export const pluginAppStateSchema = z.object({
     .object({
       jsUrl: z.string(),
       cssUrl: z.string().nullable(),
+      jsBytes: z.number().int().nonnegative(),
       hash: z.string(),
       sdkMajor: z.number(),
       sdkVersion: z.string(),

@@ -14,6 +14,7 @@ import { useAppTheme } from "./hooks/useAppTheme";
 import { useFaviconColorSync } from "./lib/favicon-color-preference";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
 import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
+import { markRouteContentPainted } from "./lib/route-content-paint";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
   AUTH_CALLBACK_ROUTE_PATH,
@@ -346,9 +347,22 @@ function AppRoutes() {
             }
           />
         </Routes>
+        <RouteContentPaintSignal />
       </Suspense>
     </AppLayout>
   );
+}
+
+/**
+ * Sibling of the lazy routes inside their Suspense boundary: React commits
+ * it (and runs its effect) only once the first route content has resolved,
+ * which is the signal deferred plugin frontend boot waits on.
+ */
+function RouteContentPaintSignal() {
+  useEffect(() => {
+    markRouteContentPainted();
+  }, []);
+  return null;
 }
 
 export function App() {

@@ -37,6 +37,7 @@ import {
 } from "./plugin-app-definition";
 import { setPluginLogoUrls, type PluginLogoUrls } from "./plugin-logos";
 import { createGatedPierreDiffsReact } from "./plugin-pierre-diffs-react";
+import { getPluginPanelRoutePluginId } from "./route-paths";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 import {
   removePluginSlotRegistrations,
@@ -74,6 +75,8 @@ import {
 export interface PluginFrontendBundle {
   jsUrl: string;
   cssUrl: string | null;
+  /** dist/app.js size; smaller bundles load first (see reconcile). */
+  jsBytes: number;
   hash: string;
   sdkMajor: number;
   sdkVersion: string;
@@ -266,6 +269,7 @@ function isFrontendBundle(value: unknown): value is PluginFrontendBundle {
   return (
     typeof bundle.jsUrl === "string" &&
     (bundle.cssUrl === null || typeof bundle.cssUrl === "string") &&
+    typeof bundle.jsBytes === "number" &&
     typeof bundle.hash === "string" &&
     typeof bundle.sdkMajor === "number" &&
     typeof bundle.sdkVersion === "string" &&
@@ -353,6 +357,82 @@ export function applyPluginCss(pluginId: string, url: string | null): void {
   document.head.appendChild(link);
 }
 
+/**
+ * Coalesce plugin stylesheet insertions into one animation frame. Each
+ * `<link rel=stylesheet>` append invalidates document-wide style; bundles
+ * finish importing at scattered moments, so without this every plugin costs
+ * its own recalc. Removals (`url: null`) stay synchronous — teardown and
+ * disposal must not leave a sheet behind — and cancel a pending insertion.
+ * A newer URL for the same plugin replaces the pending one.
+ */
+export function createBatchedPluginCssApplier(args: {
+  apply: (pluginId: string, url: string | null) => void;
+  requestFrame: (callback: () => void) => void;
+}): (pluginId: string, url: string | null) => void {
+  const pending = new Map<string, string>();
+  let frameRequested = false;
+  const flush = () => {
+    frameRequested = false;
+    const batch = [...pending];
+    pending.clear();
+    for (const [pluginId, url] of batch) args.apply(pluginId, url);
+  };
+  return (pluginId, url) => {
+    if (url === null) {
+      pending.delete(pluginId);
+      args.apply(pluginId, null);
+      return;
+    }
+    pending.set(pluginId, url);
+    if (frameRequested) return;
+    frameRequested = true;
+    args.requestFrame(flush);
+  };
+}
+
+/** How many plugin bundles import at once during a reconcile pass. */
+export const PLUGIN_FRONTEND_LOAD_CONCURRENCY = 3;
+
+/**
+ * Load order for a reconcile pass: the plugin owning the current panel route
+ * first (its UI is what the page shows), then ascending bundle size so many
+ * light plugins register before one heavy one. Stable for equal sizes.
+ */
+export function orderPluginFrontendCandidates(
+  candidates: readonly PluginFrontendCandidate[],
+  routePluginId: string | null,
+): PluginFrontendCandidate[] {
+  return [...candidates].sort((left, right) => {
+    if (left.pluginId === routePluginId) return -1;
+    if (right.pluginId === routePluginId) return 1;
+    return left.bundle.jsBytes - right.bundle.jsBytes;
+  });
+}
+
+/**
+ * Run `worker` over `items` with at most `limit` in flight, preserving start
+ * order. The reconcile worker contains per-plugin failures itself; an
+ * unexpected throw rejects this promise like `Promise.all` did before.
+ */
+export async function runWithConcurrencyLimit<T>(
+  items: readonly T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  const lane = async (): Promise<void> => {
+    while (next < items.length) {
+      const item = items[next++]!;
+      await worker(item);
+    }
+  };
+  const lanes = Array.from(
+    { length: Math.max(1, Math.min(limit, items.length)) },
+    () => lane(),
+  );
+  await Promise.all(lanes);
+}
+
 // ---------------------------------------------------------------------------
 // Reconcile: boot + live reload share one injectable state transition.
 // ---------------------------------------------------------------------------
@@ -394,6 +474,12 @@ export interface PluginFrontendReconcileDeps {
   ) => void;
   removeRegistrations: (pluginId: string) => void;
   warn: (message: string) => void;
+  /**
+   * The plugin whose panel is the current route (`/plugins/:pluginId/...`),
+   * or null. Its bundle imports first so the page the user asked for is not
+   * queued behind unrelated plugins.
+   */
+  routePluginId: () => string | null;
   /** Test override; production allows 10s for async mount setup. */
   mountTimeoutMs?: number;
   diagnosticsChanged?: () => void;
@@ -673,8 +759,16 @@ export async function reconcilePluginFrontends(
     state.diagnostics.delete(pluginId);
     deps.diagnosticsChanged?.();
   }
-  await Promise.all(
-    candidates.map(async (candidate) => {
+  // Bounded, ordered loading: every bundle is a separate parse/eval on the
+  // main thread and, on a phone, they used to all land during the window in
+  // which the route chunk itself was still arriving. Three at a time keeps
+  // the network busy without stacking a dozen evaluations, and the order
+  // (route-owning plugin, then smallest first) gets the most useful and the
+  // most plugins on screen earliest.
+  await runWithConcurrencyLimit(
+    orderPluginFrontendCandidates(candidates, deps.routePluginId()),
+    PLUGIN_FRONTEND_LOAD_CONCURRENCY,
+    async (candidate) => {
       const pluginId = candidate.pluginId;
       const previous = state.records.get(pluginId);
       if (
@@ -822,7 +916,7 @@ export async function reconcilePluginFrontends(
         },
         lastFailure: disposeFailures[0] ?? null,
       });
-    }),
+    },
   );
 }
 
@@ -917,7 +1011,13 @@ function publishBrowserDiagnostics(): void {
 const browserReconcileDeps: PluginFrontendReconcileDeps = {
   fetchCandidates: fetchFrontendCandidates,
   importModule: (url) => import(/* @vite-ignore */ url),
-  applyCss: applyPluginCss,
+  applyCss: createBatchedPluginCssApplier({
+    apply: applyPluginCss,
+    requestFrame: (callback) => {
+      window.requestAnimationFrame(callback);
+    },
+  }),
+  routePluginId: () => getPluginPanelRoutePluginId(window.location.pathname),
   resetCrashedSlots: resetCrashedPluginSlots,
   setRegistrations: setPluginSlotRegistrations,
   removeRegistrations: removePluginSlotRegistrations,

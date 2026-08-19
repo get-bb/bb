@@ -35,6 +35,9 @@ export interface PluginAppBundleInfo {
   jsUrl: string;
   /** Null when the plugin ships no dist/app.css (host loads JS only). */
   cssUrl: string | null;
+  /** Byte size of dist/app.js. The frontend loads smaller bundles first so
+   * a phone gets several light plugins on screen before one heavy one. */
+  jsBytes: number;
   /** sha256 (first 16 hex chars) over dist/app.js + dist/app.css +
    * dist/app.meta.json bytes. Meta rides the hash so an SDK-version-only
    * change (identical js/css) still re-keys frontend reconcile + caching. */
@@ -354,6 +357,7 @@ export async function loadPluginAppBundle(
       bundle: {
         jsUrl: assetUrl("app.js"),
         cssUrl: css !== null ? assetUrl("app.css") : null,
+        jsBytes: js.byteLength,
         hash,
         sdkMajor: meta.sdkMajor,
         sdkVersion: meta.sdkVersion,

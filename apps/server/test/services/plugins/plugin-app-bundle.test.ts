@@ -132,8 +132,10 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
       `/api/v1/plugins/appy/assets/app.css?h=${bundle.hash}`,
     );
     // The install-time build materialized the dist outputs.
-    await stat(join(rootDir, "dist", "app.js"));
+    const jsStat = await stat(join(rootDir, "dist", "app.js"));
     await stat(join(rootDir, "dist", "app.meta.json"));
+    // Frontend load ordering reads this; it must be the served file's size.
+    expect(bundle.jsBytes).toBe(jsStat.size);
 
     // Matching content hash → served immutable, correct content type.
     const js = await harness.app.request(`${BASE}${bundle.jsUrl}`);

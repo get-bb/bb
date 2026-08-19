@@ -18,6 +18,7 @@ function candidate(
     bundle: {
       jsUrl: `/api/v1/plugins/${pluginId}/assets/app.js?h=abc123`,
       cssUrl: `/api/v1/plugins/${pluginId}/assets/app.css?h=abc123`,
+      jsBytes: 1_000,
       hash: "abc123",
       sdkMajor: 0,
       sdkVersion: "0.1.0",

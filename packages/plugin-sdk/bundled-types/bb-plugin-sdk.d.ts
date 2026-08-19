@@ -6628,6 +6628,7 @@ declare const installedPluginSchema: z$1.ZodObject<{
             compatible: z$1.ZodBoolean;
             cssUrl: z$1.ZodNullable<z$1.ZodString>;
             hash: z$1.ZodString;
+            jsBytes: z$1.ZodNumber;
             jsUrl: z$1.ZodString;
             sdkMajor: z$1.ZodNumber;
             sdkVersion: z$1.ZodString;
@@ -6735,6 +6736,7 @@ declare const pluginListResponseSchema: z$1.ZodObject<{
                 compatible: z$1.ZodBoolean;
                 cssUrl: z$1.ZodNullable<z$1.ZodString>;
                 hash: z$1.ZodString;
+                jsBytes: z$1.ZodNumber;
                 jsUrl: z$1.ZodString;
                 sdkMajor: z$1.ZodNumber;
                 sdkVersion: z$1.ZodString;
@@ -6844,6 +6846,7 @@ declare const pluginReloadResponseSchema: z$1.ZodObject<{
                 compatible: z$1.ZodBoolean;
                 cssUrl: z$1.ZodNullable<z$1.ZodString>;
                 hash: z$1.ZodString;
+                jsBytes: z$1.ZodNumber;
                 jsUrl: z$1.ZodString;
                 sdkMajor: z$1.ZodNumber;
                 sdkVersion: z$1.ZodString;
