@@ -1,6 +1,8 @@
+import { useRef, useState } from "react";
 import { isBackgroundAgentTaskType } from "@bb/domain";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import { durationToCompactString } from "@bb/thread-view";
+import { useResizeObserver } from "usehooks-ts";
 import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import { useSecondTick } from "@/hooks/useSecondTick";
@@ -17,6 +19,24 @@ import { cn } from "@bb/shared-ui/lib/utils";
 const CARD_ROW_HEIGHT = 32;
 const BODY_ID = "thread-background-commands-card-body";
 const TOGGLE_ID = "thread-background-commands-card-toggle";
+// Keep this threshold aligned with the promptbox-shell container query in
+// app.css. The card observes its own border box because a narrow split can sit
+// inside a wide browser viewport.
+const COMPACT_PROMPT_SHELL_MAX_WIDTH_REM = 34;
+const DEFAULT_ROOT_FONT_SIZE_PX = 16;
+
+function isCompactPromptShellWidth(width: number): boolean {
+  const parsedRootFontSize =
+    typeof window === "undefined"
+      ? Number.NaN
+      : Number.parseFloat(
+          window.getComputedStyle(document.documentElement).fontSize,
+        );
+  const rootFontSize = Number.isFinite(parsedRootFontSize)
+    ? parsedRootFontSize
+    : DEFAULT_ROOT_FONT_SIZE_PX;
+  return width <= COMPACT_PROMPT_SHELL_MAX_WIDTH_REM * rootFontSize;
+}
 
 interface BackgroundActivityDisplay {
   icon: "Terminal" | "UserRoundPlus";
@@ -186,13 +206,26 @@ export function ThreadBackgroundCommandsCard({
   onToggle,
 }: ThreadBackgroundCommandsCardProps) {
   const isCompactViewport = useIsCompactViewport();
+  const cardRef = useRef<HTMLElement>(null!);
+  const [isCompactCard, setIsCompactCard] = useState<boolean | null>(null);
+  useResizeObserver({
+    ref: cardRef,
+    box: "border-box",
+    onResize: ({ width }) => {
+      if (width === undefined) return;
+      const nextIsCompact = isCompactPromptShellWidth(width);
+      setIsCompactCard((previous) =>
+        previous === nextIsCompact ? previous : nextIsCompact,
+      );
+    },
+  });
   const primary = commands[0];
   if (!primary) {
     return null;
   }
   const others = commands.slice(1);
   const hasMore = others.length > 0;
-  const useCompactSummary = isCompactViewport;
+  const useCompactSummary = isCompactCard ?? isCompactViewport;
   const canExpand = hasMore || useCompactSummary;
   const expandedRows = useCompactSummary ? commands : others;
   const compactLabel = compactBackgroundActivityLabel(commands);
@@ -201,6 +234,7 @@ export function ThreadBackgroundCommandsCard({
 
   return (
     <PromptStackCard
+      rootRef={cardRef}
       ariaLabel={groupLabel}
       className="overflow-hidden"
       style={{ minHeight: CARD_ROW_HEIGHT }}
@@ -317,7 +351,9 @@ export function ThreadBackgroundCommandsCard({
                     </span>
                   ) : null}
                   <span className="shrink-0 whitespace-nowrap text-subtle-foreground">
-                    <BackgroundActivityDuration startedAt={row.startedAt} />
+                    {isExpanded ? (
+                      <BackgroundActivityDuration startedAt={row.startedAt} />
+                    ) : null}
                   </span>
                 </div>
               );
