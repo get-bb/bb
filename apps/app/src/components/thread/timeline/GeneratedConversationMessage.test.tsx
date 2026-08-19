@@ -6,17 +6,11 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import {
-  PERSONAL_PROJECT_ID,
-  type PromptTextMention,
-  type ThreadListEntry,
-} from "@bb/domain";
+import type { PromptTextMention, ThreadListEntry } from "@bb/domain";
 import type { TimelineTitleLink } from "@bb/thread-view";
-import type { ThreadResponse } from "@bb/server-contract";
 import { ConversationMessageContent } from "./ConversationMessageContent";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
@@ -24,7 +18,6 @@ import type { TimelineTitleActionResolver } from "./TimelineTitleView";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP } from "./conversation-message-limits";
 import { generatedConversationCollapsedPreview } from "./GeneratedConversationMessage";
-import { sdk } from "@/lib/sdk";
 
 function resolveThreadLink(link: TimelineTitleLink): string | null {
   return link.kind === "thread"
@@ -149,45 +142,10 @@ function threadListEntry(
   };
 }
 
-function threadResponse(
-  overrides: Partial<ThreadResponse> = {},
-): ThreadResponse {
-  return {
-    id: "thr_agent",
-    projectId: PERSONAL_PROJECT_ID,
-    environmentId: null,
-    providerId: "codex",
-    title: "Archived sender",
-    titleFallback: "Archived sender",
-    sectionId: null,
-    status: "idle",
-    parentThreadId: null,
-    sourceThreadId: null,
-    originKind: null,
-    originPluginId: null,
-    visibility: "visible",
-    archivedAt: 1,
-    pinnedAt: null,
-    deletedAt: null,
-    lastReadAt: 0,
-    latestAttentionAt: 1,
-    createdAt: 1,
-    updatedAt: 1,
-    runtime: {
-      displayStatus: "idle",
-      hostReconnectGraceExpiresAt: null,
-    },
-    activeBackgroundAgentCount: 0,
-    canSpawnChild: true,
-    ...overrides,
-  };
-}
-
 function renderAgentMessage(
   text = AGENT_BODY,
   {
     senderIsPluginSideChat = false,
-    senderThreadProjectId = "proj_demo",
     senderThreadTitle = "Worker",
     onTitleAction,
     mentions: suppliedMentions,
@@ -195,7 +153,6 @@ function renderAgentMessage(
     mentions?: readonly PromptTextMention[];
     onTitleAction?: TimelineTitleActionResolver;
     senderIsPluginSideChat?: boolean;
-    senderThreadProjectId?: string | null;
     senderThreadTitle?: string;
   } = {},
 ) {
@@ -238,7 +195,6 @@ function renderAgentMessage(
             initiator="agent"
             originKind={null}
             senderThreadId="thr_agent"
-            senderThreadProjectId={senderThreadProjectId ?? undefined}
             senderThreadTitle={senderThreadTitle}
             senderIsPluginSideChat={senderIsPluginSideChat}
             onTitleAction={onTitleAction}
@@ -307,52 +263,6 @@ function mockContinuationSensitiveOverflow(): () => void {
 }
 
 describe("GeneratedConversationMessage markdown body", () => {
-  it("routes the source pill through the sender thread's project", () => {
-    const { container } = renderAgentMessage(AGENT_BODY, {
-      senderThreadProjectId: PERSONAL_PROJECT_ID,
-    });
-
-    expect(
-      container
-        .querySelector(
-          '[data-prompt-mention-serialized-text="@thread:thr_agent"]',
-        )
-        ?.getAttribute("href"),
-    ).toBe("/threads/thr_agent");
-  });
-
-  it("retries an uncached source lookup before making the pill interactive", async () => {
-    const getThread = vi
-      .spyOn(sdk.threads, "get")
-      .mockRejectedValueOnce(new Error("Failed to fetch"))
-      .mockResolvedValueOnce(threadResponse());
-    const { container } = renderAgentMessage(AGENT_BODY, {
-      senderThreadProjectId: null,
-      senderThreadTitle: "Agent",
-    });
-
-    await waitFor(() => expect(getThread).toHaveBeenCalledTimes(1));
-    const pendingSourcePill = container.querySelector(
-      '[data-prompt-mention-serialized-text="@thread:thr_agent"]',
-    );
-    expect(pendingSourcePill?.tagName).toBe("SPAN");
-    expect(pendingSourcePill?.getAttribute("href")).toBeNull();
-
-    expect(
-      (
-        await screen.findByRole(
-          "link",
-          { name: "Archived sender" },
-          { timeout: 10_000 },
-        )
-      ).getAttribute("href"),
-    ).toBe("/threads/thr_agent");
-    expect(getThread).toHaveBeenCalledTimes(2);
-    expect(getThread).toHaveBeenCalledWith(
-      expect.objectContaining({ threadId: "thr_agent" }),
-    );
-  });
-
   it("renders the source as a thread pill with title mentions resolved to display text", () => {
     const { container } = renderAgentMessage(AGENT_BODY, {
       senderThreadTitle:
