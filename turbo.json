@@ -449,6 +449,21 @@
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
+    // The source-wrapper test invokes the root `pnpm bb` script, which builds
+    // and executes @bb/cli. Model that cross-package dependency so CLI changes
+    // cannot leave this test hidden behind a stale Turbo cache entry.
+    "@bb/scripts#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@bb/cli#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
+    },
     "test": {
       "dependsOn": [
         "//#ensure-native-modules",
