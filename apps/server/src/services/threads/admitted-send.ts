@@ -4,6 +4,10 @@ import {
   getActivePendingInteractionForThread,
   getEnvironment,
   getThread,
+  getWorkTogetherRoomContext,
+  getWorkTogetherRoomContextApplyBytes,
+  getWorkTogetherRoomResourceReservationByEnvironment,
+  getWorkTogetherRoomStreamContext,
   requireThreadLifecycleEventApplied,
   type AdmitThreadCommandOutcome,
   type DbTransaction,
@@ -60,6 +64,108 @@ import { requireThreadCommandEnvironment } from "./thread-command-environment.js
 const MAX_ADMISSION_ATTEMPTS = 8;
 
 type AdmissionBranch = "start" | "queue";
+
+/**
+ * Attach Room applied bytes as agent-only provider input (not chat, not
+ * agentContextSeed, not workspace files). Children use the frozen inherited
+ * pair; Primary uses the Room's current applied pair.
+ */
+export function resolveWorkTogetherRoomContextProviderInputs(
+  db: Parameters<typeof getWorkTogetherRoomStreamContext>[0],
+  thread: Pick<
+    Thread,
+    "id" | "environmentId" | "projectId" | "parentThreadId"
+  >,
+): PromptInput[] {
+  const stream = getWorkTogetherRoomStreamContext(db, thread.id);
+  const reservation =
+    thread.environmentId === null
+      ? null
+      : getWorkTogetherRoomResourceReservationByEnvironment(db, {
+          environmentId: thread.environmentId,
+          projectId: thread.projectId,
+        });
+
+  if (stream !== null) {
+    const apply = getWorkTogetherRoomContextApplyBytes(db, {
+      bindingId: stream.bindingId,
+      contextVersion: stream.version,
+    });
+    if (
+      apply === null ||
+      apply.digest !== stream.digest ||
+      apply.bytes.byteLength === 0
+    ) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Room child context binding is unavailable",
+      );
+    }
+    return [
+      {
+        type: "text",
+        text: apply.bytes.toString("utf8"),
+        mentions: [],
+        visibility: "agent-only",
+      },
+    ];
+  }
+
+  if (reservation === null) {
+    return [];
+  }
+
+  const current = getWorkTogetherRoomContext(db, reservation.bindingId);
+  if (current === null) {
+    return [];
+  }
+
+  // A Room child must inherit before its first turn when apply exists.
+  if (thread.parentThreadId !== null) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Room child is missing inherited context",
+    );
+  }
+
+  const apply = getWorkTogetherRoomContextApplyBytes(db, {
+    bindingId: reservation.bindingId,
+    contextVersion: current.version,
+  });
+  if (
+    apply === null ||
+    apply.digest !== current.digest ||
+    apply.bytes.byteLength === 0
+  ) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Room applied context is unavailable",
+    );
+  }
+  return [
+    {
+      type: "text",
+      text: apply.bytes.toString("utf8"),
+      mentions: [],
+      visibility: "agent-only",
+    },
+  ];
+}
+
+export function prependRoomContextInputs(
+  db: Parameters<typeof getWorkTogetherRoomStreamContext>[0],
+  thread: Pick<
+    Thread,
+    "id" | "environmentId" | "projectId" | "parentThreadId"
+  >,
+  input: PromptInput[],
+): PromptInput[] {
+  const roomContext = resolveWorkTogetherRoomContextProviderInputs(db, thread);
+  return roomContext.length === 0 ? input : [...roomContext, ...input];
+}
 
 class AdmissionBranchPlanSentinel extends Error {
   readonly name = "AdmissionBranchPlanSentinel";
@@ -263,6 +369,7 @@ async function prepareStartBranch(
   if (pluginMentionContext.length > 0) {
     input = [...input, ...pluginMentionContext];
   }
+  input = prependRoomContextInputs(deps.db, args.thread, input);
   await validatePromptAttachmentReferences({
     dataDir: deps.config.dataDir,
     input,
@@ -341,9 +448,14 @@ async function prepareQueueBranch(
   },
 ): Promise<PreparedQueueBranch> {
   ensureThreadIsWritable(args.thread);
+  const input = prependRoomContextInputs(
+    deps.db,
+    args.thread,
+    args.payload.input,
+  );
   await validatePromptAttachmentReferences({
     dataDir: deps.config.dataDir,
-    input: args.payload.input,
+    input,
     projectId: args.thread.projectId,
   });
   const execution = await buildExecutionOptions(
@@ -359,7 +471,7 @@ async function prepareQueueBranch(
   return {
     branch: "queue",
     execution,
-    input: args.payload.input,
+    input,
     senderThreadId,
     shouldCaptureUserMessageSent:
       senderThreadId === null && args.payload.input.length > 0,

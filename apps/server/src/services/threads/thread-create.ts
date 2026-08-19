@@ -3,6 +3,7 @@ import {
   findProjectEnvironmentByHostPath,
   getEnvironment,
   getThread,
+  getWorkTogetherRoomContext,
   getWorkTogetherRoomResourceReservationByEnvironment,
   inheritWorkTogetherRoomContextForChild,
 } from "@bb/db";
@@ -74,6 +75,7 @@ import { resolveManagedDefaultBaseBranchSpec } from "../projects/worktree-base-b
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
 import { resolveWorkTogetherRoomChildEnvironment } from "./work-together-room-child-fence.js";
+import { prependRoomContextInputs } from "./admitted-send.js";
 
 type ThreadCreateDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -593,12 +595,32 @@ async function createProvisioningThread(
   let context: ThreadProvisionContext;
   try {
     if (args.roomContextBindingId !== undefined) {
-      inheritWorkTogetherRoomContextForChild(deps.db, {
+      const current = getWorkTogetherRoomContext(
+        deps.db,
+        args.roomContextBindingId,
+      );
+      const inherited = inheritWorkTogetherRoomContextForChild(deps.db, {
         bindingId: args.roomContextBindingId,
         threadId: thread.id,
         nowMs: Date.now(),
       });
+      if (current !== null && inherited === null) {
+        throw new ApiError(
+          409,
+          "invalid_request",
+          "Room child could not bind applied context",
+        );
+      }
     }
+    const provisionInput = prependRoomContextInputs(
+      deps.db,
+      thread,
+      args.request.input,
+    );
+    const providerInput =
+      args.providerInput === undefined
+        ? undefined
+        : prependRoomContextInputs(deps.db, thread, args.providerInput);
     execution = await buildExecutionOptions(
       deps,
       args.request,
@@ -619,10 +641,8 @@ async function createProvisioningThread(
       environmentIntent: args.environmentIntent,
       execution,
       fork: args.fork,
-      input: args.request.input,
-      ...(args.providerInput !== undefined
-        ? { providerInput: args.providerInput }
-        : {}),
+      input: provisionInput,
+      ...(providerInput !== undefined ? { providerInput } : {}),
       startedOnBehalfOf: args.request.startedOnBehalfOf,
       titleProvided: Boolean(args.request.title),
     });

@@ -31,6 +31,25 @@ export type AdmitWorkTogetherRoomContextOutcome =
   | Readonly<{ kind: "replayed"; apply: PersistedWorkTogetherRoomContextApply }>
   | Readonly<{ kind: "conflict" }>;
 
+export type WorkTogetherRoomStreamContext = Readonly<{
+  bindingId: string;
+  version: number;
+  digest: string;
+}>;
+
+export type WorkTogetherRoomContextApplyBytes = Readonly<{
+  digest: string;
+  bytes: Buffer;
+}>;
+
+/** Second inherit for the same child thread must not rewrite the captured pair. */
+export class WorkTogetherRoomStreamContextConflictError extends Error {
+  constructor() {
+    super("Work Together Room stream context already captured for thread");
+    this.name = "WorkTogetherRoomStreamContextConflictError";
+  }
+}
+
 function assertInput(input: {
   bindingId: string;
   requestId: string;
@@ -175,6 +194,71 @@ export function admitWorkTogetherRoomContext(
   );
 }
 
+/** Captured Room pair for a child stream, or null when the child has none. */
+export function getWorkTogetherRoomStreamContext(
+  db: DbQueryConnection,
+  threadId: string,
+): WorkTogetherRoomStreamContext | null {
+  if (threadId.length === 0) {
+    throw new TypeError("Invalid Work Together Room stream thread");
+  }
+  const row = db
+    .select({
+      bindingId: workTogetherRoomStreamContexts.bindingId,
+      contextVersion: workTogetherRoomStreamContexts.contextVersion,
+      digest: workTogetherRoomStreamContexts.digest,
+    })
+    .from(workTogetherRoomStreamContexts)
+    .where(eq(workTogetherRoomStreamContexts.threadId, threadId))
+    .get();
+  return row === undefined
+    ? null
+    : Object.freeze({
+        bindingId: row.bindingId,
+        version: row.contextVersion,
+        digest: row.digest,
+      });
+}
+
+/**
+ * Exact opaque apply bytes for a binding version. Bytes stay on the apply
+ * table; stream rows only store the captured (version, digest) pair.
+ */
+export function getWorkTogetherRoomContextApplyBytes(
+  db: DbQueryConnection,
+  input: { bindingId: string; contextVersion: number },
+): WorkTogetherRoomContextApplyBytes | null {
+  if (
+    !UUID.test(input.bindingId) ||
+    !Number.isSafeInteger(input.contextVersion) ||
+    input.contextVersion < 1
+  ) {
+    throw new TypeError("Invalid Work Together Room context apply lookup");
+  }
+  const row = db
+    .select({
+      digest: workTogetherRoomContextApplies.digest,
+      bytes: workTogetherRoomContextApplies.bytes,
+    })
+    .from(workTogetherRoomContextApplies)
+    .where(
+      and(
+        eq(workTogetherRoomContextApplies.bindingId, input.bindingId),
+        eq(
+          workTogetherRoomContextApplies.contextVersion,
+          input.contextVersion,
+        ),
+      ),
+    )
+    .get();
+  return row === undefined
+    ? null
+    : Object.freeze({
+        digest: row.digest,
+        bytes: Buffer.from(row.bytes),
+      });
+}
+
 /** Capture the then-current pair once for a new Room child, before it can run. */
 export function inheritWorkTogetherRoomContextForChild(
   db: DbConnection,
@@ -182,6 +266,12 @@ export function inheritWorkTogetherRoomContextForChild(
 ): WorkTogetherRoomContext | null {
   if (!UUID.test(input.bindingId) || input.threadId.length === 0) {
     throw new TypeError("Invalid Work Together Room child context identity");
+  }
+  if (!Number.isSafeInteger(input.nowMs) || input.nowMs < 0) {
+    throw new TypeError("Invalid Work Together Room child context timestamp");
+  }
+  if (getWorkTogetherRoomStreamContext(db, input.threadId) !== null) {
+    throw new WorkTogetherRoomStreamContextConflictError();
   }
   const current = getWorkTogetherRoomContext(db, input.bindingId);
   if (current === null) return null;

@@ -38,12 +38,17 @@ export type {
 export {
   admitWorkTogetherRoomContext,
   getWorkTogetherRoomContext,
+  getWorkTogetherRoomContextApplyBytes,
+  getWorkTogetherRoomStreamContext,
   inheritWorkTogetherRoomContextForChild,
+  WorkTogetherRoomStreamContextConflictError,
 } from "./work-together-room-context.js";
 export type {
   AdmitWorkTogetherRoomContextOutcome,
   PersistedWorkTogetherRoomContextApply,
   WorkTogetherRoomContext,
+  WorkTogetherRoomContextApplyBytes,
+  WorkTogetherRoomStreamContext,
 } from "./work-together-room-context.js";
 
 export { listLatestRootTurnTerminalOutcomesByThreadIds } from "./work-together-room-root-turn-outcomes.js";
