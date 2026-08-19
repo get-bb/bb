@@ -245,7 +245,6 @@ describe("plugin slot store", () => {
 });
 
 describe("plugin slot store structural sharing", () => {
-
   it("keeps the messageActions array identity when a navPanels-only plugin registers", () => {
     setPluginSlotRegistrations(
       "actions",
@@ -321,7 +320,6 @@ describe("plugin slot store structural sharing", () => {
 });
 
 describe("plugin slot batches", () => {
-
   it("holds notifications until the batch closes and then notifies once", () => {
     const listener = vi.fn();
     const unsubscribe = subscribePluginSlots(listener);

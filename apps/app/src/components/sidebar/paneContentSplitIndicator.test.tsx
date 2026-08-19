@@ -83,8 +83,8 @@ describe("usePaneContentSplitIndicator", () => {
     act(() => {
       store.set(splitLayoutAtom, twoPanes("pane-2"));
     });
-    expect(
-      result.current.miniMap?.find((slot) => slot.isFocused)?.paneId,
-    ).toBe("pane-2");
+    expect(result.current.miniMap?.find((slot) => slot.isFocused)?.paneId).toBe(
+      "pane-2",
+    );
   });
 });

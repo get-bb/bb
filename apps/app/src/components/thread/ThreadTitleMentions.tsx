@@ -178,10 +178,16 @@ export function buildThreadTitleMentionResources(
 export function useSidebarThreadTitleMentionResources(
   navigation: ThreadTitleMentionNavigationSource | undefined,
 ): ThreadTitleMentionResources {
+  // Render-time cache keyed on the payload identity. The previous resources
+  // are the input to the next build, and a state-based "adjust during render"
+  // would loop if a caller ever handed in a fresh payload object per render,
+  // so this deliberately reads and writes a ref during render (the hook is
+  // small; the compiler bailout is confined to it).
   const cacheRef = useRef<{
     navigation: ThreadTitleMentionNavigationSource | undefined;
     resources: ThreadTitleMentionResources;
   } | null>(null);
+  // eslint-disable-next-line react-hooks/refs
   const cached = cacheRef.current;
   if (cached !== null && cached.navigation === navigation) {
     return cached.resources;
@@ -190,6 +196,7 @@ export function useSidebarThreadTitleMentionResources(
     navigation,
     cached?.resources ?? EMPTY_TITLE_MENTION_RESOURCES,
   );
+  // eslint-disable-next-line react-hooks/refs
   cacheRef.current = { navigation, resources };
   return resources;
 }

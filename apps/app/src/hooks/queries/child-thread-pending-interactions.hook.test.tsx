@@ -54,7 +54,9 @@ function makeApproval(id: string, createdAt: number): PendingInteraction {
   };
 }
 
-function renderAttention(children: readonly ChildThreadPendingAttentionSource[]) {
+function renderAttention(
+  children: readonly ChildThreadPendingAttentionSource[],
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });

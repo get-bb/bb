@@ -33,9 +33,7 @@ function navigation(
     personalProject: {
       id: "personal",
       name: "Personal",
-      threads: [
-        makeThreadListEntry({ id: "thr_me", projectId: "personal" }),
-      ],
+      threads: [makeThreadListEntry({ id: "thr_me", projectId: "personal" })],
     },
   };
 }

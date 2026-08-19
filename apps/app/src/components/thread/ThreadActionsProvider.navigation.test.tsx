@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { memo, type ReactNode } from "react";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -62,12 +68,22 @@ const RouteNavigateConsumer = memo(function RouteNavigateConsumer() {
   return null;
 });
 
-let liveNavigate: ReturnType<typeof useNavigate> | null = null;
-
+/** Real router navigation, driven from a click so no test code renders. */
 function NavigationProbe() {
-  liveNavigate = useNavigate();
+  const navigate = useNavigate();
   const location = useLocation();
-  return <output data-testid="pathname">{location.pathname}</output>;
+  return (
+    <>
+      <output data-testid="pathname">{location.pathname}</output>
+      <button type="button" onClick={() => navigate("/projects/p1/threads/t2")}>
+        go to t2
+      </button>
+    </>
+  );
+}
+
+function navigateToT2(): void {
+  fireEvent.click(screen.getByRole("button", { name: "go to t2" }));
 }
 
 function renderTree(children: ReactNode) {
@@ -94,9 +110,7 @@ describe("ThreadActionsProvider across navigations", () => {
     );
     expect(consumerRenders).toHaveLength(1);
 
-    act(() => {
-      liveNavigate?.("/projects/p1/threads/t2");
-    });
+    navigateToT2();
     expect(screen.getByTestId("pathname").textContent).toBe(
       "/projects/p1/threads/t2",
     );
@@ -113,9 +127,7 @@ describe("useRouteNavigate", () => {
     renderTree(<RouteNavigateConsumer />);
     expect(routeNavigateIdentities).toHaveLength(1);
 
-    act(() => {
-      liveNavigate?.("/projects/p1/threads/t2");
-    });
+    navigateToT2();
     expect(routeNavigateIdentities).toHaveLength(1);
 
     const navigate = routeNavigateIdentities[0];

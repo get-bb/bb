@@ -18,8 +18,10 @@ export interface RouteNavigationProviderProps {
   children: ReactNode;
 }
 
-export interface RouteAnchorProps
-  extends Omit<ComponentPropsWithoutRef<"a">, "href"> {
+export interface RouteAnchorProps extends Omit<
+  ComponentPropsWithoutRef<"a">,
+  "href"
+> {
   href: string | undefined;
 }
 

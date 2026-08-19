@@ -806,59 +806,59 @@ export function AppLayout({ children }: AppLayoutProps) {
   }, [documentTitle]);
 
   return (
-      <ProjectActionsProvider>
-        <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
-          <ThreadActionsProvider>
-            <IframeDragGuardOverlay active={isSidebarResizing} />
-            <SidebarStateBridge
-              providerRef={providerRef}
-              style={sidebarProviderStyle}
-            >
-              <AppLayoutSidebar
-                mode={
-                  isGlobalSettingsView
-                    ? "settings"
-                    : isGlobalToolsView
-                      ? "tools"
-                      : "app"
-                }
-                onResizeMouseDown={handleResizeMouseDown}
-                isResizing={isSidebarResizing}
-                appRoutePath={appRoutePath}
-                settingsRoutePath={settingsRoutePath}
-                toolsBackRoutePath={toolsBackRoutePath}
-                toolsRoutePath={toolsRoutePath}
-              />
-              <SidebarInset>
-                <div
-                  ref={contentShellRef}
-                  data-testid="app-layout-content-shell"
-                  className="relative flex h-full min-h-0 min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
-                >
-                  {showHeader ? (
-                    <AppHeader
-                      usesDesktopChrome={usesDesktopChrome}
-                      usesProjectChromeStyle={
-                        isRootView || isArchivedView || isSettingsView
-                      }
-                      isSettingsView={isSettingsView}
-                      projectId={projectId}
-                      project={project}
-                      pluginPanel={pluginPanel}
-                      pluginPanelSubPath={pluginPanelSubPath}
-                      meta={meta}
-                    />
-                  ) : null}
-                  <main className="flex min-h-0 flex-1 flex-col p-4 md:p-5">
-                    {children}
-                  </main>
-                </div>
-              </SidebarInset>
-              <SidebarTriggerOverlay
-                reserveMacosTrafficLights={reserveMacosTrafficLights}
-                usesDesktopChrome={usesDesktopChrome}
-              />
-            </SidebarStateBridge>
+    <ProjectActionsProvider>
+      <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
+        <ThreadActionsProvider>
+          <IframeDragGuardOverlay active={isSidebarResizing} />
+          <SidebarStateBridge
+            providerRef={providerRef}
+            style={sidebarProviderStyle}
+          >
+            <AppLayoutSidebar
+              mode={
+                isGlobalSettingsView
+                  ? "settings"
+                  : isGlobalToolsView
+                    ? "tools"
+                    : "app"
+              }
+              onResizeMouseDown={handleResizeMouseDown}
+              isResizing={isSidebarResizing}
+              appRoutePath={appRoutePath}
+              settingsRoutePath={settingsRoutePath}
+              toolsBackRoutePath={toolsBackRoutePath}
+              toolsRoutePath={toolsRoutePath}
+            />
+            <SidebarInset>
+              <div
+                ref={contentShellRef}
+                data-testid="app-layout-content-shell"
+                className="relative flex h-full min-h-0 min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
+              >
+                {showHeader ? (
+                  <AppHeader
+                    usesDesktopChrome={usesDesktopChrome}
+                    usesProjectChromeStyle={
+                      isRootView || isArchivedView || isSettingsView
+                    }
+                    isSettingsView={isSettingsView}
+                    projectId={projectId}
+                    project={project}
+                    pluginPanel={pluginPanel}
+                    pluginPanelSubPath={pluginPanelSubPath}
+                    meta={meta}
+                  />
+                ) : null}
+                <main className="flex min-h-0 flex-1 flex-col p-4 md:p-5">
+                  {children}
+                </main>
+              </div>
+            </SidebarInset>
+            <SidebarTriggerOverlay
+              reserveMacosTrafficLights={reserveMacosTrafficLights}
+              usesDesktopChrome={usesDesktopChrome}
+            />
+          </SidebarStateBridge>
           <ProjectPathDialog
             target={quickCreateProject.projectPathDialog.target}
             pending={quickCreateProject.isCreating}
