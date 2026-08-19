@@ -609,6 +609,7 @@ describe("plugin service", () => {
     expect(attention()).toEqual([
       {
         id: "notify",
+        name: "Service fixture",
         status: "incompatible",
         statusDetail: "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
       },

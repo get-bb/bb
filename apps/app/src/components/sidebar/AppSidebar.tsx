@@ -21,6 +21,7 @@ import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
+import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -418,6 +419,10 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
           <li aria-hidden="true" className="min-w-0 flex-1" />
+          <SidebarPluginAttentionGlyph
+            className={SIDEBAR_FOOTER_ACTION_CLASS}
+            onNavigate={closeOnMobile}
+          />
           <SidebarUpdatesBadge onNavigate={closeOnMobile} />
         </SidebarMenu>
       </SidebarFooter>

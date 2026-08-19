@@ -104,6 +104,7 @@ function jsonResponse(value: object): Response {
 function stubServer(
   attention: ReadonlyArray<{
     id: string;
+    name: string | null;
     status: string;
     statusDetail: string | null;
   }>,
@@ -134,10 +135,11 @@ describe("bb status plugin attention", () => {
     stubServer([
       {
         id: "notify",
+        name: "Notify",
         status: "incompatible",
         statusDetail: "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
       },
-      { id: "foo", status: "error", statusDetail: "boom" },
+      { id: "foo", name: null, status: "error", statusDetail: "boom" },
     ]);
 
     await runCommand(["status"], register);
@@ -163,6 +165,7 @@ describe("bb status plugin attention", () => {
     stubServer([
       {
         id: "notify",
+        name: "Notify",
         status: "incompatible",
         statusDetail: "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
       },
@@ -174,6 +177,7 @@ describe("bb status plugin attention", () => {
     expect(payload.pluginsNeedingAttention).toEqual([
       {
         id: "notify",
+        name: "Notify",
         status: "incompatible",
         statusDetail: "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
       },
@@ -185,7 +189,7 @@ describe("formatPluginAttentionLine", () => {
   it("uses the singular for one plugin", () => {
     expect(
       formatPluginAttentionLine([
-        { id: "notify", status: "incompatible", statusDetail: null },
+        { id: "notify", name: null, status: "incompatible", statusDetail: null },
       ]),
     ).toBe(
       "1 plugin needs attention (incompatible: notify). Run bb plugin list.",

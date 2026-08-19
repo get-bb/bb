@@ -1312,6 +1312,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const runtime = statuses.get(row.id);
         const entry: PluginAttentionEntry = {
           id: row.id,
+          name:
+            loaded.get(row.id)?.manifest.name ??
+            identities.get(row.id)?.manifest.name ??
+            null,
           status: runtime?.status ?? (row.enabled ? "error" : "disabled"),
           statusDetail: runtime
             ? runtime.detail

@@ -195,8 +195,8 @@ export function registerPluginRoutes(
 
   app.get("/plugins", (context) => context.json({ plugins: plugins.list() }));
 
-  // Enabled plugins that are not running. The sidebar chip, the Extensions
-  // badge, and `bb status` poll this instead of the full inventory (#1915).
+  // Enabled plugins that are not running. The sidebar footer glyph and
+  // `bb status` poll this instead of the full inventory (#1915).
   app.get("/plugins/attention", (context) =>
     context.json({ plugins: plugins.listAttention() }),
   );

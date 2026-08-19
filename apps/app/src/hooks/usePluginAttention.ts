@@ -2,10 +2,40 @@ import { useMemo } from "react";
 import type { PluginAttentionEntry } from "@bb/server-contract";
 import { usePluginAttention as usePluginAttentionQuery } from "@/hooks/queries/plugin-settings-queries";
 
-export function pluginAttentionLabel(count: number): string {
-  return count === 1
-    ? "1 plugin needs attention"
-    : `${count} plugins need attention`;
+/**
+ * Longest `statusDetail` the sidebar glyph quotes verbatim. The server's
+ * engines message ("requires bb >=0.38.0 <0.39.0, this is 0.39.0") fits; a
+ * factory stack trace does not and falls back to the status word.
+ */
+const SHORT_DETAIL_MAX_LENGTH = 80;
+
+function pluginDisplayName(plugin: PluginAttentionEntry): string {
+  return plugin.name ?? plugin.id;
+}
+
+/**
+ * Tooltip / accessible name for the sidebar warning glyph. One plugin is
+ * named with its reason ("Notify is incompatible with bb 0.39.0", or the
+ * server's short `statusDetail` for the other statuses); several plugins
+ * collapse to a count, and the Installed plugins view lists each one.
+ */
+export function pluginAttentionLabel(
+  plugins: readonly PluginAttentionEntry[],
+  bbVersion: string | undefined,
+): string {
+  if (plugins.length !== 1) {
+    return `${plugins.length} plugins are not running`;
+  }
+  const plugin = plugins[0]!;
+  const name = pluginDisplayName(plugin);
+  if (plugin.status === "incompatible" && bbVersion !== undefined) {
+    return `${name} is incompatible with bb ${bbVersion}`;
+  }
+  const detail = plugin.statusDetail?.trim();
+  if (detail && detail.length <= SHORT_DETAIL_MAX_LENGTH) {
+    return `${name} is not running: ${detail}`;
+  }
+  return `${name} is not running (${plugin.status})`;
 }
 
 export interface PluginAttention {
@@ -20,8 +50,10 @@ interface UsePluginAttentionOptions {
 /**
  * Installed plugins that are enabled but not running. The server decides
  * which statuses count (`pluginNeedsAttention` in `@bb/server-contract`);
- * this hook only reads the summary for the sidebar chip and the Extensions
- * badge.
+ * this hook only reads the summary for the sidebar footer glyph. The state is
+ * derived from the live summary and never stored, so the glyph disappears as
+ * soon as the plugin updates, bb upgrades, or the user reloads, disables, or
+ * uninstalls the plugin.
  */
 export function usePluginAttention(
   options?: UsePluginAttentionOptions,

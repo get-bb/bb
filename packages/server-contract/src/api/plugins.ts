@@ -253,6 +253,8 @@ export function pluginNeedsAttention(plugin: {
 
 export const pluginAttentionEntrySchema = z.object({
   id: z.string(),
+  /** Manifest display name; null when the manifest never parsed. */
+  name: z.string().nullable(),
   status: pluginRuntimeStatusSchema,
   statusDetail: z.string().nullable(),
 });

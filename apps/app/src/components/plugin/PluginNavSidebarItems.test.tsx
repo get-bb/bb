@@ -25,15 +25,6 @@ import {
 import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
 import { pluginNavPanelOrderAtom } from "./pluginNavSidebarAtoms";
 
-const usePluginAttentionMock = vi.hoisted(() =>
-  vi.fn(() => ({ count: 0, plugins: [] })),
-);
-
-vi.mock("@/hooks/usePluginAttention", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/hooks/usePluginAttention")>()),
-  usePluginAttention: usePluginAttentionMock,
-}));
-
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
 ): PluginRegistrationSet {
@@ -114,7 +105,6 @@ function panelRowNames(): string[] {
 
 beforeEach(() => {
   window.localStorage.clear();
-  usePluginAttentionMock.mockReturnValue({ count: 0, plugins: [] });
   resetAllCrashedPluginSlotsForTest();
   // React reports errors caught by the slot boundary; keep expected crashes
   // from obscuring the regression assertions below.
@@ -414,25 +404,6 @@ describe("PluginNavSidebarItems", () => {
     expect(
       window.localStorage.getItem("bb.sidebar.pluginPanelOrder") ?? "",
     ).not.toContain("__builtin__/tools");
-  });
-
-  it("badges the Extensions row with the count of plugins that need attention", () => {
-    usePluginAttentionMock.mockReturnValue({ count: 2, plugins: [] });
-    registerPanel("docs", "Docs");
-
-    renderSidebarItems({ toolsRoutePath: "/extensions/plugins" });
-
-    const badge = screen.getByTestId("tools-nav-plugin-attention");
-    expect(badge.textContent).toBe("2");
-    expect(badge.getAttribute("aria-label")).toBe("2 plugins need attention");
-    // Plugin rows never carry the badge; only the host's Extensions row does.
-    expect(screen.getAllByTestId("tools-nav-plugin-attention").length).toBe(1);
-  });
-
-  it("renders no attention badge on the Extensions row when every plugin runs", () => {
-    renderSidebarItems({ toolsRoutePath: "/extensions/plugins" });
-
-    expect(screen.queryByTestId("tools-nav-plugin-attention")).toBeNull();
   });
 
   it("carries both Extensions glyphs so hover swaps without reflow", () => {
