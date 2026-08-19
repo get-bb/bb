@@ -214,6 +214,7 @@ export function Overview() {
             turnRequest={null}
             showActions={true}
             mobileActionDisplay="inline"
+            streaming={false}
           />
         </TimelineStage>
       </StoryRow>
@@ -234,6 +235,7 @@ export function Overview() {
             turnRequest={null}
             showActions={true}
             mobileActionDisplay="inline"
+            streaming={false}
           />
         </TimelineStage>
       </StoryRow>

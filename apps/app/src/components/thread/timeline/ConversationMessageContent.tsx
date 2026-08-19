@@ -52,6 +52,7 @@ import {
   USER_MESSAGE_CHAR_CAP,
 } from "./conversation-message-limits.js";
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
+import { splitStreamingMarkdown } from "./streaming-markdown-split.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
 import { MessageActionBar } from "./MessageActionBar.js";
 import {
@@ -133,6 +134,16 @@ const ASSISTANT_THREAD_MENTIONS: MarkdownThreadMentions = {
   preserveSoftBreaks: false,
 };
 
+// The settled prefix and live tail of a streaming message are two sibling
+// markdown documents. Their block margins collapse across the wrapper
+// boundary like siblings inside one document, except for the `last:mb-0` on a
+// trailing paragraph and the `first:mt-0` on a leading heading, which would
+// otherwise remove the gap at the seam and shift the layout when the finished
+// message re-renders as one document. Restore those margins at the seam only.
+const STREAMING_SETTLED_MARKDOWN_CLASS_NAME = "[&>p:last-child]:mb-2";
+const STREAMING_TAIL_MARKDOWN_CLASS_NAME =
+  "[&>h1:first-child]:mt-4 [&>h2:first-child]:mt-4 [&>h3:first-child]:mt-3 [&>h4:first-child]:mt-3 [&>h5:first-child]:mt-2 [&>h6:first-child]:mt-2";
+
 export interface ConversationMessageContentAssistantProps
   extends ConversationMessageContentBaseProps, AssistantMessageRowIdentity {
   role: "assistant";
@@ -170,6 +181,12 @@ export interface ConversationMessageContentAssistantProps
   showActions: boolean;
   /** Mobile presentation for this message's action footer. */
   mobileActionDisplay: "inline" | "overflow";
+  /**
+   * The message is still receiving text deltas. The body then renders as a
+   * settled prefix plus a live tail (two memoized markdown documents) so each
+   * delta re-parses only the tail. A completed message renders one document.
+   */
+  streaming: boolean;
   turnRequest: null;
   workspaceRootPath?: string;
 }
@@ -226,6 +243,7 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   projectId?: string;
   showActions: boolean;
   mobileActionDisplay: "inline" | "overflow";
+  streaming: boolean;
   text: string;
   workspaceRootPath?: string;
 }
@@ -546,11 +564,18 @@ function AssistantConversationMessage({
   projectId,
   showActions,
   mobileActionDisplay,
+  streaming,
   text,
   threadId,
   turnId,
   workspaceRootPath,
 }: AssistantConversationMessageProps) {
+  // While streaming, everything before the last safe blank line is settled and
+  // keeps its memoized render; only the tail document re-parses per delta.
+  const streamingSplit = useMemo(
+    () => (streaming ? splitStreamingMarkdown(text) : null),
+    [streaming, text],
+  );
   const linkRouting = useMemo<MarkdownLinkRouting>(() => {
     const localImage: NonNullable<MarkdownLinkRouting["localImage"]> = {
       absolutePaths: {
@@ -652,11 +677,25 @@ function AssistantConversationMessage({
       */}
       <SelectableMessageProse onSelect={onSelectProse}>
         <MarkdownPreview
-          content={text}
+          className={
+            streamingSplit === null
+              ? undefined
+              : STREAMING_SETTLED_MARKDOWN_CLASS_NAME
+          }
+          content={streamingSplit === null ? text : streamingSplit.settled}
           linkRouting={linkRouting}
           messageDirectives={messageDirectives}
           threadMentions={ASSISTANT_THREAD_MENTIONS}
         />
+        {streamingSplit === null ? null : (
+          <MarkdownPreview
+            className={STREAMING_TAIL_MARKDOWN_CLASS_NAME}
+            content={streamingSplit.tail}
+            linkRouting={linkRouting}
+            messageDirectives={messageDirectives}
+            threadMentions={ASSISTANT_THREAD_MENTIONS}
+          />
+        )}
       </SelectableMessageProse>
       <ConversationAttachments
         filePaths={attachmentItems.filePaths}
@@ -760,6 +799,7 @@ export function ConversationMessageContent(
       projectId={projectId}
       showActions={props.showActions}
       mobileActionDisplay={props.mobileActionDisplay}
+      streaming={props.streaming}
       sourceSeqEnd={props.sourceSeqEnd}
       sourceSeqStart={props.sourceSeqStart}
       text={text}
