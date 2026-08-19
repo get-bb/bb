@@ -1538,13 +1538,13 @@ function buildSequencePageTimelineRows(
     selection.responsePageKind === "latest"
       ? ""
       : `:sequence-page:${selection.byteWindowSequenceStart}`;
-  return rowsWithPlaceholder.map((row): TimelineRow => {
+  return rowsWithPlaceholder.flatMap((row): TimelineRow[] => {
     if (
       row.kind !== "turn" ||
       selection.byteWindowSequenceEnd === null ||
       selection.byteWindowSequenceStart === null
     ) {
-      return { ...row, id: `${row.id}${suffix}` };
+      return [{ ...row, id: `${row.id}${suffix}` }];
     }
     const sourceSeqStart = Math.max(
       row.sourceSeqStart,
@@ -1554,14 +1554,25 @@ function buildSequencePageTimelineRows(
       row.sourceSeqEnd,
       selection.byteWindowSequenceEnd,
     );
-    return sourceSeqStart <= sourceSeqEnd
-      ? {
-          ...row,
-          id: `${row.id}${suffix}`,
-          sourceSeqEnd,
-          sourceSeqStart,
-        }
-      : { ...row, id: `${row.id}${suffix}` };
+    if (sourceSeqStart > sourceSeqEnd) {
+      // A finished turn with no event inside this byte window is closure
+      // context, not page content: the window's rows carried a
+      // `parentToolCallId` (a workflow's progress snapshots name the Workflow
+      // call in the turn that started it), parent closure pulled that tool
+      // call in, and turn lifecycle closure completed the turn around it. The
+      // page that holds the turn's own events renders its summary; emitting
+      // it here too gives every byte page another "Worked for" row under a
+      // page-unique id.
+      return [];
+    }
+    return [
+      {
+        ...row,
+        id: `${row.id}${suffix}`,
+        sourceSeqEnd,
+        sourceSeqStart,
+      },
+    ];
   });
 }
 

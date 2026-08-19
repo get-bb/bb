@@ -1461,6 +1461,121 @@ describe("events", () => {
     ).toEqual([2, 3]);
   });
 
+  it("skips superseded backgroundTask progress snapshots in timeline reads", () => {
+    const { db, thread } = setup();
+
+    const taskData = (id: string, status: "pending" | "completed") =>
+      JSON.stringify({
+        item: {
+          id,
+          type: "backgroundTask",
+          taskType: "local_workflow",
+          description: "fixture workflow",
+          status,
+          taskStatus: status === "pending" ? "running" : "completed",
+          skipTranscript: false,
+        },
+      });
+    const progress = (sequence: number, itemId: string) => ({
+      threadId: thread.id,
+      sequence,
+      scope: threadScope(),
+      type: "item/backgroundTask/progress" as const,
+      itemId,
+      itemKind: "backgroundTask" as const,
+      data: taskData(itemId, "pending"),
+    });
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:wf-1",
+        itemKind: "backgroundTask",
+        data: taskData("task:wf-1", "pending"),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:wf-2",
+        itemKind: "backgroundTask",
+        data: taskData("task:wf-2", "pending"),
+      },
+      // wf-1: 3 and 4 are superseded by 6; wf-2: 5 is superseded by the
+      // completed row at 7, which is not a progress row and stays.
+      progress(3, "task:wf-1"),
+      progress(4, "task:wf-1"),
+      progress(5, "task:wf-2"),
+      progress(6, "task:wf-1"),
+      {
+        threadId: thread.id,
+        sequence: 7,
+        scope: threadScope(),
+        type: "item/backgroundTask/completed",
+        itemId: "task:wf-2",
+        itemKind: "backgroundTask",
+        data: taskData("task:wf-2", "completed"),
+      },
+    ]);
+
+    expect(
+      listStoredTimelineWindowEventRows(db, {
+        maxInlineOutputChars: null,
+        sequenceStart: 1,
+        threadId: thread.id,
+      }).map((row) => row.sequence),
+    ).toEqual([1, 2, 6, 7]);
+    // A window that ends before the superseding row still skips the
+    // superseded ones: the timeline only ever needs the newest snapshot.
+    expect(
+      listStoredTimelineWindowEventRows(db, {
+        beforeSequence: 6,
+        maxInlineOutputChars: null,
+        sequenceStart: 1,
+        threadId: thread.id,
+      }).map((row) => row.sequence),
+    ).toEqual([1, 2]);
+    expect(
+      listRecentStoredEventRows(db, {
+        maxInlineOutputChars: null,
+        threadId: thread.id,
+      }).map((row) => row.sequence),
+    ).toEqual([1, 2, 6, 7]);
+    // The byte floor walks the same rows the window read returns.
+    expect(
+      findStoredTimelineWindowByteBudgetFloor(db, {
+        maxDataBytes: 1_000_000,
+        maxInlineOutputChars: null,
+        sequenceStart: 1,
+        threadId: thread.id,
+      }),
+    ).toEqual({
+      eventDataBytes: getStoredTimelineWindowEventDataBytes(db, {
+        maxInlineOutputChars: null,
+        sequenceStart: 1,
+        threadId: thread.id,
+      }),
+      kind: "fits",
+    });
+    expect(
+      getStoredTimelineWindowEventDataBytes(db, {
+        maxInlineOutputChars: null,
+        sequenceStart: 1,
+        threadId: thread.id,
+      }),
+    ).toBe(
+      listStoredTimelineWindowEventRows(db, {
+        maxInlineOutputChars: null,
+        sequenceStart: 1,
+        threadId: thread.id,
+      }).reduce((bytes, row) => bytes + Buffer.byteLength(row.data), 0),
+    );
+  });
+
   it("lists accepted input rows for requested client turn sequences", () => {
     const { db, thread } = setup();
 
