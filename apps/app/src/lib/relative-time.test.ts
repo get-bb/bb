@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatRelativeTime } from "./relative-time";
+import { formatCompactDuration, formatRelativeTime } from "./relative-time";
 
 const NOW = 1_700_000_000_000;
 const MINUTE = 60 * 1000;
@@ -53,5 +53,22 @@ describe("formatRelativeTime", () => {
         day: "numeric",
       }),
     );
+  });
+});
+
+describe("formatCompactDuration", () => {
+  it("floors a sub-minute span to a minute rather than to zero", () => {
+    // A status that renders "0m" reads as "no time has passed", which is the
+    // opposite of what a row saying it is still waiting means.
+    expect(formatCompactDuration({ ms: 0 })).toBe("1m");
+    expect(formatCompactDuration({ ms: 45 * 1000 })).toBe("1m");
+  });
+
+  it("steps up a unit at each boundary", () => {
+    expect(formatCompactDuration({ ms: 3 * MINUTE })).toBe("3m");
+    expect(formatCompactDuration({ ms: 59 * MINUTE })).toBe("59m");
+    expect(formatCompactDuration({ ms: HOUR })).toBe("1h");
+    expect(formatCompactDuration({ ms: 23 * HOUR })).toBe("23h");
+    expect(formatCompactDuration({ ms: DAY })).toBe("1d");
   });
 });

@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Host } from "@bb/domain";
+import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import {
   defaultAppSettings,
@@ -171,9 +172,45 @@ describe("MachinesSettingsSection", () => {
     ).toBeDefined();
     // The action lives in the row menu so the rows keep one shape.
     await openHostMenu("dev-vm");
+    const renameItem = await screen.findByRole("menuitem", { name: "Rename" });
+    const retryItem = await screen.findByRole("menuitem", {
+      name: "Retry update",
+    });
+    const removeItem = await screen.findByRole("menuitem", {
+      name: "Remove machine",
+    });
+    const menu = screen.getByRole("menu");
+    expect(menu.className).toContain("w-max");
+    expect(menu.className).toContain("min-w-0");
+    for (const item of [renameItem, retryItem, removeItem]) {
+      expect(item.className).toContain("min-h-9");
+      expect(item.className).toContain("px-2.5");
+      expect(item.className).toContain("py-2");
+    }
+    expect(renameItem.querySelector('[data-icon="Edit"]')).not.toBeNull();
     expect(
-      await screen.findByRole("menuitem", { name: "Retry update" }),
-    ).toBeDefined();
+      retryItem.querySelector(`[data-icon="${RETRY_ACTION_ICON}"]`),
+    ).not.toBeNull();
+    expect(removeItem.querySelector('[data-icon="Trash2"]')).not.toBeNull();
+  });
+
+  it("opens the row menu from the keyboard and focuses its first action", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    const trigger = await screen.findByRole("button", {
+      name: "dev-vm actions",
+    });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+
+    const renameItem = await screen.findByRole("menuitem", { name: "Rename" });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(renameItem);
+    });
   });
 
   it("requests an immediate daemon update retry", async () => {
@@ -220,9 +257,16 @@ describe("MachinesSettingsSection", () => {
     expect(
       screen.queryByRole("button", { name: /Permission limit for/ }),
     ).toBeNull();
-    expect(
-      screen.getByRole("link", { name: "Open dev-vm" }).getAttribute("href"),
-    ).toBe("/settings/machines/host_remote");
+    const machineLink = screen.getByRole("link", { name: "Open dev-vm" });
+    expect(machineLink.getAttribute("href")).toBe(
+      "/settings/machines/host_remote",
+    );
+    expect(machineLink.parentElement?.className).toContain(
+      "hover:bg-state-hover",
+    );
+    expect(machineLink.parentElement?.className).toContain(
+      "focus-within:bg-state-hover",
+    );
   });
 
   it("renames a machine through the row menu", async () => {
@@ -288,9 +332,20 @@ describe("MachinesSettingsSection", () => {
     await openHostMenu("MacBook Pro");
 
     const removeItem = await screen.findByRole("menuitem", {
-      name: /Remove machine/,
+      name: "Remove machine",
     });
     expect(removeItem.getAttribute("aria-disabled")).toBe("true");
+    expect(removeItem.textContent).toBe("Remove machine");
+    fireEvent.focus(removeItem);
+    expect(
+      await screen.findByRole("tooltip", {
+        name: "This machine runs bb and can't be removed.",
+      }),
+    ).toBeDefined();
+    fireEvent.click(removeItem);
+    expect(
+      screen.queryByRole("heading", { name: "Remove MacBook Pro?" }),
+    ).toBeNull();
     expect(vi.mocked(sdk.hosts.delete)).not.toHaveBeenCalled();
   });
 });

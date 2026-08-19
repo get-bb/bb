@@ -322,10 +322,10 @@ function AddMachineDialogContent({
         <DialogDescription>
           {unreachable !== null
             ? "Pair a machine to run projects and threads on it."
-            : "Run this on the machine you want to add. It pairs the machine to this server and keeps it available for your projects."}
-        </DialogDescription>
-      </DialogHeader>
-      <div className="space-y-4">
+            : "Run this command on the machine you want to add. It installs bb and keeps the machine connected to this server."}
+         </DialogDescription>
+       </DialogHeader>
+       <div className="space-y-3">
         {mintJoinCode.isError || connectUnavailable ? (
           <div className="space-y-2">
             <p className="text-sm text-destructive">
@@ -351,21 +351,14 @@ function AddMachineDialogContent({
             reason={unreachable.reason}
           />
         ) : command !== null ? (
-          <div className="space-y-2">
-            <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-border bg-muted/40 p-3 font-mono text-xs text-foreground">
+          <div
+            data-add-machine-command
+            className="overflow-hidden rounded-md border border-border bg-muted/30"
+          >
+            <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 font-mono text-xs text-foreground">
               {command}
             </pre>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-7 px-2.5 text-xs"
-                disabled={expired}
-                onClick={() => void copy()}
-              >
-                {copied ? "Copied" : "Copy"}
-              </Button>
+            <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
               {expired ? (
                 <>
                   <span className="text-xs text-subtle-foreground">
@@ -387,11 +380,17 @@ function AddMachineDialogContent({
                   Code expires in {formatCountdown(remainingMs)}
                 </span>
               ) : null}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="ml-auto h-7 px-2.5 text-xs"
+                disabled={expired}
+                onClick={() => void copy()}
+              >
+                {copied ? "Copied" : "Copy"}
+              </Button>
             </div>
-            <p className="text-xs text-subtle-foreground/75">
-              This installs bb, enrolls the daemon, and configures it to
-              reconnect automatically on the other machine.
-            </p>
           </div>
         ) : (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -400,7 +399,7 @@ function AddMachineDialogContent({
           </p>
         )}
         {unreachable !== null ? null : (
-          <div className="flex items-center gap-2.5 rounded-md border border-border bg-muted/40 px-3 py-2.5">
+          <div className="flex items-center gap-2.5 rounded-md bg-muted/40 px-3 py-2.5">
             {connectedNewHost !== null ? (
               <>
                 <MachineStatusDot connected />

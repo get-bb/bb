@@ -5,17 +5,30 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 // so those icons never flash blank waiting for an on-demand load.
 import "@bb/shared-ui/icon-extended";
 import type { Host, PermissionMode } from "@bb/domain";
-import type { HostPlatform } from "@bb/host-daemon-contract";
+import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
+import {
+  providerCliKeyValues,
+  type HostPlatform,
+  type ProviderCliKey,
+} from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
 import { DialogFooter, DialogHeader, DialogTitle } from "@bb/shared-ui/dialog";
 import { DialogDescription } from "@bb/shared-ui/dialog";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { ResourceOverflowMenu } from "@bb/shared-ui/resource-list";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
-import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { PageShell } from "@/components/ui/page-shell.js";
 import {
   SettingsBadge,
+  SettingsRow,
+  SettingsRowList,
   SettingsSection,
 } from "@/components/ui/settings-section";
 import { appToast } from "@/components/ui/app-toast";
@@ -29,14 +42,20 @@ import {
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
+import { isProviderCliUpdateIssue } from "@/components/provider-cli/provider-cli-install";
 import { useUpdateInventory } from "@/hooks/useUpdateInventory";
 import {
   formatHostUpdateStatus,
   hostCanRetryUpdate,
 } from "@/lib/host-update-status";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { PersistentHostIconName } from "@/lib/host-display";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { formatRelativeTime } from "@/lib/relative-time";
+import {
+  getProviderIconColorClass,
+  getProviderIconInfo,
+} from "@/lib/provider-icon";
 import {
   getProjectSettingsRoutePath,
   getSettingsRoutePath,
@@ -55,6 +74,12 @@ const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   unknown: null,
 };
 
+const PROVIDER_CLI_AGENT_PROVIDER_ID = {
+  codex: "codex",
+  claudeCode: "claude-code",
+  cursor: "acp-cursor",
+} as const satisfies Record<ProviderCliKey, string>;
+
 interface MachineProject {
   id: string;
   name: string;
@@ -70,14 +95,10 @@ function headerMeta({
   now: number;
 }): string {
   const parts: string[] = [];
-  if (host.status === "connected") {
-    parts.push("Online");
-  } else if (host.lastSeenAt !== null) {
+  if (host.status !== "connected" && host.lastSeenAt !== null) {
     parts.push(
-      `Offline · last seen ${formatRelativeTime({ timestamp: host.lastSeenAt, now })}`,
+      `last seen ${formatRelativeTime({ timestamp: host.lastSeenAt, now })}`,
     );
-  } else {
-    parts.push("Offline");
   }
   if (platformLabel !== null) parts.push(platformLabel);
   parts.push(
@@ -86,83 +107,117 @@ function headerMeta({
   return parts.join(" · ");
 }
 
+function MachineStatusIcon({ connected }: { connected: boolean }) {
+  const label = connected ? "Online" : "Offline";
+  return (
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            role="img"
+            aria-label={label}
+            className={cn(
+              "inline-flex size-5 shrink-0 items-center justify-center",
+              connected ? "text-success" : "text-muted-foreground",
+            )}
+          >
+            <Icon
+              aria-hidden
+              name={connected ? "CircleCheck" : "CircleX"}
+              className="size-4"
+            />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 interface PermissionLimitCardProps {
   disabled: boolean;
   onSelect: (permissionMode: PermissionMode) => void;
   value: PermissionMode;
 }
 
-/**
- * Radio cards rather than a picker: this page has room for each mode's
- * description, which is the whole reason the limit lives here.
- */
+/** The page has room to explain each mode, so keep the choices visible. */
 function PermissionLimitCards({
   disabled,
   onSelect,
   value,
 }: PermissionLimitCardProps) {
   return (
-    <div className="space-y-2" role="radiogroup" aria-label="Permission limit">
-      {PERMISSION_MODE_OPTIONS.map((option) => {
-        const selected = option.value === value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            disabled={disabled}
-            onClick={() => {
-              if (!selected) onSelect(option.value);
-            }}
-            className={cn(
-              "flex w-full items-start gap-2.5 rounded-lg border px-3.5 py-3 text-left transition-colors",
-              selected
-                ? "border-foreground/40 bg-state-hover"
-                : "border-border hover:bg-state-hover",
-              disabled && "opacity-70",
-            )}
-          >
-            <span
-              className={cn(
-                "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
-                selected ? "border-foreground" : "border-input",
-              )}
-            >
-              {selected ? (
-                <span className="size-2 rounded-full bg-foreground" />
-              ) : null}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm text-foreground">
-                {option.label}
-              </span>
-              {option.description ? (
-                <span className="mt-0.5 block text-xs leading-snug text-subtle-foreground/85">
-                  {option.description}
+    <div role="radiogroup" aria-label="Permission limit">
+      <SettingsRowList>
+        {PERMISSION_MODE_OPTIONS.map((option) => {
+          const selected = option.value === value;
+          return (
+            <SettingsRow key={option.value} className="items-start">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                disabled={disabled}
+                onClick={() => {
+                  if (!selected) onSelect(option.value);
+                }}
+                className={cn(
+                  "flex w-full items-start gap-3 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  disabled && "opacity-70",
+                )}
+              >
+                <span
+                  className={cn(
+                    "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
+                    selected ? "border-foreground" : "border-input",
+                  )}
+                >
+                  {selected ? (
+                    <span className="size-2 rounded-full bg-foreground" />
+                  ) : null}
                 </span>
-              ) : null}
-            </span>
-          </button>
-        );
-      })}
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm text-foreground">
+                    {option.label}
+                  </span>
+                  {option.description ? (
+                    <span className="mt-0.5 block text-xs leading-snug text-subtle-foreground/75">
+                      {option.description}
+                    </span>
+                  ) : null}
+                </span>
+              </button>
+            </SettingsRow>
+          );
+        })}
+      </SettingsRowList>
     </div>
   );
 }
 
 interface DetailRowProps {
   label: string;
+  icon?: IconName;
   children: ReactNode;
 }
 
-function DetailRow({ label, children }: DetailRowProps) {
+function DetailRow({ label, icon, children }: DetailRowProps) {
   return (
-    <div className="flex items-center justify-between gap-4 py-2.5 text-sm first:pt-0 last:pb-0">
-      <span className="text-foreground">{label}</span>
-      <div className="flex min-w-0 items-center gap-2 text-right text-subtle-foreground">
+    <SettingsRow className="items-start sm:items-center">
+      <span className="flex min-w-0 items-center gap-2 text-foreground">
+        {icon ? (
+          <Icon
+            aria-hidden
+            name={icon}
+            className="size-4 shrink-0 text-muted-foreground"
+          />
+        ) : null}
+        <span>{label}</span>
+      </span>
+      <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 text-right text-subtle-foreground">
         {children}
       </div>
-    </div>
+    </SettingsRow>
   );
 }
 
@@ -199,17 +254,27 @@ export function MachineSettingsView() {
   const machine = updateInventory.machines.find(
     (candidate) => candidate.host.id === hostId,
   );
-  const providerSummary = useMemo(() => {
+  // This links to Settings → Updates, so it must count what that page lists —
+  // updates, not install prompts — or it sends the reader to a page that has
+  // nothing matching the number they just clicked.
+  const updateIssueCount = (machine?.issues ?? []).filter(
+    isProviderCliUpdateIssue,
+  ).length;
+  const installedProviders = useMemo(() => {
     const status = machine?.providerStatus;
-    if (!status) return null;
-    return Object.values(status)
-      .filter((entry) => entry.installed)
-      .map((entry) =>
-        entry.currentVersion
-          ? `${entry.displayName} ${entry.currentVersion}`
-          : entry.displayName,
-      )
-      .join(" · ");
+    if (!status) return [];
+    return providerCliKeyValues.flatMap((provider) => {
+      const entry = status[provider];
+      if (!entry.installed) return [];
+      const providerId = PROVIDER_CLI_AGENT_PROVIDER_ID[provider];
+      return [
+        {
+          ...entry,
+          providerId,
+          ProviderIcon: getProviderIconInfo(providerId)?.icon,
+        },
+      ];
+    });
   }, [machine?.providerStatus]);
 
   const now = Date.now();
@@ -260,31 +325,43 @@ export function MachineSettingsView() {
             <Icon name="ChevronLeft" className="size-3.5" />
             Machines
           </Link>
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2">
-                <MachineStatusDot connected={host.status === "connected"} />
-                <h1 className="min-w-0 truncate text-xl font-semibold text-foreground">
-                  {host.name}
-                </h1>
-                {isPrimary ? <SettingsBadge>this machine</SettingsBadge> : null}
-              </div>
-              <p className="mt-1 text-xs text-subtle-foreground/75">
-                {headerMeta({ host, platformLabel, now })}
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                renameHost.reset();
-                setRenameOpen(true);
-              }}
-            >
-              Rename
-            </Button>
-          </div>
+          <SettingsSection
+            title={
+              <span className="flex min-w-0 items-center gap-2">
+                <Icon
+                  name={PersistentHostIconName}
+                  className="size-4 shrink-0 text-muted-foreground"
+                  aria-hidden
+                />
+                <span className="truncate">{host.name}</span>
+                {isPrimary ? <SettingsBadge>This machine</SettingsBadge> : null}
+              </span>
+            }
+            titleAction={
+              <ResourceOverflowMenu
+                label={`${host.name} actions`}
+                items={[
+                  {
+                    label: "Rename",
+                    icon: "Edit",
+                    onSelect: () => {
+                      renameHost.reset();
+                      setRenameOpen(true);
+                    },
+                  },
+                ]}
+              />
+            }
+          >
+            <SettingsRowList>
+              <SettingsRow>
+                <MachineStatusIcon connected={host.status === "connected"} />
+                <p className="min-w-0 text-xs text-subtle-foreground/75">
+                  {headerMeta({ host, platformLabel, now })}
+                </p>
+              </SettingsRow>
+            </SettingsRowList>
+          </SettingsSection>
         </div>
 
         <SettingsSection
@@ -312,9 +389,62 @@ export function MachineSettingsView() {
           />
         </SettingsSection>
 
-        <SettingsSection title="This machine">
-          <div className="divide-y divide-border">
-            <DetailRow label="Projects">
+        <SettingsSection title="Provider CLIs">
+          <SettingsRowList>
+            <DetailRow label="Installed">
+              {host.status !== "connected" ? (
+                <span>Unavailable while offline</span>
+              ) : machine?.statusPending ? (
+                <span>Checking…</span>
+              ) : machine?.statusError ? (
+                <span>Status unavailable</span>
+              ) : (
+                <>
+                  {installedProviders.length > 0 ? (
+                    <span className="flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">
+                      {installedProviders.map((entry) => (
+                        <span
+                          key={entry.providerId}
+                          className="inline-flex min-w-0 items-center gap-1.5"
+                        >
+                          {entry.ProviderIcon ? (
+                            <span
+                              data-provider-icon={entry.providerId}
+                              aria-hidden
+                              className={getProviderIconColorClass(
+                                entry.providerId,
+                              )}
+                            >
+                              <entry.ProviderIcon className="size-3.5" />
+                            </span>
+                          ) : null}
+                          <span>{entry.displayName}</span>
+                          {entry.currentVersion ? (
+                            <span>{entry.currentVersion}</span>
+                          ) : null}
+                        </span>
+                      ))}
+                    </span>
+                  ) : (
+                    <span>None installed</span>
+                  )}
+                  {updateIssueCount > 0 ? (
+                    <Link
+                      to={getSettingsRoutePath("updates")}
+                      className="shrink-0 text-warning-text hover:text-foreground"
+                    >
+                      {updateIssueCount} to fix
+                    </Link>
+                  ) : null}
+                </>
+              )}
+            </DetailRow>
+          </SettingsRowList>
+        </SettingsSection>
+
+        <SettingsSection title="Machine information">
+          <SettingsRowList>
+            <DetailRow label="Projects" icon="FolderGit">
               {projects.length === 0 ? (
                 <span>None</span>
               ) : (
@@ -333,32 +463,7 @@ export function MachineSettingsView() {
                 </span>
               )}
             </DetailRow>
-            <DetailRow label="Provider CLIs">
-              {host.status !== "connected" ? (
-                <span>Unavailable while offline</span>
-              ) : machine?.statusPending ? (
-                <span>Checking…</span>
-              ) : machine?.statusError ? (
-                <span>Status unavailable</span>
-              ) : (
-                <>
-                  <span className="min-w-0 truncate">
-                    {providerSummary && providerSummary.length > 0
-                      ? providerSummary
-                      : "None installed"}
-                  </span>
-                  {machine && machine.issues.length > 0 ? (
-                    <Link
-                      to={getSettingsRoutePath("updates")}
-                      className="shrink-0 text-warning-text hover:text-foreground"
-                    >
-                      {machine.issues.length} to fix
-                    </Link>
-                  ) : null}
-                </>
-              )}
-            </DetailRow>
-            <DetailRow label="Updates">
+            <DetailRow label="Updates" icon={UPDATE_ACTION_ICON}>
               <span>{updateStatus ?? "Up to date"}</span>
               {hostCanRetryUpdate(host) ? (
                 <Button
@@ -381,7 +486,7 @@ export function MachineSettingsView() {
                 </Button>
               ) : null}
             </DetailRow>
-          </div>
+          </SettingsRowList>
         </SettingsSection>
 
         <SettingsSection
@@ -392,19 +497,22 @@ export function MachineSettingsView() {
               : `Revokes ${host.name}'s access to this server. Project checkouts stay on its disk.`
           }
         >
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={isPrimary}
-            className="text-destructive-text hover:text-destructive-text"
-            onClick={() => {
-              removeHost.reset();
-              setRemoveOpen(true);
-            }}
-          >
-            Remove machine
-          </Button>
+          <SettingsRowList>
+            <SettingsRow>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                disabled={isPrimary}
+                onClick={() => {
+                  removeHost.reset();
+                  setRemoveOpen(true);
+                }}
+              >
+                Remove machine
+              </Button>
+            </SettingsRow>
+          </SettingsRowList>
         </SettingsSection>
       </div>
 

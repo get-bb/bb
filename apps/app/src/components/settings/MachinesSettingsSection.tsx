@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Host, PermissionMode } from "@bb/domain";
+import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -17,6 +18,12 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
 import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
 import { appToast } from "@/components/ui/app-toast";
@@ -59,6 +66,8 @@ const MACHINES_SECTION_DESCRIPTION =
 
 const PRIMARY_REMOVE_DISABLED_REASON =
   "This machine runs bb and can't be removed.";
+
+const MACHINE_MENU_ITEM_CLASS = "min-h-9 px-2.5 py-2";
 
 const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   darwin: "macOS",
@@ -121,8 +130,29 @@ function MachineRow({
   onRetryUpdate,
   retryUpdatePending,
 }: MachineRowProps) {
+  const removeItem = (
+    <DropdownMenuItem
+      variant="destructive"
+      aria-disabled={isPrimary || undefined}
+      className={cn(
+        MACHINE_MENU_ITEM_CLASS,
+        isPrimary && "cursor-not-allowed focus:bg-transparent",
+      )}
+      onSelect={(event) => {
+        if (isPrimary) {
+          event.preventDefault();
+          return;
+        }
+        onRemove();
+      }}
+    >
+      <Icon name="Trash2" aria-hidden />
+      <span className="min-w-0 truncate">Remove machine</span>
+    </DropdownMenuItem>
+  );
+
   return (
-    <SettingsRow className="group relative">
+    <SettingsRow className="group relative -mx-2 rounded-md px-2 transition-colors hover:bg-state-hover focus-within:bg-state-hover">
       {/* Stretched link: the whole row opens the machine page, while the
           controls above it keep their own click targets. */}
       <Link
@@ -148,47 +178,57 @@ function MachineRow({
       </div>
       {/* Read-only here on purpose: the machine page owns the control, but the
           list still has to answer "which machines are capped?" at a glance. */}
-      <span className={cn(MACHINE_LIMIT_COLUMN, "text-sm text-foreground")}>
+      <span
+        aria-label={`Permission limit: ${PERMISSION_MODE_LABELS[host.maxPermissionMode]}`}
+        className={cn(MACHINE_LIMIT_COLUMN, "text-sm text-foreground")}
+      >
         {PERMISSION_MODE_LABELS[host.maxPermissionMode]}
       </span>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative -mr-1 h-7 w-7 shrink-0 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
-            aria-label={`${host.name} actions`}
-          >
-            <Icon name="MoreHorizontal" className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
-          <DropdownMenuItem onSelect={onRename}>Rename</DropdownMenuItem>
-          {hostCanRetryUpdate(host) ? (
-            <DropdownMenuItem
-              disabled={retryUpdatePending}
-              onSelect={onRetryUpdate}
+      <TooltipProvider delayDuration={250}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative -mr-1 h-7 w-7 shrink-0 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
+              aria-label={`${host.name} actions`}
             >
-              {retryUpdatePending ? "Retrying update…" : "Retry update"}
+              <Icon name="MoreHorizontal" className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-max min-w-0">
+            <DropdownMenuItem
+              className={MACHINE_MENU_ITEM_CLASS}
+              onSelect={onRename}
+            >
+              <Icon name="Edit" aria-hidden />
+              <span className="min-w-0 truncate">Rename</span>
             </DropdownMenuItem>
-          ) : null}
-          <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
-            disabled={isPrimary}
-            title={isPrimary ? PRIMARY_REMOVE_DISABLED_REASON : undefined}
-            onSelect={onRemove}
-          >
-            <span className="min-w-0 flex-1">
-              Remove machine
-              {isPrimary ? (
-                <span className="block text-2xs text-subtle-foreground">
-                  {PRIMARY_REMOVE_DISABLED_REASON}
+            {hostCanRetryUpdate(host) ? (
+              <DropdownMenuItem
+                className={MACHINE_MENU_ITEM_CLASS}
+                disabled={retryUpdatePending}
+                onSelect={onRetryUpdate}
+              >
+                <Icon name={RETRY_ACTION_ICON} aria-hidden />
+                <span className="min-w-0 truncate">
+                  {retryUpdatePending ? "Retrying update…" : "Retry update"}
                 </span>
-              ) : null}
-            </span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+              </DropdownMenuItem>
+            ) : null}
+            {isPrimary ? (
+              <Tooltip>
+                <TooltipTrigger asChild>{removeItem}</TooltipTrigger>
+                <TooltipContent side="left">
+                  {PRIMARY_REMOVE_DISABLED_REASON}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              removeItem
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TooltipProvider>
     </SettingsRow>
   );
 }
@@ -250,53 +290,43 @@ export function MachinesSettingsSection() {
         ) : hosts.length === 0 ? (
           <p className="text-sm text-subtle-foreground">No machines yet.</p>
         ) : (
-          <>
-            <div className="flex items-center gap-3 border-b border-border pb-2.5 text-2xs uppercase tracking-wide text-subtle-foreground">
-              <span className="size-4 shrink-0" aria-hidden />
-              <span className="min-w-0 flex-1">Machine</span>
-              <span className={MACHINE_LIMIT_COLUMN}>Permission limit</span>
-              <span className="w-6 shrink-0" aria-hidden />
-            </div>
-            <div className="pt-2.5">
-              <SettingsRowList>
-                {hosts.map((host) => (
-                  <MachineRow
-                    key={host.id}
-                    host={host}
-                    isPrimary={host.id === primaryHostId}
-                    platformLabel={
-                      host.id === primaryHostId && primaryHostPlatform !== null
-                        ? PLATFORM_LABELS[primaryHostPlatform]
-                        : null
-                    }
-                    projectCount={projectCountByHostId.get(host.id) ?? 0}
-                    now={now}
-                    onRename={() => {
-                      renameHost.reset();
-                      setRenameTarget(host);
-                    }}
-                    onRemove={() => {
-                      removeHost.reset();
-                      setRemoveTarget(host);
-                    }}
-                    onRetryUpdate={() =>
-                      retryHostUpdate.mutate(host.id, {
-                        onSuccess: () => {
-                          appToast.success(
-                            `Update retry requested for ${host.name}`,
-                          );
-                        },
-                      })
-                    }
-                    retryUpdatePending={
-                      retryHostUpdate.isPending &&
-                      retryHostUpdate.variables === host.id
-                    }
-                  />
-                ))}
-              </SettingsRowList>
-            </div>
-          </>
+          <SettingsRowList>
+            {hosts.map((host) => (
+              <MachineRow
+                key={host.id}
+                host={host}
+                isPrimary={host.id === primaryHostId}
+                platformLabel={
+                  host.id === primaryHostId && primaryHostPlatform !== null
+                    ? PLATFORM_LABELS[primaryHostPlatform]
+                    : null
+                }
+                projectCount={projectCountByHostId.get(host.id) ?? 0}
+                now={now}
+                onRename={() => {
+                  renameHost.reset();
+                  setRenameTarget(host);
+                }}
+                onRemove={() => {
+                  removeHost.reset();
+                  setRemoveTarget(host);
+                }}
+                onRetryUpdate={() =>
+                  retryHostUpdate.mutate(host.id, {
+                    onSuccess: () => {
+                      appToast.success(
+                        `Update retry requested for ${host.name}`,
+                      );
+                    },
+                  })
+                }
+                retryUpdatePending={
+                  retryHostUpdate.isPending &&
+                  retryHostUpdate.variables === host.id
+                }
+              />
+            ))}
+          </SettingsRowList>
         )}
       </SettingsSection>
 
