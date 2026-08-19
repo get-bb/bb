@@ -625,6 +625,18 @@ function snapshotPushesOf(
   return pushes;
 }
 
+function findResultPushesOf(
+  hostWindow: FakeHostWindow,
+): Array<{ tabId: string; requestId: number }> {
+  const pushes: Array<{ tabId: string; requestId: number }> = [];
+  for (const payload of hostWindow.webContents.sentPayloads) {
+    if ("requestId" in payload) {
+      pushes.push(payload);
+    }
+  }
+  return pushes;
+}
+
 interface AttachBrowserTabArgs {
   hostWindow: FakeHostWindow;
   manager: DesktopBrowserViewManager;
@@ -833,15 +845,79 @@ describe("DesktopBrowserViewManager", () => {
       finalUpdate: true,
       selectionArea: { x: 0, y: 0, width: 10, height: 10 },
     });
+    // The session was stopped, so even a result for the latest request id is
+    // stale and must not revive a cleared count.
+    expect(findResultPushesOf(hostWindow)).toEqual([]);
+  });
+
+  it("relays only results of the latest find request and none after stop", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 53,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com",
+    });
+    const webContents = requireFakeView(0).webContents;
+    const findRequest = {
+      tabId: "browser:a",
+      text: "needle",
+      forward: true,
+      newSession: true,
+    };
+    const resultArea = { x: 0, y: 0, width: 10, height: 10 };
+
+    // Fake findInPage returns 1, 2, 3, … as request ids.
+    manager.findInPage({ hostWindow, request: findRequest });
+    manager.findInPage({
+      hostWindow,
+      request: { ...findRequest, text: "nee" },
+    });
+    // Late result for the first (superseded) request: dropped.
+    webContents.emitFoundInPage({
+      requestId: 1,
+      activeMatchOrdinal: 1,
+      matches: 3,
+      finalUpdate: true,
+      selectionArea: resultArea,
+    });
+    webContents.emitFoundInPage({
+      requestId: 2,
+      activeMatchOrdinal: 1,
+      matches: 12,
+      finalUpdate: false,
+      selectionArea: resultArea,
+    });
     // The relay carries the tab id and drops the selection rect, which the
     // renderer cannot use (the native view overlays its DOM).
-    expect(hostWindow.webContents.sentPayloads).toContainEqual({
-      tabId: "browser:a",
-      requestId: 7,
-      activeMatchOrdinal: 2,
-      matches: 9,
-      finalUpdate: true,
+    expect(findResultPushesOf(hostWindow)).toEqual([
+      {
+        tabId: "browser:a",
+        requestId: 2,
+        activeMatchOrdinal: 1,
+        matches: 12,
+        finalUpdate: false,
+      },
+    ]);
+
+    manager.stopFindInPage({
+      hostWindow,
+      request: { tabId: "browser:a", action: "clearSelection" },
     });
+    webContents.emitFoundInPage({
+      requestId: 2,
+      activeMatchOrdinal: 1,
+      matches: 12,
+      finalUpdate: true,
+      selectionArea: resultArea,
+    });
+    expect(findResultPushesOf(hostWindow)).toHaveLength(1);
   });
 
   it("surfaces a loopback popup as an in-panel tab, never a native window", () => {

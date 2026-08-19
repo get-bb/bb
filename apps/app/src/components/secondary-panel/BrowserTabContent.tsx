@@ -15,7 +15,10 @@ import type {
   BbDesktopBrowserViewportBounds,
   BbDesktopBrowserViewBounds,
 } from "@bb/desktop-contract";
-import { clampBbDesktopBrowserViewBounds } from "@bb/desktop-contract";
+import {
+  BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH,
+  clampBbDesktopBrowserViewBounds,
+} from "@bb/desktop-contract";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
@@ -456,6 +459,9 @@ export function BrowserTabContent({
   const [addressDraft, setAddressDraft] = useState(initialUrl);
   const [isEditing, setIsEditing] = useState(false);
   const [isFindOpen, setIsFindOpen] = useState(false);
+  // Mirror for effect cleanups that must not re-run on every open/close.
+  const isFindOpenRef = useRef(false);
+  isFindOpenRef.current = isFindOpen;
   const [findQuery, setFindQuery] = useState("");
   const [findMatches, setFindMatches] = useState<BrowserFindMatches | null>(
     null,
@@ -576,17 +582,22 @@ export function BrowserTabContent({
     });
     setAttachedBrowserViewIdentity({ environmentId, tabId, threadId });
 
-    let lastSeenUrl: string | null = null;
+    let lastSeenState: BbDesktopBrowserState | null = null;
     const unsubscribe = desktopBrowser.onState((nextState) => {
       if (nextState.tabId !== tabId) {
         return;
       }
-      // A navigation drops Chromium's find session with the old document, so
-      // the last match count no longer describes the page on screen.
-      if (lastSeenUrl !== null && lastSeenUrl !== nextState.url) {
+      // A navigation or a reload replaces the document and drops Chromium's
+      // find session with it, so the last match count no longer describes
+      // the page on screen. A same-URL reload only shows as a load start.
+      if (
+        lastSeenState !== null &&
+        (lastSeenState.url !== nextState.url ||
+          (nextState.isLoading && !lastSeenState.isLoading))
+      ) {
         setFindMatches(null);
       }
-      lastSeenUrl = nextState.url;
+      lastSeenState = nextState;
       setState(nextState);
       setCurrentUrl(nextState.url);
       onUpdateRef.current({
@@ -627,6 +638,12 @@ export function BrowserTabContent({
       unsubscribe();
       unsubscribeSnapshot?.();
       unsubscribeFindResult?.();
+      // The native view outlives this component (tab/thread switch), but its
+      // find bar does not: end the native session so highlights never linger
+      // in a view whose controls are gone.
+      if (isFindOpenRef.current) {
+        desktopBrowser.stopFindInPage?.({ tabId, action: "clearSelection" });
+      }
       // The native view survives this unmount. Only explicit tab close/thread
       // deletion owns detach; unmount just disconnects this component's state
       // listener and forgets any stale visibility ownership.
@@ -819,7 +836,10 @@ export function BrowserTabContent({
   }, []);
 
   const handleFindQueryChange = useCallback(
-    (query: string) => {
+    (rawQuery: string) => {
+      // The input enforces the same cap; truncate as well so a programmatic
+      // value can never exceed the contract and get rejected silently.
+      const query = rawQuery.slice(0, BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH);
       setFindQuery(query);
       if (query.length === 0) {
         clearFind();
@@ -863,9 +883,9 @@ export function BrowserTabContent({
   useEffect(() => {
     if (isFindOpen && !canFindInPage) {
       setIsFindOpen(false);
-      setFindMatches(null);
+      clearFind();
     }
-  }, [canFindInPage, isFindOpen]);
+  }, [canFindInPage, clearFind, isFindOpen]);
   useAppCommandHandler(
     "browser.reload",
     () => {

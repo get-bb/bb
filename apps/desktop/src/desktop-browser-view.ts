@@ -80,6 +80,13 @@ interface BrowserViewEntry {
   rendererRecoveryState: "healthy" | "pending" | "blocked";
   rendererRecoveryTimer: ReturnType<typeof setTimeout> | null;
   visible: boolean;
+  /**
+   * Request id of the latest `findInPage` call, or null when no find session
+   * is active. `found-in-page` results for any other id are stale (an older
+   * query, or a session the renderer already stopped) and are dropped so they
+   * can never overwrite the count of a newer query or revive a cleared one.
+   */
+  activeFindRequestId: number | null;
 }
 
 export type DesktopBrowserHostWebContentsPayload =
@@ -566,6 +573,9 @@ export function createDesktopBrowserViewManager(
     });
 
     webContents.on("found-in-page", (_event, result) => {
+      if (result.requestId !== entry.activeFindRequestId) {
+        return;
+      }
       send(hostWindow, BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL, {
         tabId,
         requestId: result.requestId,
@@ -660,6 +670,7 @@ export function createDesktopBrowserViewManager(
       rendererRecoveryState: "healthy",
       rendererRecoveryTimer: null,
       visible: false,
+      activeFindRequestId: null,
     };
     wireWebContents(args.hostWindow, args.tabId, entry);
     args.hostWindow.contentView.addChildView(view);
@@ -792,14 +803,18 @@ export function createDesktopBrowserViewManager(
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
         // Electron's `findNext` means "start a new find session" (true for the
         // first request of a query, false to step through its matches).
-        entry.view.webContents.findInPage(request.text, {
-          forward: request.forward,
-          findNext: request.newSession,
-        });
+        entry.activeFindRequestId = entry.view.webContents.findInPage(
+          request.text,
+          {
+            forward: request.forward,
+            findNext: request.newSession,
+          },
+        );
       });
     },
     stopFindInPage({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
+        entry.activeFindRequestId = null;
         entry.view.webContents.stopFindInPage(request.action);
       });
     },

@@ -7,6 +7,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
+import { BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH } from "@bb/desktop-contract";
 import type {
   BbDesktopBrowserApi,
   BbDesktopBrowserFindInPageRequest,
@@ -64,7 +65,9 @@ interface FindHarness {
   api: BbDesktopBrowserApi;
   emitFindResult: (result: BbDesktopBrowserFindResult) => void;
   emitState: (state: BbDesktopBrowserState) => void;
-  findInPage: ReturnType<typeof vi.fn<(r: BbDesktopBrowserFindInPageRequest) => void>>;
+  findInPage: ReturnType<
+    typeof vi.fn<(r: BbDesktopBrowserFindInPageRequest) => void>
+  >;
   stopFindInPage: ReturnType<
     typeof vi.fn<(r: BbDesktopBrowserStopFindInPageRequest) => void>
   >;
@@ -201,9 +204,7 @@ describe("BrowserTabContent find in page", () => {
     expect(screen.queryByTestId("browser-find-match-count")).toBeNull();
 
     act(() =>
-      harness.emitFindResult(
-        findResult({ activeMatchOrdinal: 2, matches: 7 }),
-      ),
+      harness.emitFindResult(findResult({ activeMatchOrdinal: 2, matches: 7 })),
     );
     expect(screen.getByTestId("browser-find-match-count").textContent).toBe(
       "2/7",
@@ -256,6 +257,59 @@ describe("BrowserTabContent find in page", () => {
       forward: true,
       newSession: true,
     });
+  });
+
+  it("drops a stale match count when the same URL reloads", () => {
+    const harness = createFindHarness();
+    renderBrowser(harness, "https://example.com/docs");
+    act(() => harness.emitState(browserState({ isLoading: false })));
+    pressFindChord(screen.getByLabelText(/Address and search bar/));
+    fireEvent.change(findInput(), { target: { value: "needle" } });
+    act(() => harness.emitFindResult(findResult()));
+    expect(screen.getByTestId("browser-find-match-count").textContent).toBe(
+      "1/5",
+    );
+
+    act(() => harness.emitState(browserState({ isLoading: true })));
+    expect(screen.queryByTestId("browser-find-match-count")).toBeNull();
+    // The bar stays open with its query; only the count is gone.
+    expect(findInput().value).toBe("needle");
+  });
+
+  it("ends the native find session when the component unmounts with the bar open", () => {
+    const harness = createFindHarness();
+    const view = renderBrowser(harness, "https://example.com/docs");
+    pressFindChord(screen.getByLabelText(/Address and search bar/));
+    fireEvent.change(findInput(), { target: { value: "needle" } });
+    harness.stopFindInPage.mockClear();
+
+    view.unmount();
+    expect(harness.stopFindInPage).toHaveBeenCalledWith({
+      tabId: "browser:test",
+      action: "clearSelection",
+    });
+  });
+
+  it("does not touch the native find session on unmount when the bar is closed", () => {
+    const harness = createFindHarness();
+    const view = renderBrowser(harness, "https://example.com/docs");
+    view.unmount();
+    expect(harness.stopFindInPage).not.toHaveBeenCalled();
+  });
+
+  it("caps the query at the contract limit", () => {
+    const harness = createFindHarness();
+    renderBrowser(harness, "https://example.com/docs");
+    pressFindChord(screen.getByLabelText(/Address and search bar/));
+    expect(findInput().maxLength).toBe(BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH);
+
+    const oversized = "a".repeat(BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH + 10);
+    fireEvent.change(findInput(), { target: { value: oversized } });
+    const sent = harness.findInPage.mock.lastCall?.[0];
+    expect(sent?.text).toHaveLength(BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH);
+    expect(findInput().value).toHaveLength(
+      BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH,
+    );
   });
 
   it("drops a stale match count when the page navigates", () => {
