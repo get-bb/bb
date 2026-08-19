@@ -12,7 +12,10 @@
  * plugin management UI are already lazy and import it directly; they share
  * this module instance, so the reconcile state stays single-owner.
  */
-import { markPluginFrontendsSettled } from "./plugin-frontend-boot-state";
+import {
+  markPluginFrontendBootStarted,
+  markPluginFrontendsSettled,
+} from "./plugin-frontend-boot-state";
 
 type PluginFrontendModule = typeof import("./plugin-frontend");
 
@@ -52,6 +55,9 @@ let bootRequested = false;
  */
 export async function bootPluginFrontends(): Promise<void> {
   bootRequested = true;
+  // An in-flight boot owns its own settle; the settle floor must not finish
+  // it while content scripts are still mounting.
+  markPluginFrontendBootStarted();
   try {
     const pluginFrontend = await loadPluginFrontend();
     await pluginFrontend.bootPluginFrontends();

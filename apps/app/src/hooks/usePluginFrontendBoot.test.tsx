@@ -2,6 +2,8 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  markPluginFrontendBootStarted,
+  markPluginFrontendsSettled,
   resetPluginFrontendBootStateForTest,
   usePluginFrontendsSettled,
 } from "@/lib/plugin-frontend-boot-state";
@@ -100,6 +102,38 @@ describe("usePluginFrontendBoot", () => {
     act(() => vi.advanceTimersByTime(PLUGIN_FRONTEND_SETTLE_FLOOR_MS - 1));
     expect(result.current).toBe(false);
     act(() => vi.advanceTimersByTime(1));
+    expect(result.current).toBe(true);
+  });
+
+  it("never settles a boot that is still in flight when the floor elapses", async () => {
+    // Content scripts can take seconds each; a slow valid boot must not be
+    // reported as settled (and its panels as missing) by the floor.
+    let finishBoot: () => void = () => {};
+    mocks.bootPluginFrontends.mockImplementation(() => {
+      markPluginFrontendBootStarted();
+      return new Promise<void>((resolve) => {
+        finishBoot = () => {
+          markPluginFrontendsSettled();
+          resolve();
+        };
+      });
+    });
+    window.history.replaceState(null, "", "/plugins/tasks/board");
+    const { result } = renderHook(() => {
+      usePluginFrontendBoot();
+      return usePluginFrontendsSettled();
+    });
+    await flushMicrotasks();
+    expect(mocks.bootPluginFrontends).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PLUGIN_FRONTEND_SETTLE_FLOOR_MS * 2);
+    });
+    expect(result.current).toBe(false);
+
+    await act(async () => {
+      finishBoot();
+    });
     expect(result.current).toBe(true);
   });
 });

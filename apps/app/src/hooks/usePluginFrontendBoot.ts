@@ -4,7 +4,7 @@ import {
   requestBrowserIdle,
   scheduleDeferredPluginFrontendBoot,
 } from "../lib/plugin-frontend-boot-schedule";
-import { markPluginFrontendsSettled } from "../lib/plugin-frontend-boot-state";
+import { markPluginFrontendSettleFloorReached } from "../lib/plugin-frontend-boot-state";
 import { bootPluginFrontends } from "../lib/plugin-frontend-lazy";
 import { whenRouteContentPainted } from "../lib/route-content-paint";
 import { getPluginPanelRoutePluginId } from "../lib/route-paths";
@@ -12,9 +12,11 @@ import { useSystemConfig } from "./queries/system-queries";
 
 /**
  * Boot waits for system config; if that never resolves (backend down), plugin
- * routes would otherwise stay blank forever. After this long, treat the boot
- * as settled so a missing panel can say so — a later boot still registers
- * panels normally.
+ * routes would otherwise stay blank forever. After this long, a boot that
+ * never started counts as settled so a missing panel can say so — a later
+ * boot still registers panels normally. A boot that has started is never cut
+ * short by this floor: content scripts can take seconds each, and it settles
+ * itself when it finishes.
  */
 export const PLUGIN_FRONTEND_SETTLE_FLOOR_MS = 15_000;
 
@@ -50,7 +52,7 @@ export function usePluginFrontendBoot(): void {
   }, [resolved]);
   useEffect(() => {
     const timeout = window.setTimeout(
-      markPluginFrontendsSettled,
+      markPluginFrontendSettleFloorReached,
       PLUGIN_FRONTEND_SETTLE_FLOOR_MS,
     );
     return () => window.clearTimeout(timeout);

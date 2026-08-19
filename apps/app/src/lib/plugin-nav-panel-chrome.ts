@@ -1,7 +1,10 @@
 import { useEffect, useMemo } from "react";
 import { z } from "zod";
 import { createLastKnownCache } from "@/lib/last-known-cache";
-import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
+import {
+  usePluginFrontendBootComplete,
+  usePluginFrontendsSettled,
+} from "@/lib/plugin-frontend-boot-state";
 import { usePluginSlots, type PluginNavPanelSlot } from "@/lib/plugin-slots";
 
 const pluginNavPanelChromeSchema = z.object({
@@ -106,15 +109,18 @@ export function usePluginNavPanelChrome(): PluginNavPanelChromeEntry[] {
 }
 
 /**
- * Keeps the remembered chrome current: after plugin frontends have settled,
- * every change to the live registrations is written back, so the next load
- * paints exactly the panels this profile ended with (including none).
+ * Keeps the remembered chrome current: once the first plugin boot has actually
+ * completed, every change to the live registrations is written back, so the
+ * next load paints exactly the panels this profile ended with (including
+ * none). The settle floor is not completion: a boot that never started, or is
+ * still mounting content scripts, has no registrations worth remembering, and
+ * writing its empty list would erase valid remembered chrome.
  */
 export function useRememberPluginNavPanelChrome(): void {
-  const settled = usePluginFrontendsSettled();
+  const bootComplete = usePluginFrontendBootComplete();
   const { navPanels } = usePluginSlots();
   useEffect(() => {
-    if (!settled) return;
+    if (!bootComplete) return;
     writeLastKnownPluginNavPanelChrome(navPanels.map(pluginNavPanelChromeOf));
-  }, [navPanels, settled]);
+  }, [navPanels, bootComplete]);
 }

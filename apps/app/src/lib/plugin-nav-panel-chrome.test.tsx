@@ -2,6 +2,8 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  markPluginFrontendBootStarted,
+  markPluginFrontendSettleFloorReached,
   markPluginFrontendsSettled,
   resetPluginFrontendBootStateForTest,
 } from "./plugin-frontend-boot-state";
@@ -164,5 +166,36 @@ describe("useRememberPluginNavPanelChrome", () => {
     // as a ghost row on the next load.
     act(() => setPluginSlotRegistrations("tasks", registrations([])));
     expect(readLastKnownPluginNavPanelChrome()).toEqual([]);
+  });
+
+  it("does not overwrite remembered chrome on the settle floor or during a boot", () => {
+    writeLastKnownPluginNavPanelChrome([TASKS, DOCS]);
+    renderHook(() => useRememberPluginNavPanelChrome());
+
+    // Floor reached with no boot: nothing to remember, keep what we have.
+    act(() => markPluginFrontendSettleFloorReached());
+    expect(readLastKnownPluginNavPanelChrome()).toEqual([TASKS, DOCS]);
+
+    // Boot in flight with only Tasks mounted so far: the partial list must
+    // not replace the remembered one.
+    act(() => markPluginFrontendBootStarted());
+    act(() =>
+      setPluginSlotRegistrations(
+        "tasks",
+        registrations([
+          {
+            id: "tasks",
+            path: "tasks",
+            title: "Tasks",
+            icon: "ListTodo",
+            component: Body,
+          },
+        ]),
+      ),
+    );
+    expect(readLastKnownPluginNavPanelChrome()).toEqual([TASKS, DOCS]);
+
+    act(() => markPluginFrontendsSettled());
+    expect(readLastKnownPluginNavPanelChrome()).toEqual([TASKS]);
   });
 });
