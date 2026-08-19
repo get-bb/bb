@@ -11,6 +11,7 @@ import type { ThreadListEntry } from "@bb/domain";
 import type { ProjectResponse } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { Provider, createStore } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -141,21 +142,23 @@ function renderProjectRow(
 ) {
   const onToggleEnvironmentCollapsed = vi.fn();
   const result = render(
-    <MemoryRouter>
-      <ProjectRow
-        project={makeProject()}
-        threadListState={threadListState}
-        isActive={isActive}
-        isCollapsed={isCollapsed}
-        compareThreads={() => 0}
-        collapsedThreadIds={new Set()}
-        collapsedEnvironmentIds={collapsedEnvironmentIds}
-        isLocalPathInvalid={false}
-        onToggleProjectCollapsed={onToggleProjectCollapsed}
-        onToggleThreadCollapsed={vi.fn()}
-        onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-      />
-    </MemoryRouter>,
+    <TooltipProvider>
+      <MemoryRouter>
+        <ProjectRow
+          project={makeProject()}
+          threadListState={threadListState}
+          isActive={isActive}
+          isCollapsed={isCollapsed}
+          compareThreads={() => 0}
+          collapsedThreadIds={new Set()}
+          collapsedEnvironmentIds={collapsedEnvironmentIds}
+          isLocalPathInvalid={false}
+          onToggleProjectCollapsed={onToggleProjectCollapsed}
+          onToggleThreadCollapsed={vi.fn()}
+          onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+        />
+      </MemoryRouter>
+    </TooltipProvider>,
   );
   return { ...result, onToggleEnvironmentCollapsed, onToggleProjectCollapsed };
 }
@@ -315,28 +318,30 @@ describe("ProjectRow interactions", () => {
     });
 
     render(
-      <Provider store={store}>
-        <QueryClientProvider client={queryClient}>
-          <MemoryRouter>
-            <ChronologicalSectionThreadSections
-              threadListState={{ status: "ready", threads: [activeThread] }}
-              compareThreads={() => 0}
-              sections={[{ id: sectionId, name: "Active work" }]}
-              collapsedThreadIds={new Set()}
-              collapsedEnvironmentIds={new Set()}
-              onToggleThreadCollapsed={vi.fn()}
-              onToggleEnvironmentCollapsed={vi.fn()}
-              topLevelSectionOrder={[
-                buildSidebarEntitySectionId("section", sectionId),
-              ]}
-              onTopLevelSectionOrderChange={vi.fn()}
-              pinnedReorderPending={false}
-              pinnedThreads={[]}
-              onReorderPinnedThread={vi.fn()}
-            />
-          </MemoryRouter>
-        </QueryClientProvider>
-      </Provider>,
+      <TooltipProvider>
+        <Provider store={store}>
+          <QueryClientProvider client={queryClient}>
+            <MemoryRouter>
+              <ChronologicalSectionThreadSections
+                threadListState={{ status: "ready", threads: [activeThread] }}
+                compareThreads={() => 0}
+                sections={[{ id: sectionId, name: "Active work" }]}
+                collapsedThreadIds={new Set()}
+                collapsedEnvironmentIds={new Set()}
+                onToggleThreadCollapsed={vi.fn()}
+                onToggleEnvironmentCollapsed={vi.fn()}
+                topLevelSectionOrder={[
+                  buildSidebarEntitySectionId("section", sectionId),
+                ]}
+                onTopLevelSectionOrderChange={vi.fn()}
+                pinnedReorderPending={false}
+                pinnedThreads={[]}
+                onReorderPinnedThread={vi.fn()}
+              />
+            </MemoryRouter>
+          </QueryClientProvider>
+        </Provider>
+      </TooltipProvider>,
     );
 
     fireEvent.click(
@@ -375,28 +380,30 @@ describe("ProjectRow interactions", () => {
     mockDraftThreadIds.current = new Set([activeThread.id]);
 
     render(
-      <Provider store={store}>
-        <QueryClientProvider client={queryClient}>
-          <MemoryRouter>
-            <ChronologicalSectionThreadSections
-              threadListState={{ status: "ready", threads: [activeThread] }}
-              compareThreads={() => 0}
-              sections={[{ id: sectionId, name: "Draft work" }]}
-              collapsedThreadIds={new Set()}
-              collapsedEnvironmentIds={new Set()}
-              onToggleThreadCollapsed={vi.fn()}
-              onToggleEnvironmentCollapsed={vi.fn()}
-              topLevelSectionOrder={[
-                buildSidebarEntitySectionId("section", sectionId),
-              ]}
-              onTopLevelSectionOrderChange={vi.fn()}
-              pinnedReorderPending={false}
-              pinnedThreads={[]}
-              onReorderPinnedThread={vi.fn()}
-            />
-          </MemoryRouter>
-        </QueryClientProvider>
-      </Provider>,
+      <TooltipProvider>
+        <Provider store={store}>
+          <QueryClientProvider client={queryClient}>
+            <MemoryRouter>
+              <ChronologicalSectionThreadSections
+                threadListState={{ status: "ready", threads: [activeThread] }}
+                compareThreads={() => 0}
+                sections={[{ id: sectionId, name: "Draft work" }]}
+                collapsedThreadIds={new Set()}
+                collapsedEnvironmentIds={new Set()}
+                onToggleThreadCollapsed={vi.fn()}
+                onToggleEnvironmentCollapsed={vi.fn()}
+                topLevelSectionOrder={[
+                  buildSidebarEntitySectionId("section", sectionId),
+                ]}
+                onTopLevelSectionOrderChange={vi.fn()}
+                pinnedReorderPending={false}
+                pinnedThreads={[]}
+                onReorderPinnedThread={vi.fn()}
+              />
+            </MemoryRouter>
+          </QueryClientProvider>
+        </Provider>
+      </TooltipProvider>,
     );
 
     fireEvent.click(

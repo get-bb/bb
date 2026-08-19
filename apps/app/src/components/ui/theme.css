@@ -298,6 +298,24 @@
     opacity: 1;
   }
 
+  /* Row content beside a hover-actions overlay that grows past its rest slot
+   * (the thread row's archive button sits left of the menu trigger). Reserve
+   * one action width under the same row states that reveal the overlay, so the
+   * title truncates instead of running under the button. */
+  .bb-sidebar-hover-actions-inset {
+    transition-property: padding;
+    transition-duration: 0ms;
+  }
+
+  .bb-sidebar-hover-actions-row:is(:hover, :has(:focus-visible))
+    .bb-sidebar-hover-actions-inset,
+  .bb-sidebar-hover-actions-row:has(
+      .bb-sidebar-hover-actions[data-sidebar-hover-actions-open="true"]
+    )
+    .bb-sidebar-hover-actions-inset {
+    padding-right: 1.5rem;
+  }
+
   .bb-sidebar-hover-actions-fade {
     opacity: 1;
     transition-property: opacity;
@@ -311,6 +329,11 @@
   }
 
   @media (max-width: 767px) and (pointer: coarse) {
+    /* The overlay is hidden on coarse phones, so no room is reserved. */
+    .bb-sidebar-hover-actions-row .bb-sidebar-hover-actions-inset {
+      padding-right: 0;
+    }
+
     .bb-sidebar-hover-actions-row:hover:not(:has(:focus-visible))
       .bb-sidebar-hover-actions:not(
         [data-sidebar-hover-actions-open="true"]

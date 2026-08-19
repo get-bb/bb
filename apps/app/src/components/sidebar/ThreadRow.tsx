@@ -19,6 +19,7 @@ import { NavLink } from "react-router-dom";
 import {
   ThreadActionsContextMenu,
   ThreadActionsMenu,
+  ThreadArchiveQuickAction,
 } from "@/components/thread/ThreadActionsMenu";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { useInlineThreadTitle } from "@/components/thread/InlineThreadTitle";
@@ -32,6 +33,7 @@ import {
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+  SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import {
@@ -716,7 +718,14 @@ function ThreadRowComponent({
         aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
-      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+      <span
+        className={cn(
+          "flex min-w-0 flex-1 items-center gap-1.5",
+          // The hover actions overlay grows leftward past the trailing slot;
+          // this reserves room so the title never runs under the extra button.
+          !shortcut && SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
+        )}
+      >
         {isEditing ? (
           <span className="relative z-10 min-w-0 flex-1 overflow-visible">
             {editor}
@@ -818,9 +827,21 @@ function ThreadRowComponent({
                 }
                 className={cn(
                   SIDEBAR_HOVER_ACTIONS_CLASS,
-                  "absolute inset-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
+                  // Anchored to the right edge only, so a second action can sit
+                  // left of the menu without widening the rest slot.
+                  "absolute inset-y-0 right-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
                 )}
               >
+                <ThreadArchiveQuickAction
+                  thread={thread}
+                  className={cn(
+                    "text-subtle-foreground hover:bg-transparent hover:text-foreground",
+                    SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+                    // Tighter than two full margins: a half step between the
+                    // two glyphs reads as one control group.
+                    "-mr-0.5",
+                  )}
+                />
                 <ThreadActionsMenu
                   thread={thread}
                   triggerClassName={cn(

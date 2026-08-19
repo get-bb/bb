@@ -16,6 +16,7 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Button } from "@bb/shared-ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -248,6 +249,51 @@ function ThreadActionsMenuItems({
         </ThreadActionMenuItem>
       ) : null}
     </>
+  );
+}
+
+/**
+ * One-click archive (or unarchive) button for hover-revealed row actions. It
+ * runs the same lifecycle as the menu's Archive entry, so undo, navigation,
+ * and child cascade behave identically.
+ */
+export function ThreadArchiveQuickAction({
+  thread,
+  className,
+}: {
+  thread: Thread;
+  className?: string;
+}) {
+  const { archiveThreadAndChildren, unarchiveThread } = useThreadActions();
+  const isArchived = thread.archivedAt != null;
+  const label = isArchived ? "Unarchive" : "Archive";
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn("rounded-md p-0", className)}
+          aria-label={`${label} thread`}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (isArchived) {
+              unarchiveThread(thread);
+              return;
+            }
+            archiveThreadAndChildren(thread);
+          }}
+        >
+          <Icon
+            name={isArchived ? "ArchiveRestore" : "Archive"}
+            className={COARSE_POINTER_ICON_SIZE_CLASS}
+          />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
