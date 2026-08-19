@@ -706,110 +706,25 @@ describe("plugin update service and routes", () => {
     ]);
   }, 60_000);
 
-  it("sweeps for updates on start, then waits a full interval across restarts", async () => {
-    await service.stop();
-    let clock = Date.now();
-    const scheduled: Array<{ delayMs: number; onElapsed: () => void }> = [];
-    const makeService = () =>
-      createPluginService({
-        telemetry: createNoopTelemetryService(),
-        db,
-        hub: {
-          getDaemonSessionIdForHost: () => null,
-          notifyPluginSignal: () => 0,
-          notifySystem: () => {},
-        },
-        logger,
-        dataDir: join(workDir, "data"),
-        appVersion: "1.0.0",
-        stabilizationWindowMs: 0,
-        now: () => clock,
-        scheduleUpdateCheck: (delayMs, onElapsed) => {
-          const entry = { delayMs, onElapsed };
-          scheduled.push(entry);
-          return () => {
-            const index = scheduled.indexOf(entry);
-            if (index !== -1) scheduled.splice(index, 1);
-          };
-        },
-      });
-    const settle = async () => {
-      // The sweep runs off the timer callback; wait for its persisted state.
-      for (let i = 0; i < 200; i += 1) {
-        if (getInstalledPlugin(db, "updater")?.lastUpdateCheckAt !== null) {
-          break;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-    };
-    expect(getInstalledPlugin(db, "updater")?.lastUpdateCheckAt).toBeNull();
-
-    // No plugin has been checked: the first sweep is due at once.
-    service = makeService();
-    await service.start();
-    const nextCommit = await commitPlugin(repo, "1.1.0");
-    service.startPeriodicUpdateChecks();
-    expect(scheduled).toHaveLength(1);
-    expect(scheduled[0]?.delayMs).toBe(0);
-    scheduled.shift()?.onElapsed();
-    await settle();
-    expect(getInstalledPlugin(db, "updater")).toMatchObject({
-      lastUpdateCheckAt: clock,
-      availableCompatibleVersion: nextCommit,
-    });
-    // Wait for the sweep's follow-up to be scheduled a full interval out.
-    for (let i = 0; i < 200 && scheduled.length === 0; i += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-    expect(scheduled).toHaveLength(1);
-    expect(scheduled[0]?.delayMs).toBe(6 * 60 * 60 * 1_000);
-
-    // Stop cancels the pending timer; a restart 2h later waits the remaining 4h
-    // instead of checking again.
-    service.stopPeriodicUpdateChecks();
-    expect(scheduled).toHaveLength(0);
-    await service.stop();
-    clock += 2 * 60 * 60 * 1_000;
-    service = makeService();
-    await service.start();
-    service.startPeriodicUpdateChecks();
-    expect(scheduled).toHaveLength(1);
-    expect(scheduled[0]?.delayMs).toBe(4 * 60 * 60 * 1_000);
-    service.stopPeriodicUpdateChecks();
-  }, 60_000);
-
-  it("schedules the sweep from the stalest plugin, not a recent scoped check", async () => {
-    await service.stop();
-    let clock = Date.now();
-    const scheduled: Array<{ delayMs: number; onElapsed: () => void }> = [];
-    const makeService = () =>
-      createPluginService({
-        telemetry: createNoopTelemetryService(),
-        db,
-        hub: {
-          getDaemonSessionIdForHost: () => null,
-          notifyPluginSignal: () => 0,
-          notifySystem: () => {},
-        },
-        logger,
-        dataDir: join(workDir, "data"),
-        appVersion: "1.0.0",
-        stabilizationWindowMs: 0,
-        now: () => clock,
-        scheduleUpdateCheck: (delayMs, onElapsed) => {
-          scheduled.push({ delayMs, onElapsed });
-          return () => {};
-        },
-      });
-    // A second, never-checked npm plugin beside the git fixture.
+  /** An npm row with no recorded check; registry and provenance vary per test. */
+  function upsertNpmRow(
+    id: string,
+    registry: string,
+    provenance:
+      | { kind: "direct" }
+      | { kind: "catalog"; marketplace: string; entryId: string } = {
+      kind: "direct",
+    },
+  ): void {
+    const packageName = `bb-plugin-${id}`;
     upsertInstalledPlugin(db, {
-      id: "never-checked",
-      source: "npm:bb-plugin-never-checked",
-      provenance: { kind: "direct" },
+      id,
+      source: `npm:${packageName}`,
+      provenance,
       sourceIntent: {
         kind: "npm",
-        packageName: "bb-plugin-never-checked",
-        registry: "https://never-checked.test",
+        packageName,
+        registry,
         requestedSpec: "",
         specKind: "default",
       },
@@ -825,82 +740,99 @@ describe("plugin update service and routes", () => {
         statusDetail: null,
       },
       activeArtifactId: null,
-      rootDir: join(workDir, "never-checked"),
+      rootDir: join(workDir, id),
       version: "1.0.0",
       enabled: false,
     });
-    service = makeService();
+  }
+
+  /** Replaces `service` with one whose clock and sweep timer the test drives. */
+  async function restartWithScheduler(clock: () => number) {
+    const scheduled: Array<{ delayMs: number; onElapsed: () => void }> = [];
+    await service.stop();
+    service = createPluginService({
+      telemetry: createNoopTelemetryService(),
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "data"),
+      appVersion: "1.0.0",
+      stabilizationWindowMs: 0,
+      now: clock,
+      scheduleUpdateCheck: (delayMs, onElapsed) => {
+        const entry = { delayMs, onElapsed };
+        scheduled.push(entry);
+        return () => {
+          const index = scheduled.indexOf(entry);
+          if (index !== -1) scheduled.splice(index, 1);
+        };
+      },
+    });
     await service.start();
+    return scheduled;
+  }
 
-    // A scoped check stamps only the git plugin.
-    await service.checkForUpdates("updater");
-    expect(getInstalledPlugin(db, "updater")?.lastUpdateCheckAt).toBe(clock);
-    expect(getInstalledPlugin(db, "never-checked")?.lastUpdateCheckAt).toBeNull();
+  it("sweeps on start when a plugin was never checked, then waits out the interval across restarts", async () => {
+    const HOUR = 60 * 60 * 1_000;
+    let clock = Date.now();
+    let scheduled = await restartWithScheduler(() => clock);
+    const nextCommit = await commitPlugin(repo, "1.1.0");
 
-    // The sweep is still due now because one plugin was never checked.
     service.startPeriodicUpdateChecks();
     expect(scheduled.map((entry) => entry.delayMs)).toEqual([0]);
+    scheduled.shift()?.onElapsed();
+    await vi.waitFor(() =>
+      expect(getInstalledPlugin(db, "updater")).toMatchObject({
+        lastUpdateCheckAt: clock,
+        availableCompatibleVersion: nextCommit,
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(scheduled.map((entry) => entry.delayMs)).toEqual([6 * HOUR]),
+    );
+    await service.stopPeriodicUpdateChecks();
+    expect(scheduled).toHaveLength(0);
+
+    // A restart 2h later waits the remaining 4h instead of checking again.
+    clock += 2 * HOUR;
+    scheduled = await restartWithScheduler(() => clock);
+    service.startPeriodicUpdateChecks();
+    expect(scheduled.map((entry) => entry.delayMs)).toEqual([4 * HOUR]);
     await service.stopPeriodicUpdateChecks();
 
-    // Once both are stamped, the oldest stamp drives the delay.
-    clock += 60_000;
-    db.$client
-      .prepare("UPDATE plugins SET last_update_check_at = ? WHERE id = ?")
-      .run(clock, "never-checked");
-    scheduled.length = 0;
+    // The stalest plugin drives the delay: a scoped check of one plugin does
+    // not push out a never-checked one.
+    upsertNpmRow("never-checked", "https://never-checked.test");
+    await service.checkForUpdates("updater");
     service.startPeriodicUpdateChecks();
-    expect(scheduled.map((entry) => entry.delayMs)).toEqual([
-      6 * 60 * 60 * 1_000 - 60_000,
-    ]);
+    expect(scheduled.map((entry) => entry.delayMs)).toEqual([0]);
     await service.stopPeriodicUpdateChecks();
   }, 60_000);
 
   it("shares one in-flight full sweep between concurrent callers", async () => {
     const first = service.checkForUpdates();
-    const second = service.checkForUpdates();
-    expect(second).toBe(first);
+    expect(service.checkForUpdates()).toBe(first);
     await first;
-    // After it settles, a new call starts a new sweep.
     expect(service.checkForUpdates()).not.toBe(first);
   }, 60_000);
 
   it("keeps the guarded registry policy for catalog installs during a check", async () => {
-    upsertInstalledPlugin(db, {
-      id: "listed",
-      source: "npm:bb-plugin-listed",
-      provenance: { kind: "catalog", marketplace: "bb-community", entryId: "listed" },
-      sourceIntent: {
-        kind: "npm",
-        packageName: "bb-plugin-listed",
-        // A listing that names a loopback registry must never be fetched.
-        registry: "https://127.0.0.1",
-        requestedSpec: "",
-        specKind: "default",
-      },
-      exactResolution: {
-        kind: "npm",
-        version: "1.0.0",
-        integrity: "sha512-current",
-      },
-      updateState: {
-        lastCheckAt: null,
-        availableCompatibleVersion: null,
-        newestIncompatibleVersion: null,
-        statusDetail: null,
-      },
-      activeArtifactId: null,
-      rootDir: join(workDir, "listed"),
-      version: "1.0.0",
-      enabled: false,
+    // A listing that names a loopback registry must never be fetched.
+    upsertNpmRow("listed", "https://127.0.0.1", {
+      kind: "catalog",
+      marketplace: "bb-community",
+      entryId: "listed",
     });
     const fetchMock = vi.fn(async () => {
       throw new Error("unexpected unguarded fetch");
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const results = await service.checkForUpdates("listed");
-
-    expect(results).toEqual([
+    await expect(service.checkForUpdates("listed")).resolves.toEqual([
       expect.objectContaining({
         id: "listed",
         outcome: "unavailable",

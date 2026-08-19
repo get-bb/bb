@@ -16,18 +16,10 @@ import {
 } from "@/hooks/queries/plugin-catalog-queries";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 
-function namePlugins(ids: readonly string[]): string {
-  return [...ids].sort().join(", ");
-}
-
-function countPlugins(count: number): string {
-  return count === 1 ? "1 plugin" : `${count} plugins`;
-}
-
 /**
- * One-line toast summary of an update check. Anything the check could not
- * resolve (registry offline, moved tag, retired source) is a warning, never
- * folded into "up to date": a 200 response still carries per-plugin failures.
+ * One-line toast summary of an update check. A 200 response still carries
+ * per-plugin failures (`unavailable`), so those warn instead of folding into
+ * "up to date".
  */
 export function summarizeUpdateCheck(
   results: readonly PluginUpdatesEntry[],
@@ -37,46 +29,34 @@ export function summarizeUpdateCheck(
   title: string;
   description?: string;
 } {
-  const available = results.filter(
-    (result) => result.outcome === "update-available",
-  );
-  const unavailable = results.filter(
-    (result) => result.outcome === "unavailable",
-  );
-  // A blocked newer release rides on `current` and `update-available` results
-  // too, so read the field rather than the `incompatible` outcome alone.
-  const blocked = results.filter(
-    (result) => result.outcome === "incompatible" || result.blocked !== null,
-  );
-  const unavailableNote =
+  const ids = (outcome: PluginUpdatesEntry["outcome"]) =>
+    results
+      .filter((result) => result.outcome === outcome)
+      .map((result) => result.id)
+      .sort();
+  const available = ids("update-available");
+  const unavailable = ids("unavailable");
+  const problem =
     unavailable.length === 0
       ? null
       : scope.pluginId !== undefined
-        ? (unavailable[0]?.detail ?? "The update check did not complete.")
-        : `Could not check ${countPlugins(unavailable.length)}: ${namePlugins(unavailable.map((result) => result.id))}.`;
+        ? (results[0]?.detail ?? "The update check did not complete.")
+        : `Could not check ${unavailable.length === 1 ? "1 plugin" : `${unavailable.length} plugins`}: ${unavailable.join(", ")}.`;
   if (available.length > 0) {
     return {
-      tone: unavailableNote === null ? "success" : "warning",
-      title:
-        available.length === 1
-          ? "1 plugin update available"
-          : `${available.length} plugin updates available`,
-      description: [
-        namePlugins(available.map((result) => result.id)),
-        unavailableNote,
-      ]
-        .filter((part) => part !== null)
-        .join(" "),
+      tone: problem === null ? "success" : "warning",
+      title: `${available.length} plugin update${available.length === 1 ? "" : "s"} available`,
+      description: [available.join(", "), problem].filter(Boolean).join(" "),
     };
   }
-  if (unavailableNote !== null) {
+  if (problem !== null) {
     return {
       tone: "warning",
       title:
         scope.pluginId === undefined
           ? "Update check incomplete"
           : `Could not check ${scope.pluginId} for updates`,
-      description: unavailableNote,
+      description: problem,
     };
   }
   return {
@@ -85,43 +65,29 @@ export function summarizeUpdateCheck(
       scope.pluginId === undefined
         ? "All plugins are up to date"
         : `${scope.pluginId} is up to date`,
-    ...(blocked.length > 0
-      ? {
-          description:
-            blocked.length === 1
-              ? `${blocked[0]?.id} has a newer release that needs a newer bb.`
-              : `${countPlugins(blocked.length)} have newer releases that need a newer bb.`,
-        }
-      : {}),
   };
 }
 
 /**
- * Toolbar key that checks every installed plugin for updates. The server
- * persists what it finds, and the invalidated plugin list surfaces it as the
- * row "Update x.y.z" pills; the toast only summarizes the sweep. Same 32px
- * outline box as the filter and sort keys beside it.
+ * Checks installed plugins for updates. The server persists what it finds and
+ * the invalidated plugin list surfaces it as the row update buttons; the toast
+ * only summarizes the sweep.
  */
 export function CheckPluginUpdatesButton({
   pluginId,
   appearance = "toolbar",
-  className,
 }: {
   /** Check one plugin instead of all of them. */
   pluginId?: string;
-  /** `toolbar`: 32px icon key. `inline`: compact labeled detail-section button. */
+  /** `toolbar`: 32px icon key like the filter keys. `inline`: compact labeled button. */
   appearance?: "toolbar" | "inline";
-  className?: string;
 }) {
   const queryClient = useQueryClient();
   const check = useMutation({
     mutationFn: () =>
       checkPluginUpdates(fetch, pluginId === undefined ? {} : { id: pluginId }),
     onSuccess: (results) => {
-      const summary = summarizeUpdateCheck(
-        results,
-        pluginId === undefined ? {} : { pluginId },
-      );
+      const summary = summarizeUpdateCheck(results, { pluginId });
       appToast[summary.tone](summary.title, {
         description: summary.description,
       });
@@ -134,53 +100,39 @@ export function CheckPluginUpdatesButton({
     onSettled: () => invalidatePluginList({ queryClient }),
   });
   const label = check.isPending ? "Checking for updates…" : "Check for updates";
-  if (appearance === "inline") {
-    return (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        data-testid="check-plugin-updates"
-        className={cn("h-6 px-2 text-xs", className)}
-        aria-label={label}
-        aria-busy={check.isPending}
-        disabled={check.isPending}
-        onClick={() => check.mutate()}
-      >
-        <Icon
-          name={check.isPending ? "Spinner" : "RotateCcw"}
-          className={cn("size-3.5", check.isPending && "animate-spin")}
-          aria-hidden
-        />
-        Check
-      </Button>
-    );
-  }
+  const inline = appearance === "inline";
+  const button = (
+    <Button
+      type="button"
+      variant="outline"
+      size={inline ? "sm" : "icon"}
+      data-testid="check-plugin-updates"
+      className={
+        inline
+          ? "h-6 px-2 text-xs"
+          : "size-8 shrink-0 rounded-md border border-input bg-background p-0 text-muted-foreground"
+      }
+      aria-label={label}
+      aria-busy={check.isPending}
+      disabled={check.isPending}
+      onClick={() => check.mutate()}
+    >
+      <Icon
+        name={check.isPending ? "Spinner" : "RotateCcw"}
+        className={cn(
+          inline ? "size-3.5" : "size-4",
+          check.isPending && "animate-spin",
+        )}
+        aria-hidden
+      />
+      {inline ? "Check" : null}
+    </Button>
+  );
+  if (inline) return button;
   return (
     <TooltipProvider delayDuration={250}>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            data-testid="check-plugin-updates"
-            className={cn(
-              "size-8 shrink-0 rounded-md border border-input bg-background p-0 text-muted-foreground",
-              className,
-            )}
-            aria-label={label}
-            aria-busy={check.isPending}
-            disabled={check.isPending}
-            onClick={() => check.mutate()}
-          >
-            <Icon
-              name={check.isPending ? "Spinner" : "RotateCcw"}
-              className={cn("size-4", check.isPending && "animate-spin")}
-              aria-hidden
-            />
-          </Button>
-        </TooltipTrigger>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
         <TooltipContent side="bottom">{label}</TooltipContent>
       </Tooltip>
     </TooltipProvider>

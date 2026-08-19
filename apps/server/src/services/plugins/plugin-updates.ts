@@ -45,81 +45,30 @@ import type {
 } from "./plugin-service-internal.js";
 
 export const PLUGIN_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
-/**
- * Plugins resolved at once in one check. A git range check can stage several
- * candidate clones per plugin, so an unbounded sweep over a large install
- * set could fan out into dozens of concurrent clones and registry requests.
- */
+/** A git range check can stage several clones per plugin; bound the fan-out. */
 const UPDATE_CHECK_CONCURRENCY = 4;
-/** Direct-registry packument requests are time-boxed like marketplace ones. */
-const NPM_REGISTRY_TIMEOUT_MS = MARKETPLACE_FETCH_TIMEOUT_MS;
-
-/** Run `fn` over `items` in order with at most `limit` in flight; results keep item order. */
-async function mapWithConcurrency<T, R>(
-  items: readonly T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = new Array<R>(items.length);
-  let next = 0;
-  const workers = Array.from(
-    { length: Math.min(limit, items.length) },
-    async () => {
-      while (next < items.length) {
-        const index = next;
-        next += 1;
-        results[index] = await fn(items[index] as T);
-      }
-    },
-  );
-  await Promise.all(workers);
-  return results;
-}
-
-interface NpmResolverRuns {
-  forRow(row: InstalledPluginRow): NpmResolverRun;
-}
 
 /**
- * One packument cache per check, split by trust. A catalog listing named its
- * registry, so its rows use the guarded marketplace transport and bounded
- * reader exactly as installation did; direct `npm:` installs keep the
- * registry the user configured and the default transport.
+ * A catalog listing named its registry, so its rows use the guarded
+ * marketplace transport exactly as installation did. Direct `npm:` installs
+ * keep the user's registry on the default transport, time-boxed.
  */
-function createNpmResolverRuns(): NpmResolverRuns {
-  const direct = createNpmResolverRun({
-    fetch: (input, init) =>
-      fetch(input, {
-        ...init,
-        signal: AbortSignal.timeout(NPM_REGISTRY_TIMEOUT_MS),
-      }),
-  });
-  const listed = new Map<string, NpmResolverRun>();
-  return {
-    forRow(row) {
-      const registry =
-        row.provenance === "catalog" ? row.sourceNpmRegistry : null;
-      if (registry === null) return direct;
-      let run = listed.get(registry);
-      if (run === undefined) {
-        run = createListedRegistryNpmResolverRun(registry);
-        listed.set(registry, run);
-      }
-      return run;
-    },
-  };
+function npmRunForRow(row: InstalledPluginRow): NpmResolverRun {
+  const registry = row.provenance === "catalog" ? row.sourceNpmRegistry : null;
+  return registry === null
+    ? createNpmResolverRun({
+        fetch: (input, init) =>
+          fetch(input, {
+            ...init,
+            signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
+          }),
+      })
+    : createListedRegistryNpmResolverRun(registry);
 }
 
 export interface PluginUpdates {
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
-  /**
-   * Check every installed plugin for updates on a fixed interval. The first
-   * check runs at once when a plugin has no recorded check, or when the
-   * oldest recorded check is older than the interval; otherwise it waits
-   * for the remainder, so a restart does not trigger a check. Bundled and
-   * path installs resolve locally, so a sweep only reaches the network for
-   * npm, git, and marketplace installs.
-   */
+  /** Sweep every plugin on a fixed interval, due from the stalest check. */
   startPeriodicUpdateChecks(): void;
   /** Cancels the next sweep and waits for one in flight to finish. */
   stopPeriodicUpdateChecks(): Promise<void>;
@@ -349,7 +298,7 @@ export function createPluginUpdates(
 
   async function resolveUpdateForRow(args: {
     row: InstalledPluginRow;
-    npmRuns: NpmResolverRuns;
+    npmRun: NpmResolverRun;
     npmIntentOverride?: NpmSourceIntentForResolution;
   }): Promise<PluginUpdateResolution> {
     const installed = installedUpdateVersion(args.row);
@@ -375,7 +324,7 @@ export function createPluginUpdates(
         intent: args.npmIntentOverride ?? npmIntentForRow(args.row),
         current: installed,
         appVersion: deps.appVersion,
-        run: args.npmRuns.forRow(args.row),
+        run: args.npmRun,
         includePinned: args.npmIntentOverride !== undefined,
       });
     }
@@ -464,97 +413,75 @@ export function createPluginUpdates(
     });
   let cancelPeriodicCheck: (() => void) | null = null;
   let periodicChecksStopped = true;
+  let inFlightSweep: Promise<PluginUpdateCheckEntry[]> | null = null;
 
-  function scheduleNextPeriodicCheck(): void {
-    if (periodicChecksStopped) return;
-    cancelPeriodicCheck?.();
-    // The sweep is due when its stalest plugin is: a scoped check of one
-    // plugin must not push out the others, and a never-checked plugin is due
-    // now. Rows that never reach the network (path, builtin) do not count.
-    let oldestCheckAt = Number.POSITIVE_INFINITY;
-    for (const row of listInstalledPlugins(deps.db)) {
-      if (row.sourceKind === "path" || row.sourceKind === "builtin") continue;
-      if (row.lastUpdateCheckAt === null) {
-        oldestCheckAt = Number.NEGATIVE_INFINITY;
-        break;
-      }
-      oldestCheckAt = Math.min(oldestCheckAt, row.lastUpdateCheckAt);
-    }
-    const delay =
-      oldestCheckAt === Number.POSITIVE_INFINITY
-        ? PLUGIN_UPDATE_CHECK_INTERVAL_MS
-        : oldestCheckAt === Number.NEGATIVE_INFINITY
-          ? 0
-          : Math.max(
-              0,
-              PLUGIN_UPDATE_CHECK_INTERVAL_MS -
-                Math.max(0, now() - oldestCheckAt),
-            );
-    cancelPeriodicCheck = scheduleUpdateCheck(delay, runPeriodicCheck);
+  /** Delay until the stalest network-reachable plugin is due; null rows are due now. */
+  function periodicCheckDelay(): number {
+    const stamps = listInstalledPlugins(deps.db)
+      .filter(
+        (row) => row.sourceKind !== "path" && row.sourceKind !== "builtin",
+      )
+      .map((row) => row.lastUpdateCheckAt);
+    if (stamps.includes(null)) return 0;
+    const oldest = Math.min(...stamps.filter((stamp) => stamp !== null));
+    return Math.max(0, PLUGIN_UPDATE_CHECK_INTERVAL_MS - (now() - oldest));
   }
 
   function runPeriodicCheck(): void {
     if (periodicChecksStopped) return;
-    cancelPeriodicCheck = null;
-    const startedAt = now();
     void updates
       .checkForUpdates()
       .catch((error: unknown) => {
-        deps.logger.warn(
-          { err: error },
-          "periodic plugin update check failed",
-        );
+        deps.logger.warn({ err: error }, "periodic plugin update check failed");
       })
       .finally(() => {
-        if (periodicChecksStopped) return;
-        // A failed sweep persists nothing, so the recorded check time would
-        // schedule an immediate retry loop; wait a full interval instead.
-        cancelPeriodicCheck = scheduleUpdateCheck(
-          Math.max(
-            0,
-            PLUGIN_UPDATE_CHECK_INTERVAL_MS - Math.max(0, now() - startedAt),
-          ),
-          runPeriodicCheck,
-        );
+        // A full interval, not periodicCheckDelay(): a failed sweep persists
+        // nothing and would otherwise retry at once.
+        if (!periodicChecksStopped) {
+          cancelPeriodicCheck = scheduleUpdateCheck(
+            PLUGIN_UPDATE_CHECK_INTERVAL_MS,
+            runPeriodicCheck,
+          );
+        }
       });
-  }
-
-  let inFlightSweep: Promise<PluginUpdateCheckEntry[]> | null = null;
-
-  function requireRow(id: string): InstalledPluginRow {
-    const row = getInstalledPlugin(deps.db, id);
-    if (!row) throw new Error(`unknown plugin "${id}"`);
-    return row;
   }
 
   async function checkRows(
     rows: InstalledPluginRow[],
   ): Promise<PluginUpdateCheckEntry[]> {
-    const npmRuns = createNpmResolverRuns();
-    const results = await mapWithConcurrency(
-      rows.sort((a, b) => a.id.localeCompare(b.id)),
-      UPDATE_CHECK_CONCURRENCY,
-      (row) =>
-        withLifecycleLock(row.id, async () => {
+    rows.sort((a, b) => a.id.localeCompare(b.id));
+    const results: PluginUpdateCheckEntry[] = [];
+    let next = 0;
+    const worker = async () => {
+      while (next < rows.length) {
+        const index = next++;
+        const row = rows[index] as InstalledPluginRow;
+        results[index] = await withLifecycleLock(row.id, async () => {
           const current = getInstalledPlugin(deps.db, row.id);
           if (!current) {
             throw new Error(
               `plugin "${row.id}" disappeared during update check`,
             );
           }
-          const installed = installedUpdateVersion(current);
           const resolution = await resolveUpdateForRow({
             row: current,
-            npmRuns,
+            npmRun: npmRunForRow(current),
           });
           const checked = checkEntryFromResolution(
             current.id,
-            installed,
+            installedUpdateVersion(current),
             resolution,
           );
           persistUpdateEntry(checked);
           return checked;
-        }),
+        });
+      }
+    };
+    await Promise.all(
+      Array.from(
+        { length: Math.min(UPDATE_CHECK_CONCURRENCY, rows.length) },
+        worker,
+      ),
     );
     notifyPluginsChanged();
     return results;
@@ -564,31 +491,30 @@ export function createPluginUpdates(
     startPeriodicUpdateChecks() {
       if (!periodicChecksStopped) return;
       periodicChecksStopped = false;
-      scheduleNextPeriodicCheck();
+      cancelPeriodicCheck = scheduleUpdateCheck(
+        periodicCheckDelay(),
+        runPeriodicCheck,
+      );
     },
 
     async stopPeriodicUpdateChecks() {
       periodicChecksStopped = true;
       cancelPeriodicCheck?.();
       cancelPeriodicCheck = null;
-      // A sweep in flight holds per-plugin lifecycle locks; let it drain so
-      // plugin shutdown does not queue behind it. Every request in it is
-      // time-boxed, so this wait is bounded.
+      // Let a sweep drain so plugin shutdown does not queue behind its locks.
       await inFlightSweep?.catch(() => undefined);
     },
 
     checkForUpdates(id) {
-      if (id !== undefined) return checkRows([requireRow(id)]);
-      // One full sweep at a time: a click during the periodic sweep (or a
-      // second click) joins it instead of queueing duplicate network work
-      // behind every lifecycle lock.
-      if (inFlightSweep === null) {
-        inFlightSweep = checkRows(listInstalledPlugins(deps.db)).finally(
-          () => {
-            inFlightSweep = null;
-          },
-        );
+      if (id !== undefined) {
+        const row = getInstalledPlugin(deps.db, id);
+        if (!row) throw new Error(`unknown plugin "${id}"`);
+        return checkRows([row]);
       }
+      // Concurrent full sweeps join the one in flight instead of re-fetching.
+      inFlightSweep ??= checkRows(listInstalledPlugins(deps.db)).finally(() => {
+        inFlightSweep = null;
+      });
       return inFlightSweep;
     },
 
@@ -672,12 +598,12 @@ export function createPluginUpdates(
         const row = getInstalledPlugin(deps.db, id);
         if (!row) return { ok: false, error: `unknown plugin "${id}"` };
         const from = installedUpdateVersion(row);
-        const npmRuns = createNpmResolverRuns();
+        const npmRun = npmRunForRow(row);
         const selectionNpmIntent =
           row.sourceKind === "npm" ? npmIntentForRow(row) : undefined;
         const resolution = await resolveUpdateForRow({
           row,
-          npmRuns,
+          npmRun,
         });
         const checked = checkEntryFromResolution(id, from, resolution);
         persistUpdateEntry(checked);
@@ -717,7 +643,7 @@ export function createPluginUpdates(
             const selected = await selectNpmCandidate({
               intent: selectionNpmIntent,
               appVersion: deps.appVersion,
-              run: npmRuns.forRow(row),
+              run: npmRun,
             });
             if (selected.outcome !== "selected") {
               throw new Error(

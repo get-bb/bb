@@ -4,19 +4,35 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { allPluginListQueryKeyPrefix } from "@/hooks/queries/query-keys";
+import type { PluginUpdatesEntry } from "@/hooks/queries/plugin-catalog-queries";
 import {
   CheckPluginUpdatesButton,
   summarizeUpdateCheck,
 } from "./CheckPluginUpdatesButton";
 
-function jsonResponse(body: unknown, status = 200): Response {
+const installed = { version: "1.0.0", display: "1.0.0" };
+
+function entry(
+  id: string,
+  outcome: PluginUpdatesEntry["outcome"],
+  detail: string | null = null,
+): PluginUpdatesEntry {
+  return {
+    id,
+    outcome,
+    devMode: false,
+    installed,
+    candidate: null,
+    blocked: null,
+    detail,
+  };
+}
+
+function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
-    status,
     headers: { "content-type": "application/json" },
   });
 }
-
-const installed = { version: "1.0.0", display: "1.0.0" };
 
 afterEach(() => {
   cleanup();
@@ -24,104 +40,37 @@ afterEach(() => {
 });
 
 describe("summarizeUpdateCheck", () => {
-  it("counts available updates and names them", () => {
+  it("counts and names available updates", () => {
     expect(
       summarizeUpdateCheck([
-        {
-          id: "b",
-          outcome: "update-available",
-          devMode: false,
-          installed,
-          candidate: { version: "1.1.0", display: "1.1.0" },
-          blocked: null,
-          detail: null,
-        },
-        {
-          id: "a",
-          outcome: "update-available",
-          devMode: false,
-          installed,
-          candidate: { version: "2.0.0", display: "2.0.0" },
-          blocked: null,
-          detail: null,
-        },
-        {
-          id: "c",
-          outcome: "current",
-          devMode: false,
-          installed,
-          candidate: null,
-          blocked: null,
-          detail: null,
-        },
+        entry("b", "update-available"),
+        entry("a", "update-available"),
+        entry("c", "current"),
       ]),
     ).toEqual({
       tone: "success",
       title: "2 plugin updates available",
       description: "a, b",
     });
-  });
-
-  it("reports up to date and mentions incompatible newer releases", () => {
-    const blocked = {
-      id: "a",
-      outcome: "incompatible" as const,
-      devMode: false,
-      installed,
-      candidate: null,
-      blocked: { version: "3.0.0", reasons: ["needs bb >=9"] },
-      detail: null,
-    };
-    expect(summarizeUpdateCheck([blocked])).toEqual({
-      tone: "message",
-      title: "All plugins are up to date",
-      description: "a has a newer release that needs a newer bb.",
-    });
-    expect(summarizeUpdateCheck([blocked], { pluginId: "a" })).toMatchObject({
-      title: "a is up to date",
-    });
-    // A blocked newer release also rides on a `current` result.
     expect(
-      summarizeUpdateCheck([
-        { ...blocked, outcome: "current" },
-        { ...blocked, id: "b", outcome: "current" },
-      ]),
-    ).toMatchObject({
-      description: "2 plugins have newer releases that need a newer bb.",
-    });
+      summarizeUpdateCheck([entry("a", "current")], { pluginId: "a" }),
+    ).toMatchObject({ title: "a is up to date" });
   });
 
   it("warns instead of reporting up to date when a check did not complete", () => {
-    const unavailable = {
-      id: "offline",
-      outcome: "unavailable" as const,
-      devMode: false,
-      installed,
-      candidate: null,
-      blocked: null,
-      detail: "registry request failed: network unreachable",
-    };
-    const current = { ...unavailable, id: "ok", outcome: "current" as const, detail: null };
-    expect(summarizeUpdateCheck([unavailable, current])).toEqual({
+    const offline = entry("offline", "unavailable", "network unreachable");
+    expect(summarizeUpdateCheck([offline, entry("ok", "current")])).toEqual({
       tone: "warning",
       title: "Update check incomplete",
       description: "Could not check 1 plugin: offline.",
     });
-    expect(summarizeUpdateCheck([unavailable], { pluginId: "offline" })).toEqual({
+    expect(summarizeUpdateCheck([offline], { pluginId: "offline" })).toEqual({
       tone: "warning",
       title: "Could not check offline for updates",
-      description: "registry request failed: network unreachable",
+      description: "network unreachable",
     });
     expect(
-      summarizeUpdateCheck([
-        unavailable,
-        {
-          ...current,
-          id: "fresh",
-          outcome: "update-available",
-          candidate: { version: "2.0.0", display: "2.0.0" },
-        },
-      ]),
+      summarizeUpdateCheck([offline, entry("fresh", "update-available")]),
     ).toEqual({
       tone: "warning",
       title: "1 plugin update available",
@@ -131,62 +80,40 @@ describe("summarizeUpdateCheck", () => {
 });
 
 describe("CheckPluginUpdatesButton", () => {
-  it("posts a check for every plugin and refetches the plugin list", async () => {
+  it("posts a full or scoped check and refetches the plugin list", async () => {
     const fetchMock = vi.fn(async () =>
-      jsonResponse({
-        results: [
-          { id: "a", outcome: "current", installed },
-          {
-            id: "b",
-            outcome: "update-available",
-            installed,
-            candidate: { version: "1.1.0", display: "1.1.0" },
-          },
-        ],
-      }),
+      jsonResponse({ results: [{ id: "a", outcome: "current", installed }] }),
     );
     vi.stubGlobal("fetch", fetchMock);
     const { wrapper, queryClient } = createQueryClientTestHarness();
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
-    render(<CheckPluginUpdatesButton />, { wrapper });
+    render(
+      <>
+        <CheckPluginUpdatesButton />
+        <CheckPluginUpdatesButton pluginId="a" appearance="inline" />
+      </>,
+      { wrapper },
+    );
+    const [toolbar, inline] = screen.getAllByRole("button", {
+      name: "Check for updates",
+    });
 
-    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
-
+    fireEvent.click(toolbar!);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [
-      string,
-      RequestInit,
-    ];
-    expect(url).toContain("/plugins/updates/check");
-    expect(init.method).toBe("POST");
-    expect(init.body).toBe("{}");
+    fireEvent.click(inline!);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const bodies = fetchMock.mock.calls.map((call) => {
+      const [url, init] = call as unknown as [string, RequestInit];
+      expect(url).toContain("/plugins/updates/check");
+      expect(init.method).toBe("POST");
+      return JSON.parse(String(init.body));
+    });
+    expect(bodies).toEqual([{}, { id: "a" }]);
     await vi.waitFor(() =>
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: allPluginListQueryKeyPrefix(),
       }),
     );
-    expect(
-      screen.getByRole("button", { name: "Check for updates" }),
-    ).toBeTruthy();
-  });
-
-  it("scopes the check to one plugin when given an id", async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({ results: [{ id: "a", outcome: "current", installed }] }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const { wrapper } = createQueryClientTestHarness();
-    render(<CheckPluginUpdatesButton pluginId="a" appearance="inline" />, {
-      wrapper,
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
-
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [, init] = fetchMock.mock.calls[0] as unknown as [
-      string,
-      RequestInit,
-    ];
-    expect(JSON.parse(String(init.body))).toEqual({ id: "a" });
   });
 });
