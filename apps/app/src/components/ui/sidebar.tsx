@@ -25,6 +25,9 @@ const SIDEBAR_MOBILE_SWIPE_OPEN_RATIO = 0.33;
 const SIDEBAR_MOBILE_SWIPE_OPEN_FLING_MIN_RATIO = 0.12;
 const SIDEBAR_MOBILE_SWIPE_OPEN_FLING_VELOCITY_PX_PER_SEC = 450;
 const SIDEBAR_MOBILE_DRAG_SETTLE_MS = 220;
+// Upper bound on how long the closed compact drawer stays empty after boot
+// before its subtree is realized regardless of main-thread idleness.
+const SIDEBAR_MOBILE_REALIZE_TIMEOUT_MS = 1000;
 const SIDEBAR_MOBILE_DRAG_SETTLE_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
 // The panel moves on the `translate` property, matching Tailwind v4's
 // `-translate-x-full` utilities. Inline motion styles MUST use the same
@@ -352,6 +355,67 @@ function getTrackedSwipeTouch(
   );
 }
 
+/**
+ * Schedules the one-time realization of the closed compact drawer's subtree
+ * off the boot critical path. It prefers an idle callback so the sidebar
+ * rows, DnD contexts and search hooks mount after the route chunk has been
+ * fetched and evaluated; browsers without `requestIdleCallback` get two
+ * animation frames instead. The timeout bounds the wait (an idle callback
+ * can starve during a long boot, and frames stop in background tabs) so a
+ * later open never finds an unrealized panel. Returns a cancel function.
+ */
+function scheduleSidebarMobileRealization(realize: () => void): () => void {
+  let settled = false;
+  let idleHandle: number | null = null;
+  let firstFrame: number | null = null;
+  let secondFrame: number | null = null;
+  const cancel = () => {
+    if (idleHandle !== null) {
+      window.cancelIdleCallback(idleHandle);
+      idleHandle = null;
+    }
+    if (firstFrame !== null) {
+      window.cancelAnimationFrame(firstFrame);
+      firstFrame = null;
+    }
+    if (secondFrame !== null) {
+      window.cancelAnimationFrame(secondFrame);
+      secondFrame = null;
+    }
+    window.clearTimeout(timeout);
+  };
+  const run = () => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    cancel();
+    realize();
+  };
+  const timeout = window.setTimeout(run, SIDEBAR_MOBILE_REALIZE_TIMEOUT_MS);
+  if (typeof window.requestIdleCallback === "function") {
+    idleHandle = window.requestIdleCallback(
+      () => {
+        idleHandle = null;
+        run();
+      },
+      { timeout: SIDEBAR_MOBILE_REALIZE_TIMEOUT_MS },
+    );
+  } else {
+    firstFrame = window.requestAnimationFrame(() => {
+      firstFrame = null;
+      secondFrame = window.requestAnimationFrame(() => {
+        secondFrame = null;
+        run();
+      });
+    });
+  }
+  return () => {
+    settled = true;
+    cancel();
+  };
+}
+
 type SidebarContext = {
   state: "expanded" | "collapsed";
   open: boolean;
@@ -361,6 +425,13 @@ type SidebarContext = {
   openMobileSidebar: () => void;
   closeMobileSidebar: () => void;
   isMobileSidebarClosing: boolean;
+  /**
+   * Whether the compact drawer's subtree is mounted. It starts false so the
+   * closed, inert panel adds no render work to boot; the first open (or an
+   * idle window, at most one second after boot) latches it true for the
+   * rest of the session. Always false outside compact viewports.
+   */
+  isMobileSidebarRealized: boolean;
   suppressMobileOpenAnimation: boolean;
   setSuppressMobileOpenAnimation: (suppress: boolean) => void;
   suppressMobileCloseAnimation: boolean;
@@ -450,6 +521,11 @@ const SidebarProvider = React.forwardRef<
       React.useState(false);
     const [isMobileSidebarClosing, setIsMobileSidebarClosing] =
       React.useState(false);
+    const [hasRealizedMobileSidebar, setHasRealizedMobileSidebar] =
+      React.useState(false);
+    const realizeMobileSidebar = React.useCallback(() => {
+      setHasRealizedMobileSidebar(true);
+    }, []);
     const mobileSettleTimeoutRef = React.useRef<number | null>(null);
 
     const clearMobileSettleTimeout = React.useCallback(() => {
@@ -503,6 +579,9 @@ const SidebarProvider = React.forwardRef<
         return;
       }
 
+      // Mount the subtree now if boot has not realized it yet, so it commits
+      // during the slide instead of after the settle.
+      realizeMobileSidebar();
       applySidebarMobileDragStyles({ progress: 1, settling: true });
       mobileSettleTimeoutRef.current = window.setTimeout(() => {
         mobileSettleTimeoutRef.current = null;
@@ -515,7 +594,7 @@ const SidebarProvider = React.forwardRef<
         });
         clearSidebarMobileDragAttributes();
       }, SIDEBAR_MOBILE_DRAG_SETTLE_MS);
-    }, []);
+    }, [realizeMobileSidebar]);
 
     React.useEffect(
       () => () => {
@@ -523,6 +602,23 @@ const SidebarProvider = React.forwardRef<
       },
       [clearMobileSettleTimeout],
     );
+
+    // The latch. An open that bypasses `openMobileSidebar` (the swipe path
+    // and direct `setOpenMobile(true)` callers) realizes the subtree in the
+    // same render (React restarts this render before committing), and a
+    // drawer that stays closed realizes off the boot critical path. Desktop
+    // never schedules; its sidebar renders children directly.
+    if (isCompactViewport && openMobile && !hasRealizedMobileSidebar) {
+      setHasRealizedMobileSidebar(true);
+    }
+    const isMobileSidebarRealized =
+      isCompactViewport && hasRealizedMobileSidebar;
+    React.useEffect(() => {
+      if (!isCompactViewport || hasRealizedMobileSidebar) {
+        return;
+      }
+      return scheduleSidebarMobileRealization(realizeMobileSidebar);
+    }, [hasRealizedMobileSidebar, isCompactViewport, realizeMobileSidebar]);
 
     React.useEffect(() => {
       if (openMobile) {
@@ -580,6 +676,7 @@ const SidebarProvider = React.forwardRef<
         openMobileSidebar,
         closeMobileSidebar,
         isMobileSidebarClosing,
+        isMobileSidebarRealized,
         suppressMobileOpenAnimation,
         setSuppressMobileOpenAnimation,
         suppressMobileCloseAnimation,
@@ -596,6 +693,7 @@ const SidebarProvider = React.forwardRef<
         openMobileSidebar,
         closeMobileSidebar,
         isMobileSidebarClosing,
+        isMobileSidebarRealized,
         suppressMobileOpenAnimation,
         setSuppressMobileOpenAnimation,
         suppressMobileCloseAnimation,
@@ -665,6 +763,7 @@ const Sidebar = React.forwardRef<
       openMobile,
       setOpenMobile,
       closeMobileSidebar,
+      isMobileSidebarRealized,
       suppressMobileOpenAnimation,
       setSuppressMobileOpenAnimation,
       suppressMobileCloseAnimation,
@@ -735,6 +834,8 @@ const Sidebar = React.forwardRef<
       // reopen replays no mount work. While closed the translated panel is
       // `inert`, so it cannot trap focus or taps. It stays style-ready because
       // a visibility flip makes WebKit rebuild the subtree during every open.
+      // The subtree itself is realized once, off the boot critical path or on
+      // the first open, and then retained (the provider owns the latch).
       return (
         <SidebarMobilePanel
           ref={ref}
@@ -750,7 +851,7 @@ const Sidebar = React.forwardRef<
           style={style}
           {...props}
         >
-          {children}
+          {isMobileSidebarRealized ? children : null}
         </SidebarMobilePanel>
       );
     }

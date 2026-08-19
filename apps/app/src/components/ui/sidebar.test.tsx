@@ -155,20 +155,133 @@ function getMobilePanel(): HTMLElement | null {
   return panel instanceof HTMLElement ? panel : null;
 }
 
-describe("mobile sidebar persistence", () => {
-  it("keeps closed drawer content mounted, inert, and offscreen", () => {
+// Matches SIDEBAR_MOBILE_REALIZE_TIMEOUT_MS: the closed compact drawer
+// realizes its subtree at the latest this long after boot.
+const MOBILE_REALIZE_TIMEOUT_MS = 1000;
+
+function settleMobileRealization() {
+  act(() => {
+    vi.advanceTimersByTime(MOBILE_REALIZE_TIMEOUT_MS);
+  });
+}
+
+function renderCompactSidebarHarness() {
+  render(
+    <CompactViewportOverrideProvider isCompactViewport>
+      <SidebarProvider>
+        <Sidebar>Sidebar content</Sidebar>
+        <SidebarInset>
+          <SidebarTrigger />
+          Main content
+        </SidebarInset>
+      </SidebarProvider>
+    </CompactViewportOverrideProvider>,
+  );
+}
+
+describe("mobile sidebar deferred realization", () => {
+  it("mounts the closed panel empty at boot and realizes it after the settle window", () => {
     vi.useFakeTimers();
-    render(
-      <CompactViewportOverrideProvider isCompactViewport>
+    renderCompactSidebarHarness();
+
+    // The panel element itself is mounted from the first commit (the swipe
+    // helpers select it), but its subtree stays out of the boot critical
+    // path while the drawer is closed.
+    const closedPanel = getMobilePanel();
+    expect(closedPanel).not.toBeNull();
+    expect(closedPanel?.dataset.state).toBe("closed");
+    expect(closedPanel?.hasAttribute("inert")).toBe(true);
+    expect(closedPanel?.textContent).not.toContain("Sidebar content");
+
+    settleMobileRealization();
+
+    // Same panel element; only the subtree was realized (no remount).
+    expect(getMobilePanel()).toBe(closedPanel);
+    expect(closedPanel?.dataset.state).toBe("closed");
+    expect(closedPanel?.textContent).toContain("Sidebar content");
+  });
+
+  it("prefers requestIdleCallback with a bounded timeout when available", () => {
+    vi.useFakeTimers();
+    let idleCallback: (() => void) | null = null;
+    let idleTimeout: number | undefined;
+    const cancelIdle = vi.fn();
+    Object.defineProperty(window, "requestIdleCallback", {
+      configurable: true,
+      value: (callback: () => void, options?: { timeout?: number }) => {
+        idleCallback = callback;
+        idleTimeout = options?.timeout;
+        return 1;
+      },
+    });
+    Object.defineProperty(window, "cancelIdleCallback", {
+      configurable: true,
+      value: cancelIdle,
+    });
+    try {
+      renderCompactSidebarHarness();
+      expect(idleCallback).not.toBeNull();
+      expect(idleTimeout).toBe(MOBILE_REALIZE_TIMEOUT_MS);
+      expect(getMobilePanel()?.textContent).not.toContain("Sidebar content");
+
+      // Frames alone must not realize: idle is the signal in this browser.
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+      expect(getMobilePanel()?.textContent).not.toContain("Sidebar content");
+
+      act(() => {
+        idleCallback?.();
+      });
+      expect(getMobilePanel()?.textContent).toContain("Sidebar content");
+    } finally {
+      Reflect.deleteProperty(window, "requestIdleCallback");
+      Reflect.deleteProperty(window, "cancelIdleCallback");
+    }
+  });
+
+  it("realizes the subtree at the start of a deferred open before idle", () => {
+    vi.useFakeTimers();
+    renderCompactSidebarHarness();
+    expect(getMobilePanel()?.textContent).not.toContain("Sidebar content");
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+
+    // The slide starts from inline styles while React state stays closed;
+    // the subtree must commit during that window, not after the settle.
+    const openingPanel = getMobilePanel();
+    expect(openingPanel?.dataset.state).toBe("closed");
+    expect(openingPanel?.textContent).toContain("Sidebar content");
+
+    settleMobileToggle();
+    expect(getMobilePanel()?.dataset.state).toBe("open");
+    expect(getMobilePanel()?.textContent).toContain("Sidebar content");
+
+    // Retained across close: the latch never resets.
+    fireEvent.click(screen.getByTestId("sidebar-mobile-backdrop"));
+    settleMobileToggle();
+    expect(getMobilePanel()?.dataset.state).toBe("closed");
+    expect(getMobilePanel()?.textContent).toContain("Sidebar content");
+  });
+
+  it("renders the desktop sidebar subtree synchronously", () => {
+    const markup = renderToString(
+      <CompactViewportOverrideProvider isCompactViewport={false}>
         <SidebarProvider>
           <Sidebar>Sidebar content</Sidebar>
-          <SidebarInset>
-            <SidebarTrigger />
-            Main content
-          </SidebarInset>
         </SidebarProvider>
       </CompactViewportOverrideProvider>,
     );
+
+    expect(markup).toContain("Sidebar content");
+  });
+});
+
+describe("mobile sidebar persistence", () => {
+  it("keeps closed drawer content mounted, inert, and offscreen", () => {
+    vi.useFakeTimers();
+    renderCompactSidebarHarness();
+    settleMobileRealization();
 
     // The rows stay mounted while the drawer is closed, so reopening
     // replays no mount cost (#1261) — but the closed panel must not be
@@ -326,12 +439,13 @@ describe("mobile sidebar persistence", () => {
     );
 
     const trigger = screen.getByRole("button", { name: "Toggle Sidebar" });
-    const row = screen.getByRole("button", { name: "Sidebar row" });
     const insetAction = screen.getByRole("button", { name: "Inset action" });
 
     fireEvent.click(trigger);
     settleMobileToggle();
     expect(getMobilePanel()?.dataset.state).toBe("open");
+    // The row exists only once the open realized the drawer subtree.
+    const row = screen.getByRole("button", { name: "Sidebar row" });
 
     act(() => trigger.focus());
     fireEvent.keyDown(trigger, { key: "Tab" });
@@ -399,6 +513,9 @@ describe("mobile sidebar text-selection arbitration", () => {
     fireTouch(window, "touchmove", createTouch(260, 164));
 
     expect(getMobilePanel()?.dataset.state).toBe("open");
+    // The swipe path flips React state directly; the subtree must realize
+    // in that same commit so the dragged-in panel is not empty.
+    expect(getMobilePanel()?.textContent).toContain("Sidebar content");
   });
 
   it("defers the horizontal-scroll-region probe until horizontal intent", () => {
