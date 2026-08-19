@@ -829,6 +829,95 @@ describe("tasks app shell", () => {
         ).toEqual([summary]);
       });
     });
+
+    it("keeps the newer projects snapshot when an older request resolves later", async () => {
+      // Two hook instances (shell sidebar and list view; here two panels)
+      // fetch the same query and write the same storage key. The request that
+      // started first but finished last must not replace what the later
+      // request already recorded.
+      const olderProject = { ...project, name: "Older truth" };
+      const newerProject = { ...project, name: "Newer truth" };
+      const older = deferred<{ projects: (typeof project)[] }>();
+      let calls = 0;
+      const rpc = seededRpc({
+        listProjects: () => {
+          calls += 1;
+          return calls === 1 ? older.promise : { projects: [newerProject] };
+        },
+      });
+      renderSlot(navigationRegistration, { subPath: "" }, { rpc });
+      const second = renderSlot(
+        navigationRegistration,
+        { subPath: "" },
+        { rpc },
+      );
+      await second.findByText("Newer truth");
+      await waitFor(() =>
+        expect(
+          JSON.parse(window.localStorage.getItem(projectsKey) ?? "null"),
+        ).toEqual([newerProject]),
+      );
+      older.resolve({ projects: [olderProject] });
+      // Let the older response's continuation run before asserting.
+      await act(async () => {
+        await older.promise;
+      });
+      expect(
+        JSON.parse(window.localStorage.getItem(projectsKey) ?? "null"),
+      ).toEqual([newerProject]);
+    });
+
+    it.each(["listFolders", "sidebarSummary"])(
+      "keeps loaded projects navigable when %s fails",
+      async (method) => {
+        const slot = renderSlot(
+          navigationRegistration,
+          { subPath: "all" },
+          {
+            rpc: seededRpc({
+              [method]: () => Promise.reject(new Error("boom")),
+            }),
+          },
+        );
+        // The project loaded; a failed companion request must settle the
+        // skeleton rather than hide the rows behind it forever.
+        fireEvent.click(await slot.findByText(project.name));
+        expect(slot.navigateCalls).toContainEqual({
+          method: "toPluginPanel",
+          path: "tasks",
+          options: { subPath: PROJECT_ID },
+        });
+      },
+    );
+  });
+
+  it("shows the error, not the previous route's rows, when a route change fails", async () => {
+    // Switching All -> Active reuses the ListView instance. If Active's fetch
+    // rejects, the body must not settle onto All's rows: a user would then
+    // edit tasks under the wrong context.
+    const tasks = [
+      {
+        ...pagerTask("TSK-4", "todo", 1),
+        title: "Scope truth",
+        description: "",
+        labelIds: [],
+      },
+    ];
+    const rpc = seededRpc({
+      listLabels: () => ({ labels: [] }),
+      listTasks: (input: { activeOnly?: boolean }) =>
+        input.activeOnly === true
+          ? Promise.reject(new Error("active fetch failed"))
+          : { tasks },
+    });
+    const Panel = app.navPanels[0]!.component;
+    const slot = renderSlot(app.navPanels[0]!, { subPath: "all" }, { rpc });
+    await slot.findByText("Scope truth");
+
+    slot.lifecycle.rerender(<Panel subPath="active" />);
+    await slot.findByText("Couldn't load tasks");
+    expect(slot.queryByText("Scope truth")).toBeNull();
+    expect(slot.queryByText("No agents working right now")).toBeNull();
   });
 
   it("shows the empty state and opens the New project dialog", async () => {

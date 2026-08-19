@@ -5,7 +5,11 @@ import { tasksRpcContract, type TasksRpcContract } from "../shared/contract.js";
 import type { Task, TaskPriority, TaskStatus } from "../shared/contract.js";
 import { TASKS_PAGE_MAX_LIMIT, type TaskSort } from "../shared/pagination.js";
 import type { MentionItem } from "../editor/extensions.js";
-import { readQuerySnapshot, writeQuerySnapshot } from "./query-snapshot.js";
+import {
+  claimQuerySnapshotRevision,
+  readQuerySnapshot,
+  writeQuerySnapshot,
+} from "./query-snapshot.js";
 import { useTasksRefresh } from "./refresh.js";
 
 /** Typed RPC client bound to the tasks contract. */
@@ -133,19 +137,32 @@ export function useTasksQuery<T>(
   const seqRef = useRef(0);
   const previousGenerationRef = useRef(generation);
   const depsKey = JSON.stringify(deps);
+  // The deps key whose result `data` currently holds. A refetch of the same
+  // key that fails keeps the rows it had (they are still this key's truth);
+  // a failed fetch for a changed key drops them, because those rows belong to
+  // a different scope and the error must not be presented over them.
+  const dataDepsKeyRef = useRef(depsKey);
   const refresh = useCallback(() => {
     const seq = ++seqRef.current;
+    const snapshot = snapshotRef.current;
+    const snapshotRevision =
+      snapshot === undefined ? 0 : claimQuerySnapshotRevision(snapshot.name);
     return fetcherRef.current(rpc).then(
       (data) => {
+        if (snapshot !== undefined) {
+          // Persist even when this instance has moved on: the revision order
+          // is what keeps an older response from replacing a newer record.
+          writeQuerySnapshot(snapshot.name, data, snapshotRevision);
+        }
         if (seq !== seqRef.current) return;
-        const snapshot = snapshotRef.current;
-        if (snapshot !== undefined) writeQuerySnapshot(snapshot.name, data);
+        dataDepsKeyRef.current = depsKey;
         setState({ data, error: null, isLoading: false });
       },
       (error: unknown) => {
         if (seq !== seqRef.current) return;
+        const keepsData = dataDepsKeyRef.current === depsKey;
         setState((current) => ({
-          data: current.data,
+          data: keepsData ? current.data : undefined,
           error: error instanceof Error ? error.message : String(error),
           isLoading: false,
         }));

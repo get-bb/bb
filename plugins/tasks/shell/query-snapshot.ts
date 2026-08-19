@@ -10,9 +10,31 @@ export function querySnapshotStorageKey(name: string): string {
 
 let prunedOtherVersions = false;
 
-/** Test-only: forget that this page load already pruned. */
+/**
+ * Per-name write ordering shared by every hook instance in this page load.
+ * Several mounted hooks (shell, list, task dialog) read the same query and
+ * each writes the same storage key, so a slow request that began earlier must
+ * not replace what a request that began later already recorded.
+ */
+const claimedRevisions = new Map<string, number>();
+const writtenRevisions = new Map<string, number>();
+
+/** Test-only: forget that this page load already pruned or wrote anything. */
 export function resetQuerySnapshotStateForTest(): void {
   prunedOtherVersions = false;
+  claimedRevisions.clear();
+  writtenRevisions.clear();
+}
+
+/**
+ * Reserve the next write slot for `name` at request start. Pass the returned
+ * revision to `writeQuerySnapshot` when the request resolves; a request that
+ * claimed its revision before a later one already wrote is dropped.
+ */
+export function claimQuerySnapshotRevision(name: string): number {
+  const revision = (claimedRevisions.get(name) ?? 0) + 1;
+  claimedRevisions.set(name, revision);
+  return revision;
 }
 
 /**
@@ -63,8 +85,14 @@ export function readQuerySnapshot<T>(
   }
 }
 
-export function writeQuerySnapshot(name: string, value: unknown): void {
+export function writeQuerySnapshot(
+  name: string,
+  value: unknown,
+  revision: number,
+): void {
   pruneOtherSnapshotVersions();
+  if (revision < (writtenRevisions.get(name) ?? 0)) return;
+  writtenRevisions.set(name, revision);
   try {
     window.localStorage.setItem(
       querySnapshotStorageKey(name),
