@@ -1143,24 +1143,28 @@ export out of the artifact. Importing the module must start nothing, which is
 also what lets your conformance test drive `handleLine` in-process.
 
 Everything a bridge compiles against is published at
-`@get-bb/plugin-sdk/provider-bridge` — protocol schemas, the bridge kit, and the event
-vocabulary — so add `@get-bb/plugin-sdk` to `dependencies` (not just
-`devDependencies`). A `bb.host` artifact cannot import bb's private `@bb/*`
-workspace packages; an installed plugin could not resolve them.
+`@get-bb/plugin-sdk/provider-bridge` — protocol schemas including the
+`thread/delta` grammar, and the bridge kit — so add `@get-bb/plugin-sdk` to
+`dependencies` (not just `devDependencies`). A `bb.host` artifact cannot
+import bb's private `@bb/*` workspace packages; an installed plugin could
+not resolve them.
 
 The bridge speaks the canonical Provider Bridge Protocol — line-delimited
 JSON-RPC 2.0 over stdio, documented in `docs/provider-bridge-protocol.md`.
-Minimum correct surface: the `initialize`
-handshake (`{protocolVersion, capabilities}`), `thread/start` /
-`thread/resume` answering `{providerThreadId}` after a `thread/identity`
-notification, `turn/start` driving the event grammar (`turn/input/accepted`
-→ `turn/started` → `item/started` → deltas → `item/completed` →
-`turn/completed` as `thread/event` notifications carrying bb
-`ThreadEvent`s), `thread/stop` honoring both intents (`release` must
+Minimum correct surface: the `initialize` handshake
+(`{protocolVersion, capabilities}`, protocol version 2 — the runtime rejects
+any other version at spawn), `thread/start` / `thread/resume` answering
+`{providerThreadId}` after a `thread/identity` notification and then a
+`session.reset` delta (every session construction is a provider id-space
+boundary), `turn/start` driving the delta grammar as batched `thread/delta`
+notifications (`input.accepted` → `turn.open` → item/message deltas →
+`turn.boundary`), `thread/stop` honoring both intents (`release` must
 fabricate nothing), and reply hygiene: unknown method → `-32601`, invalid
-params → `-32602` with the issues, never a silent drop. The bridge — never
-the provider — mints every turn and item id, with per-instance entropy so
-ids survive restarts and resumes.
+params → `-32602` with the issues, never a silent drop. The bridge emits
+parsed semantic deltas keyed by provider-native ids (tool-call ids, stream
+keys, parent refs); the runtime's delta assembler — never the bridge —
+mints every bb turn and item id and constructs the canonical timeline
+events.
 
 **Conformance.** Ship a test that drives
 `@bb/provider-bridge-protocol/conformance` against your bridge in-process:

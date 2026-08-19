@@ -13,4 +13,4 @@ Use these sources instead:
 
 If you need to understand which Codex notifications bb currently consumes, read
 the generated schema plus the normalization code in
-`plugins/provider-codex/src/event-translation.ts`.
+`plugins/provider-codex/src/delta-translation.ts`.
