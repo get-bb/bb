@@ -181,24 +181,32 @@ export function invalidateThreadQueuedMessageSendQueries({
   });
 }
 
-export function invalidateThreadAcceptedMessageQueries({
+/**
+ * After a send is accepted the sender already holds the new prompt-history
+ * entry (prepended locally) and the composer keeps the execution options it
+ * just sent, so neither needs a network round-trip. Default execution options
+ * are marked stale for the next mount only: consumers read them as initial
+ * values, and a live refetch would only race the realtime turn events.
+ */
+export function markThreadAcceptedMessageQueriesStale({
   queryClient,
   threadId,
 }: ThreadArg): void {
   queryClient.invalidateQueries({
     queryKey: threadDefaultExecutionOptionsQueryKey(threadId),
-  });
-  invalidateQueryKeys({
-    queryClient,
-    queryKeys: getThreadPromptHistoryInvalidationQueryKeys({ threadId }),
+    refetchType: "none",
   });
 }
 
+/**
+ * Same as {@link markThreadAcceptedMessageQueriesStale}, plus the refetches
+ * that realtime `events-appended`/`status-changed` would otherwise deliver.
+ */
 export function invalidateThreadAcceptedMessageQueriesWithoutRealtime({
   queryClient,
   threadId,
 }: ThreadArg): void {
-  invalidateThreadAcceptedMessageQueries({ queryClient, threadId });
+  markThreadAcceptedMessageQueriesStale({ queryClient, threadId });
   invalidateQueryKeys({
     queryClient,
     queryKeys: [
@@ -209,6 +217,20 @@ export function invalidateThreadAcceptedMessageQueriesWithoutRealtime({
         queryClient,
       }),
     ],
+  });
+}
+
+/**
+ * A queued send only changed the queue; while realtime is connected the
+ * server's `queue-changed` notification refreshes prompt history and the
+ * thread record, so only the queue list itself is refetched here.
+ */
+export function invalidateThreadQueuedMessageListQuery({
+  queryClient,
+  threadId,
+}: ThreadArg): void {
+  queryClient.invalidateQueries({
+    queryKey: threadQueuedMessagesQueryKey(threadId),
   });
 }
 
@@ -223,9 +245,13 @@ export function invalidateThreadHistoryRewriteQueries({
   queryClient.invalidateQueries({ queryKey: threadSearchQueryKeyPrefix() });
   invalidateQueryKeys({
     queryClient,
-    queryKeys: getProjectPromptHistoryInvalidationQueryKeys({
-      projectId: undefined,
-    }),
+    queryKeys: [
+      // A rewrite can drop or reorder prompts, which no local prepend covers.
+      ...getThreadPromptHistoryInvalidationQueryKeys({ threadId }),
+      ...getProjectPromptHistoryInvalidationQueryKeys({
+        projectId: undefined,
+      }),
+    ],
   });
 }
 

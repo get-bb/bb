@@ -54,9 +54,10 @@ import {
 import { threadDefaultExecutionOptionsQueryKey } from "../queries/thread-default-execution-options-query";
 import {
   invalidateProjectPromptHistoryQueries,
-  invalidateThreadAcceptedMessageQueries,
   invalidateThreadAcceptedMessageQueriesWithoutRealtime,
+  invalidateThreadQueuedMessageListQuery,
   invalidateThreadQueueQueries,
+  markThreadAcceptedMessageQueriesStale,
   invalidateThreadQueuedMessageSendQueries,
   invalidateThreadStopQueries,
   refetchThreadListsAfterComposerThreadCreate,
@@ -884,7 +885,25 @@ export function applySendThreadMessageSuccess({
   transaction,
 }: ApplySendThreadMessageSuccessArgs): void {
   if (transaction?.kind === "queued-message") {
-    invalidateThreadQueueQueries({ queryClient, threadId: request.id });
+    // Queued prompts enter recall too; prepend locally instead of refetching.
+    prependThreadPromptHistory(
+      queryClient,
+      request.id,
+      buildAcceptedPromptHistoryEntry({
+        createdAt: Date.now(),
+        input: request.input,
+      }),
+    );
+    if (realtimeConnected) {
+      // `queue-changed` covers the thread record; only the queue list needs a
+      // read to swap the optimistic row for the server row.
+      invalidateThreadQueuedMessageListQuery({
+        queryClient,
+        threadId: request.id,
+      });
+    } else {
+      invalidateThreadQueueQueries({ queryClient, threadId: request.id });
+    }
     return;
   }
   prependThreadPromptHistory(
@@ -895,11 +914,11 @@ export function applySendThreadMessageSuccess({
       input: request.input,
     }),
   );
-  const invalidateAcceptedMessageQueries = realtimeConnected
-    ? invalidateThreadAcceptedMessageQueries
+  const applyAcceptedMessageQueries = realtimeConnected
+    ? markThreadAcceptedMessageQueriesStale
     : invalidateThreadAcceptedMessageQueriesWithoutRealtime;
 
-  invalidateAcceptedMessageQueries({
+  applyAcceptedMessageQueries({
     queryClient,
     threadId: request.id,
   });
