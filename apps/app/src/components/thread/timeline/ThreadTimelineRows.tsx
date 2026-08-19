@@ -96,6 +96,10 @@ import {
   timelineRowRenderSignature,
   timelineRowsSignature,
 } from "./timelineRowSignatures.js";
+import {
+  TOP_LEVEL_TIMELINE_ROW_CLASS_NAME,
+  timelineRowContainmentStyle,
+} from "./timeline-row-containment.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
@@ -2015,7 +2019,20 @@ function TimelineRowsList({
           }
 
           return (
-            <div key={item.row.id} data-timeline-row-id={item.row.id}>
+            <div
+              key={item.row.id}
+              data-timeline-row-id={item.row.id}
+              className={
+                spacing === "top-level"
+                  ? TOP_LEVEL_TIMELINE_ROW_CLASS_NAME
+                  : undefined
+              }
+              style={
+                spacing === "top-level"
+                  ? timelineRowContainmentStyle(item.row)
+                  : undefined
+              }
+            >
               <MemoizedTimelineRowView
                 activeLatestBundleId={activeLatestBundleId}
                 row={item.row}
