@@ -77,15 +77,12 @@ interface AgentErrorObject {
   data?: unknown;
 }
 
-function handleAgentStdinError(error: Error): void {
-  if (
+function isClosedAgentStdinError(error: Error): boolean {
+  return (
     "code" in error &&
     typeof error.code === "string" &&
     CLOSED_STDIN_ERROR_CODES.has(error.code)
-  ) {
-    return;
-  }
-  throw error;
+  );
 }
 
 /**
@@ -154,26 +151,52 @@ export function createAcpAgentConnection(
   let nextRequestId = 1;
   let exited = false;
 
-  // The agent can close its read end between the writable check in writeLine
-  // and the kernel accepting the write. Node reports that race asynchronously
-  // on the stream; without a listener it becomes an uncaught EPIPE and can
-  // crash the bridge worker while the normal child-exit path is settling.
-  child.stdin?.on("error", handleAgentStdinError);
-
-  function writeLine(message: object): void {
-    const stdin = child.stdin;
-    if (!stdin || stdin.destroyed || !stdin.writable) {
-      return;
-    }
-    stdin.write(JSON.stringify(message) + "\n");
-  }
-
   function rejectAllPending(error: Error): void {
     for (const [, request] of pending) {
       request.reject(error);
     }
     pending.clear();
   }
+
+  function closeForAgentStdin(error: Error): void {
+    if (exited) {
+      return;
+    }
+    exited = true;
+    const code =
+      "code" in error && typeof error.code === "string"
+        ? ` (${error.code})`
+        : "";
+    const detail = `stdin closed${code}: ${error.message}`;
+    rejectAllPending(
+      new AcpAgentExitedError(`ACP agent "${options.command}" ${detail}`),
+    );
+    // The protocol cannot recover once the agent stops reading requests.
+    // Kill immediately so a child that keeps other handles open cannot leak.
+    child.kill("SIGKILL");
+    const stderrTail = [...stderrChunks, detail].join("\n");
+    options.onExit({ code: null, signal: null, stderrTail });
+  }
+
+  function writeLine(message: object): void {
+    const stdin = child.stdin;
+    if (!stdin || stdin.destroyed || !stdin.writable) {
+      closeForAgentStdin(new Error("stdin is not writable"));
+      return;
+    }
+    stdin.write(JSON.stringify(message) + "\n");
+  }
+
+  // The agent can close its read end between the writable check in writeLine
+  // and the kernel accepting the write. Node reports that race asynchronously
+  // on the stream. A closed input is an irrecoverable transport failure: all
+  // requests must settle even when the child keeps other handles open.
+  child.stdin?.on("error", (error) => {
+    if (!isClosedAgentStdinError(error)) {
+      throw error;
+    }
+    closeForAgentStdin(error);
+  });
 
   if (child.stdout) {
     const stdoutLines = createInterface({
