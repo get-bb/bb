@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { Provider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
 import type { PluginAttentionEntry } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -21,6 +22,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
   usePluginAttentionMock.mockReset();
   useSystemVersionMock.mockReset();
 });
@@ -41,12 +43,20 @@ function renderGlyph(plugins: PluginAttentionEntry[], version = "0.39.0") {
     data: { currentVersion: version },
   });
   return render(
-    <MemoryRouter>
-      <SidebarProvider>
-        <SidebarPluginAttentionGlyph className="footer-action" />
-      </SidebarProvider>
-    </MemoryRouter>,
+    // A fresh jotai Provider per render, so "across remount" below means the
+    // acknowledgement survived only through localStorage, like a page reload.
+    <Provider>
+      <MemoryRouter>
+        <SidebarProvider>
+          <SidebarPluginAttentionGlyph className="footer-action" />
+        </SidebarProvider>
+      </MemoryRouter>
+    </Provider>,
   );
+}
+
+function glyph() {
+  return screen.queryByTestId("sidebar-plugin-attention-glyph");
 }
 
 describe("SidebarPluginAttentionGlyph", () => {
@@ -86,5 +96,56 @@ describe("SidebarPluginAttentionGlyph", () => {
     expect(
       document.querySelectorAll('[data-icon="AlertTriangle"]').length,
     ).toBe(1);
+  });
+
+  it("hides after a click as an acknowledgement of the current set", () => {
+    renderGlyph([entry({})]);
+
+    fireEvent.click(screen.getByTestId("sidebar-plugin-attention-glyph"));
+
+    expect(glyph()).toBeNull();
+  });
+
+  it("stays hidden across a remount while the set is unchanged", () => {
+    renderGlyph([entry({})]);
+    fireEvent.click(screen.getByTestId("sidebar-plugin-attention-glyph"));
+    cleanup();
+
+    // Query order must not matter; only the entries do.
+    renderGlyph([entry({})]);
+
+    expect(glyph()).toBeNull();
+  });
+
+  it("returns when a plugin is added, changes status, or changes detail", () => {
+    renderGlyph([entry({})]);
+    fireEvent.click(screen.getByTestId("sidebar-plugin-attention-glyph"));
+    cleanup();
+
+    renderGlyph([entry({}), entry({ id: "foo", name: "Foo", status: "error" })]);
+    expect(glyph()).not.toBeNull();
+    cleanup();
+
+    renderGlyph([entry({ status: "missing" })]);
+    expect(glyph()).not.toBeNull();
+    cleanup();
+
+    renderGlyph([entry({ statusDetail: "requires bb >=0.40.0, this is 0.39.0" })]);
+    expect(glyph()).not.toBeNull();
+  });
+
+  it("clears the acknowledgement when the count drops to zero", () => {
+    renderGlyph([entry({})]);
+    fireEvent.click(screen.getByTestId("sidebar-plugin-attention-glyph"));
+    cleanup();
+
+    // Every plugin runs again (bb upgraded, plugin updated, or disabled).
+    renderGlyph([]);
+    expect(glyph()).toBeNull();
+    cleanup();
+
+    // The same failure later is a new problem and shows again.
+    renderGlyph([entry({})]);
+    expect(glyph()).not.toBeNull();
   });
 });

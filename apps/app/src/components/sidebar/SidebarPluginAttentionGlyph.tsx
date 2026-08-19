@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { useAtom } from "jotai";
 import { Link } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -8,6 +10,10 @@ import {
   pluginAttentionLabel,
   usePluginAttention,
 } from "@/hooks/usePluginAttention";
+import {
+  acknowledgedPluginAttentionKeyAtom,
+  pluginAttentionSnapshotKey,
+} from "./pluginAttentionAcknowledgementAtom";
 
 export interface SidebarPluginAttentionGlyphProps {
   /** Shares the footer action buttons' size, muted weight, and hover. */
@@ -22,6 +28,11 @@ export interface SidebarPluginAttentionGlyphProps {
  * shows its status and detail. The glyph is derived from the live attention
  * summary and never stored, so it disappears once every enabled plugin runs
  * again (#1915).
+ *
+ * A click acknowledges the current set: the glyph hides while the set of
+ * {id, status, detail} entries stays the same and returns when a plugin is
+ * added, changes status, or changes detail. A count of zero clears the
+ * acknowledgement so the next problem shows.
  */
 export function SidebarPluginAttentionGlyph({
   className,
@@ -29,7 +40,19 @@ export function SidebarPluginAttentionGlyph({
 }: SidebarPluginAttentionGlyphProps) {
   const attention = usePluginAttention();
   const systemVersion = useSystemVersion({ enabled: attention.count > 0 });
-  if (attention.count === 0) {
+  const [acknowledgedKey, setAcknowledgedKey] = useAtom(
+    acknowledgedPluginAttentionKeyAtom,
+  );
+  const snapshotKey =
+    attention.count > 0 ? pluginAttentionSnapshotKey(attention.plugins) : null;
+
+  useEffect(() => {
+    if (attention.count === 0 && acknowledgedKey !== null) {
+      setAcknowledgedKey(null);
+    }
+  }, [attention.count, acknowledgedKey, setAcknowledgedKey]);
+
+  if (snapshotKey === null || snapshotKey === acknowledgedKey) {
     return null;
   }
   const label = pluginAttentionLabel(
@@ -49,7 +72,10 @@ export function SidebarPluginAttentionGlyph({
       >
         <Link
           to={getToolsOwnedCollectionRoutePath("plugins")}
-          onClick={onNavigate}
+          onClick={() => {
+            setAcknowledgedKey(snapshotKey);
+            onNavigate?.();
+          }}
           data-testid="sidebar-plugin-attention-glyph"
         >
           <Icon name="AlertTriangle" />
