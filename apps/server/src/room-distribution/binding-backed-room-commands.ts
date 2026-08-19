@@ -340,10 +340,10 @@ function contextVersion(value: RoomJsonValue | undefined): number {
 }
 
 function contextDigest(value: RoomJsonValue | undefined): string {
-  if (typeof value !== "string" || !/^[a-f0-9]{64}$/u.test(value)) {
-    invalidRequest();
-  }
-  return value;
+  if (typeof value !== "string") invalidRequest();
+  const digest = value.trim();
+  if (!/^[a-f0-9]{64}$/u.test(digest)) invalidRequest();
+  return digest;
 }
 
 function contextBytes(value: RoomJsonValue | undefined): Buffer {
