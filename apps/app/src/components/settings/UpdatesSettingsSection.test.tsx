@@ -1364,9 +1364,9 @@ The canonical release summary.
     vi.mocked(sdk.system.version).mockResolvedValue(availableVersion);
 
     renderSection();
-    expect(screen.getByText("npx bb-app@latest").classList).toContain(
-      "select-text",
-    );
+    const upgradeCommand = screen.getByText("npx bb-app@latest");
+    expect(upgradeCommand.classList).toContain("select-text");
+    expect(upgradeCommand.hasAttribute("data-select-all-scope")).toBe(true);
     expect(screen.getByText("0.0.6")).toBeDefined();
     // Icon-only row action: the accessible name carries what the label used to.
     const copyButton = screen.getByRole("button", {

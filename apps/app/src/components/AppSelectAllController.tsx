@@ -1,11 +1,31 @@
 import { useEffect } from "react";
 import {
-  applyOpenShadowSelectionPolicy,
   closestEventElement,
   findSelectAllScope,
   isEditableTarget,
+  resolveSelectAllRoot,
   selectAllScopeContents,
 } from "@/lib/select-all-scope";
+import { getBbDesktopInfo } from "@/lib/bb-desktop";
+
+function getDeepActiveElement(): Element | null {
+  let activeElement: Element | null = document.activeElement;
+  while (activeElement?.shadowRoot?.activeElement) {
+    activeElement = activeElement.shadowRoot.activeElement;
+  }
+  return activeElement;
+}
+
+function selectEditorContents(editor: Element): void {
+  if (
+    editor instanceof HTMLInputElement ||
+    editor instanceof HTMLTextAreaElement
+  ) {
+    editor.select();
+    return;
+  }
+  document.execCommand("selectAll");
+}
 
 function isSelectAllKey(event: KeyboardEvent): boolean {
   return (
@@ -18,6 +38,27 @@ export function AppSelectAllController() {
   useEffect(() => {
     let activeScope: HTMLElement | null = null;
     let activeSelectionRoot: Document | ShadowRoot | null = null;
+    let activeSelectionAnchor: Element | null = null;
+
+    function selectActiveScopeOrEditor() {
+      if (
+        activeScope !== null &&
+        activeScope.isConnected &&
+        activeSelectionRoot !== null &&
+        activeSelectionAnchor !== null
+      ) {
+        selectAllScopeContents(
+          activeScope,
+          activeSelectionRoot,
+          activeSelectionAnchor,
+        );
+        return;
+      }
+      const activeElement = getDeepActiveElement();
+      if (activeElement !== null && isEditableTarget(activeElement)) {
+        selectEditorContents(activeElement);
+      }
+    }
 
     function handleSelectAll(event: KeyboardEvent) {
       const target = closestEventElement(
@@ -35,13 +76,7 @@ export function AppSelectAllController() {
       }
 
       event.preventDefault();
-      if (
-        activeScope !== null &&
-        activeScope.isConnected &&
-        activeSelectionRoot !== null
-      ) {
-        selectAllScopeContents(activeScope, activeSelectionRoot);
-      }
+      selectActiveScopeOrEditor();
     }
 
     function updateActiveScope(event: Event) {
@@ -51,26 +86,31 @@ export function AppSelectAllController() {
       if (target === null || isEditableTarget(target)) {
         activeScope = null;
         activeSelectionRoot = null;
+        activeSelectionAnchor = null;
         return;
       }
       activeScope = findSelectAllScope(event.composedPath());
+      activeSelectionAnchor = target;
       const selectionRoot = target.getRootNode();
       activeSelectionRoot =
-        selectionRoot instanceof Document || selectionRoot instanceof ShadowRoot
-          ? selectionRoot
+        activeScope !== null &&
+        (selectionRoot instanceof Document ||
+          selectionRoot instanceof ShadowRoot)
+          ? resolveSelectAllRoot(activeScope, selectionRoot)
           : null;
-      if (activeScope !== null && selectionRoot instanceof ShadowRoot) {
-        applyOpenShadowSelectionPolicy(selectionRoot);
-      }
     }
 
     window.addEventListener("pointerdown", updateActiveScope, true);
     window.addEventListener("focusin", updateActiveScope, true);
     window.addEventListener("keydown", handleSelectAll);
+    const unsubscribeDesktopSelectAll = getBbDesktopInfo()?.onSelectAll?.(
+      selectActiveScopeOrEditor,
+    );
     return () => {
       window.removeEventListener("pointerdown", updateActiveScope, true);
       window.removeEventListener("focusin", updateActiveScope, true);
       window.removeEventListener("keydown", handleSelectAll);
+      unsubscribeDesktopSelectAll?.();
     };
   }, []);
 

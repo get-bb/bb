@@ -151,7 +151,9 @@ describe("ProjectMachineSetupDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Clone & continue" }));
 
-    expect(await screen.findByText(gitStderr)).toBeTruthy();
+    const error = await screen.findByText(gitStderr);
+    expect(error.closest(".select-text")).not.toBeNull();
+    expect(error.closest("[data-select-all-scope]")).not.toBeNull();
     const submit = screen.getByRole("button", { name: "Clone & continue" });
     expect(submit.hasAttribute("disabled")).toBe(false);
   });

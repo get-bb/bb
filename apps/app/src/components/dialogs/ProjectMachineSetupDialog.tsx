@@ -326,7 +326,7 @@ export function ProjectMachineSetupDialogContent({
           <p className="text-sm text-destructive">{validationMessage}</p>
         ) : null}
         {errorMessage ? (
-          <div className="space-y-1">
+          <div className="select-text space-y-1" data-select-all-scope="">
             <p className="whitespace-pre-wrap break-words text-sm text-destructive">
               {errorMessage}
             </p>

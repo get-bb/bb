@@ -14,7 +14,6 @@ const SELECTION_CONTROL_SELECTOR = [
   '[role="tab"]',
 ].join(", ");
 
-const SHADOW_SELECTION_POLICY_ATTRIBUTE = "data-bb-app-selection-policy";
 const NON_EDITING_INPUT_TYPES = new Set([
   "button",
   "checkbox",
@@ -27,15 +26,6 @@ const NON_EDITING_INPUT_TYPES = new Set([
   "reset",
   "submit",
 ]);
-const SHADOW_SELECTION_POLICY = `
-  :where(input, textarea, [contenteditable]:not([contenteditable="false"])) {
-    user-select: text !important;
-  }
-  :where(${SELECTION_CONTROL_SELECTOR}):not(.select-text) {
-    user-select: none !important;
-  }
-`;
-
 export function closestEventElement(
   target: EventTarget | null,
 ): Element | null {
@@ -55,10 +45,14 @@ export function isEditableTarget(target: Element | null): boolean {
   );
 }
 
-function isSelectionControlTarget(target: Element | null): boolean {
-  const control = target?.closest(SELECTION_CONTROL_SELECTOR);
-  if (control === null || control === undefined) return false;
-  return !control.classList.contains("select-text");
+function isEditableSelectionSubtree(element: Element): boolean {
+  if (element.matches("select[multiple]")) return true;
+  if (element instanceof HTMLInputElement) {
+    return !NON_EDITING_INPUT_TYPES.has(element.type);
+  }
+  return element.matches(
+    'textarea, [contenteditable]:not([contenteditable="false"])',
+  );
 }
 
 export function findSelectAllScope(
@@ -74,8 +68,8 @@ export function findSelectAllScope(
 
 function isSkippedSelectionSubtree(element: Element): boolean {
   return (
-    isEditableTarget(element) ||
-    isSelectionControlTarget(element) ||
+    (element.matches(SELECTION_CONTROL_SELECTOR) &&
+      !element.classList.contains("select-text")) ||
     element.matches('script, style, template, [hidden], [aria-hidden="true"]')
   );
 }
@@ -91,59 +85,97 @@ function getComposedChildren(node: Node): readonly Node[] {
   return Array.from(node.childNodes);
 }
 
-export function applyOpenShadowSelectionPolicy(
-  selectionRoot: ShadowRoot,
-): void {
-  if (
-    selectionRoot.querySelector(
-      `style[${SHADOW_SELECTION_POLICY_ATTRIBUTE}]`,
-    ) !== null
-  ) {
-    return;
-  }
-  const style = document.createElement("style");
-  style.setAttribute(SHADOW_SELECTION_POLICY_ATTRIBUTE, "");
-  style.textContent = SHADOW_SELECTION_POLICY;
-  selectionRoot.append(style);
-}
-
 function getComposedTextEndpoints(
   scope: HTMLElement,
   selectionRoot: Document | ShadowRoot,
+  selectionAnchor: Element,
 ): {
   first: Text;
   last: Text;
 } | null {
   let first: Text | null = null;
   let last: Text | null = null;
+  let segment = 0;
+  let anchorSegment: number | null = null;
+  const textBySegment = new Map<number, Text[]>();
 
   function visit(node: Node) {
+    if (node === selectionAnchor) {
+      anchorSegment = segment;
+    }
     if (node instanceof Text) {
       if (node.data.length === 0 || node.getRootNode() !== selectionRoot)
         return;
-      first ??= node;
-      last = node;
+      const segmentText = textBySegment.get(segment) ?? [];
+      segmentText.push(node);
+      textBySegment.set(segment, segmentText);
       return;
     }
-    if (
-      node !== scope &&
-      node instanceof Element &&
-      isSkippedSelectionSubtree(node)
-    ) {
-      return;
+    if (node !== scope && node instanceof Element) {
+      if (isEditableSelectionSubtree(node)) {
+        if (node.contains(selectionAnchor)) {
+          anchorSegment = segment;
+        }
+        segment += 1;
+        return;
+      }
+      if (isSkippedSelectionSubtree(node)) {
+        if (node.contains(selectionAnchor)) {
+          anchorSegment = segment;
+        }
+        return;
+      }
     }
     for (const child of getComposedChildren(node)) visit(child);
   }
 
   visit(scope);
+  const selectedText = textBySegment.get(anchorSegment ?? 0) ?? [];
+  first = selectedText[0] ?? null;
+  last = selectedText.at(-1) ?? null;
   return first === null || last === null ? null : { first, last };
+}
+
+export function resolveSelectAllRoot(
+  scope: HTMLElement,
+  preferredRoot: Document | ShadowRoot,
+): Document | ShadowRoot {
+  const textRoots = new Set<Document | ShadowRoot>();
+
+  function visit(node: Node) {
+    if (node instanceof Text) {
+      if (node.data.trim().length === 0) return;
+      const root = node.getRootNode();
+      if (root instanceof Document || root instanceof ShadowRoot) {
+        textRoots.add(root);
+      }
+      return;
+    }
+    if (node !== scope && node instanceof Element) {
+      if (isEditableSelectionSubtree(node) || isSkippedSelectionSubtree(node)) {
+        return;
+      }
+    }
+    for (const child of getComposedChildren(node)) visit(child);
+  }
+
+  visit(scope);
+  if (textRoots.has(preferredRoot) || textRoots.size !== 1) {
+    return preferredRoot;
+  }
+  return textRoots.values().next().value ?? preferredRoot;
 }
 
 export function selectAllScopeContents(
   scope: HTMLElement,
   selectionRoot: Document | ShadowRoot,
+  selectionAnchor: Element,
 ): void {
-  const endpoints = getComposedTextEndpoints(scope, selectionRoot);
+  const endpoints = getComposedTextEndpoints(
+    scope,
+    selectionRoot,
+    selectionAnchor,
+  );
   const selection = window.getSelection();
   if (endpoints === null || selection === null) return;
   selection.setBaseAndExtent(

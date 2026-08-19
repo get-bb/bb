@@ -183,6 +183,20 @@ function renderWithWorkerPool(ui: ReactElement) {
 }
 
 describe("FilePreview", () => {
+  it("keeps file-loading diagnostics selectable", () => {
+    render(
+      <FilePreview
+        headerMode="none"
+        path="src/missing.ts"
+        state={{ kind: "error", message: "Host file read failed" }}
+      />,
+    );
+
+    const diagnostic = screen.getByText("Host file read failed");
+    expect(diagnostic.closest(".select-text")).not.toBeNull();
+    expect(diagnostic.closest("[data-select-all-scope]")).not.toBeNull();
+  });
+
   beforeEach(() => {
     pierreMock.state.cachedFileKeys.clear();
     pierreMock.state.initialStats = pierreMock.createStats();
@@ -456,6 +470,15 @@ describe("FilePreview", () => {
         `Showing the first ${SOURCE_CODE_MAX_LINES.toLocaleString()} of ${totalLineCount.toLocaleString()} lines.`,
       ),
     ).toBeTruthy();
+    const fileScope = screen
+      .getByTestId("pierre-file")
+      .closest("[data-select-all-scope]");
+    const truncationScope = screen
+      .getByText(/Showing the first/)
+      .closest("[data-select-all-scope]");
+    expect(fileScope).not.toBeNull();
+    expect(truncationScope).not.toBeNull();
+    expect(fileScope).not.toBe(truncationScope);
 
     fireEvent.click(screen.getByRole("button", { name: "Load full file" }));
 

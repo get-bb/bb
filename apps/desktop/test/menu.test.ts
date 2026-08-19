@@ -34,6 +34,7 @@ function menuArgs(
     openServerDaemonLogs: () => {},
     openSettings: () => {},
     reloadWindow,
+    selectAll: () => {},
     selectServer: () => {},
     serverDaemonLogsMenuEnabled: false,
     servers: [{ checked: true, id: "builtin", name: "This Mac" }],
@@ -103,6 +104,23 @@ describe("application menu", () => {
     forceReload?.click?.({} as never, focusedWindow, {} as never);
     expect(reloadWindow).toHaveBeenNthCalledWith(1, focusedWindow, false);
     expect(reloadWindow).toHaveBeenNthCalledWith(2, focusedWindow, true);
+  });
+
+  it("routes Select All through a custom desktop command", () => {
+    const selectAllCommand = vi.fn();
+    const args = menuArgs(() => {}, { selectAll: selectAllCommand });
+    const template = buildApplicationMenuTemplate(args);
+    const editMenu = template.find((item) => item.label === "Edit");
+    const submenu = editMenu?.submenu as MenuItemConstructorOptions[];
+    const selectAll = submenu.find(
+      (item) => item.label === "Select All" || item.role === "selectAll",
+    );
+    expect(selectAll?.label).toBe("Select All");
+    expect(selectAll?.accelerator).toBe("CommandOrControl+A");
+    expect(selectAll?.role).toBeUndefined();
+    expect(selectAll?.click).toBeTypeOf("function");
+    selectAll?.click?.({} as never, undefined, {} as never);
+    expect(selectAllCommand).toHaveBeenCalledOnce();
   });
 
   it("builds a Window ▸ Server radio submenu with a Set Server URL item", () => {

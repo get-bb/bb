@@ -188,6 +188,13 @@ describe("DiffFileCard context expansion", () => {
     const expandButton = await screen.findByRole("button", {
       name: "Expand context",
     });
+    const diffScope = screen
+      .getByTestId("diff-view")
+      .closest("[data-select-all-scope]");
+    const contextScope = expandButton.closest("[data-select-all-scope]");
+    expect(diffScope).not.toBeNull();
+    expect(contextScope).not.toBeNull();
+    expect(diffScope).not.toBe(contextScope);
     // Nothing was fetched just because the card scrolled into view.
     await new Promise((resolve) => setTimeout(resolve, 250));
     expect(onRequestFileContents).not.toHaveBeenCalled();

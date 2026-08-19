@@ -13,6 +13,7 @@ import {
   safeStorage,
   session,
   shell,
+  webContents,
   type Event,
   type IpcMainInvokeEvent,
   type WebContents,
@@ -140,6 +141,7 @@ import {
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+  BB_DESKTOP_SELECT_ALL_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
   CLOSE_WINDOW_REQUEST_TIMEOUT_MS,
 } from "./desktop-window-command-ipc.js";
@@ -725,6 +727,24 @@ function installCurrentApplicationMenu(): void {
       } else {
         browserWindow.webContents.reload();
       }
+    },
+    selectAll() {
+      const focusedWebContents = webContents.getFocusedWebContents();
+      if (focusedWebContents === null) {
+        return;
+      }
+      if (applicationWindowWebContentsIds.has(focusedWebContents.id)) {
+        const browserWindow = BrowserWindow.fromWebContents(focusedWebContents);
+        if (browserWindow !== null) {
+          sendToApplicationRenderer(
+            browserWindow,
+            BB_DESKTOP_SELECT_ALL_CHANNEL,
+            null,
+          );
+        }
+        return;
+      }
+      focusedWebContents.selectAll();
     },
     closeWindowOrSideTab(browserWindow) {
       if (browserWindow === undefined) {

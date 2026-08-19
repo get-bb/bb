@@ -3,8 +3,8 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TimelineCommandWorkRow } from "@bb/server-contract";
-import { commandRow } from "@/test/fixtures/thread-timeline-rows";
+import type { TimelineCommandWorkRow, TimelineRow } from "@bb/server-contract";
+import { commandRow, systemRow } from "@/test/fixtures/thread-timeline-rows";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { sdk } from "@/lib/sdk";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
@@ -39,7 +39,7 @@ function previewedCommandRow(
   };
 }
 
-function renderExpandedRow(row: TimelineCommandWorkRow) {
+function renderExpandedRow(row: TimelineRow) {
   const { wrapper: Wrapper } = createQueryClientTestHarness();
   return render(
     <MemoryRouter>
@@ -120,5 +120,19 @@ describe("previewed command output", () => {
     expect(screen.getByTestId("timeline-output-preview-note").textContent).toContain(
       "Failed to load the full output",
     );
+  });
+});
+
+describe("system detail output", () => {
+  it("declares its own Select All scope", () => {
+    const row = systemRow({
+      id: "system_detail",
+      detail: "Using workspace: /tmp/bb\nProvisioned thread",
+    });
+    renderExpandedRow(row);
+
+    expect(
+      screen.getByText(/Using workspace:/).closest("[data-select-all-scope]"),
+    ).not.toBeNull();
   });
 });

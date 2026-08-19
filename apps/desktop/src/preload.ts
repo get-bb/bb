@@ -25,6 +25,7 @@ import {
   type BbDesktopInfoChangeHandler,
   type BbDesktopInfoUnsubscribe,
   type BbDesktopOpenNewTabHandler,
+  type BbDesktopSelectAllHandler,
   type BbDesktopTheme,
   type BbDesktopWindowState,
   type BbDesktopWindowStateChangeHandler,
@@ -64,6 +65,7 @@ import {
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+  BB_DESKTOP_SELECT_ALL_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
 } from "./desktop-window-command-ipc.js";
 import {
@@ -100,6 +102,7 @@ function createInitialDesktopWindowState(): BbDesktopWindowState {
 
 const listeners = new Set<BbDesktopInfoChangeHandler>();
 const appCommandListeners = new Set<BbDesktopAppCommandHandler>();
+const selectAllListeners = new Set<BbDesktopSelectAllHandler>();
 const windowStateListeners = new Set<BbDesktopWindowStateChangeHandler>();
 let currentInfo = createInitialDesktopInfo();
 let currentWindowState = createInitialDesktopWindowState();
@@ -366,6 +369,12 @@ const bbDesktopApi: BbDesktopApi = {
       appCommandListeners.delete(listener);
     };
   },
+  onSelectAll(listener): BbDesktopInfoUnsubscribe {
+    selectAllListeners.add(listener);
+    return () => {
+      selectAllListeners.delete(listener);
+    };
+  },
   onCloseWindowRequest(listener): BbDesktopInfoUnsubscribe {
     closeWindowRequestListeners.add(listener);
     return () => {
@@ -402,6 +411,12 @@ ipcRenderer.on(BB_DESKTOP_APP_COMMAND_CHANNEL, (_event, payload: unknown) => {
   if (!parsed.success) return;
   for (const listener of appCommandListeners) {
     listener(parsed.data);
+  }
+});
+
+ipcRenderer.on(BB_DESKTOP_SELECT_ALL_CHANNEL, () => {
+  for (const listener of selectAllListeners) {
+    listener();
   }
 });
 

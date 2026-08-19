@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type {
   EnvironmentDiffFileResponse,
@@ -58,6 +58,30 @@ afterEach(() => {
 });
 
 describe("GitDiffTabContent panel gating", () => {
+  it("keeps diff-loading diagnostics selectable", async () => {
+    vi.mocked(sdk.environments.diffFiles).mockRejectedValue(
+      new Error("git diff failed: bad revision"),
+    );
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    render(
+      <Wrapper>
+        <GitDiffTabContent
+          environmentId={ENVIRONMENT_ID}
+          target={TARGET}
+          isDiffPanelActive
+          isPanelOpen
+          gitDiffViewOptions={{}}
+        />
+      </Wrapper>,
+    );
+
+    const diagnostic = await waitFor(() =>
+      screen.getByText("git diff failed: bad revision"),
+    );
+    expect(diagnostic.closest(".select-text")).not.toBeNull();
+    expect(diagnostic.closest("[data-select-all-scope]")).not.toBeNull();
+  });
+
   it("fetches the diff TOC only while the panel is open, and refetches once on reopen", async () => {
     vi.mocked(sdk.environments.diffFiles).mockResolvedValue(emptyDiff);
     const { queryClient, wrapper: Wrapper } = createQueryClientTestHarness();

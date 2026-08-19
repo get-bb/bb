@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import type { BbDesktopApi } from "@bb/desktop-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppSelectAllController } from "@/components/AppSelectAllController";
 
@@ -73,11 +74,23 @@ function dispatchSelectAll(target: Element): KeyboardEvent {
   return event;
 }
 
+function installDesktopSelectAllBridge(): () => void {
+  let listener: (() => void) | undefined;
+  window.bbDesktop = {
+    onSelectAll(nextListener: () => void) {
+      listener = nextListener;
+      return () => undefined;
+    },
+  } as unknown as BbDesktopApi;
+  return () => listener?.();
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   cleanup();
   document.body.replaceChildren();
   window.getSelection()?.removeAllRanges();
+  delete window.bbDesktop;
 });
 
 describe("AppSelectAllController", () => {
@@ -105,6 +118,41 @@ describe("AppSelectAllController", () => {
       "Side chat message",
     );
     expect(window.getSelection()?.toString()).not.toContain("Composer draft");
+  });
+
+  it("scopes Select All requested by the native desktop menu", () => {
+    const requestSelectAll = installDesktopSelectAllBridge();
+    render(<AppSelectAllController />);
+    const fixture = createFixture();
+
+    fireEvent.pointerDown(fixture.mainMessage);
+    act(requestSelectAll);
+
+    expect(window.getSelection()?.toString()).toContain(
+      "Main timeline message",
+    );
+    expect(window.getSelection()?.toString()).not.toContain(
+      "Side chat message",
+    );
+  });
+
+  it("keeps native desktop Select All inside a shadow-root editor", () => {
+    const requestSelectAll = installDesktopSelectAllBridge();
+    render(<AppSelectAllController />);
+    const fixture = createFixture();
+    const shadowHost = document.createElement("div");
+    const shadowRoot = shadowHost.attachShadow({ mode: "open" });
+    const input = document.createElement("input");
+    input.value = "shadow editor value";
+    shadowRoot.append(input);
+    fixture.mainRegion.append(shadowHost);
+    input.focus();
+    input.setSelectionRange(4, 4);
+
+    act(requestSelectAll);
+
+    expect(input.selectionStart).toBe(0);
+    expect(input.selectionEnd).toBe(input.value.length);
   });
 
   it("activates a content boundary when keyboard focus enters it", () => {
@@ -325,7 +373,67 @@ describe("AppSelectAllController", () => {
     );
   });
 
-  it("keeps control labels unselectable inside an active open shadow root", () => {
+  it("selects a shadow-only scope when interaction starts on its light-DOM padding", () => {
+    render(<AppSelectAllController />);
+    const scope = document.createElement("section");
+    scope.dataset.selectAllScope = "";
+    const shadowHost = document.createElement("div");
+    const shadowRoot = shadowHost.attachShadow({ mode: "open" });
+    const shadowCode = document.createElement("code");
+    shadowCode.textContent = "shadow-only file contents";
+    shadowRoot.append(shadowCode);
+    scope.append("\n  ", shadowHost, "\n");
+    document.body.append(scope);
+    const shadowText = shadowCode.firstChild!;
+    const setBaseAndExtent = vi.spyOn(
+      window.getSelection()!,
+      "setBaseAndExtent",
+    );
+
+    fireEvent.pointerDown(scope);
+    const event = dispatchSelectAll(scope);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(setBaseAndExtent).toHaveBeenCalledWith(
+      shadowText,
+      0,
+      shadowText,
+      "shadow-only file contents".length,
+    );
+  });
+
+  it("excludes an inline editor between reading-content endpoints", () => {
+    render(<AppSelectAllController />);
+    const fixture = createFixture();
+    const inlineEditor = document.createElement("div");
+    inlineEditor.setAttribute("contenteditable", "true");
+    inlineEditor.textContent = "UNSENT INLINE DRAFT";
+    fixture.mainRegion.insertBefore(inlineEditor, fixture.mainLink);
+
+    fireEvent.pointerDown(fixture.mainMessage);
+    dispatchSelectAll(fixture.mainMessage);
+
+    expect(window.getSelection()?.toString()).toContain(
+      "Main timeline message",
+    );
+    expect(window.getSelection()?.toString()).not.toContain(
+      "UNSENT INLINE DRAFT",
+    );
+    expect(window.getSelection()?.toString()).not.toContain("Message details");
+
+    fireEvent.pointerDown(fixture.mainLink);
+    dispatchSelectAll(fixture.mainLink);
+
+    expect(window.getSelection()?.toString()).toContain("Message details");
+    expect(window.getSelection()?.toString()).not.toContain(
+      "Main timeline message",
+    );
+    expect(window.getSelection()?.toString()).not.toContain(
+      "UNSENT INLINE DRAFT",
+    );
+  });
+
+  it("does not mutate an active open shadow root", () => {
     render(<AppSelectAllController />);
     const fixture = createFixture();
     const shadowHost = document.createElement("div");
@@ -334,16 +442,13 @@ describe("AppSelectAllController", () => {
     button.textContent = "Shadow action";
     shadowRoot.append(button);
     fixture.mainRegion.append(shadowHost);
+    const shadowMarkup = shadowRoot.innerHTML;
 
     button.dispatchEvent(
       new Event("pointerdown", { bubbles: true, composed: true }),
     );
 
-    expect(
-      shadowRoot.querySelector<HTMLStyleElement>(
-        "style[data-bb-app-selection-policy]",
-      )?.textContent,
-    ).toContain("user-select: none !important");
+    expect(shadowRoot.innerHTML).toBe(shadowMarkup);
   });
 
   it("removes app-level event behavior when unmounted", () => {
