@@ -138,8 +138,15 @@ interface StaticResponseHeadersArgs {
   urlPath: string;
 }
 
-const STATIC_INDEX_CACHE_CONTROL = "no-store";
+// `no-cache` (not `no-store`): the document is revalidated on every
+// navigation, so a new build is picked up immediately, but WebKit may still
+// keep the page in the back/forward cache and restore it without a reload.
+const STATIC_INDEX_CACHE_CONTROL = "no-cache";
 const STATIC_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
+// Icons and manifests under public/ are not content-hashed but change only
+// with a release; a day of caching keeps favicon/badge flips and PWA
+// relaunches from refetching them.
+const STATIC_PUBLIC_FILE_CACHE_CONTROL = "public, max-age=86400";
 const WEB_SOCKET_SHUTDOWN_CODE = 1001;
 const WEB_SOCKET_SHUTDOWN_FORCE_CLOSE_MS = 1_000;
 const WEB_SOCKET_SHUTDOWN_REASON = "server-shutdown";
@@ -169,15 +176,20 @@ function shouldLogSlowApiRequest(args: ShouldLogSlowApiRequestArgs): boolean {
   return !THREAD_EVENT_WAIT_PATH_PATTERN.test(args.path);
 }
 
+function staticCacheControlForPath(urlPath: string): string {
+  if (urlPath.startsWith("/assets/")) {
+    return STATIC_ASSET_CACHE_CONTROL;
+  }
+  if (urlPath.endsWith(".html")) {
+    return STATIC_INDEX_CACHE_CONTROL;
+  }
+  return STATIC_PUBLIC_FILE_CACHE_CONTROL;
+}
+
 function createStaticResponseHeaders(args: StaticResponseHeadersArgs): Headers {
   const headers = new Headers();
   headers.set("content-type", args.contentType);
-  headers.set(
-    "cache-control",
-    args.urlPath.startsWith("/assets/")
-      ? STATIC_ASSET_CACHE_CONTROL
-      : STATIC_INDEX_CACHE_CONTROL,
-  );
+  headers.set("cache-control", staticCacheControlForPath(args.urlPath));
   if (args.contentEncoding !== undefined) {
     headers.set("content-encoding", args.contentEncoding);
     headers.set("vary", "Accept-Encoding");
