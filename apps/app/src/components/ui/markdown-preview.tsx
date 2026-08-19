@@ -32,14 +32,17 @@ import type {
   Options as ReactMarkdownOptions,
   UrlTransform,
 } from "react-markdown";
-import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import "katex/dist/katex.min.css";
 import { ImageLightbox } from "./image-lightbox.js";
+import {
+  markdownMayContainMath,
+  useRehypeKatex,
+  type RehypeKatex,
+} from "./markdown-katex-loader.js";
 import { CopyButton } from "./copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { RouteAnchor } from "./app-route-anchor.js";
@@ -314,12 +317,26 @@ const MARKDOWN_SOURCE_COLOR_SCHEME_MEDIA_PATTERN =
 const MARKDOWN_HTML_REHYPE_PLUGINS: MarkdownRehypePlugins = [
   rehypeRaw,
   rehypeSanitize,
-  rehypeKatex,
 ];
 
 // No raw HTML means nothing untrusted to sanitize, so KaTeX renders straight
 // from the `remark-math` wrappers.
-const MARKDOWN_MATH_REHYPE_PLUGINS: MarkdownRehypePlugins = [rehypeKatex];
+const MARKDOWN_PLAIN_REHYPE_PLUGINS: MarkdownRehypePlugins = [];
+
+// KaTeX loads on demand (`markdown-katex-loader`): until the chunk resolves,
+// math stays as the `remark-math` code wrappers.
+function resolveRehypePlugins({
+  allowHtml,
+  rehypeKatex,
+}: {
+  allowHtml: boolean;
+  rehypeKatex: RehypeKatex | null;
+}): MarkdownRehypePlugins {
+  const base = allowHtml
+    ? MARKDOWN_HTML_REHYPE_PLUGINS
+    : MARKDOWN_PLAIN_REHYPE_PLUGINS;
+  return rehypeKatex === null ? base : [...base, rehypeKatex];
+}
 
 function areMarkdownAbsoluteLocalFileLinkRoutingsEqual({
   next,
@@ -1612,11 +1629,15 @@ function MarkdownPreviewComponent({
     [localFileRouting, localImageRouting, urlTransform],
   );
 
+  const rehypeKatex = useRehypeKatex(markdownMayContainMath(body));
+  const rehypePlugins = useMemo(
+    () => resolveRehypePlugins({ allowHtml, rehypeKatex }),
+    [allowHtml, rehypeKatex],
+  );
+
   const renderedMarkdown = (
     <ReactMarkdown
-      rehypePlugins={
-        allowHtml ? MARKDOWN_HTML_REHYPE_PLUGINS : MARKDOWN_MATH_REHYPE_PLUGINS
-      }
+      rehypePlugins={rehypePlugins}
       remarkPlugins={remarkPlugins}
       components={markdownComponents}
       urlTransform={resolvedUrlTransform}

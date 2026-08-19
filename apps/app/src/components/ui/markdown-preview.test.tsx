@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MarkdownPreview } from "./markdown-preview";
 import {
@@ -248,12 +254,14 @@ describe("MarkdownPreview", () => {
     );
   });
 
-  it("renders inline LaTeX math with KaTeX", () => {
+  it("renders inline LaTeX math with KaTeX", async () => {
     const { container } = render(
       <MarkdownPreview content={"Mass-energy is $$E = mc^2$$ exactly."} />,
     );
 
-    expect(container.querySelector(".katex")).not.toBeNull();
+    await waitFor(() =>
+      expect(container.querySelector(".katex")).not.toBeNull(),
+    );
     expect(container.querySelector(".katex-display")).toBeNull();
   });
 
@@ -269,12 +277,14 @@ describe("MarkdownPreview", () => {
     expect(container.textContent).toContain("$x$");
   });
 
-  it("renders display LaTeX math blocks with KaTeX", () => {
+  it("renders display LaTeX math blocks with KaTeX", async () => {
     const { container } = render(
       <MarkdownPreview content={"$$\n\\frac{1}{2} + \\frac{1}{2} = 1\n$$"} />,
     );
 
-    expect(container.querySelector(".katex-display")).not.toBeNull();
+    await waitFor(() =>
+      expect(container.querySelector(".katex-display")).not.toBeNull(),
+    );
   });
 
   it("leaves escaped dollar amounts as literal text", () => {
@@ -287,7 +297,7 @@ describe("MarkdownPreview", () => {
     expect(container.textContent).toContain("$10");
   });
 
-  it("renders math while still sanitizing untrusted HTML when allowHtml is set", () => {
+  it("renders math while still sanitizing untrusted HTML when allowHtml is set", async () => {
     const { container } = render(
       <MarkdownPreview
         allowHtml
@@ -295,17 +305,21 @@ describe("MarkdownPreview", () => {
       />,
     );
 
-    expect(container.querySelector(".katex")).not.toBeNull();
+    await waitFor(() =>
+      expect(container.querySelector(".katex")).not.toBeNull(),
+    );
     expect(container.querySelector("script")).toBeNull();
     expect(container.textContent).not.toContain("alert(1)");
   });
 
-  it("contains invalid TeX instead of throwing", () => {
+  it("contains invalid TeX instead of throwing", async () => {
     const { container } = render(
       <MarkdownPreview content={"Broken: $$\\frac{1}{$$ keeps rendering."} />,
     );
 
-    expect(container.querySelector(".katex-error")).not.toBeNull();
+    await waitFor(() =>
+      expect(container.querySelector(".katex-error")).not.toBeNull(),
+    );
     expect(container.textContent).toContain("keeps rendering.");
   });
 });
