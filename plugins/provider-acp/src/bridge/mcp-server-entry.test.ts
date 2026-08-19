@@ -28,7 +28,9 @@ const TSX_LOADER = import.meta.resolve("tsx");
 interface BridgeLine {
   id?: number | string;
   method?: string;
-  params?: { event?: { type?: string; delta?: unknown } };
+  params?: {
+    deltas?: { kind?: string; channel?: string; text?: unknown }[];
+  };
   result?: { providerThreadId?: unknown };
   error?: { message?: string };
 }
@@ -70,14 +72,17 @@ async function waitFor<T>(
 }
 
 function agentMessageTexts(): string[] {
+  // The bridge speaks the narrow grammar: assistant text arrives as
+  // `message.delta` deltas inside batched `thread/delta` notifications.
   const texts: string[] = [];
   for (const line of bridgeLines) {
-    if (line.method !== "thread/event") {
+    if (line.method !== "thread/delta") {
       continue;
     }
-    const event = line.params?.event;
-    if (event?.type === "item/agentMessage/delta") {
-      texts.push(String(event.delta));
+    for (const delta of line.params?.deltas ?? []) {
+      if (delta.kind === "message.delta" && delta.channel === "assistant") {
+        texts.push(String(delta.text));
+      }
     }
   }
   return texts;
