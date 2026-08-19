@@ -30,6 +30,30 @@ import { z } from "zod";
 export const THREAD_DELTA_NOTIFICATION_METHOD = "thread/delta";
 
 /**
+ * Internal separator the runtime's assembler joins provider key parts with
+ * (item keys, stream keys). A unit separator rather than a NUL byte so the
+ * assembler source stays a text file for git and greps; collision safety
+ * comes from the schema below, which rejects any provider key containing it,
+ * so two distinct key tuples can never join to the same string.
+ */
+export const THREAD_DELTA_KEY_SEPARATOR = "\u001f";
+
+/**
+ * One provider-supplied key part (item ids, channels, parent refs, stream
+ * keys, provider turn ids). Non-empty — an empty part would let unrelated
+ * keys collide on their joined form — and never containing the internal
+ * separator. Validated here at the protocol boundary so a misbehaving bridge
+ * fails loudly at parse time instead of silently cross-wiring streams.
+ */
+const deltaKeyPartSchema = z
+  .string()
+  .min(1)
+  .refine((value) => !value.includes(THREAD_DELTA_KEY_SEPARATOR), {
+    message:
+      "provider keys must not contain the internal key separator (\\u001f)",
+  });
+
+/**
  * Provider-native join key for an item. `providerItemId` is the provider's
  * own id (a tool-call id); `channel` distinguishes provider-anonymous item
  * families (e.g. compaction); `parentRef` is the provider-native id of the
@@ -37,9 +61,9 @@ export const THREAD_DELTA_NOTIFICATION_METHOD = "thread/delta";
  * bb-minted ids.
  */
 export const deltaItemKeySchema = z.object({
-  providerItemId: z.string().min(1).optional(),
-  channel: z.string().min(1).optional(),
-  parentRef: z.string().min(1).optional(),
+  providerItemId: deltaKeyPartSchema.optional(),
+  channel: deltaKeyPartSchema.optional(),
+  parentRef: deltaKeyPartSchema.optional(),
 });
 export type DeltaItemKey = z.infer<typeof deltaItemKeySchema>;
 
@@ -53,7 +77,7 @@ export type DeltaItemKey = z.infer<typeof deltaItemKeySchema>;
  * native turn ids (pi, acp) simply omit it and keep the current-turn
  * semantics.
  */
-const providerTurnIdSchema = z.string().min(1);
+const providerTurnIdSchema = deltaKeyPartSchema;
 
 /**
  * The parsed item shapes a bridge classifies its provider's tool traffic
@@ -216,7 +240,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     kind: z.literal("turn.open"),
     providerTurnId: providerTurnIdSchema.optional(),
     /** Provider-native parent tool-call id for delegated child turns. */
-    parentRef: z.string().min(1).optional(),
+    parentRef: deltaKeyPartSchema.optional(),
   }),
 
   /**
@@ -318,9 +342,9 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("message.delta"),
     channel: deltaMessageChannelSchema,
-    streamKey: z.string(),
+    streamKey: deltaKeyPartSchema,
     text: z.string(),
-    parentRef: z.string().min(1).optional(),
+    parentRef: deltaKeyPartSchema.optional(),
     noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
 
@@ -334,10 +358,10 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("message.close"),
     channel: deltaMessageChannelSchema,
-    streamKey: z.string().optional(),
+    streamKey: deltaKeyPartSchema.optional(),
     text: z.string().optional(),
     detach: z.boolean().optional(),
-    parentRef: z.string().min(1).optional(),
+    parentRef: deltaKeyPartSchema.optional(),
     noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
 
@@ -516,7 +540,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     rawType: z.string(),
     vouchedTurn: z.boolean(),
     onlyIfNoTurn: z.boolean().optional(),
-    parentRef: z.string().min(1).optional(),
+    parentRef: deltaKeyPartSchema.optional(),
     providerTurnId: providerTurnIdSchema.optional(),
   }),
 

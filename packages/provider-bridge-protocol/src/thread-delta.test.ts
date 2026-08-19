@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  THREAD_DELTA_KEY_SEPARATOR,
   threadDeltaNotificationParamsSchema,
   threadDeltaSchema,
 } from "./thread-delta.js";
@@ -123,6 +124,52 @@ describe("thread delta schemas", () => {
         item: { type: "compaction" },
       }).success,
     ).toBe(true);
+    // message.delta streams are keyed too: an empty streamKey would collide
+    // with another empty-keyed stream on the same channel.
+    expect(
+      threadDeltaSchema.safeParse({
+        kind: "message.delta",
+        channel: "assistant",
+        streamKey: "",
+        text: "hi",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects key members containing the internal separator", () => {
+    // The assembler joins key parts with THREAD_DELTA_KEY_SEPARATOR; a part
+    // containing it could make two unrelated key tuples collide. A bridge
+    // that smuggles one fails loudly at the schema boundary.
+    const poisoned = `tc${THREAD_DELTA_KEY_SEPARATOR}1`;
+    expect(
+      threadDeltaSchema.safeParse({
+        kind: "item.open",
+        key: { providerItemId: poisoned },
+        item: { type: "compaction" },
+      }).success,
+    ).toBe(false);
+    expect(
+      threadDeltaSchema.safeParse({
+        kind: "item.close",
+        key: { providerItemId: "tc-1", parentRef: poisoned },
+        status: "completed",
+        item: { type: "compaction" },
+      }).success,
+    ).toBe(false);
+    expect(
+      threadDeltaSchema.safeParse({
+        kind: "message.delta",
+        channel: "assistant",
+        streamKey: poisoned,
+        text: "hi",
+      }).success,
+    ).toBe(false);
+    expect(
+      threadDeltaSchema.safeParse({
+        kind: "turn.open",
+        providerTurnId: poisoned,
+      }).success,
+    ).toBe(false);
   });
 
   it("parses batched notification params and requires a thread id", () => {
