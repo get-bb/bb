@@ -511,9 +511,9 @@ describe("claude-code background task translation", () => {
     );
     expect(backgroundTaskItem(reopenedStarted[0]!)).toMatchObject({
       id: secondGenerationId,
-      // The spawning tool call was never seen opening, so the provider-native
-      // parent ref passes through unmapped.
-      parentToolCallId: "toolu_send_message_1",
+      // The spawning tool call was never seen opening; the assembler mints
+      // its bb id on first reference instead of leaking the provider id.
+      parentToolCallId: harness.itemId("toolu_send_message_1", "bb-thread-1"),
     });
   });
 
@@ -545,7 +545,7 @@ describe("claude-code background task translation", () => {
       status: "pending",
       taskStatus: "running",
       skipTranscript: false,
-      parentToolCallId: "toolu_bash_1",
+      parentToolCallId: harness.itemId("toolu_bash_1", "bb-thread-1"),
     });
     // A shell command carries no workflow phase/agent tree.
     expect(startedItem.workflow).toBeUndefined();
@@ -607,7 +607,7 @@ describe("claude-code background task translation", () => {
       description: "background subagent",
       status: "pending",
       taskStatus: "running",
-      parentToolCallId: "toolu_sub_1",
+      parentToolCallId: harness.itemId("toolu_sub_1", "bb-thread-1"),
     });
   });
 

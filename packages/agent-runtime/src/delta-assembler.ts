@@ -396,7 +396,16 @@ export function createDeltaAssembler(
     }
   }
 
-  /** Provider-native parent ref → the bb id minted for that parent item. */
+  /**
+   * Provider-native parent ref → the bb id minted for that parent item. A
+   * child-first arrival (the parent's own open has not been seen yet) mints
+   * the parent's bb id NOW and registers the mapping, so the emitted event
+   * never carries the raw provider id and the parent's later open/close
+   * lands under this same minted id. This matches the old translators:
+   * their parent ids were deterministic functions of the provider id (raw
+   * for pi/acp, prefix-stamped for codex), so parent references resolved to
+   * the id the parent item itself would carry regardless of arrival order.
+   */
   function mapParentRef(
     state: ThreadAssemblyState,
     parentRef: string | undefined,
@@ -404,7 +413,13 @@ export function createDeltaAssembler(
     if (parentRef === undefined) {
       return undefined;
     }
-    return state.bbItemIdByProviderItemId.get(parentRef) ?? parentRef;
+    const existing = state.bbItemIdByProviderItemId.get(parentRef);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const bbItemId = mintItemId();
+    registerItemId(state, parentRef, bbItemId);
+    return bbItemId;
   }
 
   function ensureTurnOpen(

@@ -553,10 +553,13 @@ describe("claude tool-use translation (delta path)", () => {
         item: expect.objectContaining({
           type: "commandExecution",
           id: harness.itemId("tool-1"),
-          parentToolCallId: "agent-parent-1",
+          // Child-first parent: the assembler mints the parent's bb id on
+          // first reference instead of leaking the raw provider id.
+          parentToolCallId: harness.itemId("agent-parent-1"),
         }),
       }),
     );
+    expect(harness.itemId("agent-parent-1")).not.toBe("agent-parent-1");
   });
 });
 

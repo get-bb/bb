@@ -732,7 +732,7 @@ describe("pi delta translation equivalence", () => {
     );
   });
 
-  it("preserves parent_tool_use_id on nested sdk/message events", () => {
+  it("maps parent_tool_use_id on nested sdk/message events to the parent's minted id", () => {
     const harness = createHarness();
     harness.translate(loadFixture("agent-start.json"));
 
@@ -751,12 +751,30 @@ describe("pi delta translation equivalence", () => {
       },
     });
 
-    expect(events).toContainEqual(
+    const started = events.find(
+      (event) =>
+        event.type === "item/started" &&
+        event.item.type === "commandExecution",
+    );
+    if (started?.type !== "item/started") {
+      throw new Error("expected a commandExecution item/started");
+    }
+    // The raw pi parent id never leaks onto emitted events; the assembler
+    // mints the parent's bb id and keeps parent and children consistent.
+    expect(started.item.parentToolCallId).toBeDefined();
+    expect(started.item.parentToolCallId).not.toBe("agent-parent-1");
+    // The parent's own tool_execution_start lands under that same minted id.
+    const parentEvents = harness.translate({
+      type: "tool_execution_start",
+      toolCallId: "agent-parent-1",
+      toolName: "spawn_agent",
+      args: {},
+    } as AgentSessionEvent);
+    expect(parentEvents).toContainEqual(
       expect.objectContaining({
         type: "item/started",
         item: expect.objectContaining({
-          type: "commandExecution",
-          parentToolCallId: "agent-parent-1",
+          id: started.item.parentToolCallId,
         }),
       }),
     );

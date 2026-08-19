@@ -347,14 +347,34 @@ describe("delta assembler", () => {
       type: "item/started",
       item: { parentToolCallId: parentBbId },
     });
-    // An unknown parent ref survives as-is rather than being dropped.
-    const orphan = assemble(assembler, {
+  });
+
+  it("a child-first parentRef mints the parent id instead of leaking the raw provider id", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    // The child arrives before its parent's own open has been seen.
+    const childStarted = assemble(assembler, {
       kind: "item.open",
-      key: { providerItemId: "tc-orphan", parentRef: "never-seen" },
+      key: { providerItemId: "tc-child", parentRef: "agent-parent-1" },
       item: { type: "command", command: "ls", cwd: "/repo" },
     });
-    expect(orphan[0]).toMatchObject({
-      item: { parentToolCallId: "never-seen" },
+    const childParentId =
+      childStarted[0]?.type === "item/started"
+        ? childStarted[0].item.parentToolCallId
+        : undefined;
+    // The emitted event must never carry the raw provider parent id …
+    expect(childParentId).toBeDefined();
+    expect(childParentId).not.toBe("agent-parent-1");
+    // … and when the parent finally appears it maps onto that same minted id
+    // (the old bridges' deterministic parent/child id consistency).
+    const parentStarted = assemble(assembler, {
+      kind: "item.open",
+      key: { providerItemId: "agent-parent-1" },
+      item: { type: "tool", tool: "task", args: {} },
+    });
+    expect(parentStarted[0]).toMatchObject({
+      type: "item/started",
+      item: { id: childParentId },
     });
   });
 
