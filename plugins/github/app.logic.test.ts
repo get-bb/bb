@@ -1,17 +1,13 @@
-// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
-import type { Item, Route } from "./app";
-
-installTestPluginRuntime();
-
-const {
+import {
   buildSuggestions,
   matchesQuery,
   parseQuery,
   parseSubPath,
   routeToSubPath,
-} = await import("./app");
+  type Item,
+  type Route,
+} from "./app-logic.js";
 
 const issue: Item = {
   repo: "acme/widgets",
@@ -118,5 +114,13 @@ describe("github panel query engine", () => {
       { insert: "no:label ", label: "no:label" },
     ]);
     expect(compact("unknown:value", "issue")).toEqual([]);
+    expect(buildSuggestions("is:o", vocab, "pr", "octocat")[0]?.icon).toEqual({
+      kind: "state",
+      itemKind: "pr",
+      state: "OPEN",
+    });
+    expect(
+      buildSuggestions("author:ali", vocab, "issue", "octocat")[0]?.icon,
+    ).toEqual({ kind: "avatar", login: "alice" });
   });
 });
