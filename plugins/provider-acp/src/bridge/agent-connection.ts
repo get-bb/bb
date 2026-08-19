@@ -11,6 +11,7 @@ import { createInterface } from "node:readline";
 import type { z } from "zod";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
+const CLOSED_STDIN_ERROR_CODES = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
 
 export interface AcpAgentRequestResponder {
   result(value: unknown): void;
@@ -76,6 +77,17 @@ interface AgentErrorObject {
   data?: unknown;
 }
 
+function handleAgentStdinError(error: Error): void {
+  if (
+    "code" in error &&
+    typeof error.code === "string" &&
+    CLOSED_STDIN_ERROR_CODES.has(error.code)
+  ) {
+    return;
+  }
+  throw error;
+}
+
 /**
  * ACP agents answer a failed request with a generic JSON-RPC message such as
  * "Internal error" and put the real cause in `error.data` (for example
@@ -84,8 +96,7 @@ interface AgentErrorObject {
  */
 export function formatAgentError(error: AgentErrorObject): string {
   const message =
-    error.message ??
-    `ACP agent returned error code ${error.code ?? "unknown"}`;
+    error.message ?? `ACP agent returned error code ${error.code ?? "unknown"}`;
   const details = formatAgentErrorData(error.data);
   return details === undefined ? message : `${message}: ${details}`;
 }
@@ -142,6 +153,12 @@ export function createAcpAgentConnection(
   const stderrChunks: string[] = [];
   let nextRequestId = 1;
   let exited = false;
+
+  // The agent can close its read end between the writable check in writeLine
+  // and the kernel accepting the write. Node reports that race asynchronously
+  // on the stream; without a listener it becomes an uncaught EPIPE and can
+  // crash the bridge worker while the normal child-exit path is settling.
+  child.stdin?.on("error", handleAgentStdinError);
 
   function writeLine(message: object): void {
     const stdin = child.stdin;

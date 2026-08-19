@@ -1738,8 +1738,10 @@ describe("acp bridge", () => {
         },
       });
       await waitForResponse(turnId);
-      await waitForFileWithRealTimer(targetPath);
+      const completed = await waitForTurnCompleted();
 
+      expect(completed).toMatchObject({ status: "completed" });
+      expect(agentMessageTexts()).toContain("write:ok");
       expect(readFileSync(targetPath, "utf8")).toBe("hello from agent\n");
     } finally {
       rmSync(outsideDir, { recursive: true, force: true });
