@@ -3,7 +3,8 @@ import {
   createHostDaemonLocalClient,
   DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST,
 } from "@bb/host-daemon-contract";
-import { createBbSdk, type BbSdk } from "./core.js";
+import { createGuideArea } from "./areas/guide.js";
+import { createBbSdk, type BbSdk, type BbSdkAreas } from "./core.js";
 import { createNodeWebsocketFactory } from "./node-websocket.js";
 import {
   createRequestTimeoutFetch,
@@ -65,6 +66,7 @@ export function createNodeTransport(
 export function createNodeBbSdk(args: CreateNodeBbSdkArgs = {}): BbSdk {
   return createBbSdk({
     context: args.context,
+    guide: createGuideArea(),
     transport: createNodeTransport(args),
   });
 }
@@ -101,7 +103,13 @@ export {
   ThreadWaitTimeoutError,
   ThreadWaitUnreachableError,
 } from "./areas/threads.js";
-export type { BbSdk, BbSdkContext, BbSdkTransport, FetchImplementation };
+export type {
+  BbSdk,
+  BbSdkAreas,
+  BbSdkContext,
+  BbSdkTransport,
+  FetchImplementation,
+};
 export type * from "./areas/skills.js";
 export type {
   BbRealtimeSocket,

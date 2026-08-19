@@ -13620,10 +13620,14 @@ interface ThreadSectionsArea {
     update(args: UpdateThreadSectionRequest): Promise<ThreadSectionUpdateResult>;
 }
 
-interface BbSdk extends BbRealtime {
+/**
+ * Every server-backed SDK area. The Node SDK adds the local `guide` area on
+ * top of this; the browser SDK omits it so the generated guide templates
+ * (~112 KB of markdown) stay out of the web app's boot chunk.
+ */
+interface BbSdkAreas extends BbRealtime {
     environments: EnvironmentsArea;
     files: FilesArea;
-    guide: GuideArea;
     hosts: HostsArea;
     projects: ProjectsArea;
     plugins: PluginsArea;
@@ -13635,6 +13639,9 @@ interface BbSdk extends BbRealtime {
     theme: ThemeArea;
     threadSections: ThreadSectionsArea;
     threads: ThreadsArea;
+}
+interface BbSdk extends BbSdkAreas {
+    guide: GuideArea;
 }
 
 interface ExperimentalHostSignalContract<PayloadSchema extends StandardSchemaV1 = StandardSchemaV1> {

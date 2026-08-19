@@ -1,4 +1,4 @@
-import { createBbSdk, type BbSdk } from "./core.js";
+import { createBbSdk, type BbSdk, type BbSdkAreas } from "./core.js";
 import { createHttpTransport } from "./transport-http.js";
 import type {
   BbRealtimeSocketFactory,
@@ -17,6 +17,13 @@ export interface CreateBrowserBbSdkArgs extends CreateBrowserTransportArgs {
   context?: BbSdkContext;
 }
 
+/**
+ * The browser SDK has every server-backed area but no `guide`. The guide is a
+ * local, template-only area for the CLI and Node SDK; attaching it here would
+ * ship its generated markdown in the web app's boot chunk.
+ */
+export type BrowserBbSdk = BbSdkAreas;
+
 export function createBrowserTransport(
   args: CreateBrowserTransportArgs = {},
 ): BbSdkTransport {
@@ -29,7 +36,9 @@ export function createBrowserTransport(
   });
 }
 
-export function createBrowserBbSdk(args: CreateBrowserBbSdkArgs = {}): BbSdk {
+export function createBrowserBbSdk(
+  args: CreateBrowserBbSdkArgs = {},
+): BrowserBbSdk {
   return createBbSdk({
     context: args.context,
     transport: createBrowserTransport(args),
@@ -41,6 +50,6 @@ export const bb = createBrowserBbSdk();
 export { BbHttpError, BbRequestTimeoutError } from "./response.js";
 export type { BbHttpErrorArgs } from "./response.js";
 export { createBbSdk, createHttpTransport };
-export type { BbSdk, BbSdkContext, BbSdkTransport };
+export type { BbSdk, BbSdkAreas, BbSdkContext, BbSdkTransport };
 export type * from "./areas/skills.js";
 export type * from "./public-types.js";

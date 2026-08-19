@@ -30,6 +30,7 @@ import type {
 } from "@bb/sdk";
 import type {
   BbSdk as BrowserBbSdk,
+  BrowserBbSdk as BrowserRuntimeBbSdk,
   BbRealtimeConnectionEvent as BrowserRealtimeConnection,
   EnvironmentStatusResult as BrowserEnvironmentStatus,
   FileReadResult as BrowserFileRead,
@@ -109,6 +110,7 @@ import type {
   ThreadSectionListResult as NodeThreadSectionList,
   ThreadSpawnResult as NodeThreadSpawn,
 } from "@bb/sdk/node";
+import type { createBrowserBbSdk } from "@bb/sdk/browser";
 
 interface RootSurface {
   environmentStatus: RootEnvironmentStatus;
@@ -431,6 +433,17 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<BrowserBbSdk>().toEqualTypeOf<RootBbSdk>();
     expectTypeOf<CoreBbSdk>().toEqualTypeOf<RootBbSdk>();
     expectTypeOf<NodeBbSdk>().toEqualTypeOf<RootBbSdk>();
+  });
+
+  it("keeps the local guide area off the browser SDK instance", () => {
+    // The guide bundles the generated templates; the browser factory must not
+    // attach it so those bytes stay out of the web app's boot chunk.
+    expectTypeOf<keyof BrowserRuntimeBbSdk>().toEqualTypeOf<
+      Exclude<ExpectedBbSdkKey, "guide">
+    >();
+    expectTypeOf<
+      ReturnType<typeof createBrowserBbSdk>
+    >().toEqualTypeOf<BrowserRuntimeBbSdk>();
   });
 
   it("exports only the public permission presets", () => {
