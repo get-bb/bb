@@ -562,6 +562,54 @@ describe("thread search data", () => {
     }
   });
 
+  it("never splits a surrogate pair when cutting a snippet", () => {
+    const { db, project } = setup();
+    try {
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Emoji thread",
+      });
+      // No whitespace anywhere, so both cuts land on hard character offsets
+      // that fall inside astral code points unless the snippet snaps them.
+      const emoji = "\u{1F600}".repeat(100);
+      upsertThreadSearchSegments(db, {
+        segments: [
+          {
+            threadId: thread.id,
+            sourceKind: "assistant_message",
+            sourceKey: "event:1",
+            sourceSeq: 1,
+            text: `${emoji}surrogateneedle${emoji}`,
+          },
+        ],
+      });
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "surrogateneedle",
+        limitPerGroup: 20,
+      });
+
+      const match = results.active.results[0]?.matches[0];
+      expect(match).toBeDefined();
+      if (match === undefined) {
+        return;
+      }
+      // With the `u` flag a surrogate range only matches lone surrogates, so
+      // this fails if a cut landed inside an emoji.
+      expect(match.text).not.toMatch(/[\uD800-\uDFFF]/u);
+      expect(match.text.startsWith("…")).toBe(true);
+      expect(match.text.endsWith("…")).toBe(true);
+      expect(match.highlightRanges).toHaveLength(1);
+      const range = match.highlightRanges[0];
+      expect(
+        range === undefined ? null : match.text.slice(range.start, range.end),
+      ).toBe("surrogateneedle");
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("creates the FTS index with a prefix index for typeahead queries", () => {
     const { db } = setup();
     try {
