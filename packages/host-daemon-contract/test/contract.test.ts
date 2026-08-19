@@ -1125,6 +1125,11 @@ describe("host-daemon command schemas", () => {
   // Version 134 keeps replayed Codex resume/fork usage snapshots off turn ids
   // bb never stored a turn/started for (token usage dropped, context usage
   // thread-scoped).
+  // Version 136 ships the narrow-grammar provider bridges: served bridge
+  // artifacts speak bridge-protocol v2 (`thread/delta` only), which an older
+  // daemon's runtime would ignore as unknown notifications and render empty
+  // timelines, so enrolled machines must update before receiving the new
+  // artifacts.
   // Version 133 suppresses Claude's terminal-failure drain before it can open
   // a provider-only turn. Version 132 deduplicates exact Codex terminal-item
   // retries before they cross the daemon boundary. Version 131 preserves Pi
@@ -1142,7 +1147,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(135);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(136);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
