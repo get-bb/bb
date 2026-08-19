@@ -41,8 +41,10 @@ export interface NormalizedFilePatch {
  * rename. Completing the header from `path` is what makes one host renderer
  * able to accept both shapes.
  *
- * Returns null when nothing renderable parses out, so callers can fall back to
- * plain text instead of rendering an empty diff.
+ * Returns null when nothing renderable parses out — including the case that
+ * matters most in practice, text that is not a patch at all: completing a
+ * header in front of it still parses, just to a file with no hunks, which
+ * would render as an empty diff instead of showing the caller their content.
  */
 export function normalizeFilePatch({
   patch,
@@ -58,7 +60,8 @@ export function normalizeFilePatch({
     ? `${normalizedPatch}\n`
     : `diff --git a/${normalizedPath} b/${normalizedPath}\n--- a/${normalizedPath}\n+++ b/${normalizedPath}\n${normalizedPatch}\n`;
   const file = parseGitDiffFiles(patchText)[0];
-  return file === undefined ? null : { patch: patchText, file };
+  if (file === undefined || file.hunks.length === 0) return null;
+  return { patch: patchText, file };
 }
 
 export interface GitDiffContextEnrichmentInput {
