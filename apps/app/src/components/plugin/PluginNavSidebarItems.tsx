@@ -34,6 +34,10 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
+import {
+  pluginAttentionLabel,
+  usePluginAttention,
+} from "@/hooks/usePluginAttention";
 import { getPluginPanelRoutePath } from "@/lib/route-paths";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -425,12 +429,27 @@ function ToolsNavSidebarItem({
   row: Extract<SidebarNavRow, { kind: "tools" }>;
 }) {
   const navigate = useNavigate();
+  const pluginAttention = usePluginAttention();
+  // Installed plugins that are enabled but not running (incompatible after a
+  // bb upgrade, failed, missing). The count rides in the row's accessory slot,
+  // the same bounded trailing value plugin rows use (#1915).
+  const attentionBadge =
+    pluginAttention.count > 0 ? (
+      <span
+        data-testid="tools-nav-plugin-attention"
+        aria-label={pluginAttentionLabel(pluginAttention.count)}
+        className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-warning/15 px-1 text-2xs font-medium tabular-nums text-warning-text"
+      >
+        {pluginAttention.count}
+      </span>
+    ) : null;
   return (
     <SidebarNavRowChrome
       {...props}
       rowKey={getPluginNavPanelKey(row)}
       title={row.title}
       icon={<ToolsNavSidebarItemIcon />}
+      accessory={attentionBadge}
       // Never active: AppLayout swaps AppSidebar out for ToolsSidebar on every
       // Extensions route, so this row is only on screen while Extensions is
       // closed.

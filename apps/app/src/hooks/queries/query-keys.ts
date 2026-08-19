@@ -1162,6 +1162,15 @@ export function allPluginListQueryKeyPrefix() {
   return [PLUGIN_LIST_QUERY_KEY] as const;
 }
 
+/**
+ * Shares the plugin-list prefix on purpose: every writer that refreshes the
+ * list (enable/disable, install, realtime `plugins-changed`) refreshes the
+ * attention summary with it.
+ */
+export function pluginAttentionQueryKey() {
+  return [PLUGIN_LIST_QUERY_KEY, "attention"] as const;
+}
+
 export function pluginSettingsViewQueryKey(pluginId: string) {
   return [PLUGIN_SETTINGS_VIEW_QUERY_KEY, pluginId] as const;
 }

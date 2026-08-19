@@ -15,8 +15,13 @@ import {
   setPluginEnabled,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
+import { pluginNeedsAttention } from "@bb/server-contract";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { getPluginDetailRoutePath } from "@/lib/route-paths";
-import { pluginRowSignal } from "./plugin-status";
+import {
+  pluginRowSignal,
+  pluginRuntimeStatusPresentation,
+} from "./plugin-status";
 import { PluginRowSignalView, PluginSignalLogo } from "./PluginRowSignal";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 import { PluginLogo } from "./plugin-ui";
@@ -28,6 +33,11 @@ import { PluginLogo } from "./plugin-ui";
  * while abnormal runtime health is an icon action that opens plugin details.
  * Newer-incompatible and pinned never badge. Hover reveals the chevron; the
  * row navigates to the plugin's detail page where depth lives.
+ *
+ * A plugin that is enabled but not running is the one case a row says more
+ * at rest: the status word sits beside the name, the server's status detail
+ * replaces the description, and the enable switch is marked "not running" so
+ * an "on" switch never claims the plugin works (#1915).
  */
 export function InstalledPluginsTab({
   plugins,
@@ -100,6 +110,17 @@ export function InstalledPluginRow({
   const signal = pluginRowSignal(plugin);
   const statusSignal = signal?.kind === "status" ? signal : null;
   const updateSignal = signal?.kind === "update" ? signal : null;
+  // Runtime health only (not a rolled-back update).
+  const runtimeStatus = pluginRuntimeStatusPresentation(plugin);
+  // Enabled, but the server never loaded it (incompatible, error, missing).
+  const notRunning = pluginNeedsAttention({
+    enabled: enabled === true,
+    status: plugin.status,
+  });
+  const runtimeStatusToneClass =
+    runtimeStatus?.tone === "error"
+      ? "text-destructive-text"
+      : "text-warning-text";
 
   const openDetail = () =>
     navigate(
@@ -119,7 +140,24 @@ export function InstalledPluginRow({
             <ProvenancePill label={plugin.publisherLabel} />
           )
         }
-        description={plugin.description}
+        status={
+          runtimeStatus === null ? undefined : (
+            <span
+              data-testid={`plugin-runtime-status-${plugin.id}`}
+              className={cn(
+                "shrink-0 text-xs font-medium",
+                runtimeStatusToneClass,
+              )}
+            >
+              {runtimeStatus.label}
+            </span>
+          )
+        }
+        description={
+          runtimeStatus === null
+            ? plugin.description
+            : (plugin.statusDetail ?? runtimeStatus.condition)
+        }
         openLabel={`${plugin.name ?? plugin.id} plugin details`}
         onOpen={openDetail}
         trailingMeta={
@@ -134,12 +172,29 @@ export function InstalledPluginRow({
           ) : undefined
         }
         persistentActions={
-          <Switch
-            checked={enabled}
-            disabled={toggle.isPending}
-            onCheckedChange={(next) => toggle.mutate(next)}
-            aria-label={`${enabled ? "Disable" : "Enable"} ${plugin.id}`}
-          />
+          <>
+            {runtimeStatus !== null && notRunning ? (
+              <span
+                data-testid={`plugin-not-running-${plugin.id}`}
+                className={cn(
+                  "mr-1 text-2xs font-medium",
+                  runtimeStatusToneClass,
+                )}
+              >
+                not running
+              </span>
+            ) : null}
+            <Switch
+              checked={enabled}
+              disabled={toggle.isPending}
+              onCheckedChange={(next) => toggle.mutate(next)}
+              aria-label={`${enabled ? "Disable" : "Enable"} ${plugin.id}${
+                runtimeStatus !== null && notRunning
+                  ? ` (${runtimeStatus.label.toLowerCase()}, not running)`
+                  : ""
+              }`}
+            />
+          </>
         }
         trailingVisual={<ResourceRowDetailChevron />}
       />
