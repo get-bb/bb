@@ -427,6 +427,7 @@ function BrowseCard({
             displayName: entry.displayName,
             icon: entry.icon,
             iconUrl: entry.iconUrl,
+            iconTinted: entry.iconTinted,
             source: entry.source,
           })
         }

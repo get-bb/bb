@@ -152,6 +152,7 @@ describe("plugin catalog queries", () => {
         description: "Personal task capture",
         icon: "CheckList",
         iconUrl: null,
+        iconTinted: false,
         category: "Project management",
         source: "npm:@bb-plugins/todoist",
         marketplace: "acme-plugins",

@@ -44,6 +44,7 @@ export type AddPluginInitial = {
   displayName: string;
   icon: string | null;
   iconUrl: string | null;
+  iconTinted: boolean;
   /** The entry's install source; decides how the dialog describes the install. */
   source: string;
 };

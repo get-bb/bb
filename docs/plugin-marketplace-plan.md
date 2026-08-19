@@ -128,6 +128,13 @@ Entry `icon` accepts the same shapes the plugin manifest supports today:
   a relative URL resolves against the manifest's own URL, which lets a
   git-hosted marketplace keep icons next to the manifest. Plain `http:` is
   rejected.
+- By default bb masks an SVG icon with the surrounding text color, the same
+  way it renders a plugin's own compact `bb.branding.icon`. Most catalog icons
+  are single-color glyphs, and an unmasked black-on-transparent SVG is
+  invisible on a dark theme. Set `{ "url": ..., "logo": true }` for
+  multi-color artwork that must keep its own colors. PNG and WebP icons always
+  keep their own colors: a mask reads alpha only and would flatten an opaque
+  image into a solid block.
 
 Handling:
 

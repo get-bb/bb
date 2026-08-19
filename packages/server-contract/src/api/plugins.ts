@@ -412,6 +412,14 @@ export const pluginCatalogSearchResultSchema = z.object({
    * names a host icon. The app never requests the marketplace's own URL.
    */
   iconUrl: z.string().nullable(),
+  /**
+   * Whether the app masks `iconUrl` with the surrounding text color, as it
+   * does a plugin's own compact `branding.icon`, instead of showing the
+   * image's own colors. True for bundled compact icons and for catalog SVGs
+   * not marked `logo`. Servers before bb-app 0.40.0 do not send it; those
+   * icons render untinted.
+   */
+  iconTinted: z.boolean().default(false),
   category: z.string(),
   source: z.string(),
   /** Marketplace that lists the entry; plugins bundled with the app use `bb-community`. */

@@ -222,6 +222,7 @@ describe("AddPluginDialog", () => {
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,
+      iconTinted: false,
       source: "builtin:linear",
     });
     expect(
@@ -238,6 +239,7 @@ describe("AddPluginDialog", () => {
       displayName: "Thread Hover Cards",
       icon: "Github",
       iconUrl: null,
+      iconTinted: false,
       source: "git:https://github.com/brsbl/bb-plugins@b173b67",
     });
     expect(
@@ -255,6 +257,7 @@ describe("AddPluginDialog", () => {
       displayName: "Widgets",
       icon: "Zap",
       iconUrl: null,
+      iconTinted: false,
       source: "npm:bb-plugin-widgets@^1.0.0",
     });
     expect(
@@ -273,6 +276,7 @@ describe("AddPluginDialog", () => {
       displayName: "Widgets",
       icon: "Zap",
       iconUrl: null,
+      iconTinted: false,
       marketplace: "bb-community",
       publisherLabel: "BB Community",
       source: "npm:bb-plugin-widgets@^1.0.0 (registry https://npm.acme.test)",
@@ -294,6 +298,7 @@ describe("AddPluginDialog", () => {
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,
+      iconTinted: false,
       source: "builtin:linear",
     });
 
@@ -325,6 +330,7 @@ describe("AddPluginDialog", () => {
       displayName: "Widgets",
       icon: null,
       iconUrl,
+      iconTinted: false,
       source: "npm:bb-plugin-widgets@1.0.0",
     });
 
@@ -349,6 +355,7 @@ describe("AddPluginDialog", () => {
           displayName: "Linear",
           icon: "Github",
           iconUrl: null,
+          iconTinted: false,
           source: "builtin:linear",
         }}
         onInstalled={(plugin) => {
@@ -404,6 +411,7 @@ describe("AddPluginDialog", () => {
       displayName: "Acme Notes",
       icon: "Zap",
       iconUrl: null,
+      iconTinted: false,
       source: "git:https://github.com/acme/plugins.git@semver:^1.0.0",
     });
 
@@ -451,6 +459,7 @@ describe("AddPluginDialog", () => {
       displayName: "Linear",
       icon: "Github",
       iconUrl: null,
+      iconTinted: false,
       source: "builtin:linear",
     });
 

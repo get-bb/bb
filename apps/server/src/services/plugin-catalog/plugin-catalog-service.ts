@@ -54,6 +54,7 @@ import {
   BUILTIN_PUBLISHER_KEY,
   BUILTIN_PUBLISHER_LABEL,
   entryIconName,
+  entryIconTinted,
   entrySourceDisplay,
   CURATED_MARKETPLACE_NAME,
   parseMarketplaceManifestJson,
@@ -413,6 +414,9 @@ export function createPluginCatalogService(deps: {
         iconHash === null
           ? null
           : entryIconAssetUrl(CURATED_MARKETPLACE_NAME, entry.name, iconHash),
+      // A bundled icon is the plugin's own compact SVG, authored to take the
+      // surrounding text color.
+      iconTinted: iconHash !== null,
       category: entry.category,
       source: builtinPluginSource(entry.name),
       // Plugins bundled with the app are BB's own, so the store groups them
@@ -459,11 +463,18 @@ export function createPluginCatalogService(deps: {
     return `/api/v1/plugin-catalog/icons/${encodeURIComponent(marketplace)}/${encodeURIComponent(entryId)}?h=${contentHash}`;
   }
 
-  function entryIconUrl(marketplace: string, entryId: string): string | null {
-    const icon = getPluginMarketplaceIcon(deps.db, marketplace, entryId);
+  /** The cached icon's same-origin URL and how the app paints it. */
+  function entryIconAsset(
+    marketplace: string,
+    entry: MarketplaceEntry,
+  ): { iconUrl: string | null; iconTinted: boolean } {
+    const icon = getPluginMarketplaceIcon(deps.db, marketplace, entry.id);
     return icon === undefined
-      ? null
-      : entryIconAssetUrl(marketplace, entryId, icon.contentHash);
+      ? { iconUrl: null, iconTinted: false }
+      : {
+          iconUrl: entryIconAssetUrl(marketplace, entry.id, icon.contentHash),
+          iconTinted: entryIconTinted(entry, icon.contentType),
+        };
   }
 
   function catalogSearchResult(args: {
@@ -482,7 +493,7 @@ export function createPluginCatalogService(deps: {
       displayName: entry.displayName,
       description: entry.description,
       icon: entryIconName(entry),
-      iconUrl: entryIconUrl(row.name, entry.id),
+      ...entryIconAsset(row.name, entry),
       category: entryCategory(entry, official),
       source: entrySourceDisplay(entry),
       marketplace: row.name,

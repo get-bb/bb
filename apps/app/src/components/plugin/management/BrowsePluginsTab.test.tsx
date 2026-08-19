@@ -31,6 +31,7 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   description: "Provider-independent durable memory for agents.",
   icon: "Brain",
   iconUrl: null,
+  iconTinted: false,
   category: "Context & knowledge",
   source: "builtin:memory",
   marketplaceDisplayName: "BB Community",
@@ -68,6 +69,7 @@ const GITHUB_ENTRY: PluginCatalogSearchEntry = {
   description: "Browse GitHub issues and pull requests in BB.",
   icon: "Github",
   iconUrl: null,
+  iconTinted: false,
   category: "Developer tools",
   source: "builtin:github",
 };
@@ -443,6 +445,7 @@ describe("BrowsePluginsTab", () => {
       displayName: "Memory",
       icon: "Brain",
       iconUrl: null,
+      iconTinted: false,
       source: "builtin:memory",
     });
     fireEvent.click(

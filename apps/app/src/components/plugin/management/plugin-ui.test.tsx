@@ -6,14 +6,15 @@ import { CatalogEntryIcon } from "./plugin-ui";
 
 afterEach(cleanup);
 
-it("masks a plugin-owned compact icon instead of embedding it as an image", () => {
-  const iconUrl = "/api/v1/plugin-catalog/icons/bb-community/provider-acp?h=ab";
+it("masks a tinted icon instead of embedding it as an image", () => {
+  const iconUrl = "/api/v1/plugin-catalog/icons/bb-community/agent-proxy?h=ab";
   const view = render(
     <CatalogEntryIcon
       entry={{
-        displayName: "ACP providers",
-        icon: "./icons/acp.svg",
+        displayName: "Agent Proxy",
+        icon: null,
         iconUrl,
+        iconTinted: true,
       }}
       className="size-6"
     />,
@@ -27,11 +28,11 @@ it("masks a plugin-owned compact icon instead of embedding it as an image", () =
   ).toBeTruthy();
 });
 
-it("embeds a marketplace listing's own artwork as an image", () => {
+it("embeds a marketplace listing's logo as an image", () => {
   const iconUrl = "/api/v1/plugin-catalog/icons/acme/widgets?h=cd";
   const view = render(
     <CatalogEntryIcon
-      entry={{ displayName: "Widgets", icon: null, iconUrl }}
+      entry={{ displayName: "Widgets", icon: null, iconUrl, iconTinted: false }}
       className="size-6"
     />,
   );

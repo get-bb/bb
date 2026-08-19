@@ -1,5 +1,4 @@
 import { useState, type ReactNode } from "react";
-import { isPluginOwnedIconPath } from "@bb/domain";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -121,13 +120,19 @@ export function CatalogEntryIcon({
   entry,
   className,
 }: {
-  entry: { displayName: string; icon: string | null; iconUrl: string | null };
+  entry: {
+    displayName: string;
+    icon: string | null;
+    iconUrl: string | null;
+    iconTinted: boolean;
+  };
   className: string;
 }) {
   const [failedIconUrl, setFailedIconUrl] = useState<string | null>(null);
-  // A path-shaped branding.icon is the plugin's own compact SVG: single-color
-  // artwork meant to take the surrounding text color, not a logo image.
-  if (entry.iconUrl !== null && isPluginOwnedIconPath(entry.icon ?? "")) {
+  // The server marks single-color artwork (a bundled compact icon or a catalog
+  // SVG not declared a logo) for masking with the surrounding text color, so a
+  // black-on-transparent glyph stays visible on a dark theme.
+  if (entry.iconUrl !== null && entry.iconTinted) {
     return <PluginCompactIconMask url={entry.iconUrl} className={className} />;
   }
   if (entry.iconUrl === null || entry.iconUrl === failedIconUrl) {

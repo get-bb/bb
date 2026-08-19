@@ -296,12 +296,58 @@ describe("plugin catalog service", () => {
       `/api/v1/plugin-catalog/icons/bb-community/${withSvg.name}?h=${icon?.hash}`,
     );
     expect(new TextDecoder().decode(icon?.bytes)).toContain("<svg");
+    // The compact icon is single-color artwork; the app masks it.
+    expect(svgEntry?.iconTinted).toBe(true);
 
     expect(glyphEntry?.iconUrl).toBeNull();
+    expect(glyphEntry?.iconTinted).toBe(false);
     expect(await catalog.icon("bb-community", withGlyph.name)).toBeUndefined();
   });
 
   describe("refresh", () => {
+    it("keeps a logo's own colors: a listing marked logo or a raster icon is not tinted", async () => {
+      const PNG = Buffer.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
+      ]);
+      const fetchImpl: MarketplaceFetch = async (url) => {
+        if (url === MANIFEST_URL) {
+          return jsonResponse(
+            manifest([
+              remoteEntry({
+                id: "brand",
+                icon: { url: "./icons/brand.svg", logo: true },
+              }),
+              remoteEntry({ id: "raster", icon: { url: "./icons/raster.png" } }),
+              remoteEntry({ id: "glyph", icon: { url: "./icons/glyph.svg" } }),
+            ]),
+          );
+        }
+        return url.endsWith(".png")
+          ? new Response(PNG, {
+              status: 200,
+              headers: { "content-type": "image/png" },
+            })
+          : new Response(VALID_SVG, {
+              status: 200,
+              headers: { "content-type": "image/svg+xml" },
+            });
+      };
+      const catalog = service({ fetch: fetchImpl });
+
+      await catalog.refresh(1_000);
+      const tinted = Object.fromEntries(
+        (await catalog.search("")).map((entry) => [
+          entry.entryId,
+          { iconUrl: entry.iconUrl !== null, iconTinted: entry.iconTinted },
+        ]),
+      );
+      expect(tinted).toMatchObject({
+        brand: { iconUrl: true, iconTinted: false },
+        raster: { iconUrl: true, iconTinted: false },
+        glyph: { iconUrl: true, iconTinted: true },
+      });
+    });
+
     it("replaces the catalog, caches icons, and revalidates with the ETag", async () => {
       const requests: Array<{ url: string; headers: Headers }> = [];
       const fetchImpl: MarketplaceFetch = async (url, init) => {
@@ -337,6 +383,9 @@ describe("plugin catalog service", () => {
       expect(await catalog.icon("bb-community", "widgets")).toMatchObject({
         contentType: "image/svg+xml",
       });
+      // A catalog SVG is tinted by default, like a plugin's own compact icon,
+      // so a black-on-transparent glyph stays visible on a dark theme (#1941).
+      expect(results[0]?.iconTinted).toBe(true);
       // The seeded entries are gone: the published manifest is authoritative.
       expect((await catalog.search("thread-hover-cards")).length).toBe(0);
       expect(requests[1]?.url).toBe(ICON_URL);

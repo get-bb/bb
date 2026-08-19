@@ -565,6 +565,7 @@ const UNINSTALLED_CATALOG_PLUGIN = {
   description: "Browse GitHub issues and pull requests without leaving bb.",
   icon: "Github",
   iconUrl: null,
+  iconTinted: false,
   category: "Developer tools",
   source: "builtin:github",
   marketplaceDisplayName: "BB Community",
@@ -700,6 +701,7 @@ function CatalogPlugin({
           displayName: entry.displayName,
           icon: entry.icon,
           iconUrl: entry.iconUrl,
+          iconTinted: entry.iconTinted,
           source: entry.source,
         }}
         onOpenChange={setInstallOpen}

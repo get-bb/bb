@@ -16,6 +16,7 @@ const searchResult = {
   description: "Linear issue tools",
   icon: null,
   iconUrl: null,
+  iconTinted: false,
   category: "Developer tools",
   source: "builtin:linear",
   marketplace: "bb-community",

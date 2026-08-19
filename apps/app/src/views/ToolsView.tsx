@@ -389,6 +389,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
                     displayName: installTarget.displayName,
                     icon: installTarget.icon,
                     iconUrl: installTarget.iconUrl,
+                    iconTinted: installTarget.iconTinted,
                     source: installTarget.source,
                   }
             }
