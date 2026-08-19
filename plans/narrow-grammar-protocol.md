@@ -42,6 +42,23 @@ to pre-cutover behavior):
    guard identical on `origin/main`). The roster capability should be
    corrected or made agent-derived.
 
+### Post-rebase port QA (2026-08-18)
+
+After the rebase, the five provider fixes ported from main into the delta
+architecture (`5fc443ada..96ec52ac1`) were live-verified individually
+against a fresh dev instance from this worktree (branch @ `61d967e34`);
+the full gate was not re-run. Raw evidence: `/tmp/port-qa.md`.
+
+| port | behavior | result |
+|---|---|---|
+| #1807 (pi compact refusal) | pi thread `thr_jcnpe5eqge`: `/compact` on a tiny session emitted `provider/warning{category: "compaction-skipped", details: "Compaction failed: Nothing to compact (session too small)"}` and `turn/completed{completed}`; thread stayed `idle`, follow-up tell worked | PASS |
+| #1663 (pi string content) | same thread: ordinary multi-sentence turn completed with agentMessage text, `thread/tokenUsage/updated`, and `turn/completed{completed}` | PASS |
+| #1804 (codex replay guard) | codex thread `thr_36mv73ysnc`: stop → resume produced zero orphan-snapshot / unknown-turn-id log lines for the thread (all existing orphan drops are older, other-thread pre-turn cases), and `thread/contextWindowUsage/updated` arrived thread-scoped before the resumed turn opened | PASS |
+| #1623 (claude stop-drain) | claude thread `thr_4f3m3snstf`: mid-turn stop settled `system/thread/interrupted` + `turn/completed{interrupted}` exactly once; 0 `turn/started` from late drain over >13s; next tell opened a fresh turn that completed normally | PASS |
+| #1803 (acp classifier glance) | acp-cursor thread `thr_r3xv94btf5` in accept-edits: the write was auto-accepted as a file-change approval (no pending interaction, no command/directory prompt) and the edit landed with the exact requested content | PASS |
+
+QA threads deleted, dev instance stopped, no stray processes.
+
 ## The revision in one paragraph
 
 Today a bridge owes the runtime finished canonical `ThreadEvent`s: it opens
