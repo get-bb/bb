@@ -223,15 +223,6 @@ function renderAgentMessage(
     title: "Raw agent mention target",
     titleFallback: "Raw agent mention target",
   });
-  const senderThreadTarget =
-    senderThreadProjectId === null
-      ? null
-      : threadListEntry({
-          id: "thr_agent",
-          projectId: senderThreadProjectId,
-          title: senderThreadTitle,
-          titleFallback: senderThreadTitle,
-        });
   const { wrapper } = createQueryClientTestHarness();
 
   return render(
@@ -240,13 +231,7 @@ function renderAgentMessage(
         <ThreadTitleMentionResourcesProvider
           sectionNamesById={new Map()}
           projectNamesById={new Map()}
-          threadById={
-            new Map(
-              [rawMentionTarget, senderThreadTarget]
-                .filter((thread) => thread !== null)
-                .map((thread) => [thread.id, thread]),
-            )
-          }
+          threadById={new Map([[rawMentionTarget.id, rawMentionTarget]])}
         >
           <ConversationMessageContent
             role="user"
