@@ -54,9 +54,12 @@ export const HEADER_SEAM_CLASS = "border-b border-border-seam-vertical/60";
 /**
  * Shared page-header surface treatment. Secondary chrome that sits beside a
  * page header can reuse this token so the two regions read as one title row.
+ * No `backdrop-blur`: the header is a non-overlapping flex sibling above the
+ * scroller, so nothing paints behind it and a blur would only add a
+ * compositing pass on every frame.
  */
 export const APP_PAGE_HEADER_SURFACE_CLASS =
-  "bg-surface-scrim backdrop-blur-sm";
+  "bg-surface-scrim";
 
 interface AppPageHeaderProps {
   center?: ReactNode;

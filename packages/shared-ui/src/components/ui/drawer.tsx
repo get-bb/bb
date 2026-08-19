@@ -47,7 +47,7 @@ const DrawerOverlay = React.forwardRef<
     // when rendered from a plugin slot (see portal-scope.ts).
     {...usePortalScopeProps()}
     className={cn(
-      "fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px]",
+      "fixed inset-0 z-50 bg-black/40",
       className,
     )}
     {...props}

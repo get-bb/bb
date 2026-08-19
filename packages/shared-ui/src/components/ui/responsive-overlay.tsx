@@ -658,7 +658,7 @@ export function PersistentResponsiveDrawerShell({
         aria-hidden="true"
         data-persistent-drawer-backdrop=""
         data-state={open ? "open" : "closed"}
-        className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px]"
+        className="fixed inset-0 z-50 bg-black/40"
         style={{
           opacity: open ? 1 : 0,
           pointerEvents: open ? "auto" : "none",
