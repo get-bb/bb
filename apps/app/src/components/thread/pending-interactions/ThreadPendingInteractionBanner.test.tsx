@@ -44,7 +44,7 @@ function renderInteraction(interaction: PendingInteraction) {
 }
 
 describe("ThreadPendingInteractionBanner", () => {
-  it("keeps command approval details selectable", () => {
+  it("gives a displayed approval command its own Select All scope", () => {
     const interaction = makeInteraction({
       kind: "approval",
       subject: {
@@ -62,11 +62,11 @@ describe("ThreadPendingInteractionBanner", () => {
     renderInteraction(interaction);
 
     expect(
-      screen.getByText("/workspace/project").closest(".select-text"),
+      screen.getByText("$ pnpm test").closest("[data-select-all-scope]"),
     ).not.toBeNull();
   });
 
-  it("keeps file-change approval details selectable", () => {
+  it("gives approval detail lists their own Select All scope", () => {
     const interaction = makeInteraction({
       kind: "approval",
       subject: {
@@ -82,7 +82,9 @@ describe("ThreadPendingInteractionBanner", () => {
     renderInteraction(interaction);
 
     expect(
-      screen.getByText("Write root: /workspace/write").closest(".select-text"),
+      screen
+        .getByText("Write root: /workspace/write")
+        .closest("[data-select-all-scope]"),
     ).not.toBeNull();
   });
 
@@ -109,7 +111,7 @@ describe("ThreadPendingInteractionBanner", () => {
     ).not.toBeNull();
   });
 
-  it("keeps plan file paths selectable", () => {
+  it("gives plan contents and file paths separate Select All scopes", () => {
     const interaction = makeInteraction({
       kind: "approval",
       subject: {
@@ -125,7 +127,10 @@ describe("ThreadPendingInteractionBanner", () => {
     renderInteraction(interaction);
 
     expect(
-      screen.getByText("/workspace/plan.md").closest(".select-text"),
+      screen.getByText("/workspace/plan.md").closest("[data-select-all-scope]"),
+    ).not.toBeNull();
+    expect(
+      screen.getByText("Ship it.").closest("[data-select-all-scope]"),
     ).not.toBeNull();
   });
 });

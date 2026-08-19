@@ -1,10 +1,37 @@
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { AppSelectAllController } from "@/components/AppSelectAllController";
 import { ConversationTimeline } from "./conversation.js";
 
 export default {
   title: "foundation/Selection Policy",
 };
+
+function ShadowSelectionSurface() {
+  const hostRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const host = hostRef.current;
+    if (host === null || host.shadowRoot !== null) return;
+    host.attachShadow({ mode: "open" }).innerHTML = `
+      <p>Shadow file line one</p>
+      <button type="button">Shadow action</button>
+      <p>Shadow file line two</p>
+      <input value="Shadow editor draft" />
+    `;
+  }, []);
+
+  return (
+    <section
+      className="mt-4 select-text rounded-md border border-border p-4"
+      data-select-all-scope=""
+      data-testid="mixed-shadow-scope"
+    >
+      <p>Light preview header</p>
+      <div ref={hostRef} />
+      <p>Light preview footer</p>
+    </section>
+  );
+}
 
 export const Policy = () => {
   useLayoutEffect(() => {
@@ -65,6 +92,7 @@ export const Policy = () => {
         >
           Composer draft
         </div>
+        <ShadowSelectionSurface />
       </main>
 
       <aside

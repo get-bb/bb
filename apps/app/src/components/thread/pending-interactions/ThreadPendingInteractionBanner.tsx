@@ -290,6 +290,7 @@ function ApprovalDetailList({
 }) {
   return (
     <ul
+      data-select-all-scope=""
       className={cn(
         "min-w-0 max-w-full select-text text-xs text-muted-foreground [overflow-wrap:anywhere]",
         className,
@@ -328,6 +329,7 @@ function buildApprovalSubject({
         body: command ? (
           <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-card">
             <pre
+              data-select-all-scope=""
               className={cn(
                 getDetailScrollMaxHeightClass("base"),
                 "max-w-full select-text overflow-auto whitespace-pre px-3 py-2 font-mono text-xs leading-relaxed text-foreground",
@@ -380,6 +382,7 @@ function buildApprovalSubject({
         body: (
           <div className="overflow-hidden rounded-lg border border-border bg-card">
             <div
+              data-select-all-scope=""
               className={cn(
                 getDetailScrollMaxHeightClass("base"),
                 "overflow-auto px-3 py-2",
@@ -388,7 +391,10 @@ function buildApprovalSubject({
               <MarkdownPreview content={plan} className="text-xs" />
             </div>
             {planFilePath ? (
-              <p className="select-text truncate border-t border-border px-3 py-2 font-mono text-xs text-muted-foreground">
+              <p
+                className="select-text truncate border-t border-border px-3 py-2 font-mono text-xs text-muted-foreground"
+                data-select-all-scope=""
+              >
                 {planFilePath}
               </p>
             ) : null}
