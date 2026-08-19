@@ -97,7 +97,7 @@ import {
   PinnedThreadTree,
   type PinnedThreadTreeProps,
 } from "./PinnedThreadTree";
-import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
+import { useThreadTitleMentionResources } from "@/components/thread/ThreadTitleMentions";
 import { buildPinnedSidebarState } from "./pinnedSidebarThreads";
 import {
   collapsedEnvironmentIdsAtom,
@@ -177,11 +177,6 @@ interface ProjectListActionButtonsProps {
 
 interface ProjectListShellProps {
   children: ReactNode;
-  titleMentionResources?: {
-    sectionNamesById: ReadonlyMap<string, string>;
-    projectNamesById: ReadonlyMap<string, string>;
-    threadById: ReadonlyMap<string, ThreadListEntry>;
-  };
 }
 
 interface ProjectListSectionIconButtonProps {
@@ -937,22 +932,11 @@ export function ProjectListActionButtons({
   );
 }
 
-export function ProjectListShell({
-  children,
-  titleMentionResources,
-}: ProjectListShellProps) {
-  const content = (
+export function ProjectListShell({ children }: ProjectListShellProps) {
+  return (
     <SidebarStickyStack data-sidebar-sticky-density="compact-actions">
       <SidebarGroupContent>{children}</SidebarGroupContent>
     </SidebarStickyStack>
-  );
-  if (!titleMentionResources) {
-    return content;
-  }
-  return (
-    <SidebarThreadTitleMentionResourcesProvider {...titleMentionResources}>
-      {content}
-    </SidebarThreadTitleMentionResourcesProvider>
   );
 }
 
@@ -1523,24 +1507,11 @@ function ProjectListComponent({
     return sidebarThreads;
   }, [sidebarNavigation]);
   const draftThreadIds = usePromptDraftInputThreadIds(threads);
-  const projectNamesById = useMemo(() => {
-    const namesById = new Map<string, string>();
-    if (!sidebarNavigation) {
-      return namesById;
-    }
-    for (const project of sidebarNavigation.projects) {
-      namesById.set(project.id, project.name);
-    }
-    namesById.set(PERSONAL_PROJECT_ID, sidebarNavigation.personalProject.name);
-    return namesById;
-  }, [sidebarNavigation]);
-  const sectionNamesById = useMemo(() => {
-    const namesById = new Map<string, string>();
-    for (const section of sections) {
-      namesById.set(section.id, section.name);
-    }
-    return namesById;
-  }, [sections]);
+  // Provided once by AppLayout from the same sidebar payload (with value
+  // retention across refetches); building a second copy here re-rendered every
+  // row twice per sidebar update.
+  const titleMentionResources = useThreadTitleMentionResources();
+  const { sectionNamesById, projectNamesById } = titleMentionResources;
   const threadById = useMemo(() => {
     const map = new Map<string, ThreadListEntry>();
     for (const thread of threads) {
@@ -1548,10 +1519,6 @@ function ProjectListComponent({
     }
     return map;
   }, [threads]);
-  const titleMentionResources = useMemo(
-    () => ({ sectionNamesById, projectNamesById, threadById }),
-    [sectionNamesById, projectNamesById, threadById],
-  );
   const projectsState = useConnectionAwareQueryState({
     hasResolvedData: projects !== undefined,
     isFetching: sidebarNavigationQuery.isFetching,
@@ -2014,7 +1981,7 @@ function ProjectListComponent({
 
   if (threadSearch?.isActive) {
     return (
-      <ProjectListShell titleMentionResources={titleMentionResources}>
+      <ProjectListShell>
         <SidebarThreadSearchPanel
           activeIndex={threadSearch.activeIndex}
           isRecentsLoading={projectsState.status === "loading"}
@@ -2033,14 +2000,14 @@ function ProjectListComponent({
 
   if (projectsState.status === "loading") {
     return (
-      <ProjectListShell titleMentionResources={titleMentionResources}>
+      <ProjectListShell>
         <ProjectListNavigationLoadingState />
       </ProjectListShell>
     );
   }
 
   return (
-    <ProjectListShell titleMentionResources={titleMentionResources}>
+    <ProjectListShell>
       <ActiveSidebarModeSections
         mode={organizationMode}
         renderMachine={() => (

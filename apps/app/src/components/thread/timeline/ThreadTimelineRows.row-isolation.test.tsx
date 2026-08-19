@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 
-const renderedMessageIds = vi.hoisted(() => [] as (string | undefined)[]);
+const renderedMessageTexts = vi.hoisted(() => [] as string[]);
 
 // Wrap the message body so each render of a row's content is observable. The
 // wrapper only re-renders when its parent hands it a new element, so the count
@@ -20,7 +20,7 @@ vi.mock("./ConversationMessageContent.js", async (importOriginal) => {
   return {
     ...actual,
     ConversationMessageContent: (props: ComponentProps<typeof Actual>) => {
-      renderedMessageIds.push(props.id ?? props.text);
+      renderedMessageTexts.push(props.text);
       return createElement(Actual, props);
     },
   };
@@ -39,7 +39,7 @@ function assistantRow(index: number) {
 
 afterEach(() => {
   cleanup();
-  renderedMessageIds.length = 0;
+  renderedMessageTexts.length = 0;
 });
 
 describe("ThreadTimelineRows row isolation", () => {
@@ -59,16 +59,16 @@ describe("ThreadTimelineRows row isolation", () => {
       </MemoryRouter>
     );
     const view = render(renderTimeline(rows));
-    expect(renderedMessageIds).toHaveLength(12);
-    renderedMessageIds.length = 0;
+    expect(renderedMessageTexts).toHaveLength(12);
+    renderedMessageTexts.length = 0;
 
     // A new assistant message moves the "latest actionable" id, which every
     // row reads from context. Only the previous latest (inline -> overflow)
     // and the new row may render; the other ten must bail out.
     view.rerender(renderTimeline([...rows, assistantRow(12)]));
-    expect([...renderedMessageIds].sort()).toEqual([
-      "assistant_message_11",
-      "assistant_message_12",
+    expect([...renderedMessageTexts].sort()).toEqual([
+      "Assistant answer number 11.",
+      "Assistant answer number 12.",
     ]);
   });
 });

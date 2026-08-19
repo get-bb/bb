@@ -16,7 +16,10 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar.js";
-import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
+import {
+  ThreadTitleMentionResourcesProvider,
+  useSidebarThreadTitleMentionResources,
+} from "@/components/thread/ThreadTitleMentions";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import {
   resolveAutomationBreadcrumbs,
@@ -538,27 +541,9 @@ export function AppLayout({ children }: AppLayoutProps) {
       ...sidebarNavigation.personalProject.threads,
     ];
   }, [sidebarNavigationQuery.data]);
-  const titleMentionResources = useMemo(() => {
-    const sectionNamesById = new Map<string, string>();
-    const projectNamesById = new Map<string, string>();
-    const threadById = new Map(
-      sidebarThreads.map((entry) => [entry.id, entry]),
-    );
-    const navigation = sidebarNavigationQuery.data;
-    if (navigation) {
-      for (const section of navigation.sections) {
-        sectionNamesById.set(section.id, section.name);
-      }
-      for (const projectEntry of navigation.projects) {
-        projectNamesById.set(projectEntry.id, projectEntry.name);
-      }
-      projectNamesById.set(
-        navigation.personalProject.id,
-        navigation.personalProject.name,
-      );
-    }
-    return { sectionNamesById, projectNamesById, threadById };
-  }, [sidebarNavigationQuery.data, sidebarThreads]);
+  const titleMentionResources = useSidebarThreadTitleMentionResources(
+    sidebarNavigationQuery.data,
+  );
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId ?? "", {
     enabled: isThreadView && Boolean(threadId),
     timelinePrefetch: isThreadView && Boolean(threadId),
