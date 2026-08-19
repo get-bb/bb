@@ -654,17 +654,28 @@ function timelineRowsOwnerKey({
 }
 
 function timelineHeightSnapRevision(rows: readonly TimelineRow[]): string {
+  // Prepending an older page must finalize the new height during this commit.
+  // The parent scroll body restores its captured prepend anchor in a layout
+  // effect; if AutoHeightContainer waits for ResizeObserver, the scroll body
+  // only sees the old wrapper height and cannot compensate for the added rows.
+  const firstRowId = rows[0]?.id;
+
   // Active turns render their work rows directly. Completion replaces those
-  // rows with one or more turn summaries plus the terminal message. Key the
-  // height container by the newest completed summary so that authoritative
-  // topology replacement snaps instead of looking like a second stream.
+  // rows with one or more turn summaries plus the terminal message. Include
+  // the newest completed summary so that authoritative topology replacement
+  // also snaps instead of looking like a second stream.
   for (let index = rows.length - 1; index >= 0; index -= 1) {
     const row = rows[index];
     if (row?.kind === "turn") {
-      return `${row.id}:${row.sourceSeqStart}:${row.sourceSeqEnd}`;
+      return joinSignatureParts([
+        firstRowId,
+        row.id,
+        row.sourceSeqStart,
+        row.sourceSeqEnd,
+      ]);
     }
   }
-  return "active";
+  return joinSignatureParts([firstRowId, "active"]);
 }
 
 function useTimelineViewRowsCache(): GetTimelineViewRows {
