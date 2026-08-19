@@ -3,7 +3,7 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   commandRow,
   conversationRow,
@@ -16,7 +16,23 @@ import {
   TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
 } from "./timeline-row-containment";
 
-afterEach(cleanup);
+// jsdom has no `CSS.supports`; the arming hook reads scroll-anchoring support
+// from it, so each test declares which engine it models.
+function stubScrollAnchoring(supported: boolean): void {
+  vi.stubGlobal("CSS", {
+    supports: (property: string, value: string) =>
+      supported && property === "overflow-anchor" && value === "none",
+  });
+}
+
+beforeEach(() => {
+  stubScrollAnchoring(true);
+});
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 function rowWrapper(container: HTMLElement, rowId: string): HTMLElement {
   const element = container.querySelector<HTMLElement>(
@@ -148,5 +164,48 @@ describe("ThreadTimelineRows row containment", () => {
     expect(estimateTimelineRowIntrinsicBlockSizePx(rows[2]!)).toBeGreaterThan(
       estimateTimelineRowIntrinsicBlockSizePx(rows[0]!) ?? Number.NaN,
     );
+  });
+
+  it("never arms content-visibility where CSS scroll anchoring is missing (WebKit)", async () => {
+    stubScrollAnchoring(false);
+    const rows = [
+      conversationRow({
+        id: "user_1",
+        role: "user",
+        text: "Please look into the flaky test.",
+        seq: 1,
+      }),
+      conversationRow({
+        id: "assistant_1",
+        role: "assistant",
+        text: "x".repeat(600),
+        seq: 2,
+      }),
+    ];
+    const view = render(
+      <MemoryRouter>
+        <QueryClientProvider client={new QueryClient()}>
+          <ThreadTimelineRows
+            threadId="thr_main"
+            timelineRows={rows}
+            threadRuntimeDisplayStatus="idle"
+            workspaceRootPath={undefined}
+            initialExpanded={new Set()}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    await act(nextAnimationFrame);
+    await act(nextAnimationFrame);
+    await act(nextAnimationFrame);
+    for (const rowId of ["user_1", "assistant_1"]) {
+      const classes = Array.from(rowWrapper(view.container, rowId).classList);
+      // The intrinsic-size estimate is inert without content-visibility; only
+      // the arming class must stay away on engines that cannot anchor scroll.
+      expect(classes).toContain(
+        TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
+      );
+      expect(classes).not.toContain("max-md:[content-visibility:auto]");
+    }
   });
 });

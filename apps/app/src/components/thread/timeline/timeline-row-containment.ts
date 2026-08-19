@@ -1,5 +1,6 @@
 import { useEffect, type CSSProperties, type RefObject } from "react";
 import type { ThreadTimelineViewRow } from "@bb/thread-view";
+import { supportsScrollAnchoring } from "@/lib/scroll-anchoring-support";
 
 /**
  * Top-level timeline rows skip layout and paint while off screen on compact
@@ -19,10 +20,15 @@ import type { ThreadTimelineViewRow } from "@bb/thread-view";
  * is skipped, so realizing the row later does not change the scroll range.
  * Applying `content-visibility: auto` from the first frame would leave every
  * row above the initial viewport (the timeline mounts scrolled to the bottom)
- * and every prepended older page at the estimate, and iOS Safari has no
- * scroll anchoring: each estimate → real correction while scrolling up would
- * shift the visible content. The estimate below only backs a row whose
- * remembered size is missing.
+ * and every prepended older page at the estimate. The estimate below only
+ * backs a row whose remembered size is missing.
+ *
+ * WebKit never arms: it has no CSS scroll anchoring, so any difference between
+ * a skipped row's replayed size and its real size (a stale remembered size, a
+ * row that changed while skipped) moves the visible content instead of being
+ * absorbed, which reads as a flash-and-scroll while a thread settles on iOS.
+ * Chromium and Firefox anchor the viewport through those corrections, so the
+ * layout/paint savings stay there.
  */
 export const TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME =
   "max-md:[contain-intrinsic-block-size:auto_1.25rem]";
@@ -46,7 +52,7 @@ export function useArmTopLevelTimelineRowContainment(
 ): void {
   useEffect(() => {
     const wrapper = wrapperRef.current;
-    if (wrapper === null) {
+    if (wrapper === null || !supportsScrollAnchoring()) {
       return;
     }
     let cancelled = false;
