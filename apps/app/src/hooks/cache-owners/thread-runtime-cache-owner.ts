@@ -895,8 +895,9 @@ export function applySendThreadMessageSuccess({
       }),
     );
     if (realtimeConnected) {
-      // `queue-changed` covers the thread record; only the queue list needs a
-      // read to swap the optimistic row for the server row.
+      // Enqueuing does not write the thread record, and `queue-changed`
+      // refreshes prompt history; only the queue list needs a read to swap
+      // the optimistic row for the server row.
       invalidateThreadQueuedMessageListQuery({
         queryClient,
         threadId: request.id,

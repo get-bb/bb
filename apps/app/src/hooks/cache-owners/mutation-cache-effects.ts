@@ -221,9 +221,10 @@ export function invalidateThreadAcceptedMessageQueriesWithoutRealtime({
 }
 
 /**
- * A queued send only changed the queue; while realtime is connected the
- * server's `queue-changed` notification refreshes prompt history and the
- * thread record, so only the queue list itself is refetched here.
+ * A queued send only inserts a queue row; the thread record itself is not
+ * written, and while realtime is connected the server's `queue-changed`
+ * notification refreshes prompt history, so only the queue list itself is
+ * refetched here.
  */
 export function invalidateThreadQueuedMessageListQuery({
   queryClient,
