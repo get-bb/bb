@@ -241,8 +241,8 @@ added/updated/unchanged counts.
                                  nothing migrates unless you ask
   bb plugin build [path]         Compile the plugin into dist/ — the backend
                                  bundle (server.js, server.meta.json); when
-                                 bb.app is declared, the frontend bundle
-                                 (app.js, app.css, app.meta.json); when
+                                 bb.app is declared, the minified frontend
+                                 bundle (app.js, app.css, app.meta.json); when
                                  bb.host is declared, the self-contained Node
                                  host bundle (host.js, host.js.map,
                                  host.meta.json recording its digest — host
@@ -254,7 +254,8 @@ added/updated/unchanged counts.
                                  pluginId, pluginVersion, and builtWith (bb +
                                  plugin SDK versions); no server required
   bb plugin dev [path]           Watch a plugin's sources (default: cwd) and
-                                 on every change rebuild its declared frontend,
+                                 on every change rebuild its declared frontend
+                                 (unminified, for readable stack traces),
                                  host, and provider-bridge bundles, then
                                  reload the plugin; Ctrl+C to stop
 
