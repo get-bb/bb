@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
 
@@ -12,14 +12,29 @@ export interface BundleBootChunk {
   packages: string[];
 }
 
+export interface BundleChunk extends BundleBootChunk {
+  /** Chunks this one imports statically (its `import` edges, not `import()`). */
+  imports: string[];
+  /**
+   * The app-relative source module this chunk was created for (an entry or a
+   * dynamic-import target), or null for a shared chunk Rolldown split out.
+   */
+  facade: string | null;
+}
+
 export interface BundleStats {
   entry: string;
   bootChunks: BundleBootChunk[];
+  /** Every JS chunk in the build, so checks can reason about lazy closures too. */
+  chunks: BundleChunk[];
 }
 
 /**
  * Writes `bundle-stats.json` describing the boot payload: the entry chunk and
- * its static-import closure, with the npm packages each one contains.
+ * its static-import closure, with the npm packages each one contains — plus
+ * the full chunk graph (static edges only), so the budget check can also
+ * verify that on-demand packages such as KaTeX are only ever reached through a
+ * dynamic `import()`.
  *
  * scripts/check-bundle-budget.mjs reads this instead of pattern-matching
  * minified output, so the budget check knows exactly which packages block
@@ -46,7 +61,8 @@ export function bundleStats(): Plugin {
       walk(entry.fileName);
 
       const bootChunks: BundleBootChunk[] = [];
-      for (const fileName of [...bootFileNames].sort()) {
+      const chunks: BundleChunk[] = [];
+      for (const fileName of Object.keys(bundle).sort()) {
         const chunk = bundle[fileName];
         if (chunk === undefined || chunk.type !== "chunk") continue;
         const packages = new Set<string>();
@@ -54,14 +70,23 @@ export function bundleStats(): Plugin {
           const name = packageNameOf(moduleId);
           if (name !== null) packages.add(name);
         }
-        bootChunks.push({
+        const bootChunk: BundleBootChunk = {
           fileName,
           bytes: Buffer.byteLength(chunk.code),
           packages: [...packages].sort(),
+        };
+        chunks.push({
+          ...bootChunk,
+          imports: [...chunk.imports].sort(),
+          facade:
+            chunk.facadeModuleId === null
+              ? null
+              : relative(appDir, chunk.facadeModuleId).split(sep).join("/"),
         });
+        if (bootFileNames.has(fileName)) bootChunks.push(bootChunk);
       }
 
-      const stats: BundleStats = { entry: entry.fileName, bootChunks };
+      const stats: BundleStats = { entry: entry.fileName, bootChunks, chunks };
       const target = resolve(appDir, "bundle-stats.json");
       await mkdir(dirname(target), { recursive: true });
       await writeFile(target, `${JSON.stringify(stats, null, 2)}\n`);
