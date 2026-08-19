@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useAtomValue } from "jotai";
+import { atom, useAtomValue } from "jotai";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
@@ -32,6 +32,25 @@ const NO_INDICATOR: PaneContentSplitIndicator = {
   isOpenInSplit: false,
   miniMap: null,
 };
+
+/**
+ * Subscribed instead of `splitLayoutAtom` when the indicator cannot show
+ * (compact viewport, or the caller disabled it). Every sidebar row calls these
+ * hooks; a live layout subscription there re-rendered every mounted row on
+ * each thread navigation on phones, where the layout still reconciles but the
+ * result is always {@link NO_INDICATOR}.
+ */
+const NULL_LAYOUT_ATOM = atom<SplitLayout | null>(null);
+
+function useSplitLayoutForIndicator(
+  enabled: boolean,
+): { layout: SplitLayout | null; isCompact: boolean } {
+  const isCompact = useIsCompactViewport();
+  const layout = useAtomValue(
+    enabled && !isCompact ? splitLayoutAtom : NULL_LAYOUT_ATOM,
+  );
+  return { layout, isCompact };
+}
 
 export interface ThreadSplitIndicatorTarget {
   id: string;
@@ -74,8 +93,7 @@ export function usePaneContentSplitIndicator(
   content: PaneContent,
   enabled: boolean,
 ): PaneContentSplitIndicator {
-  const layout = useAtomValue(splitLayoutAtom);
-  const isCompact = useIsCompactViewport();
+  const { layout, isCompact } = useSplitLayoutForIndicator(enabled);
 
   return useMemo<PaneContentSplitIndicator>(() => {
     if (
@@ -103,8 +121,7 @@ export function useThreadGroupSplitIndicator(
   threads: readonly ThreadSplitIndicatorTarget[],
   enabled: boolean,
 ): PaneContentSplitIndicator {
-  const layout = useAtomValue(splitLayoutAtom);
-  const isCompact = useIsCompactViewport();
+  const { layout, isCompact } = useSplitLayoutForIndicator(enabled);
 
   return useMemo<PaneContentSplitIndicator>(() => {
     if (
