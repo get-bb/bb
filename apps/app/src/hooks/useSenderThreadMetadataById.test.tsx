@@ -36,6 +36,7 @@ describe("useSenderThreadMetadataById", () => {
     const { result } = renderMetadataHook(queryClient);
     const initial = result.current;
     expect(initial.get("thr_sender")?.title).toBe("Sender thread");
+    expect(initial.get("thr_sender")?.projectId).toBe("proj_test");
 
     // A fresh array with equal entries fires an "updated" cache event; the
     // rebuilt map is value-equal, so the hook must keep the old reference or

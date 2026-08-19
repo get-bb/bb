@@ -5,6 +5,7 @@ import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it } from "vitest";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { threadsQueryKey } from "@/hooks/queries/query-keys";
 import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
 import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
@@ -71,6 +72,22 @@ afterEach(() => {
 });
 
 describe("ThreadTimelineRows render stability", () => {
+  it("routes a personal-project sender pill from sender metadata", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(threadsQueryKey(), [
+      makeThreadListEntry({
+        id: "thr_sender",
+        projectId: PERSONAL_PROJECT_ID,
+        title: "Personal sender",
+      }),
+    ]);
+    const { view } = renderProfiledTimeline(queryClient);
+
+    expect(
+      view.getByRole("link", { name: "Personal sender" }).getAttribute("href"),
+    ).toBe("/threads/thr_sender");
+  });
+
   it("does not re-render the timeline when cache events carry equal thread metadata", async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(threadsQueryKey(), [

@@ -67,6 +67,7 @@ interface GeneratedConversationMessageProps {
   // ignored by the source-kind switch — so the props stay non-optional.
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
+  sourceProjectId: string | null;
   sourceThreadId: string | null;
   /** The source is a side-chat plugin hidden fork: its name carries no route
    * link because its title action opens the plugin's panel tab instead. */
@@ -379,6 +380,7 @@ interface GeneratedAgentSourceTitleProps {
   onTitleAction?: TimelineTitleActionResolver;
   sourceIsPluginSideChat: boolean;
   sourceName: string;
+  sourceProjectId: string | null;
   sourceThreadId: string | null;
   title: TimelineTitle;
 }
@@ -463,6 +465,19 @@ function GeneratedAgentSourceTitle(props: GeneratedAgentSourceTitleProps) {
       <GeneratedAgentSourceTitleContent {...props} sourceResource={null} />
     );
   }
+  if (props.sourceProjectId !== null) {
+    return (
+      <GeneratedAgentSourceTitleContent
+        {...props}
+        sourceResource={{
+          kind: "thread",
+          threadId: props.sourceThreadId,
+          projectId: props.sourceProjectId,
+          label: props.sourceName,
+        }}
+      />
+    );
+  }
   return (
     <ResolvedGeneratedAgentSourceTitle
       {...props}
@@ -514,6 +529,7 @@ export const GeneratedConversationMessage = memo(
     onTitleAction,
     sourceKind,
     sourceName,
+    sourceProjectId,
     sourceThreadId,
     sourceIsPluginSideChat,
     systemMessageKind,
@@ -563,6 +579,7 @@ export const GeneratedConversationMessage = memo(
           onTitleAction={onTitleAction}
           sourceIsPluginSideChat={sourceIsPluginSideChat}
           sourceName={sourceName}
+          sourceProjectId={sourceProjectId}
           sourceThreadId={sourceThreadId}
           title={title}
         />

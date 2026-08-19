@@ -24,6 +24,7 @@ import {
 } from "@/hooks/cache-owners/thread-list-cache-data";
 
 export interface SenderThreadMetadata {
+  projectId: string;
   title: string | null;
   originKind: ThreadOriginKind | null;
   originPluginId: string | null;
@@ -37,6 +38,7 @@ interface SenderThreadTitleSource {
 
 interface SenderThreadMetadataSource extends SenderThreadTitleSource {
   id: string;
+  projectId: string;
   originKind: ThreadOriginKind | null;
   originPluginId: string | null;
   visibility: ThreadVisibility;
@@ -61,6 +63,7 @@ function addSenderThreadMetadata(
     return;
   }
   metadataById.set(thread.id, {
+    projectId: thread.projectId,
     title,
     originKind: thread.originKind,
     originPluginId: thread.originPluginId,
@@ -120,6 +123,7 @@ function areSenderThreadMetadataEntriesEqual(
   right: SenderThreadMetadata,
 ): boolean {
   return (
+    left.projectId === right.projectId &&
     left.title === right.title &&
     left.originKind === right.originKind &&
     left.originPluginId === right.originPluginId &&

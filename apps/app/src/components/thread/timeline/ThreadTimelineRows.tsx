@@ -1048,6 +1048,7 @@ function ConversationRow({
         resolveSegmentLinkHref={resolveSegmentLinkHref}
         onTitleAction={onTitleAction}
         senderThreadId={row.senderThreadId}
+        senderThreadProjectId={senderThreadMetadata?.projectId}
         senderThreadTitle={senderThreadMetadata?.title ?? null}
         senderIsPluginSideChat={isPluginSideChatSenderThread(
           senderThreadMetadata,

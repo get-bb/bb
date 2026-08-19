@@ -96,6 +96,8 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   onOpenLink?: ThreadTimelineLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
+  /** Present when sender metadata identifies the source thread's project. */
+  senderThreadProjectId?: string;
   senderThreadTitle: string | null;
   /** The sender thread is one of the side-chat plugin's hidden forks, so the
    * row reads "Replying to side chat" and its name opens the plugin panel. */
@@ -200,6 +202,7 @@ interface UserConversationMessageProps {
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
+  senderThreadProjectId: string | null;
   senderThreadTitle: string | null;
   senderIsPluginSideChat: boolean;
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
@@ -399,6 +402,7 @@ function UserConversationMessage({
   resolveSegmentLinkHref,
   onTitleAction,
   senderThreadId,
+  senderThreadProjectId,
   senderThreadTitle,
   senderIsPluginSideChat,
   systemMessageKind,
@@ -428,6 +432,7 @@ function UserConversationMessage({
         sourceName={
           senderIsPluginSideChat ? "side chat" : (senderThreadTitle ?? "Agent")
         }
+        sourceProjectId={senderThreadProjectId}
         sourceThreadId={senderThreadId}
         sourceIsPluginSideChat={senderIsPluginSideChat}
         systemMessageKind={systemMessageKind}
@@ -458,6 +463,7 @@ function UserConversationMessage({
         onTitleAction={onTitleAction}
         sourceKind="system"
         sourceName="BB"
+        sourceProjectId={null}
         sourceThreadId={null}
         sourceIsPluginSideChat={false}
         systemMessageKind={systemMessageKind}
@@ -726,6 +732,7 @@ export function ConversationMessageContent(
         resolveSegmentLinkHref={props.resolveSegmentLinkHref}
         onTitleAction={props.onTitleAction}
         senderThreadId={props.senderThreadId}
+        senderThreadProjectId={props.senderThreadProjectId ?? null}
         senderThreadTitle={props.senderThreadTitle}
         senderIsPluginSideChat={props.senderIsPluginSideChat}
         systemMessageKind={props.systemMessageKind}

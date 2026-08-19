@@ -253,6 +253,7 @@ function renderAgentMessage(
             initiator="agent"
             originKind={null}
             senderThreadId="thr_agent"
+            senderThreadProjectId={senderThreadProjectId ?? undefined}
             senderThreadTitle={senderThreadTitle}
             senderIsPluginSideChat={senderIsPluginSideChat}
             onTitleAction={onTitleAction}
