@@ -440,8 +440,11 @@ export function entryRepositoryUrl(entry: MarketplaceEntry): string | null {
   const git = entry.source.git;
   const repository = git.url.replace(/\.git$/u, "");
   if (git.subdir === undefined) return repository;
+  // The schema accepts `#` and `?` in a subdirectory; raw interpolation would
+  // turn them into a fragment or a query, so each segment is encoded.
+  const path = git.subdir.split("/").map(encodeURIComponent).join("/");
   return new URL(repository).host === "github.com"
-    ? `${repository}/tree/HEAD/${git.subdir}`
+    ? `${repository}/tree/HEAD/${path}`
     : repository;
 }
 

@@ -421,7 +421,12 @@ describe("AddPluginDialog", () => {
       expect(screen.getByText("v1.2.3")).toBeTruthy();
     });
     expect(screen.getByText("a".repeat(40))).toBeTruthy();
-    expect(screen.getByText("https://github.com/acme/plugins.git")).toBeTruthy();
+    // The repository row opens the code the confirmation describes.
+    expect(
+      screen
+        .getByRole("link", { name: "https://github.com/acme/plugins.git" })
+        .getAttribute("href"),
+    ).toBe("https://github.com/acme/plugins.git");
     expect(screen.getByText("^1.0.0")).toBeTruthy();
     expect(screen.getByText(/third-party marketplace/)).toBeTruthy();
     expect(screen.getByText("Acme Plugins")).toBeTruthy();
@@ -431,7 +436,9 @@ describe("AddPluginDialog", () => {
       ),
     ).toBe(true);
 
-    fireEvent.click(screen.getByRole("button", { name: /install acme notes/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /install acme notes/i }),
+    );
     await vi.waitFor(() => {
       const post = requests.find(
         (request) => request.url === "/api/v1/plugin-catalog/install",

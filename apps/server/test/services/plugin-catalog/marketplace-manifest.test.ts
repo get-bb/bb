@@ -412,6 +412,22 @@ describe("marketplace manifest schema", () => {
       expect(entryRepositoryUrl(gitlab)).toBe(
         "https://gitlab.com/acme/plugins",
       );
+      // `#` and `?` pass the subdirectory check; raw they would change the
+      // URL's meaning.
+      const reserved = firstEntry([
+        entry({
+          source: {
+            git: {
+              url: "https://github.com/acme/plugins",
+              ref: "v1.0.0",
+              subdir: "plugins/c#/what?",
+            },
+          },
+        }),
+      ]);
+      expect(entryRepositoryUrl(reserved)).toBe(
+        "https://github.com/acme/plugins/tree/HEAD/plugins/c%23/what%3F",
+      );
     });
 
     it("links the public npm page only for the default registry", () => {
