@@ -581,8 +581,8 @@ describe("@bb/sdk", () => {
   it("targets provider usage at an explicit machine", async () => {
     const usage = {
       codex: { status: "unauthenticated" as const },
-      claudeCode: { status: "unauthenticated" as const },
-      cursor: { status: "unauthenticated" as const },
+      "claude-code": { status: "unauthenticated" as const },
+      "acp-cursor": { status: "unauthenticated" as const },
     };
     const queue = createFetchQueue([{ body: usage }]);
     const sdk = createBbSdk({
@@ -606,8 +606,8 @@ describe("@bb/sdk", () => {
   });
 
   it("routes onboarding agent status through a reused environment", async () => {
-    const overview = { agents: [] };
-    const queue = createFetchQueue([{ body: overview }]);
+    const states = { providers: [] };
+    const queue = createFetchQueue([{ body: states }]);
     const sdk = createBbSdk({
       transport: createHttpTransport({
         baseUrl: "http://bb.test",
@@ -617,13 +617,13 @@ describe("@bb/sdk", () => {
     });
 
     await expect(
-      sdk.system.onboardingAgents({ environmentId: "env_remote" }),
-    ).resolves.toEqual(overview);
+      sdk.system.providerStates({ environmentId: "env_remote" }),
+    ).resolves.toEqual(states);
     expect(queue.requests).toEqual([
       {
         bodyText: undefined,
         method: "GET",
-        url: "http://bb.test/api/v1/system/onboarding/agents?environmentId=env_remote",
+        url: "http://bb.test/api/v1/system/providers/state?environmentId=env_remote",
       },
     ]);
   });

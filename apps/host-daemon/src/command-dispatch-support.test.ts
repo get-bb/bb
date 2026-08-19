@@ -72,6 +72,12 @@ function makeRuntime(args: MakeRuntimeArgs): AgentRuntime {
     async archiveThread() {},
     async unarchiveThread() {},
     listModels: args.listModels,
+    async providerHealth() {
+      return { supported: false as const };
+    },
+    async providerUsage() {
+      return { supported: false as const };
+    },
     listRunningProviders() {
       return [];
     },

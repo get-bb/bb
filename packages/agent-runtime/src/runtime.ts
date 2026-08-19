@@ -22,6 +22,8 @@ import type {
 } from "./provider-adapter.js";
 import {
   BRIDGE_JSON_RPC_ERRORS,
+  experimental_providerHealthResultSchema,
+  experimental_providerUsageResultSchema,
   ThreadEventGrammar,
 } from "@bb/provider-bridge-protocol";
 import {
@@ -521,7 +523,10 @@ function createAgentRuntimeInternal(
   async function releaseIdleProviderProcess(
     proc: ProviderProcess,
   ): Promise<void> {
-    if (isThreadScopedCodexProcess(proc) && proc.identity.threadIds.size === 0) {
+    if (
+      isThreadScopedCodexProcess(proc) &&
+      proc.identity.threadIds.size === 0
+    ) {
       await providerProcesses.shutdownProvider({
         processKey: proc.processKey,
         providerId: proc.providerId,
@@ -2356,6 +2361,62 @@ function createAgentRuntimeInternal(
         resultSchema: ignoredJsonRpcResultSchema,
       });
       return proc.adapter.parseModelListResult(result);
+    },
+
+    async providerHealth({ providerId, acpLaunchSpec, bridgeLaunch, cwd }) {
+      await runtime.ensureProvider({
+        providerId,
+        ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+        ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+      });
+      const proc = requireProviderProcess({
+        processKey: resolveProviderProcessKey({
+          ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+          ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+          providerId,
+        }),
+        providerId,
+      });
+      const plan = proc.adapter.buildCommandPlan({
+        type: "provider/health",
+        ...(cwd !== undefined ? { cwd } : {}),
+      });
+      if (plan.kind === "noop") {
+        return { supported: false };
+      }
+      return await sendCommand({
+        proc,
+        message: plan,
+        resultSchema: experimental_providerHealthResultSchema,
+      });
+    },
+
+    async providerUsage({ providerId, acpLaunchSpec, bridgeLaunch, cwd }) {
+      await runtime.ensureProvider({
+        providerId,
+        ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+        ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+      });
+      const proc = requireProviderProcess({
+        processKey: resolveProviderProcessKey({
+          ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+          ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+          providerId,
+        }),
+        providerId,
+      });
+      const plan = proc.adapter.buildCommandPlan({
+        type: "provider/usage",
+        ...(cwd !== undefined ? { cwd } : {}),
+      });
+      if (plan.kind === "noop") {
+        return { supported: false };
+      }
+      return await sendCommand({
+        proc,
+        message: plan,
+        resultSchema: experimental_providerUsageResultSchema,
+      });
     },
 
     listRunningProviders() {

@@ -41,7 +41,7 @@ describe("UsageLimitsSettingsSectionContent", () => {
   it("renders Cursor plan and on-demand limits", () => {
     renderContent({
       usage: {
-        cursor: {
+        "acp-cursor": {
           status: "ok",
           accountEmail: "cursor@example.com",
           planLabel: "Pro",
@@ -75,7 +75,7 @@ describe("UsageLimitsSettingsSectionContent", () => {
     renderContent({
       usage: {
         codex: { status: "unauthenticated" },
-        cursor: { status: "not_installed" },
+        "acp-cursor": { status: "not_installed" },
       },
       isLoading: false,
       isError: false,

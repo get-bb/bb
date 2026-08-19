@@ -177,7 +177,7 @@ export interface NewThreadComposerProps {
   selectionScope: NewThreadComposerSelectionScope;
   seed?: NewThreadComposerSeed;
   resetKey?: string | number | null;
-  preferConnectedProviderWhenUnset?: boolean;
+  preferReadyProviderWhenUnset?: boolean;
   onSubmit: (request: NewThreadRequest) => void | Promise<void>;
   focusRequest?: number;
   children: (state: NewThreadComposerState) => ReactNode;
@@ -379,7 +379,7 @@ export function NewThreadComposer({
   selectionScope,
   seed,
   resetKey,
-  preferConnectedProviderWhenUnset = false,
+  preferReadyProviderWhenUnset = false,
   onSubmit,
   focusRequest,
   children,
@@ -554,8 +554,8 @@ export function NewThreadComposer({
     resetKey: `${projectId}\0${seedSignature}`,
     resolveProviderRouting,
     initialProviderId: seed?.providerId ?? projectDefaults?.providerId,
-    preferConnectedProviderWhenUnset:
-      preferConnectedProviderWhenUnset && projectDefaults === null,
+    preferReadyProviderWhenUnset:
+      preferReadyProviderWhenUnset && projectDefaults === null,
     initialModel: seed?.model ?? projectDefaults?.model,
     initialServiceTier: seed?.serviceTier ?? projectDefaults?.serviceTier,
     initialReasoningLevel:

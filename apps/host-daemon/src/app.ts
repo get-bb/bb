@@ -779,6 +779,20 @@ export async function createHostDaemonApp(
       });
       return runtime.listModels(args);
     },
+    providerHealth: async (args) => {
+      await refreshRuntimeShellEnv();
+      const runtime = await runtimeManager.ensureProviderMaintenanceRuntime({
+        dataDir: options.dataDir,
+      });
+      return runtime.providerHealth(args);
+    },
+    providerUsage: async (args) => {
+      await refreshRuntimeShellEnv();
+      const runtime = await runtimeManager.ensureProviderMaintenanceRuntime({
+        dataDir: options.dataDir,
+      });
+      return runtime.providerUsage(args);
+    },
     resolveInteractiveRequest: async (request) => {
       interactiveRequestRegistry.resolve(request);
     },

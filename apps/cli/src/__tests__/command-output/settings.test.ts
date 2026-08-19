@@ -133,8 +133,8 @@ describe("bb settings commands", () => {
   it("reads usage from a selected machine", async () => {
     const getUsage = vi.fn(async () => ({
       codex: { status: "unauthenticated" },
-      claudeCode: { status: "unauthenticated" },
-      cursor: { status: "unauthenticated" },
+      "claude-code": { status: "unauthenticated" },
+      "acp-cursor": { status: "unauthenticated" },
     }));
     stubServerApi({
       "v1.hosts.$get": vi.fn(async () => [

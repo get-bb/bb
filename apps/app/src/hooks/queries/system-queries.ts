@@ -16,7 +16,7 @@ import type {
   SystemCliSkillsStatusResponse,
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
-  OnboardingAgentOverview,
+  SystemProviderStatesResponse,
   SystemVersionResponse,
 } from "@bb/server-contract";
 import type {
@@ -38,10 +38,10 @@ import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   hostProviderCliStatusQueryKey,
   systemCliSkillsQueryKey,
-  onboardingAgentsQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
   systemProvidersQueryKey,
+  systemProviderStatesQueryKey,
   systemUsageLimitsQueryKey,
   systemVersionQueryKey,
 } from "./query-keys";
@@ -59,7 +59,7 @@ export interface UseSystemExecutionOptionsArgs {
   providerId?: string;
 }
 
-export interface UseOnboardingAgentsOptions extends QueryOptions {
+export interface UseSystemProviderStatesOptions extends QueryOptions {
   environmentId?: string;
   hostId?: string;
 }
@@ -552,26 +552,26 @@ export function useHostProviderCliStatus({
   });
 }
 
-/**
- * Install, auth, and plan state per agent provider. The root composer reads it
- * to default an unset provider selection to one the machine is signed in to.
- */
-export function useOnboardingAgents(options: UseOnboardingAgentsOptions = {}) {
+/** Live provider readiness for unset composer selection. */
+export function useSystemProviderStates(
+  options: UseSystemProviderStatesOptions = {},
+) {
   const environmentId = options.environmentId ?? null;
   const hostId = options.hostId ?? null;
-  return useQuery<OnboardingAgentOverview>({
-    queryKey: onboardingAgentsQueryKey({ environmentId, hostId }),
+  return useQuery<SystemProviderStatesResponse>({
+    queryKey: systemProviderStatesQueryKey({ environmentId, hostId }),
     queryFn: ({ signal }) =>
-      sdk.system.onboardingAgents({
+      sdk.system.providerStates({
         environmentId: options.environmentId,
         hostId: options.hostId,
         signal,
       }),
     enabled: options.enabled ?? true,
-    // Each read runs CLI health checks, known-agent checks, and up to three
-    // provider usage requests on the host, so one answer is cached rather than
-    // polled: the composer only needs a default at open time.
-    staleTime: 60_000,
+    // Each read starts sessionless bridge health checks. The root composer's
+    // provider default wants one answer rather than a polling query.
+    ...(options.poll === false
+      ? { staleTime: 60_000 }
+      : { refetchInterval: 15_000 }),
   });
 }
 

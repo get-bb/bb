@@ -40,6 +40,13 @@ import {
 } from "./local.js";
 import { workspaceResolutionFailureSchema } from "./workspace.js";
 import { HOST_ARTIFACT_MAX_BYTES } from "./protocol.js";
+import {
+  experimental_providerHealthSchema,
+  experimental_providerHealthResultSchema,
+  experimental_providerUsageResultSchema,
+  experimental_providerUsageSchema,
+  experimental_providerUsageWindowSchema,
+} from "@bb/provider-bridge-protocol";
 
 export {
   DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS,
@@ -237,11 +244,7 @@ export const hostDaemonBridgeLaunchSchema = z
         .object({
           kind: z.literal("artifact"),
           digest: z.string().regex(/^[a-f0-9]{64}$/u),
-          byteLength: z
-            .number()
-            .int()
-            .positive()
-            .max(HOST_ARTIFACT_MAX_BYTES),
+          byteLength: z.number().int().positive().max(HOST_ARTIFACT_MAX_BYTES),
         })
         .strict(),
       z
@@ -1011,6 +1014,23 @@ const providerListModelsCommandSchema = z.object({
   cwd: z.string().min(1).optional(),
 });
 
+const providerHealthCommandSchema = z
+  .object({
+    type: z.literal("provider.health"),
+    providerId: z.string().min(1),
+    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    cwd: z.string().min(1).optional(),
+  })
+  .strict();
+
+/** Host-local readiness returned by a provider bridge. */
+export const providerHealthSchema = experimental_providerHealthSchema;
+export type ProviderHealth = z.infer<typeof providerHealthSchema>;
+export type ProviderHealthResult = z.infer<
+  typeof experimental_providerHealthResultSchema
+>;
+
 const knownAcpAgentExecutableQuerySchema = z
   .object({
     id: z.string().min(1),
@@ -1523,17 +1543,7 @@ const workspacePullRequestActionResultSchema = z.object({}).strict();
  * `resetsAt` is an ISO-8601 timestamp (or null when the provider omits it),
  * and `cost` carries optional Cursor on-demand spend in USD cents.
  */
-export const providerUsageWindowSchema = z.object({
-  label: z.string().min(1),
-  usedPercent: z.number().min(0).max(100),
-  resetsAt: z.string().min(1).nullable(),
-  cost: z
-    .object({
-      usedUsdCents: z.number().int().nonnegative(),
-      limitUsdCents: z.number().int().positive(),
-    })
-    .optional(),
-});
+export const providerUsageWindowSchema = experimental_providerUsageWindowSchema;
 export type ProviderUsageWindow = z.infer<typeof providerUsageWindowSchema>;
 
 /**
@@ -1551,39 +1561,27 @@ export type ProviderUsageWindow = z.infer<typeof providerUsageWindowSchema>;
  * - `error` — network/HTTP/parse failure; `message` is user-facing. Carries
  *   `planLabel`/`accountEmail` when they were known locally before the call.
  */
-export const providerUsageSchema = z.discriminatedUnion("status", [
-  z.object({
-    status: z.literal("ok"),
-    accountEmail: z.string().email().nullable(),
-    planLabel: z.string().min(1).nullable(),
-    windows: z.array(providerUsageWindowSchema),
-  }),
-  z.object({ status: z.literal("not_installed") }),
-  z.object({ status: z.literal("unauthenticated") }),
-  z.object({ status: z.literal("expired") }),
-  z.object({
-    status: z.literal("error"),
-    message: z.string().min(1),
-    /**
-     * Plan and account are read from local credentials *before* the usage HTTP
-     * call, so a rate limit or outage does not have to erase them. Null when the
-     * provider only learns them from the response body.
-     */
-    planLabel: z.string().min(1).nullable().default(null),
-    accountEmail: z.string().nullable().default(null),
-  }),
-]);
+export const providerUsageSchema = experimental_providerUsageSchema;
 export type ProviderUsage = z.infer<typeof providerUsageSchema>;
+export type ProviderUsageResult = z.infer<
+  typeof experimental_providerUsageResultSchema
+>;
 
-export const providerUsageResponseSchema = z.object({
-  codex: providerUsageSchema,
-  claudeCode: providerUsageSchema,
-  cursor: providerUsageSchema,
-});
+/** Provider-id keyed usage returned by the public server aggregation route. */
+export const providerUsageResponseSchema = z.record(
+  z.string().min(1),
+  providerUsageSchema,
+);
 export type ProviderUsageResponse = z.infer<typeof providerUsageResponseSchema>;
 
 const providerUsageCommandSchema = z
-  .object({ type: z.literal("provider.usage") })
+  .object({
+    type: z.literal("provider.usage"),
+    providerId: z.string().min(1),
+    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    cwd: z.string().min(1).optional(),
+  })
   .strict();
 
 const providerCliStatusCommandSchema = z
@@ -2070,6 +2068,15 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: false,
     envLane: null,
   }),
+  "provider.health": defineHostDaemonCommandDescriptor({
+    type: "provider.health",
+    schema: providerHealthCommandSchema,
+    resultSchema: experimental_providerHealthResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
   "known_acp_agents.status": defineHostDaemonCommandDescriptor({
     type: "known_acp_agents.status",
     schema: knownAcpAgentsStatusCommandSchema,
@@ -2082,7 +2089,7 @@ export const hostDaemonCommandRegistry = {
   "provider.usage": defineHostDaemonCommandDescriptor({
     type: "provider.usage",
     schema: providerUsageCommandSchema,
-    resultSchema: providerUsageResponseSchema,
+    resultSchema: experimental_providerUsageResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

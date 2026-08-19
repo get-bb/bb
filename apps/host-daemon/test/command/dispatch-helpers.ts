@@ -472,6 +472,12 @@ export function createFakeRuntime() {
         selectedOnlyModels: [] satisfies AvailableModel[],
       };
     },
+    async providerHealth() {
+      return { supported: false as const };
+    },
+    async providerUsage() {
+      return { supported: false as const };
+    },
     async shutdown() {
       state.shutdownCount += 1;
     },

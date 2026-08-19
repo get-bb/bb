@@ -11,6 +11,8 @@ import type { EventSinkInput } from "./event-sink.js";
 import type {
   HostDaemonCommand,
   HostDaemonAcpLaunchSpec,
+  ProviderHealthResult,
+  ProviderUsageResult,
   HostDaemonBridgeLaunch,
   HostDaemonInjectedSkillSource,
   HostDaemonOnlineRpcCommand,
@@ -67,6 +69,18 @@ export interface CommandDispatchOptions {
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   }>;
+  providerHealth?: (args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  }) => Promise<ProviderHealthResult>;
+  providerUsage?: (args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  }) => Promise<ProviderUsageResult>;
   getProviderCliStatusForProvider?: (
     providerId: string,
   ) => Promise<ProviderCliStatus | null>;
@@ -201,6 +215,27 @@ export async function defaultListModels(
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }> {
+  const runtime = defaultProviderMaintenanceRuntime(args, options);
+  try {
+    return await runtime.listModels(args);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.startsWith("Unsupported provider")
+    ) {
+      throw new CommandDispatchError("unknown_provider", error.message);
+    }
+    throw error;
+  }
+}
+
+function defaultProviderMaintenanceRuntime(
+  args: {
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+  },
+  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] },
+): AgentRuntime {
   const runtimeKey =
     `${options.bridgeBundleDir ?? ""}` +
     `#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}` +
@@ -220,17 +255,35 @@ export async function defaultListModels(
     });
     defaultModelListRuntimes.set(runtimeKey, runtime);
   }
-  try {
-    return await runtime.listModels(args);
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message.startsWith("Unsupported provider")
-    ) {
-      throw new CommandDispatchError("unknown_provider", error.message);
-    }
-    throw error;
-  }
+  return runtime;
+}
+
+export async function defaultProviderHealth(
+  args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  },
+  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
+): Promise<ProviderHealthResult> {
+  return await defaultProviderMaintenanceRuntime(args, options).providerHealth(
+    args,
+  );
+}
+
+export async function defaultProviderUsage(
+  args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  },
+  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
+): Promise<ProviderUsageResult> {
+  return await defaultProviderMaintenanceRuntime(args, options).providerUsage(
+    args,
+  );
 }
 
 export function getErrorCode(error: unknown): string {

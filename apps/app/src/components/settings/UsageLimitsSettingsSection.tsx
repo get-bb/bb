@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import type { Host } from "@bb/domain";
 import type {
   ProviderUsage,
+  ProviderUsageResponse,
   ProviderUsageWindow,
 } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
@@ -31,7 +32,6 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 
 interface ProviderConfig {
-  key: "codex" | "claudeCode" | "cursor";
   name: string;
   providerId: "codex" | "claude-code" | "acp-cursor";
   signInHint: string;
@@ -40,14 +40,12 @@ interface ProviderConfig {
 
 const PROVIDERS: ProviderConfig[] = [
   {
-    key: "codex",
     name: "Codex",
     providerId: "codex",
     signInHint: "Run `codex` to sign in and see your usage.",
     expiredHint: "Your Codex session expired. Run `codex`, then reload usage.",
   },
   {
-    key: "claudeCode",
     name: "Claude Code",
     providerId: "claude-code",
     signInHint: "Run `claude` to sign in and see your usage.",
@@ -55,7 +53,6 @@ const PROVIDERS: ProviderConfig[] = [
       "Your Claude session expired. Run `claude`, then reload usage.",
   },
   {
-    key: "cursor",
     name: "Cursor",
     providerId: "acp-cursor",
     signInHint: "Run `cursor-agent login` to sign in and see your usage.",
@@ -160,11 +157,7 @@ interface ProviderUsageBlockProps {
 }
 
 export interface UsageLimitsSettingsSectionContentProps {
-  usage: {
-    codex?: ProviderUsage;
-    claudeCode?: ProviderUsage;
-    cursor?: ProviderUsage;
-  };
+  usage: ProviderUsageResponse;
   isLoading: boolean;
   isError: boolean;
   isFetching: boolean;
@@ -363,7 +356,7 @@ export function UsageLimitsSettingsSectionContent({
 }: UsageLimitsSettingsSectionContentProps) {
   const showMachinePicker = hosts.length > 1 && onSelectHost !== undefined;
   const visibleProviders = PROVIDERS.filter(
-    (config) => usage[config.key]?.status !== "not_installed",
+    (config) => usage[config.providerId]?.status !== "not_installed",
   );
   return (
     <SettingsSection
@@ -404,9 +397,9 @@ export function UsageLimitsSettingsSectionContent({
       <SettingsRowList>
         {visibleProviders.map((config) => (
           <ProviderUsageBlock
-            key={config.key}
+            key={config.providerId}
             config={config}
-            usage={usage[config.key]}
+            usage={usage[config.providerId]}
             isLoading={isLoading}
             isError={isError}
           />

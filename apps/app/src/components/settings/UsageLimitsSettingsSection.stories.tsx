@@ -31,7 +31,7 @@ const HEALTHY_USAGE: Usage = {
       },
     ],
   },
-  claudeCode: {
+  "claude-code": {
     status: "ok",
     accountEmail: "sawyer@example.com",
     planLabel: "Max (20x)",
@@ -53,7 +53,7 @@ const HEALTHY_USAGE: Usage = {
       },
     ],
   },
-  cursor: {
+  "acp-cursor": {
     status: "ok",
     accountEmail: "sawyer@example.com",
     planLabel: "Pro",
@@ -75,8 +75,8 @@ const HEALTHY_USAGE: Usage = {
 
 const AUTH_USAGE: Usage = {
   codex: { status: "unauthenticated" },
-  claudeCode: { status: "expired" },
-  cursor: { status: "not_installed" },
+  "claude-code": { status: "expired" },
+  "acp-cursor": { status: "not_installed" },
 };
 
 const EMPTY_AND_ERROR_USAGE: Usage = {
@@ -86,7 +86,7 @@ const EMPTY_AND_ERROR_USAGE: Usage = {
     planLabel: "Team",
     windows: [],
   },
-  claudeCode: {
+  "claude-code": {
     status: "error",
     message: "Claude usage is temporarily unavailable.",
     // Read from local credentials before the usage call, so an outage does not
@@ -94,7 +94,7 @@ const EMPTY_AND_ERROR_USAGE: Usage = {
     planLabel: "Max (5x)",
     accountEmail: null,
   },
-  cursor: { status: "not_installed" },
+  "acp-cursor": { status: "not_installed" },
 };
 
 const HOSTS: Host[] = [

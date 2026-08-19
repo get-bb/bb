@@ -12,6 +12,8 @@ import {
 import semver from "semver";
 import {
   defaultListModels,
+  defaultProviderHealth,
+  defaultProviderUsage,
   ExpectedCommandDispatchError,
   resolveRuntimeBridgeLaunch,
   type CommandOf,
@@ -53,7 +55,6 @@ import {
   completeCodexInference,
   transcribeCodexVoice,
 } from "./codex-chatgpt-client.js";
-import { getProviderUsage } from "./provider-usage.js";
 import {
   getKnownAcpAgentsStatus,
   getProviderCliStatus,
@@ -671,12 +672,39 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       bridgeLaunch,
     });
   },
+  "provider.health": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return (options.providerHealth ?? defaultProviderHealth)({
+      providerId: command.providerId,
+      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+      ...(command.acpLaunchSpec !== undefined
+        ? { acpLaunchSpec: command.acpLaunchSpec }
+        : {}),
+      bridgeLaunch,
+    });
+  },
   "known_acp_agents.status": async (command, options) =>
     getKnownAcpAgentsStatus({
       agents: command.agents,
       env: providerCliEnvFromShellEnv(options.runtimeManager.getShellEnv()),
     }),
-  "provider.usage": async () => getProviderUsage(),
+  "provider.usage": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return (options.providerUsage ?? defaultProviderUsage)({
+      providerId: command.providerId,
+      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+      ...(command.acpLaunchSpec !== undefined
+        ? { acpLaunchSpec: command.acpLaunchSpec }
+        : {}),
+      bridgeLaunch,
+    });
+  },
   "provider_cli.status": async (_command, options) =>
     getProviderCliStatus({
       env: providerCliEnvFromShellEnv(options.runtimeManager.getShellEnv()),

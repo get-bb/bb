@@ -41,8 +41,8 @@ export interface UsePromptModelReasoningOptions {
   resetKey?: string | number | null;
   initialProviderId?: string;
   /** When no project default or persisted choice exists, select the first
-   * connected provider reported by the routed machine. */
-  preferConnectedProviderWhenUnset?: boolean;
+   * ready provider reported by the routed machine. */
+  preferReadyProviderWhenUnset?: boolean;
   initialModel?: string;
   initialServiceTier?: ServiceTier;
   initialReasoningLevel?: ReasoningLevel;

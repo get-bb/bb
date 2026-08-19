@@ -353,8 +353,23 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
   },
+  "provider.health": {
+    supported: true,
+    health: {
+      status: "ready",
+      statusMessage: null,
+      accountEmail: "agent@example.com",
+      planLabel: "Pro",
+      installedVersion: "1.2.3",
+      minimumSupportedVersion: "1.0.0",
+      canInstall: true,
+      canUpdate: true,
+      loginCommand: "agent login",
+    },
+  },
   "provider.usage": {
-    codex: {
+    supported: true,
+    usage: {
       status: "ok",
       accountEmail: "codex@example.com",
       planLabel: "Pro",
@@ -366,8 +381,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         },
       ],
     },
-    claudeCode: { status: "unauthenticated" },
-    cursor: { status: "not_installed" },
   },
   "provider_cli.status": {
     codex: {
@@ -1062,6 +1075,9 @@ const BRIDGE_LAUNCH = {
 } as const;
 
 describe("host-daemon command schemas", () => {
+  // Version 136 adds the provider-targeted provider.health command and changes
+  // provider.usage from one fixed aggregate into a provider bridge query.
+  // Older daemons cannot parse either command shape.
   // Version 130 makes every provider plugin-declared on the wire: a REQUIRED
   // `bridgeLaunch` field beside every `acpLaunchSpec` site (thread.start, the
   // resume contexts, thread.goal.clear, thread.archive, thread.unarchive,

@@ -151,7 +151,7 @@ import type {
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
   SystemProvidersQuery,
-  OnboardingAgentOverview,
+  SystemProviderStatesResponse,
   SystemUsageLimitsQuery,
   SystemVersionQuery,
   SystemVersionResponse,
@@ -1399,13 +1399,13 @@ export const publicApiRoutes = {
       request: noRequest<PathId>(),
       response: binaryResponse<Uint8Array>(),
     }),
-    onboardingAgents: defineRoute({
-      path: "/system/onboarding/agents",
+    providerStates: defineRoute({
+      path: "/system/providers/state",
       method: "get",
       request: optionalQueryRequest<EmptyInput, SystemProvidersQuery>(
         systemProvidersQuerySchema,
       ),
-      response: jsonResponse<OnboardingAgentOverview>(),
+      response: jsonResponse<SystemProviderStatesResponse>(),
     }),
     usageLimits: defineRoute({
       path: "/system/usage-limits",

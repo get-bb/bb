@@ -42,7 +42,10 @@
 // speak `thread/delta` only — the `thread/event` lane is gone. An old daemon's
 // runtime would ignore the delta notifications and render empty timelines, and
 // old runtimes predate the bridge-handshake version check, so this daemon
-// protocol version is the only gate that forces those daemons to update.
+// protocol version is the only gate that forces those daemons to update. It
+// also adds generic provider.health and changes provider.usage from one fixed
+// three-provider result into a provider-targeted bridge query; older daemons
+// cannot parse either command shape.
 //
 // Version 135 adds the `compaction-skipped` provider warning category. The Pi
 // bridge now reports a refused manual compaction ("Nothing to compact") as

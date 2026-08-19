@@ -109,6 +109,8 @@ export interface CommandRouterOptions {
   terminalManager?: CommandDispatchOptions["terminalManager"];
   eventSink: CommandDispatchOptions["eventSink"];
   listModels?: CommandDispatchOptions["listModels"];
+  providerHealth?: CommandDispatchOptions["providerHealth"];
+  providerUsage?: CommandDispatchOptions["providerUsage"];
   resolveInteractiveRequest?: CommandDispatchOptions["resolveInteractiveRequest"];
   pluginHostManager?: PluginHostManager;
   ensureConnectTunnelIdentity?: CommandDispatchOptions["ensureConnectTunnelIdentity"];
@@ -342,6 +344,8 @@ export class CommandRouter {
       dataDir: this.options.dataDir,
       eventSink: this.options.eventSink,
       listModels: this.options.listModels,
+      providerHealth: this.options.providerHealth,
+      providerUsage: this.options.providerUsage,
       resolveInteractiveRequest: this.options.resolveInteractiveRequest,
       ensureConnectTunnelIdentity: this.options.ensureConnectTunnelIdentity,
       threadStorageRootPath: this.options.threadStorageRootPath,

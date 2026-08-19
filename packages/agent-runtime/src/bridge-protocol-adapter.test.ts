@@ -109,6 +109,31 @@ describe("handshake gating", () => {
     completeHandshake(adapter, { approvalEnforcedBy: "provider" });
     expect(adapter.approvalEnforcedBy).toBe("provider");
   });
+
+  it("gates sessionless maintenance methods and carries provider context", () => {
+    const adapter = makeAdapter();
+    expect(
+      adapter.buildCommandPlan({ type: "provider/health", cwd: "/workspace" }),
+    ).toMatchObject({ kind: "noop" });
+
+    completeHandshake(adapter, {
+      experimentalProviderHealth: true,
+      experimentalProviderUsage: true,
+    });
+
+    expect(
+      adapter.buildCommandPlan({ type: "provider/health", cwd: "/workspace" }),
+    ).toEqual({
+      kind: "request",
+      method: "provider/health",
+      params: { providerId: "fake-bridge", cwd: "/workspace" },
+    });
+    expect(adapter.buildCommandPlan({ type: "provider/usage" })).toEqual({
+      kind: "request",
+      method: "provider/usage",
+      params: { providerId: "fake-bridge" },
+    });
+  });
 });
 
 describe("fork narrowing", () => {

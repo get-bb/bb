@@ -141,7 +141,7 @@ vi.mock("@/hooks/queries/host-queries", () => ({
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
-  useOnboardingAgents: () => ({ data: undefined, isPending: false }),
+  useSystemProviderStates: () => ({ data: undefined, isPending: false }),
   useHostProviderCliStatus: () => ({ data: undefined }),
   useSystemConfig: () => ({ data: { primaryHostId: "host_1" } }),
   useSystemExecutionOptions: () => ({

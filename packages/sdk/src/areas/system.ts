@@ -13,7 +13,7 @@ import type {
   SystemCliSkillsStatusResponse,
   SystemInstallCliSkillsRequest,
   SystemInstallCliSkillsResponse,
-  OnboardingAgentOverview,
+  SystemProviderStatesResponse,
   SystemProvidersQuery,
   SystemUsageLimitsQuery,
   SystemVersionQuery,
@@ -67,10 +67,10 @@ export type SystemUpdateExperimentsResult = Experiments;
 export type SystemUpdateGeneralSettingsResult = AppSettings;
 export type SystemUpdateKeyboardSettingsResult = AppKeybindingOverrides;
 export type SystemUsageLimitsResult = ProviderUsageResponse;
-export interface SystemOnboardingArgs extends SystemProvidersQuery {
+export interface SystemProviderStatesArgs extends SystemProvidersQuery {
   signal?: AbortSignal;
 }
-export type SystemOnboardingAgentsResult = OnboardingAgentOverview;
+export type SystemProviderStatesResult = SystemProviderStatesResponse;
 export type SystemVersionResult = SystemVersionResponse;
 
 export interface SystemArea {
@@ -102,10 +102,10 @@ export interface SystemArea {
   updateKeyboardSettings(
     args: AppKeybindingOverrides,
   ): Promise<SystemUpdateKeyboardSettingsResult>;
-  /** Live agent state for onboarding: install, auth, and plan per provider. */
-  onboardingAgents(
-    args?: SystemOnboardingArgs,
-  ): Promise<SystemOnboardingAgentsResult>;
+  /** Live host-local install and authentication state for every provider. */
+  providerStates(
+    args?: SystemProviderStatesArgs,
+  ): Promise<SystemProviderStatesResult>;
   usageLimits(args?: SystemUsageLimitsArgs): Promise<SystemUsageLimitsResult>;
   version(args?: SystemVersionArgs): Promise<SystemVersionResult>;
 }
@@ -204,9 +204,9 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
         transport.api.v1.settings.keyboard.$put({ json: input }),
       );
     },
-    async onboardingAgents(input = {}) {
+    async providerStates(input = {}) {
       return transport.readJson(
-        transport.api.v1.system.onboarding.agents.$get(
+        transport.api.v1.system.providers.state.$get(
           {
             query: {
               environmentId: input.environmentId,

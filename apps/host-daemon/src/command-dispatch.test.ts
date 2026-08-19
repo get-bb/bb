@@ -15,6 +15,7 @@ import {
 } from "./command-dispatch.js";
 import {
   DISPATCH_TEST_BRIDGE_LAUNCH,
+  DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
   silentLogger,
 } from "../test/command/dispatch-helpers.js";
 import type { CommandOf } from "./command-dispatch-support.js";
@@ -204,6 +205,8 @@ function createRuntime(): FakeDispatchRuntime {
       models: [],
       selectedOnlyModels: [],
     })),
+    providerHealth: vi.fn(async () => ({ supported: false as const })),
+    providerUsage: vi.fn(async () => ({ supported: false as const })),
     listRunningProviders: vi.fn(() => ["fake"]),
     getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
     waitForActiveTurn: vi.fn(
@@ -1839,6 +1842,60 @@ describe("dispatchCommand", () => {
           executablePath,
         },
       ],
+    });
+  });
+
+  it("routes provider health and usage to the targeted bridge runtime", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const providerHealth = vi.fn(async () => ({ supported: false as const }));
+    const providerUsage = vi.fn(async () => ({ supported: false as const }));
+    const options = {
+      dataDir: "/tmp/bb-test-data",
+      logger: silentLogger,
+      eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
+      },
+      providerHealth,
+      providerUsage,
+      runtimeManager: manager,
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+    };
+
+    await expect(
+      dispatchOnlineRpcCommand(
+        {
+          type: "provider.health",
+          providerId: "pi",
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          cwd: "/tmp/workspace",
+        },
+        options,
+      ),
+    ).resolves.toEqual({ supported: false });
+    await expect(
+      dispatchOnlineRpcCommand(
+        {
+          type: "provider.usage",
+          providerId: "pi",
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+        },
+        options,
+      ),
+    ).resolves.toEqual({ supported: false });
+
+    expect(providerHealth).toHaveBeenCalledWith({
+      providerId: "pi",
+      cwd: "/tmp/workspace",
+      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+    });
+    expect(providerUsage).toHaveBeenCalledWith({
+      providerId: "pi",
+      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
     });
   });
 });

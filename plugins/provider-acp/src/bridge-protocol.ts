@@ -19,6 +19,7 @@ import {
   turnStartParamsSchema as canonicalTurnStartParamsSchema,
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
   skillsConfigureParamsSchema,
+  experimental_providerMaintenanceParamsSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import { acpSessionUpdateSchema, acpStopReasonSchema } from "./wire.js";
@@ -74,6 +75,14 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("model/list"),
     params: acpModelListParamsSchema,
+  }),
+  z.object({
+    method: z.literal("provider/health"),
+    params: experimental_providerMaintenanceParamsSchema,
+  }),
+  z.object({
+    method: z.literal("provider/usage"),
+    params: experimental_providerMaintenanceParamsSchema,
   }),
   z.object({
     method: z.literal("thread/start"),

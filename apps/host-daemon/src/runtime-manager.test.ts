@@ -285,6 +285,8 @@ function createFakeRuntime() {
       models: [],
       selectedOnlyModels: [],
     })),
+    providerHealth: vi.fn(async () => ({ supported: false as const })),
+    providerUsage: vi.fn(async () => ({ supported: false as const })),
     listRunningProviders: vi.fn((): string[] => []),
     getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
     waitForActiveTurn: async (threadId) =>

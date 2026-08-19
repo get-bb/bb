@@ -18,6 +18,7 @@ import {
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_NOTIFICATION_METHOD,
   modelListParamsSchema,
+  experimental_providerMaintenanceParamsSchema,
   threadDiscardParamsSchema,
   threadForkParamsSchema,
   threadResumeParamsSchema,
@@ -95,6 +96,14 @@ const piCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("model/list"),
     params: modelListParamsSchema,
+  }),
+  z.object({
+    method: z.literal("provider/health"),
+    params: experimental_providerMaintenanceParamsSchema,
+  }),
+  z.object({
+    method: z.literal("provider/usage"),
+    params: experimental_providerMaintenanceParamsSchema,
   }),
   z.object({
     method: z.literal("thread/start"),
@@ -604,6 +613,8 @@ async function handleRequest(
           threadGoalClear: false,
           fork: "checkpoint",
           approvalEnforcedBy: "runtime",
+          experimentalProviderHealth: true,
+          experimentalProviderUsage: true,
         },
       };
       sendResult(request.id, result);
@@ -612,6 +623,49 @@ async function handleRequest(
       // Pi model listing needs no launch spec, only the cwd whose project
       // configuration decides which providers are configured.
       await handleModelList(request.id, request.params);
+      break;
+    case "provider/health":
+      try {
+        const models = await (
+          await getPiModelRuntime(request.params.cwd)
+        ).getAvailable();
+        sendResult(request.id, {
+          supported: true,
+          health: {
+            status: models.length > 0 ? "ready" : "unauthenticated",
+            statusMessage:
+              models.length > 0
+                ? null
+                : "Pi has no authenticated model provider available.",
+            accountEmail: null,
+            planLabel: null,
+            installedVersion: null,
+            minimumSupportedVersion: null,
+            canInstall: false,
+            canUpdate: false,
+            loginCommand: null,
+          },
+        });
+      } catch (error) {
+        sendResult(request.id, {
+          supported: true,
+          health: {
+            status: "unknown",
+            statusMessage:
+              error instanceof Error ? error.message : String(error),
+            accountEmail: null,
+            planLabel: null,
+            installedVersion: null,
+            minimumSupportedVersion: null,
+            canInstall: false,
+            canUpdate: false,
+            loginCommand: null,
+          },
+        });
+      }
+      break;
+    case "provider/usage":
+      sendResult(request.id, { supported: false });
       break;
     // A start mints provider identity from the bb thread id. Resume keeps the
     // caller's stable provider identity while registering the live session

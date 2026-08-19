@@ -1897,6 +1897,9 @@ importers:
       '@bb/hono-typed-routes':
         specifier: workspace:*
         version: link:../hono-typed-routes
+      '@bb/provider-bridge-protocol':
+        specifier: workspace:*
+        version: link:../provider-bridge-protocol
       hono:
         specifier: ^4.7.0
         version: 4.11.9

@@ -712,7 +712,7 @@ export function RootComposeView() {
       selectionScope="new-thread"
       seed={composerSeed}
       resetKey={forkSeed?.sourceThreadId ?? null}
-      preferConnectedProviderWhenUnset={forkSeed === null}
+      preferReadyProviderWhenUnset={forkSeed === null}
       onSubmit={handleSubmit}
     >
       {(composer) => (

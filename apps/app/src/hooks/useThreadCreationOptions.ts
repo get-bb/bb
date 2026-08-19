@@ -35,7 +35,7 @@ import {
 } from "@bb/domain";
 import { selectPrimaryHost, useHosts } from "./queries/host-queries";
 import {
-  useOnboardingAgents,
+  useSystemProviderStates,
   useSystemConfig,
   useSystemExecutionOptions,
 } from "./queries/system-queries";
@@ -170,7 +170,7 @@ export function resolveThreadCreationProviderRouting({
 
 const NO_MODEL_LOAD_ERROR: SystemExecutionOptionsModelLoadError | null = null;
 
-type InitialConnectedProviderResolution =
+type InitialReadyProviderResolution =
   | { status: "unresolved" }
   | { status: "resolved"; providerId: string | null };
 
@@ -206,7 +206,7 @@ export function useThreadCreationOptions(
     initialPermissionMode,
     initialReasoningLevel,
     initialServiceTier,
-    preferConnectedProviderWhenUnset = false,
+    preferReadyProviderWhenUnset = false,
     preferenceProjectId,
     resolveProviderRouting,
     resetKey,
@@ -240,8 +240,8 @@ export function useThreadCreationOptions(
         initialServiceTier,
       }),
     );
-  const [initialConnectedProvider, setInitialConnectedProvider] =
-    useState<InitialConnectedProviderResolution>({ status: "unresolved" });
+  const [initialReadyProvider, setInitialReadyProvider] =
+    useState<InitialReadyProviderResolution>({ status: "unresolved" });
   const localProviderSelectionsRef = useRef<
     Map<string, ModelReasoningSelection>
   >(new Map());
@@ -295,7 +295,7 @@ export function useThreadCreationOptions(
     usesLocalThreadSelections,
   ]);
 
-  const selectedProviderIdBeforeConnectedFallback = usesStoredCreateSelections
+  const selectedProviderIdBeforeReadyFallback = usesStoredCreateSelections
     ? storedProviderId || renderedThreadSelections.selectedProviderId
     : renderedThreadSelections.selectedProviderId;
   const rawServiceTier = usesStoredCreateSelections
@@ -318,52 +318,51 @@ export function useThreadCreationOptions(
         environmentId,
         environmentHostId,
         environmentSelectionValue: rawEnvironmentSelectionValue,
-        providerId: selectedProviderIdBeforeConnectedFallback,
+        providerId: selectedProviderIdBeforeReadyFallback,
         scope,
       });
-  const canResolveConnectedProvider =
+  const canResolveReadyProvider =
     executionOptionsQueryEnabled &&
     scope === "new-thread" &&
-    preferConnectedProviderWhenUnset &&
-    selectedProviderIdBeforeConnectedFallback.length === 0;
-  const shouldResolveConnectedProvider =
-    canResolveConnectedProvider &&
-    initialConnectedProvider.status === "unresolved";
-  const connectedAgentsQuery = useOnboardingAgents({
-    enabled: shouldResolveConnectedProvider,
+    preferReadyProviderWhenUnset &&
+    selectedProviderIdBeforeReadyFallback.length === 0;
+  const shouldResolveReadyProvider =
+    canResolveReadyProvider && initialReadyProvider.status === "unresolved";
+  const providerStatesQuery = useSystemProviderStates({
+    enabled: shouldResolveReadyProvider,
     ...executionOptionsRouting,
   });
-  const queriedConnectedProviderId = shouldResolveConnectedProvider
-    ? connectedAgentsQuery.data?.agents.find(
-        (agent) => agent.status === "connected",
+  const queriedReadyProviderId = shouldResolveReadyProvider
+    ? providerStatesQuery.data?.providers.find(
+        (provider) => provider.status === "ready",
       )?.providerId
     : undefined;
-  const connectedProviderId =
-    initialConnectedProvider.status === "resolved"
-      ? (initialConnectedProvider.providerId ?? undefined)
-      : queriedConnectedProviderId;
+  const readyProviderId =
+    initialReadyProvider.status === "resolved"
+      ? (initialReadyProvider.providerId ?? undefined)
+      : queriedReadyProviderId;
   // This is an initial default, not a host-scoped live selection. Once the
   // first routed probe settles, retain its answer so changing machines does
-  // not silently reselect the provider or wait on onboarding health checks.
+  // not silently reselect the provider or repeat provider health probes.
   useEffect(() => {
-    if (!shouldResolveConnectedProvider || connectedAgentsQuery.isPending) {
+    if (!shouldResolveReadyProvider || providerStatesQuery.isPending) {
       return;
     }
-    setInitialConnectedProvider((current) =>
+    setInitialReadyProvider((current) =>
       current.status === "resolved"
         ? current
         : {
             status: "resolved",
-            providerId: queriedConnectedProviderId ?? null,
+            providerId: queriedReadyProviderId ?? null,
           },
     );
   }, [
-    connectedAgentsQuery.isPending,
-    queriedConnectedProviderId,
-    shouldResolveConnectedProvider,
+    providerStatesQuery.isPending,
+    queriedReadyProviderId,
+    shouldResolveReadyProvider,
   ]);
   const rawSelectedProviderId =
-    selectedProviderIdBeforeConnectedFallback || connectedProviderId || "";
+    selectedProviderIdBeforeReadyFallback || readyProviderId || "";
   // Omission delegates the no-selection fallback to the server, whose product
   // default comes from the same provider catalog that orders the picker.
   const executionOptionsProviderId = executionOptionsQueryEnabled
@@ -691,9 +690,9 @@ export function useThreadCreationOptions(
   const touchedFieldsPendingReset =
     usesLocalThreadSelections && threadResetKeyRef.current !== resetKey;
   const effectiveInitialProviderSource: ExecutionInputFieldSource | undefined =
-    canResolveConnectedProvider &&
-    connectedProviderId !== undefined &&
-    effectiveProviderId === connectedProviderId
+    canResolveReadyProvider &&
+    readyProviderId !== undefined &&
+    effectiveProviderId === readyProviderId
       ? "client-preference"
       : undefined;
   const executionInputSources = useMemo(
