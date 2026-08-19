@@ -141,12 +141,11 @@ describe("useOptionalIsSidebarShowing", () => {
 describe("useIsSidebarShowing", () => {
   it("re-renders its reader only when the visible bit flips, not on every provider commit", () => {
     vi.useFakeTimers();
-    let showingRenders = 0;
+    const showingRenders: boolean[] = [];
     const ShowingReader = memo(function ShowingReader() {
-      showingRenders += 1;
-      return (
-        <output data-testid="showing">{String(useIsSidebarShowing())}</output>
-      );
+      const isShowing = useIsSidebarShowing();
+      showingRenders.push(isShowing);
+      return <output data-testid="showing">{String(isShowing)}</output>;
     });
     function Controls() {
       const {
@@ -180,26 +179,26 @@ describe("useIsSidebarShowing", () => {
       </CompactViewportOverrideProvider>,
     );
     expect(screen.getByTestId("showing").textContent).toBe("false");
-    const settled = showingRenders;
+    const settled = showingRenders.length;
 
     // A provider commit that changes the full context object but not the
     // visible bit (page header and retained secondary panel read only the bit).
     fireEvent.click(screen.getByRole("button", { name: "suppress" }));
-    expect(showingRenders).toBe(settled);
+    expect(showingRenders).toHaveLength(settled);
 
     fireEvent.click(screen.getByRole("button", { name: "open" }));
     settleMobileToggle();
     expect(screen.getByTestId("showing").textContent).toBe("true");
-    const afterOpen = showingRenders;
+    const afterOpen = showingRenders.length;
     expect(afterOpen).toBe(settled + 1);
 
     // Close: the closing-flag commit must not reach the reader; only the
     // deferred openMobile flip does.
     fireEvent.click(screen.getByRole("button", { name: "close" }));
-    expect(showingRenders).toBe(afterOpen);
+    expect(showingRenders).toHaveLength(afterOpen);
     settleMobileToggle();
     expect(screen.getByTestId("showing").textContent).toBe("false");
-    expect(showingRenders).toBe(afterOpen + 1);
+    expect(showingRenders).toHaveLength(afterOpen + 1);
   });
 });
 

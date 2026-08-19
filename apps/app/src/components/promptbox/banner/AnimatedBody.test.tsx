@@ -60,6 +60,7 @@ describe("prompt-stack card bodies", () => {
   it("does not mount per-row live durations for a collapsed background-activity card", () => {
     vi.useFakeTimers();
     const setInterval = vi.spyOn(globalThis, "setInterval");
+    const startedAt = Date.now() - 5_000;
     function Card() {
       const [isExpanded, setIsExpanded] = useState(false);
       return (
@@ -69,7 +70,7 @@ describe("prompt-stack card bodies", () => {
               id: `wf_${index}`,
               description: `Background agent ${index}`,
               model: "haiku",
-              startedAt: Date.now() - 5_000,
+              startedAt,
               status: "pending",
               taskStatus: "running",
               taskType: "local_agent",
