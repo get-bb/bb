@@ -8,7 +8,7 @@ import {
   getMutationErrorMeta,
   showMutationErrorToast,
 } from "./mutation-errors";
-import { cancelActiveQueryFetchesForBrowserSuspend } from "@/hooks/cache-owners/browser-lifecycle-cache-owner";
+import { createBrowserLifecycleFetchController } from "@/hooks/cache-owners/browser-lifecycle-cache-owner";
 import {
   shouldRetryTransientReadQuery,
   TRANSIENT_READ_RETRY_DELAY_MS,
@@ -48,13 +48,14 @@ function installAppFocusEvents(): void {
 }
 
 /**
- * Suspend handling only. Catch-up after a resume is owned by the realtime
- * layer: `WebSocketManager` probes or reconnects the socket when the document
- * becomes visible or the network returns, the reconnect wave refetches every
- * realtime query whose data predates the disconnect watermark, and change
- * events merged while hidden flush as one wave on visible. A separate resume
- * invalidation of the active thread bundle used to run here as well; it
- * duplicated that wave on every phone app switch and is gone.
+ * Suspend cancels in-flight fetches; resume restarts only those. Catch-up
+ * after a resume is otherwise owned by the realtime layer: `WebSocketManager`
+ * probes or reconnects the socket when the document becomes visible or the
+ * network returns, the reconnect wave refetches every realtime query whose
+ * data predates the disconnect watermark, and change events merged while
+ * hidden flush as one wave on visible. A separate resume invalidation of the
+ * active thread bundle used to run here as well; it duplicated that wave on
+ * every phone app switch and is gone.
  */
 export function installAppQueryClientBrowserEvents(
   queryClient: QueryClient,
@@ -65,24 +66,36 @@ export function installAppQueryClientBrowserEvents(
     return { cleanup: () => {} };
   }
 
-  const handleBrowserSuspend = () => {
-    cancelActiveQueryFetchesForBrowserSuspend(queryClient);
-  };
+  const fetchController = createBrowserLifecycleFetchController(queryClient);
   const handlePageHide = () => {
-    handleBrowserSuspend();
+    fetchController.suspend();
+  };
+  const handlePageShow = () => {
+    fetchController.resume();
+  };
+  const handleWindowFocus = () => {
+    fetchController.resume();
   };
   const handleVisibilityChange = () => {
     if (document.visibilityState === "hidden") {
-      handleBrowserSuspend();
+      fetchController.suspend();
+      return;
+    }
+    if (document.visibilityState === "visible") {
+      fetchController.resume();
     }
   };
 
   window.addEventListener("pagehide", handlePageHide, false);
+  window.addEventListener("pageshow", handlePageShow, false);
+  window.addEventListener("focus", handleWindowFocus, false);
   document.addEventListener("visibilitychange", handleVisibilityChange, false);
 
   return {
     cleanup: () => {
       window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("focus", handleWindowFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     },
   };

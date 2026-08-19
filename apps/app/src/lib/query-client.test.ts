@@ -116,4 +116,92 @@ describe("createAppQueryClient", () => {
     queryClient.unmount();
     queryClient.clear();
   });
+
+  it("resumes a suspend-cancelled fetch that no focus refetch would restart", async () => {
+    const queryClient = createAppQueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+      showMutationErrorToasts: false,
+    });
+    const lifecycleEvents = installAppQueryClientBrowserEvents(queryClient);
+    queryClient.mount();
+
+    const resolveFetches: Array<(value: string) => void> = [];
+    const queryFn = vi.fn(
+      ({ signal }: { signal: AbortSignal }) =>
+        new Promise<string>((resolve, reject) => {
+          resolveFetches.push(resolve);
+          signal.addEventListener(
+            "abort",
+            () => {
+              reject(new DOMException("Aborted", "AbortError"));
+            },
+            { once: true },
+          );
+        }),
+    );
+    // Realtime-owned policy: nothing but the realtime layer refetches it, and
+    // a healthy socket delivers no change for a first load that never landed.
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ["realtime-owned-first-load"],
+      queryFn,
+      refetchOnWindowFocus: false,
+      staleTime: 60_000,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    // A settled query is untouched by the resume.
+    const settledFn = vi.fn(() => Promise.resolve("settled"));
+    const settledObserver = new QueryObserver(queryClient, {
+      queryKey: ["settled"],
+      queryFn: settledFn,
+      refetchOnWindowFocus: false,
+      staleTime: 60_000,
+    });
+    const unsubscribeSettled = settledObserver.subscribe(() => {});
+
+    await vi.waitFor(() => {
+      expect(observer.getCurrentResult().fetchStatus).toBe("fetching");
+      expect(settledObserver.getCurrentResult().data).toBe("settled");
+    });
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await vi.waitFor(() => {
+      expect(observer.getCurrentResult().fetchStatus).toBe("idle");
+      expect(observer.getCurrentResult().data).toBeUndefined();
+    });
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await vi.waitFor(() => {
+      expect(queryFn).toHaveBeenCalledTimes(2);
+    });
+    resolveFetches[1]?.("loaded");
+    await vi.waitFor(() => {
+      expect(observer.getCurrentResult().data).toBe("loaded");
+    });
+    // A second resume (focus after visible) has nothing left to replay.
+    window.dispatchEvent(new Event("focus"));
+    await Promise.resolve();
+    expect(queryFn).toHaveBeenCalledTimes(2);
+    expect(settledFn).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    unsubscribeSettled();
+    lifecycleEvents.cleanup();
+    queryClient.unmount();
+    queryClient.clear();
+    Reflect.deleteProperty(document, "visibilityState");
+  });
 });
