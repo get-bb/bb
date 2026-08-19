@@ -105,11 +105,6 @@ export type {
 } from "./GitDiffToolbar";
 export type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
 
-export {
-  THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
-  THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
-} from "./secondaryPanelSizing";
-
 export function isSecondaryPanelLayoutTransition(
   propertyName: string,
 ): boolean {
