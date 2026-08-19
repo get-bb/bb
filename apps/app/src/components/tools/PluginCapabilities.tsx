@@ -252,6 +252,18 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
+      slots.sourceCodeRenderers,
+      "source-code-renderer",
+      "Replaces how source code is displayed everywhere in the app.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.diffRenderers,
+      "diff-renderer",
+      "Replaces how diffs are displayed everywhere in the app.",
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.threadPanelActions,
       "thread-panel",
       "Adds an action that opens a panel beside a thread.",

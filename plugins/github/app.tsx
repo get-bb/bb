@@ -1386,16 +1386,6 @@ function ChecksSection({ checks }: { checks: PullCheck[] }) {
   );
 }
 
-/**
- * A patch (or single `@@` hunk) rendered through the host's own diff
- * component. It owns patch normalization (GitHub's REST patches arrive
- * without a `diff --git` header), syntax highlighting, the live BB code
- * theme, and the plain-text fallback for content that will not parse.
- */
-function DiffPatch({ path, patch }: { path: string; patch: string }) {
-  return <Diff patch={patch} path={path} />;
-}
-
 function FileDiffCard({ file, url }: { file: PullFile; url: string }) {
   const [open, setOpen] = useState(false);
   return (
@@ -1423,7 +1413,7 @@ function FileDiffCard({ file, url }: { file: PullFile; url: string }) {
       {open ? (
         file.patch !== null ? (
           <div className="border-t border-border">
-            <DiffPatch path={file.path} patch={file.patch} />
+            <Diff patch={file.patch} path={file.path} />
           </div>
         ) : (
           <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
@@ -1449,7 +1439,7 @@ function ReviewThreadCard({ thread }: { thread: ReviewThread }) {
       </p>
       {thread.diffHunk.length > 0 ? (
         <div className="border-b border-border">
-          <DiffPatch path={thread.path} patch={thread.diffHunk} />
+          <Diff patch={thread.diffHunk} path={thread.path} />
         </div>
       ) : null}
       <div className="flex flex-col gap-3 p-3">
