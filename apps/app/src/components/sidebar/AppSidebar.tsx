@@ -227,20 +227,31 @@ export function AppSidebar({
   );
 
   // While hosted-and-hidden (a Settings/Tools body is showing in the drawer)
-  // this sidebar is not the visible one: leave the search shortcut unhandled
-  // rather than opening the drawer onto a hidden search field.
+  // this sidebar is not the visible one: leave its shortcuts unhandled, as
+  // they are on wide viewports where Settings/Tools replace the sidebar,
+  // rather than opening the drawer onto a hidden search field or clicking
+  // rows the user cannot see.
   const isHiddenHostedBody = mobileHosted?.hidden === true;
   useAppCommandHandler("thread.search", () => {
     if (isHiddenHostedBody) return false;
     threadSearch.onActivate();
     return true;
   });
+  const activateVisibleThreadShortcut = useCallback(
+    (index: number) =>
+      isHiddenHostedBody ? false : activateThreadShortcut(index),
+    [activateThreadShortcut, isHiddenHostedBody],
+  );
   useIndexedAppCommandHandlers(
     THREAD_JUMP_APP_COMMAND_IDS,
-    activateThreadShortcut,
+    activateVisibleThreadShortcut,
   );
-  useAppCommandHandler("thread.previous", () => activateAdjacentThread(-1));
-  useAppCommandHandler("thread.next", () => activateAdjacentThread(1));
+  useAppCommandHandler("thread.previous", () =>
+    isHiddenHostedBody ? false : activateAdjacentThread(-1),
+  );
+  useAppCommandHandler("thread.next", () =>
+    isHiddenHostedBody ? false : activateAdjacentThread(1),
+  );
 
   useEffect(() => {
     if (isAppCommandModifierHeld) {

@@ -15,7 +15,9 @@ import {
 } from "./fixed-panel-tabs-state";
 import {
   resetFixedPanelTabsStateForTest,
+  resetFixedPanelTabsStorageMaintenanceForTest,
   useFixedPanelTabsState,
+  useFixedPanelTabsStorageMaintenance,
   useUpdateFixedPanelTabsState,
 } from "./fixed-panel-tabs";
 import { BbHttpError } from "./sdk";
@@ -422,6 +424,42 @@ describe("fixed panel tab storage churn", () => {
       expect(setItem).not.toHaveBeenCalledWith(storageKey, expect.anything());
     } finally {
       setItem.mockRestore();
+    }
+  });
+
+  it("schedules the storage prune once per page load, off the mount task", () => {
+    vi.useFakeTimers();
+    resetFixedPanelTabsStorageMaintenanceForTest();
+    try {
+      const now = Date.now();
+      const expiredBlob = serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({
+          lastUsedAt: now - FIXED_PANEL_TABS_IDLE_EXPIRY_MS - 1,
+        }),
+      });
+      const firstKey = getFixedPanelTabsStateStorageKey({ threadId: "one" });
+      window.localStorage.setItem(firstKey, expiredBlob);
+
+      const first = renderHook(() => useFixedPanelTabsStorageMaintenance());
+      // Never in the same task as the route change that mounted the view.
+      expect(window.localStorage.getItem(firstKey)).not.toBeNull();
+      act(() => {
+        vi.runAllTimers();
+      });
+      expect(window.localStorage.getItem(firstKey)).toBeNull();
+      first.unmount();
+
+      // A later thread navigation mounts the hook again: no second scan.
+      const secondKey = getFixedPanelTabsStateStorageKey({ threadId: "two" });
+      window.localStorage.setItem(secondKey, expiredBlob);
+      renderHook(() => useFixedPanelTabsStorageMaintenance());
+      act(() => {
+        vi.runAllTimers();
+      });
+      expect(window.localStorage.getItem(secondKey)).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+      resetFixedPanelTabsStorageMaintenanceForTest();
     }
   });
 

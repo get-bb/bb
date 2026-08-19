@@ -517,7 +517,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const { isFocused, navigateInPane, onRequestClose, isBoundedPane } =
     usePaneContext();
   const navigate = useNavigate();
-  useFixedPanelTabsStorageMaintenance(threadId);
+  useFixedPanelTabsStorageMaintenance();
   const systemConfigQuery = useSystemConfig();
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId ?? "");
   const hasThreadDetailBootstrapSettled =

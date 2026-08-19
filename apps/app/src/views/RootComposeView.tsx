@@ -971,7 +971,7 @@ function RootComposeSurface({
     startInstall({ hostId: composeHostId, issue: codexCliIssue });
   }, [codexCliIssue, composeHostId, startInstall]);
 
-  useFixedPanelTabsStorageMaintenance(ROOT_COMPOSE_FIXED_PANEL_STATE_ID);
+  useFixedPanelTabsStorageMaintenance();
   const fixedPanelTabsState = useFixedPanelTabsState(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     null,

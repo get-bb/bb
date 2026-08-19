@@ -235,9 +235,7 @@ let hasScheduledFixedPanelTabsStoragePrune = false;
  * schema-parsed every stored blob on the mount path; the scan only needs to
  * run once per session, and never in the same task as a route change.
  */
-export function useFixedPanelTabsStorageMaintenance(
-  _panelStateId: FixedPanelTabsPanelStateId,
-): void {
+export function useFixedPanelTabsStorageMaintenance(): void {
   useEffect(() => {
     if (hasScheduledFixedPanelTabsStoragePrune) {
       return;
