@@ -64,7 +64,7 @@ interface UseEnvironmentDiffFilesOptions extends QueryOptions {
 
 const ENVIRONMENT_PULL_REQUEST_STALE_MS = 30_000;
 const ENVIRONMENT_SETTLED_PULL_REQUEST_STALE_MS = 60 * 60_000;
-const ENVIRONMENT_ACTIVE_PULL_REQUEST_REFETCH_MS = 5_000;
+const ENVIRONMENT_ACTIVE_PULL_REQUEST_REFETCH_MS = 30_000;
 const MERGE_BASE_BRANCHES_STALE_MS = 30_000;
 const MERGE_BASE_BRANCHES_LIMIT = 50;
 /** Staleness window for the environment diff TOC query. */
@@ -192,7 +192,10 @@ export function useEnvironmentPullRequest(
       }),
     enabled,
     refetchOnMount: true,
-    refetchOnWindowFocus: "always",
+    // Each lookup spawns `gh pr view` on the host, so refetch on focus only
+    // when the cached PR is stale; a still-fresh PR does not need a re-probe on
+    // every foreground.
+    refetchOnWindowFocus: true,
     refetchInterval: (query) =>
       getEnvironmentPullRequestRefetchInterval(
         getEnvironmentPullRequestFromResponse(query.state.data),

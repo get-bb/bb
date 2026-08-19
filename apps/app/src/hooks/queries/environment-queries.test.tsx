@@ -24,7 +24,7 @@ vi.mock("@/hooks/useRealtimeSubscription", () => ({
 const ENVIRONMENT_ID = "env-1";
 const ACTIVE_PULL_REQUEST_STALE_MS = 30_000;
 const SETTLED_PULL_REQUEST_STALE_MS = 60 * 60_000;
-const ACTIVE_PULL_REQUEST_REFETCH_MS = 5_000;
+const ACTIVE_PULL_REQUEST_REFETCH_MS = 30_000;
 
 const pullRequestFixture: ThreadPullRequest = {
   number: 128,
@@ -163,7 +163,7 @@ describe("useEnvironmentPullRequest", () => {
     ).toBe(false);
   });
 
-  it("refetches stale pull request data on mount and always refetches on window focus", async () => {
+  it("refetches stale pull request data on mount and on window focus", async () => {
     const { wrapper, queryClient } = createQueryClientTestHarness();
     vi.mocked(sdk.environments.pullRequest).mockResolvedValue(
       pullRequestResponse(pullRequestFixture),
@@ -182,7 +182,7 @@ describe("useEnvironmentPullRequest", () => {
     expect(query?.options).toEqual(
       expect.objectContaining({
         refetchOnMount: true,
-        refetchOnWindowFocus: "always",
+        refetchOnWindowFocus: true,
         refetchInterval: expect.any(Function),
         staleTime: expect.any(Function),
       }),

@@ -28,7 +28,7 @@ import {
 } from "./query-helpers";
 import {
   EXPENSIVE_MANUAL_QUERY_POLICY,
-  FAST_FOCUS_OWNED_LIVE_QUERY_POLICY,
+  REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
   TYPEAHEAD_QUERY_POLICY,
 } from "./query-policies";
 
@@ -60,6 +60,13 @@ interface UseProjectCommandsArgs {
 }
 
 const PROJECT_SOURCE_BRANCHES_LIMIT = 50;
+/**
+ * The branch list is a daemon git RPC (throttled fetch + several git
+ * commands). Realtime `project-sources-changed` refreshes it and the branch
+ * picker refetches on open, so a foreground/focus refetch only re-runs that
+ * RPC without new information.
+ */
+const PROJECT_SOURCE_BRANCHES_STALE_MS = 30_000;
 
 function decodeBase64Bytes(content: string): Uint8Array {
   const binaryContent = atob(content);
@@ -130,7 +137,8 @@ export function useProjectSourceBranches(
         signal,
       }),
     enabled,
-    ...FAST_FOCUS_OWNED_LIVE_QUERY_POLICY,
+    ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
+    staleTime: PROJECT_SOURCE_BRANCHES_STALE_MS,
     placeholderData: (previousData, previousQuery) =>
       projectId && hostId
         ? resolveProjectSourceBranchesPlaceholder({
