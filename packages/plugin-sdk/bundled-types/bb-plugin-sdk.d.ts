@@ -8142,6 +8142,9 @@ declare const timelineCommandWorkRowSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodLiteral<"work">;
     output: z$1.ZodString;
+    outputPreview: z$1.ZodOptional<z$1.ZodObject<{
+        totalChars: z$1.ZodNumber;
+    }, z$1.core.$strip>>;
     source: z$1.ZodNullable<z$1.ZodString>;
     sourceSeqEnd: z$1.ZodNumber;
     sourceSeqStart: z$1.ZodNumber;
@@ -8186,6 +8189,9 @@ declare const timelineToolWorkRowSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodLiteral<"work">;
     output: z$1.ZodString;
+    outputPreview: z$1.ZodOptional<z$1.ZodObject<{
+        totalChars: z$1.ZodNumber;
+    }, z$1.core.$strip>>;
     sourceSeqEnd: z$1.ZodNumber;
     sourceSeqStart: z$1.ZodNumber;
     startedAt: z$1.ZodNumber;

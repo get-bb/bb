@@ -62,6 +62,7 @@ import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
   truncateTimelineResponseOutputs,
 } from "../../services/threads/timeline-output-truncation.js";
+import { previewTimelineResponseOutputs } from "../../services/threads/timeline-output-preview.js";
 import { computeTimelineRowDelta } from "@bb/server-contract";
 import {
   findThreadEvent,
@@ -380,10 +381,16 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           },
         );
         slowTimelineBuildLogger.log({ profile, threadId: thread.id });
-        return truncateTimelineResponseOutputs(
+        const truncated = truncateTimelineResponseOutputs(
           response,
           DEFAULT_MAX_INLINE_OUTPUT_CHARS,
         );
+        // The default window renders outputs collapsed; ship a preview and let
+        // the client read the whole output on expand. Nested-row consumers
+        // asked for the full inline projection.
+        return includeNestedRows
+          ? truncated
+          : previewTimelineResponseOutputs(truncated);
       },
     );
 

@@ -666,6 +666,13 @@ export const timelinePageMetadataSchema = z
 
 export const threadTimelineQuerySchema = z
   .object({
+    /**
+     * When `"true"`, completed turns carry their child rows inline and every
+     * command/tool row carries its full inline output (bounded by the 32 K
+     * inline cap). The default window collapses completed turns and replaces
+     * the running turn's large outputs with a head+tail preview marked by
+     * `outputPreview`; read those whole via `timelineTurnSummaryDetails`.
+     */
     includeNestedRows: z.enum(["true", "false"]),
     segmentLimit: z.string().regex(/^\d+$/),
     beforeAnchorSeq: z.string().regex(/^[1-9]\d*$/),
