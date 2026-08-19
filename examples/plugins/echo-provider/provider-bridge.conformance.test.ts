@@ -7,7 +7,11 @@
  *
  * The transport is the in-process pattern: `send` is the bridge's exported
  * line handler, and `takeMessages` drains a captured stdout buffer (the
- * bridge writes protocol lines with process.stdout.write).
+ * bridge writes protocol lines with process.stdout.write). The bridge emits
+ * `thread/delta` notifications, but the kit's grammar checks run over
+ * canonical ThreadEvents — so the transport runs each delta batch through a
+ * real runtime delta assembler and re-emits the assembled events on the
+ * kit's internal `conformance/assembledEvent` lane.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,48 +22,22 @@ import {
   runBridgeConformance,
   type BridgeConformanceTransport,
 } from "@bb/provider-bridge-protocol/conformance";
+import {
+  captureBridgeJsonRpcOutput,
+  type CapturedBridgeJsonRpcOutput,
+} from "@bb/provider-bridge-protocol/testing";
+import {
+  createBridgeDeltaEventCollector,
+  toConformanceMessages,
+} from "@bb/agent-runtime/test/bridge-delta-assembly";
 import { handleLine } from "./src/provider-bridge.js";
 
-interface CapturedStdout {
-  messages: unknown[];
-  restore: () => void;
-}
-
-/** Buffer every protocol line the bridge writes to stdout. */
-function captureStdoutJsonLines(): CapturedStdout {
-  const messages: unknown[] = [];
-  const originalWrite = process.stdout.write.bind(process.stdout);
-  let pending = "";
-  process.stdout.write = ((chunk: string | Uint8Array): boolean => {
-    pending += typeof chunk === "string" ? chunk : chunk.toString();
-    for (;;) {
-      const newlineIndex = pending.indexOf("\n");
-      if (newlineIndex === -1) {
-        break;
-      }
-      const line = pending.slice(0, newlineIndex);
-      pending = pending.slice(newlineIndex + 1);
-      if (line.trim().length === 0) {
-        continue;
-      }
-      messages.push(JSON.parse(line));
-    }
-    return true;
-  }) as typeof process.stdout.write;
-  return {
-    messages,
-    restore: () => {
-      process.stdout.write = originalWrite;
-    },
-  };
-}
-
-let output: CapturedStdout;
+let output: CapturedBridgeJsonRpcOutput;
 let workspaceDir: string;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-echo-conformance-"));
-  output = captureStdoutJsonLines();
+  output = captureBridgeJsonRpcOutput();
 });
 
 afterEach(() => {
@@ -69,12 +47,18 @@ afterEach(() => {
 
 it("passes the canonical protocol suite", async () => {
   let drained = 0;
+  // One stateful assembler for the whole run — the runtime adapter's exact
+  // delta→event translation, so cross-resume id uniqueness is checked against
+  // the ids the runtime would really mint.
+  const collector = createBridgeDeltaEventCollector("echo");
   const transport: BridgeConformanceTransport = {
     send: (line) => handleLine(line),
     takeMessages: () => {
       const fresh = output.messages.slice(drained);
       drained = output.messages.length;
-      return fresh;
+      return fresh.flatMap((message) =>
+        toConformanceMessages(message, collector),
+      );
     },
   };
 
