@@ -68,6 +68,7 @@ function makeDeps(
     removeRegistrations: vi.fn(),
     warn: vi.fn(),
     routePluginId: () => null,
+    beginSlotBatch: () => () => {},
     ...overrides,
   };
 }

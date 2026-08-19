@@ -86,6 +86,7 @@ function makeDeps(initial: PluginFrontendCandidate[] = []) {
     resetCrashedSlots: vi.fn(),
     setRegistrations: vi.fn(),
     removeRegistrations: vi.fn(),
+    beginSlotBatch: () => () => {},
     warn: vi.fn(),
     routePluginId: () => null,
     mountTimeoutMs: undefined as number | undefined,
@@ -154,6 +155,7 @@ describe("reconcilePluginFrontends", () => {
       resetCrashedSlots: vi.fn(),
       setRegistrations: setPluginSlotRegistrations,
       removeRegistrations: removePluginSlotRegistrations,
+      beginSlotBatch: () => () => {},
       warn: vi.fn(),
       routePluginId: () => null,
     };

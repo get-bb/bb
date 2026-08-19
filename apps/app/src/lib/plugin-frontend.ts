@@ -51,6 +51,7 @@ import { createGatedPierreDiffsReact } from "./plugin-pierre-diffs-react";
 import { getPluginPanelRoutePluginId } from "./route-paths";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 import {
+  beginPluginSlotBatch,
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
@@ -492,6 +493,11 @@ export interface PluginFrontendReconcileDeps {
     registrations: PluginRegistrationSet,
   ) => void;
   removeRegistrations: (pluginId: string) => void;
+  /**
+   * Hold slot-store notifications while a reconcile run activates several
+   * plugins; returns the closer. Production binds `beginPluginSlotBatch`.
+   */
+  beginSlotBatch: () => () => void;
   warn: (message: string) => void;
   /**
    * The plugin whose panel is the current route (`/plugins/:pluginId/...`),
@@ -778,6 +784,23 @@ export async function reconcilePluginFrontends(
     state.diagnostics.delete(pluginId);
     deps.diagnosticsChanged?.();
   }
+  // One notification burst per run instead of one per plugin: every
+  // `usePluginSlots` reader (timeline static context, markdown directive
+  // registry, composer customizations, ...) would otherwise re-render once
+  // per bundle as they resolve.
+  const closeSlotBatch = deps.beginSlotBatch();
+  try {
+    await reconcileCandidates(candidates, state, deps);
+  } finally {
+    closeSlotBatch();
+  }
+}
+
+async function reconcileCandidates(
+  candidates: readonly PluginFrontendCandidate[],
+  state: PluginFrontendReconcileState,
+  deps: PluginFrontendReconcileDeps,
+): Promise<void> {
   // Bounded, ordered loading: every bundle is a separate parse/eval on the
   // main thread and, on a phone, they used to all land during the window in
   // which the route chunk itself was still arriving. Three at a time keeps
@@ -1027,6 +1050,13 @@ function publishBrowserDiagnostics(): void {
   for (const listener of browserDiagnosticsListeners) listener();
 }
 
+/**
+ * Longest a reconcile run holds slot notifications: bundles that resolve
+ * within this window flush together; a slow bundle cannot keep the others'
+ * UI off screen past it.
+ */
+const PLUGIN_SLOT_BATCH_MAX_HOLD_MS = 150;
+
 const browserReconcileDeps: PluginFrontendReconcileDeps = {
   fetchCandidates: fetchFrontendCandidates,
   importModule: (url) => import(/* @vite-ignore */ url),
@@ -1040,6 +1070,8 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   resetCrashedSlots: resetCrashedPluginSlots,
   setRegistrations: setPluginSlotRegistrations,
   removeRegistrations: removePluginSlotRegistrations,
+  beginSlotBatch: () =>
+    beginPluginSlotBatch({ maxHoldMs: PLUGIN_SLOT_BATCH_MAX_HOLD_MS }),
   warn: (message) => console.warn(message),
   diagnosticsChanged: publishBrowserDiagnostics,
 };
