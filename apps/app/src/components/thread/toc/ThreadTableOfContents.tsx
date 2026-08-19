@@ -274,20 +274,25 @@ function useConversationTocItems({
 }
 
 /**
- * Returns the width a container query sees for `host`.
+ * Whether the scroll overlay is wide enough for the TOC, tracked against the
+ * same width the `@container` rule sees.
  *
- * An inline-size container query resolves against the content box, but
- * `clientWidth` also counts horizontal padding. The scroll overlay pads itself,
- * so the raw `clientWidth` would report the TOC as visible for a padding-wide
- * band below the CSS breakpoint.
+ * The width comes off the ResizeObserver entry's content box, which is exactly
+ * what an inline-size container query resolves against — padding excluded, so
+ * this boundary and the CSS breakpoint agree. (`clientWidth` counts the
+ * overlay's own horizontal padding, and would report the TOC visible for a
+ * padding-wide band below the breakpoint.)
+ *
+ * Reading the entry rather than measuring the element is the point. The
+ * previous `getComputedStyle(host)` + `clientWidth` pair forced a synchronous
+ * style recalculation, and it ran inside a `requestAnimationFrame` callback —
+ * which fires before the frame's style and layout phase, so the recalculation
+ * was unavoidable and full-document. In Safari that single call cost 750ms on
+ * one profiled thread and 67% of all script time on another, and the resulting
+ * `setVisible` re-triggered the observer ("ResizeObserver loop completed with
+ * undelivered notifications"). ResizeObserver callbacks already run after
+ * layout, so the entry is free and the animation-frame hop is unnecessary.
  */
-function containerInlineSize(host: HTMLElement): number {
-  const style = window.getComputedStyle(host);
-  const paddingLeft = Number.parseFloat(style.paddingLeft) || 0;
-  const paddingRight = Number.parseFloat(style.paddingRight) || 0;
-  return host.clientWidth - paddingLeft - paddingRight;
-}
-
 function useThreadTocVisible(rootElement: HTMLElement | null): boolean {
   const [visible, setVisible] = useState(
     () => typeof ResizeObserver === "undefined",
@@ -305,23 +310,16 @@ function useThreadTocVisible(rootElement: HTMLElement | null): boolean {
       return;
     }
 
-    let frame: number | null = null;
-    const measure = () => {
-      frame = null;
-      setVisible(containerInlineSize(host) >= TOC_MIN_VISIBLE_WIDTH_PX);
-    };
-    const scheduleMeasure = () => {
-      if (frame !== null) return;
-      frame = window.requestAnimationFrame(measure);
-    };
-
-    scheduleMeasure();
-    const resizeObserver = new ResizeObserver(scheduleMeasure);
-    resizeObserver.observe(host);
-    return () => {
-      if (frame !== null) window.cancelAnimationFrame(frame);
-      resizeObserver.disconnect();
-    };
+    // `observe` delivers the current content box straight away, so there is no
+    // separate initial measurement to make.
+    const resizeObserver = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const inlineSize =
+        entry.contentBoxSize[0]?.inlineSize ?? entry.contentRect.width;
+      setVisible(inlineSize >= TOC_MIN_VISIBLE_WIDTH_PX);
+    });
+    resizeObserver.observe(host, { box: "content-box" });
+    return () => resizeObserver.disconnect();
   }, [rootElement]);
 
   return visible;

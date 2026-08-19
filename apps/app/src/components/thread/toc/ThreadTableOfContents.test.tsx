@@ -43,8 +43,33 @@ import {
 } from "./ThreadTableOfContents";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 
+/**
+ * Models the part of ResizeObserver the TOC depends on: `observe` delivers the
+ * target's current content box immediately, and the content box is the border
+ * box minus horizontal padding. The TOC reads that entry instead of forcing a
+ * style recalculation, so the arithmetic belongs here in the platform stand-in
+ * rather than in the component.
+ */
 class ResizeObserverMock implements ResizeObserver {
-  observe: ResizeObserver["observe"] = vi.fn();
+  constructor(private readonly callback: ResizeObserverCallback) {}
+
+  observe: ResizeObserver["observe"] = (target) => {
+    const element = target as HTMLElement;
+    const paddingX =
+      (Number.parseFloat(element.style.paddingLeft) || 0) +
+      (Number.parseFloat(element.style.paddingRight) || 0);
+    const inlineSize = Math.max(0, element.clientWidth - paddingX);
+    this.callback(
+      [
+        {
+          target,
+          contentBoxSize: [{ inlineSize, blockSize: 0 }],
+          contentRect: { width: inlineSize } as DOMRectReadOnly,
+        } as unknown as ResizeObserverEntry,
+      ],
+      this,
+    );
+  };
   unobserve: ResizeObserver["unobserve"] = vi.fn();
   disconnect: ResizeObserver["disconnect"] = vi.fn();
 }
@@ -386,8 +411,9 @@ describe("ThreadTableOfContents", () => {
     );
   });
 
-  // The overlay pads itself, so `clientWidth` runs 24px ahead of the content
-  // box the `@container` rule measures. Both boundaries must agree with CSS.
+  // The overlay pads itself, so its border box runs 24px ahead of the content
+  // box both the `@container` rule and the ResizeObserver entry report. The JS
+  // boundary and the CSS breakpoint must agree.
   it("does not request the outline when padding hides the TOC", () => {
     render(
       <TocHost
