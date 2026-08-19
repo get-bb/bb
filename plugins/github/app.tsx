@@ -59,7 +59,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Markdown } from "@/components/markdown-lite";
 import { PageBody } from "@/components/page-body";
 
-interface Item {
+export interface Item {
   repo: string;
   number: number;
   kind: "issue" | "pr";
@@ -180,14 +180,14 @@ function relativeTime(iso: string): string {
 
 const PANEL_PATH = "github";
 
-type Route =
+export type Route =
   | { view: "issues" }
   | { view: "pulls" }
   | { view: "new" }
   | { view: "issue"; repo: string; number: number }
   | { view: "pull"; repo: string; number: number };
 
-function parseSubPath(subPath: string): Route {
+export function parseSubPath(subPath: string): Route {
   const parts = subPath.split("/").filter((p) => p.length > 0);
   if (parts[0] === "pulls" && parts.length === 4) {
     const number = Number(parts[3]);
@@ -206,7 +206,7 @@ function parseSubPath(subPath: string): Route {
   return { view: "issues" };
 }
 
-function routeToSubPath(route: Route): string {
+export function routeToSubPath(route: Route): string {
   switch (route.view) {
     case "issues":
       return "issues";
@@ -481,7 +481,7 @@ function useIssueMutations() {
 //   no:assignee · no:label · anything else matches title / number / repo
 // ---------------------------------------------------------------------------
 
-interface ParsedQuery {
+export interface ParsedQuery {
   states: string[];
   assignees: string[];
   authors: string[];
@@ -506,7 +506,7 @@ const STATE_VALUES: Record<string, string> = {
   merged: "MERGED",
 };
 
-function parseQuery(query: string): ParsedQuery {
+export function parseQuery(query: string): ParsedQuery {
   const parsed: ParsedQuery = {
     states: [],
     assignees: [],
@@ -543,7 +543,7 @@ function parseQuery(query: string): ParsedQuery {
   return parsed;
 }
 
-function matchesQuery(item: Item, query: ParsedQuery, viewer: string | null): boolean {
+export function matchesQuery(item: Item, query: ParsedQuery, viewer: string | null): boolean {
   if (query.states.length > 0 && !query.states.includes(item.state)) return false;
   if (query.assignees.length > 0) {
     const wanted = query.assignees.map((login) =>
@@ -576,7 +576,7 @@ function matchesQuery(item: Item, query: ParsedQuery, viewer: string | null): bo
 // The filter bar: one input, GitHub-style typeahead over keys and values.
 // ---------------------------------------------------------------------------
 
-interface Suggestion {
+export interface Suggestion {
   /** Replaces the token being typed. */
   insert: string;
   label: string;
@@ -597,7 +597,7 @@ function quoteValue(value: string): string {
   return /\s/.test(value) ? `"${value}"` : value;
 }
 
-function buildSuggestions(
+export function buildSuggestions(
   token: string,
   vocab: { users: string[]; labels: string[]; repos: string[] },
   kind: "issue" | "pr",
