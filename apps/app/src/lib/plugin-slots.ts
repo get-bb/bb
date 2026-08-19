@@ -336,7 +336,8 @@ export function beginPluginSlotBatch(options: {
   return () => {
     if (closed) return;
     closed = true;
-    openBatchDepth -= 1;
+    // Never below zero: a test reset can zero the depth under an open batch.
+    openBatchDepth = Math.max(0, openBatchDepth - 1);
     if (openBatchDepth === 0) flushChange();
   };
 }

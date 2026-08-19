@@ -1,6 +1,10 @@
 import { useCallback, useMemo } from "react";
 import { useStore } from "jotai";
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import {
+  PERSONAL_PROJECT_ID,
+  type Host,
+  type ThreadListEntry,
+} from "@bb/domain";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type {
   PluginSidebarProject,
@@ -31,6 +35,29 @@ import {
 const EMPTY_THREADS: readonly PluginSidebarThread[] = [];
 const EMPTY_PROJECTS: readonly PluginSidebarProject[] = [];
 const EMPTY_ENTRIES: ReadonlyMap<string, ThreadListEntry> = new Map();
+const EMPTY_HOST_NAMES: ReadonlyMap<string, string> = new Map();
+
+/**
+ * Host-name map per hosts payload. Module-level (not `useMemo`) so every
+ * `useSidebarThreads` caller derives the same map object from the same React
+ * Query result; a per-hook map would give two plugin lists two keys and make
+ * them evict each other's entries from {@link pluginSidebarThreadByEntry}.
+ */
+const hostNamesByHosts = new WeakMap<
+  readonly Host[],
+  ReadonlyMap<string, string>
+>();
+
+function hostNamesFor(
+  hosts: readonly Host[] | undefined,
+): ReadonlyMap<string, string> {
+  if (hosts === undefined) return EMPTY_HOST_NAMES;
+  const cached = hostNamesByHosts.get(hosts);
+  if (cached !== undefined) return cached;
+  const names = new Map(hosts.map((host) => [host.id, host.name] as const));
+  hostNamesByHosts.set(hosts, names);
+  return names;
+}
 
 /**
  * Per-entry DTO memo. React Query structurally shares the sidebar payload, so
@@ -74,10 +101,7 @@ export function useSidebarThreads(): PluginSidebarThreadsState {
   // The sidebar already subscribes to host updates; this reads the same
   // cached list so a row can print a machine name instead of a host id.
   const { data: hosts } = useHosts();
-  const hostNamesById = useMemo(
-    () => new Map((hosts ?? []).map((host) => [host.id, host.name] as const)),
-    [hosts],
-  );
+  const hostNamesById = hostNamesFor(hosts);
 
   return useMemo<PluginSidebarThreadsState>(() => {
     if (data === undefined) {

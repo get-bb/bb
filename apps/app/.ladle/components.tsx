@@ -6,6 +6,7 @@ import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { Provider as JotaiProvider, createStore } from "jotai";
 import { MemoryRouter } from "react-router-dom";
 import { AppToaster } from "../src/components/AppToaster";
+import { RouteNavigationProvider } from "../src/components/ui/app-route-anchor";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { setPreferredTheme } from "../src/hooks/useTheme";
 import {
@@ -57,24 +58,28 @@ export const Provider: GlobalProvider = ({ globalState, children }) => {
 
   return (
     <MemoryRouter initialEntries={["/"]}>
-      <JotaiProvider store={store}>
-        <QueryClientProvider client={queryClient}>
-          <WorkerPoolContextProvider
-            poolOptions={{
-              workerFactory: createDiffWorker,
-              poolSize: getDiffWorkerPoolSize(),
-            }}
-            highlighterOptions={{}}
-          >
-            <TooltipProvider delayDuration={300} disableHoverableContent>
-              <div className="min-h-screen text-foreground">
-                {children}
-                <AppToaster position="bottom-right" />
-              </div>
-            </TooltipProvider>
-          </WorkerPoolContextProvider>
-        </QueryClientProvider>
-      </JotaiProvider>
+      {/* Sidebar rows, thread actions and the fork handler navigate through
+          useRouteNavigate, which throws at the click without this provider. */}
+      <RouteNavigationProvider>
+        <JotaiProvider store={store}>
+          <QueryClientProvider client={queryClient}>
+            <WorkerPoolContextProvider
+              poolOptions={{
+                workerFactory: createDiffWorker,
+                poolSize: getDiffWorkerPoolSize(),
+              }}
+              highlighterOptions={{}}
+            >
+              <TooltipProvider delayDuration={300} disableHoverableContent>
+                <div className="min-h-screen text-foreground">
+                  {children}
+                  <AppToaster position="bottom-right" />
+                </div>
+              </TooltipProvider>
+            </WorkerPoolContextProvider>
+          </QueryClientProvider>
+        </JotaiProvider>
+      </RouteNavigationProvider>
     </MemoryRouter>
   );
 };
