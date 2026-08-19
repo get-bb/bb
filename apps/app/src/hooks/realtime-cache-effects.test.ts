@@ -39,7 +39,10 @@ import {
   threadTimelineTurnSummaryDetailsQueryKey,
 } from "./queries/query-keys";
 import { pluginContributionsQueryKey } from "./queries/query-keys";
-import { createRealtimeCacheEffects } from "./realtime-cache-effects";
+import {
+  createRealtimeCacheEffects,
+  type RealtimeCacheEffectsVisibility,
+} from "./realtime-cache-effects";
 import {
   REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
   REALTIME_HOST_CHANGE_REGISTRY,
@@ -73,7 +76,33 @@ interface CachedSidebarNavigationFixture {
   projects: CachedSidebarNavigationProjectFixture[];
 }
 
-function createRealtimeEffectsTestContext() {
+interface FakeVisibility extends RealtimeCacheEffectsVisibility {
+  setVisible: (visible: boolean) => void;
+}
+
+function createFakeVisibility(): FakeVisibility {
+  let visible = true;
+  const listeners = new Set<() => void>();
+  return {
+    isDocumentVisible: () => visible,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    setVisible: (nextVisible) => {
+      visible = nextVisible;
+      for (const listener of listeners) {
+        listener();
+      }
+    },
+  };
+}
+
+function createRealtimeEffectsTestContext(
+  visibility?: RealtimeCacheEffectsVisibility,
+) {
   const queryClient = createAppQueryClient({
     defaultOptions: {
       queries: {
@@ -83,7 +112,7 @@ function createRealtimeEffectsTestContext() {
     },
     showMutationErrorToasts: false,
   });
-  const effects = createRealtimeCacheEffects({ queryClient });
+  const effects = createRealtimeCacheEffects({ queryClient, visibility });
   const firstProjectHistoryKey = projectPromptHistoryQueryKey("project-1");
   const secondProjectHistoryKey = projectPromptHistoryQueryKey("project-2");
   const terminalKey = terminalsQueryKey({
@@ -1920,5 +1949,142 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(terminalKey)?.isInvalidated).toBe(true);
 
     effects.dispose();
+  });
+
+  it("applies the reconnect watermark from the connected event", () => {
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const disconnectedAt = Date.now();
+    const staleKey = threadQueryKey("thr_stale");
+    const freshKey = threadQueryKey("thr_fresh");
+    queryClient.setQueryData(
+      staleKey,
+      { id: "thr_stale" },
+      { updatedAt: disconnectedAt - 1 },
+    );
+    queryClient.setQueryData(
+      freshKey,
+      { id: "thr_fresh" },
+      { updatedAt: disconnectedAt + 1 },
+    );
+
+    effects.handleConnected({ reconnected: true, disconnectedAt });
+
+    expect(queryClient.getQueryState(staleKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(freshKey)?.isInvalidated).toBe(false);
+    effects.dispose();
+  });
+
+  describe("while the document is hidden", () => {
+    // Every invalidation refetches active observers even when nothing can be
+    // seen; on a phone the tab is suspended anyway, so those fetches only pile
+    // up to fire and be partially aborted on resume. Hidden documents merge
+    // and apply everything as one wave on the next visible.
+    it("merges thread changes and flushes them once on visible", () => {
+      vi.useFakeTimers();
+      const visibility = createFakeVisibility();
+      const { effects, queryClient } =
+        createRealtimeEffectsTestContext(visibility);
+      const threadKey = threadQueryKey("thr_1");
+      const timelineKey = threadTimelineQueryKey("thr_1");
+      const sidebarNavigationKey = sidebarNavigationQueryKey();
+      queryClient.setQueryData(threadKey, { id: "thr_1" });
+      queryClient.setQueryData(timelineKey, { rows: [] });
+      queryClient.setQueryData<CachedSidebarNavigationFixture>(
+        sidebarNavigationKey,
+        { projects: [], personalProject: { threads: [] } },
+      );
+
+      visibility.setVisible(false);
+      // status-changed normally flushes immediately; events-appended debounces.
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        changes: ["status-changed"],
+      });
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        changes: ["events-appended"],
+      });
+      vi.advanceTimersByTime(1000);
+
+      expect(queryClient.getQueryState(threadKey)?.isInvalidated).toBe(false);
+      expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(false);
+      expect(
+        queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated,
+      ).toBe(false);
+
+      visibility.setVisible(true);
+
+      expect(queryClient.getQueryState(threadKey)?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
+      expect(
+        queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated,
+      ).toBe(true);
+      effects.dispose();
+    });
+
+    it("holds a debounce that elapses hidden and non-thread changes until visible", async () => {
+      vi.useFakeTimers();
+      const visibility = createFakeVisibility();
+      const { effects, queryClient } =
+        createRealtimeEffectsTestContext(visibility);
+      const timelineKey = threadTimelineQueryKey("thr_1");
+      const workStatusKey = environmentWorkStatusQueryKey("env-1", "main");
+      const projectsKey = projectsQueryKey();
+      const configKey = systemConfigQueryKey();
+      queryClient.setQueryData(timelineKey, { rows: [] });
+      queryClient.setQueryData(workStatusKey, null);
+      queryClient.setQueryData(projectsKey, []);
+      queryClient.setQueryData(configKey, {});
+
+      // Scheduled while visible, but the tab hides before the debounce fires.
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        changes: ["events-appended"],
+      });
+      visibility.setVisible(false);
+      vi.advanceTimersByTime(250);
+      effects.handleChanged({
+        type: "changed",
+        entity: "environment",
+        id: "env-1",
+        changes: ["work-status-changed"],
+      });
+      effects.handleChanged({
+        type: "changed",
+        entity: "host",
+        changes: ["host-connected"],
+      });
+      effects.handleChanged({
+        type: "changed",
+        entity: "system",
+        changes: ["config-changed"],
+      });
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(false);
+      expect(queryClient.getQueryState(workStatusKey)?.isInvalidated).toBe(
+        false,
+      );
+      expect(queryClient.getQueryState(projectsKey)?.isInvalidated).toBe(false);
+      expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(false);
+
+      visibility.setVisible(true);
+      // Environment changes re-enter their own debounce on resume.
+      await vi.advanceTimersByTimeAsync(250);
+
+      expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(workStatusKey)?.isInvalidated).toBe(
+        true,
+      );
+      expect(queryClient.getQueryState(projectsKey)?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(true);
+      effects.dispose();
+    });
   });
 });

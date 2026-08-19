@@ -44,13 +44,38 @@ interface SystemExecutionOptionsInvalidationArgs extends QueryClientArg {
   hostId: string;
 }
 
+interface ServerReconnectInvalidationArgs extends QueryClientArg {
+  /**
+   * Last moment the previous socket was known healthy. Data that resolved
+   * after it observed server state the socket could not have missed, so it is
+   * left alone; everything older (including never-loaded and errored queries,
+   * whose `dataUpdatedAt` is 0) is refetched.
+   */
+  disconnectedAt: number;
+}
+
+/**
+ * Reconnect catch-up. Mirrors the initial-connect watermark rather than a
+ * blanket invalidation: on a phone every app switch reconnects the socket
+ * while focus refetches and the flush of changes merged while hidden are
+ * already loading the visible thread. A blanket invalidate with the default
+ * `cancelRefetch: true` would abort those partially downloaded responses and
+ * start every one over.
+ */
 export function invalidateRealtimeQueriesAfterServerReconnect({
+  disconnectedAt,
   queryClient,
-}: QueryClientArg): void {
-  invalidateQueryKeys({
-    queryClient,
-    queryKeys: getServerReconnectInvalidationQueryKeys(),
-  });
+}: ServerReconnectInvalidationArgs): void {
+  for (const queryKey of getServerReconnectInvalidationQueryKeys()) {
+    void queryClient.invalidateQueries(
+      {
+        queryKey,
+        predicate: (query) => query.state.dataUpdatedAt < disconnectedAt,
+      },
+      // A fetch already in flight resolves to post-reconnect data; keep it.
+      { cancelRefetch: false },
+    );
+  }
   // A reconnect is how the app learns the server restarted, which is exactly
   // what a bb self-update does — so re-check the version rather than keep
   // advertising the update the user just applied.

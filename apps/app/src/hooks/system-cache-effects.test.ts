@@ -27,6 +27,14 @@ import {
   invalidateRealtimeQueriesFetchedBeforeInitialConnect,
 } from "./cache-owners/system-cache-effects";
 
+/**
+ * A watermark later than every `setQueryData` above it: the whole cache
+ * predates the disconnect, which is the classic reconnect case.
+ */
+function afterAllCachedData(): number {
+  return Date.now() + 1;
+}
+
 function createCacheEffectQueryClient() {
   return createAppQueryClient({
     defaultOptions: {
@@ -153,7 +161,10 @@ describe("system cache effects", () => {
       personalProject: { threads: [] },
     });
 
-    invalidateRealtimeQueriesAfterServerReconnect({ queryClient });
+    invalidateRealtimeQueriesAfterServerReconnect({
+      disconnectedAt: afterAllCachedData(),
+      queryClient,
+    });
 
     expect(queryClient.getQueryState(threadKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(threadBootstrapKey)?.isInvalidated).toBe(
@@ -206,7 +217,10 @@ describe("system cache effects", () => {
       upgradeCommand: "npx bb-app@latest",
     });
 
-    invalidateRealtimeQueriesAfterServerReconnect({ queryClient });
+    invalidateRealtimeQueriesAfterServerReconnect({
+      disconnectedAt: afterAllCachedData(),
+      queryClient,
+    });
 
     expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
   });
@@ -236,13 +250,113 @@ describe("system cache effects", () => {
 
     await waitForQueryCalls(activeThreadQueries, 1);
 
-    invalidateRealtimeQueriesAfterServerReconnect({ queryClient });
+    invalidateRealtimeQueriesAfterServerReconnect({
+      disconnectedAt: afterAllCachedData(),
+      queryClient,
+    });
 
     await waitForQueryCalls(activeThreadQueries, 2);
 
     for (const query of activeThreadQueries) {
       query.unsubscribe();
     }
+    queryClient.unmount();
+    queryClient.clear();
+  });
+
+  // Phone app switch: the browser-resume wave has usually just refetched the
+  // visible thread by the time the socket reconnects. Refetching it again
+  // (and, with the default cancelRefetch, aborting the in-flight response to
+  // do so) is what made every foreground cost two waves.
+  it("leaves queries fetched after the disconnect watermark alone and keeps in-flight fetches", async () => {
+    const queryClient = createCacheEffectQueryClient();
+    queryClient.mount();
+    const disconnectedAt = Date.now();
+    const staleKey = threadQueryKey("thread-stale");
+    const freshKey = threadQueryKey("thread-fresh");
+    const inFlightKey = threadTimelineQueryKey("thread-in-flight");
+    queryClient.setQueryData(
+      staleKey,
+      { id: "thread-stale" },
+      { updatedAt: disconnectedAt - 500 },
+    );
+    queryClient.setQueryData(
+      freshKey,
+      { id: "thread-fresh" },
+      { updatedAt: disconnectedAt + 500 },
+    );
+
+    let resolveInFlight: ((value: string) => void) | undefined;
+    const inFlightQueryFn = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveInFlight = resolve;
+        }),
+    );
+    const inFlightObserver = new QueryObserver(queryClient, {
+      queryKey: inFlightKey,
+      queryFn: inFlightQueryFn,
+      refetchOnWindowFocus: false,
+      staleTime: Infinity,
+    });
+    const unsubscribeInFlight = inFlightObserver.subscribe(() => {});
+    await vi.waitFor(() =>
+      expect(inFlightObserver.getCurrentResult().fetchStatus).toBe("fetching"),
+    );
+
+    invalidateRealtimeQueriesAfterServerReconnect({
+      disconnectedAt,
+      queryClient,
+    });
+
+    expect(queryClient.getQueryState(staleKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(freshKey)?.isInvalidated).toBe(false);
+    // The fetch that was in flight was not cancelled and restarted.
+    expect(inFlightQueryFn).toHaveBeenCalledTimes(1);
+    resolveInFlight?.("loaded");
+    await vi.waitFor(() =>
+      expect(inFlightObserver.getCurrentResult().data).toBe("loaded"),
+    );
+    expect(inFlightQueryFn).toHaveBeenCalledTimes(1);
+
+    unsubscribeInFlight();
+    queryClient.unmount();
+    queryClient.clear();
+  });
+
+  it("refetches errored queries after reconnect", async () => {
+    const queryClient = createCacheEffectQueryClient();
+    queryClient.mount();
+    const erroredKey = hostsQueryKey();
+    const queryFn = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce(new Error("server restarting"))
+      .mockResolvedValue("loaded");
+    const observer = new QueryObserver(queryClient, {
+      queryKey: erroredKey,
+      queryFn,
+      refetchOnWindowFocus: false,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    await vi.waitFor(() =>
+      expect(observer.getCurrentResult().isError).toBe(true),
+    );
+    // An errored query has no data (`dataUpdatedAt` 0): it must not be
+    // mistaken for one that resolved after the watermark.
+    expect(queryClient.getQueryState(erroredKey)?.dataUpdatedAt).toBe(0);
+
+    invalidateRealtimeQueriesAfterServerReconnect({
+      disconnectedAt: Date.now(),
+      queryClient,
+    });
+
+    await vi.waitFor(() =>
+      expect(observer.getCurrentResult().data).toBe("loaded"),
+    );
+    expect(queryFn).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
     queryClient.unmount();
     queryClient.clear();
   });
@@ -313,7 +427,10 @@ describe("system cache effects", () => {
     const unsubscribeDiffFiles = diffFilesObserver.subscribe(() => {});
     diffFilesQueryFn.mockClear();
 
-    invalidateRealtimeQueriesAfterServerReconnect({ queryClient });
+    invalidateRealtimeQueriesAfterServerReconnect({
+      disconnectedAt: afterAllCachedData(),
+      queryClient,
+    });
 
     // The TOC has an observer, so reconnect invalidation refetches it.
     await vi.waitFor(() =>

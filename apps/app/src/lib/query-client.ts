@@ -8,7 +8,6 @@ import {
   getMutationErrorMeta,
   showMutationErrorToast,
 } from "./mutation-errors";
-import { invalidateActiveThreadBundleQueriesAfterBrowserResume } from "@/hooks/cache-owners/active-thread-lifecycle-cache-owner";
 import { cancelActiveQueryFetchesForBrowserSuspend } from "@/hooks/cache-owners/browser-lifecycle-cache-owner";
 import {
   shouldRetryTransientReadQuery,
@@ -25,7 +24,6 @@ export interface AppQueryClientBrowserEventCleanup {
 }
 
 let appFocusEventsInstalled = false;
-const BROWSER_RESUME_INVALIDATION_DEDUPE_MS = 1000;
 
 function installAppFocusEvents(): void {
   if (appFocusEventsInstalled) {
@@ -49,6 +47,15 @@ function installAppFocusEvents(): void {
   });
 }
 
+/**
+ * Suspend handling only. Catch-up after a resume is owned by the realtime
+ * layer: `WebSocketManager` probes or reconnects the socket when the document
+ * becomes visible or the network returns, the reconnect wave refetches every
+ * realtime query whose data predates the disconnect watermark, and change
+ * events merged while hidden flush as one wave on visible. A separate resume
+ * invalidation of the active thread bundle used to run here as well; it
+ * duplicated that wave on every phone app switch and is gone.
+ */
 export function installAppQueryClientBrowserEvents(
   queryClient: QueryClient,
 ): AppQueryClientBrowserEventCleanup {
@@ -58,55 +65,24 @@ export function installAppQueryClientBrowserEvents(
     return { cleanup: () => {} };
   }
 
-  let browserWasSuspended = false;
-  let lastResumeInvalidationAt = -BROWSER_RESUME_INVALIDATION_DEDUPE_MS;
-
   const handleBrowserSuspend = () => {
-    browserWasSuspended = true;
     cancelActiveQueryFetchesForBrowserSuspend(queryClient);
-  };
-  const handleBrowserResume = () => {
-    if (!browserWasSuspended) {
-      return;
-    }
-    browserWasSuspended = false;
-
-    const now = Date.now();
-    if (now - lastResumeInvalidationAt < BROWSER_RESUME_INVALIDATION_DEDUPE_MS) {
-      return;
-    }
-    lastResumeInvalidationAt = now;
-    invalidateActiveThreadBundleQueriesAfterBrowserResume({ queryClient });
   };
   const handlePageHide = () => {
     handleBrowserSuspend();
   };
-  const handlePageShow = () => {
-    handleBrowserResume();
-  };
-  const handleWindowFocus = () => {
-    handleBrowserResume();
-  };
   const handleVisibilityChange = () => {
     if (document.visibilityState === "hidden") {
       handleBrowserSuspend();
-      return;
-    }
-    if (document.visibilityState === "visible") {
-      handleBrowserResume();
     }
   };
 
   window.addEventListener("pagehide", handlePageHide, false);
-  window.addEventListener("pageshow", handlePageShow, false);
-  window.addEventListener("focus", handleWindowFocus, false);
   document.addEventListener("visibilitychange", handleVisibilityChange, false);
 
   return {
     cleanup: () => {
       window.removeEventListener("pagehide", handlePageHide);
-      window.removeEventListener("pageshow", handlePageShow);
-      window.removeEventListener("focus", handleWindowFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     },
   };

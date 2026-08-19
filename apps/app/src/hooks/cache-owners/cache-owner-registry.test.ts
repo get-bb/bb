@@ -46,24 +46,6 @@ const DEPRECATED_CACHE_SHIM_MODULES = new Set([
 const QUERY_KEYS_MODULE_PATH = "hooks/queries/query-keys";
 
 const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
-  "hooks/cache-owners/active-thread-lifecycle-cache-owner.ts": [
-    "THREAD_CONVERSATION_OUTLINE_QUERY_KEY",
-    "THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY",
-    "THREAD_DETAIL_BOOTSTRAP_QUERY_KEY",
-    "THREAD_PENDING_INTERACTIONS_QUERY_KEY",
-    "THREAD_PROMPT_HISTORY_QUERY_KEY",
-    "THREAD_QUERY_KEY",
-    "THREAD_QUEUED_MESSAGES_QUERY_KEY",
-    "THREAD_TIMELINE_QUERY_KEY",
-    "threadConversationOutlineQueryKey",
-    "threadDefaultExecutionOptionsQueryKey",
-    "threadDetailBootstrapQueryKey",
-    "threadPendingInteractionsQueryKey",
-    "threadPromptHistoryQueryKey",
-    "threadQueryKey",
-    "threadQueuedMessagesQueryKey",
-    "threadTimelineQueryKey",
-  ],
   "hooks/cache-owners/cache-invalidation-groups.ts": [
     "allProjectPathsQueryKeyPrefix",
     "allProjectSourceBranchesQueryKeyPrefix",
