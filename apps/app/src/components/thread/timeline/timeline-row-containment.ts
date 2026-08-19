@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useEffect, type CSSProperties, type RefObject } from "react";
 import type { ThreadTimelineViewRow } from "@bb/thread-view";
 
 /**
@@ -13,14 +13,63 @@ import type { ThreadTimelineViewRow } from "@bb/thread-view";
  * assistant markdown table breakout, which on wide layouts extends past the
  * row column (on compact the breakout equals the row width).
  *
- * `contain-intrinsic-block-size: auto <estimate>` keeps the last rendered
- * height once a row has been laid out; the estimate below is only used for
- * rows that never rendered yet (rows above the initial viewport). Row heights
- * are estimated per kind so the scroll range is close to the real one and
- * the browser's scroll anchoring has little to correct as rows render.
+ * A row is laid out once at its real size before it opts in
+ * ({@link useArmTopLevelTimelineRowContainment}); `contain-intrinsic-block-size:
+ * auto <estimate>` then replays that last remembered height whenever the row
+ * is skipped, so realizing the row later does not change the scroll range.
+ * Applying `content-visibility: auto` from the first frame would leave every
+ * row above the initial viewport (the timeline mounts scrolled to the bottom)
+ * and every prepended older page at the estimate, and iOS Safari has no
+ * scroll anchoring: each estimate → real correction while scrolling up would
+ * shift the visible content. The estimate below only backs a row whose
+ * remembered size is missing.
  */
-export const TOP_LEVEL_TIMELINE_ROW_CLASS_NAME =
-  "max-md:[content-visibility:auto] max-md:[contain-intrinsic-block-size:auto_1.25rem]";
+export const TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME =
+  "max-md:[contain-intrinsic-block-size:auto_1.25rem]";
+const CONTENT_VISIBILITY_CLASS_NAME = "max-md:[content-visibility:auto]";
+export const TOP_LEVEL_TIMELINE_ROW_CLASS_NAME = `${CONTENT_VISIBILITY_CLASS_NAME} ${TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME}`;
+
+/**
+ * Arms `content-visibility: auto` on a top-level row wrapper once the row has
+ * been laid out once. Two animation frames: the first callback runs before
+ * that frame's style/layout pass (which lays the row out unskipped and records
+ * its last remembered size), the second runs after it. The class is added
+ * through `classList` rather than a React re-render: the wrapper's `className`
+ * prop stays constant, so React never rewrites the attribute and never drops
+ * classes other code adds imperatively (the search-match flash).
+ *
+ * Renders with {@link TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME}; the
+ * armed wrapper carries {@link TOP_LEVEL_TIMELINE_ROW_CLASS_NAME}.
+ */
+export function useArmTopLevelTimelineRowContainment(
+  wrapperRef: RefObject<HTMLElement | null>,
+): void {
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (wrapper === null) {
+      return;
+    }
+    let cancelled = false;
+    let secondFrame: number | null = null;
+    const firstFrame = requestAnimationFrame(() => {
+      if (cancelled) {
+        return;
+      }
+      secondFrame = requestAnimationFrame(() => {
+        if (!cancelled) {
+          wrapper.classList.add(CONTENT_VISIBILITY_CLASS_NAME);
+        }
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame !== null) {
+        cancelAnimationFrame(secondFrame);
+      }
+    };
+  }, [wrapperRef]);
+}
 
 /**
  * Compact conversation rows: `text-sm leading-relaxed` lines (~23px) at the

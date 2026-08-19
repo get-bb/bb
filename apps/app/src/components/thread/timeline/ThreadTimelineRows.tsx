@@ -97,8 +97,9 @@ import {
   timelineRowsSignature,
 } from "./timelineRowSignatures.js";
 import {
-  TOP_LEVEL_TIMELINE_ROW_CLASS_NAME,
+  TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
   timelineRowContainmentStyle,
+  useArmTopLevelTimelineRowContainment,
 } from "./timeline-row-containment.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
 import { getThreadRoutePath } from "@/lib/route-paths";
@@ -1969,6 +1970,33 @@ function buildTimelineRowsListItems({
   return items;
 }
 
+/**
+ * Wrapper for a top-level row: carries the compact-viewport containment
+ * (armed after the row's first layout, see
+ * `useArmTopLevelTimelineRowContainment`) and the per-row intrinsic size
+ * estimate.
+ */
+function TopLevelTimelineRowWrapper({
+  children,
+  row,
+}: {
+  children: ReactNode;
+  row: ThreadTimelineViewRow;
+}) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  useArmTopLevelTimelineRowContainment(wrapperRef);
+  return (
+    <div
+      ref={wrapperRef}
+      data-timeline-row-id={row.id}
+      className={TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME}
+      style={timelineRowContainmentStyle(row)}
+    >
+      {children}
+    </div>
+  );
+}
+
 function TimelineRowsList({
   compactActivityIntents,
   hasOlderTimelineRows,
@@ -2018,29 +2046,26 @@ function TimelineRowsList({
             );
           }
 
+          const rowView = (
+            <MemoizedTimelineRowView
+              activeLatestBundleId={activeLatestBundleId}
+              row={item.row}
+              scopeActive={scopeActive}
+              showAssistantMessageActions={showAssistantMessageActions}
+              spacing={spacing}
+              compactActivityIntents={compactActivityIntents}
+            />
+          );
+          if (spacing === "top-level") {
+            return (
+              <TopLevelTimelineRowWrapper key={item.row.id} row={item.row}>
+                {rowView}
+              </TopLevelTimelineRowWrapper>
+            );
+          }
           return (
-            <div
-              key={item.row.id}
-              data-timeline-row-id={item.row.id}
-              className={
-                spacing === "top-level"
-                  ? TOP_LEVEL_TIMELINE_ROW_CLASS_NAME
-                  : undefined
-              }
-              style={
-                spacing === "top-level"
-                  ? timelineRowContainmentStyle(item.row)
-                  : undefined
-              }
-            >
-              <MemoizedTimelineRowView
-                activeLatestBundleId={activeLatestBundleId}
-                row={item.row}
-                scopeActive={scopeActive}
-                showAssistantMessageActions={showAssistantMessageActions}
-                spacing={spacing}
-                compactActivityIntents={compactActivityIntents}
-              />
+            <div key={item.row.id} data-timeline-row-id={item.row.id}>
+              {rowView}
             </div>
           );
         })}

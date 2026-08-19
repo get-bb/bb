@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,6 +13,7 @@ import { ThreadTimelineRows } from "./ThreadTimelineRows";
 import {
   estimateTimelineRowIntrinsicBlockSizePx,
   TOP_LEVEL_TIMELINE_ROW_CLASS_NAME,
+  TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
 } from "./timeline-row-containment";
 
 afterEach(cleanup);
@@ -27,8 +28,14 @@ function rowWrapper(container: HTMLElement, rowId: string): HTMLElement {
   return element;
 }
 
+function nextAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
 describe("ThreadTimelineRows row containment", () => {
-  it("applies content-visibility containment to top-level row wrappers only", () => {
+  it("applies content-visibility containment to top-level row wrappers only, after their first layout", async () => {
     const rows = [
       conversationRow({
         id: "user_1",
@@ -70,11 +77,62 @@ describe("ThreadTimelineRows row containment", () => {
       </MemoryRouter>,
     );
 
+    // Freshly mounted rows carry only the intrinsic-size declaration so the
+    // first layout runs unskipped and records the row's real height.
     for (const rowId of ["user_1", "turn_1", "assistant_1"]) {
       expect(rowWrapper(view.container, rowId).className).toBe(
-        TOP_LEVEL_TIMELINE_ROW_CLASS_NAME,
+        TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
       );
     }
+    expect(TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME).not.toContain(
+      "content-visibility",
+    );
+
+    // One frame later the row is still unarmed (that frame's layout is the
+    // one that lays it out); the frame after that opts in.
+    await act(nextAnimationFrame);
+    expect(rowWrapper(view.container, "assistant_1").className).toBe(
+      TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
+    );
+    await act(nextAnimationFrame);
+    const armedClassNames = TOP_LEVEL_TIMELINE_ROW_CLASS_NAME.split(" ");
+    expect(armedClassNames).toContain("max-md:[content-visibility:auto]");
+    expect(armedClassNames).toContain(
+      TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
+    );
+    for (const rowId of ["user_1", "turn_1", "assistant_1"]) {
+      expect(
+        Array.from(rowWrapper(view.container, rowId).classList).sort(),
+      ).toEqual([...armedClassNames].sort());
+    }
+
+    // Arming goes through classList, not a React re-render, so classes other
+    // code adds imperatively (the search-match flash) survive later renders.
+    rowWrapper(view.container, "assistant_1").classList.add("bb-search-flash");
+    view.rerender(
+      <MemoryRouter>
+        <QueryClientProvider client={new QueryClient()}>
+          <ThreadTimelineRows
+            threadId="thr_main"
+            timelineRows={rows}
+            threadRuntimeDisplayStatus="active"
+            workspaceRootPath={undefined}
+            initialExpanded={new Set(["turn_1"])}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    expect(
+      rowWrapper(view.container, "assistant_1").classList.contains(
+        "bb-search-flash",
+      ),
+    ).toBe(true);
+    expect(
+      rowWrapper(view.container, "assistant_1").classList.contains(
+        "max-md:[content-visibility:auto]",
+      ),
+    ).toBe(true);
+
     // Nested lists (turn / bundle bodies) keep plain wrappers: their parent
     // body animates its own height.
     expect(rowWrapper(view.container, "cmd_nested").className).toBe("");
@@ -89,9 +147,6 @@ describe("ThreadTimelineRows row containment", () => {
     ).toBe(`auto ${estimateTimelineRowIntrinsicBlockSizePx(rows[2]!)}px`);
     expect(estimateTimelineRowIntrinsicBlockSizePx(rows[2]!)).toBeGreaterThan(
       estimateTimelineRowIntrinsicBlockSizePx(rows[0]!) ?? Number.NaN,
-    );
-    expect(TOP_LEVEL_TIMELINE_ROW_CLASS_NAME).toContain(
-      "max-md:[content-visibility:auto]",
     );
   });
 });
