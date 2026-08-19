@@ -138,6 +138,7 @@ export function collectPluginAppRegistrations(
         const kind = "slots.navPanel";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.navPanel, id);
+        const panelId = id;
         const path = requireNonEmptyString(kind, "path", registration.path);
         if (!PLUGIN_SLOT_ID_PATTERN.test(path)) {
           throw new Error(
@@ -184,8 +185,29 @@ export function collectPluginAppRegistrations(
                   `${fixedTabKind}: "layout" must be "padded" or "flush" when set`,
                 );
               }
+              if (
+                fixedTab?.panelId !== undefined &&
+                fixedTab.panelId !== panelId
+              ) {
+                throw new Error(
+                  `${fixedTabKind}: "panelId" must match its containing navPanel id ${JSON.stringify(panelId)}`,
+                );
+              }
+              const experimentalTarget = fixedTab?.experimental_target;
+              if (
+                experimentalTarget !== undefined &&
+                (typeof experimentalTarget !== "object" ||
+                  experimentalTarget === null ||
+                  typeof Reflect.get(experimentalTarget, "validate") !==
+                    "function")
+              ) {
+                throw new Error(
+                  `${fixedTabKind}: "experimental_target.validate" must be a function when set`,
+                );
+              }
               return {
                 id,
+                panelId,
                 title: requireNonEmptyString(
                   fixedTabKind,
                   "title",
@@ -200,6 +222,12 @@ export function collectPluginAppRegistrations(
                   PluginNavPanelFixedTabRegistration["component"]
                 >(fixedTabKind, fixedTab?.component),
                 ...(layout === undefined ? {} : { layout }),
+                ...(experimentalTarget === undefined
+                  ? {}
+                  : {
+                      experimental_target:
+                        experimentalTarget as PluginNavPanelFixedTabRegistration["experimental_target"],
+                    }),
               };
             });
           })();

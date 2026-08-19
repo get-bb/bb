@@ -351,6 +351,59 @@ export interface PluginSettingsSectionRegistration {
   component: ComponentType<PluginSettingsSectionProps>;
 }
 
+/**
+ * Owner-defined validator for a fixed tab's transient target. The host first
+ * verifies that the value is JSON-safe, then calls this validator before
+ * selecting the tab or delivering the target.
+ */
+export interface ExperimentalFixedTabTargetContract<Target extends JsonValue> {
+  validate(value: JsonValue): value is Target;
+}
+
+/** Stable, owner-scoped reference used by the app-panel controller. */
+export type ExperimentalPluginFixedTabReference<
+  Target extends JsonValue = never,
+> = {
+  /** The owning `navPanel` id; validated against the containing registration. */
+  readonly panelId: string;
+  /** Unique within the owning nav panel; letters, digits, `-`, `_`. */
+  readonly id: string;
+} & ([Target] extends [never]
+  ? {
+      /** An untargeted tab cannot be opened with a target. */
+      readonly experimental_target?: never;
+    }
+  : {
+      /** Owner validation required before the host delivers a target. */
+      readonly experimental_target: ExperimentalFixedTabTargetContract<Target>;
+    });
+
+/** A fixed tab declared by a plugin nav panel. */
+export type ExperimentalPluginFixedTabRegistration<
+  Target extends JsonValue = never,
+> = ExperimentalPluginFixedTabReference<Target> & {
+  title: string;
+  /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+  icon: string;
+  component: ComponentType<PluginNavPanelProps>;
+  /** `flush` lets the component own padding and scrolling. */
+  layout?: "padded" | "flush";
+};
+
+interface LegacyPluginFixedTabRegistration {
+  id: string;
+  title: string;
+  icon: string;
+  component: ComponentType<PluginNavPanelProps>;
+  layout?: "padded" | "flush";
+  panelId?: string;
+  experimental_target?: never;
+}
+
+export type ExperimentalPluginFixedTabDeclaration =
+  | LegacyPluginFixedTabRegistration
+  | ExperimentalPluginFixedTabRegistration<JsonValue>;
+
 export interface PluginNavPanelRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
@@ -369,16 +422,7 @@ export interface PluginNavPanelRegistration {
    *
    * Experimental: see docs/api_to_audit.md.
    */
-  experimental_fixedTabs?: readonly {
-    /** Unique within this nav panel; letters, digits, `-`, `_`. */
-    id: string;
-    title: string;
-    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
-    icon: string;
-    component: ComponentType<PluginNavPanelProps>;
-    /** `flush` lets the component own padding and scrolling. */
-    layout?: "padded" | "flush";
-  }[];
+  experimental_fixedTabs?: readonly ExperimentalPluginFixedTabDeclaration[];
   /**
    * Optional presentational component rendered at the trailing edge of this
    * panel's sidebar row. It receives no props so it can own a narrow live
@@ -1597,6 +1641,33 @@ export interface ExperimentalFileLinkProps extends Omit<
   location?: ExperimentalFileLocation | null;
 }
 
+/** The panel surface resolved by the component making the request. */
+export type ExperimentalAppPanelSurface = { kind: "current" };
+
+/**
+ * A transient target delivered to its owning fixed tab. Calling `consume`
+ * prevents the target from replaying if the tab remounts later.
+ */
+export interface ExperimentalFixedTabTargetDelivery<Target extends JsonValue> {
+  readonly sequence: number;
+  readonly target: Target;
+  consume(): void;
+}
+
+export type ExperimentalOpenFixedTabOptions<Target extends JsonValue> = {
+  surface: ExperimentalAppPanelSurface;
+  tab: ExperimentalPluginFixedTabReference<Target>;
+  /** Omit to select the tab without delivering a transient target. */
+  target?: NoInfer<Target>;
+};
+
+/** Surface-aware controller for selecting owner-scoped fixed tabs. */
+export interface ExperimentalAppPanel {
+  openFixedTab<Target extends JsonValue = never>(
+    options: ExperimentalOpenFixedTabOptions<Target>,
+  ): boolean;
+}
+
 /** Current app selection, derived from the route. */
 export interface BbContext {
   projectId: string | null;
@@ -1679,6 +1750,12 @@ export interface PluginSdkApp {
   useSettings(): PluginSettingsState;
   useBbContext(): BbContext;
   useBbNavigate(): BbNavigate;
+  /** Select one of this plugin's eligible fixed tabs on the current surface. */
+  experimental_useAppPanel(): ExperimentalAppPanel;
+  /** Read and consume a validated transient target inside its owning tab. */
+  experimental_useFixedTabTarget<Target extends JsonValue>(
+    tab: ExperimentalPluginFixedTabReference<Target>,
+  ): ExperimentalFixedTabTargetDelivery<Target> | null;
   useComposer(): PluginComposerApi;
   /**
    * The sidebar's live thread view (see {@link PluginSidebarThreadsState}).

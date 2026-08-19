@@ -131,6 +131,14 @@ import {
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
 import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDiffPanel";
+import {
+  createGitDiffFixedTabDestination,
+  GIT_DIFF_FIXED_TAB_REFERENCE,
+} from "@/components/secondary-panel/git-diff/git-diff-fixed-tab-navigation";
+import {
+  createThreadInfoFixedTabDestination,
+  THREAD_INFO_FIXED_TAB_REFERENCE,
+} from "@/components/secondary-panel/thread-info-fixed-tab-navigation";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import {
   ThreadDetailPromptArea,
@@ -199,7 +207,9 @@ import {
 import {
   AppNavigationHostProvider,
   type AppFilePreviewIntent,
+  type AppFixedTabOpenIntent,
 } from "@/lib/app-navigation-host";
+import { openAppFixedTabFromDestinations } from "@/lib/app-fixed-tab-navigation";
 import {
   normalizeExperimentalFileOpenOptions,
   toFilePreviewLineRange,
@@ -1287,12 +1297,12 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   });
   const {
     closePanel: closeSecondaryPanel,
-    openCommitDiff: openSecondaryPanelCommitDiff,
+    openCommitDiff: openGitDiffCommitDestination,
     openCompactDrawer,
-    openDiffFile: openSecondaryPanelDiffFile,
-    openDiffPanel: openSecondaryPanelDiffPanel,
+    openDiffFile: openGitDiffFileDestination,
+    openDiffPanel: openGitDiffDestination,
     openHostFile,
-    openPanel: openSecondaryPanel,
+    openPanel: openFixedViewDestination,
     openStorageFile,
     openWorkspaceFile,
     togglePanel: toggleSecondaryPanel,
@@ -1310,6 +1320,68 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     openPersistedWorkspaceFile,
     togglePersistedPanel: toggleDefaultPersistedSecondaryPanel,
   });
+  const fixedTabDestinations = useMemo(
+    () => [
+      createThreadInfoFixedTabDestination(() =>
+        openFixedViewDestination("thread-info"),
+      ),
+      createGitDiffFixedTabDestination({
+        eligible: canUseGitUi,
+        openCommit: openGitDiffCommitDestination,
+        openFile: openGitDiffFileDestination,
+        openOrdinary: openGitDiffDestination,
+      }),
+    ],
+    [
+      canUseGitUi,
+      openFixedViewDestination,
+      openGitDiffCommitDestination,
+      openGitDiffDestination,
+      openGitDiffFileDestination,
+    ],
+  );
+  const openFixedTab = useCallback(
+    (intent: AppFixedTabOpenIntent): boolean =>
+      openAppFixedTabFromDestinations(fixedTabDestinations, intent),
+    [fixedTabDestinations],
+  );
+  const openSecondaryPanel = useCallback(
+    (panel: ThreadSecondaryPanelTab) =>
+      openFixedTab({
+        surface: { kind: "current" },
+        tab:
+          panel === "git-diff"
+            ? GIT_DIFF_FIXED_TAB_REFERENCE
+            : THREAD_INFO_FIXED_TAB_REFERENCE,
+      }),
+    [openFixedTab],
+  );
+  const openSecondaryPanelDiffPanel = useCallback(
+    () =>
+      openFixedTab({
+        surface: { kind: "current" },
+        tab: GIT_DIFF_FIXED_TAB_REFERENCE,
+      }),
+    [openFixedTab],
+  );
+  const openSecondaryPanelDiffFile = useCallback(
+    (path: string) =>
+      openFixedTab({
+        surface: { kind: "current" },
+        tab: GIT_DIFF_FIXED_TAB_REFERENCE,
+        target: { kind: "file", path },
+      }),
+    [openFixedTab],
+  );
+  const openSecondaryPanelCommitDiff = useCallback(
+    (sha: string) =>
+      openFixedTab({
+        surface: { kind: "current" },
+        tab: GIT_DIFF_FIXED_TAB_REFERENCE,
+        target: { kind: "commit", sha },
+      }),
+    [openFixedTab],
+  );
   const handleOpenLiveFilePreview = useCallback(
     (intent: AppFilePreviewIntent): boolean => {
       const normalized = normalizeExperimentalFileOpenOptions(intent);
@@ -1351,8 +1423,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     ],
   );
   const appNavigationCapabilities = useMemo(
-    () => ({ openFilePreview: handleOpenLiveFilePreview }),
-    [handleOpenLiveFilePreview],
+    () => ({ openFilePreview: handleOpenLiveFilePreview, openFixedTab }),
+    [handleOpenLiveFilePreview, openFixedTab],
   );
   const handleOpenTimelinePluginPanel =
     useCallback<ThreadTimelineOpenPluginPanelHandler>(

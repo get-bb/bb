@@ -8,6 +8,7 @@ import type {
   PluginComposerScope,
   PluginMessageDirectiveProps,
   PluginNavPanelProps,
+  ExperimentalPluginFixedTabReference,
 } from "../../app-contract.js";
 import {
   installTestPluginRuntime,
@@ -24,6 +25,8 @@ const {
   definePluginApp,
   experimental_FileLink: FileLink,
   experimental_UrlLink: UrlLink,
+  experimental_useAppPanel,
+  experimental_useFixedTabTarget,
   ThreadChat,
   useBbNavigate,
   useComposer,
@@ -32,6 +35,53 @@ const {
   useRealtimeConnectionState,
   useRpc,
 } = await import("../../app.js");
+
+type TestTaskTarget = {
+  kind: "task";
+  taskId: string;
+};
+
+const taskDetailsTab = {
+  panelId: "tasks",
+  id: "details",
+  experimental_target: {
+    validate(value): value is TestTaskTarget {
+      return (
+        typeof value === "object" &&
+        value !== null &&
+        !Array.isArray(value) &&
+        value.kind === "task" &&
+        typeof value.taskId === "string"
+      );
+    },
+  },
+} satisfies ExperimentalPluginFixedTabReference<TestTaskTarget>;
+
+function FixedTabProbe() {
+  const panel = experimental_useAppPanel();
+  const delivery = experimental_useFixedTabTarget(taskDetailsTab);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() =>
+          panel.openFixedTab({
+            surface: { kind: "current" },
+            tab: taskDetailsTab,
+            target: { kind: "task", taskId: "TASK-42" },
+          })
+        }
+      >
+        Open details
+      </button>
+      {delivery === null ? null : (
+        <button type="button" onClick={delivery.consume}>
+          Consume {delivery.target.taskId}
+        </button>
+      )}
+    </div>
+  );
+}
 
 const typedRpcContract = defineRpcContract({
   getItem: {
@@ -633,6 +683,19 @@ describe("loadPluginApp", () => {
     function Navigation({ subPath }: PluginNavPanelProps) {
       return <span>{subPath}</span>;
     }
+    const targetContract = {
+      validate(
+        value: import("../../json-value.js").JsonValue,
+      ): value is TestTaskTarget {
+        return (
+          typeof value === "object" &&
+          value !== null &&
+          !Array.isArray(value) &&
+          value.kind === "task" &&
+          typeof value.taskId === "string"
+        );
+      },
+    };
     const captured = await loadPluginApp(
       definePluginApp((builder) => {
         builder.slots.navPanel({
@@ -643,11 +706,13 @@ describe("loadPluginApp", () => {
           component: Panel,
           experimental_fixedTabs: [
             {
+              panelId: "tasks",
               id: "navigation",
               title: "Navigation",
               icon: "PanelRight",
               component: Navigation,
               layout: "flush",
+              experimental_target: targetContract,
             },
           ],
         });
@@ -656,13 +721,73 @@ describe("loadPluginApp", () => {
 
     expect(captured.navPanels[0]?.experimental_fixedTabs).toEqual([
       {
+        panelId: "tasks",
         id: "navigation",
         title: "Navigation",
         icon: "PanelRight",
         component: Navigation,
         layout: "flush",
+        experimental_target: targetContract,
       },
     ]);
+  });
+
+  it("rejects a malformed fixed-tab target contract", async () => {
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.navPanel({
+            id: "tasks",
+            title: "Tasks",
+            icon: "ListTodo",
+            path: "tasks",
+            component: Panel,
+            experimental_fixedTabs: [
+              {
+                panelId: "tasks",
+                id: "details",
+                title: "Details",
+                icon: "Info",
+                component: Panel,
+                experimental_target: {
+                  // @ts-expect-error Runtime collector coverage for malformed JS.
+                  validate: "not-a-function",
+                },
+              },
+            ],
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      '"experimental_target.validate" must be a function when set',
+    );
+  });
+
+  it("rejects a fixed-tab reference scoped to a different nav panel", async () => {
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.navPanel({
+            id: "tasks",
+            title: "Tasks",
+            icon: "ListTodo",
+            path: "tasks",
+            component: Panel,
+            experimental_fixedTabs: [
+              {
+                panelId: "other-page",
+                id: "navigation",
+                title: "Navigation",
+                icon: "PanelRight",
+                component: Panel,
+              },
+            ],
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      '"panelId" must match its containing navPanel id "tasks"',
+    );
   });
 
   it("rejects duplicate nav panel fixed tab ids", async () => {
@@ -1014,6 +1139,35 @@ describe("renderSlot", () => {
     expect(slot.inspection.navigateCalls).toEqual([
       { method: "experimental_openFilePreview", options: fileIntent },
       { method: "experimental_openFileExternally", options: fileIntent },
+    ]);
+  });
+
+  it("records validated fixed-tab opens and exposes consumable transient delivery", () => {
+    const slot = renderSlot(
+      { component: FixedTabProbe },
+      {},
+      {
+        experimental_openFixedTab: () => true,
+        experimental_fixedTabTarget: {
+          panelId: "tasks",
+          tabId: "details",
+          target: { kind: "task", taskId: "TASK-7" },
+        },
+      },
+    );
+
+    const consume = slot.getByRole("button", { name: "Consume TASK-7" });
+    fireEvent.click(consume);
+    expect(slot.queryByRole("button", { name: "Consume TASK-7" })).toBeNull();
+
+    fireEvent.click(slot.getByRole("button", { name: "Open details" }));
+    expect(slot.inspection.experimental_fixedTabOpenCalls).toEqual([
+      {
+        surface: { kind: "current" },
+        panelId: "tasks",
+        tabId: "details",
+        target: { kind: "task", taskId: "TASK-42" },
+      },
     ]);
   });
 

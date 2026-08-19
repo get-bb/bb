@@ -22,12 +22,19 @@ import {
 import { PluginPanelRightPanelHost } from "./PluginPanelRightPanelHost";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import {
+  getPluginFixedTabOwnerId,
+  useAppFixedTabTarget,
+} from "@/lib/app-fixed-tab-navigation";
 
 interface TestFixedTabRegistration {
   id: string;
   title: string;
   icon: string;
   component: (props: { subPath: string }) => ReactNode;
+  experimental_target?: {
+    validate(value: import("@get-bb/plugin-sdk").JsonValue): boolean;
+  };
   layout?: "padded" | "flush";
 }
 
@@ -440,6 +447,36 @@ function FileIntentButtons() {
       >
         Open storage file
       </button>
+      <button
+        type="button"
+        onClick={() =>
+          navigation.openFixedTab({
+            surface: { kind: "current" },
+            tab: {
+              ownerId: getPluginFixedTabOwnerId("demo", "board"),
+              tabId: "details",
+            },
+            target: { kind: "record", recordId: "issue-42" },
+          })
+        }
+      >
+        Open targeted fixed tab
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          navigation.openFixedTab({
+            surface: { kind: "current" },
+            tab: {
+              ownerId: getPluginFixedTabOwnerId("demo", "board"),
+              tabId: "details",
+            },
+            target: { kind: "wrong" },
+          })
+        }
+      >
+        Open invalid fixed tab target
+      </button>
     </>
   );
 }
@@ -594,6 +631,75 @@ describe("PluginPanelRightPanelHost", () => {
         .getByTestId("shared-secondary-panel-region")
         .hasAttribute("hidden"),
     ).toBe(false);
+  });
+
+  it("validates and transiently delivers a plugin-owned fixed-tab target", async () => {
+    function Details() {
+      const delivery = useAppFixedTabTarget(
+        getPluginFixedTabOwnerId("demo", "board"),
+        "details",
+      );
+      return (
+        <div data-testid="targeted-details-content">
+          Details
+          {delivery === null ? null : (
+            <>
+              <output>{JSON.stringify(delivery.target)}</output>
+              <button type="button" onClick={delivery.consume}>
+                Consume target
+              </button>
+            </>
+          )}
+        </div>
+      );
+    }
+    fixedTabState.registrations = [
+      {
+        id: "navigation",
+        title: "Navigation",
+        icon: "PanelRight",
+        component: () => <div data-testid="navigation-content">Navigation</div>,
+      },
+      {
+        id: "details",
+        title: "Details",
+        icon: "Info",
+        component: Details,
+        experimental_target: {
+          validate: (value) =>
+            typeof value === "object" &&
+            value !== null &&
+            !Array.isArray(value) &&
+            value.kind === "record" &&
+            typeof value.recordId === "string",
+        },
+      },
+    ];
+
+    renderHost();
+    expect(await screen.findByTestId("navigation-content")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open invalid fixed tab target" }),
+    );
+    expect(screen.getByTestId("navigation-content")).toBeTruthy();
+    expect(screen.queryByTestId("targeted-details-content")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open targeted fixed tab" }),
+    );
+    expect(await screen.findByTestId("targeted-details-content")).toBeTruthy();
+    expect(
+      screen.getByText('{"kind":"record","recordId":"issue-42"}'),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Consume target" }));
+    expect(screen.queryByRole("button", { name: "Consume target" })).toBeNull();
+    const persistedValues = Array.from(
+      { length: localStorage.length },
+      (_, index) => localStorage.getItem(localStorage.key(index) ?? "") ?? "",
+    ).join("\n");
+    expect(persistedValues).not.toContain("issue-42");
   });
 
   it("opens every explicit live-file identity through the shared panel host", async () => {

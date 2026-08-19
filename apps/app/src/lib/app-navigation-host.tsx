@@ -1,11 +1,14 @@
 import {
   createContext,
-  useCallback,
   useContext,
   useMemo,
   type ReactNode,
 } from "react";
-import type { ExperimentalFileOpenOptions } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalAppPanelSurface,
+  ExperimentalFileOpenOptions,
+  JsonValue,
+} from "@get-bb/plugin-sdk";
 import type { FileTabViewerOverride } from "@/components/plugin/file-opener-tabs";
 
 export interface AppUrlOpenIntent {
@@ -17,20 +20,44 @@ export interface AppFilePreviewIntent extends ExperimentalFileOpenOptions {
   viewer?: FileTabViewerOverride;
 }
 
+/** Internal identity. Public plugin callers never supply `ownerId`. */
+export interface AppFixedTabReference {
+  ownerId: string;
+  tabId: string;
+}
+
+export interface AppFixedTabOpenIntent {
+  surface: ExperimentalAppPanelSurface;
+  tab: AppFixedTabReference;
+  target?: JsonValue;
+}
+
 export interface AppNavigationHostCapabilities {
   openFileExternally?: (intent: ExperimentalFileOpenOptions) => boolean;
   openFilePreview?: (intent: AppFilePreviewIntent) => boolean;
+  openFixedTab?: (intent: AppFixedTabOpenIntent) => boolean;
   openUrl?: (intent: AppUrlOpenIntent) => boolean;
 }
 
 interface ResolvedAppNavigationHostCapabilities {
-  openFileExternally: ((intent: ExperimentalFileOpenOptions) => boolean) | null;
-  openFilePreview: ((intent: AppFilePreviewIntent) => boolean) | null;
-  openUrl: ((intent: AppUrlOpenIntent) => boolean) | null;
+  openFileExternally: (intent: ExperimentalFileOpenOptions) => boolean;
+  openFilePreview: (intent: AppFilePreviewIntent) => boolean;
+  openFixedTab: (intent: AppFixedTabOpenIntent) => boolean;
+  openUrl: (intent: AppUrlOpenIntent) => boolean;
 }
 
+const rejectNavigationIntent = () => false;
+const DEFAULT_APP_NAVIGATION_HOST: ResolvedAppNavigationHostCapabilities = {
+  openFileExternally: rejectNavigationIntent,
+  openFilePreview: rejectNavigationIntent,
+  openFixedTab: rejectNavigationIntent,
+  openUrl: rejectNavigationIntent,
+};
+
 const AppNavigationHostContext =
-  createContext<ResolvedAppNavigationHostCapabilities | null>(null);
+  createContext<ResolvedAppNavigationHostCapabilities>(
+    DEFAULT_APP_NAVIGATION_HOST,
+  );
 
 /**
  * Adds the navigation capabilities owned by one app surface. Providers compose:
@@ -47,18 +74,21 @@ export function AppNavigationHostProvider({
   const value = useMemo<ResolvedAppNavigationHostCapabilities>(
     () => ({
       openFileExternally:
-        capabilities.openFileExternally ?? parent?.openFileExternally ?? null,
+        capabilities.openFileExternally ?? parent.openFileExternally,
       openFilePreview:
-        capabilities.openFilePreview ?? parent?.openFilePreview ?? null,
-      openUrl: capabilities.openUrl ?? parent?.openUrl ?? null,
+        capabilities.openFilePreview ?? parent.openFilePreview,
+      openFixedTab: capabilities.openFixedTab ?? parent.openFixedTab,
+      openUrl: capabilities.openUrl ?? parent.openUrl,
     }),
     [
       capabilities.openFileExternally,
       capabilities.openFilePreview,
+      capabilities.openFixedTab,
       capabilities.openUrl,
-      parent?.openFileExternally,
-      parent?.openFilePreview,
-      parent?.openUrl,
+      parent.openFileExternally,
+      parent.openFilePreview,
+      parent.openFixedTab,
+      parent.openUrl,
     ],
   );
   return (
@@ -70,23 +100,5 @@ export function AppNavigationHostProvider({
 
 /** Semantic navigation intents accepted by the current app surface. */
 export function useAppNavigationHost() {
-  const host = useContext(AppNavigationHostContext);
-  const openFileExternally = useCallback(
-    (intent: ExperimentalFileOpenOptions): boolean =>
-      host?.openFileExternally?.(intent) ?? false,
-    [host?.openFileExternally],
-  );
-  const openFilePreview = useCallback(
-    (intent: AppFilePreviewIntent): boolean =>
-      host?.openFilePreview?.(intent) ?? false,
-    [host?.openFilePreview],
-  );
-  const openUrl = useCallback(
-    (intent: AppUrlOpenIntent): boolean => host?.openUrl?.(intent) ?? false,
-    [host?.openUrl],
-  );
-  return useMemo(
-    () => ({ openFileExternally, openFilePreview, openUrl }),
-    [openFileExternally, openFilePreview, openUrl],
-  );
+  return useContext(AppNavigationHostContext);
 }

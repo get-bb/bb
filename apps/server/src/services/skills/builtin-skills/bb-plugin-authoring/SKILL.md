@@ -1602,7 +1602,9 @@ Slot props contracts (versioned, additive-only):
   tab survived.
 
   `experimental_fixedTabs` declares ordered, non-closable page views in that
-  same host tab strip: `{ id, title, icon, component, layout? }`. BB opens the
+  same host tab strip:
+  `{ id, panelId?, title, icon, component, layout?, experimental_target? }`.
+  BB opens the
   first fixed tab on the page's first wide-layout visit, but remembers a later
   user close. Only the active fixed-tab component is mounted, and closing the
   panel unmounts it. It receives the same `{ subPath }` as the main page. `layout: "padded"` (the default) gives it
@@ -1610,6 +1612,21 @@ Slot props contracts (versioned, additive-only):
   region so it can own both. Fixed tabs add content to the shared panel; they
   do not replace its native chrome, Browser, Terminal, or keyboard commands.
   Experimental: see `docs/api_to_audit.md`.
+
+  A registration whose `panelId` exactly matches its containing nav panel's
+  `id` is also the stable reference for selecting that plugin-owned tab.
+  Existing untargeted declarations may omit `panelId`; add it whenever code
+  will address the tab. A targetable tab declares
+  `experimental_target: { validate(value): value is Target }`; BB checks JSON
+  safety before calling the owner validator. From any component of the same
+  plugin on that page, call
+  `experimental_useAppPanel().openFixedTab({ surface: { kind: "current" }, tab,
+target? })`. Inside the fixed-tab component,
+  `experimental_useFixedTabTarget(tab)` returns `{ sequence, target, consume }`
+  after validation. Apply the target and call `consume()` so it cannot replay
+  on a later remount. Selection persists through the host's ordinary panel
+  state; target delivery is memory-only. Invalid, unavailable, untargeted, or
+  other-plugin references return false without changing valid panel state.
 
   `experimental_sidebarAccessory` is a no-props, presentational component at
   the trailing edge of the sidebar row. It can own SDK hooks for a live count
@@ -1886,6 +1903,16 @@ className?, leadingContent?, messageActions? }` —
   an environment id or turn a project id into a workspace target. The testing
   harness records both calls in `navigateCalls` and gates them with the
   `openFilePreview` / `openFileExternally` behavior options.
+- `experimental_useAppPanel` — returns the generic current-surface fixed-tab
+  controller. `openFixedTab({ surface: { kind: "current" }, tab, target? })`
+  accepts a plugin's own eligible fixed-tab registration, validates any target
+  through that registration's `experimental_target` contract, opens the shared
+  panel, and returns host acceptance. The controller does not interpret target
+  shapes. Targeted fixed tabs use `experimental_useFixedTabTarget(tab)` and
+  call delivery `consume()` after applying the target. The frontend harness
+  records accepted calls in `experimental_fixedTabOpenCalls`, gates them with
+  `experimental_openFixedTab`, and seeds delivery with
+  `experimental_fixedTabTarget`.
 - `experimental_NewThreadComposer` — bb's complete compose surface for
   CREATING a thread (the create-side counterpart to `ThreadChat`): prompt
   editor with @-mentions and expand, `+` attachments,

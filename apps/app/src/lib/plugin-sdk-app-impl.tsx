@@ -23,6 +23,8 @@ import {
   useRealtimeConnectionState,
   useRpc,
   useSettings,
+  experimental_useAppPanel,
+  experimental_useFixedTabTarget,
 } from "./plugin-sdk-hooks";
 import {
   useSidebarThreadActions,
@@ -51,6 +53,8 @@ export const pluginSdkAppImplementation = {
   definePluginApp,
   useBbContext,
   useBbNavigate,
+  experimental_useAppPanel,
+  experimental_useFixedTabTarget,
   useComposer,
   useComposerView,
   useRealtime,

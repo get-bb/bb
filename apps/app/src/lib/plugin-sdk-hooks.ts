@@ -19,7 +19,12 @@ import type {
   PluginRpcContract,
   PluginRpcClient,
   PluginSettingsState,
+  ExperimentalAppPanel,
+  ExperimentalFixedTabTargetDelivery,
+  ExperimentalPluginFixedTabReference,
+  JsonValue,
 } from "@get-bb/plugin-sdk";
+import { jsonValueSchema } from "@bb/domain";
 import {
   PluginSlotOwnershipContext,
   usePluginId,
@@ -54,6 +59,10 @@ import { wsManager } from "@/lib/ws";
 import { pluginSdkSettingsQueryKey } from "@/hooks/queries/query-keys";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { normalizeExperimentalFileOpenOptions } from "@/lib/live-file-navigation";
+import {
+  getPluginFixedTabOwnerId,
+  useAppFixedTabTarget,
+} from "@/lib/app-fixed-tab-navigation";
 
 /**
  * Host implementations of the `@get-bb/plugin-sdk/app` hooks (plugin design
@@ -383,6 +392,53 @@ export function useBbNavigate(): BbNavigate {
       experimental_openUrl,
     ],
   );
+}
+
+export function experimental_useAppPanel(): ExperimentalAppPanel {
+  const pluginId = usePluginId();
+  const appNavigation = useAppNavigationHost();
+  const openFixedTab = useCallback<ExperimentalAppPanel["openFixedTab"]>(
+    (options) => {
+      const targetResult =
+        options.target === undefined
+          ? null
+          : jsonValueSchema.safeParse(options.target);
+      if (targetResult !== null && !targetResult.success) return false;
+      return appNavigation.openFixedTab({
+        surface: options.surface,
+        tab: {
+          ownerId: getPluginFixedTabOwnerId(pluginId, options.tab.panelId),
+          tabId: options.tab.id,
+        },
+        ...(targetResult?.success === true
+          ? { target: targetResult.data }
+          : {}),
+      });
+    },
+    [appNavigation, pluginId],
+  );
+  return useMemo(() => ({ openFixedTab }), [openFixedTab]);
+}
+
+export function experimental_useFixedTabTarget<Target extends JsonValue>(
+  tab: ExperimentalPluginFixedTabReference<Target>,
+): ExperimentalFixedTabTargetDelivery<Target> | null {
+  const pluginId = usePluginId();
+  const delivery = useAppFixedTabTarget(
+    getPluginFixedTabOwnerId(pluginId, tab.panelId),
+    tab.id,
+  );
+  if (delivery === null || tab.experimental_target === undefined) return null;
+  try {
+    if (!tab.experimental_target.validate(delivery.target)) return null;
+  } catch {
+    return null;
+  }
+  return {
+    consume: delivery.consume,
+    sequence: delivery.sequence,
+    target: delivery.target,
+  };
 }
 
 function reconcileComposerMentions(

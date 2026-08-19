@@ -141,7 +141,9 @@ import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
 import {
   AppNavigationHostProvider,
   type AppFilePreviewIntent,
+  type AppFixedTabOpenIntent,
 } from "@/lib/app-navigation-host";
+import { openAppFixedTabFromDestinations } from "@/lib/app-fixed-tab-navigation";
 import {
   normalizeExperimentalFileOpenOptions,
   toFilePreviewLineRange,
@@ -1381,7 +1383,11 @@ function RootComposeSurface({
     ],
   );
   const appNavigationCapabilities = useMemo(
-    () => ({ openFilePreview: handleOpenLiveFilePreview }),
+    () => ({
+      openFilePreview: handleOpenLiveFilePreview,
+      openFixedTab: (intent: AppFixedTabOpenIntent) =>
+        openAppFixedTabFromDestinations([], intent),
+    }),
     [handleOpenLiveFilePreview],
   );
   // Click handler for inserted mention pills in the root composer: threads

@@ -175,7 +175,7 @@ unexpected-exit recovery without feature-specific core hooks.
     limits without pretending to model process startup, crashes, native watcher
     recovery, or reconnect behavior.
 
-## `PluginNavPanelRegistration.experimental_fixedTabs`
+## Fixed-tab navigation (`PluginNavPanelRegistration.experimental_fixedTabs`, `experimental_target`, `experimental_useAppPanel`, and `experimental_useFixedTabTarget`)
 
 **What it does.** Lets a nav panel declare ordered, non-closable tabs in the
 host-owned right panel. The host owns tab selection, persistence, chrome,
@@ -183,7 +183,26 @@ Browser and Terminal tools, and only mounts the active plugin component while
 the panel is open. A fixed tab receives the nav page's current `subPath`; `layout: "padded"` uses
 host padding and scrolling, while `layout: "flush"` gives the component the
 whole content region. On the first visit the first declared fixed tab opens on
-wide layouts. A later user close remains closed.
+wide layouts. A later user close remains closed. A fixed-tab registration is
+also its stable, plugin-owner-and-panel-scoped reference when its `panelId`
+matches the containing nav panel's id. `experimental_useAppPanel()`
+can select one of the calling plugin's eligible tabs on the current surface
+and optionally submit a JSON-safe target. The tab's `experimental_target`
+validator owns the target type and policy; `experimental_useFixedTabTarget()`
+delivers the validated value with a sequence and explicit `consume()`. Tab
+selection stays durable while delivery is memory-only. Core Changes targets
+and plugin targets resolve through the same feature-agnostic controller.
+
+**Public surface.** `ExperimentalFixedTabTargetContract`,
+`ExperimentalPluginFixedTabReference`,
+`ExperimentalPluginFixedTabRegistration`,
+`ExperimentalPluginFixedTabDeclaration`, `ExperimentalAppPanelSurface`,
+`ExperimentalFixedTabTargetDelivery`, `ExperimentalOpenFixedTabOptions`,
+`ExperimentalAppPanel`, `experimental_useAppPanel`, and
+`experimental_useFixedTabTarget`. The frontend testing runtime mirrors this
+with `ExperimentalFixedTabOpenCall`, the
+`experimental_openFixedTab`/`experimental_fixedTabTarget` render options, and
+the `experimental_fixedTabOpenCalls` inspection list.
 
 **Audit before stabilizing.**
 
@@ -198,6 +217,17 @@ wide layouts. A later user close remains closed.
    and nested scrolling before freezing the presentation contract.
 5. Confirm named icon hints and the non-closable tab treatment remain the right
    amount of plugin-controlled chrome.
+6. Audit registration objects as references: identity is scoped to the mounted
+   plugin and current nav panel, with no cross-plugin addressing or global ids.
+7. Confirm sync type guards remain the right owner validation contract and
+   define error reporting if a validator throws or becomes stale after reload.
+8. Exercise repeated equal targets, explicit consumption, crashes, close and
+   remount, refresh, and compact drawer animation; targets must never persist
+   or replay after consumption.
+9. Decide whether a future cross-thread surface should navigate before opening;
+   the initial public surface intentionally supports only `{ kind: "current" }`.
+10. Keep core and plugin destinations on the same resolver and verify the
+    controller never learns Changes, file, task, or document target shapes.
 
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
