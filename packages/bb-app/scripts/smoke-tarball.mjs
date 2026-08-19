@@ -40,7 +40,7 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
 // PROVIDER_BRIDGE_PROTOCOL_VERSION (packages/provider-bridge-protocol/src/
 // version.ts); this script imports nothing from the workspace so it can run
 // against a packed tarball.
-const PROVIDER_BRIDGE_PROTOCOL_VERSION = 1;
+const PROVIDER_BRIDGE_PROTOCOL_VERSION = 2;
 // A canonical turn/start carries a client request id (`creq_` + ten
 // Crockford-ish characters, @bb/domain's clientTurnRequestIdSchema).
 const SMOKE_CLIENT_REQUEST_ID = "creq_smkptest23";
@@ -659,21 +659,22 @@ function sendBridgeRequest(childProcess, id, method, params) {
   );
 }
 
-/** The canonical thread/event payload, or undefined for anything else. */
-function threadEvent(message) {
+/**
+ * The semantic deltas a `thread/delta` notification batches, or [] for
+ * anything else. Bridge-protocol v2 carries no finished timeline events on
+ * this wire — the runtime's assembler builds those — so the smoke asserts
+ * against the delta grammar directly.
+ */
+function threadDeltas(message) {
   if (
     !isRecord(message) ||
-    message.method !== "thread/event" ||
+    message.method !== "thread/delta" ||
     !isRecord(message.params) ||
-    !isRecord(message.params.event)
+    !Array.isArray(message.params.deltas)
   ) {
-    return undefined;
+    return [];
   }
-  return message.params.event;
-}
-
-function isThreadEventOfType(message, eventType) {
-  return threadEvent(message)?.type === eventType;
+  return message.params.deltas.filter(isRecord);
 }
 
 /** The full permission policy a canonical request carries in `options`. */
@@ -832,17 +833,19 @@ async function smokePiUserConfiguration(packageDir) {
       providerThreadId: "pi-config-e2e-thread",
       threadId: "pi-config-e2e-thread",
     });
-    // The turn must reach the canonical "completed" terminal state: an
-    // interrupted or failed settlement would otherwise satisfy a bare
-    // turn/completed wait and hide a broken configuration.
+    // The turn must reach the "completed" terminal boundary: an interrupted
+    // or failed settlement would otherwise satisfy a bare boundary wait and
+    // hide a broken configuration.
     await waitForBridgeMessage({
       childProcess,
       label,
       messages,
       output,
       predicate: (message) =>
-        isThreadEventOfType(message, "turn/completed") &&
-        threadEvent(message).status === "completed",
+        threadDeltas(message).some(
+          (delta) =>
+            delta.kind === "turn.boundary" && delta.status === "completed",
+        ),
     });
 
     const errors = messages.filter(
@@ -869,13 +872,18 @@ async function smokePiUserConfiguration(packageDir) {
       );
     }
 
-    // Neither tool is a pi command/file-change tool, so both settle as generic
-    // `toolCall` items whose name rides `item.tool`.
+    // Neither tool is a pi command/file-change tool, so both settle as
+    // generic `tool` terminal shapes on their `item.close` deltas.
     const completedToolNames = messages
-      .filter((message) => isThreadEventOfType(message, "item/completed"))
-      .map((message) => threadEvent(message).item)
-      .filter((item) => isRecord(item) && item.type === "toolCall")
-      .map((item) => item.tool);
+      .flatMap((message) => threadDeltas(message))
+      .filter(
+        (delta) =>
+          delta.kind === "item.close" &&
+          delta.status === "completed" &&
+          isRecord(delta.item) &&
+          delta.item.type === "tool",
+      )
+      .map((delta) => delta.item.tool);
     if (
       !completedToolNames.includes("configured_tool") ||
       !completedToolNames.includes("bb_dynamic_tool")
