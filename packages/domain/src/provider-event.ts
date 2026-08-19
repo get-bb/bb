@@ -712,17 +712,22 @@ export const systemEventSchema = unscopedSystemEventSchema.and(
   scopedEventDataSchema,
 );
 
-const eventPropertyBagSchema = z.record(z.string(), z.unknown());
 const legacyClientRequestKey = ["clientRequest", "Sequence"].join("");
+
+function isEventPropertyBag(
+  value: unknown,
+): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 const rejectLegacyClientRequestSequenceSchema = z
   .unknown()
   .superRefine((value, ctx) => {
-    const eventResult = eventPropertyBagSchema.safeParse(value);
-    if (!eventResult.success) {
+    if (!isEventPropertyBag(value)) {
       return;
     }
 
-    if (Object.hasOwn(eventResult.data, legacyClientRequestKey)) {
+    if (Object.hasOwn(value, legacyClientRequestKey)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "legacy request sequence field is no longer accepted",
@@ -730,11 +735,11 @@ const rejectLegacyClientRequestSequenceSchema = z
       });
     }
 
-    const itemResult = eventPropertyBagSchema.safeParse(eventResult.data.item);
+    const item = value.item;
     if (
-      itemResult.success &&
-      itemResult.data.type === "userMessage" &&
-      Object.hasOwn(itemResult.data, legacyClientRequestKey)
+      isEventPropertyBag(item) &&
+      item.type === "userMessage" &&
+      Object.hasOwn(item, legacyClientRequestKey)
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
