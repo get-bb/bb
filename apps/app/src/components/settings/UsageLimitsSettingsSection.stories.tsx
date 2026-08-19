@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import type { Host } from "@bb/domain";
+import type { Host, ProviderInfo } from "@bb/domain";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   UsageLimitsSettingsSectionContent,
@@ -133,6 +133,31 @@ const HOSTS: Host[] = [
   },
 ];
 
+function provider(id: string, displayName: string): ProviderInfo {
+  return {
+    id,
+    displayName,
+    logoUrl: null,
+    available: true,
+    capabilities: {
+      supportsThreadArchive: false,
+      supportsThreadRename: false,
+      supportsServiceTier: false,
+      supportsNativeUserQuestion: false,
+      supportsFork: false,
+      supportsSessionRewind: false,
+      permissionModes: ["full"],
+    },
+    composerActions: [],
+  };
+}
+
+const PROVIDERS = [
+  provider("codex", "Codex"),
+  provider("claude-code", "Claude Code"),
+  provider("acp-cursor", "Cursor"),
+];
+
 function Stage({ children }: { children: ReactNode }) {
   return <div className="w-full min-w-0 max-w-3xl">{children}</div>;
 }
@@ -167,6 +192,7 @@ function UsagePreview({
         isError={isError}
         isFetching={isFetching}
         onRefresh={noop}
+        providers={PROVIDERS}
         hosts={hosts}
         selectedHostId={selectedHostId}
         onSelectHost={onSelectHost}

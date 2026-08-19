@@ -90,7 +90,7 @@ describe("UsageLimitsSettingsSectionContent", () => {
     expect(screen.getByText("$5.00 / $50")).toBeDefined();
   });
 
-  it("hides Cursor when its CLI is not installed", () => {
+  it("keeps an uninstalled provider visible with its status", () => {
     renderContent({
       usage: {
         codex: { status: "unauthenticated" },
@@ -102,7 +102,8 @@ describe("UsageLimitsSettingsSectionContent", () => {
       onRefresh: vi.fn(),
     });
 
-    expect(screen.queryByRole("heading", { name: "Cursor" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Cursor" })).toBeDefined();
+    expect(screen.getByText("Not installed on this machine.")).toBeDefined();
     expect(screen.getByRole("heading", { name: "Codex" })).toBeDefined();
   });
 
@@ -142,6 +143,72 @@ describe("UsageLimitsSettingsSectionContent", () => {
     expect(screen.getByRole("heading", { name: "Echo Agent" })).toBeDefined();
     expect(screen.getByText("Monthly messages")).toBeDefined();
     expect(screen.getByText("25% used")).toBeDefined();
+  });
+
+  it("renders every registry provider in registry order", () => {
+    renderContent({
+      usage: { codex: { status: "unauthenticated" } },
+      providers: [
+        provider("echo-agent", "Echo Agent"),
+        provider("codex", "Codex from registry"),
+      ],
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      onRefresh: vi.fn(),
+    });
+
+    expect(
+      screen
+        .getAllByRole("heading", { level: 3 })
+        .map((heading) => heading.textContent),
+    ).toEqual(["Echo Agent", "Codex from registry"]);
+    expect(screen.getByText("Usage not provided.")).toBeDefined();
+  });
+
+  it("shows a loading message for every known provider", () => {
+    renderContent({
+      usage: {},
+      providers: [
+        provider("codex", "Codex"),
+        provider("echo-agent", "Echo Agent"),
+      ],
+      isLoading: true,
+      isError: false,
+      isFetching: true,
+      onRefresh: vi.fn(),
+    });
+
+    expect(screen.getByRole("heading", { name: "Codex" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Echo Agent" })).toBeDefined();
+    expect(screen.getAllByText("Loading usage…")).toHaveLength(2);
+  });
+
+  it("shows an initial loading message before the provider list arrives", () => {
+    renderContent({
+      usage: {},
+      isLoading: true,
+      isError: false,
+      isProviderListLoading: true,
+      isFetching: true,
+      onRefresh: vi.fn(),
+    });
+
+    expect(screen.getByText("Loading providers and usage…")).toBeDefined();
+  });
+
+  it("keeps provider rows visible when the usage request fails", () => {
+    renderContent({
+      usage: {},
+      providers: [provider("echo-agent", "Echo Agent")],
+      isLoading: false,
+      isError: true,
+      isFetching: false,
+      onRefresh: vi.fn(),
+    });
+
+    expect(screen.getByRole("heading", { name: "Echo Agent" })).toBeDefined();
+    expect(screen.getByText(/Couldn't load usage right now/u)).toBeDefined();
   });
 
   it("selects which connected machine supplies usage", () => {

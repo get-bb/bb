@@ -177,6 +177,8 @@ export interface UsageLimitsSettingsSectionContentProps {
   usage: ProviderUsageResponse;
   isLoading: boolean;
   isError: boolean;
+  isProviderListLoading?: boolean;
+  isProviderListError?: boolean;
   isFetching: boolean;
   onRefresh: () => void;
   providers?: readonly ProviderInfo[];
@@ -325,7 +327,7 @@ function ProviderUsageBody({
   if (!usage) {
     return (
       <p className="text-xs text-muted-foreground">
-        {isLoading ? "Loading usage…" : "Usage unavailable."}
+        {isLoading ? "Loading usage…" : "Usage not provided."}
       </p>
     );
   }
@@ -346,7 +348,11 @@ function ProviderUsageBody({
         </div>
       );
     case "not_installed":
-      return null;
+      return (
+        <p className="text-xs text-muted-foreground">
+          Not installed on this machine.
+        </p>
+      );
     case "unauthenticated":
       return (
         <p className="text-xs text-muted-foreground">{config.signInHint}</p>
@@ -366,6 +372,8 @@ export function UsageLimitsSettingsSectionContent({
   usage,
   isLoading,
   isError,
+  isProviderListLoading = false,
+  isProviderListError = false,
   isFetching,
   onRefresh,
   providers = [],
@@ -378,20 +386,21 @@ export function UsageLimitsSettingsSectionContent({
     providers.map((provider) => [provider.id, provider] as const),
   );
   const reportedProviderIds = Object.keys(usage);
-  const reportedProviderIdSet = new Set(reportedProviderIds);
   const orderedProviderIds = [
-    ...providers
-      .filter((provider) => reportedProviderIdSet.has(provider.id))
-      .map((provider) => provider.id),
+    ...providers.map((provider) => provider.id),
     ...reportedProviderIds.filter(
       (providerId) => !providerById.has(providerId),
     ),
   ];
-  const visibleProviders = orderedProviderIds
-    .filter((providerId) => usage[providerId]?.status !== "not_installed")
-    .map((providerId) =>
-      providerConfig(providerId, providerById.get(providerId)?.displayName),
-    );
+  const providerConfigs = orderedProviderIds.map((providerId) =>
+    providerConfig(providerId, providerById.get(providerId)?.displayName),
+  );
+  const emptyMessage =
+    isLoading || isProviderListLoading
+      ? "Loading providers and usage…"
+      : isError || isProviderListError
+        ? "Couldn't load providers or usage right now."
+        : "No providers available.";
   return (
     <SettingsSection
       title="Usage limits"
@@ -429,15 +438,19 @@ export function UsageLimitsSettingsSectionContent({
       }
     >
       <SettingsRowList>
-        {visibleProviders.map((config) => (
-          <ProviderUsageBlock
-            key={config.providerId}
-            config={config}
-            usage={usage[config.providerId]}
-            isLoading={isLoading}
-            isError={isError}
-          />
-        ))}
+        {providerConfigs.length === 0 ? (
+          <p className="text-xs text-muted-foreground">{emptyMessage}</p>
+        ) : (
+          providerConfigs.map((config) => (
+            <ProviderUsageBlock
+              key={config.providerId}
+              config={config}
+              usage={usage[config.providerId]}
+              isLoading={isLoading}
+              isError={isError}
+            />
+          ))
+        )}
       </SettingsRowList>
     </SettingsSection>
   );
@@ -470,6 +483,8 @@ export function UsageLimitsSettingsSection() {
       usage={usageQuery.data ?? {}}
       isLoading={usageQuery.isLoading}
       isError={usageQuery.isError}
+      isProviderListLoading={providersQuery.isLoading}
+      isProviderListError={providersQuery.isError}
       isFetching={usageQuery.isFetching}
       onRefresh={() => {
         void usageQuery.refetch();
