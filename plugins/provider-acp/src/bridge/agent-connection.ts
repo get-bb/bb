@@ -66,8 +66,50 @@ interface ParsedAgentMessage {
   id?: string | number;
   method?: string;
   result?: unknown;
-  error?: { code?: number; message?: string };
+  error?: AgentErrorObject;
   params?: unknown;
+}
+
+interface AgentErrorObject {
+  code?: number;
+  message?: string;
+  data?: unknown;
+}
+
+/**
+ * ACP agents answer a failed request with a generic JSON-RPC message such as
+ * "Internal error" and put the real cause in `error.data` (for example
+ * `{ details: "bb-bridge: Transport closed" }`). Carry that cause into the
+ * rejection so agent-side failures are diagnosable from bb logs.
+ */
+export function formatAgentError(error: AgentErrorObject): string {
+  const message =
+    error.message ??
+    `ACP agent returned error code ${error.code ?? "unknown"}`;
+  const details = formatAgentErrorData(error.data);
+  return details === undefined ? message : `${message}: ${details}`;
+}
+
+function formatAgentErrorData(data: unknown): string | undefined {
+  if (data === undefined || data === null) {
+    return undefined;
+  }
+  if (typeof data === "string") {
+    return data.trim() === "" ? undefined : data;
+  }
+  if (
+    typeof data === "object" &&
+    "details" in data &&
+    typeof data.details === "string" &&
+    data.details.trim() !== ""
+  ) {
+    return data.details;
+  }
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return undefined;
+  }
 }
 
 function parseAgentLine(line: string): ParsedAgentMessage | null {
@@ -139,12 +181,7 @@ export function createAcpAgentConnection(
         }
         pending.delete(numericId);
         if (message.error) {
-          request.reject(
-            new Error(
-              message.error.message ??
-                `ACP agent returned error code ${message.error.code ?? "unknown"}`,
-            ),
-          );
+          request.reject(new Error(formatAgentError(message.error)));
         } else {
           request.resolve(message.result);
         }

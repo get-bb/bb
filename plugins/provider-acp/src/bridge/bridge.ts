@@ -326,10 +326,11 @@ function emitSessionError(session: AcpThreadSession, message: string): void {
 }
 
 function resolveBridgeProcessArgsForMcpServer(): string[] {
-  const entryPoint = process.argv[1]
-    ? resolve(process.argv[1])
-    : fileURLToPath(import.meta.url);
-  return [...process.execArgv, entryPoint, "--mcp-stdio"];
+  // process.argv[1] is the provider-bridge bootstrap, not this module: the
+  // bootstrap imports this artifact, so only import.meta.url names the file
+  // that understands `--mcp-stdio`. The bootstrap rejects the flag with a
+  // usage error, which the ACP agent reports as "bb-bridge: Transport closed".
+  return [...process.execArgv, fileURLToPath(import.meta.url), "--mcp-stdio"];
 }
 
 function resolveBridgeProcessEnvForMcpServer(): AcpMcpServerConfig["env"] {
