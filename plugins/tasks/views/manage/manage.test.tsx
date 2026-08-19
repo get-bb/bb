@@ -790,7 +790,11 @@ describe("Manage folders", () => {
     const slot = renderFolders({
       deleteFolder: (input: Record<string, unknown>) => {
         deleteCalls.push(input);
-        return { deleted: true };
+        return {
+          deleted: true,
+          movedProjectIds: [PROJECT_ID],
+          movedFolderIds: [childFolder.id],
+        };
       },
     });
     fireEvent.mouseDown(await slot.findByRole("tab", { name: "Folders" }));
@@ -820,7 +824,11 @@ describe("Manage folders", () => {
       },
       deleteFolder: (input: Record<string, unknown>) => {
         deleteCalls.push(input);
-        return { deleted: true };
+        return {
+          deleted: true,
+          movedProjectIds: [PROJECT_ID],
+          movedFolderIds: [childFolder.id],
+        };
       },
     });
     fireEvent.mouseDown(await slot.findByRole("tab", { name: "Folders" }));
@@ -863,11 +871,58 @@ describe("Manage folders", () => {
     fireEvent.click(
       await slot.findByRole("button", { name: "Delete folder bb" }),
     );
-    await slot.findByText("Could not load projects: projects unavailable");
+    await slot.findByText(
+      "Could not load the folder's contents: projects unavailable",
+    );
     expect(
       slot.getByRole<HTMLButtonElement>("button", { name: "Delete folder" })
         .disabled,
     ).toBe(true);
+  });
+
+  it("blocks deleting on stale rows after a refresh fails", async () => {
+    // useTasksQuery keeps the rows it had when a same-scope refetch fails, so
+    // the dialog would otherwise count the cached (possibly stale) projects.
+    let projectsUnavailable = false;
+    const deleteCalls: Array<Record<string, unknown>> = [];
+    const slot = renderFolders({
+      listProjects: () => {
+        if (projectsUnavailable) throw new Error("projects unavailable");
+        return { projects: [{ ...project, folderId: parentFolder.id }] };
+      },
+      deleteFolder: (input: Record<string, unknown>) => {
+        deleteCalls.push(input);
+        return { deleted: true, movedProjectIds: [], movedFolderIds: [] };
+      },
+    });
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Folders" }));
+    // First load succeeds and the impact is known.
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Delete folder bb" }),
+    );
+    await slot.findByText(
+      "1 project and 1 subfolder move to the top level. No tasks are deleted.",
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Cancel" }));
+
+    // A later refresh fails; the cached rows stay but are no longer trusted.
+    projectsUnavailable = true;
+    await slot.behavior.emitRealtime("projects:changed", {
+      projectId: PROJECT_ID,
+    });
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Delete folder bb" }),
+    );
+    await slot.findByText(
+      "Could not load the folder's contents: projects unavailable",
+    );
+    expect(slot.queryByText(/move to the top level/)).toBeNull();
+    const confirm = slot.getByRole<HTMLButtonElement>("button", {
+      name: "Delete folder",
+    });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(confirm);
+    expect(deleteCalls).toHaveLength(0);
   });
 
   it("surfaces a failed delete instead of silently closing", async () => {
@@ -883,6 +938,33 @@ describe("Manage folders", () => {
     await slot.findByText("The folder is empty.");
     fireEvent.click(slot.getByRole("button", { name: "Delete folder" }));
     await slot.findByRole("alert");
+  });
+
+  it("treats deleted: false as a conflict and refetches", async () => {
+    let folderCalls = 0;
+    const slot = renderFolders({
+      listFolders: () => {
+        folderCalls += 1;
+        return { folders: [parentFolder, childFolder] };
+      },
+      deleteFolder: () => ({
+        deleted: false,
+        movedProjectIds: [],
+        movedFolderIds: [],
+      }),
+    });
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Folders" }));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Delete folder archive" }),
+    );
+    await slot.findByText("The folder is empty.");
+    const callsBeforeDelete = folderCalls;
+    fireEvent.click(slot.getByRole("button", { name: "Delete folder" }));
+    const alert = await slot.findByRole("alert");
+    expect(alert.textContent).toBe("Folder “archive” was already deleted.");
+    // The server publishes nothing for a no-op delete, so the panel refetches
+    // on its own to drop the row another client removed.
+    await waitFor(() => expect(folderCalls).toBeGreaterThan(callsBeforeDelete));
   });
 });
 

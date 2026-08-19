@@ -18,6 +18,7 @@ import type {
   CreatePresetInput,
   CreateProjectInput,
   CreateTaskInput,
+  DeleteFolderResult,
   Folder,
   Label,
   ListTasksFilters,
@@ -590,11 +591,35 @@ export function createTasksStore(db: PluginDatabase) {
     return requireFolder(id);
   }
 
-  function deleteFolder(id: string): boolean {
-    return (
-      db.prepare<[string]>("DELETE FROM folders WHERE id = ?").run(id).changes >
-      0
-    );
+  const selectFolderProjectIds = db.prepare<[string], { id: string }>(
+    "SELECT id FROM projects WHERE folder_id = ? ORDER BY name COLLATE NOCASE, id",
+  );
+  const selectChildFolderIds = db.prepare<[string], { id: string }>(
+    "SELECT id FROM folders WHERE parent_folder_id = ? ORDER BY name COLLATE NOCASE, id",
+  );
+  const deleteFolderRow = db.prepare<[string]>(
+    "DELETE FROM folders WHERE id = ?",
+  );
+
+  // The schema's ON DELETE SET NULL moves the folder's projects and subfolders
+  // to the top level. Read what will move inside the same transaction as the
+  // delete so callers report exactly what this delete unfiled, not a snapshot
+  // another client may have changed in between.
+  const deleteFolderTransaction = db.transaction(
+    (id: string): DeleteFolderResult => {
+      const movedProjectIds = selectFolderProjectIds
+        .all(id)
+        .map((row) => row.id);
+      const movedFolderIds = selectChildFolderIds.all(id).map((row) => row.id);
+      const deleted = deleteFolderRow.run(id).changes > 0;
+      return deleted
+        ? { deleted, movedProjectIds, movedFolderIds }
+        : { deleted, movedProjectIds: [], movedFolderIds: [] };
+    },
+  );
+
+  function deleteFolder(id: string): DeleteFolderResult {
+    return deleteFolderTransaction(id);
   }
 
   function getProject(id: string): Project | undefined {

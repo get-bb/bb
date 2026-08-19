@@ -820,37 +820,30 @@ async function runFolder(
     );
     const folder = await resolveFolder(domain, address!);
     // Deleting a folder only unfiles what it held (ON DELETE SET NULL moves
-    // its projects and subfolders to the top level), so report the move the
-    // same way the Manage dialog does instead of warning about loss.
-    const movedProjects = (await listProjects(domain)).filter(
-      (project) => project.folderId === folder.id,
-    );
-    const movedFolders = tasksRpcContract.listFolders.output
-      .parse(
-        await domain.listFolders(
-          tasksRpcContract.listFolders.input.parse(null),
-        ),
-      )
-      .folders.filter((entry) => entry.parentFolderId === folder.id);
+    // its projects and subfolders to the top level). The delete reports what
+    // it moved from its own transaction, so the summary matches what happened
+    // even if another client changed the folder after the lookup above.
     const result = tasksRpcContract.deleteFolder.output.parse(
       await domain.deleteFolder(
         tasksRpcContract.deleteFolder.input.parse({ folderId: folder.id }),
       ),
     );
-    if (args.flags.has("json")) {
-      return json({
-        ...result,
-        folder,
-        movedProjectIds: movedProjects.map((project) => project.id),
-        movedFolderIds: movedFolders.map((entry) => entry.id),
-      });
+    if (!result.deleted) {
+      throw new CliError(
+        `folder not found: ${address} (it was deleted by another client)`,
+      );
     }
+    if (args.flags.has("json")) {
+      return json({ ...result, folder });
+    }
+    const projectCount = result.movedProjectIds.length;
+    const folderCount = result.movedFolderIds.length;
     const moved = [
-      movedProjects.length > 0
-        ? `${movedProjects.length} project${movedProjects.length > 1 ? "s" : ""}`
+      projectCount > 0
+        ? `${projectCount} project${projectCount > 1 ? "s" : ""}`
         : null,
-      movedFolders.length > 0
-        ? `${movedFolders.length} subfolder${movedFolders.length > 1 ? "s" : ""}`
+      folderCount > 0
+        ? `${folderCount} subfolder${folderCount > 1 ? "s" : ""}`
         : null,
     ].filter((part) => part !== null);
     return moved.length === 0
@@ -1941,7 +1934,7 @@ export function registerTasksCli(
       },
       {
         name: "folder",
-        summary: "Create, list, or update project folders",
+        summary: "Create, list, update, or delete project folders",
         usage: FOLDER_HELP,
       },
       {

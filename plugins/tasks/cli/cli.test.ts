@@ -18,6 +18,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createStore } from "../api";
 import plugin from "../server";
+import { registerTasksCli } from "./index";
 
 // Passthrough mock with one injectable failure: files named boom.bin fail at
 // blob-write time, simulating a post-preflight persistence error so the
@@ -881,6 +882,45 @@ describe("bb tasks CLI", () => {
       exitCode: 1,
       stderr: `folder not found: ${child.id}`,
     });
+
+    await harness.dispose();
+  });
+
+  it("fails folder delete when another client removed the folder first", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    // Same real store and SQLite database; only the delete is wrapped so a
+    // competing client's delete lands between the CLI's lookup and its own
+    // delete. The store then reports `deleted: false`, which must not read
+    // as success.
+    const racingStore = {
+      ...store,
+      tasks: {
+        ...store.tasks,
+        deleteFolder(id: string) {
+          store.tasks.deleteFolder(id);
+          return store.tasks.deleteFolder(id);
+        },
+      },
+    };
+    registerTasksCli(bb, racingStore, { name: "tasks", version: "test" });
+    const folder = store.tasks.createFolder({ name: "Racing" });
+
+    const plain = await harness.runCli(["folder", "delete", "Racing"]);
+    expect(plain.exitCode).toBe(1);
+    expect(plain.stdout).toBe("");
+    expect(plain.stderr).toContain("folder not found: Racing");
+
+    store.tasks.createFolder({ name: "Racing" });
+    const asJson = await harness.runCli([
+      "folder",
+      "delete",
+      "Racing",
+      "--json",
+    ]);
+    expect(asJson.exitCode).toBe(1);
+    expect(asJson.stdout).toBe("");
+    expect(store.tasks.getFolder(folder.id)).toBeUndefined();
 
     await harness.dispose();
   });

@@ -564,9 +564,13 @@ function FoldersSection() {
   };
 
   // The folder and project queries load independently, so the impact text
-  // waits for both rather than treating a still-loading (or failed) project
-  // list as "no projects".
+  // waits for both rather than treating a still-loading project list as "no
+  // projects". A failed refresh keeps the previous rows in `data`, and those
+  // may be stale, so an error on either query also withholds the impact and
+  // blocks confirming until a refresh succeeds.
+  const impactError = folders.error ?? projects.error;
   const impactReady =
+    impactError === null &&
     folders.data !== undefined &&
     !folders.isLoading &&
     projects.data !== undefined &&
@@ -577,8 +581,8 @@ function FoldersSection() {
   // removed, so the confirmation names the move rather than warning about loss.
   function describeDeleteImpact(folder: Folder): string {
     if (!impactReady) {
-      return projects.error !== null && projects.data === undefined
-        ? `Could not load projects: ${projects.error}`
+      return impactError !== null
+        ? `Could not load the folder's contents: ${impactError}`
         : "Checking what the folder contains…";
     }
     const projectCount = (projects.data ?? []).filter(
@@ -652,7 +656,19 @@ function FoldersSection() {
         onConfirm={() => {
           const target = confirmDelete;
           if (target) {
-            void run(() => rpc.call("deleteFolder", { folderId: target.id }));
+            void run(async () => {
+              const result = await rpc.call("deleteFolder", {
+                folderId: target.id,
+              });
+              if (!result.deleted) {
+                // Another client removed the folder first. The server publishes
+                // nothing in that case, so pull fresh rows and surface the
+                // conflict instead of reporting a silent success.
+                folders.refresh();
+                projects.refresh();
+                throw new Error(`Folder “${target.name}” was already deleted.`);
+              }
+            });
           }
         }}
       />

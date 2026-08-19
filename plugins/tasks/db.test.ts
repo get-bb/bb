@@ -172,6 +172,55 @@ describe("tasks storage", () => {
     }
   });
 
+  it("reports what a folder delete unfiled and nothing for a missing folder", async () => {
+    const { harness, store } = setup();
+    try {
+      const parent = store.createFolder({ name: "Parent" });
+      const child = store.createFolder({
+        name: "Child",
+        parentFolderId: parent.id,
+      });
+      const other = store.createFolder({ name: "Other" });
+      const filed = store.createProject({
+        name: "Filed",
+        prefix: "FIL",
+        color: "blue",
+        folderId: parent.id,
+      });
+      const elsewhere = store.createProject({
+        name: "Elsewhere",
+        prefix: "ELS",
+        color: "blue",
+        folderId: other.id,
+      });
+      const task = store.createTask({
+        projectId: filed.id,
+        title: "Survives",
+      });
+
+      expect(store.deleteFolder(parent.id)).toEqual({
+        deleted: true,
+        movedProjectIds: [filed.id],
+        movedFolderIds: [child.id],
+      });
+      // ON DELETE SET NULL re-parents rather than cascades.
+      expect(store.getFolder(child.id)?.parentFolderId).toBeNull();
+      expect(store.getProject(filed.id)?.folderId).toBeNull();
+      expect(store.getProject(elsewhere.id)?.folderId).toBe(other.id);
+      expect(store.getTask(task.id)?.projectId).toBe(filed.id);
+
+      // A second delete finds no row and must not claim to have moved the
+      // children the first delete already unfiled.
+      expect(store.deleteFolder(parent.id)).toEqual({
+        deleted: false,
+        movedProjectIds: [],
+        movedFolderIds: [],
+      });
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   it("allocates sequential per-project task keys transactionally", async () => {
     const { harness, store } = setup();
     try {
