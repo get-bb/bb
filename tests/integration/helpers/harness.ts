@@ -49,6 +49,7 @@ import type {
 import { HostSharedPortCoordinator } from "../../../apps/server/src/ws/host-shared-ports.js";
 import { NotificationHub } from "../../../apps/server/src/ws/hub.js";
 import { WatchInterestCoordinator } from "../../../apps/server/src/ws/watch-interests.js";
+import { WorkspaceReadCaches } from "../../../apps/server/src/services/environments/workspace-read-cache.js";
 import { createPublicApiClient } from "@bb/server-contract";
 import { waitForHostConnected } from "./assertions.js";
 import { createIntegrationFetch } from "./fetch.js";
@@ -227,6 +228,7 @@ async function startIntegrationServer(
   const hub = new NotificationHub();
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const watchInterests = new WatchInterestCoordinator({ db, hub });
+  const workspaceReadCaches = new WorkspaceReadCaches({ hub });
   const config: ServerRuntimeConfig = {
     appSurface: "web",
     appVersion: "0.0.0-dev",
@@ -332,6 +334,7 @@ async function startIntegrationServer(
     telemetry,
     terminalSessions,
     watchInterests,
+    workspaceReadCaches,
   });
 
   let addressInfo: ListeningAddress | null = null;
