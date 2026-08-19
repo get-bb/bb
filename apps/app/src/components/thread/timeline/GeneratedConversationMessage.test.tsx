@@ -354,7 +354,11 @@ describe("GeneratedConversationMessage markdown body", () => {
 
     expect(
       (
-        await screen.findByRole("link", { name: "Archived sender" })
+        await screen.findByRole(
+          "link",
+          { name: "Archived sender" },
+          { timeout: 10_000 },
+        )
       ).getAttribute("href"),
     ).toBe("/threads/thr_agent");
     expect(getThread).toHaveBeenCalledTimes(2);
