@@ -310,6 +310,32 @@ describe("plugin install sources", () => {
     ).rejects.toThrow(/more than 5 bytes/);
   });
 
+  it("keeps script-policy npm config out of git/npm children", async () => {
+    // Launching bb through a package manager exports the user's whole .npmrc
+    // as npm_config_*, and npm reads env above every .npmrc file. An ordinary
+    // allow-scripts entry arrived at npm 12 as --allow-scripts and made every
+    // git and npm plugin install fail with EALLOWSCRIPTS. Installs pass
+    // --ignore-scripts; that policy is not the environment's to override.
+    process.env.npm_config_allow_scripts = "@github/keytar,node-pty";
+    process.env.npm_config_ignore_scripts = "false";
+    // Other npm config is a supported way to point bb at a registry or cache
+    // (plugin-registration reads npm_config_registry itself), so it must pass.
+    const previousRegistry = process.env.npm_config_registry;
+    process.env.npm_config_registry = "https://registry.example.invalid/";
+    try {
+      const seen = await runInstallCommand(process.execPath, [
+        "-e",
+        "process.stdout.write([process.env.npm_config_allow_scripts ?? '-', process.env.npm_config_ignore_scripts ?? '-', process.env.npm_config_registry ?? '-', process.env.PATH === undefined ? 'no-path' : 'path'].join('|'))",
+      ]);
+      expect(seen).toBe("-|-|https://registry.example.invalid/|path");
+    } finally {
+      delete process.env.npm_config_allow_scripts;
+      delete process.env.npm_config_ignore_scripts;
+      if (previousRegistry === undefined) delete process.env.npm_config_registry;
+      else process.env.npm_config_registry = previousRegistry;
+    }
+  });
+
   it("keeps scoped npm and nested git cache paths inside their roots", () => {
     expect(npmArtifactCacheDir("/data", "@acme/plugin", "1.2.3")).toBe(
       "/data/plugins/cache/npm/@acme/plugin/1.2.3",
