@@ -771,7 +771,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="active child + pull request + uncommitted"
-        hint="long child titles stay within the shared stack; compact rows hide pull request actions"
+        hint="long child titles stay within the shared stack; pull request actions remain available"
       >
         <Row
           childThreads={childThreadsFixture}

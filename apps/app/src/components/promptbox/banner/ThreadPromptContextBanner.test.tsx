@@ -522,8 +522,8 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("1 file");
   });
 
-  it("hides the pull request action in compact composer shells", () => {
-    render(
+  it("keeps the pull request action visible beside other context segments", () => {
+    const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
         gitSection={makeGitSection("uncommitted")}
         gitSectionPending={false}
@@ -543,20 +543,9 @@ describe("ThreadPromptContextBanner", () => {
       />,
     );
 
-    expect(
-      screen.getByRole("link", { name: "Pull request 128: Ready to merge" }),
-    ).not.toBeNull();
-    expect(
-      screen.getByRole("button", {
-        name: "Changed files: Uncommitted, 1 file, +2 -0",
-      }),
-    ).not.toBeNull();
-    expect(screen.getByText("Rebase and merge")).not.toBeNull();
-    expect(
-      screen
-        .getByRole("button", { name: "Choose pull request merge method" })
-        .closest("[data-promptbox-hide-compact]"),
-    ).not.toBeNull();
+    expect(markup).toContain("PR #128");
+    expect(markup).toContain("Uncommitted");
+    expect(markup).toContain("Rebase and merge");
   });
 
   it("uses the shared committed git label beside pull request context", () => {
