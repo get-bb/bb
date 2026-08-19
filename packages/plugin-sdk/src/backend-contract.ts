@@ -115,9 +115,11 @@ export interface PluginStorage {
   /** Namespaced JSON key-value rows in bb.db; values ≤256KB each. */
   kv: PluginKvStorage;
   /**
-   * Open (or reuse the path of) the plugin's own SQLite database at
-   * <dataDir>/plugins/<id>/data.db — the server's better-sqlite3, WAL mode,
-   * busy_timeout 5000. Handles are host-tracked and closed on
+   * The plugin's own SQLite database at <dataDir>/plugins/<id>/data.db — the
+   * server's better-sqlite3, WAL mode, busy_timeout 5000. Returns the same
+   * open handle for the whole plugin load, so calling it per request is
+   * cheap; a new handle is opened only on the first call or after the
+   * plugin closed the previous one. The host closes handles on
    * dispose/reload; a closed handle throws on use.
    */
   database(): Database.Database;
