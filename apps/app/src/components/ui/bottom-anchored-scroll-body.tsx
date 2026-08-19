@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { useStore } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PAGE_SHELL_CONTENT_STYLE } from "./page-shell-content-style.js";
+import { supportsScrollAnchoring } from "@/lib/scroll-anchoring-support";
 import {
   threadTimelineScrollAnchorAtomFamily,
   type ScrollAnchor,
@@ -21,9 +22,11 @@ import {
 // surfaces. It combines two mechanisms because neither is sufficient alone:
 //
 // - At the bottom, CSS scroll anchoring is redirected to the trailing 1px
-//   `.scroll-bottom-anchor` sentinel. That lets Chromium/Firefox keep the
-//   bottom pinned through width-driven markdown reflow without anchoring to a
-//   random message row.
+//   `.scroll-bottom-anchor` sentinel by excluding the content wrapper
+//   (`overflow-anchor: none` on the wrapper alone; the sentinel sits outside
+//   it). That lets Chromium/Firefox keep the bottom pinned through
+//   width-driven markdown reflow without anchoring to a random message row.
+//   WebKit has no scroll anchoring, so the class is never applied there.
 // - ResizeObserver plus a short rAF restore loop covers layout changes that
 //   browser anchoring does not reliably handle, such as sidebar collapse,
 //   prompt/footer height changes, and async content settling.
@@ -834,22 +837,29 @@ export function BottomAnchoredScrollBody({
         >
           <div
             ref={scrollContentRef}
-            className={cn(
-              "flex min-h-full min-w-0 flex-col",
-              isAtBottom && "scroll-bottom-anchor-content",
-            )}
+            className="flex min-h-full min-w-0 flex-col"
           >
+            {/* `.scroll-bottom-anchor-content` sets `overflow-anchor: none` on
+                this wrapper only. Scroll anchoring skips an excluded element's
+                whole subtree, so one class on one element redirects anchoring
+                to the trailing sentinel without a descendant rule that would
+                restyle every timeline node each time the bottom attaches or
+                detaches. Browsers without scroll anchoring (WebKit) never get
+                the class: the toggle would be a pure invalidation cost. */}
             <div
               className={cn(
                 "mx-auto flex w-full min-w-0 flex-1 flex-col px-4 pb-4 pt-2",
                 maxWidthClassName,
                 contentClassName,
+                isAtBottom &&
+                  supportsScrollAnchoring() &&
+                  "scroll-bottom-anchor-content",
               )}
               style={PAGE_SHELL_CONTENT_STYLE}
             >
               {children}
-              <div className="scroll-bottom-anchor" aria-hidden />
             </div>
+            <div className="scroll-bottom-anchor" aria-hidden />
             {footer ? (
               <div data-scroll-footer="" className="sticky bottom-0 z-20 shrink-0">
                 {footer}

@@ -322,3 +322,43 @@ describe("theme.css desktop portal hit testing", () => {
     expect(rule).toMatch(/-webkit-app-region:\s*no-drag;/);
   });
 });
+
+// Paint-cost guards for iOS/WebKit: the shimmer sweep and the scroll-anchor
+// exclusion must not restyle or repaint more of the timeline than they need.
+describe("theme.css shimmer and scroll-anchor paint scope", () => {
+  function ruleBody(selector: string, source = css): string {
+    const at = source.indexOf(`${selector} {`);
+    if (at === -1) throw new Error(`no ${selector} rule in theme.css`);
+    return source.slice(at, source.indexOf("}", at));
+  }
+
+  it("promotes shimmering elements to their own layer only while active", () => {
+    // `.animate-shine` is only present on active rows, so the layer exists
+    // only while the sweep runs.
+    expect(ruleBody("  .animate-shine")).toMatch(/will-change:\s*transform;/);
+    expect(ruleBody("  .animate-shine-icon")).toMatch(
+      /will-change:\s*transform;/,
+    );
+  });
+
+  it("pauses the sweep and releases the layer under inert or aria-hidden hosts", () => {
+    const rule = css.match(
+      /\[inert\] \.animate-shine,\s*\[inert\] \.animate-shine-icon,\s*\[aria-hidden="true"\] \.animate-shine,\s*\[aria-hidden="true"\] \.animate-shine-icon \{([^}]*)\}/,
+    )?.[1];
+    expect(rule).toBeDefined();
+    expect(rule).toMatch(/animation-play-state:\s*paused;/);
+    expect(rule).toMatch(/will-change:\s*auto;/);
+  });
+
+  it("excludes the bottom-anchored wrapper without a universal descendant rule", () => {
+    // `.scroll-bottom-anchor-content *` would restyle every timeline node on
+    // each bottom attach/detach; the wrapper alone excludes its subtree.
+    expect(css).not.toMatch(/\.scroll-bottom-anchor-content\s*\*/);
+    expect(ruleBody(".scroll-bottom-anchor-content")).toMatch(
+      /overflow-anchor:\s*none;/,
+    );
+    expect(ruleBody(".scroll-bottom-anchor")).toMatch(
+      /overflow-anchor:\s*auto;/,
+    );
+  });
+});

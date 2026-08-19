@@ -98,10 +98,17 @@
   }
 
   /* Keep the drag cursor stable while crossing rows whose normal pointer
-   * cursor would otherwise override the cursor inherited from the body. */
-  body[data-sidebar-dragging="true"],
-  body[data-sidebar-dragging="true"] * {
-    cursor: grabbing !important;
+   * cursor would otherwise override the cursor inherited from the body.
+   * Only the sidebar panel's rows carry their own cursor rules, so the
+   * descendant override is scoped to that panel rather than the whole
+   * document, and the rules exist only for fine pointers: a touch drag has
+   * no cursor, and a document-wide `*` rule would restyle every mounted
+   * timeline node when the body attribute flips at drag start and end. */
+  @media (pointer: fine) {
+    body[data-sidebar-dragging="true"],
+    body[data-sidebar-dragging="true"] [data-sidebar="panel"] * {
+      cursor: grabbing !important;
+    }
   }
 
   /* A sidebar drag projects the dragged row into the hovered list, which can

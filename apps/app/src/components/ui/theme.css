@@ -904,6 +904,15 @@ body.sidebar-resizing [data-sidebar="panel"] {
 }
 
 @layer utilities {
+  /*
+   * The sweep animates `background-position` / `mask-position`, which the
+   * compositor cannot run: every frame is a main-thread repaint. `will-change:
+   * transform` gives the shimmering element its own layer while the class is
+   * present (only while a row is active), so that repaint covers the small
+   * label or glyph instead of the tile of the scroller layer it sits in — on
+   * WebKit that tile otherwise re-rasterizes surrounding timeline text every
+   * frame of a streaming turn.
+   */
   .animate-shine {
     display: inline-block;
     background: linear-gradient(
@@ -917,6 +926,7 @@ body.sidebar-resizing [data-sidebar="panel"] {
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     animation: shine 2s linear infinite;
+    will-change: transform;
   }
 
   /*
@@ -942,6 +952,22 @@ body.sidebar-resizing [data-sidebar="panel"] {
     -webkit-mask-size: 200% 100%;
     mask-size: 200% 100%;
     animation: shine-mask 2.6s linear infinite;
+    will-change: transform;
+  }
+
+  /*
+   * Hidden hosts keep shimmering rows mounted: the closed sidebar drawer's
+   * inert panel, a collapsed `aria-hidden` banner body, a retained overlay.
+   * Pause the sweep and release the layer there so nothing off-screen repaints
+   * every frame. The rightmost compound is a class, so toggling `inert` or
+   * `aria-hidden` on the host invalidates only these elements.
+   */
+  [inert] .animate-shine,
+  [inert] .animate-shine-icon,
+  [aria-hidden="true"] .animate-shine,
+  [aria-hidden="true"] .animate-shine-icon {
+    animation-play-state: paused;
+    will-change: auto;
   }
 
   /* Plugin status glyphs are the only visible progress cue. Keep their sweep
@@ -974,12 +1000,14 @@ body.sidebar-resizing [data-sidebar="panel"] {
       animation: none;
       background: none;
       -webkit-text-fill-color: currentColor;
+      will-change: auto;
     }
 
     .animate-shine-icon {
       animation: none;
       -webkit-mask-image: none;
       mask-image: none;
+      will-change: auto;
     }
   }
 }
@@ -1023,11 +1051,18 @@ body.sidebar-resizing [data-sidebar="panel"] {
   transition-property: opacity;
 }
 
-.scroll-bottom-anchor-content * {
+/*
+ * Bottom-anchored scroll bodies (see bottom-anchored-scroll-body.tsx). The
+ * class goes on the content wrapper alone: scroll anchoring skips an excluded
+ * element's whole subtree, so no descendant rule is needed. A `*` descendant
+ * rule here would restyle every timeline node each time the class toggles.
+ * The sentinel is a sibling of the wrapper, so it stays eligible.
+ */
+.scroll-bottom-anchor-content {
   overflow-anchor: none;
 }
 
-.scroll-bottom-anchor-content .scroll-bottom-anchor {
+.scroll-bottom-anchor {
   height: 1px;
   flex-shrink: 0;
   overflow-anchor: auto;
