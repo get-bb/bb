@@ -3,10 +3,8 @@ import { builtInThemes, defaultAppTheme, type BuiltInThemeId } from "@bb/domain"
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
 import { resolveAppThemeCss } from "@/lib/themes";
-import {
-  GitDiffCard,
-  GIT_DIFF_VIEW_BASE_OPTIONS,
-} from "@/components/git-diff/GitDiffCard";
+import { GitDiffCard } from "@/components/git-diff/GitDiffCard";
+import type { DiffPresentation } from "@/components/code/code-rendering";
 import { parseGitDiffFiles } from "@/components/git-diff/git-diff-parsing";
 
 /**
@@ -85,19 +83,25 @@ function usePaletteCss(themeId: BuiltInThemeId) {
   );
 }
 
-function DiffStack({ themeType }: { themeType: "light" | "dark" }) {
+const DIFF_PRESENTATION: DiffPresentation = {
+  view: "unified",
+  overflow: "scroll",
+  showLineNumbers: true,
+};
+
+// Syntax-highlight token colors follow the app's own light/dark preference
+// (Layer 2), so both panes below tokenize the same way. What each pane proves
+// is Layer 1: the surface, gutter, and +/- tints re-resolving through the
+// forced `.light` / `.dark` class.
+function DiffStack() {
   const files = useMemo(() => parseGitDiffFiles(SAMPLE_DIFF), []);
-  const diffViewOptions = useMemo<Record<string, string | boolean | number>>(
-    () => ({ ...GIT_DIFF_VIEW_BASE_OPTIONS, themeType }),
-    [themeType],
-  );
   return (
     <div className="flex flex-col gap-3">
       {files.map((file, index) => (
         <GitDiffCard
           key={`${file.name}-${index}`}
           fileDiff={file}
-          diffViewOptions={diffViewOptions}
+          presentation={DIFF_PRESENTATION}
         />
       ))}
     </div>
@@ -117,7 +121,7 @@ function ModePane({ mode }: { mode: "light" | "dark" }) {
       <span className="text-[11px] font-medium text-muted-foreground">
         {mode}
       </span>
-      <DiffStack themeType={mode} />
+      <DiffStack />
     </div>
   );
 }

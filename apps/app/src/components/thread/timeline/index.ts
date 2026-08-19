@@ -45,6 +45,5 @@ export type {
   ThreadTimelineLocalFileLinkHandler,
   ThreadTimelineOpenPluginPanelHandler,
   ThreadTimelineUnreadDividerPlacement,
-  ThreadTimelineTheme,
   UserAttachmentImageSrcResolver,
 } from "./types.js";

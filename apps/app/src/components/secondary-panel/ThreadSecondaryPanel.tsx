@@ -46,13 +46,12 @@ import type {
   SecondaryPanelFileTab,
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelFileTab";
-import { GIT_DIFF_VIEW_BASE_OPTIONS } from "../git-diff/GitDiffCard";
-import { usePreferredTheme } from "@/hooks/useTheme";
 import { useEnvironmentDiffFiles } from "@/hooks/queries/environment-queries";
 import {
   DEFAULT_CODE_OVERFLOW_MODE,
   type CodeOverflowMode,
 } from "@/lib/code-overflow-mode";
+import type { DiffPresentation } from "@/components/code/code-rendering";
 import { useGitDiffPanelState } from "./git-diff/useGitDiffPanelState";
 import { useResponsiveGitDiffPanelDisplay } from "./git-diff/useResponsiveGitDiffPanelDisplay";
 import {
@@ -634,15 +633,13 @@ export function ThreadSecondaryPanel({
         windowState: desktopWindowState,
       }),
     });
-  const preferredTheme = usePreferredTheme();
-  const gitDiffViewOptions = useMemo(
+  const gitDiffPresentation = useMemo<DiffPresentation>(
     () => ({
-      ...GIT_DIFF_VIEW_BASE_OPTIONS,
-      diffStyle: gitDiffDisplayMode,
+      view: gitDiffDisplayMode,
       overflow: gitDiffLineOverflowMode,
-      themeType: preferredTheme,
+      showLineNumbers: true,
     }),
-    [gitDiffDisplayMode, gitDiffLineOverflowMode, preferredTheme],
+    [gitDiffDisplayMode, gitDiffLineOverflowMode],
   );
   const handlePanelFocusCapture = (event: FocusEvent<HTMLElement>) => {
     const previousTarget = event.relatedTarget;
@@ -957,7 +954,7 @@ export function ThreadSecondaryPanel({
               target={gitDiffTarget}
               isDiffPanelActive={isSurfaceDiffActive}
               isPanelOpen={isLayoutOpen}
-              gitDiffViewOptions={gitDiffViewOptions}
+              gitDiffPresentation={gitDiffPresentation}
               onClearPendingGitDiffIntent={onClearPendingGitDiffIntent}
               onOpenFileInEditor={onOpenFileInEditor}
               onOpenFilePreview={onOpenFilePreview}
@@ -1496,7 +1493,7 @@ export function ThreadSecondaryPanel({
                 target={gitDiffTarget}
                 isDiffPanelActive={isDiffPanelActive}
                 isPanelOpen={isLayoutOpen}
-                gitDiffViewOptions={gitDiffViewOptions}
+                gitDiffPresentation={gitDiffPresentation}
                 onClearPendingGitDiffIntent={onClearPendingGitDiffIntent}
                 onOpenFileInEditor={onOpenFileInEditor}
                 onOpenFilePreview={onOpenFilePreview}

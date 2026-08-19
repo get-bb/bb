@@ -1,9 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import type { DiffFileEntry } from "@bb/server-contract";
-import { GIT_DIFF_VIEW_BASE_OPTIONS } from "@/components/git-diff/GitDiffCard";
+import type { DiffPresentation } from "@/components/code/code-rendering";
 import type { RequestDiffFileContents } from "@/components/git-diff/GitDiffCardBody";
 import { DEFAULT_CODE_OVERFLOW_MODE } from "@/lib/code-overflow-mode";
-import { usePreferredTheme } from "@/hooks/useTheme";
 import type { DiffPatchState } from "@/hooks/queries/use-environment-diff-patches";
 import { appToast } from "@/components/ui/app-toast";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
@@ -116,22 +115,18 @@ interface CardStageProps {
 
 // Mounts a single DiffFileCard at a panel-realistic width with live theme-aware
 // view options, mirroring how DiffFilesPanel renders each row.
+const CARD_PRESENTATION: DiffPresentation = {
+  view: "unified",
+  overflow: DEFAULT_CODE_OVERFLOW_MODE,
+  showLineNumbers: true,
+};
+
 function CardStage({
   entry,
   patchState = { status: "idle" },
   collapsed = false,
   onRequestFileContents,
 }: CardStageProps) {
-  const preferredTheme = usePreferredTheme();
-  const diffViewOptions = useMemo(
-    () => ({
-      ...GIT_DIFF_VIEW_BASE_OPTIONS,
-      diffStyle: "unified",
-      overflow: DEFAULT_CODE_OVERFLOW_MODE,
-      themeType: preferredTheme,
-    }),
-    [preferredTheme],
-  );
   const [isCollapsed, setIsCollapsed] = useState(collapsed);
   const toast = useCallback(
     (label: string) => (path: string) =>
@@ -142,7 +137,7 @@ function CardStage({
     <div className="w-full max-w-[640px] min-w-0">
       <DiffFileCard
         entry={buildEntry(entry)}
-        diffViewOptions={diffViewOptions}
+        presentation={CARD_PRESENTATION}
         isCollapsed={isCollapsed}
         onToggleCollapsed={() => setIsCollapsed((value) => !value)}
         patchState={patchState}

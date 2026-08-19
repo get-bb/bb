@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import type { MarkdownProps, PluginSdkApp } from "@get-bb/plugin-sdk";
+import { PluginDiff } from "@/components/plugin/PluginDiff";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
+import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
 import type {
@@ -58,6 +60,11 @@ export const pluginSdkAppImplementation = {
   // Experimental (see docs/api_to_audit.md): the create-side counterpart to
   // ThreadChat.
   experimental_NewThreadComposer: PluginNewThreadComposer,
+  // Experimental (see docs/api_to_audit.md): the host-owned code renderers.
+  // Both resolve any active plugin replacement, so first-party surfaces and
+  // plugins share one boundary.
+  experimental_SourceCode: PluginSourceCode,
+  experimental_Diff: PluginDiff,
   // Experimental (see docs/api_to_audit.md): the sidebar thread-list data
   // plane, for plugins that replace the list itself.
   experimental_useSidebarThreads: useSidebarThreads,

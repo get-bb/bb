@@ -10,11 +10,11 @@ import {
 import { act, type ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  FILE_PREVIEW_CODE_MAX_LINES,
   FilePreview,
   buildCsvPreviewData,
   getCsvTruncationNote,
 } from "./FilePreview";
+import { SOURCE_CODE_MAX_LINES } from "@/components/code/source-code-budget";
 import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
 import {
   PierreWorkerPoolGateContext,
@@ -354,7 +354,7 @@ describe("FilePreview", () => {
     // The code view scrolls its own virtualized viewport (which sits at the
     // origin in jsdom), not the surrounding panel scroller.
     const codeViewport = scrollViewport.querySelector<HTMLElement>(
-      "[data-file-preview-code-viewport]",
+      "[data-bb-source-code-viewport]",
     );
     expect(codeViewport).not.toBeNull();
     await waitFor(() => {
@@ -368,7 +368,7 @@ describe("FilePreview", () => {
     expect(
       pierreFile.shadowRoot
         ?.querySelector('[data-line="2"]')
-        ?.hasAttribute("data-file-preview-target-line"),
+        ?.hasAttribute("data-bb-source-code-target-line"),
     ).toBe(true);
   });
 
@@ -417,7 +417,7 @@ describe("FilePreview", () => {
   });
 
   it("caps oversized code previews to a leading prefix until the full file is requested", async () => {
-    const totalLineCount = FILE_PREVIEW_CODE_MAX_LINES + 1_500;
+    const totalLineCount = SOURCE_CODE_MAX_LINES + 1_500;
     const contents = Array.from(
       { length: totalLineCount },
       (_, index) => `line ${index + 1}`,
@@ -442,7 +442,7 @@ describe("FilePreview", () => {
 
     await screen.findByTestId("pierre-file");
     expect(pierreMock.state.lastFile?.contents.split("\n")).toHaveLength(
-      FILE_PREVIEW_CODE_MAX_LINES,
+      SOURCE_CODE_MAX_LINES,
     );
     // The capped prefix must not share the full file's highlight cache slot.
     expect(pierreMock.state.lastFile?.cacheKey).toBe(
@@ -450,7 +450,7 @@ describe("FilePreview", () => {
     );
     expect(
       screen.getByText(
-        `Showing the first ${FILE_PREVIEW_CODE_MAX_LINES.toLocaleString()} of ${totalLineCount.toLocaleString()} lines.`,
+        `Showing the first ${SOURCE_CODE_MAX_LINES.toLocaleString()} of ${totalLineCount.toLocaleString()} lines.`,
       ),
     ).toBeTruthy();
 
@@ -488,7 +488,7 @@ describe("FilePreview", () => {
   });
 
   it("shows the whole file when a line link points past the capped prefix", async () => {
-    const totalLineCount = FILE_PREVIEW_CODE_MAX_LINES + 20;
+    const totalLineCount = SOURCE_CODE_MAX_LINES + 20;
     const contents = Array.from(
       { length: totalLineCount },
       (_, index) => `line ${index + 1}`,
@@ -502,8 +502,8 @@ describe("FilePreview", () => {
           kind: "ready",
           file: { name: "generated.ts", contents },
           lineRange: {
-            startLineNumber: FILE_PREVIEW_CODE_MAX_LINES + 10,
-            endLineNumber: FILE_PREVIEW_CODE_MAX_LINES + 10,
+            startLineNumber: SOURCE_CODE_MAX_LINES + 10,
+            endLineNumber: SOURCE_CODE_MAX_LINES + 10,
           },
           textPreviewKind: null,
         }}

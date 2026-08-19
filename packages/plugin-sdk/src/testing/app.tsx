@@ -29,6 +29,7 @@ import {
   type PluginHomepageSectionRegistration,
   type PluginMessageActionRegistration,
   type PluginMessageDirectiveRegistration,
+  type PluginDiffRendererRegistration,
   type PluginNavPanelRegistration,
   type PluginNewThreadPanelActionRegistration,
   type PluginPendingInteractionRegistration,
@@ -44,6 +45,7 @@ import {
   type PluginSidebarThreadPullRequestState,
   type PluginSidebarThreadSplit,
   type PluginSidebarThreadsState,
+  type PluginSourceCodeRendererRegistration,
   type PluginThreadHeaderActionRegistration,
   type PluginThreadListRegistration,
   type PluginThreadPanelActionRegistration,
@@ -53,6 +55,8 @@ import {
   type MarkdownProps,
   type NewThreadComposerProps,
   type ThreadChatProps,
+  type DiffProps,
+  type SourceCodeProps,
   type JsonValue,
 } from "@get-bb/plugin-sdk";
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
@@ -360,6 +364,61 @@ function TestNewThreadComposer({
   );
 }
 
+/**
+ * Stand-in for the host-owned source viewer: emits the raw source in a
+ * recognizable wrapper carrying the resolved presentation, so plugin tests can
+ * assert what they asked the host to render without the real highlighter.
+ */
+function TestSourceCode({
+  content,
+  path,
+  overflow = "scroll",
+  highlightedLines = null,
+  className,
+}: SourceCodeProps) {
+  return (
+    <pre
+      data-testid="bb-source-code"
+      data-path={path}
+      data-overflow={overflow}
+      data-highlighted-lines={
+        highlightedLines === null
+          ? ""
+          : `${highlightedLines.start}-${highlightedLines.end}`
+      }
+      className={className}
+    >
+      {content}
+    </pre>
+  );
+}
+
+/**
+ * Stand-in for the host-owned diff viewer: emits the raw patch in a
+ * recognizable wrapper carrying the resolved presentation.
+ */
+function TestDiff({
+  patch,
+  path,
+  view = "unified",
+  overflow = "scroll",
+  showLineNumbers = true,
+  className,
+}: DiffProps) {
+  return (
+    <pre
+      data-testid="bb-diff"
+      data-path={path}
+      data-view={view}
+      data-overflow={overflow}
+      data-show-line-numbers={showLineNumbers ? "true" : "false"}
+      className={className}
+    >
+      {patch}
+    </pre>
+  );
+}
+
 const testPluginSdkApp = {
   definePluginApp,
   useRpc<
@@ -425,6 +484,8 @@ const testPluginSdkApp = {
   ThreadChat: TestThreadChat,
   Markdown: TestMarkdown,
   experimental_NewThreadComposer: TestNewThreadComposer,
+  experimental_SourceCode: TestSourceCode,
+  experimental_Diff: TestDiff,
   experimental_useSidebarThreads(): PluginSidebarThreadsState {
     return useSlotEnv("experimental_useSidebarThreads").sidebarThreads;
   },
@@ -515,6 +576,8 @@ export interface CapturedPluginApp {
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
+  sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
+  diffRenderers: PluginDiffRendererRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
   providerIcons: PluginProviderIconRegistration[];

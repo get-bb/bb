@@ -23,6 +23,22 @@ vi.mock("@pierre/diffs/react", () => ({
   },
 }));
 
+/**
+ * BB's diff renderer is a lazy chunk behind the host boundary (the same
+ * pattern `LazyTimelineFileDiffBlock` uses), so the card paints its skeleton
+ * until that import resolves. Testing Library's 1s default is not enough for
+ * a module compile while the whole suite runs in parallel.
+ */
+const DIFF_RENDERER_CHUNK_TIMEOUT_MS = 10_000;
+
+function findDiffView() {
+  return screen.findByTestId(
+    "diff-view",
+    {},
+    { timeout: DIFF_RENDERER_CHUNK_TIMEOUT_MS },
+  );
+}
+
 const MODIFIED_PATCH = [
   "diff --git a/src/file.ts b/src/file.ts",
   "index 1111111..2222222 100644",
@@ -114,7 +130,11 @@ function renderModifiedCard(onRequestFileContents: RequestDiffFileContents) {
   render(
     <DiffFileCard
       entry={buildEntry()}
-      diffViewOptions={{}}
+      presentation={{
+        view: "unified",
+        overflow: "scroll",
+        showLineNumbers: true,
+      }}
       isCollapsed={false}
       onToggleCollapsed={() => {}}
       patchState={{ status: "loaded", patch: MODIFIED_PATCH, truncated: false }}
@@ -164,7 +184,7 @@ describe("DiffFileCard context expansion", () => {
     renderModifiedCard(onRequestFileContents);
     revealCardBodies();
 
-    await screen.findByTestId("diff-view");
+    await findDiffView();
     const expandButton = await screen.findByRole("button", {
       name: "Expand context",
     });
@@ -263,7 +283,11 @@ describe("DiffFileCard context expansion", () => {
           additions: 2,
           deletions: 0,
         })}
-        diffViewOptions={{}}
+        presentation={{
+        view: "unified",
+        overflow: "scroll",
+        showLineNumbers: true,
+      }}
         isCollapsed={false}
         onToggleCollapsed={() => {}}
         patchState={{ status: "loaded", patch: ADDED_PATCH, truncated: false }}
@@ -274,7 +298,7 @@ describe("DiffFileCard context expansion", () => {
     );
     revealCardBodies();
 
-    await screen.findByTestId("diff-view");
+    await findDiffView();
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(onRequestFileContents).not.toHaveBeenCalled();
     expect(

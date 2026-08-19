@@ -40,7 +40,11 @@ function renderCard({
   render(
     <DiffFileCard
       entry={entry}
-      diffViewOptions={{}}
+      presentation={{
+        view: "unified",
+        overflow: "scroll",
+        showLineNumbers: true,
+      }}
       isCollapsed={false}
       onToggleCollapsed={() => {}}
       patchState={patchState}

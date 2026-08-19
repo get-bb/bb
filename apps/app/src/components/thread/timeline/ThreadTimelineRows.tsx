@@ -62,7 +62,6 @@ import type {
   ThreadTimelineImageViewSrcResolver,
   ThreadTimelineConsumerMessageAction,
   ThreadTimelinePluginMessageAction,
-  ThreadTimelineTheme,
   ThreadTimelineUnreadDividerPlacement,
   UserAttachmentImageSrcResolver,
 } from "./types.js";
@@ -186,7 +185,6 @@ export interface ThreadTimelineRowsProps {
   hasOlderTimelineRows?: boolean;
   isLoadingOlderTimelineRows?: boolean;
   onLoadOlderRows?: () => Promise<void> | void;
-  themeType?: ThreadTimelineTheme;
   timelineRows: TimelineRow[];
   threadId?: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
@@ -250,7 +248,6 @@ interface TimelineRendererStaticContextValue {
   resolveMentionLink: PromptMentionLinkResolver | undefined;
   resolveSegmentLinkHref: TimelineTitleLinkResolver | undefined;
   resolveUserAttachmentImageSrc: UserAttachmentImageSrcResolver | undefined;
-  themeType: ThreadTimelineTheme;
   threadId: string | undefined;
   workspaceRootPath: string | undefined;
 }
@@ -1306,7 +1303,6 @@ function TimelineExpandableBody({
     onOpenLocalFileLink,
     projectId,
     resolveUserAttachmentImageSrc,
-    themeType,
     workspaceRootPath,
     resolveImageViewSrc,
   } = useTimelineRendererStaticContext();
@@ -1416,7 +1412,6 @@ function TimelineExpandableBody({
         <WorkRowBody
           row={row}
           resolveImageViewSrc={resolveImageViewSrc}
-          themeType={themeType}
           workspaceRootPath={workspaceRootPath}
         />
       );
@@ -2120,7 +2115,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     () => (scopeActive ? findStreamingAssistantMessageId(rows) : null),
     [rows, scopeActive],
   );
-  const themeType = props.themeType ?? "light";
   const computedAutoExpansionRowIds = useMemo(
     () => collectTimelineAutoExpansionRowIds({ rows, scopeActive }),
     [rows, scopeActive],
@@ -2281,7 +2275,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       resolveMentionLink: props.resolveMentionLink,
       resolveSegmentLinkHref,
       resolveUserAttachmentImageSrc: props.resolveUserAttachmentImageSrc,
-      themeType,
       threadId: props.threadId,
       workspaceRootPath: props.workspaceRootPath,
     }),
@@ -2311,7 +2304,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.resolveUserAttachmentImageSrc,
       props.threadId,
       props.workspaceRootPath,
-      themeType,
     ],
   );
   const turnStateContextValue = useMemo<TimelineTurnStateContextValue>(

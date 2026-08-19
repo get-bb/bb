@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type {
   ComposerCustomization,
+  PluginDiffRendererRegistration,
   PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
@@ -11,6 +12,7 @@ import type {
   PluginProviderIconRegistration,
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
+  PluginSourceCodeRendererRegistration,
   PluginThreadHeaderActionRegistration,
   PluginThreadListRegistration,
   PluginThreadPanelActionRegistration,
@@ -42,6 +44,13 @@ export interface PluginRegistrationSet {
   /** Optional for the same reason as `threadLists`: bundles built earlier. */
   threadHeaderActions?: readonly PluginThreadHeaderActionRegistration[];
   fileOpeners: readonly PluginFileOpenerRegistration[];
+  /**
+   * Optional for the same reason as `threadLists`: bundles built before the
+   * exclusive code-rendering slots existed never call them.
+   */
+  sourceCodeRenderers?: readonly PluginSourceCodeRendererRegistration[];
+  /** Optional for the same reason as `sourceCodeRenderers`. */
+  diffRenderers?: readonly PluginDiffRendererRegistration[];
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
   messageActions?: readonly PluginMessageActionRegistration[];
   /** Optional for the same reason as `threadLists`: bundles built earlier. */
@@ -81,6 +90,10 @@ export interface PluginThreadHeaderActionSlot
   extends PluginThreadHeaderActionRegistration, PluginSlotBase {}
 export interface PluginFileOpenerSlot
   extends PluginFileOpenerRegistration, PluginSlotBase {}
+export interface PluginSourceCodeRendererSlot
+  extends PluginSourceCodeRendererRegistration, PluginSlotBase {}
+export interface PluginDiffRendererSlot
+  extends PluginDiffRendererRegistration, PluginSlotBase {}
 export interface PluginMessageDirectiveSlot
   extends PluginMessageDirectiveRegistration, PluginSlotBase {}
 export interface PluginMessageActionSlot
@@ -101,6 +114,8 @@ export interface PluginSlotSnapshot {
   threadLists: readonly PluginThreadListSlot[];
   threadHeaderActions: readonly PluginThreadHeaderActionSlot[];
   fileOpeners: readonly PluginFileOpenerSlot[];
+  sourceCodeRenderers: readonly PluginSourceCodeRendererSlot[];
+  diffRenderers: readonly PluginDiffRendererSlot[];
   messageDirectives: readonly PluginMessageDirectiveSlot[];
   messageActions: readonly PluginMessageActionSlot[];
   providerIcons: readonly PluginProviderIconSlot[];
@@ -118,6 +133,8 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   threadLists: [],
   threadHeaderActions: [],
   fileOpeners: [],
+  sourceCodeRenderers: [],
+  diffRenderers: [],
   messageDirectives: [],
   messageActions: [],
   providerIcons: [],
@@ -142,6 +159,8 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "threadLists",
   "threadHeaderActions",
   "fileOpeners",
+  "sourceCodeRenderers",
+  "diffRenderers",
   "messageDirectives",
   "messageActions",
   "providerIcons",
@@ -187,6 +206,8 @@ function flattenRegistrations(
     threadLists: stamp(set.threadLists),
     threadHeaderActions: stamp(set.threadHeaderActions),
     fileOpeners: stamp(set.fileOpeners),
+    sourceCodeRenderers: stamp(set.sourceCodeRenderers),
+    diffRenderers: stamp(set.diffRenderers),
     messageDirectives: stamp(set.messageDirectives),
     messageActions: stamp(set.messageActions),
     providerIcons: stamp(set.providerIcons),

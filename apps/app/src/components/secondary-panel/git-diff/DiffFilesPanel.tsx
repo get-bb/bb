@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAtom } from "jotai";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { DiffFileEntry, DiffPatchEntry } from "@bb/server-contract";
+import type { DiffPresentation } from "@/components/code/code-rendering";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { RequestDiffFileContents } from "@/components/git-diff/GitDiffCardBody";
 import {
@@ -43,7 +44,7 @@ export interface DiffFilesPanelProps {
    * are re-fetched even when the path set is identical.
    */
   filesUpdatedAt: number;
-  diffViewOptions: Record<string, string | boolean | number>;
+  presentation: DiffPresentation;
   filePathRoot?: string | null;
   /**
    * Whether the secondary panel is open. While closed the list stays mounted
@@ -84,7 +85,7 @@ export function DiffFilesPanel({
   files,
   initialPatches,
   filesUpdatedAt,
-  diffViewOptions,
+  presentation,
   filePathRoot,
   isPanelOpen,
   isPlaceholderData,
@@ -232,7 +233,7 @@ export function DiffFilesPanel({
                 entry={entry}
                 diffIdentity={diffIdentity}
                 fileCount={files.length}
-                diffViewOptions={diffViewOptions}
+                presentation={presentation}
                 filePathRoot={filePathRoot}
                 patchState={getPatchState(entry.path)}
                 loadPath={loadPath}
@@ -257,7 +258,7 @@ interface DiffFileRowProps {
   entry: DiffFileEntry;
   diffIdentity: string;
   fileCount: number;
-  diffViewOptions: Record<string, string | boolean | number>;
+  presentation: DiffPresentation;
   filePathRoot?: string | null;
   patchState: DiffPatchState;
   loadPath: LoadDiffPatchPath;
@@ -272,7 +273,7 @@ function DiffFileRow({
   entry,
   diffIdentity,
   fileCount,
-  diffViewOptions,
+  presentation,
   filePathRoot,
   patchState,
   loadPath,
@@ -308,7 +309,7 @@ function DiffFileRow({
   return (
     <DiffFileCard
       entry={entry}
-      diffViewOptions={diffViewOptions}
+      presentation={presentation}
       filePathRoot={filePathRoot}
       isCollapsed={collapsed}
       onToggleCollapsed={handleToggleCollapsed}

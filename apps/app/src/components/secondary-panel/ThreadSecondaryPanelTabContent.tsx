@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import type { DiffPresentation } from "@/components/code/code-rendering";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -50,7 +51,7 @@ export interface GitDiffTabContentProps {
    * and refetching into an off-screen panel is wasted network and diff work.
    */
   isPanelOpen: boolean;
-  gitDiffViewOptions: Record<string, string | boolean | number>;
+  gitDiffPresentation: DiffPresentation;
   onClearPendingGitDiffIntent?: () => void;
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
@@ -188,7 +189,7 @@ export function GitDiffTabContent({
   target,
   isDiffPanelActive,
   isPanelOpen,
-  gitDiffViewOptions,
+  gitDiffPresentation,
   onClearPendingGitDiffIntent,
   onOpenFileInEditor,
   onOpenFilePreview,
@@ -333,7 +334,7 @@ export function GitDiffTabContent({
         files={diffFilesResponse.files}
         initialPatches={diffFilesResponse.initialPatches}
         filesUpdatedAt={diffFilesUpdatedAt}
-        diffViewOptions={gitDiffViewOptions}
+        presentation={gitDiffPresentation}
         filePathRoot={workspaceRootPath}
         isPanelOpen={isPanelOpen}
         isPlaceholderData={isDiffFilesPlaceholder}

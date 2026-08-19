@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import { useIntersectionObserver } from "usehooks-ts";
 import { cn } from "@bb/shared-ui/lib/utils";
+import type { DiffPresentation } from "@/components/code/code-rendering";
 import {
   GitDiffCardBody,
   useGitDiffCardBody,
@@ -28,17 +29,11 @@ export type {
   RequestDiffFileContents,
 } from "./GitDiffCardBody";
 
-export const GIT_DIFF_VIEW_BASE_OPTIONS = {
-  overflow: "scroll",
-  disableFileHeader: false,
-  // Reveal 30 unchanged lines per expand-up / expand-down click. Library
-  // default is 100 — too aggressive for our compact diff cards.
-  expansionLineCount: 30,
-} as const;
-
 export interface GitDiffCardProps {
   fileDiff: ParsedGitDiffFile;
-  diffViewOptions: Record<string, string | boolean | number>;
+  presentation: DiffPresentation;
+  /** Raw per-file patch text, when the caller still has it. */
+  patchText?: string;
   filePathRoot?: string | null;
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
@@ -99,7 +94,8 @@ function buildGitDiffCardHeaderModel(
 
 export const GitDiffCard = memo(function GitDiffCard({
   fileDiff,
-  diffViewOptions,
+  presentation,
+  patchText,
   filePathRoot,
   onOpenFileInEditor,
   onOpenFilePreview,
@@ -124,6 +120,7 @@ export const GitDiffCard = memo(function GitDiffCard({
     changeKind: headerModel.changeKind,
     isRendering,
     onRequestFileContents,
+    patchText,
   });
   const [svgDisplayMode, setSvgDisplayMode] =
     useState<GitDiffCardSvgDisplayMode>("preview");
@@ -202,7 +199,7 @@ export const GitDiffCard = memo(function GitDiffCard({
       {!isBodyHidden ? (
         <GitDiffCardBody
           state={bodyState}
-          diffViewOptions={diffViewOptions}
+          presentation={presentation}
           svgDisplayMode={svgDisplayMode}
           reservesCollapseGutter={supportsCollapse}
         />

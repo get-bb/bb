@@ -234,7 +234,6 @@ export function Overview() {
               file: {
                 name: "Button.tsx",
                 contents: SAMPLE_BUTTON_TSX,
-                lang: "tsx",
               },
             }}
           />
@@ -257,7 +256,6 @@ export function Overview() {
                 cacheKey: "story:large.ts",
                 name: "large.ts",
                 contents: SAMPLE_LARGE_TS,
-                lang: "ts",
               },
             }}
           />
@@ -283,7 +281,6 @@ export function Overview() {
                 cacheKey: "story:large.ts",
                 name: "large.ts",
                 contents: SAMPLE_LARGE_TS,
-                lang: "ts",
               },
             }}
           />
@@ -306,7 +303,6 @@ export function Overview() {
                   cacheKey: "story:skill-script",
                   name: "lint.ts",
                   contents: SAMPLE_LARGE_TS.split("\n").slice(0, 400).join("\n"),
-                  lang: "ts",
                 },
               }}
             />
@@ -330,7 +326,6 @@ export function Overview() {
               file: {
                 name: "legacy-button.tsx",
                 contents: SAMPLE_BUTTON_TSX,
-                lang: "tsx",
               },
             }}
           />

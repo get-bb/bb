@@ -1,25 +1,7 @@
-import {
-  type CSSProperties,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { File as PierreFile, VirtualizerContext } from "@pierre/diffs/react";
-import type { FileOptions } from "@pierre/diffs/react";
-import {
-  DIFFS_TAG_NAME,
-  Virtualizer as PierreVirtualizer,
-  type SelectedLineRange,
-  type SupportedLanguages,
-  type VirtualFileMetrics,
-} from "@pierre/diffs";
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import type { UrlTransform } from "react-markdown";
 import { Button } from "@bb/shared-ui/button";
-import { usePierreLineSelectionActions } from "@/components/git-diff/PierreLineSelectionActions.js";
+import { SourceCodeHost } from "@/components/code/SourceCodeHost";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { CopyButton } from "@/components/ui/copy-button.js";
@@ -37,14 +19,7 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
-import { usePreferredTheme } from "@/hooks/useTheme";
-import { useResolvedCodeThemePair } from "@/lib/code-theme";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
-import { PierreWorkerPoolBoundary } from "@/lib/pierre-worker-pool-boundary";
-import {
-  usePierreWorkerPool,
-  useRequirePierreWorkerPool,
-} from "@/lib/pierre-worker-pool-gate";
 import type {
   FilePreviewLineRange,
   WorkspaceFilePreviewStatusLabel,
@@ -61,7 +36,6 @@ export interface FilePreviewFile {
   cacheKey?: string;
   name: string;
   contents: string;
-  lang?: SupportedLanguages;
 }
 
 export type IframePreviewSandbox = "allow-scripts";
@@ -185,18 +159,6 @@ interface FilePreviewCodeProps {
   path: string;
 }
 
-interface FilePreviewWorkerPoolStats {
-  managerState: "waiting" | "initializing" | "initialized";
-  workersFailed: boolean;
-  totalWorkers: number;
-  busyWorkers: number;
-  queuedTasks: number;
-  activeTasks: number;
-  themeSubscribers: number;
-  fileCacheSize: number;
-  diffCacheSize: number;
-}
-
 interface GetInitialFilePreviewViewModeArgs {
   lineRange: FilePreviewLineRange | null;
   toggleKind: FilePreviewToggleKind | null;
@@ -224,101 +186,6 @@ const CSV_PREVIEW_MAX_ROWS = 500;
  * file is what stalls iOS Safari; the prefix keeps the first paint bounded and
  * the full file stays one tap away.
  */
-export const FILE_PREVIEW_CODE_MAX_LINES = 5_000;
-export const FILE_PREVIEW_CODE_MAX_CHARS = 512 * 1024;
-
-const FILE_PREVIEW_CODE_LINE_HEIGHT_PX = 18;
-const FILE_PREVIEW_CODE_GAP_BLOCK_PX = 16;
-
-const FILE_PREVIEW_VIEW_STYLE = {
-  "--diffs-font-size": "12px",
-  "--diffs-line-height": `${FILE_PREVIEW_CODE_LINE_HEIGHT_PX}px`,
-  // Pierre paints its theme bg inside this gap, so the top breathing room of
-  // the code body lives on Pierre's bg — not on the panel's bg-background.
-  // Without this, the gap above Pierre would show a visible bg-color seam.
-  "--diffs-gap-block": `${FILE_PREVIEW_CODE_GAP_BLOCK_PX}px`,
-} as CSSProperties;
-
-// Pierre's virtualizer estimates row positions from these before it measures
-// them; they mirror the CSS variables above so the first layout guess is exact
-// in `scroll` overflow mode (fixed-height rows) and close in `wrap` mode.
-const FILE_PREVIEW_VIRTUAL_FILE_METRICS: VirtualFileMetrics = {
-  hunkLineCount: 50,
-  lineHeight: FILE_PREVIEW_CODE_LINE_HEIGHT_PX,
-  diffHeaderHeight: 0,
-  spacing: FILE_PREVIEW_CODE_GAP_BLOCK_PX,
-};
-
-export interface FilePreviewCodeTruncation {
-  /** The rendered prefix, cut at a line boundary. */
-  contents: string;
-  renderedLineCount: number;
-  totalLineCount: number;
-}
-
-// FNV-1a over the contents; only used to derive a mount key for previews
-// whose caller did not supply a `cacheKey`.
-function hashFilePreviewContents(contents: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < contents.length; index += 1) {
-    hash ^= contents.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return `${contents.length}:${(hash >>> 0).toString(36)}`;
-}
-
-function countLines(contents: string): number {
-  if (contents.length === 0) return 0;
-  let count = 1;
-  for (let index = contents.indexOf("\n"); index !== -1; ) {
-    count += 1;
-    index = contents.indexOf("\n", index + 1);
-  }
-  return contents.endsWith("\n") ? count - 1 : count;
-}
-
-/**
- * Decide whether a code preview exceeds {@link FILE_PREVIEW_CODE_MAX_LINES} or
- * {@link FILE_PREVIEW_CODE_MAX_CHARS} and, if so, return the leading prefix
- * that fits both budgets. Returns `null` when the whole file fits.
- */
-export function truncateFilePreviewCode(
-  contents: string,
-): FilePreviewCodeTruncation | null {
-  const totalLineCount = countLines(contents);
-  if (
-    contents.length <= FILE_PREVIEW_CODE_MAX_CHARS &&
-    totalLineCount <= FILE_PREVIEW_CODE_MAX_LINES
-  ) {
-    return null;
-  }
-  let renderedLineCount = 0;
-  let cutIndex = 0;
-  for (
-    let lineStart = 0;
-    lineStart < contents.length &&
-    renderedLineCount < FILE_PREVIEW_CODE_MAX_LINES;
-  ) {
-    const newlineIndex = contents.indexOf("\n", lineStart);
-    const lineEnd = newlineIndex === -1 ? contents.length : newlineIndex;
-    if (lineEnd > FILE_PREVIEW_CODE_MAX_CHARS && renderedLineCount > 0) {
-      break;
-    }
-    renderedLineCount += 1;
-    cutIndex = lineEnd;
-    lineStart = lineEnd + 1;
-  }
-  return {
-    contents: contents.slice(0, cutIndex),
-    renderedLineCount,
-    totalLineCount,
-  };
-}
-
-// `--md-content-w` tells MarkdownPreview the surrounding text-column width so
-// narrow tables sit flush with the prose on the left instead of centering in
-// the panel. `100cqi` resolves against the `@container/page` scope on the
-// wrapper below — i.e. the panel width.
 const FILE_PREVIEW_WRAPPER_STYLE = {
   "--md-content-w": "100cqi",
 } as CSSProperties;
@@ -1203,216 +1070,6 @@ function IframeFilePreview({ sandbox, title, url }: IframeFilePreviewTarget) {
   );
 }
 
-function getPreviewTargetRoots(container: HTMLElement): ParentNode[] {
-  const roots: ParentNode[] = [container];
-  // Pierre owns its rendered line elements inside an open shadow root, which
-  // normal descendant queries on the React wrapper cannot cross.
-  for (const pierreContainer of container.querySelectorAll<HTMLElement>(
-    DIFFS_TAG_NAME,
-  )) {
-    if (pierreContainer.shadowRoot !== null) {
-      roots.push(pierreContainer.shadowRoot);
-    }
-  }
-  return roots;
-}
-
-function clearPreviewTargetLine(container: HTMLElement) {
-  for (const root of getPreviewTargetRoots(container)) {
-    const targetLines = root.querySelectorAll(
-      "[data-file-preview-target-line]",
-    );
-    for (const targetLine of targetLines) {
-      targetLine.removeAttribute("data-file-preview-target-line");
-      targetLine.removeAttribute("data-selected-line");
-    }
-  }
-}
-
-function findPreviewTargetLine(
-  container: HTMLElement,
-  lineNumber: number,
-): HTMLElement | null {
-  const roots = getPreviewTargetRoots(container);
-  for (const root of roots) {
-    const lines = root.querySelectorAll(`[data-line="${lineNumber}"]`);
-    for (const line of lines) {
-      if (line instanceof HTMLElement && line.dataset.lineIndex !== undefined) {
-        return line;
-      }
-    }
-  }
-  for (const root of roots) {
-    const lines = root.querySelectorAll(`[data-line="${lineNumber}"]`);
-    for (const line of lines) {
-      if (line instanceof HTMLElement) {
-        return line;
-      }
-    }
-  }
-  return null;
-}
-
-function findVirtualizedCodeViewport(
-  container: HTMLElement,
-): HTMLElement | null {
-  return container.querySelector<HTMLElement>(
-    "[data-file-preview-code-viewport]",
-  );
-}
-
-/**
- * Nudge the virtualized code viewport toward `lineNumber` when that row is not
- * realized yet. With rendered rows in hand the distance is measured from the
- * nearest one (rows are at least one line tall, so the step never overshoots
- * in `wrap` mode); with none rendered the offset is estimated from the fixed
- * line metrics. Each call moves at most to the estimate; the caller retries on
- * the next frame once pierre has rendered the new window.
- */
-function approachVirtualizedTargetLine(
-  container: HTMLElement,
-  lineNumber: number,
-) {
-  const viewport = findVirtualizedCodeViewport(container);
-  if (viewport === null) return;
-  const viewportRect = viewport.getBoundingClientRect();
-  const centerOffset = viewportRect.height / 2;
-  const renderedBounds = getRenderedPreviewLineBounds(container);
-  if (renderedBounds === null) {
-    const estimatedTop =
-      FILE_PREVIEW_CODE_GAP_BLOCK_PX +
-      (lineNumber - 1) * FILE_PREVIEW_CODE_LINE_HEIGHT_PX;
-    viewport.scrollTop = Math.max(0, estimatedTop - centerOffset);
-    return;
-  }
-  const { firstLineNumber, firstTop, lastLineNumber, lastBottom } =
-    renderedBounds;
-  if (lineNumber > lastLineNumber) {
-    const distance =
-      lastBottom -
-      viewportRect.top +
-      (lineNumber - lastLineNumber - 1) * FILE_PREVIEW_CODE_LINE_HEIGHT_PX;
-    viewport.scrollTop += Math.max(0, distance - centerOffset);
-  } else if (lineNumber < firstLineNumber) {
-    const distance =
-      viewportRect.top -
-      firstTop +
-      (firstLineNumber - lineNumber) * FILE_PREVIEW_CODE_LINE_HEIGHT_PX;
-    viewport.scrollTop = Math.max(
-      0,
-      viewport.scrollTop - distance - centerOffset,
-    );
-  }
-}
-
-interface RenderedPreviewLineBounds {
-  firstLineNumber: number;
-  firstTop: number;
-  lastLineNumber: number;
-  lastBottom: number;
-}
-
-function getRenderedPreviewLineBounds(
-  container: HTMLElement,
-): RenderedPreviewLineBounds | null {
-  let bounds: RenderedPreviewLineBounds | null = null;
-  for (const root of getPreviewTargetRoots(container)) {
-    for (const line of root.querySelectorAll<HTMLElement>(
-      "[data-line][data-line-index]",
-    )) {
-      const lineNumber = Number(line.dataset.line);
-      if (!Number.isFinite(lineNumber)) continue;
-      const rect = line.getBoundingClientRect();
-      if (bounds === null) {
-        bounds = {
-          firstLineNumber: lineNumber,
-          firstTop: rect.top,
-          lastLineNumber: lineNumber,
-          lastBottom: rect.bottom,
-        };
-        continue;
-      }
-      if (lineNumber < bounds.firstLineNumber) {
-        bounds.firstLineNumber = lineNumber;
-        bounds.firstTop = rect.top;
-      }
-      if (lineNumber > bounds.lastLineNumber) {
-        bounds.lastLineNumber = lineNumber;
-        bounds.lastBottom = rect.bottom;
-      }
-    }
-  }
-  return bounds;
-}
-
-function findPreviewScrollViewport(container: HTMLElement): HTMLElement | null {
-  const virtualizedViewport = findVirtualizedCodeViewport(container);
-  if (virtualizedViewport !== null) {
-    return virtualizedViewport;
-  }
-  const view = container.ownerDocument.defaultView;
-  if (view === null) return null;
-
-  let candidate = container.parentElement;
-  while (candidate !== null) {
-    const overflowY = view.getComputedStyle(candidate).overflowY;
-    if (
-      overflowY === "auto" ||
-      overflowY === "scroll" ||
-      overflowY === "overlay"
-    ) {
-      return candidate;
-    }
-    candidate = candidate.parentElement;
-  }
-  return null;
-}
-
-function scrollPreviewTargetLine(container: HTMLElement, line: HTMLElement) {
-  const viewport = findPreviewScrollViewport(container);
-  if (viewport === null) return;
-
-  const lineRect = line.getBoundingClientRect();
-  const viewportRect = viewport.getBoundingClientRect();
-  const lineCenter = lineRect.top + lineRect.height / 2;
-  const viewportCenter = viewportRect.top + viewportRect.height / 2;
-  // Adjust only the vertical scroll offset. `scrollIntoView()` can also move
-  // the horizontal axis when a long source line extends beyond the viewport.
-  viewport.scrollTop += lineCenter - viewportCenter;
-}
-
-function formatLineRange(startLineNumber: number, endLineNumber: number) {
-  return startLineNumber === endLineNumber
-    ? String(startLineNumber)
-    : `${startLineNumber}-${endLineNumber}`;
-}
-
-function buildFilePreviewLineSelectionText({
-  contents,
-  path,
-  range,
-}: {
-  contents: string;
-  path: string;
-  range: SelectedLineRange;
-}): string | null {
-  const startLineNumber = Math.max(1, Math.min(range.start, range.end));
-  const endLineNumber = Math.max(
-    startLineNumber,
-    Math.max(range.start, range.end),
-  );
-  const lines = contents.split(/\r\n|\n|\r/);
-  const selectedLines = lines.slice(startLineNumber - 1, endLineNumber);
-  if (selectedLines.length === 0) {
-    return null;
-  }
-  const selectedText = selectedLines.join("\n").trimEnd();
-  if (selectedText.trim().length === 0) {
-    return null;
-  }
-  return `${path}:${formatLineRange(startLineNumber, endLineNumber)}\n${selectedText}`;
-}
-
 function FilePreviewLoading() {
   return (
     <div className="space-y-2 px-4 pt-4" aria-busy>
@@ -1434,6 +1091,12 @@ function FilePreviewMessage({ message, role }: FilePreviewMessageProps) {
   );
 }
 
+/**
+ * The preview's source body. Everything here is chrome and policy — which
+ * lines to highlight, whether to scroll to them, the selection-to-chat hook —
+ * while the render itself goes through the shared host boundary, so an
+ * `experimental_sourceCodeRenderer` replacement covers the file preview too.
+ */
 function FilePreviewCode({
   file,
   lineOverflowMode,
@@ -1441,336 +1104,27 @@ function FilePreviewCode({
   onSelectionAddToChat,
   path,
 }: FilePreviewCodeProps) {
-  const preferredTheme = usePreferredTheme();
-  const codeTheme = useResolvedCodeThemePair();
-  const containerRef = useRef<HTMLDivElement>(null);
-  // `PierreFile` captures the worker pool when it creates its instance, so
-  // wait for the workspace to build the pool before the first render.
-  const isWorkerPoolReady = useRequirePierreWorkerPool();
-  const workerPool = usePierreWorkerPool();
-  const lastWorkerPoolStatsKeyRef = useRef<string | null>(null);
-  const [workerPoolStats, setWorkerPoolStats] =
-    useState<FilePreviewWorkerPoolStats | null>(null);
-  const [, rerenderAfterWorkerPoolChange] = useState(0);
-  const fileIdentity = file.cacheKey ?? file.name;
-  const truncation = useMemo(
-    () => truncateFilePreviewCode(file.contents),
-    [file.contents],
-  );
-  // Which file the user asked to see in full. Keyed by identity rather than a
-  // boolean so opening a different large file goes back to the capped view
-  // without an effect resetting state.
-  const [fullFileRequestedFor, setFullFileRequestedFor] = useState<
-    string | null
-  >(null);
-  const buildSelectionText = useCallback(
-    (range: SelectedLineRange) =>
-      buildFilePreviewLineSelectionText({
-        contents: file.contents,
-        path,
-        range,
-      }),
-    [file.contents, path],
-  );
-  const lineSelectionActions = usePierreLineSelectionActions({
-    buildSelectionText,
-    containerRef,
-    enabled: onSelectionAddToChat !== undefined,
-    onSelectionAddToChat,
-  });
-  const options = useMemo<FileOptions<undefined>>(
-    () => ({
-      themeType: preferredTheme,
-      theme: codeTheme,
-      overflow: lineOverflowMode,
-      disableFileHeader: true,
-      enableGutterUtility: onSelectionAddToChat !== undefined,
-      enableLineSelection:
-        lineRange !== null || onSelectionAddToChat !== undefined,
-      lineHoverHighlight:
-        onSelectionAddToChat === undefined ? "disabled" : "number",
-      onGutterUtilityClick:
-        onSelectionAddToChat === undefined
-          ? undefined
-          : lineSelectionActions.onGutterUtilityClick,
-      onLineSelectionChange: lineSelectionActions.onLineSelectionChange,
-      onLineSelectionEnd: lineSelectionActions.onLineSelectionEnd,
-      onLineSelectionStart: lineSelectionActions.onLineSelectionStart,
-    }),
-    [
-      codeTheme,
-      lineOverflowMode,
-      lineRange,
-      lineSelectionActions.onGutterUtilityClick,
-      lineSelectionActions.onLineSelectionChange,
-      lineSelectionActions.onLineSelectionEnd,
-      lineSelectionActions.onLineSelectionStart,
-      onSelectionAddToChat,
-      preferredTheme,
-    ],
-  );
-  const selectedLines = useMemo<SelectedLineRange | null>(() => {
-    if (lineSelectionActions.selectedRange !== null) {
-      return lineSelectionActions.selectedRange;
-    }
-    return lineRange === null
-      ? null
-      : {
-          start: lineRange.startLineNumber,
-          end: lineRange.endLineNumber,
-        };
-  }, [lineRange, lineSelectionActions.selectedRange]);
-  const targetLineNumber = selectedLines?.start ?? null;
-  // A deep link past the capped prefix is an implicit request for the whole
-  // file: the target line has to exist in the DOM to be scrolled to.
-  const showsFullFile =
-    truncation === null ||
-    fullFileRequestedFor === fileIdentity ||
-    (targetLineNumber !== null &&
-      targetLineNumber > truncation.renderedLineCount);
-  const renderedFile = useMemo<FilePreviewFile>(() => {
-    if (showsFullFile || truncation === null) {
-      return file;
-    }
-    return {
-      ...file,
-      // The worker highlight cache is keyed by `cacheKey`; the capped prefix
-      // must not collide with the full file's entry.
-      cacheKey:
-        file.cacheKey === undefined ? undefined : `${file.cacheKey}:head`,
-      contents: truncation.contents,
-    };
-  }, [file, showsFullFile, truncation]);
-  // Pierre's virtualized file instance keeps the contents it was hydrated
-  // with (`VirtualizedFile.render` ignores a later `file`), so a content swap
-  // — the capped prefix giving way to the full file, or a refetch — needs a
-  // fresh mount. Callers that supply a `cacheKey` already fold the content
-  // hash into it; otherwise hash here.
-  const renderedFileMountKey = useMemo(
+  const highlightedLines = useMemo(
     () =>
-      renderedFile.cacheKey ??
-      `${renderedFile.name}:${hashFilePreviewContents(renderedFile.contents)}`,
-    [renderedFile],
-  );
-  // "Load full file" remounts pierre with the whole file; carry the reader's
-  // scroll offset across so the prefix they were looking at stays put.
-  const pendingViewportScrollTopRef = useRef<number | null>(null);
-  const handleLoadFullFile = () => {
-    const viewport =
-      containerRef.current === null
+      lineRange === null
         ? null
-        : findVirtualizedCodeViewport(containerRef.current);
-    pendingViewportScrollTopRef.current = viewport?.scrollTop ?? null;
-    setFullFileRequestedFor(fileIdentity);
-  };
-  useLayoutEffect(() => {
-    const scrollTop = pendingViewportScrollTopRef.current;
-    if (scrollTop === null) return;
-    pendingViewportScrollTopRef.current = null;
-    const viewport =
-      containerRef.current === null
-        ? null
-        : findVirtualizedCodeViewport(containerRef.current);
-    if (viewport === null) return;
-    viewport.scrollTop = scrollTop;
-    // The virtualizer sizes the fresh instance on its next frame; reapply once
-    // that height exists so the offset is not clamped away.
-    const frame = window.requestAnimationFrame(() => {
-      viewport.scrollTop = scrollTop;
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [renderedFileMountKey]);
-
-  useEffect(() => {
-    if (!workerPool) {
-      setWorkerPoolStats(null);
-      return;
-    }
-
-    lastWorkerPoolStatsKeyRef.current = null;
-    return workerPool.subscribeToStatChanges((stats) => {
-      setWorkerPoolStats(stats);
-      const statsKey = [
-        stats.managerState,
-        stats.workersFailed,
-        stats.busyWorkers,
-        stats.queuedTasks,
-        stats.activeTasks,
-        stats.fileCacheSize,
-      ].join(":");
-      if (lastWorkerPoolStatsKeyRef.current === statsKey) {
-        return;
-      }
-      lastWorkerPoolStatsKeyRef.current = statsKey;
-      rerenderAfterWorkerPoolChange((version) => version + 1);
-    });
-  }, [file.contents, file.name, workerPool]);
-
-  const shouldWaitForWorkerPool =
-    workerPool !== undefined &&
-    workerPoolStats?.managerState !== "initialized" &&
-    workerPoolStats?.workersFailed !== true;
-  // Pierre can mount an empty zero-height <pre> while its worker highlighter is
-  // still initializing, so the code view waits for pool readiness. After that
-  // a single mount is enough: pierre paints the plain-text AST first and
-  // repaints in place when the worker delivers the highlighted one. That
-  // repaint swaps the line elements, so the target-line effect below re-runs
-  // when the highlight cache entry for this file appears.
-  const workerHighlightCacheState =
-    workerPool?.getFileResultCache(renderedFile) !== undefined
-      ? "highlighted"
-      : "plain";
-
-  useEffect(() => {
-    const cleanupContainer = containerRef.current;
-    let animationFrame: number | null = null;
-    let attempts = 0;
-
-    // Retry on the next frame (the target line may not be in the DOM yet). One
-    // rAF channel only: `scrollToLine` overwrites `animationFrame` on each
-    // reschedule, so at most one callback is ever pending and cleanup cancels
-    // it — no doubling or leaked stale callbacks marking the wrong line.
-    function scheduleRetry() {
-      animationFrame = window.requestAnimationFrame(scrollToLine);
-    }
-
-    function scrollToLine() {
-      const container = containerRef.current;
-      if (!container) return;
-      clearPreviewTargetLine(container);
-      if (targetLineNumber === null) return;
-
-      const line = findPreviewTargetLine(container, targetLineNumber);
-      if (line) {
-        line.setAttribute("data-file-preview-target-line", "");
-        line.setAttribute("data-selected-line", "single");
-        scrollPreviewTargetLine(container, line);
-        return;
-      }
-
-      // The virtualizer only realizes rows near the scroll window, so a
-      // target outside it is not in the DOM yet. Move the viewport toward the
-      // line's estimated offset and let pierre render that window before the
-      // next attempt.
-      approachVirtualizedTargetLine(container, targetLineNumber);
-      attempts += 1;
-      if (attempts < FILE_PREVIEW_TARGET_LINE_MAX_ATTEMPTS) {
-        scheduleRetry();
-      }
-    }
-
-    scrollToLine();
-    return () => {
-      if (cleanupContainer) {
-        clearPreviewTargetLine(cleanupContainer);
-      }
-      if (animationFrame !== null) {
-        window.cancelAnimationFrame(animationFrame);
-      }
-    };
-  }, [
-    renderedFile.contents,
-    renderedFile.name,
-    shouldWaitForWorkerPool,
-    targetLineNumber,
-    workerHighlightCacheState,
-  ]);
-
-  if (shouldWaitForWorkerPool || !isWorkerPoolReady) {
-    return <FilePreviewLoading />;
-  }
-
-  return (
-    <div
-      ref={containerRef}
-      className="flex min-h-0 flex-1 flex-col"
-      style={FILE_PREVIEW_VIEW_STYLE}
-      data-file-preview-line-number={targetLineNumber ?? undefined}
-      onPointerDownCapture={lineSelectionActions.onPointerDownCapture}
-      onPointerMoveCapture={lineSelectionActions.onPointerMoveCapture}
-      onPointerUpCapture={lineSelectionActions.onPointerUpCapture}
-    >
-      <PierreWorkerPoolBoundary>
-        <FilePreviewCodeViewport>
-          <PierreFile
-            key={renderedFileMountKey}
-            disableWorkerPool={workerPoolStats?.workersFailed === true}
-            file={renderedFile}
-            metrics={FILE_PREVIEW_VIRTUAL_FILE_METRICS}
-            options={options}
-            selectedLines={selectedLines}
-          />
-          {truncation !== null && !showsFullFile ? (
-            <FilePreviewCodeTruncationNotice
-              truncation={truncation}
-              onLoadFullFile={handleLoadFullFile}
-            />
-          ) : null}
-        </FilePreviewCodeViewport>
-      </PierreWorkerPoolBoundary>
-      {lineSelectionActions.menu}
-    </div>
-  );
-}
-
-const FILE_PREVIEW_TARGET_LINE_MAX_ATTEMPTS = 40;
-
-/**
- * The code view's own scroll container, registered as pierre's virtualizer
- * root so `PierreFile` mounts a `VirtualizedFile` that renders only the rows
- * near the viewport. This mirrors `@pierre/diffs/react`'s `<Virtualizer>`,
- * inlined so the scroller carries a ref and a data marker the target-line
- * scrolling can find without walking the tree by class name.
- */
-function FilePreviewCodeViewport({ children }: { children: ReactNode }) {
-  const [virtualizer] = useState(() =>
-    typeof window === "undefined" ? undefined : new PierreVirtualizer(),
-  );
-  const viewportRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      if (node !== null) {
-        virtualizer?.setup(node);
-      } else {
-        virtualizer?.cleanUp();
-      }
-    },
-    [virtualizer],
+        : { start: lineRange.startLineNumber, end: lineRange.endLineNumber },
+    [lineRange],
   );
   return (
-    <VirtualizerContext.Provider value={virtualizer}>
-      <div
-        ref={viewportRef}
-        className="min-h-0 flex-1 overflow-y-auto"
-        data-file-preview-code-viewport
-      >
-        <div>{children}</div>
-      </div>
-    </VirtualizerContext.Provider>
-  );
-}
-
-function FilePreviewCodeTruncationNotice({
-  truncation,
-  onLoadFullFile,
-}: {
-  truncation: FilePreviewCodeTruncation;
-  onLoadFullFile: () => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-3 text-xs text-muted-foreground">
-      <span>
-        Showing the first {truncation.renderedLineCount.toLocaleString()} of{" "}
-        {truncation.totalLineCount.toLocaleString()} lines.
-      </span>
-      <Button
-        type="button"
-        variant="link"
-        size="sm"
-        className="h-auto p-0 text-xs underline underline-offset-4 hover:underline"
-        onClick={onLoadFullFile}
-      >
-        Load full file
-      </Button>
-    </div>
+    <SourceCodeHost
+      content={file.contents}
+      path={path}
+      // `path` is what the panel shows and what a copied selection is
+      // labelled with; `file.name` can be a shorter server-supplied display
+      // name for the same file, and it is the identity the highlighter's
+      // result cache was keyed on before this went through the host.
+      cacheKey={file.cacheKey ?? file.name}
+      overflow={lineOverflowMode}
+      highlightedLines={highlightedLines}
+      scrollToHighlightedLines
+      fallback={<FilePreviewLoading />}
+      onSelectionAddToChat={onSelectionAddToChat}
+    />
   );
 }

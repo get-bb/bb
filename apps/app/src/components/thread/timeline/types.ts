@@ -8,8 +8,6 @@ import type { MarkdownPreviewLinkHandler } from "../../ui/markdown-link.js";
 import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 import type { MarkdownMessageDirectiveOpenThreadPanel } from "@/components/ui/markdown-message-directives";
 
-export type ThreadTimelineTheme = "light" | "dark";
-
 export type ThreadTimelineLocalFileLink = MarkdownPreviewLocalFileLink;
 
 export type ThreadTimelineLocalFileLinkHandler =

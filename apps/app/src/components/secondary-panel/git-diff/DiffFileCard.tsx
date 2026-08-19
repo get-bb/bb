@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useIntersectionObserver } from "usehooks-ts";
 import type { DiffFileEntry } from "@bb/server-contract";
+import type { DiffPresentation } from "@/components/code/code-rendering";
 import {
   getGitDiffCardImageSizeStat,
   GitDiffCardBody,
@@ -121,7 +122,7 @@ function buildBinaryImagePreviewPlan(
 
 export interface DiffFileCardProps {
   entry: DiffFileEntry;
-  diffViewOptions: Record<string, string | boolean | number>;
+  presentation: DiffPresentation;
   filePathRoot?: string | null;
   isCollapsed: boolean;
   onToggleCollapsed: () => void;
@@ -174,7 +175,7 @@ function areDiffFileCardPropsEqual(
 ): boolean {
   return (
     previous.entry === next.entry &&
-    previous.diffViewOptions === next.diffViewOptions &&
+    previous.presentation === next.presentation &&
     previous.filePathRoot === next.filePathRoot &&
     previous.isCollapsed === next.isCollapsed &&
     previous.onToggleCollapsed === next.onToggleCollapsed &&
@@ -275,7 +276,7 @@ function useBinaryImagePreview({
 
 export const DiffFileCard = memo(function DiffFileCard({
   entry,
-  diffViewOptions,
+  presentation,
   filePathRoot,
   isCollapsed,
   onToggleCollapsed,
@@ -400,7 +401,7 @@ export const DiffFileCard = memo(function DiffFileCard({
         <DiffFileCardBody
           entry={entry}
           changedLines={changedLines}
-          diffViewOptions={diffViewOptions}
+          presentation={presentation}
           parsedFile={parsedFile}
           patchState={patchState}
           svgDisplayMode={svgDisplayMode}
@@ -423,7 +424,7 @@ export const DiffFileCard = memo(function DiffFileCard({
 interface DiffFileCardBodyProps {
   entry: DiffFileEntry;
   changedLines: number;
-  diffViewOptions: Record<string, string | boolean | number>;
+  presentation: DiffPresentation;
   parsedFile: ParsedGitDiffFile | null;
   patchState: DiffPatchState;
   svgDisplayMode: GitDiffCardSvgDisplayMode;
@@ -483,7 +484,7 @@ function DiffFileCardLoadDiffNotice({
 function DiffFileCardBody({
   entry,
   changedLines,
-  diffViewOptions,
+  presentation,
   parsedFile,
   patchState,
   svgDisplayMode,
@@ -597,7 +598,7 @@ function DiffFileCardBody({
       entry={entry}
       parsedFile={parsedFile}
       patchText={patchState.truncated ? undefined : patchState.patch}
-      diffViewOptions={diffViewOptions}
+      presentation={presentation}
       svgDisplayMode={svgDisplayMode}
       truncated={patchState.truncated ?? false}
       onOpenFilePreview={onOpenFilePreview}
@@ -611,7 +612,7 @@ interface DiffFileCardRenderedBodyProps {
   entry: DiffFileEntry;
   parsedFile: ParsedGitDiffFile;
   patchText?: string;
-  diffViewOptions: Record<string, string | boolean | number>;
+  presentation: DiffPresentation;
   svgDisplayMode: GitDiffCardSvgDisplayMode;
   truncated: boolean;
   onOpenFilePreview?: (path: string) => void;
@@ -630,7 +631,7 @@ function DiffFileCardRenderedBody({
   entry,
   parsedFile,
   patchText,
-  diffViewOptions,
+  presentation,
   svgDisplayMode,
   truncated,
   onOpenFilePreview,
@@ -648,7 +649,7 @@ function DiffFileCardRenderedBody({
     <>
       <GitDiffCardBody
         state={bodyState}
-        diffViewOptions={diffViewOptions}
+        presentation={presentation}
         svgDisplayMode={svgDisplayMode}
         reservesCollapseGutter
         onSelectionAddToChat={onSelectionAddToChat}

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type { FileContents } from "@pierre/diffs";
+import type { DiffPresentation } from "@/components/code/code-rendering";
 import {
-  GIT_DIFF_VIEW_BASE_OPTIONS,
   GitDiffCard,
   type DiffFileContentsResult,
   type RequestDiffFileContents,
@@ -20,7 +20,6 @@ import {
   summarizeGitDiff,
   type ParsedGitDiffFile,
 } from "../git-diff/git-diff-parsing";
-import { usePreferredTheme } from "@/hooks/useTheme";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { appToast } from "@/components/ui/app-toast";
 
@@ -745,7 +744,6 @@ function InteractiveDiffPanel({
       ),
     [parsed],
   );
-  const preferredTheme = usePreferredTheme();
   const [selection, setSelection] = useState("working");
   const [displayMode, setDisplayMode] = useState<GitDiffDisplayMode>("unified");
   const [lineOverflowMode, setLineOverflowMode] = useState<CodeOverflowMode>(
@@ -776,14 +774,13 @@ function InteractiveDiffPanel({
       return next;
     });
   }, []);
-  const viewOptions = useMemo(
+  const presentation = useMemo<DiffPresentation>(
     () => ({
-      ...GIT_DIFF_VIEW_BASE_OPTIONS,
-      diffStyle: displayMode,
+      view: displayMode,
       overflow: lineOverflowMode,
-      themeType: preferredTheme,
+      showLineNumbers: true,
     }),
-    [displayMode, lineOverflowMode, preferredTheme],
+    [displayMode, lineOverflowMode],
   );
   const onOpenFileInEditor = useCallback((path: string) => {
     appToast.message("Opening in editor", { description: path });
@@ -837,7 +834,7 @@ function InteractiveDiffPanel({
             <GitDiffCard
               key={fileKey}
               fileDiff={fileDiff}
-              diffViewOptions={viewOptions}
+              presentation={presentation}
               onOpenFileInEditor={onOpenFileInEditor}
               isCollapsed={collapsedFileKeys.has(fileKey)}
               onToggleCollapsed={() => toggleFileCollapsed(fileKey)}

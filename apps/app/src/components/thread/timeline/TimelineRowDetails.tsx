@@ -23,13 +23,11 @@ import {
   type TimelineWorkRowFullOutputState,
 } from "./useTimelineWorkRowFullOutput.js";
 import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
-import type { ThreadTimelineTheme } from "./types.js";
 import type { ThreadTimelineImageViewSrcResolver } from "./types.js";
 
 export interface WorkRowBodyProps {
   resolveImageViewSrc?: ThreadTimelineImageViewSrcResolver;
   row: TimelineViewWorkRow;
-  themeType: ThreadTimelineTheme;
   workspaceRootPath: string | undefined;
 }
 
@@ -230,7 +228,6 @@ function ToolWorkRowBody({ row }: ToolWorkRowBodyProps) {
 export function WorkRowBody({
   resolveImageViewSrc,
   row,
-  themeType,
   workspaceRootPath,
 }: WorkRowBodyProps) {
   switch (row.workKind) {
@@ -243,7 +240,6 @@ export function WorkRowBody({
         <div className="space-y-2">
           <LazyTimelineFileDiffBlock
             change={row.change}
-            themeType={themeType}
             workspaceRootPath={workspaceRootPath}
           />
           {row.stderr ? (

@@ -2,6 +2,7 @@ import type {
   ComposerCustomization,
   PluginAppDefinition,
   PluginContentScriptRegistration,
+  PluginDiffRendererRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
   PluginMessageActionRegistration,
@@ -12,6 +13,7 @@ import type {
   PluginProviderIconRegistration,
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
+  PluginSourceCodeRendererRegistration,
   PluginThreadHeaderActionRegistration,
   PluginThreadListRegistration,
   PluginThreadPanelActionRegistration,
@@ -45,6 +47,8 @@ export interface CollectedPluginAppRegistrations {
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
+  sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
+  diffRenderers: PluginDiffRendererRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
   providerIcons: PluginProviderIconRegistration[];
@@ -74,6 +78,8 @@ export function collectPluginAppRegistrations(
     threadLists: [],
     threadHeaderActions: [],
     fileOpeners: [],
+    sourceCodeRenderers: [],
+    diffRenderers: [],
     messageDirectives: [],
     messageActions: [],
     providerIcons: [],
@@ -91,6 +97,8 @@ export function collectPluginAppRegistrations(
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
     fileOpener: new Set<string>(),
+    sourceCodeRenderer: new Set<string>(),
+    diffRenderer: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
     providerIcon: new Set<string>(),
@@ -350,6 +358,38 @@ export function collectPluginAppRegistrations(
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           extensions,
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_sourceCodeRenderer(registration) {
+        const kind = "slots.experimental_sourceCodeRenderer";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.sourceCodeRenderer, id);
+        const description = requireOptionalString(
+          kind,
+          "description",
+          registration.description,
+        );
+        collected.sourceCodeRenderers.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(description !== undefined ? { description } : {}),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_diffRenderer(registration) {
+        const kind = "slots.experimental_diffRenderer";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.diffRenderer, id);
+        const description = requireOptionalString(
+          kind,
+          "description",
+          registration.description,
+        );
+        collected.diffRenderers.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(description !== undefined ? { description } : {}),
           component: requireComponent(kind, registration.component),
         });
       },
