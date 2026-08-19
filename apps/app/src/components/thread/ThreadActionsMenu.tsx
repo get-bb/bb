@@ -19,6 +19,7 @@ import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
 import { isThreadRead } from "@/lib/thread-read-state";
 import { useThreadActions } from "./ThreadActionsProvider";
 
@@ -295,7 +296,47 @@ export function ThreadActionsMenu({
   );
 }
 
-export function ThreadActionsContextMenu({
+/**
+ * Row-level actions menu: a right-click context menu on wide viewports, and on
+ * compact viewports a touch long-press (or right-click) that opens the same
+ * items in the persistent responsive drawer. The compact path deliberately
+ * avoids the modal Radix `ContextMenu` (aria-hidden on the app root, scroll
+ * lock, document-wide pointer-events flip) on phones.
+ */
+export function ThreadActionsContextMenu(props: ThreadActionsContextMenuProps) {
+  const isCompactViewport = useIsCompactViewport();
+  if (isCompactViewport) {
+    return <ThreadActionsCompactLongPressMenu {...props} />;
+  }
+  return <ThreadActionsDesktopContextMenu {...props} />;
+}
+
+function ThreadActionsCompactLongPressMenu({
+  children,
+  thread,
+  canDelete = true,
+  onOpenInSplit,
+  onOpenChange,
+}: ThreadActionsContextMenuProps) {
+  return (
+    <CompactLongPressMenu
+      label="Thread actions"
+      onOpenChange={onOpenChange}
+      items={
+        <ThreadActionsMenuItems
+          thread={thread}
+          canDelete={canDelete}
+          onOpenInSplit={onOpenInSplit}
+          surface="dropdown"
+        />
+      }
+    >
+      {children}
+    </CompactLongPressMenu>
+  );
+}
+
+function ThreadActionsDesktopContextMenu({
   children,
   thread,
   canDelete = true,
