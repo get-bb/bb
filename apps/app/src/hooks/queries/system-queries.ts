@@ -273,7 +273,6 @@ function resolveExecutionOptionsPlaceholder({
   hostId,
   providerId,
   catalogCacheKey,
-  providerCatalogCacheKey,
   providersCacheKey,
 }: {
   previousData: SystemExecutionOptionsResponse | undefined;
@@ -282,7 +281,6 @@ function resolveExecutionOptionsPlaceholder({
   hostId: string | null;
   providerId: string | null;
   catalogCacheKey: string;
-  providerCatalogCacheKey: string | null;
   providersCacheKey: string;
 }): SystemExecutionOptionsResponse | undefined {
   // Same-route provider roster from the prior response: dynamic (ACP) tabs
@@ -294,16 +292,15 @@ function resolveExecutionOptionsPlaceholder({
   )
     ? previousData?.providers
     : undefined;
-  // The routed key is exact; the provider key holds the latest verified
-  // catalog for the provider from any routing. A composer can mount before its
-  // environment is known (a thread page still loading), so its first key may
-  // never have been fetched to completion — the provider's latest catalog is a
-  // fine provisional stand-in for that frame.
-  const cached =
-    readCachedModelCatalog(catalogCacheKey) ??
-    (providerCatalogCacheKey === null
-      ? null
-      : readCachedModelCatalog(providerCatalogCacheKey));
+  // Only the exact routing key replays. The model endpoint resolves the
+  // environment's path as its working directory and a host's account decides
+  // its entitlements, so a catalog observed on one environment or host says
+  // nothing about another — and a placeholder is enough for a composer to
+  // offer a model, so a cross-route replay could let it submit one the current
+  // route never returned. A routing that was never fetched to completion (a
+  // composer mounted before its environment is known) gets no rows and waits
+  // for its own probe.
+  const cached = readCachedModelCatalog(catalogCacheKey);
   const remembered = readCachedProviderList(providersCacheKey);
   const providers =
     previousProviders ??
@@ -432,11 +429,6 @@ export function useSystemExecutionOptions(
     hostId,
     providerId,
   });
-  const providerCatalogCacheKey =
-    providerId === null
-      ? null
-      : modelCatalogCacheKey({ environmentId: null, hostId: null, providerId });
-
   return useQuery<SystemExecutionOptionsResponse>({
     queryKey: systemExecutionOptionsQueryKey({
       environmentId,
@@ -462,9 +454,6 @@ export function useSystemExecutionOptions(
           selectedOnlyModels: response.selectedOnlyModels,
         };
         writeCachedModelCatalog(catalogCacheKey, catalog);
-        if (providerCatalogCacheKey !== null) {
-          writeCachedModelCatalog(providerCatalogCacheKey, catalog);
-        }
       }
       return response;
     },
@@ -480,7 +469,6 @@ export function useSystemExecutionOptions(
         hostId,
         providerId,
         catalogCacheKey,
-        providerCatalogCacheKey,
         providersCacheKey,
       }),
   });

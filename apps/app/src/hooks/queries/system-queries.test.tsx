@@ -390,9 +390,12 @@ describe("useSystemExecutionOptions", () => {
     expect(result.current.data?.models).toEqual([]);
   });
 
-  it("falls back to the provider's latest catalog when the routed key was never fetched", async () => {
-    // A thread composer can mount before its environment is known, so its
-    // first query key differs from the one that later completes and is cached.
+  it("does not replay a catalog across environments", async () => {
+    // The model endpoint resolves the environment's path as its working
+    // directory, so an environment's catalog must not stand in for a routing
+    // that was never fetched to completion (a composer mounted before its
+    // environment is known, or another environment): a placeholder is enough
+    // for the composer to offer a model for submission.
     vi.mocked(sdk.system.executionOptions).mockResolvedValue(CODEX_CATALOG);
     const first = createQueryClientTestHarness();
     const warm = renderHook(
@@ -411,14 +414,30 @@ describe("useSystemExecutionOptions", () => {
     vi.mocked(sdk.system.executionOptions).mockImplementation(pendingForever);
     const reload = createQueryClientTestHarness();
     const { result } = renderHook(
-      () => useSystemExecutionOptions({ providerId: "codex" }),
+      () => [
+        useSystemExecutionOptions({ providerId: "codex" }),
+        useSystemExecutionOptions({
+          environmentId: "env-2",
+          providerId: "codex",
+        }),
+        useSystemExecutionOptions({
+          environmentId: "env-1",
+          providerId: "codex",
+        }),
+      ],
       { wrapper: reload.wrapper },
     );
-    expect(result.current.isPlaceholderData).toBe(true);
-    expect(result.current.data?.models).toEqual([CODEX_MODEL]);
+    // Other routings keep only the built-in identity, with no rows.
+    expect(result.current[0]!.isPlaceholderData).toBe(true);
+    expect(result.current[0]!.data?.models).toEqual([]);
+    expect(result.current[1]!.isPlaceholderData).toBe(true);
+    expect(result.current[1]!.data?.models).toEqual([]);
+    // The routing that was observed replays its own catalog.
+    expect(result.current[2]!.isPlaceholderData).toBe(true);
+    expect(result.current[2]!.data?.models).toEqual([CODEX_MODEL]);
   });
 
-  it("never preloads one provider's catalog for another", async () => {
+  it("never preloads a catalog for another provider or another host", async () => {
     vi.mocked(sdk.system.executionOptions).mockResolvedValue(CODEX_CATALOG);
     const first = createQueryClientTestHarness();
     const warm = renderHook(
@@ -443,9 +462,10 @@ describe("useSystemExecutionOptions", () => {
     // Another provider never inherits this catalog: only its built-in
     // identity preloads, with no rows.
     expect(result.current[0]!.data?.models).toEqual([]);
-    // Another host of the same provider gets it as a provisional stand-in.
+    // Nor does another host of the same provider: hosts can be signed into
+    // different accounts, so host B waits for its own probe.
     expect(result.current[1]!.isPlaceholderData).toBe(true);
-    expect(result.current[1]!.data?.models).toEqual([CODEX_MODEL]);
+    expect(result.current[1]!.data?.models).toEqual([]);
   });
 
   it("retries one transient failure before surfacing model selector errors", async () => {
