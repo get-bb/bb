@@ -6,20 +6,19 @@ import type {
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-const checksSuccessIcon =
-  "https://github.githubassets.com/favicons/favicon-success.png";
-const checksSuccessDarkIcon =
-  "https://github.githubassets.com/favicons/favicon-success-dark.png";
-const checksFailureIcon =
-  "https://github.githubassets.com/favicons/favicon-failure.png";
-const checksFailureDarkIcon =
-  "https://github.githubassets.com/favicons/favicon-failure-dark.png";
-const checksPendingIcon =
-  "https://github.githubassets.com/favicons/favicon-pending.png";
-const checksPendingDarkIcon =
-  "https://github.githubassets.com/favicons/favicon-pending-dark.png";
-
 export type GithubCheckStatus = "success" | "failure" | "pending";
+
+// The check glyph is the bundled GitHub mark with a small status dot in the
+// corner, drawn from theme tokens. It replaces the light + dark favicon PNGs
+// that were fetched from github.githubassets.com on every thread that has a
+// pull request: two cross-origin image requests per pill (and per row on the
+// sidebar/thread list), which on phones over a tunnel meant late-arriving,
+// layout-shifting icons and a third-party request on every cold start.
+const GITHUB_CHECK_STATUS_DOT_CLASS: Record<GithubCheckStatus, string> = {
+  success: "bg-success",
+  failure: "bg-destructive",
+  pending: "bg-attention",
+};
 
 const PR_STATUS_COLOR: Record<PullRequestState, { textClassName: string }> = {
   open: {
@@ -115,62 +114,24 @@ export function PullRequestGithubCheckIcon({
   className?: string;
 }) {
   const status = getPullRequestGithubCheckStatus(pullRequest);
-  const checkStatusClassName = "size-4 shrink-0";
-  switch (status) {
-    case "success":
-      return (
-        <>
-          <img
-            src={checksSuccessIcon}
-            alt=""
-            aria-hidden="true"
-            className={cn(checkStatusClassName, "dark:hidden", className)}
-          />
-          <img
-            src={checksSuccessDarkIcon}
-            alt=""
-            aria-hidden="true"
-            className={cn(checkStatusClassName, "hidden dark:block", className)}
-          />
-        </>
-      );
-    case "failure":
-      return (
-        <>
-          <img
-            src={checksFailureIcon}
-            alt=""
-            aria-hidden="true"
-            className={cn(checkStatusClassName, "dark:hidden", className)}
-          />
-          <img
-            src={checksFailureDarkIcon}
-            alt=""
-            aria-hidden="true"
-            className={cn(checkStatusClassName, "hidden dark:block", className)}
-          />
-        </>
-      );
-    case "pending":
-      return (
-        <>
-          <img
-            src={checksPendingIcon}
-            alt=""
-            aria-hidden="true"
-            className={cn(checkStatusClassName, "dark:hidden", className)}
-          />
-          <img
-            src={checksPendingDarkIcon}
-            alt=""
-            aria-hidden="true"
-            className={cn(checkStatusClassName, "hidden dark:block", className)}
-          />
-        </>
-      );
-    case null:
-      return null;
+  if (status === null) {
+    return null;
   }
+  return (
+    <span
+      data-pull-request-check-status={status}
+      aria-hidden="true"
+      className={cn("relative inline-flex size-4 shrink-0", className)}
+    >
+      <Icon name="Github" className="size-4 shrink-0" aria-hidden="true" />
+      <span
+        className={cn(
+          "absolute -right-px -bottom-px size-2 rounded-full ring-2 ring-background",
+          GITHUB_CHECK_STATUS_DOT_CLASS[status],
+        )}
+      />
+    </span>
+  );
 }
 
 export function PullRequestStatusPill({

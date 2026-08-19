@@ -82,11 +82,6 @@ import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 // without bypassing the production rendering path.
 // ---------------------------------------------------------------------------
 
-const GITHUB_FAVICON_URL =
-  "https://github.githubassets.com/favicons/favicon.png";
-const GITHUB_DARK_FAVICON_URL =
-  "https://github.githubassets.com/favicons/favicon-dark.png";
-
 export interface ParentSelectorRowProps {
   thread: Thread;
   projectId: string;
@@ -504,20 +499,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
         {showGithubCheckIcon ? (
           <PullRequestGithubCheckIcon pullRequest={pullRequest} />
         ) : (
-          <>
-            <img
-              src={GITHUB_FAVICON_URL}
-              alt=""
-              className="size-4 shrink-0 dark:hidden"
-              aria-hidden="true"
-            />
-            <img
-              src={GITHUB_DARK_FAVICON_URL}
-              alt=""
-              className="hidden size-4 shrink-0 dark:block"
-              aria-hidden="true"
-            />
-          </>
+          <Icon name="Github" className="size-4 shrink-0" aria-hidden="true" />
         )}
         <span className="shrink-0 text-muted-foreground">
           #{pullRequest.number}
