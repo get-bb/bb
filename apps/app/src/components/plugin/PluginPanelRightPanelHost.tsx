@@ -433,6 +433,8 @@ export function PluginPanelRightPanelHost({
         slotKind="navPanelFixedTab"
         slotId={activeFixedTabRegistration.id}
         instanceId={panel.id}
+        selectText
+        selectAllScope
       >
         <FixedTabComponent subPath={subPath} />
       </PluginSlotMount>

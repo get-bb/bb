@@ -136,7 +136,10 @@ export function MarketplacesSettingsSection() {
             <div className="min-w-0 flex-1 space-y-1">
               <p className="flex items-center gap-2 text-sm text-foreground">
                 {marketplace.displayName}
-                <span className="select-text font-mono text-2xs text-subtle-foreground">
+                <span
+                  className="select-text font-mono text-2xs text-subtle-foreground"
+                  data-select-all-scope=""
+                >
                   {marketplace.name}
                 </span>
                 {marketplace.official ? (
@@ -145,7 +148,10 @@ export function MarketplacesSettingsSection() {
                   </Badge>
                 ) : null}
               </p>
-              <p className="select-text truncate font-mono text-2xs text-subtle-foreground">
+              <p
+                className="select-text truncate font-mono text-2xs text-subtle-foreground"
+                data-select-all-scope=""
+              >
                 {marketplace.source}
               </p>
               <p className="text-2xs text-subtle-foreground">

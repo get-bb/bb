@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DiffFileEntry } from "@bb/server-contract";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
@@ -7,6 +14,7 @@ import type {
   DiffFileContentsResult,
   RequestDiffFileContents,
 } from "@/components/git-diff/GitDiffCardBody";
+import { getSelectAllCopyText } from "@/lib/select-all-scope";
 import { DiffFileCard } from "./DiffFileCard";
 
 // The real `@pierre/diffs` renderer needs a worker pool and shadow-DOM layout
@@ -204,6 +212,9 @@ describe("DiffFileCard context expansion", () => {
     expect(diffScope).not.toBeNull();
     expect(contextScope).not.toBeNull();
     expect(diffScope).not.toBe(contextScope);
+    expect(getSelectAllCopyText(diffScope as HTMLElement)).toContain(
+      "-const b = 2;\n+const b = 3;",
+    );
     expect(diffViewMock.renderedOptions.at(-1)?.unsafeCSS).toContain(
       "[data-merge-conflict-action]",
     );
@@ -248,9 +259,7 @@ describe("DiffFileCard context expansion", () => {
     await waitFor(() => {
       expect(onRequestFileContents).toHaveBeenCalledTimes(2);
     });
-    expect(
-      screen.queryByRole("button", { name: "Expand context" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Expand context" })).toBeNull();
   });
 
   it("offers a retry when the context fetch fails", async () => {
@@ -290,8 +299,8 @@ describe("DiffFileCard context expansion", () => {
 
   it("never fetches contents for an added file, whose patch already carries every line", async () => {
     stubPointer("fine");
-    const onRequestFileContents = vi.fn<RequestDiffFileContents>(
-      async (path) => textResult("const a = 1;\nconst b = 2;\n", path),
+    const onRequestFileContents = vi.fn<RequestDiffFileContents>(async (path) =>
+      textResult("const a = 1;\nconst b = 2;\n", path),
     );
 
     render(
@@ -320,8 +329,6 @@ describe("DiffFileCard context expansion", () => {
     await findDiffView();
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(onRequestFileContents).not.toHaveBeenCalled();
-    expect(
-      screen.queryByRole("button", { name: "Expand context" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Expand context" })).toBeNull();
   });
 });

@@ -496,6 +496,110 @@ describe("AppSelectAllController", () => {
     );
   });
 
+  it("keeps shadow-root Select All visible and copyable when native selection collapses", () => {
+    render(<AppSelectAllController />);
+    const fixture = createFixture();
+    const scope = document.createElement("section");
+    scope.dataset.selectAllScope = "";
+    const shadowHost = document.createElement("div");
+    shadowHost.attachShadow({ mode: "open" }).innerHTML =
+      "<code>shadow-root file contents</code><button>Shadow action</button><code>shadow tail</code>";
+    scope.append(shadowHost);
+    fixture.mainRegion.append(scope);
+    const shadowCode = shadowHost.shadowRoot!.querySelector("code")!;
+    const selection = window.getSelection()!;
+    vi.spyOn(selection, "setBaseAndExtent").mockImplementation(() => {
+      selection.removeAllRanges();
+    });
+    const highlightSet = vi.fn();
+    const highlightDelete = vi.fn();
+    const originalCss = globalThis.CSS;
+    const originalHighlight = globalThis.Highlight;
+    Object.defineProperty(globalThis, "CSS", {
+      configurable: true,
+      value: {
+        highlights: { delete: highlightDelete, set: highlightSet },
+      },
+    });
+    const createdHighlights: Range[][] = [];
+    Object.defineProperty(globalThis, "Highlight", {
+      configurable: true,
+      value: class TestHighlight {
+        constructor(...ranges: Range[]) {
+          createdHighlights.push(ranges);
+        }
+      },
+    });
+    const unregister = registerSelectAllCopyText(
+      scope,
+      () => "AUTHORITATIVE_SHADOW_TEXT",
+    );
+
+    fireEvent.pointerDown(shadowCode);
+    shadowCode.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        key: "a",
+        metaKey: true,
+      }),
+    );
+
+    expect(highlightSet).toHaveBeenCalledTimes(1);
+    expect(createdHighlights[0]?.map((range) => range.toString())).toEqual([
+      "shadow-root file contents",
+      "shadow tail",
+    ]);
+    const setData = vi.fn();
+    const copyEvent = new Event("copy", { bubbles: true, cancelable: true });
+    Object.defineProperty(copyEvent, "clipboardData", {
+      value: { setData },
+    });
+    document.dispatchEvent(copyEvent);
+    expect(setData).toHaveBeenCalledWith(
+      "text/plain",
+      "AUTHORITATIVE_SHADOW_TEXT",
+    );
+    expect(copyEvent.defaultPrevented).toBe(true);
+
+    unregister();
+    fireEvent.pointerDown(shadowCode);
+    shadowCode.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        key: "a",
+        metaKey: true,
+      }),
+    );
+    const fallbackSetData = vi.fn();
+    const fallbackCopyEvent = new Event("copy", {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(fallbackCopyEvent, "clipboardData", {
+      value: { setData: fallbackSetData },
+    });
+    document.dispatchEvent(fallbackCopyEvent);
+    expect(fallbackSetData).toHaveBeenCalledWith(
+      "text/plain",
+      "shadow-root file contentsshadow tail",
+    );
+
+    fireEvent.pointerDown(fixture.sidebar);
+    expect(highlightDelete).toHaveBeenCalled();
+    Object.defineProperty(globalThis, "CSS", {
+      configurable: true,
+      value: originalCss,
+    });
+    Object.defineProperty(globalThis, "Highlight", {
+      configurable: true,
+      value: originalHighlight,
+    });
+  });
+
   it("selects a shadow-only scope when interaction starts on its light-DOM padding", () => {
     render(<AppSelectAllController />);
     const scope = document.createElement("section");
@@ -599,6 +703,28 @@ describe("AppSelectAllController", () => {
     expect(window.getSelection()?.toString()).not.toContain(
       "UNSENT INLINE DRAFT",
     );
+  });
+
+  it("excludes CSS-hidden text from scoped Select All endpoints", () => {
+    render(<AppSelectAllController />);
+    const scope = document.createElement("section");
+    scope.dataset.selectAllScope = "";
+    const visible = document.createElement("p");
+    visible.textContent = "VISIBLE CONTENT";
+    const hidden = document.createElement("p");
+    hidden.textContent = "HIDDEN CONTENT";
+    hidden.style.display = "none";
+    Object.defineProperty(hidden, "checkVisibility", {
+      configurable: true,
+      value: () => false,
+    });
+    scope.append(visible, hidden);
+    document.body.append(scope);
+
+    fireEvent.pointerDown(visible);
+    dispatchSelectAll(visible);
+
+    expect(window.getSelection()?.toString()).toBe("VISIBLE CONTENT");
   });
 
   it("does not mutate an active open shadow root", () => {

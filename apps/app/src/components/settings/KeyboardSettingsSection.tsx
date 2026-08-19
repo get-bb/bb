@@ -171,7 +171,11 @@ const ShortcutRecorder = memo(
           )}
         </Button>
         {error ? (
-          <p className="select-text text-xs text-destructive" role="alert">
+          <p
+            className="select-text text-xs text-destructive"
+            data-select-all-scope=""
+            role="alert"
+          >
             {error}
           </p>
         ) : null}
@@ -396,7 +400,10 @@ const KeyboardCommandRow = memo(
             </div>
           ) : null}
           {conflicts.length > 0 ? (
-            <p className="mt-1 text-xs text-warning-text">
+            <p
+              className="mt-1 select-text text-xs text-warning-text"
+              data-select-all-scope=""
+            >
               Also used by{" "}
               {conflicts
                 .map((candidate) => getAppCommandMetadata(candidate).label)

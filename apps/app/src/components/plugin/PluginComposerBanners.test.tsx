@@ -78,6 +78,26 @@ describe("ComposerBannersSlot", () => {
     expect(screen.getByText("bare body").closest("section")).toBeNull();
   });
 
+  it("makes plugin-authored banner content a Select All scope", () => {
+    setPluginSlotRegistrations(
+      "selectable-plugin",
+      registrations([
+        {
+          id: "selectable",
+          banners: [
+            { id: "content", component: () => <div>Selectable banner</div> },
+          ],
+        },
+      ]),
+    );
+
+    render(<ComposerBannersSlot view={composerView("t1")} />);
+
+    const content = screen.getByText("Selectable banner");
+    expect(content.closest(".select-text")).not.toBeNull();
+    expect(content.closest("[data-select-all-scope]")).not.toBeNull();
+  });
+
   it("collapses only the crashing banner", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});

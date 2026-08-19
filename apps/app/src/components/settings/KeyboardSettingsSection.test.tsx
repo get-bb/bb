@@ -432,7 +432,9 @@ describe("KeyboardSettingsSection", () => {
       shiftKey: true,
     });
 
-    expect(screen.getByText(/Also used by Open thread 1\./u)).toBeDefined();
+    const warning = screen.getByText(/Also used by Open thread 1\./u);
+    expect(warning).toBeDefined();
+    expect(warning.closest("[data-select-all-scope]")).not.toBeNull();
     expect(screen.getByText(/Also used by New thread\./u)).toBeDefined();
     expect(testState.mutate.mock.lastCall?.[0]).toHaveLength(2);
     expect(

@@ -93,7 +93,10 @@ function MachineRenameDialogContent({
             onChange={(event) => setNextName(event.target.value)}
           />
           {errorMessage !== null ? (
-            <p className="select-text text-sm text-destructive">
+            <p
+              className="select-text text-sm text-destructive"
+              data-select-all-scope=""
+            >
               {errorMessage}
             </p>
           ) : null}

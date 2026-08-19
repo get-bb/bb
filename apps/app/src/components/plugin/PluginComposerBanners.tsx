@@ -53,6 +53,8 @@ function ComposerBannerRows({
           slotKind="composerBanner"
           slotId={slotId}
           crashFallback={<></>}
+          selectText
+          selectAllScope
         >
           {banner.chrome === "bare" ? (
             <banner.component />

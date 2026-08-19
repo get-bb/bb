@@ -1,4 +1,5 @@
 const SELECT_ALL_SCOPE_SELECTOR = "[data-select-all-scope]";
+export const SELECT_ALL_HIGHLIGHT_NAME = "bb-select-all-scope";
 
 const selectAllCopyTextProviders = new WeakMap<HTMLElement, () => string>();
 
@@ -89,6 +90,12 @@ export function getSelectAllCopyText(scope: HTMLElement): string | null {
   return selectAllCopyTextProviders.get(scope)?.() ?? null;
 }
 
+export function clearSelectAllHighlight(): void {
+  if (typeof CSS !== "undefined") {
+    CSS.highlights?.delete(SELECT_ALL_HIGHLIGHT_NAME);
+  }
+}
+
 function isSkippedSelectionSubtree(element: Element): boolean {
   return (
     (element.matches(SELECTION_CONTROL_SELECTOR) &&
@@ -108,6 +115,24 @@ function getComposedChildren(node: Node): readonly Node[] {
   return Array.from(node.childNodes);
 }
 
+function isRenderedTextNode(
+  node: Text,
+  visibilityByParent: WeakMap<Element, boolean>,
+): boolean {
+  const parent = node.parentElement;
+  if (parent === null || typeof parent.checkVisibility !== "function") {
+    return true;
+  }
+  const cached = visibilityByParent.get(parent);
+  if (cached !== undefined) return cached;
+  const rendered =
+    parent.checkVisibility() ||
+    parent.ownerDocument.defaultView?.getComputedStyle(parent).display ===
+      "contents";
+  visibilityByParent.set(parent, rendered);
+  return rendered;
+}
+
 function getComposedTextEndpoints(
   scope: HTMLElement,
   selectionRoot: Document | ShadowRoot,
@@ -115,19 +140,25 @@ function getComposedTextEndpoints(
 ): {
   first: Text;
   last: Text;
+  texts: Text[];
 } | null {
   let first: Text | null = null;
   let last: Text | null = null;
   let segment = 0;
   let anchorSegment: number | null = null;
   const textBySegment = new Map<number, Text[]>();
+  const visibilityByParent = new WeakMap<Element, boolean>();
 
   function visit(node: Node) {
     if (node === selectionAnchor) {
       anchorSegment = segment;
     }
     if (node instanceof Text) {
-      if (node.data.length === 0 || node.getRootNode() !== selectionRoot)
+      if (
+        node.data.length === 0 ||
+        node.getRootNode() !== selectionRoot ||
+        !isRenderedTextNode(node, visibilityByParent)
+      )
         return;
       const segmentText = textBySegment.get(segment) ?? [];
       segmentText.push(node);
@@ -157,7 +188,9 @@ function getComposedTextEndpoints(
   const selectedText = textBySegment.get(anchorSegment) ?? [];
   first = selectedText[0] ?? null;
   last = selectedText.at(-1) ?? null;
-  return first === null || last === null ? null : { first, last };
+  return first === null || last === null
+    ? null
+    : { first, last, texts: selectedText };
 }
 
 export function resolveSelectAllRoot(
@@ -165,10 +198,15 @@ export function resolveSelectAllRoot(
   preferredRoot: Document | ShadowRoot,
 ): Document | ShadowRoot {
   const textRoots = new Set<Document | ShadowRoot>();
+  const visibilityByParent = new WeakMap<Element, boolean>();
 
   function visit(node: Node): boolean {
     if (node instanceof Text) {
-      if (node.data.trim().length === 0) return false;
+      if (
+        node.data.trim().length === 0 ||
+        !isRenderedTextNode(node, visibilityByParent)
+      )
+        return false;
       const root = node.getRootNode();
       if (root instanceof Document || root instanceof ShadowRoot) {
         textRoots.add(root);
@@ -198,19 +236,44 @@ export function selectAllScopeContents(
   scope: HTMLElement,
   selectionRoot: Document | ShadowRoot,
   selectionAnchor: Element,
-): boolean {
+): {
+  kind: "native" | "logical";
+  fallbackCopyText: string | null;
+} | null {
+  clearSelectAllHighlight();
   const endpoints = getComposedTextEndpoints(
     scope,
     selectionRoot,
     selectionAnchor,
   );
   const selection = window.getSelection();
-  if (endpoints === null || selection === null) return false;
+  if (endpoints === null || selection === null) return null;
   selection.setBaseAndExtent(
     endpoints.first,
     0,
     endpoints.last,
     endpoints.last.data.length,
   );
-  return true;
+  if (selection.rangeCount > 0 && !selection.getRangeAt(0).collapsed) {
+    return { kind: "native", fallbackCopyText: null };
+  }
+  if (selectionRoot instanceof ShadowRoot) {
+    if (
+      typeof Highlight === "function" &&
+      typeof CSS !== "undefined" &&
+      CSS.highlights !== undefined
+    ) {
+      const ranges = endpoints.texts.map((textNode) => {
+        const range = new Range();
+        range.selectNodeContents(textNode);
+        return range;
+      });
+      CSS.highlights.set(SELECT_ALL_HIGHLIGHT_NAME, new Highlight(...ranges));
+    }
+    return {
+      kind: "logical",
+      fallbackCopyText: endpoints.texts.map((text) => text.data).join(""),
+    };
+  }
+  return null;
 }

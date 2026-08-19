@@ -503,6 +503,9 @@ describe("PluginPanelRightPanelHost", () => {
         .getByTestId("shared-secondary-panel-region")
         .hasAttribute("hidden"),
     ).toBe(false);
+    const fixedTabContent = screen.getByText("Navigation for task/123");
+    expect(fixedTabContent.closest(".select-text")).not.toBeNull();
+    expect(fixedTabContent.closest("[data-select-all-scope]")).not.toBeNull();
   });
 
   it("does not reopen fixed tabs after navigating away and back", async () => {

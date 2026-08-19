@@ -1327,6 +1327,9 @@ The canonical release summary.
       "Command exited with code 1",
     );
     expect(
+      screen.getByRole("alert").closest("[data-select-all-scope]"),
+    ).not.toBeNull();
+    expect(
       screen.getByRole("button", {
         name: "Failed · Retry Claude Code on workstation",
       }),
