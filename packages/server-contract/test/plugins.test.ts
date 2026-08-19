@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  PLUGIN_ATTENTION_DETAIL_MAX_LENGTH,
-  pluginAttentionResponseSchema,
   pluginCatalogInstallRequestSchema,
   pluginCatalogSearchResultSchema,
   pluginCatalogStatusSchema,
@@ -50,36 +48,6 @@ describe("plugin catalog contracts", () => {
         installed: false,
         compatible: true,
         incompatibleReason: null,
-      }),
-    ).toThrow();
-  });
-});
-
-describe("plugin attention contract", () => {
-  it("rejects statuses that never need attention and oversized details (#1915)", () => {
-    const entry = {
-      id: "notify",
-      name: "Notify",
-      status: "incompatible",
-      statusDetail: "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
-    };
-    expect(pluginAttentionResponseSchema.parse({ plugins: [entry] })).toEqual({
-      plugins: [entry],
-    });
-    // A malformed summary must not make the CLI call a running plugin broken.
-    for (const status of ["running", "disabled", "needs-configuration"]) {
-      expect(() =>
-        pluginAttentionResponseSchema.parse({ plugins: [{ ...entry, status }] }),
-      ).toThrow();
-    }
-    expect(() =>
-      pluginAttentionResponseSchema.parse({
-        plugins: [
-          {
-            ...entry,
-            statusDetail: "x".repeat(PLUGIN_ATTENTION_DETAIL_MAX_LENGTH + 1),
-          },
-        ],
       }),
     ).toThrow();
   });

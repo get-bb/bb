@@ -13,7 +13,6 @@ import {
   pluginMarketplaceRemoveResponseSchema,
   pluginApplyUpdateRequestSchema,
   pluginApplyUpdateResultSchema,
-  pluginAttentionResponseSchema,
   pluginInstallResponseSchema,
   pluginInstallSourceRequestSchema,
   pluginListResponseSchema,
@@ -34,7 +33,6 @@ import {
   type PluginMarketplaceRefreshResult as PluginMarketplaceRefreshContract,
   type PluginCatalogStatus as PluginCatalogStatusContract,
   type PluginApplyUpdateResult as PluginApplyUpdateContract,
-  type PluginAttentionResponse,
   type PluginListResponse,
   type PluginReloadResponse,
   type PluginRemoveResponse,
@@ -165,16 +163,11 @@ export interface PluginListUpdateResultsArgs {
   signal?: AbortSignal;
 }
 
-export interface PluginAttentionArgs {
-  signal?: AbortSignal;
-}
-
 export type PluginDisableResult = InstalledPlugin;
 export type PluginEnableResult = InstalledPlugin;
 export type PluginGetSettingsResult = PluginSettingsResponse;
 export type PluginInstallResult = InstalledPlugin;
 export type PluginListResult = PluginListResponse;
-export type PluginAttentionResult = PluginAttentionResponse;
 export type PluginReloadResult = PluginReloadResponse;
 export type PluginRemoveResult = PluginRemoveResponse;
 export type PluginTokenResult = PluginTokenResponse;
@@ -231,8 +224,6 @@ export interface PluginsArea {
   getSource(args: PluginGetSourceArgs): Promise<PluginGetSourceResult>;
   install(args: PluginInstallArgs): Promise<PluginInstallResult>;
   list(args?: PluginListArgs): Promise<PluginListResult>;
-  /** Enabled plugins the server did not load (incompatible, error, missing). */
-  listAttention(args?: PluginAttentionArgs): Promise<PluginAttentionResult>;
   listUpdateResults(
     args?: PluginListUpdateResultsArgs,
   ): Promise<PluginCheckUpdatesResult>;
@@ -460,13 +451,6 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       return requestParsed("/api/v1/plugins", pluginListResponseSchema, {
         signal: input.signal,
       });
-    },
-    async listAttention(input = {}) {
-      return requestParsed(
-        "/api/v1/plugins/attention",
-        pluginAttentionResponseSchema,
-        { signal: input.signal },
-      );
     },
     async listUpdateResults(input = {}) {
       const response = await requestParsed(

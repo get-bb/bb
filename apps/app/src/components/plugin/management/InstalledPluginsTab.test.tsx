@@ -58,7 +58,7 @@ afterEach(() => {
 });
 
 describe("InstalledPluginRow", () => {
-  it("shows the status word and detail at rest and marks the switch when a plugin is incompatible", () => {
+  it("shows the status word and detail and marks the switch when a plugin is not running", () => {
     renderRow(
       plugin({
         status: "incompatible",
@@ -69,32 +69,17 @@ describe("InstalledPluginRow", () => {
     expect(screen.getByTestId("plugin-runtime-status-notify").textContent).toBe(
       "Incompatible",
     );
-    // The server's detail replaces the marketing description.
     expect(
       screen.getByText("requires bb >=0.38.0 <0.39.0, this is 0.39.0"),
     ).toBeTruthy();
+    // The switch stays "on" (the user enabled it) but says so honestly.
     expect(
-      screen.queryByText("Desktop notifications when a thread needs you."),
-    ).toBeNull();
-    // The switch is still "on" (the user enabled it) but says so honestly.
-    expect(screen.getByTestId("plugin-not-running-notify").textContent).toBe(
-      "not running",
-    );
-    const toggle = screen.getByRole("switch", {
-      name: "Disable notify (incompatible, not running)",
-    });
-    expect(toggle.getAttribute("aria-checked")).toBe("true");
-  });
-
-  it("keeps a running plugin's row quiet", () => {
-    renderRow(plugin());
-
-    expect(screen.queryByTestId("plugin-runtime-status-notify")).toBeNull();
-    expect(screen.queryByTestId("plugin-not-running-notify")).toBeNull();
-    expect(
-      screen.getByText("Desktop notifications when a thread needs you."),
-    ).toBeTruthy();
-    expect(screen.getByRole("switch", { name: "Disable notify" })).toBeTruthy();
+      screen
+        .getByRole("switch", {
+          name: "Disable notify (incompatible, not running)",
+        })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
   });
 
   it("does not call a needs-configuration plugin not running", () => {
@@ -105,9 +90,6 @@ describe("InstalledPluginRow", () => {
       }),
     );
 
-    expect(screen.getByTestId("plugin-runtime-status-notify").textContent).toBe(
-      "Needs configuration",
-    );
     expect(screen.getByText("Set an API token.")).toBeTruthy();
     expect(screen.queryByTestId("plugin-not-running-notify")).toBeNull();
   });

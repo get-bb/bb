@@ -44,10 +44,7 @@ import {
 } from "../plugin-catalog/marketplace-publishers.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import {
-  isPluginAttentionStatus,
-  PLUGIN_ATTENTION_DETAIL_MAX_LENGTH,
   ROOT_PLUGIN_SOURCE_SELECTION,
-  type PluginAttentionEntry,
   type PluginCapabilitySummary,
   type PluginSourceSelection,
 } from "@bb/server-contract";
@@ -178,12 +175,6 @@ export interface PluginService {
   /** Dispose all loaded plugins (server shutdown). */
   stop(): Promise<void>;
   list(): PluginListEntry[];
-  /**
-   * Enabled plugins the server did not load (incompatible, error, missing):
-   * the small subset attention surfaces poll for, without the schedule,
-   * publisher, and update-state work `list()` does per row.
-   */
-  listAttention(): PluginAttentionEntry[];
   /** Palettes declared by currently loaded plugins, ordered by plugin id. */
   listThemes(): PluginThemeMeta[];
   /** Read a loaded plugin palette by its globally namespaced id. */
@@ -1304,34 +1295,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return capabilities;
   }
 
-  function listAttention(): PluginAttentionEntry[] {
-    return listInstalledPlugins(deps.db)
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .flatMap((row) => {
-        // Same fallback as list(): an enabled row with no runtime status yet
-        // is an error ("not loaded"), a disabled one is just disabled.
-        const runtime = statuses.get(row.id);
-        const status = runtime?.status ?? (row.enabled ? "error" : "disabled");
-        if (!row.enabled || !isPluginAttentionStatus(status)) return [];
-        const detail = runtime ? runtime.detail : "not loaded";
-        return [
-          {
-            id: row.id,
-            name:
-              loaded.get(row.id)?.manifest.name ??
-              identities.get(row.id)?.manifest.name ??
-              null,
-            status,
-            statusDetail:
-              detail === null ||
-              detail.length <= PLUGIN_ATTENTION_DETAIL_MAX_LENGTH
-                ? detail
-                : `${detail.slice(0, PLUGIN_ATTENTION_DETAIL_MAX_LENGTH - 1)}…`,
-          },
-        ];
-      });
-  }
-
   function list(): PluginListEntry[] {
     const scheduleRows = listPluginSchedules(deps.db);
     const rows = listInstalledPlugins(deps.db);
@@ -1628,7 +1591,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     list,
-    listAttention,
 
     async install(source, selection) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {

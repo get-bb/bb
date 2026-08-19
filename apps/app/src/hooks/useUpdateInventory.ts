@@ -11,7 +11,8 @@ import {
   type ProviderCliIssue,
 } from "@/components/provider-cli/provider-cli-install";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
-import { usePluginAttention } from "@/hooks/usePluginAttention";
+import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
+import { pluginsNeedingAttention } from "@/hooks/usePluginAttention";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { hostProviderCliStatusQueryKey } from "@/hooks/queries/query-keys";
 import { SESSION_STATIC_QUERY_POLICY } from "@/hooks/queries/query-policies";
@@ -43,11 +44,7 @@ export interface UpdateInventory {
   /** Desktop shell downloaded an update; a relaunch applies it. */
   desktopUpdateReady: boolean;
   machines: UpdateInventoryMachine[];
-  /**
-   * Installed plugins that are enabled but not running (incompatible, error,
-   * or missing). Not an update, but the same quiet attention surface: an
-   * `engines.bb` mismatch after a bb upgrade otherwise vanishes silently.
-   */
+  /** Enabled plugins that are not running (incompatible, error, missing). */
   pluginAttentionCount: number;
   /** Count of things a user can act on right now. */
   actionableCount: number;
@@ -68,10 +65,9 @@ interface UseUpdateInventoryOptions {
 /**
  * One consolidated view of every update bb knows about: the bb app itself
  * (npm registry / desktop feed) plus provider CLIs on every connected
- * machine, plus installed plugins that stopped running. Remote daemons
- * follow the server version automatically via protocol self-update, so
- * per-machine bb rows only surface when a daemon is stuck and needs a manual
- * retry.
+ * machine. Remote daemons follow the server version automatically via
+ * protocol self-update, so per-machine bb rows only surface when a daemon is
+ * stuck and needs a manual retry.
  */
 export function useUpdateInventory(
   options?: UseUpdateInventoryOptions,
@@ -81,7 +77,9 @@ export function useUpdateInventory(
   const systemConfigQuery = useSystemConfig({ enabled });
   const hostsQuery = useHosts({ enabled });
   const { desktopInfo, isDesktop } = useDesktopUpdateInfo();
-  const pluginAttention = usePluginAttention({ enabled });
+  const pluginAttentionCount = pluginsNeedingAttention(
+    usePluginList({ enabled }).data?.plugins ?? [],
+  ).length;
 
   const hosts = useMemo(() => hostsQuery.data ?? [], [hostsQuery.data]);
   const connectedHosts = useMemo(
@@ -150,7 +148,7 @@ export function useUpdateInventory(
     ) +
     (appUpdateAvailable ? 1 : 0) +
     (desktopUpdateReady ? 1 : 0) +
-    pluginAttention.count;
+    pluginAttentionCount;
 
   const desktopLastCheckedAt =
     desktopInfo?.lastCheckedAt === null ||
@@ -175,7 +173,7 @@ export function useUpdateInventory(
     appUpdateAvailable,
     desktopUpdateReady,
     machines,
-    pluginAttentionCount: pluginAttention.count,
+    pluginAttentionCount,
     actionableCount,
     hasAttention: actionableCount > 0,
     lastCheckedAt,

@@ -3,48 +3,38 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Provider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
-import type { PluginAttentionEntry } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
+import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 
-const usePluginAttentionMock = vi.hoisted(() => vi.fn());
-const useSystemVersionMock = vi.hoisted(() => vi.fn());
+const usePluginListMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/hooks/usePluginAttention", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/hooks/usePluginAttention")>()),
-  usePluginAttention: usePluginAttentionMock,
-}));
-
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemVersion: useSystemVersionMock,
+vi.mock("@/hooks/queries/plugin-settings-queries", () => ({
+  usePluginList: usePluginListMock,
 }));
 
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
-  usePluginAttentionMock.mockReset();
-  useSystemVersionMock.mockReset();
 });
 
-function entry(overrides: Partial<PluginAttentionEntry>): PluginAttentionEntry {
+function plugin(overrides: Partial<PluginListItem>): PluginListItem {
   return {
     id: "notify",
     name: "Notify",
+    enabled: true,
     status: "incompatible",
     statusDetail: "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
     ...overrides,
-  };
+  } as PluginListItem;
 }
 
-function renderGlyph(plugins: PluginAttentionEntry[], version = "0.39.0") {
-  usePluginAttentionMock.mockReturnValue({ count: plugins.length, plugins });
-  useSystemVersionMock.mockReturnValue({
-    data: { currentVersion: version },
-  });
+function renderGlyph(plugins: PluginListItem[]) {
+  usePluginListMock.mockReturnValue({ data: { plugins } });
+  // A fresh jotai Provider per render: "across a remount" below means the
+  // acknowledgement survived only through localStorage, like a page reload.
   return render(
-    // A fresh jotai Provider per render, so "across remount" below means the
-    // acknowledgement survived only through localStorage, like a page reload.
     <Provider>
       <MemoryRouter>
         <SidebarProvider>
@@ -55,97 +45,61 @@ function renderGlyph(plugins: PluginAttentionEntry[], version = "0.39.0") {
   );
 }
 
-function glyph() {
-  return screen.queryByTestId("sidebar-plugin-attention-glyph");
-}
+const glyph = () => screen.queryByTestId("sidebar-plugin-attention-glyph");
 
 describe("SidebarPluginAttentionGlyph", () => {
   it("renders nothing while every enabled plugin runs", () => {
-    renderGlyph([]);
-
-    expect(screen.queryByTestId("sidebar-plugin-attention-glyph")).toBeNull();
-    expect(document.querySelector('[data-icon="AlertTriangle"]')).toBeNull();
-  });
-
-  it("shows one warning triangle that names the incompatible plugin and opens Installed plugins", () => {
-    renderGlyph([entry({})]);
-
-    const glyph = screen.getByTestId("sidebar-plugin-attention-glyph");
-    expect(glyph.getAttribute("aria-label")).toBe(
-      "Notify is incompatible with bb 0.39.0",
-    );
-    expect(glyph.getAttribute("href")).toBe(
-      "/extensions/plugins?view=installed",
-    );
-    expect(glyph.querySelector('[data-icon="AlertTriangle"]')).not.toBeNull();
-    // A glyph, not a chip: no visible count or sentence.
-    expect(glyph.textContent).toBe("Notify is incompatible with bb 0.39.0");
-    expect(glyph.querySelector(".sr-only")).not.toBeNull();
-    expect(glyph.className).toContain("footer-action");
-    expect(glyph.className).toContain("text-warning-text");
-  });
-
-  it("collapses several plugins to a count", () => {
-    renderGlyph([entry({}), entry({ id: "foo", name: "Foo", status: "error" })]);
-
-    expect(
-      screen
-        .getByTestId("sidebar-plugin-attention-glyph")
-        .getAttribute("aria-label"),
-    ).toBe("2 plugins are not running");
-    expect(
-      document.querySelectorAll('[data-icon="AlertTriangle"]').length,
-    ).toBe(1);
-  });
-
-  it("hides after a click as an acknowledgement of the current set", () => {
-    renderGlyph([entry({})]);
-
-    fireEvent.click(screen.getByTestId("sidebar-plugin-attention-glyph"));
-
+    renderGlyph([
+      plugin({ status: "running" }),
+      plugin({ id: "off", enabled: false, status: "incompatible" }),
+    ]);
     expect(glyph()).toBeNull();
   });
 
-  it("stays hidden across a remount while the set is unchanged", () => {
-    renderGlyph([entry({})]);
-    fireEvent.click(screen.getByTestId("sidebar-plugin-attention-glyph"));
-    cleanup();
-
-    // Query order must not matter; only the entries do.
-    renderGlyph([entry({})]);
-
-    expect(glyph()).toBeNull();
+  it("names the plugin, links to Installed plugins, and uses the warning tone", () => {
+    renderGlyph([plugin({})]);
+    const el = glyph()!;
+    expect(el.getAttribute("aria-label")).toBe(
+      "Notify is incompatible: requires bb >=0.38.0 <0.39.0, this is 0.39.0",
+    );
+    expect(el.getAttribute("href")).toBe("/extensions/plugins?view=installed");
+    expect(el.className).toContain("text-warning-text");
+    expect(el.querySelector('[data-icon="AlertTriangle"]')).not.toBeNull();
   });
 
-  it("returns when a plugin is added, changes status, or changes detail", () => {
-    renderGlyph([entry({})]);
-    fireEvent.click(screen.getByTestId("sidebar-plugin-attention-glyph"));
+  it("hides on click, stays hidden for the same set across a remount, and returns on any change", () => {
+    renderGlyph([plugin({})]);
+    fireEvent.click(glyph()!);
+    expect(glyph()).toBeNull();
     cleanup();
 
-    renderGlyph([entry({}), entry({ id: "foo", name: "Foo", status: "error" })]);
+    renderGlyph([plugin({})]);
+    expect(glyph()).toBeNull();
+    cleanup();
+
+    renderGlyph([plugin({ status: "error", statusDetail: "boom" })]);
     expect(glyph()).not.toBeNull();
     cleanup();
 
-    renderGlyph([entry({ status: "missing" })]);
-    expect(glyph()).not.toBeNull();
-    cleanup();
-
-    renderGlyph([entry({ statusDetail: "requires bb >=0.40.0, this is 0.39.0" })]);
-    expect(glyph()).not.toBeNull();
+    renderGlyph([
+      plugin({}),
+      plugin({ id: "foo", name: "Foo", status: "missing" }),
+    ]);
+    expect(glyph()?.getAttribute("aria-label")).toBe(
+      "2 plugins are not running",
+    );
   });
 
   it("clears the acknowledgement when the count drops to zero", () => {
-    renderGlyph([entry({})]);
-    fireEvent.click(screen.getByTestId("sidebar-plugin-attention-glyph"));
+    renderGlyph([plugin({})]);
+    fireEvent.click(glyph()!);
     cleanup();
 
-    // Every plugin runs again (bb upgraded, plugin updated, or disabled).
     renderGlyph([]);
     expect(glyph()).toBeNull();
     cleanup();
 
-    // The same failure later is a new problem and shows again.
-    renderGlyph([entry({})]);
+    renderGlyph([plugin({})]);
     expect(glyph()).not.toBeNull();
   });
 });

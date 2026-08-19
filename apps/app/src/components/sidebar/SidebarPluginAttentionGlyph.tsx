@@ -1,79 +1,75 @@
 import { useEffect } from "react";
 import { useAtom } from "jotai";
+import { atomWithStorage } from "jotai/utils";
 import { Link } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navigation";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar.js";
-import { useSystemVersion } from "@/hooks/queries/system-queries";
+import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import {
   pluginAttentionLabel,
-  usePluginAttention,
+  pluginsNeedingAttention,
 } from "@/hooks/usePluginAttention";
-import {
-  acknowledgedPluginAttentionKeyAtom,
-  pluginAttentionSnapshotKey,
-} from "./pluginAttentionAcknowledgementAtom";
+import { createJsonLocalStorage } from "@/lib/browser-storage";
 
-export interface SidebarPluginAttentionGlyphProps {
-  /** Shares the footer action buttons' size, muted weight, and hover. */
-  className: string;
-  onNavigate?: () => void;
-}
+/**
+ * Snapshot key of the attention set the user acknowledged by clicking the
+ * glyph: sorted `[id, status, statusDetail]` tuples, so the glyph stays hidden
+ * only while that exact set persists and returns on any change (#1915).
+ */
+const acknowledgedAttentionKeyAtom = atomWithStorage<string | null>(
+  "bb.sidebar.pluginAttentionAcknowledged",
+  null,
+  createJsonLocalStorage<string | null>(),
+  { getOnInit: true },
+);
 
 /**
  * One muted warning triangle in the sidebar footer tray while an enabled
- * plugin is not running (incompatible after a bb upgrade, failed, or
- * missing). It links to Extensions → Installed plugins, where each plugin
- * shows its status and detail. The glyph is derived from the live attention
- * summary and never stored, so it disappears once every enabled plugin runs
- * again (#1915).
- *
- * A click acknowledges the current set: the glyph hides while the set of
- * {id, status, detail} entries stays the same and returns when a plugin is
- * added, changes status, or changes detail. A count of zero clears the
- * acknowledgement so the next problem shows.
+ * plugin is not running. Derived from the plugin list, never stored, so it
+ * disappears once every enabled plugin runs again.
  */
 export function SidebarPluginAttentionGlyph({
   className,
   onNavigate,
-}: SidebarPluginAttentionGlyphProps) {
-  const attention = usePluginAttention();
-  const systemVersion = useSystemVersion({ enabled: attention.count > 0 });
-  const [acknowledgedKey, setAcknowledgedKey] = useAtom(
-    acknowledgedPluginAttentionKeyAtom,
+}: {
+  className: string;
+  onNavigate?: () => void;
+}) {
+  const plugins = pluginsNeedingAttention(
+    usePluginList({ enabled: true }).data?.plugins ?? [],
   );
-  const snapshotKey =
-    attention.count > 0 ? pluginAttentionSnapshotKey(attention.plugins) : null;
+  const [acknowledgedKey, setAcknowledgedKey] = useAtom(
+    acknowledgedAttentionKeyAtom,
+  );
+  const key =
+    plugins.length === 0
+      ? null
+      : JSON.stringify(
+          [...plugins]
+            .sort((a, b) => a.id.localeCompare(b.id))
+            .map((p) => [p.id, p.status, p.statusDetail]),
+        );
 
   useEffect(() => {
-    if (attention.count === 0 && acknowledgedKey !== null) {
-      setAcknowledgedKey(null);
-    }
-  }, [attention.count, acknowledgedKey, setAcknowledgedKey]);
+    if (key === null && acknowledgedKey !== null) setAcknowledgedKey(null);
+  }, [key, acknowledgedKey, setAcknowledgedKey]);
 
-  if (snapshotKey === null || snapshotKey === acknowledgedKey) {
-    return null;
-  }
-  const label = pluginAttentionLabel(
-    attention.plugins,
-    systemVersion.data?.currentVersion,
-  );
+  if (key === null || key === acknowledgedKey) return null;
+  const label = pluginAttentionLabel(plugins);
   return (
     <SidebarMenuItem className="min-w-0">
       <SidebarMenuButton
         asChild
         aria-label={label}
         tooltip={{ children: label, hidden: false, side: "top" }}
-        className={cn(
-          className,
-          "text-warning-text hover:text-warning-text [&>svg]:opacity-100",
-        )}
+        className={cn(className, "text-warning-text hover:text-warning-text")}
       >
         <Link
           to={getToolsOwnedCollectionRoutePath("plugins")}
           onClick={() => {
-            setAcknowledgedKey(snapshotKey);
+            setAcknowledgedKey(key);
             onNavigate?.();
           }}
           data-testid="sidebar-plugin-attention-glyph"

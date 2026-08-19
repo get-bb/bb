@@ -226,64 +226,6 @@ export const pluginListResponseSchema = z.object({
 export type PluginListResponse = z.infer<typeof pluginListResponseSchema>;
 
 /**
- * Runtime statuses that mean an enabled plugin is not doing its job and the
- * user has to act: an `engines.bb` mismatch after a bb upgrade, a factory
- * crash, or a deleted plugin directory. `disabled` is a user choice, and
- * `needs-configuration` and `degraded` have their own in-product prompts, so
- * neither counts (#1915). The server applies this policy in
- * `GET /plugins/attention`; the app and CLI read the result.
- */
-export const PLUGIN_ATTENTION_STATUSES = [
-  "incompatible",
-  "error",
-  "missing",
-] as const satisfies readonly PluginRuntimeStatus[];
-export const pluginAttentionStatusSchema = z.enum(PLUGIN_ATTENTION_STATUSES);
-export type PluginAttentionStatus = z.infer<typeof pluginAttentionStatusSchema>;
-
-export function isPluginAttentionStatus(
-  status: PluginRuntimeStatus,
-): status is PluginAttentionStatus {
-  return (PLUGIN_ATTENTION_STATUSES as readonly PluginRuntimeStatus[]).includes(
-    status,
-  );
-}
-
-export function pluginNeedsAttention(plugin: {
-  enabled: boolean;
-  status: PluginRuntimeStatus;
-}): boolean {
-  return plugin.enabled && isPluginAttentionStatus(plugin.status);
-}
-
-/**
- * Longest `statusDetail` the attention summary carries. The engines message
- * ("requires bb >=0.38.0 <0.39.0, this is 0.39.0") fits with room to spare; a
- * factory stack trace does not, and the summary is polled by every app page
- * and by `bb status`, so the server cuts it here and keeps the full text in
- * the plugin log and in the full plugin list.
- */
-export const PLUGIN_ATTENTION_DETAIL_MAX_LENGTH = 200;
-
-export const pluginAttentionEntrySchema = z.object({
-  id: z.string(),
-  /** Manifest display name; null when the manifest never parsed. */
-  name: z.string().nullable(),
-  /** Only the statuses that need attention; the server filters the rest. */
-  status: pluginAttentionStatusSchema,
-  statusDetail: z.string().max(PLUGIN_ATTENTION_DETAIL_MAX_LENGTH).nullable(),
-});
-export type PluginAttentionEntry = z.infer<typeof pluginAttentionEntrySchema>;
-
-/** Enabled plugins the server did not load; a small subset of the list. */
-export const pluginAttentionResponseSchema = z.object({
-  plugins: z.array(pluginAttentionEntrySchema),
-});
-export type PluginAttentionResponse = z.infer<
-  typeof pluginAttentionResponseSchema
->;
-
-/**
  * Which plugin of a source an install selects. A repository can hold several
  * plugins, indexed by a `.bb/plugins.json` collection manifest: "subdirectory"
  * is the primitive, "entry" resolves a manifest entry name, and "root" installs
