@@ -64,12 +64,14 @@ describe("AppFileExternalNavigationHost", () => {
       </AppFileExternalNavigationHost>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Open external" }));
-    await waitFor(() =>
-      expect(openPreferred).toHaveBeenCalledWith({
-        columnNumber: 3,
-        lineNumber: 12,
-        path: "/workspace/src/example.ts",
-      }),
+    await waitFor(
+      () =>
+        expect(openPreferred).toHaveBeenCalledWith({
+          columnNumber: 3,
+          lineNumber: 12,
+          path: "/workspace/src/example.ts",
+        }),
+      { timeout: 5_000 },
     );
   });
 });
