@@ -2910,6 +2910,21 @@ export function findStoredTimelineWindowByteBudgetFloor(
   db: DbConnection,
   args: FindStoredTimelineWindowByteBudgetFloorArgs,
 ): StoredTimelineWindowByteBudgetFloor {
+  // The common case is a window that fits. Let SQLite total it and return one
+  // scalar instead of crossing the native boundary once per event merely to
+  // rediscover that no floor is needed. Oversized windows still take the
+  // ordered iterator below so they retain the exact cutoff/placeholder rules.
+  const windowDataBytes = getStoredTimelineWindowEventDataBytes(db, {
+    beforeSequence: args.beforeSequence,
+    excludedTypes: args.excludedTypes,
+    maxInlineOutputChars: args.maxInlineOutputChars,
+    sequenceStart: args.sequenceStart,
+    threadId: args.threadId,
+  });
+  if (windowDataBytes <= args.maxDataBytes) {
+    return { eventDataBytes: windowDataBytes, kind: "fits" };
+  }
+
   const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);
   const query = db
     .select({
