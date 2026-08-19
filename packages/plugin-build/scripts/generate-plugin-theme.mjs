@@ -12,7 +12,7 @@
 // (see turbo.json) before every task that resolves this package's sources.
 //
 //   node packages/plugin-build/scripts/generate-plugin-theme.mjs
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -135,7 +135,14 @@ try {
 
 if (existing !== generated) {
   await mkdir(path.dirname(outPath), { recursive: true });
-  await writeFile(outPath, generated);
+  // Temp sibling + rename so a concurrent reader never sees a partial module.
+  const tempPath = `${outPath}.${process.pid}.tmp`;
+  try {
+    await writeFile(tempPath, generated);
+    await rename(tempPath, outPath);
+  } finally {
+    await rm(tempPath, { force: true });
+  }
   console.log(`wrote ${path.relative(repoRoot, outPath)}`);
 } else {
   console.log("plugin-theme.generated.ts up to date");

@@ -50,7 +50,7 @@
 - Always use Turbo when building and typechecking: `pnpm exec turbo run <task> --filter=@bb/<pkg>`. Turbo ensures upstream `^build` dependencies run first.
 - Typecheck with `pnpm exec turbo run typecheck --filter=@bb/<pkg>`.
 - Do not run package scripts directly, such as `pnpm --filter @bb/foo test`, or raw `npx tsc --noEmit` unless you are deliberately bypassing repo orchestration for investigation.
-- Generated modules are not committed: `packages/templates/src/generated/`, `packages/plugin-build/src/generated/`, and `packages/plugin-sdk/bundled-types/` are gitignored. Turbo tasks (`@bb/templates#generate:*`, `@bb/plugin-build#generate`, `@get-bb/plugin-sdk#build:types`) produce them before every dependent build, typecheck, and test task, and `pnpm install` runs the cheap ones. Never commit a generated module and never add a `--check` mode for one; when you add a generated module, add a turbo task with explicit `inputs`/`outputs` and edges from its consumers.
+- Generated modules are not committed: `packages/templates/src/generated/`, `packages/plugin-build/src/generated/`, and `packages/plugin-sdk/bundled-types/` are gitignored. Turbo tasks (`@bb/templates#generate:*`, `@bb/plugin-build#generate`, `@get-bb/plugin-sdk#build:types`) produce them before every dependent build, typecheck, and test task, and `pnpm install` runs the cheap ones. If your editor cannot resolve `@get-bb/plugin-sdk` inside a plugin, run `pnpm exec turbo run build:types --filter=@get-bb/plugin-sdk` once. Never commit a generated module and never add a `--check` mode for one; when you add a generated module, add a turbo task with explicit `inputs`/`outputs` and edges from its consumers.
 
 ## Testing
 

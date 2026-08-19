@@ -12,10 +12,7 @@ import {
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { derivePluginId, PLUGIN_SDK_VERSION } from "@bb/domain";
-import {
-  PLUGIN_SDK_APP_DTS,
-  PLUGIN_SDK_DTS,
-} from "./generated/plugin-sdk-dts.generated.js";
+import { loadPluginSdkDeclarations } from "./plugin-sdk-dts.js";
 import {
   PLUGIN_STARTER_DEPENDENCIES,
   PLUGIN_STARTER_FILES,
@@ -85,11 +82,12 @@ export async function syncPluginTypes(
 ): Promise<SyncedPluginTypeFile[]> {
   const { rootDir, app, check = false } = args;
   const typesDir = join(rootDir, "types");
+  const declarations = await loadPluginSdkDeclarations();
   const candidates: { name: string; content: string; optional: boolean }[] = [
-    { name: "bb-plugin-sdk.d.ts", content: PLUGIN_SDK_DTS, optional: false },
+    { name: "bb-plugin-sdk.d.ts", content: declarations.root, optional: false },
     {
       name: "bb-plugin-sdk-app.d.ts",
-      content: PLUGIN_SDK_APP_DTS,
+      content: declarations.app,
       // Refresh a frontend declaration the plugin already has even when the
       // caller did not detect bb.app; never create one it never asked for.
       optional: !app,
@@ -186,7 +184,8 @@ const VENDORED_DECLARATIONS = [
  * same rule. A quoted specifier inside a comment is rewritten too — the
  * comment is talking about the import that just moved.
  */
-const LEGACY_SDK_SPECIFIER_PATTERN = /(["'])@bb\/plugin-sdk((?:\/[^"'\n]*)?)\1/g;
+const LEGACY_SDK_SPECIFIER_PATTERN =
+  /(["'])@bb\/plugin-sdk((?:\/[^"'\n]*)?)\1/g;
 
 /**
  * Source extensions the migration scans, and the directories it never enters.
@@ -195,7 +194,12 @@ const LEGACY_SDK_SPECIFIER_PATTERN = /(["'])@bb\/plugin-sdk((?:\/[^"'\n]*)?)\1/g
  * deleting — and any other dot-directory.
  */
 const PLUGIN_SOURCE_EXTENSIONS = [".ts", ".tsx"] as const;
-const UNSCANNED_DIRECTORIES = new Set(["dist", "node_modules", ".git", "types"]);
+const UNSCANNED_DIRECTORIES = new Set([
+  "dist",
+  "node_modules",
+  ".git",
+  "types",
+]);
 /** Depth guard for a pathological tree; real plugins nest a few levels. */
 const MAX_SOURCE_SCAN_DEPTH = 12;
 
@@ -357,8 +361,7 @@ export async function migratePluginToPackageLayout(
     // report and the tsconfig edit below must then follow the directory that is
     // still there, not the plan that expected it gone.
     await rmdir(typesDir).catch(() => undefined);
-    result.removedTypesDir =
-      (await statNoFollow(typesDir, "types")) === null;
+    result.removedTypesDir = (await statNoFollow(typesDir, "types")) === null;
   }
   // The tsconfig write happens last so the `types` include entries are dropped
   // only against a directory that is verifiably gone. When the rmdir did not
@@ -454,7 +457,8 @@ async function planSdkImportRewrites(
       // Dirent.isSymbolicLink is the lstat-equivalent readdir reports, so a
       // linked file or directory is skipped rather than followed.
       if (entry.isSymbolicLink()) continue;
-      const relativePath = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+      const relativePath =
+        prefix === "" ? entry.name : `${prefix}/${entry.name}`;
       if (entry.isDirectory()) {
         if (UNSCANNED_DIRECTORIES.has(entry.name)) continue;
         if (entry.name.startsWith(".")) continue;
@@ -575,7 +579,11 @@ async function planManifest(
   let manifest: Record<string, unknown>;
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
       throw new Error("not an object");
     }
     manifest = parsed as Record<string, unknown>;
@@ -651,7 +659,8 @@ function readSdkPinFrom(manifest: Record<string, unknown>): {
     typeof asRecord(manifest.dependencies)["@get-bb/plugin-sdk"] === "string";
   for (const field of ["devDependencies", "dependencies"] as const) {
     const declared = asRecord(manifest[field])["@get-bb/plugin-sdk"];
-    if (typeof declared === "string") return { inDependencies, version: declared };
+    if (typeof declared === "string")
+      return { inDependencies, version: declared };
   }
   return { inDependencies, version: null };
 }
@@ -675,7 +684,9 @@ function insertDependency(
 ): Record<string, unknown> {
   if (name in deps) return { ...deps, [name]: version };
   const keys = Object.keys(deps);
-  const sorted = keys.every((key, index) => index === 0 || keys[index - 1]! < key);
+  const sorted = keys.every(
+    (key, index) => index === 0 || keys[index - 1]! < key,
+  );
   if (!sorted) return { ...deps, [name]: version };
   const next: Record<string, unknown> = {};
   let inserted = false;
@@ -758,7 +769,11 @@ async function planTsconfig(
   let tsconfig: Record<string, unknown>;
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
       throw new Error("not an object");
     }
     tsconfig = parsed as Record<string, unknown>;
@@ -793,9 +808,7 @@ async function planTsconfig(
 
   if (removedPathMaps.length > 0) {
     const nextPaths = Object.fromEntries(
-      Object.entries(paths).filter(
-        ([key]) => !removedPathMaps.includes(key),
-      ),
+      Object.entries(paths).filter(([key]) => !removedPathMaps.includes(key)),
     );
     if (Object.keys(nextPaths).length === 0) {
       delete compilerOptions.paths;
@@ -1007,7 +1020,9 @@ async function writeFileAtomically(
   const suffix = `${process.pid}-${randomBytes(6).toString("hex")}.bb-tmp`;
   const tempPath = `${filePath}.${suffix}`;
   if (await pathExists(tempPath)) {
-    throw new Error(`refusing to overwrite the temporary file ${label}.${suffix}`);
+    throw new Error(
+      `refusing to overwrite the temporary file ${label}.${suffix}`,
+    );
   }
   await writeFile(tempPath, content, { flag: "wx" });
   try {

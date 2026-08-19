@@ -319,23 +319,33 @@
     // and tsc both use the `source` export condition — hash the sources of
     // dependency packages. Without it, a change in e.g. packages/domain
     // would cache-hit @bb/server#test/#typecheck and skip them stale.
-    //
-    // It also orders the cheap source generators: their outputs are
-    // gitignored `src/generated/*` modules that every source-resolving task
-    // may import (the prompt templates reach the browser app, the server, the
-    // CLI and the daemon; the plugin theme/runtime manifest reach every
-    // @bb/plugin-build consumer). One edge here covers all of them.
     "topo": {
       "dependsOn": [
-        "^topo",
-        "@bb/templates#generate:templates",
-        "@bb/plugin-build#generate"
+        "^topo"
       ]
     },
     // ---- Source generators --------------------------------------------------
     // Generated modules are never committed (see .gitignore). Each generator
     // is a turbo task with explicit inputs/outputs, so staleness is
     // structurally impossible and the files can never merge-conflict.
+    //
+    // The owning package's `topo` node depends on its generators, so every
+    // task of that package and of every package that (transitively) depends
+    // on it — the ones that can resolve the generated sources — is ordered
+    // after them and hashes them. Unrelated packages are untouched.
+    "@bb/templates#topo": {
+      "dependsOn": [
+        "^topo",
+        "@bb/templates#generate:templates",
+        "@bb/templates#generate:plugin-scaffold"
+      ]
+    },
+    "@bb/plugin-build#topo": {
+      "dependsOn": [
+        "^topo",
+        "@bb/plugin-build#generate"
+      ]
+    },
     "@bb/templates#generate:templates": {
       "dependsOn": [],
       "inputs": [
@@ -347,22 +357,17 @@
         "src/generated/templates.generated.ts"
       ]
     },
-    // Embeds the plugin SDK's bundled .d.ts and the registry starter items
-    // for `bb plugin new`. Reads bundled-types/ by file path — a task edge,
-    // not a package edge, which would create a cycle through @bb/sdk.
+    // The `bb plugin new --app` starter files from the (committed) component
+    // registry.
     "@bb/templates#generate:plugin-scaffold": {
-      "dependsOn": [
-        "@get-bb/plugin-sdk#build:types"
-      ],
+      "dependsOn": [],
       "inputs": [
         "scripts/generate-plugin-scaffold.mjs",
         "scripts/write-generated.mjs",
         "$TURBO_ROOT$/apps/app/package.json",
-        "$TURBO_ROOT$/packages/plugin-registry/r/**",
-        "$TURBO_ROOT$/packages/plugin-sdk/bundled-types/**"
+        "$TURBO_ROOT$/packages/plugin-registry/r/**"
       ],
       "outputs": [
-        "src/generated/plugin-sdk-dts.generated.ts",
         "src/generated/plugin-starter-files.generated.ts"
       ]
     },
@@ -388,40 +393,12 @@
         "topo"
       ]
     },
-    "@bb/templates#typecheck": {
-      "dependsOn": [
-        "@bb/templates#generate:plugin-scaffold",
-        "topo"
-      ]
-    },
-    // ---- Consumers of the `bb plugin new` scaffold embed -------------------
-    // apps/cli imports @bb/templates/plugin-scaffold (bb plugin new|types|
-    // migrate); apps/server's plugin-install test does too; the daemon bundles
-    // the CLI entry into host-daemon/dist/bb.
-    "@bb/cli#build": {
-      "dependsOn": [
-        "@bb/templates#generate:plugin-scaffold",
-        "topo"
-      ],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/package.json",
-        "$TURBO_ROOT$/packages/tsconfig/*.json",
-        "$TURBO_ROOT$/pnpm-lock.yaml",
-        "$TURBO_ROOT$/pnpm-workspace.yaml",
-        "$TURBO_ROOT$/scripts/build-node-entry.mjs",
-        "$TURBO_ROOT$/scripts/build-package.mjs",
-        "$TURBO_ROOT$/scripts/build-utils.mjs",
-        "$TURBO_ROOT$/scripts/precompress-app-dist.mjs",
-        "$TURBO_ROOT$/turbo.json"
-      ],
-      "outputs": [
-        "dist/**"
-      ]
-    },
+    // The packaged CLI (host-daemon/dist/bb) inlines the SDK declaration
+    // bundles for `bb plugin types` on vendored-layout plugins; see
+    // scripts/bundle-manifest.mjs and packages/templates/src/plugin-sdk-dts.ts.
     "@bb/host-daemon#build": {
       "dependsOn": [
-        "@bb/templates#generate:plugin-scaffold",
+        "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
       "inputs": [
@@ -440,22 +417,12 @@
         "dist/**"
       ]
     },
-    "@bb/cli#typecheck": {
-      "dependsOn": [
-        "@bb/templates#generate:plugin-scaffold",
-        "topo"
-      ]
-    },
-    "@bb/server#typecheck": {
-      "dependsOn": [
-        "@bb/templates#generate:plugin-scaffold",
-        "topo"
-      ]
-    },
+    // `bb plugin types|build|dev` on a vendored-layout plugin reads
+    // packages/plugin-sdk/bundled-types at runtime (no workspace embed).
     "@bb/cli#test": {
       "dependsOn": [
         "//#ensure-native-modules",
-        "@bb/templates#generate:plugin-scaffold",
+        "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
       "inputs": [
@@ -492,12 +459,12 @@
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
+    // syncPluginTypes reads packages/plugin-sdk/bundled-types at runtime, and
     // plugin-scaffold-external packs @get-bb/plugin-sdk (prepack rebuilds its
-    // dist), so the SDK build stays a dependency alongside the embed.
+    // dist), so the SDK build is a dependency.
     "@bb/templates#test": {
       "dependsOn": [
         "//#ensure-native-modules",
-        "@bb/templates#generate:plugin-scaffold",
         "@get-bb/plugin-sdk#build",
         "topo"
       ],
@@ -515,7 +482,6 @@
     "@bb/server#test": {
       "dependsOn": [
         "//#ensure-native-modules",
-        "@bb/templates#generate:plugin-scaffold",
         "@get-bb/plugin-sdk#build",
         "topo"
       ],
@@ -634,15 +600,19 @@
       ]
     },
     // bundled-types/*.d.ts: the package's published `types` surface, the
-    // in-repo plugins' typecheck surface, and the source of the scaffold
-    // embed. ~20s (rollup-plugin-dts), so only real consumers depend on it.
+    // in-repo plugins' typecheck surface, and what `bb plugin types` writes
+    // into vendored-layout plugins. ~20s (rollup-plugin-dts), so only real
+    // consumers depend on it. Generated modules are excluded from the hash:
+    // they are derived from sources already hashed here.
     "@get-bb/plugin-sdk#build:types": {
       "dependsOn": [],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/*/package.json",
         "$TURBO_ROOT$/packages/*/src/**",
-        "$TURBO_ROOT$/packages/plugin-sdk/scripts/**"
+        "!$TURBO_ROOT$/packages/*/src/generated/**",
+        "$TURBO_ROOT$/packages/plugin-sdk/scripts/**",
+        "$TURBO_ROOT$/packages/tsconfig/*.json"
       ],
       "outputs": [
         "bundled-types/**"
@@ -657,7 +627,9 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/*/package.json",
         "$TURBO_ROOT$/packages/*/src/**",
-        "$TURBO_ROOT$/packages/plugin-sdk/scripts/**"
+        "!$TURBO_ROOT$/packages/*/src/generated/**",
+        "$TURBO_ROOT$/packages/plugin-sdk/scripts/**",
+        "$TURBO_ROOT$/packages/tsconfig/*.json"
       ],
       "outputs": [
         "dist/**"

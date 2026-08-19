@@ -16,7 +16,14 @@
 // time by file path (no package edge, to avoid a dependency cycle), and the
 // in-repo plugins typecheck against it. Unchanged files are not rewritten so
 // mtimes stay stable for watchers.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { rollup } from "rollup";
@@ -147,7 +154,21 @@ for (const [fileName, content] of Object.entries(generated)) {
   if (current === content) {
     console.log(`Unchanged ${path.relative(pkgRoot, target)}`);
   } else {
-    writeFileSync(target, content);
+    writeAtomically(target, content);
     console.log(`Wrote ${path.relative(pkgRoot, target)}`);
+  }
+}
+
+/**
+ * Temp sibling + rename, so a concurrent reader (another turbo process, tsc
+ * in an editor) never sees a truncated declaration file.
+ */
+function writeAtomically(target, content) {
+  const temporary = `${target}.${process.pid}.tmp`;
+  try {
+    writeFileSync(temporary, content);
+    renameSync(temporary, target);
+  } finally {
+    rmSync(temporary, { force: true });
   }
 }
