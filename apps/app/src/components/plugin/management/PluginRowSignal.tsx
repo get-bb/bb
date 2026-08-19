@@ -72,7 +72,7 @@ export function PluginRowSignalView({
               aria-label={updateDescription}
               onClick={onUpdateClick}
             >
-              <Icon name="ArrowUp" className="size-4" aria-hidden />
+              <Icon name="PackageReceive" className="size-4" aria-hidden />
             </Button>
           </TooltipTrigger>
           <TooltipContent>{updateDescription}</TooltipContent>
