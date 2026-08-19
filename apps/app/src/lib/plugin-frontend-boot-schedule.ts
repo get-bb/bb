@@ -67,23 +67,13 @@ export function scheduleDeferredPluginFrontendBoot(
  * covers that.
  */
 export function requestBrowserIdle(callback: () => void): () => void {
-  const idleHost = window as Window & {
-    requestIdleCallback?: (
-      cb: () => void,
-      options: { timeout: number },
-    ) => number;
-    cancelIdleCallback?: (id: number) => void;
-  };
-  const requestIdleCallback = idleHost.requestIdleCallback;
-  const cancelIdleCallback = idleHost.cancelIdleCallback;
+  // lib.dom declares these unconditionally; WebKit still lacks them.
   if (
-    typeof requestIdleCallback === "function" &&
-    typeof cancelIdleCallback === "function"
+    typeof window.requestIdleCallback === "function" &&
+    typeof window.cancelIdleCallback === "function"
   ) {
-    const id = requestIdleCallback.call(idleHost, callback, {
-      timeout: 1_000,
-    });
-    return () => cancelIdleCallback.call(idleHost, id);
+    const id = window.requestIdleCallback(callback, { timeout: 1_000 });
+    return () => window.cancelIdleCallback(id);
   }
   let frame = window.requestAnimationFrame(() => {
     frame = window.requestAnimationFrame(callback);

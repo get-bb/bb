@@ -21,10 +21,6 @@ export function markRouteContentPainted(): void {
   resolvePainted = null;
 }
 
-export function isRouteContentPainted(): boolean {
-  return painted;
-}
-
 /** Resolves once the first route content has committed (never rejects). */
 export function whenRouteContentPainted(): Promise<void> {
   return paintedPromise;
