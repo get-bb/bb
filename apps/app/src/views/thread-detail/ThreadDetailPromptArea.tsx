@@ -239,6 +239,8 @@ interface InlineDraftComposerOptions {
   historyResetKey: string;
   isSubmitting: boolean;
   onChangeMessage: FollowUpComposerProps["onChangeMessage"];
+  /** Escape pressed in the editor; passes the editor's cancel action. */
+  onEscape?: FollowUpComposerProps["onEscape"];
   onSelectHistoryEntry: (draft: PromptDraftState) => void;
   permission: FollowUpPromptBoxProps["permission"];
   pluginComposerHost: PluginComposerHost;
@@ -280,6 +282,7 @@ function buildInlineDraftComposer(options: InlineDraftComposerOptions) {
         onChangeMessage: options.onChangeMessage,
         onModifierSubmit: options.submit,
         onSubmit: options.submit,
+        onEscape: options.onEscape,
         submitTitle: options.submitTitle,
         compactPromptPlaceholder: options.compactPromptPlaceholder,
         promptPlaceholder: options.promptPlaceholder,
@@ -1437,6 +1440,7 @@ export function ThreadDetailPromptArea({
               text,
               mentions,
             })),
+          onEscape: sentMessageEdit.onCancel,
           onSelectHistoryEntry: (nextDraft) =>
             sentMessageEdit.updateDraft(() => nextDraft),
           permission: bottomPermissionConfig,

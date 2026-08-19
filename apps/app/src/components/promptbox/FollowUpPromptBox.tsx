@@ -144,6 +144,12 @@ export interface FollowUpComposerProps {
   onChangeMessage: (value: string, mentionRanges: PromptTextMention[]) => void;
   onModifierSubmit: () => void;
   onSubmit: () => void;
+  /**
+   * Escape pressed in the editor with no higher-priority consumer open.
+   * Inline message editors pass their cancel action; when omitted, Escape
+   * blurs the editor (the bottom composer's behavior).
+   */
+  onEscape?: () => void;
   /** Accessible label and tooltip for the primary submit action. */
   submitTitle?: string;
   compactPromptPlaceholder: string;
@@ -725,6 +731,7 @@ function FollowUpPromptBoxWithComposer({
         mentionRanges={composer.mentionRanges}
         onChange={composer.onChangeMessage}
         onSubmit={onPrimarySubmit}
+        onEscape={composer.onEscape}
         blurOnPointerSubmit={isCompactViewport && isPointerCoarse}
         textEffects={textEffects}
         onComposerLayoutChange={setComposerLayout}

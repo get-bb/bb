@@ -1543,6 +1543,67 @@ describe("PromptBoxInternal submit shortcuts", () => {
   });
 });
 
+describe("PromptBoxInternal escape", () => {
+  it("routes Escape to onEscape instead of blurring the editor", async () => {
+    const onEscape = vi.fn();
+    const promptBoxRef = createRef<PromptBoxHandle>();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({ onEscape, value: "Edited message" })}
+        promptBoxRef={promptBoxRef}
+      />,
+    );
+    await focusPromptEnd(promptBoxRef);
+
+    const wasNotCanceled = fireEvent.keyDown(getPromptEditorElement(), {
+      key: "Escape",
+    });
+
+    expect(onEscape).toHaveBeenCalledTimes(1);
+    expect(wasNotCanceled).toBe(false);
+    // The cancel action owns what happens next; the editor must not also blur.
+    expect(document.activeElement).toBe(getPromptEditorElement());
+  });
+
+  it("dismisses an open typeahead before Escape reaches onEscape", async () => {
+    const onEscape = vi.fn();
+    const promptBoxRef = createRef<PromptBoxHandle>();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          onEscape,
+          value: "/re",
+          typeahead: buildTypeaheadConfig({
+            commandSuggestions: [
+              {
+                kind: "command",
+                name: "review",
+                source: "command",
+                origin: "user",
+                description: null,
+                argumentHint: null,
+              },
+            ],
+          }),
+        })}
+        promptBoxRef={promptBoxRef}
+      />,
+    );
+    await focusPromptEnd(promptBoxRef);
+    await screen.findByRole("button", { name: "review" });
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
+
+    expect(onEscape).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "review" })).toBeNull(),
+    );
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
+    expect(onEscape).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("PromptBoxInternal size controls", () => {
   it.each([
     ["thread", "calc(50dvh - 3rem)"],

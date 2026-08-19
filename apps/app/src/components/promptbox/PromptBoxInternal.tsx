@@ -406,6 +406,13 @@ interface PromptBoxInternalProps {
   mentionRanges: readonly PromptTextMention[];
   onChange: (value: string, mentionRanges: PromptTextMention[]) => void;
   onSubmit: () => void;
+  /**
+   * Replaces the default Escape behavior (blurring the editor). Inline
+   * message editors pass their cancel action so Escape closes the editor.
+   * Higher-priority Escape consumers (typeahead dismissal, voice-recording
+   * cancel) still run first.
+   */
+  onEscape?: () => void;
   /** Blur the editor after a pointer-activated primary submission. */
   blurOnPointerSubmit?: boolean;
   placeholder?: string;
@@ -1184,6 +1191,7 @@ export function PromptBoxInternal({
   mentionRanges,
   onChange,
   onSubmit,
+  onEscape,
   blurOnPointerSubmit = false,
   placeholder = "Ask anything. @ to mention files, folders, or sections",
   autoFocus = true,
@@ -2941,11 +2949,17 @@ export function PromptBoxInternal({
       }
 
       // Escape releases the composer so the keyboard can reach the rest of the
-      // app. Higher-priority Escape behavior still runs first: the typeahead
-      // menu above dismisses itself, and voice recording cancels from a window
-      // capture listener that stops the event before the editor sees it. A
-      // locked editor never reaches here — see the editor container below.
+      // app — or cancels the hosting editor when `onEscape` is provided (the
+      // inline message editors). Higher-priority Escape behavior still runs
+      // first: the typeahead menu above dismisses itself, and voice recording
+      // cancels from a window capture listener that stops the event before the
+      // editor sees it. A locked editor never reaches here — see the editor
+      // container below.
       if (event.key === "Escape") {
+        if (onEscape) {
+          onEscape();
+          return true;
+        }
         blurPromptEditor(currentEditor);
         return true;
       }
@@ -3076,6 +3090,7 @@ export function PromptBoxInternal({
       isPointerCoarse,
       loadMoreCommands,
       onCommandQueryChange,
+      onEscape,
       onMentionQueryChange,
       onModifierSubmit,
       postCompositionKeyDownEvents,

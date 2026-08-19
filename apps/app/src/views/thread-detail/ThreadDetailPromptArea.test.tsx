@@ -107,6 +107,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
       composer: {
         message: string;
         onChangeMessage: (message: string, mentions: []) => void;
+        onEscape?: () => void;
         onSubmit: () => void;
         submitTitle?: string;
         submitMode: { kind: string; reason?: string };
@@ -250,6 +251,11 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
             <button type="button" onClick={composer.onSubmit}>
               Submit composer
             </button>
+            {composer.onEscape ? (
+              <button type="button" onClick={composer.onEscape}>
+                Escape composer
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() =>
@@ -842,6 +848,18 @@ describe("ThreadDetailPromptArea", () => {
       }),
     );
     expect(onCancel).toHaveBeenCalledTimes(1);
+
+    // Escape in the edit composer cancels too; the bottom composer keeps its
+    // default Escape behavior (no onEscape).
+    expect(
+      within(bottomComposer!).queryByRole("button", {
+        name: "Escape composer",
+      }),
+    ).toBeNull();
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Escape composer" }),
+    );
+    expect(onCancel).toHaveBeenCalledTimes(2);
   });
 
   it("blocks a staged sent-message edit when the thread becomes ineligible", () => {
