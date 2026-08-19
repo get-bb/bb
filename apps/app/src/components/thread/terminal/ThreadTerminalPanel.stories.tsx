@@ -111,6 +111,7 @@ function makeController({
     isCreateTerminalPending,
     isPanelOpen,
     isTerminalQueryLoading,
+    shouldMountTerminalView: isPanelOpen,
     showTerminalPlaceholders,
     shouldRetainActiveTerminalView,
     terminalBodyMessage,

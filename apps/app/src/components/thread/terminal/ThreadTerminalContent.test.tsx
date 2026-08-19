@@ -7,7 +7,12 @@ import { ThreadTerminalContent } from "./ThreadTerminalContent";
 import type { ThreadTerminalController } from "./useThreadTerminalController";
 
 const threadTerminalView = vi.hoisted(() =>
-  vi.fn((_props: { autoFocus: boolean; isPanelOpen: boolean }) => null),
+  vi.fn((props: { autoFocus: boolean; isPanelOpen: boolean }) => (
+    <div
+      data-testid="terminal-view"
+      data-panel-open={String(props.isPanelOpen)}
+    />
+  )),
 );
 
 vi.mock("./ThreadTerminalView", () => ({
@@ -31,7 +36,10 @@ const session: TerminalSession = {
   lastUserInputAt: null,
 };
 
-function controller(isPanelOpen: boolean): ThreadTerminalController {
+function controller(
+  isPanelOpen: boolean,
+  shouldMountTerminalView: boolean = isPanelOpen,
+): ThreadTerminalController {
   return {
     activeSession: session,
     activeTerminalId: session.id,
@@ -49,6 +57,7 @@ function controller(isPanelOpen: boolean): ThreadTerminalController {
     isCreateTerminalPending: false,
     isPanelOpen,
     isTerminalQueryLoading: false,
+    shouldMountTerminalView,
     showTerminalPlaceholders: false,
     shouldRetainActiveTerminalView: false,
     terminalBodyMessage: "No terminals",
@@ -82,5 +91,47 @@ describe("ThreadTerminalContent", () => {
       autoFocus: true,
       isPanelOpen: true,
     });
+  });
+
+  it("keeps the mounted terminal view alive while a persisted panel is hidden", () => {
+    const rendered = render(
+      <ThreadTerminalContent autoFocus={false} controller={controller(true)} />,
+    );
+    const mountedView = rendered.getByTestId("terminal-view");
+
+    // Compact drawer swiped closed: the panel is hidden but still persisted
+    // open, so the controller asks to keep the view mounted.
+    rendered.rerender(
+      <ThreadTerminalContent
+        autoFocus={false}
+        controller={controller(false, true)}
+      />,
+    );
+
+    const hiddenView = rendered.getByTestId("terminal-view");
+    expect(hiddenView).toBe(mountedView);
+    expect(hiddenView.dataset.panelOpen).toBe("false");
+
+    // Reopening reuses the same xterm instance instead of remounting.
+    rendered.rerender(
+      <ThreadTerminalContent autoFocus={false} controller={controller(true)} />,
+    );
+    expect(rendered.getByTestId("terminal-view")).toBe(mountedView);
+  });
+
+  it("unmounts the terminal view once the panel is neither open nor persisted", () => {
+    const rendered = render(
+      <ThreadTerminalContent autoFocus={false} controller={controller(true)} />,
+    );
+    expect(rendered.queryByTestId("terminal-view")).not.toBeNull();
+
+    rendered.rerender(
+      <ThreadTerminalContent
+        autoFocus={false}
+        controller={controller(false, false)}
+      />,
+    );
+
+    expect(rendered.queryByTestId("terminal-view")).toBeNull();
   });
 });
