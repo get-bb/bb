@@ -442,6 +442,16 @@ type SidebarContext = {
 
 const SidebarContext = React.createContext<SidebarContext | null>(null);
 
+/**
+ * "Is the sidebar visible" as its own boolean context. The full
+ * {@link SidebarContext} value changes on every provider commit (the mobile
+ * close flips the closing flag, then four states), and its readers include
+ * the page header and the retained secondary panel, whose ~1000-line bodies
+ * only need this one bit. A boolean context re-renders them only when the
+ * bit flips. `null` outside a provider.
+ */
+const SidebarShowingContext = React.createContext<boolean | null>(null);
+
 const SidebarContentElementContext =
   React.createContext<React.RefObject<HTMLDivElement | null> | null>(null);
 
@@ -465,19 +475,18 @@ function useSidebar() {
   return context;
 }
 
-function useIsSidebarShowing() {
-  const { state, isCompactViewport, openMobile } = useSidebar();
-  return isCompactViewport ? openMobile : state === "expanded";
+function useIsSidebarShowing(): boolean {
+  const isShowing = React.useContext(SidebarShowingContext);
+  if (isShowing === null) {
+    throw new Error(
+      "useIsSidebarShowing must be used within a SidebarProvider.",
+    );
+  }
+  return isShowing;
 }
 
-function useOptionalIsSidebarShowing() {
-  const context = React.useContext(SidebarContext);
-  if (context === null) {
-    return null;
-  }
-  return context.isCompactViewport
-    ? context.openMobile
-    : context.state === "expanded";
+function useOptionalIsSidebarShowing(): boolean | null {
+  return React.useContext(SidebarShowingContext);
 }
 
 /**
@@ -702,35 +711,39 @@ const SidebarProvider = React.forwardRef<
       ],
     );
 
+    const isSidebarShowing = isCompactViewport ? openMobile : open;
+
     return (
       <SidebarContext.Provider value={contextValue}>
-        {/* Match the agent message action bar's tooltip timing (300ms open
+        <SidebarShowingContext.Provider value={isSidebarShowing}>
+          {/* Match the agent message action bar's tooltip timing (300ms open
             delay + Radix's default skip window) so sidebar icon tooltips feel
             the same instead of flashing instantly on hover. disableHoverableContent
             dismisses the tooltip the moment the pointer leaves the trigger, so it
             never lingers/floats while the mouse moves on. */}
-        <TooltipProvider delayDuration={300} disableHoverableContent>
-          <div
-            style={
-              {
-                "--sidebar-width": SIDEBAR_WIDTH,
-                "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
-                ...style,
-              } as React.CSSProperties
-            }
-            className={cn(
-              // Fill the app root instead of re-measuring the viewport here.
-              // app.css owns the browser-mode-specific root height, while fixed
-              // sidebar panels read the shared --bb-shell-height override.
-              "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar",
-              className,
-            )}
-            ref={ref}
-            {...props}
-          >
-            {children}
-          </div>
-        </TooltipProvider>
+          <TooltipProvider delayDuration={300} disableHoverableContent>
+            <div
+              style={
+                {
+                  "--sidebar-width": SIDEBAR_WIDTH,
+                  "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+                  ...style,
+                } as React.CSSProperties
+              }
+              className={cn(
+                // Fill the app root instead of re-measuring the viewport here.
+                // app.css owns the browser-mode-specific root height, while fixed
+                // sidebar panels read the shared --bb-shell-height override.
+                "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar",
+                className,
+              )}
+              ref={ref}
+              {...props}
+            >
+              {children}
+            </div>
+          </TooltipProvider>
+        </SidebarShowingContext.Provider>
       </SidebarContext.Provider>
     );
   },
@@ -1079,9 +1092,8 @@ const SidebarMobilePanel = React.forwardRef<
       // assistive-technology activation leave the trigger focus-visible, so
       // keep the modal focus move for those paths.
       const shouldMoveFocus =
-        previouslyFocused?.matches(
-          '[data-sidebar="trigger"]:focus-visible',
-        ) ?? false;
+        previouslyFocused?.matches('[data-sidebar="trigger"]:focus-visible') ??
+        false;
       if (shouldMoveFocus) {
         panelRef.current?.focus({ preventScroll: true });
       }
@@ -1129,7 +1141,9 @@ const SidebarMobilePanel = React.forwardRef<
         for (let step = 1; step <= stops.length; step += 1) {
           const nextIndex =
             activeIndex === -1
-              ? (event.shiftKey ? stops.length - step : step - 1)
+              ? event.shiftKey
+                ? stops.length - step
+                : step - 1
               : (((activeIndex + direction * step) % stops.length) +
                   stops.length) %
                 stops.length;
@@ -1145,7 +1159,10 @@ const SidebarMobilePanel = React.forwardRef<
       return () => {
         window.removeEventListener("keydown", handleKeyDown);
         const active = document.activeElement;
-        if (active instanceof HTMLElement && panelRef.current?.contains(active)) {
+        if (
+          active instanceof HTMLElement &&
+          panelRef.current?.contains(active)
+        ) {
           active.blur();
           if (shouldMoveFocus) {
             previouslyFocused?.focus({ preventScroll: true });
@@ -1228,7 +1245,8 @@ const SidebarMobilePanel = React.forwardRef<
       const nowMs = Date.now();
       const elapsedMs = nowMs - session.lastTimeMs;
       if (elapsedMs > 0) {
-        session.velocityX = ((clientX - session.lastClientX) / elapsedMs) * 1000;
+        session.velocityX =
+          ((clientX - session.lastClientX) / elapsedMs) * 1000;
         session.lastClientX = clientX;
         session.lastTimeMs = nowMs;
       }
@@ -1340,10 +1358,7 @@ const SidebarMobilePanel = React.forwardRef<
 
       const handleMove = (moveEvent: PointerEvent) => {
         const session = dragSessionRef.current;
-        if (
-          session?.kind !== "pointer" ||
-          moveEvent.pointerId !== session.id
-        ) {
+        if (session?.kind !== "pointer" || moveEvent.pointerId !== session.id) {
           return;
         }
         continuePanelDrag(moveEvent.clientX, moveEvent.clientY, moveEvent);
@@ -1377,9 +1392,7 @@ const SidebarMobilePanel = React.forwardRef<
       removeDragListenersRef.current = removeListeners;
     };
 
-    const handlePanelTouchStart = (
-      event: React.TouchEvent<HTMLDivElement>,
-    ) => {
+    const handlePanelTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
       onTouchStart?.(event);
       if (
         !open ||

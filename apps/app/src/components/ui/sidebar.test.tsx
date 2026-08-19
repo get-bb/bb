@@ -7,6 +7,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
+import { memo } from "react";
 import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -15,7 +16,9 @@ import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
+  useIsSidebarShowing,
   useOptionalIsSidebarShowing,
+  useSidebar,
 } from "./sidebar";
 
 afterEach(() => {
@@ -132,6 +135,71 @@ describe("useOptionalIsSidebarShowing", () => {
     expect(renderToString(<OptionalSidebarProbe />)).toContain(
       'data-sidebar-showing="null"',
     );
+  });
+});
+
+describe("useIsSidebarShowing", () => {
+  it("re-renders its reader only when the visible bit flips, not on every provider commit", () => {
+    vi.useFakeTimers();
+    let showingRenders = 0;
+    const ShowingReader = memo(function ShowingReader() {
+      showingRenders += 1;
+      return (
+        <output data-testid="showing">{String(useIsSidebarShowing())}</output>
+      );
+    });
+    function Controls() {
+      const {
+        openMobileSidebar,
+        closeMobileSidebar,
+        setSuppressMobileOpenAnimation,
+      } = useSidebar();
+      return (
+        <>
+          <button type="button" onClick={openMobileSidebar}>
+            open
+          </button>
+          <button type="button" onClick={closeMobileSidebar}>
+            close
+          </button>
+          <button
+            type="button"
+            onClick={() => setSuppressMobileOpenAnimation(true)}
+          >
+            suppress
+          </button>
+        </>
+      );
+    }
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <SidebarProvider>
+          <ShowingReader />
+          <Controls />
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+    expect(screen.getByTestId("showing").textContent).toBe("false");
+    const settled = showingRenders;
+
+    // A provider commit that changes the full context object but not the
+    // visible bit (page header and retained secondary panel read only the bit).
+    fireEvent.click(screen.getByRole("button", { name: "suppress" }));
+    expect(showingRenders).toBe(settled);
+
+    fireEvent.click(screen.getByRole("button", { name: "open" }));
+    settleMobileToggle();
+    expect(screen.getByTestId("showing").textContent).toBe("true");
+    const afterOpen = showingRenders;
+    expect(afterOpen).toBe(settled + 1);
+
+    // Close: the closing-flag commit must not reach the reader; only the
+    // deferred openMobile flip does.
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
+    expect(showingRenders).toBe(afterOpen);
+    settleMobileToggle();
+    expect(screen.getByTestId("showing").textContent).toBe("false");
+    expect(showingRenders).toBe(afterOpen + 1);
   });
 });
 
