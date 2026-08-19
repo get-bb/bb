@@ -2117,6 +2117,100 @@ describe("acp bridge", () => {
     startedProviderThreadIds.push(first.providerThreadId);
   });
 
+  it("emits session.reset after identity at every construction (start, resume, fork)", async () => {
+    // Without the reset, the shared assembler would keep settled item keys and
+    // usage totals across a session replacement on the same thread.
+    const resetIndexesFor = (threadId: string): number[] =>
+      output.messages.flatMap((message, index) => {
+        if (message.method !== "thread/delta") {
+          return [];
+        }
+        const params = message.params as {
+          threadId?: unknown;
+          deltas?: unknown;
+        };
+        return params.threadId === threadId &&
+          Array.isArray(params.deltas) &&
+          params.deltas.some(
+            (delta) =>
+              (delta as { kind?: unknown }).kind === "session.reset",
+          )
+          ? [index]
+          : [];
+      });
+    const identityIndexesFor = (threadId: string): number[] =>
+      output.messages.flatMap((message, index) =>
+        message.method === "thread/identity" &&
+        (message.params as { threadId?: unknown }).threadId === threadId
+          ? [index]
+          : [],
+      );
+
+    const first = await startThread({
+      envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+    });
+    expect(resetIndexesFor(first.bbThreadId)).toHaveLength(1);
+
+    await stopThread(first.providerThreadId);
+    startedProviderThreadIds.pop();
+    const resumeId = sendRequest("thread/resume", {
+      threadId: first.bbThreadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+          }),
+        },
+      }),
+      providerThreadId: first.providerThreadId,
+    });
+    const resumeResponse = await waitForResponse(resumeId);
+    expect(resumeResponse.error).toBeUndefined();
+    startedProviderThreadIds.push(first.providerThreadId);
+    // One reset per construction, each after its own identity announcement.
+    const resets = resetIndexesFor(first.bbThreadId);
+    const identities = identityIndexesFor(first.bbThreadId);
+    expect(resets).toHaveLength(2);
+    expect(identities).toHaveLength(2);
+    expect(resets[0]).toBeGreaterThan(identities[0] ?? Infinity);
+    expect(resets[1]).toBeGreaterThan(identities[1] ?? Infinity);
+
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-fork-reset",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: { FAKE_ACP_FORK_SESSION: "1" },
+          }),
+        },
+      }),
+      sourceProviderThreadId: "source-session",
+    });
+    const forkResponse = await waitForResponse(forkId);
+    const forkResult = forkResponse.result;
+    if (
+      typeof forkResult !== "object" ||
+      forkResult === null ||
+      Array.isArray(forkResult) ||
+      typeof forkResult.providerThreadId !== "string"
+    ) {
+      throw new Error("thread/fork did not return a providerThreadId");
+    }
+    startedProviderThreadIds.push(forkResult.providerThreadId);
+    bbThreadIdByProviderThreadId.set(
+      forkResult.providerThreadId,
+      "thread-fork-reset",
+    );
+    const forkResets = resetIndexesFor("thread-fork-reset");
+    const forkIdentities = identityIndexesFor("thread-fork-reset");
+    expect(forkResets).toHaveLength(1);
+    expect(forkResets[0]).toBeGreaterThan(forkIdentities[0] ?? Infinity);
+  });
+
   it("forwards context usage reported during session/load", async () => {
     const first = await startThread({
       envVars: { FAKE_ACP_LOAD_SESSION: "1" },

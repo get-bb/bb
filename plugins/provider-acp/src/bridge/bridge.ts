@@ -1770,6 +1770,11 @@ async function startAgentSession(
       providerThreadId: sessionId,
       sessionRestorable: session.supportsLoadSession,
     });
+    // The provider id-space boundary: a new agent session was constructed for
+    // this thread (start/resume/fork all land here), so the assembler drops
+    // the thread's assembly state — settled item keys, id maps, accumulated
+    // usage — before any of the new session's deltas.
+    sendThreadDeltas(bbThreadId, [{ kind: "session.reset" }]);
     for (const deferred of deferredEmits) {
       emitForSession(session, deferred.method, deferred.params);
     }

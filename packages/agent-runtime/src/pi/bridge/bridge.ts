@@ -745,6 +745,11 @@ function sendThreadSessionResult(
   providerThreadId: string,
 ): void {
   sendThreadIdentity(threadId, providerThreadId);
+  // The provider id-space boundary: a new pi session was constructed for this
+  // thread (start/resume/fork all announce through here), so the assembler
+  // drops the thread's assembly state — settled item keys, id maps,
+  // accumulated usage — before any of the new session's deltas.
+  sendThreadDeltas(threadId, [{ kind: "session.reset" }]);
   sendResult(id, { providerThreadId, sessionRestorable: true });
 }
 
