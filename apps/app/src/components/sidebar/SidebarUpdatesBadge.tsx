@@ -3,7 +3,9 @@ import type { ProviderCliKey } from "@bb/host-daemon-contract";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navigation";
 import { SidebarMenuItem } from "@/components/ui/sidebar.js";
+import { pluginAttentionLabel } from "@/hooks/usePluginAttention";
 import { useUpdateInventory } from "@/hooks/useUpdateInventory";
 import {
   getProviderIconColorClass,
@@ -56,7 +58,10 @@ interface StaleProvider {
  * (app release, downloaded desktop update, or a daemon stuck on an old
  * protocol) and the agent CLIs, which carry their own brand marks so it is
  * clear which agent is stale without hovering. Both chips open the
- * consolidated Settings → Updates view.
+ * consolidated Settings → Updates view. A third chip counts installed plugins
+ * that are enabled but not running (incompatible after a bb upgrade, failed,
+ * or missing) and opens Extensions → Installed plugins, so a plugin that
+ * unloads does not vanish silently (#1915).
  *
  * A CLI that is not installed at all is not an update and gets no chip here:
  * there is no installed version to stale against, and the Settings → Updates
@@ -95,7 +100,13 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
     return stale === undefined ? [] : [stale];
   });
 
-  if (bbUpdateCount === 0 && staleProviders.length === 0) {
+  const pluginAttentionCount = inventory.pluginAttentionCount;
+
+  if (
+    bbUpdateCount === 0 &&
+    staleProviders.length === 0 &&
+    pluginAttentionCount === 0
+  ) {
     return null;
   }
 
@@ -105,6 +116,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   const providerLabel = `${joinNames(
     staleProviders.map((stale) => stale.displayName),
   )} ${staleProviders.length === 1 ? "update" : "updates"} available`;
+  const pluginLabel = pluginAttentionLabel(pluginAttentionCount);
 
   return (
     // Right-alignment on a single row comes from the flexible spacer the
@@ -162,6 +174,23 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
             </Link>
           </TooltipTrigger>
           <TooltipContent side="top">{providerLabel}</TooltipContent>
+        </Tooltip>
+      ) : null}
+      {pluginAttentionCount > 0 ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              to={getToolsOwnedCollectionRoutePath("plugins")}
+              onClick={onNavigate}
+              aria-label={pluginLabel}
+              data-testid="sidebar-updates-badge-plugins"
+              className={CHIP_CLASS}
+            >
+              <Icon name="AlertTriangle" className="size-3 text-warning-text" />
+              {pluginLabel}
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="top">{pluginLabel}</TooltipContent>
         </Tooltip>
       ) : null}
     </SidebarMenuItem>

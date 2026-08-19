@@ -551,6 +551,60 @@ describe("plugin service", () => {
     expect(service.getApi("vanishing")).toBeDefined();
   });
 
+  it("logs a warning when a host upgrade makes an installed plugin incompatible (#1915)", async () => {
+    const lines: string[] = [];
+    const push = (level: string) => (message: unknown) => {
+      lines.push(`${level} ${String(message)}`);
+    };
+    const capturing = {
+      debug: push("debug"),
+      info: push("info"),
+      warn: push("warn"),
+      error: push("error"),
+    } as unknown as Logger;
+    const makeService = (appVersion: string) =>
+      createPluginService({
+        telemetry: createNoopTelemetryService(),
+        db,
+        hub: {
+          getDaemonSessionIdForHost: () => null,
+          notifyPluginSignal: () => 0,
+          notifySystem: () => {},
+        },
+        logger: capturing,
+        dataDir: join(workDir, "data"),
+        appVersion,
+        loadTimeoutMs: 2000,
+      });
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-notify",
+      version: "0.2.1",
+      engines: ">=0.38.0 <0.39.0",
+      serverSource: `export default function plugin() {}`,
+    });
+
+    // bb 0.38.5: the plugin installs, loads, and the server logs it.
+    const before = makeService("0.38.5");
+    const installed = await before.installPath(rootDir);
+    expect(installed.status).toBe("running");
+    expect(lines).toContain("info plugin notify@0.2.1 loaded");
+    await before.stop();
+    lines.length = 0;
+
+    // bb 0.39.0 starts against the same database (= the user upgraded bb).
+    const after = makeService("0.39.0");
+    await after.start();
+    const entry = after.list().find((p) => p.id === "notify");
+    expect(entry?.status).toBe("incompatible");
+    expect(entry?.statusDetail).toBe(
+      "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
+    );
+    expect(lines).toContain(
+      "warn plugin notify not loaded (incompatible): requires bb >=0.38.0 <0.39.0, this is 0.39.0",
+    );
+    await after.stop();
+  });
+
   it("skips the engines gate on 0.0.0 dev builds instead of marking everything incompatible", async () => {
     const devService = createPluginService({
       telemetry: createNoopTelemetryService(),

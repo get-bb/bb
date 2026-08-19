@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import type { ThreadTimelinePendingTodos } from "@bb/domain";
+import type { InstalledPlugin, PluginRuntimeStatus } from "@bb/server-contract";
 import { action } from "../action.js";
 import {
   resolveContextSnapshot,
@@ -31,6 +32,57 @@ interface StatusPayload {
     title: string | null;
   }> | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
+  /**
+   * Enabled plugins the server did not load (incompatible, error, missing).
+   * Null while the server is unreachable. An `engines.bb` mismatch after a bb
+   * upgrade otherwise unloads a plugin with no visible trace (#1915).
+   */
+  pluginsNeedingAttention: PluginAttentionEntry[] | null;
+}
+
+interface PluginAttentionEntry {
+  id: string;
+  status: PluginRuntimeStatus;
+  statusDetail: string | null;
+}
+
+const PLUGIN_ATTENTION_STATUSES: ReadonlySet<PluginRuntimeStatus> =
+  new Set<PluginRuntimeStatus>(["incompatible", "error", "missing"]);
+
+/** Same bucket the app's sidebar chip counts: enabled but not running. */
+export function pluginsNeedingAttention(
+  plugins: readonly InstalledPlugin[],
+): PluginAttentionEntry[] {
+  return plugins
+    .filter(
+      (plugin) =>
+        plugin.enabled && PLUGIN_ATTENTION_STATUSES.has(plugin.status),
+    )
+    .map((plugin) => ({
+      id: plugin.id,
+      status: plugin.status,
+      statusDetail: plugin.statusDetail,
+    }));
+}
+
+/**
+ * One line, grouped by status in a stable order, e.g.
+ * `2 plugins need attention (incompatible: notify; error: foo). Run bb plugin list.`
+ */
+export function formatPluginAttentionLine(
+  entries: readonly PluginAttentionEntry[],
+): string {
+  const byStatus = new Map<PluginRuntimeStatus, string[]>();
+  for (const entry of entries) {
+    const ids = byStatus.get(entry.status) ?? [];
+    ids.push(entry.id);
+    byStatus.set(entry.status, ids);
+  }
+  const groups = [...byStatus.entries()]
+    .map(([status, ids]) => `${status}: ${ids.join(", ")}`)
+    .join("; ");
+  const noun = entries.length === 1 ? "plugin needs" : "plugins need";
+  return `${entries.length} ${noun} attention (${groups}). Run bb plugin list.`;
 }
 
 interface StatusCommandOptions {
@@ -59,6 +111,7 @@ export function registerStatusCommand(
           thread: null,
           childThreads: null,
           pendingTodos: null,
+          pluginsNeedingAttention: null,
         };
 
         let serverAvailable = false;
@@ -76,6 +129,19 @@ export function registerStatusCommand(
           }
         } catch {
           // Server unreachable — leave dataDir null.
+        }
+
+        // Best-effort too: a plugin that silently stopped loading should show
+        // up here without the user having to know to run bb plugin list.
+        if (serverAvailable) {
+          try {
+            const list = await createCliBbSdk(getUrl()).plugins.list();
+            payload.pluginsNeedingAttention = pluginsNeedingAttention(
+              list.plugins,
+            );
+          } catch {
+            // Plugin list unavailable — leave null.
+          }
         }
 
         // Try to fetch enriched data from the server
@@ -177,6 +243,16 @@ export function registerStatusCommand(
         if (payload.dataDir) {
           console.log("");
           console.log(`Data dir: ${payload.dataDir}`);
+        }
+
+        if (
+          payload.pluginsNeedingAttention !== null &&
+          payload.pluginsNeedingAttention.length > 0
+        ) {
+          console.log("");
+          console.log(
+            formatPluginAttentionLine(payload.pluginsNeedingAttention),
+          );
         }
 
         if (!context.projectId && !context.threadId) {

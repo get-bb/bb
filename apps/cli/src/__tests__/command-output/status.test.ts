@@ -2,12 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import {
   setupCommandOutputTestEnvironment,
   collectLogLines,
+  collectLogPayloads,
   runCommand,
   stubServerApi,
 } from "../helpers/command-output-harness.js";
 import type { CommandRegistrar } from "../helpers/command-output-harness.js";
 import * as fixtures from "../helpers/command-output-fixtures.js";
-import { registerStatusCommand } from "../../commands/status.js";
+import {
+  formatPluginAttentionLine,
+  registerStatusCommand,
+} from "../../commands/status.js";
 
 describe("bb status command output", () => {
   setupCommandOutputTestEnvironment();
@@ -87,5 +91,133 @@ describe("bb status command output", () => {
 
     const lines = collectLogLines(vi.mocked(console.log));
     expect(lines.some((line) => line.includes("Pinned:"))).toBe(true);
+  });
+});
+
+const installedPlugin = (
+  id: string,
+  status: string,
+  statusDetail: string | null,
+  enabled = true,
+) => ({
+  id,
+  source: `path:/plugins/${id}`,
+  rootDir: `/plugins/${id}`,
+  version: "0.2.1",
+  provenance: "direct",
+  publisherLabel: null,
+  isOrphanedBuiltin: false,
+  sourceDisplay: `path · /plugins/${id}`,
+  updateState: {},
+  enabled,
+  description: null,
+  name: null,
+  icon: null,
+  iconUrl: null,
+  status,
+  statusDetail,
+  handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+  services: [],
+  schedules: [],
+  cliCommand: null,
+  hasSettings: false,
+  app: { hasApp: false, bundle: null },
+  logoUrl: null,
+  logoDarkUrl: null,
+});
+
+function jsonResponse(value: object): Response {
+  return new Response(JSON.stringify(value), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function stubServer(plugins: readonly object[]): void {
+  vi.mocked(fetch).mockImplementation(async (input) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.endsWith("/api/v1/system/config")) {
+      return jsonResponse({ dataDir: "/data/bb" });
+    }
+    if (url.endsWith("/api/v1/plugins")) {
+      return jsonResponse({ plugins });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+}
+
+describe("bb status plugin attention", () => {
+  setupCommandOutputTestEnvironment();
+
+  const register: CommandRegistrar = (program) =>
+    registerStatusCommand(
+      program,
+      () => "http://server",
+      () => ({ serverUrl: "http://server" }),
+    );
+
+  it("reports enabled plugins the server did not load, grouped by status", async () => {
+    stubServer([
+      installedPlugin("automations", "running", null),
+      installedPlugin(
+        "notify",
+        "incompatible",
+        "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
+      ),
+      installedPlugin("foo", "error", "boom"),
+      // Disabled is a user choice, not a problem.
+      installedPlugin("old", "disabled", null, false),
+    ]);
+
+    await runCommand(["status"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("Data dir: /data/bb");
+    expect(output).toContain(
+      "2 plugins need attention (incompatible: notify; error: foo). Run bb plugin list.",
+    );
+  });
+
+  it("prints no plugin line when every plugin runs", async () => {
+    stubServer([installedPlugin("automations", "running", null)]);
+
+    await runCommand(["status"], register);
+
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).not.toContain("need attention");
+    expect(output).not.toContain("needs attention");
+  });
+
+  it("includes the plugins in --json output", async () => {
+    stubServer([
+      installedPlugin(
+        "notify",
+        "incompatible",
+        "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
+      ),
+    ]);
+
+    await runCommand(["status", "--json"], register);
+
+    const payload = JSON.parse(collectLogPayloads(vi.mocked(console.log))[0]);
+    expect(payload.pluginsNeedingAttention).toEqual([
+      {
+        id: "notify",
+        status: "incompatible",
+        statusDetail: "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
+      },
+    ]);
+  });
+});
+
+describe("formatPluginAttentionLine", () => {
+  it("uses the singular for one plugin", () => {
+    expect(
+      formatPluginAttentionLine([
+        { id: "notify", status: "incompatible", statusDetail: null },
+      ]),
+    ).toBe(
+      "1 plugin needs attention (incompatible: notify). Run bb plugin list.",
+    );
   });
 });
