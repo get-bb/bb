@@ -142,6 +142,19 @@ const SAMPLE_IMAGE_URL =
     </svg>`,
   );
 
+// A generated source file well past the code-preview cap, so the story
+// exercises the capped prefix, the "Load full file" action, and virtualized
+// deep-link scrolling in one place.
+const LARGE_FILE_LINE_COUNT = 8_000;
+const LARGE_FILE_TARGET_LINE = 6_500;
+const SAMPLE_LARGE_TS = Array.from({ length: LARGE_FILE_LINE_COUNT }, (_, i) =>
+  i % 40 === 0
+    ? `export function block${i / 40}(input: number): number {`
+    : i % 40 === 39
+      ? "}"
+      : `  const step${i % 40} = input * ${i} + ${(i * 7) % 13}; // line ${i + 1}`,
+).join("\n");
+
 function noopOpenInEditor(path: string) {
   // Stories don't actually open anything; the prop is wired so the
   // open-in-editor affordance renders in the header.
@@ -226,6 +239,79 @@ export function Overview() {
             }}
           />
         </PreviewStage>
+      </StoryRow>
+      <StoryRow
+        label="large file (capped)"
+        hint={`${LARGE_FILE_LINE_COUNT.toLocaleString()} lines: only the leading prefix renders until "Load full file"; rows are virtualized inside the code viewport`}
+      >
+        <PreviewStage>
+          <FilePreview
+            path="src/generated/large.ts"
+            copyPath={copyPathFor("src/generated/large.ts")}
+            onOpenInEditor={noopOpenInEditor}
+            state={{
+              kind: "ready",
+              lineRange: null,
+              textPreviewKind: null,
+              file: {
+                cacheKey: "story:large.ts",
+                name: "large.ts",
+                contents: SAMPLE_LARGE_TS,
+                lang: "ts",
+              },
+            }}
+          />
+        </PreviewStage>
+      </StoryRow>
+      <StoryRow
+        label="large file (line link past the cap)"
+        hint={`Opened at line ${LARGE_FILE_TARGET_LINE.toLocaleString()}: the whole file renders and the virtualized viewport scrolls the target into view`}
+      >
+        <PreviewStage>
+          <FilePreview
+            path="src/generated/large.ts"
+            copyPath={copyPathFor("src/generated/large.ts")}
+            onOpenInEditor={noopOpenInEditor}
+            state={{
+              kind: "ready",
+              lineRange: {
+                startLineNumber: LARGE_FILE_TARGET_LINE,
+                endLineNumber: LARGE_FILE_TARGET_LINE,
+              },
+              textPreviewKind: null,
+              file: {
+                cacheKey: "story:large.ts",
+                name: "large.ts",
+                contents: SAMPLE_LARGE_TS,
+                lang: "ts",
+              },
+            }}
+          />
+        </PreviewStage>
+      </StoryRow>
+      <StoryRow
+        label="code in a content-sized scroller"
+        hint="Skill detail embeds headerless code previews in a max-height scroller with no fixed height; the code viewport grows with its content and the outer box scrolls"
+      >
+        <div className="w-full max-w-[640px] bg-background px-4 py-2">
+          <div className="max-h-[300px] overflow-y-auto overscroll-contain rounded-md border border-border">
+            <FilePreview
+              path="skills/writing-voice/scripts/lint.ts"
+              headerMode="none"
+              state={{
+                kind: "ready",
+                lineRange: null,
+                textPreviewKind: null,
+                file: {
+                  cacheKey: "story:skill-script",
+                  name: "lint.ts",
+                  contents: SAMPLE_LARGE_TS.split("\n").slice(0, 400).join("\n"),
+                  lang: "ts",
+                },
+              }}
+            />
+          </div>
+        </div>
       </StoryRow>
       <StoryRow
         label="deleted file"

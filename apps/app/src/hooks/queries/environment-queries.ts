@@ -5,6 +5,7 @@ import type {
   WorkspaceDiffTarget,
 } from "@bb/domain";
 import type {
+  EnvironmentDiffFileQuery,
   EnvironmentDiffFileResponse,
   EnvironmentDiffBranchesResponse,
   EnvironmentDiffFilesResponse,
@@ -19,6 +20,7 @@ import {
   type EnvironmentFilePreviewSource,
   type FilePreview,
 } from "@/lib/file-preview";
+import { buildEnvironmentDiffFileContentUrl } from "@/lib/file-content-urls";
 import { sdk } from "@/lib/sdk";
 import { useEnvironmentDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
@@ -274,22 +276,27 @@ export function useEnvironmentFilePreview(
         hookName: "useEnvironmentFilePreview",
         argName: "source",
       });
+      const resolvedEnvironmentId = requireEnvironmentId(
+        environmentId,
+        "useEnvironmentFilePreview",
+      );
+      const query = buildEnvironmentFilePreviewQuery(
+        resolvedPath,
+        resolvedSource,
+      );
       const response = await sdk.environments.diffFile({
-        environmentId: requireEnvironmentId(
-          environmentId,
-          "useEnvironmentFilePreview",
+        environmentId: resolvedEnvironmentId,
+        signal,
+        ...query,
+      });
+      return buildEnvironmentFilePreview({
+        contentUrl: buildEnvironmentDiffFileContentUrl(
+          resolvedEnvironmentId,
+          query,
         ),
         path: resolvedPath,
-        side: resolvedSource.kind === "working-tree" ? "new" : "old",
-        signal,
-        ...(resolvedSource.kind === "merge-base"
-          ? {
-              target: "branch_committed" as const,
-              mergeBaseRef: resolvedSource.ref,
-            }
-          : { target: "uncommitted" as const }),
+        response,
       });
-      return buildEnvironmentFilePreview(resolvedPath, response);
     },
     enabled,
     ...EXPENSIVE_MANUAL_QUERY_POLICY,
@@ -433,24 +440,52 @@ function encodeBase64Bytes(bytes: Uint8Array): string {
   return btoa(binaryChunks.join(""));
 }
 
-function buildEnvironmentFilePreview(
+function buildEnvironmentFilePreviewQuery(
   path: string,
-  response: EnvironmentDiffFileResponse,
-): FilePreview {
+  source: EnvironmentFilePreviewSource,
+): EnvironmentDiffFileQuery {
+  const side = source.kind === "working-tree" ? "new" : "old";
+  return source.kind === "merge-base"
+    ? { target: "branch_committed", mergeBaseRef: source.ref, path, side }
+    : { target: "uncommitted", path, side };
+}
+
+/**
+ * Build the preview for a `/diff/file` read. Only image and video previews
+ * need a browser-loadable `url` (the `<img>` / `<video>` src), so only those
+ * pay for a base64 `data:` URL. Text previews carry their content inline and
+ * point `url` at the JSON route the bytes came from; building a `data:` URL
+ * for them would re-encode the whole file to base64 (a second copy of a
+ * multi-megabyte source file on a phone) and then bloat every cache key that
+ * embeds the URL.
+ */
+export function buildEnvironmentFilePreview({
+  contentUrl,
+  path,
+  response,
+}: {
+  contentUrl: string;
+  path: string;
+  response: EnvironmentDiffFileResponse;
+}): FilePreview {
   const contentBytes =
     response.contentEncoding === "base64"
       ? decodeBase64Bytes(response.content)
       : new TextEncoder().encode(response.content);
   const mimeType = normalizeFilePreviewMimeType(response.mimeType ?? null);
-  const base64Content =
-    response.contentEncoding === "base64"
-      ? response.content
-      : encodeBase64Bytes(contentBytes);
-  return buildFilePreview({
+  const preview = buildFilePreview({
     contentBytes,
     mimeType,
     name: path.split("/").at(-1),
     path,
-    url: `data:${mimeType};base64,${base64Content}`,
+    url: contentUrl,
   });
+  if (preview.kind !== "image" && preview.kind !== "video") {
+    return preview;
+  }
+  const base64Content =
+    response.contentEncoding === "base64"
+      ? response.content
+      : encodeBase64Bytes(contentBytes);
+  return { ...preview, url: `data:${mimeType};base64,${base64Content}` };
 }

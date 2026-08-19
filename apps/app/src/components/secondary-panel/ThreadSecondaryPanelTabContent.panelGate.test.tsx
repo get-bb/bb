@@ -23,10 +23,14 @@ vi.mock("@/lib/sdk", () => ({
 }));
 
 // The preview body is not under test; keep pierre out of jsdom.
-vi.mock("@pierre/diffs/react", () => ({
-  File: () => null,
-  useWorkerPool: () => null,
-}));
+vi.mock("@pierre/diffs/react", async () => {
+  const React = await import("react");
+  return {
+    File: () => null,
+    VirtualizerContext: React.createContext(undefined),
+    useWorkerPool: () => null,
+  };
+});
 
 const ENVIRONMENT_ID = "env-1";
 const TARGET: WorkspaceDiffTarget = { type: "all", mergeBaseBranch: "main" };
