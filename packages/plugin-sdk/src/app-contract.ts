@@ -1438,9 +1438,12 @@ export interface BbNavigate {
 // Components are deliberately NOT part of this surface (removed 2026-07-03,
 // plugin design §5.5): plugins vendor shadcn-style component source from the
 // BB registry (`npx shadcn add @bb/<name>`) and own it. `bb plugin build`
-// shims react + the shared-singleton packages (portal radix families,
-// sonner, vaul); everything else bundles per plugin. Freezing 65 component
-// prop types here made every host component change a plugin-breaking change.
+// shims react, the shared-singleton packages (portal radix families,
+// sonner, vaul, @pierre/diffs) and the host-resident libraries every plugin
+// would otherwise duplicate (clsx, tailwind-merge, class-variance-authority,
+// the shared-ui icon); everything else bundles per plugin. Freezing 65
+// component prop types here made every host component change a
+// plugin-breaking change.
 // ---------------------------------------------------------------------------
 
 /**

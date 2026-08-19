@@ -57,7 +57,29 @@ const RUNTIME_MODULE_IDS = [
   // shiki's grammars out of plugin bundles.
   "@pierre/diffs",
   "@pierre/diffs/react",
+  // Host-resident libraries (RUNTIME_SLOT_BY_SPECIFIER rule 2): no singleton
+  // semantics, shimmed so plugin bundles stop duplicating them.
+  "clsx",
+  "tailwind-merge",
+  "class-variance-authority",
 ];
+
+/**
+ * Workspace TypeScript modules exposed as slots. Not requireable, so their
+ * export lists come from esbuild metadata like the SDK facade's.
+ */
+const RUNTIME_SOURCE_MODULES = {
+  "@bb/shared-ui/icon": path.join(
+    scriptDir,
+    "..",
+    "..",
+    "shared-ui",
+    "src",
+    "components",
+    "ui",
+    "icon.tsx",
+  ),
+};
 
 const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
@@ -111,15 +133,8 @@ async function namedExportsOf(moduleId) {
     .sort();
 }
 
-async function pluginSdkAppExports() {
-  const entryPoint = path.join(
-    scriptDir,
-    "..",
-    "..",
-    "plugin-sdk",
-    "src",
-    "app.ts",
-  );
+/** Named JS exports of a TypeScript source module, per esbuild metadata. */
+async function sourceModuleExports(entryPoint) {
   const result = await build({
     entryPoints: [entryPoint],
     bundle: false,
@@ -142,25 +157,33 @@ async function pluginSdkAppExports() {
 
 const reactVersion = appRequire("react/package.json").version;
 const entryChunks = [];
-entryChunks.push(
-  `  "@get-bb/plugin-sdk/app": [\n${(await pluginSdkAppExports())
-    .map((name) => `    ${JSON.stringify(name)},`)
-    .join("\n")}\n  ],`,
-);
-for (const id of RUNTIME_MODULE_IDS) {
-  const names = await namedExportsOf(id);
+function pushEntry(id, names) {
   entryChunks.push(
     `  ${JSON.stringify(id)}: [\n${names
       .map((name) => `    ${JSON.stringify(name)},`)
       .join("\n")}\n  ],`,
   );
 }
+pushEntry(
+  "@get-bb/plugin-sdk/app",
+  await sourceModuleExports(
+    path.join(scriptDir, "..", "..", "plugin-sdk", "src", "app.ts"),
+  ),
+);
+for (const id of RUNTIME_MODULE_IDS) {
+  pushEntry(id, await namedExportsOf(id));
+}
+for (const [id, entryPoint] of Object.entries(RUNTIME_SOURCE_MODULES)) {
+  pushEntry(id, await sourceModuleExports(entryPoint));
+}
 const entries = entryChunks.join("\n");
 
 const output = `// GENERATED FILE — do not edit by hand.
 // Named exports of the plugin SDK app facade and shared runtime modules
-// (react@${reactVersion} + the shimmed radix/sonner/vaul packages), derived
-// from SDK source/build metadata and the host app's installed copies.
+// (react@${reactVersion}, the shimmed radix/sonner/vaul/pierre packages, the
+// host-resident clsx/tailwind-merge/cva libraries, and the shared-ui icon
+// module), derived from SDK source/build metadata and the host app's
+// installed copies.
 // Consumed by
 // \`bb plugin build\` to emit static ESM re-export shims over
 // globalThis.__bbPluginRuntime. Regenerate after upgrading a shimmed package:

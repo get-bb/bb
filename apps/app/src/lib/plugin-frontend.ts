@@ -22,6 +22,17 @@ import * as radixTooltip from "@radix-ui/react-tooltip";
 import * as sonner from "sonner";
 import * as vaul from "vaul";
 import * as pierreDiffs from "@pierre/diffs";
+// Host-resident libraries (RUNTIME_SLOT_BY_SPECIFIER rule 2): no singleton
+// semantics, but every plugin app used to bundle its own copy — the
+// shared-ui Icon alone carries the hugeicons map. The host already ships
+// all of them, so plugins read them from here. Anything slotted here is
+// exposed as a whole namespace, which keeps rolldown from tree-shaking it
+// out of the boot chunk: that is why zod (mostly unused by the app) is
+// deliberately not a slot.
+import * as clsx from "clsx";
+import * as tailwindMerge from "tailwind-merge";
+import * as classVarianceAuthority from "class-variance-authority";
+import * as sharedUiIcon from "@bb/shared-ui/icon";
 import { createDebouncedCallbackScheduler } from "@bb/domain";
 import type {
   PluginContentScriptDisposer,
@@ -221,6 +232,10 @@ interface BbPluginRuntime {
   vaul: unknown;
   pierreDiffs: unknown;
   pierreDiffsReact: unknown;
+  clsx: unknown;
+  tailwindMerge: unknown;
+  classVarianceAuthority: unknown;
+  sharedUiIcon: unknown;
 }
 
 type RuntimeHost = typeof globalThis & { __bbPluginRuntime?: BbPluginRuntime };
@@ -260,6 +275,10 @@ export function installPluginRuntime(): void {
     // Diff components wrapped in the host's worker-pool gate; see
     // plugin-pierre-diffs-react.tsx.
     pierreDiffsReact: createGatedPierreDiffsReact(),
+    clsx,
+    tailwindMerge,
+    classVarianceAuthority,
+    sharedUiIcon,
   };
 }
 

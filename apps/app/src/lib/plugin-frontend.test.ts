@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as react from "react";
 import * as jsxRuntime from "react/jsx-runtime";
+import clsx from "clsx";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   createPluginFrontendPageLifecycle,
   installPluginRuntime,
@@ -153,8 +155,13 @@ describe("installPluginRuntime", () => {
     >;
     // The shim slot names `bb plugin build` emits (react ×5 + SDK + the
     // shared-singleton packages: portal radix families, sonner, vaul,
-    // @pierre/diffs).
+    // @pierre/diffs + the host-resident libraries: clsx, tailwind-merge,
+    // class-variance-authority, the shared-ui icon). zod is deliberately
+    // absent: slotting its namespace would stop the boot chunk from
+    // tree-shaking it.
     expect(Object.keys(runtime).sort()).toEqual([
+      "classVarianceAuthority",
+      "clsx",
       "jsxDevRuntime",
       "jsxRuntime",
       "pierreDiffs",
@@ -173,9 +180,16 @@ describe("installPluginRuntime", () => {
       "react",
       "reactDom",
       "reactDomClient",
+      "sharedUiIcon",
       "sonner",
+      "tailwindMerge",
       "vaul",
     ]);
+    // Library slots carry the host's own module namespaces: `import clsx
+    // from "clsx"` in a plugin must reach the callable default, and the
+    // Icon must be the host's (one hugeicons map, one IconName set).
+    expect((runtime.clsx as { default: unknown }).default).toBe(clsx);
+    expect((runtime.sharedUiIcon as { Icon: unknown }).Icon).toBe(Icon);
     // Identity matters: plugins must get the app's own React, not a copy.
     expect((runtime.react as { useState: unknown }).useState).toBe(
       react.useState,

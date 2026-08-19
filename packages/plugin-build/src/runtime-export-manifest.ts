@@ -1,7 +1,9 @@
 // GENERATED FILE — do not edit by hand.
 // Named exports of the plugin SDK app facade and shared runtime modules
-// (react@19.2.4 + the shimmed radix/sonner/vaul packages), derived
-// from SDK source/build metadata and the host app's installed copies.
+// (react@19.2.4, the shimmed radix/sonner/vaul/pierre packages, the
+// host-resident clsx/tailwind-merge/cva libraries, and the shared-ui icon
+// module), derived from SDK source/build metadata and the host app's
+// installed copies.
 // Consumed by
 // `bb plugin build` to emit static ESM re-export shims over
 // globalThis.__bbPluginRuntime. Regenerate after upgrading a shimmed package:
@@ -561,5 +563,27 @@ export const RUNTIME_EXPORT_MANIFEST: Record<string, readonly string[]> = {
     "useStableCallback",
     "useVirtualizer",
     "useWorkerPool",
+  ],
+  "clsx": [
+    "clsx",
+  ],
+  "tailwind-merge": [
+    "createTailwindMerge",
+    "extendTailwindMerge",
+    "fromTheme",
+    "getDefaultConfig",
+    "mergeConfigs",
+    "twJoin",
+    "twMerge",
+    "validators",
+  ],
+  "class-variance-authority": [
+    "cva",
+    "cx",
+  ],
+  "@bb/shared-ui/icon": [
+    "ICON_NAMES",
+    "Icon",
+    "preloadExtendedIcons",
   ],
 };

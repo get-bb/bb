@@ -7,11 +7,17 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { build } from "esbuild";
-import { buildPluginApp, runtimeShimPlugin } from "./build-plugin-app.js";
+import {
+  buildPluginApp,
+  isSharedUiIconRelativeImport,
+  runtimeShimPlugin,
+  RUNTIME_SLOT_BY_SPECIFIER,
+} from "./build-plugin-app.js";
+import { RUNTIME_EXPORT_MANIFEST } from "./runtime-export-manifest.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
 
 /**
@@ -64,6 +70,158 @@ describe("plugin app runtime shim", () => {
       "export const first = 1; export const addedLater = 2;\n",
     );
     await expect(bundle("addedLater")).resolves.toContain("addedLater");
+  });
+
+  it("has an export-manifest entry for every non-SDK slot", () => {
+    // A slot without a manifest entry throws at build time for the first
+    // plugin that imports it; catch that here rather than in `bb plugin build`.
+    for (const specifier of Object.keys(RUNTIME_SLOT_BY_SPECIFIER)) {
+      if (specifier.endsWith("/plugin-sdk/app")) continue;
+      expect(RUNTIME_EXPORT_MANIFEST[specifier], specifier).toBeDefined();
+    }
+  });
+
+  it("routes host-resident libraries to runtime slots and forwards real default exports", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-libs-"));
+    tempDirs.push(dir);
+    const result = await build({
+      stdin: {
+        contents: [
+          `import clsx from "clsx";`,
+          `import { twMerge } from "tailwind-merge";`,
+          `import { cva } from "class-variance-authority";`,
+          `import { Icon } from "@bb/shared-ui/icon";`,
+          `export { clsx, twMerge, cva, Icon };`,
+        ].join("\n"),
+        loader: "js",
+        resolveDir: dir,
+      },
+      bundle: true,
+      format: "esm",
+      platform: "browser",
+      write: false,
+      logLevel: "silent",
+      plugins: [runtimeShimPlugin()],
+    });
+    const js = result.outputFiles[0]?.text ?? "";
+    // None of these resolve from node_modules (the temp dir has none), so a
+    // successful bundle already proves every specifier hit a shim.
+    for (const slot of [
+      "clsx",
+      "tailwindMerge",
+      "classVarianceAuthority",
+      "sharedUiIcon",
+    ]) {
+      expect(js).toMatch(new RegExp(`runtime\\d*\\.${slot}\\b`));
+    }
+
+    // Execute the bundle against a fake host runtime: `import clsx from
+    // "clsx"` must yield the callable default (the slot holds an `import *`
+    // namespace whose `default` is the function), and namespaces without a
+    // default export (tailwind-merge) fall back to the namespace itself.
+    const clsxFn = () => "clsx";
+    const twMergeFn = () => "merged";
+    const cvaFn = () => "cva";
+    const IconComponent = () => null;
+    (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime = {
+      clsx: { default: clsxFn, clsx: clsxFn },
+      tailwindMerge: { twMerge: twMergeFn },
+      classVarianceAuthority: { cva: cvaFn },
+      sharedUiIcon: { Icon: IconComponent, ICON_NAMES: [] },
+    };
+    try {
+      const bundlePath = join(dir, "bundle.mjs");
+      await writeFile(bundlePath, js);
+      const loaded = (await import(pathToFileURL(bundlePath).href)) as Record<
+        string,
+        unknown
+      >;
+      expect(loaded.clsx).toBe(clsxFn);
+      expect(loaded.twMerge).toBe(twMergeFn);
+      expect(loaded.cva).toBe(cvaFn);
+      expect(loaded.Icon).toBe(IconComponent);
+    } finally {
+      delete (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime;
+    }
+  });
+
+  it("shims shared-ui's relative ./icon import but bundles a plugin's own icon module", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-icon-rel-"));
+    tempDirs.push(dir);
+    // A stand-in for the workspace package: shared-ui's real components
+    // reach the icon module as `./icon`, so the shim must catch it there
+    // too or every plugin using empty-state/resource-pagination would
+    // bundle the hugeicons map anyway.
+    const sharedUiDir = join(dir, "node_modules", "@bb", "shared-ui");
+    const files: Record<string, string> = {
+      [join(sharedUiDir, "package.json")]: JSON.stringify({
+        name: "@bb/shared-ui",
+        type: "module",
+        exports: {
+          "./empty-state": "./src/components/ui/empty-state.tsx",
+          "./icon": "./src/components/ui/icon.tsx",
+        },
+      }),
+      // Markers live inside the referenced function so tree-shaking cannot
+      // drop them: bundled module → marker present, shimmed → absent.
+      [join(sharedUiDir, "src", "components", "ui", "icon.tsx")]:
+        `export function Icon() { return "shared-ui-hugeicons-map"; }\n`,
+      [join(sharedUiDir, "src", "components", "ui", "empty-state.tsx")]:
+        `import { Icon } from "./icon";\nexport function EmptyState() { return Icon; }\n`,
+      // The plugin's own vendored icon module (registry copy) keeps bundling.
+      [join(dir, "components", "ui", "icon.tsx")]:
+        `export function Icon() { return "plugin-owned-icon-map"; }\n`,
+      [join(dir, "components", "ui", "button.tsx")]:
+        `import { Icon } from "./icon";\nexport function Button() { return Icon; }\n`,
+      [join(dir, "app.tsx")]:
+        `import { EmptyState } from "@bb/shared-ui/empty-state";\nimport { Button } from "./components/ui/button";\nexport { EmptyState, Button };\n`,
+    };
+    for (const [filePath, contents] of Object.entries(files)) {
+      await mkdir(dirname(filePath), { recursive: true });
+      await writeFile(filePath, contents);
+    }
+    const result = await build({
+      entryPoints: [join(dir, "app.tsx")],
+      bundle: true,
+      format: "esm",
+      platform: "browser",
+      jsx: "automatic",
+      write: false,
+      logLevel: "silent",
+      plugins: [runtimeShimPlugin()],
+    });
+    const js = result.outputFiles[0]?.text ?? "";
+    expect(js).not.toContain("shared-ui-hugeicons-map");
+    expect(js).toMatch(/runtime\d*\.sharedUiIcon\b/);
+    expect(js).toContain("plugin-owned-icon-map");
+  });
+
+  it("recognizes only shared-ui's own icon module as a relative import", () => {
+    const sharedUiComponent =
+      "/repo/packages/shared-ui/src/components/ui/empty-state.tsx";
+    expect(isSharedUiIconRelativeImport("./icon", sharedUiComponent)).toBe(
+      true,
+    );
+    expect(isSharedUiIconRelativeImport("./icon.js", sharedUiComponent)).toBe(
+      true,
+    );
+    expect(
+      isSharedUiIconRelativeImport(
+        "../components/ui/icon",
+        "/repo/packages/shared-ui/src/hooks/use-thing.ts",
+      ),
+    ).toBe(true);
+    // Sibling modules of shared-ui are not the icon module.
+    expect(isSharedUiIconRelativeImport("./button", sharedUiComponent)).toBe(
+      false,
+    );
+    // A plugin's vendored icon.tsx (same file name, different owner).
+    expect(
+      isSharedUiIconRelativeImport(
+        "./icon",
+        "/plugins/acme/components/ui/button.tsx",
+      ),
+    ).toBe(false);
   });
 
   it("scopes Tailwind utilities while preserving imported CSS unscoped", async () => {
