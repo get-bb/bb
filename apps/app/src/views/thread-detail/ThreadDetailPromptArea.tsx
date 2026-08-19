@@ -1,4 +1,11 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
 import { NavLink, useNavigate } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
@@ -60,6 +67,7 @@ import {
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import { useEscapeToHide } from "@/hooks/useEscapeToHide";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
@@ -308,6 +316,89 @@ function buildInlineDraftComposer(options: InlineDraftComposerOptions) {
   );
 }
 
+type InlineQueuedMessageEditSession = Pick<
+  InlineQueuedMessageEditState,
+  "editSessionId" | "queuedMessageId"
+>;
+
+function isInlineQueuedMessageEditSession(
+  current: InlineQueuedMessageEditState | null,
+  session: InlineQueuedMessageEditSession,
+): current is InlineQueuedMessageEditState {
+  return (
+    current?.editSessionId === session.editSessionId &&
+    current.queuedMessageId === session.queuedMessageId
+  );
+}
+
+/** Plugin composer-host accessors for the queued-message inline editor (see below). */
+function readInlineQueuedMessageDraft(
+  editStateRef: RefObject<InlineQueuedMessageEditState | null>,
+  session: InlineQueuedMessageEditSession,
+  fallback: PromptDraftState,
+): PromptDraftState {
+  const current = editStateRef.current;
+  return isInlineQueuedMessageEditSession(current, session)
+    ? current.draft
+    : fallback;
+}
+
+function writeInlineQueuedMessageDraft(
+  editStateRef: RefObject<InlineQueuedMessageEditState | null>,
+  session: InlineQueuedMessageEditSession,
+  draft: PromptDraftState,
+  commit: (next: InlineQueuedMessageEditState) => void,
+): void {
+  const current = editStateRef.current;
+  if (isInlineQueuedMessageEditSession(current, session)) {
+    commit({ ...current, draft });
+  }
+}
+
+/**
+ * Plugin composer-host accessors for the sent-message inline editor. Module
+ * level on purpose: inlined closures that return `ref.current.draft` in one
+ * branch and the render-time `draft` in another make React Compiler type the
+ * whole edit object as a ref value and bail out of the component.
+ */
+function readSentMessageEditDraft(
+  sentMessageEditRef: RefObject<ThreadDetailSentMessageEdit | undefined>,
+  operationId: string,
+  fallback: PromptDraftState,
+): PromptDraftState {
+  const current = sentMessageEditRef.current;
+  return current?.operationId === operationId ? current.draft : fallback;
+}
+
+function writeSentMessageEditDraft(
+  sentMessageEditRef: RefObject<ThreadDetailSentMessageEdit | undefined>,
+  operationId: string,
+  nextDraft: PromptDraftState,
+): void {
+  const current = sentMessageEditRef.current;
+  if (current?.operationId === operationId) {
+    current.updateDraft(() => nextDraft);
+  }
+}
+
+/**
+ * Flip the "sending" flag around a task. Kept outside the component: React
+ * Compiler bails out of any function containing `try`/`finally`, and one such
+ * block inside `ThreadDetailPromptArea` left the whole ~1600-line body
+ * unmemoized.
+ */
+async function runWhileFollowUpShortcutSending(
+  setSending: (sending: boolean) => void,
+  task: () => Promise<void>,
+): Promise<void> {
+  setSending(true);
+  try {
+    await task();
+  } finally {
+    setSending(false);
+  }
+}
+
 export function ThreadDetailPromptArea({
   activeBackgroundAgentCount,
   canUseGitUi,
@@ -372,8 +463,8 @@ export function ThreadDetailPromptArea({
   const { data: queuedMessages = [] } = useThreadQueuedMessages(thread.id, {
     enabled: true,
   });
-  const queuedMessagesRef = useRef<readonly ThreadQueuedMessage[]>([]);
-  queuedMessagesRef.current = queuedMessages;
+  const queuedMessagesRef =
+    useLatestRef<readonly ThreadQueuedMessage[]>(queuedMessages);
   const [bottomPluginFocusNonce, setBottomPluginFocusNonce] = useState(0);
   const [editFocusNonce, setEditFocusNonce] = useState(0);
   const focusBottomPluginComposer = useCallback(() => {
@@ -382,8 +473,7 @@ export function ThreadDetailPromptArea({
   const focusInlinePluginComposer = useCallback(() => {
     setEditFocusNonce((nonce) => nonce + 1);
   }, []);
-  const sentMessageEditRef = useRef(sentMessageEdit);
-  sentMessageEditRef.current = sentMessageEdit;
+  const sentMessageEditRef = useLatestRef(sentMessageEdit);
   const clearInlineAttachmentErrorRef = useRef<() => void>(() => {});
   const {
     inlineEditingQueuedMessage,
@@ -481,7 +571,12 @@ export function ThreadDetailPromptArea({
         }
       : null,
   });
-  clearInlineAttachmentErrorRef.current = () => setInlineAttachmentError(null);
+  // Read only from the queued-message edit handler (never during render), so
+  // a layout-effect write is current by the time it can run.
+  useLayoutEffect(() => {
+    clearInlineAttachmentErrorRef.current = () =>
+      setInlineAttachmentError(null);
+  }, [setInlineAttachmentError]);
   const promptTextEffects = useComposerTextEffects(promptDraft.storageKey);
   const queuedComposerTextEffects = useComposerTextEffects(
     inlineEditingQueuedMessage
@@ -840,24 +935,25 @@ export function ThreadDetailPromptArea({
     }
 
     if (shortcutRequest.kind === "draft") {
-      setIsFollowUpShortcutSending(true);
       promptDraft.clearIfCurrentMatches(submittedDraft);
       setBottomAttachmentError(null);
-
-      try {
-        await sendMessage.mutateAsync(shortcutRequest.request);
-      } catch (nextError) {
-        promptDraft.restoreIfEmpty(submittedDraft);
-        appToast.error(
-          getMutationErrorMessage({
-            error: nextError,
-            fallbackMessage: "Failed to send message",
-            lifecycleOperation: "send_message",
-          }),
-        );
-      } finally {
-        setIsFollowUpShortcutSending(false);
-      }
+      await runWhileFollowUpShortcutSending(
+        setIsFollowUpShortcutSending,
+        async () => {
+          try {
+            await sendMessage.mutateAsync(shortcutRequest.request);
+          } catch (nextError) {
+            promptDraft.restoreIfEmpty(submittedDraft);
+            appToast.error(
+              getMutationErrorMessage({
+                error: nextError,
+                fallbackMessage: "Failed to send message",
+                lifecycleOperation: "send_message",
+              }),
+            );
+          }
+        },
+      );
       return;
     }
 
@@ -866,20 +962,21 @@ export function ThreadDetailPromptArea({
       return;
     }
 
-    setIsFollowUpShortcutSending(true);
-    try {
-      await sendQueuedMessageById({
-        guard: "current-head",
-        messageId: queuedMessageId,
-      });
-    } finally {
-      setIsFollowUpShortcutSending(false);
-    }
+    await runWhileFollowUpShortcutSending(
+      setIsFollowUpShortcutSending,
+      async () => {
+        await sendQueuedMessageById({
+          guard: "current-head",
+          messageId: queuedMessageId,
+        });
+      },
+    );
   }, [
     canSubmitModifierShortcut,
     currentPromptDraft,
     currentPromptDraftInput,
     promptDraft,
+    queuedMessagesRef,
     sendMessage,
     sendQueuedMessageById,
     setBottomAttachmentError,
@@ -1225,11 +1322,7 @@ export function ThreadDetailPromptArea({
       editSessionId,
       queuedMessageId,
     } = inlineEditingQueuedMessage;
-    const isCurrentSession = (
-      current: InlineQueuedMessageEditState | null,
-    ): current is InlineQueuedMessageEditState =>
-      current?.editSessionId === editSessionId &&
-      current.queuedMessageId === queuedMessageId;
+    const session = { editSessionId, queuedMessageId };
     const pluginComposerHost: PluginComposerHost = {
       scope: {
         kind: "queued-message",
@@ -1238,16 +1331,19 @@ export function ThreadDetailPromptArea({
       },
       textEffectKey: `queued-message:${thread.id}:${queuedMessageId}:${editSessionId}`,
       draft: activeComposerDraft,
-      getCurrent: () => {
-        const current = inlineEditingQueuedMessageRef.current;
-        return isCurrentSession(current) ? current.draft : initialDraft;
-      },
-      setDraft: (draft) => {
-        const current = inlineEditingQueuedMessageRef.current;
-        if (isCurrentSession(current)) {
-          commitInlineQueuedMessage({ ...current, draft });
-        }
-      },
+      getCurrent: () =>
+        readInlineQueuedMessageDraft(
+          inlineEditingQueuedMessageRef,
+          session,
+          initialDraft,
+        ),
+      setDraft: (draft) =>
+        writeInlineQueuedMessageDraft(
+          inlineEditingQueuedMessageRef,
+          session,
+          draft,
+          commitInlineQueuedMessage,
+        ),
       focus: focusInlinePluginComposer,
     };
     const inlineEditor: QueuedMessageInlineEditor = {
@@ -1369,18 +1465,14 @@ export function ThreadDetailPromptArea({
             scope: { kind: "thread", threadId: thread.id },
             textEffectKey: `sent-message:${thread.id}:${operationId}`,
             draft,
-            getCurrent: () => {
-              const current = sentMessageEditRef.current;
-              return current?.operationId === operationId
-                ? current.draft
-                : draft;
-            },
-            setDraft: (nextDraft) => {
-              const current = sentMessageEditRef.current;
-              if (current?.operationId === operationId) {
-                current.updateDraft(() => nextDraft);
-              }
-            },
+            getCurrent: () =>
+              readSentMessageEditDraft(sentMessageEditRef, operationId, draft),
+            setDraft: (nextDraft) =>
+              writeSentMessageEditDraft(
+                sentMessageEditRef,
+                operationId,
+                nextDraft,
+              ),
             focus: focusInlinePluginComposer,
           },
           promptActions,
@@ -1412,6 +1504,7 @@ export function ThreadDetailPromptArea({
     sentMessageAttachmentError,
     sentMessageComposerTextEffects,
     sentMessageEdit,
+    sentMessageEditRef,
     sentMessageEditSubmitMode,
     thread.id,
     typeaheadConfig,
