@@ -1,8 +1,4 @@
-import {
-  type ComponentPropsWithoutRef,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { type CSSProperties, type ReactNode } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -50,12 +46,10 @@ function labelWidthStyle(
 
 export type DetailCardAppearance = "card" | "flat";
 
-export interface DetailCardProps extends Omit<
-  ComponentPropsWithoutRef<"dl">,
-  "children"
-> {
+export interface DetailCardProps {
   children: ReactNode;
   className?: string;
+  "data-select-all-scope"?: string;
   /**
    * Width of the label column. Applied as a CSS custom property so descendant
    * rows inherit it without prop drilling. Defaults to 96px.
@@ -78,18 +72,17 @@ export function DetailCard({
   className,
   labelWidth,
   appearance = "card",
-  style,
-  ...props
+  "data-select-all-scope": selectAllScope,
 }: DetailCardProps) {
   return (
     <dl
-      {...props}
+      data-select-all-scope={selectAllScope}
       className={cn(
         DETAIL_CARD_BASE_CLASS,
         appearance === "card" && DETAIL_CARD_CARD_CLASS,
         className,
       )}
-      style={{ ...style, ...labelWidthStyle(labelWidth) }}
+      style={labelWidthStyle(labelWidth)}
     >
       {children}
     </dl>

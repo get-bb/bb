@@ -27,7 +27,11 @@ function PluginHomepageSectionList({
 }) {
   const { projectId } = useRouteState();
   return (
-    <div className="mt-6 space-y-6" data-testid="plugin-homepage-sections">
+    <div
+      className="mt-6 select-text space-y-6"
+      data-select-all-scope=""
+      data-testid="plugin-homepage-sections"
+    >
       {sections.map((section) => (
         <section
           // Generation in the key: a P3.4 reload remounts the slot (fresh

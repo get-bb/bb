@@ -25,7 +25,11 @@ function PluginSettingsSectionList({
   sections: readonly PluginSettingsSectionSlot[];
 }) {
   return (
-    <div className="space-y-6" data-testid="plugin-settings-sections">
+    <div
+      className="select-text space-y-6"
+      data-select-all-scope=""
+      data-testid="plugin-settings-sections"
+    >
       {sections.map((section) => {
         const key = `${section.pluginId}/${section.id}/${section.generation}`;
         return section.title === undefined ? (

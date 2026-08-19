@@ -251,7 +251,7 @@ export function PluginPanelTabContent({
 
 function UnavailableActionTab() {
   return (
-    <div className="p-4">
+    <div className="select-text p-4" data-select-all-scope="">
       <EmptyStatePanel className="rounded-lg p-6 text-sm">
         This plugin tab is not available. The plugin may still be loading, or it
         has been disabled or removed.
@@ -282,13 +282,14 @@ function ThreadActionTabContent({
   if (action === null) return <UnavailableActionTab />;
   return (
     <div
-      className={
+      className={`select-text ${
         action.layout === "flush"
           ? // App-like content (e.g. an embedded ThreadChat) owns its own
             // layout and scrolling; the host only provides a definite height.
             "h-full min-h-0 flex-1 overflow-hidden"
           : "h-full min-h-0 flex-1 overflow-y-auto p-4"
-      }
+      }`}
+      data-select-all-scope=""
       data-testid="plugin-panel-tab-content"
     >
       <PluginSlotMount
@@ -325,11 +326,12 @@ function NewThreadActionTabContent({
   if (action === null) return <UnavailableActionTab />;
   return (
     <div
-      className={
+      className={`select-text ${
         action.layout === "flush"
           ? "h-full min-h-0 flex-1 overflow-hidden"
           : "h-full min-h-0 flex-1 overflow-y-auto p-4"
-      }
+      }`}
+      data-select-all-scope=""
       data-testid="plugin-new-thread-panel-tab-content"
     >
       <PluginSlotMount
@@ -383,7 +385,8 @@ function FileOpenerTabContent({
     >
       {(opener, BoundOriginal) => (
         <div
-          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          className="select-text flex min-h-0 flex-1 flex-col overflow-hidden"
+          data-select-all-scope=""
           data-testid="plugin-file-opener-tab-content"
         >
           <opener.component

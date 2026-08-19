@@ -206,8 +206,9 @@ export function GitDiffCardHeader({
           </button>
         ) : null}
         <span
+          data-select-all-scope=""
           className={cn(
-            "flex min-w-0 items-center gap-1.5",
+            "flex min-w-0 select-text items-center gap-1.5",
             // Mirror the diff body's `[data-column-content] { padding-inline:
             // 1ch }` so the file name is offset from the card's left edge by the
             // same gutter the diff body uses between its column boundary and the

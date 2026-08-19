@@ -126,6 +126,11 @@ describe("Plugin detail recipe", () => {
       ["overview", "About"],
       ["release", "Release"],
     ]);
+    const releaseTable = container.querySelector(
+      '[data-resource-detail-section="release"] table',
+    );
+    expect(releaseTable?.closest(".select-text")).not.toBeNull();
+    expect(releaseTable?.closest("[data-select-all-scope]")).not.toBeNull();
   });
 
   it("names each activity section after its own object, with no Health wrapper", () => {

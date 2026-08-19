@@ -112,7 +112,6 @@ export function AppSelectAllController() {
         !selectionMatchesCopyOverride(override) ||
         event.clipboardData === null
       ) {
-        copyOverride = null;
         return;
       }
       event.clipboardData.setData("text/plain", override.text);
@@ -161,7 +160,10 @@ export function AppSelectAllController() {
 
     window.addEventListener("pointerdown", updateActiveScope, true);
     window.addEventListener("focusin", updateActiveScope, true);
-    window.addEventListener("keydown", handleSelectAll);
+    // Select All is a platform-reserved chord. Capture prevents descendant
+    // controls that stop keydown propagation from falling back to document-wide
+    // native selection; editable targets still return to native handling above.
+    window.addEventListener("keydown", handleSelectAll, true);
     document.addEventListener("copy", handleCopy, true);
     const unsubscribeDesktopSelectAll = getBbDesktopInfo()?.onSelectAll?.(
       selectActiveScopeOrEditor,
@@ -169,7 +171,7 @@ export function AppSelectAllController() {
     return () => {
       window.removeEventListener("pointerdown", updateActiveScope, true);
       window.removeEventListener("focusin", updateActiveScope, true);
-      window.removeEventListener("keydown", handleSelectAll);
+      window.removeEventListener("keydown", handleSelectAll, true);
       document.removeEventListener("copy", handleCopy, true);
       unsubscribeDesktopSelectAll?.();
     };

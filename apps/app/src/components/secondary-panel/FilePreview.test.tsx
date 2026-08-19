@@ -191,20 +191,6 @@ function renderWithWorkerPool(ui: ReactElement) {
 }
 
 describe("FilePreview", () => {
-  it("keeps file-loading diagnostics selectable", () => {
-    render(
-      <FilePreview
-        headerMode="none"
-        path="src/missing.ts"
-        state={{ kind: "error", message: "Host file read failed" }}
-      />,
-    );
-
-    const diagnostic = screen.getByText("Host file read failed");
-    expect(diagnostic.closest(".select-text")).not.toBeNull();
-    expect(diagnostic.closest("[data-select-all-scope]")).not.toBeNull();
-  });
-
   beforeEach(() => {
     pierreMock.state.cachedFileKeys.clear();
     pierreMock.state.initialStats = pierreMock.createStats();
@@ -222,6 +208,20 @@ describe("FilePreview", () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+  });
+
+  it("keeps file-loading diagnostics selectable", () => {
+    render(
+      <FilePreview
+        headerMode="none"
+        path="src/missing.ts"
+        state={{ kind: "error", message: "Host file read failed" }}
+      />,
+    );
+
+    const diagnostic = screen.getByText("Host file read failed");
+    expect(diagnostic.closest(".select-text")).not.toBeNull();
+    expect(diagnostic.closest("[data-select-all-scope]")).not.toBeNull();
   });
 
   it("offers a manual file refresh action", () => {

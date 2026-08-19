@@ -2,15 +2,13 @@ import type { HTMLAttributes } from "react";
 import { cn } from "../../lib/utils";
 import { Icon, type IconName } from "./icon";
 
-export interface EmptyStateProps extends Omit<
-  HTMLAttributes<HTMLDivElement>,
-  "children"
-> {
+export interface EmptyStateProps {
   message: string;
   icon?: IconName;
   className?: string;
   iconClassName?: string;
   messageClassName?: string;
+  "data-select-all-scope"?: string;
 }
 
 export function EmptyState({
@@ -19,10 +17,13 @@ export function EmptyState({
   className,
   iconClassName,
   messageClassName,
-  ...props
+  "data-select-all-scope": selectAllScope,
 }: EmptyStateProps) {
   return (
-    <div className={cn("flex items-center gap-2", className)} {...props}>
+    <div
+      className={cn("flex items-center gap-2", className)}
+      data-select-all-scope={selectAllScope}
+    >
       {icon ? (
         <Icon
           name={icon}

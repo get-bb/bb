@@ -282,11 +282,11 @@ describe("AddPluginDialog", () => {
       source: "npm:bb-plugin-widgets@^1.0.0 (registry https://npm.acme.test)",
     });
 
-    expect(
-      screen.getByText(
-        "npm:bb-plugin-widgets@^1.0.0 (registry https://npm.acme.test)",
-      ),
-    ).not.toBeNull();
+    const source = screen.getByText(
+      "npm:bb-plugin-widgets@^1.0.0 (registry https://npm.acme.test)",
+    );
+    expect(source.closest(".select-text")).not.toBeNull();
+    expect(source.closest("[data-select-all-scope]")).not.toBeNull();
   });
 
   it("installs official catalog entries through the catalog endpoint", async () => {

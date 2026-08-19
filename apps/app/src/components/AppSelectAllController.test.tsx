@@ -121,6 +121,25 @@ describe("AppSelectAllController", () => {
     expect(window.getSelection()?.toString()).not.toContain("Composer draft");
   });
 
+  it("handles Select All before a descendant stops keydown propagation", () => {
+    render(<AppSelectAllController />);
+    const fixture = createFixture();
+    fixture.mainAction.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+    });
+
+    fireEvent.pointerDown(fixture.mainAction);
+    const event = dispatchSelectAll(fixture.mainAction);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(window.getSelection()?.toString()).toContain(
+      "Main timeline message",
+    );
+    expect(window.getSelection()?.toString()).not.toContain(
+      "Side chat message",
+    );
+  });
+
   it("scopes Select All requested by the native desktop menu", () => {
     const requestSelectAll = installDesktopSelectAllBridge();
     render(<AppSelectAllController />);
@@ -347,6 +366,64 @@ describe("AppSelectAllController", () => {
 
     expect(setData).not.toHaveBeenCalled();
     expect(copyEvent.defaultPrevented).toBe(false);
+    unregister();
+  });
+
+  it("retains a scoped copy override across an unrelated legacy copy", () => {
+    render(<AppSelectAllController />);
+    const fixture = createFixture();
+    const unregister = registerSelectAllCopyText(
+      fixture.mainRegion,
+      () => "AUTHORITATIVE_VIRTUALIZED_TEXT",
+    );
+
+    fireEvent.pointerDown(fixture.mainMessage);
+    dispatchSelectAll(fixture.mainMessage);
+    const selection = window.getSelection()!;
+    const scopedSelection = {
+      anchorNode: selection.anchorNode!,
+      anchorOffset: selection.anchorOffset,
+      focusNode: selection.focusNode!,
+      focusOffset: selection.focusOffset,
+    };
+
+    selection.setBaseAndExtent(
+      fixture.standaloneText.firstChild!,
+      0,
+      fixture.standaloneText.firstChild!,
+      fixture.standaloneText.textContent!.length,
+    );
+    const unrelatedCopy = new Event("copy", {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(unrelatedCopy, "clipboardData", {
+      value: { setData: vi.fn() },
+    });
+    document.dispatchEvent(unrelatedCopy);
+    expect(unrelatedCopy.defaultPrevented).toBe(false);
+
+    selection.setBaseAndExtent(
+      scopedSelection.anchorNode,
+      scopedSelection.anchorOffset,
+      scopedSelection.focusNode,
+      scopedSelection.focusOffset,
+    );
+    const setData = vi.fn();
+    const scopedCopy = new Event("copy", {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(scopedCopy, "clipboardData", {
+      value: { setData },
+    });
+    document.dispatchEvent(scopedCopy);
+
+    expect(setData).toHaveBeenCalledWith(
+      "text/plain",
+      "AUTHORITATIVE_VIRTUALIZED_TEXT",
+    );
+    expect(scopedCopy.defaultPrevented).toBe(true);
     unregister();
   });
 

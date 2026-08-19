@@ -193,7 +193,11 @@ function ThirdPartySourceDisclosure({
   }
   if (error !== null && error !== undefined) {
     return (
-      <p className="text-2xs text-warning-text" role="status">
+      <p
+        className="select-text text-2xs text-warning-text"
+        data-select-all-scope=""
+        role="status"
+      >
         Could not resolve this listing&rsquo;s source:{" "}
         {pluginAdminErrorMessage(error)}
       </p>
@@ -214,7 +218,10 @@ function ThirdPartySourceDisclosure({
       </a>
     );
   return (
-    <div className="space-y-1.5 rounded-md border border-border bg-muted/30 px-3 py-2">
+    <div
+      className="select-text space-y-1.5 rounded-md border border-border bg-muted/30 px-3 py-2"
+      data-select-all-scope=""
+    >
       <p className="text-2xs text-subtle-foreground">
         Listed by{" "}
         <span className="text-foreground">{plan.marketplaceDisplayName}</span>,
@@ -324,7 +331,10 @@ function AddPluginDialogContent({
       </DialogHeader>
       <div className="space-y-3">
         {initial !== null ? (
-          <div className="space-y-1.5 rounded-md border border-border bg-muted/30 px-3 py-2">
+          <div
+            className="select-text space-y-1.5 rounded-md border border-border bg-muted/30 px-3 py-2"
+            data-select-all-scope=""
+          >
             <div className="flex items-center gap-2.5">
               <CatalogEntryIcon entry={initial} className="size-6" />
               <span className="text-sm font-medium text-foreground">

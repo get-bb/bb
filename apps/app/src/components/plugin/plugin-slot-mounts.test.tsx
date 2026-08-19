@@ -50,6 +50,7 @@ import {
   usePublishPluginComposerHost,
 } from "./plugin-composer-host";
 import { PluginHomepageSections } from "./PluginHomepageSections";
+import { PluginSettingsSections } from "./PluginSettingsSections";
 import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
 import {
   getComposerInputLock,
@@ -128,6 +129,32 @@ describe("PluginHomepageSections", () => {
     );
     expect(screen.getByText("plugin broken crashed")).toBeDefined();
     expect(screen.getByText("fine section body")).toBeDefined();
+    const sections = screen.getByTestId("plugin-homepage-sections");
+    expect(sections.classList).toContain("select-text");
+    expect(sections.hasAttribute("data-select-all-scope")).toBe(true);
+  });
+});
+
+describe("PluginSettingsSections", () => {
+  it("keeps plugin-authored settings content selectable", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        settingsSections: [
+          {
+            id: "account",
+            title: "Account",
+            component: () => <div>plugin account diagnostics</div>,
+          },
+        ],
+      }),
+    );
+
+    render(<PluginSettingsSections pluginId="demo" />);
+
+    const sections = screen.getByTestId("plugin-settings-sections");
+    expect(sections.classList).toContain("select-text");
+    expect(sections.hasAttribute("data-select-all-scope")).toBe(true);
   });
 });
 
@@ -1673,6 +1700,9 @@ describe("plugin thread panel actions", () => {
         'panel body for thr_9 / {"n":1,"nested":[true,null,{"label":"ok"}]}',
       ),
     ).toBeDefined();
+    const panel = screen.getByTestId("plugin-panel-tab-content");
+    expect(panel.classList).toContain("select-text");
+    expect(panel.hasAttribute("data-select-all-scope")).toBe(true);
   });
 
   it("contains a throwing run and declines non-JSON params without opening", () => {
