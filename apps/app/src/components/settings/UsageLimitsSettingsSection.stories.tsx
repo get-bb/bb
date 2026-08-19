@@ -7,7 +7,7 @@ import {
 } from "./UsageLimitsSettingsSection";
 
 export default {
-  title: "settings/Settings Page",
+  title: "settings/Usage Limits",
 };
 
 type Usage = UsageLimitsSettingsSectionContentProps["usage"];

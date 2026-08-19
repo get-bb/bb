@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { Route, Routes, useNavigate } from "react-router-dom";
 import {
   defaultAppTheme,
   defaultExperiments,
@@ -13,21 +14,38 @@ import type {
 } from "@bb/host-daemon-contract";
 import { UsageLimitsSettingsSectionContent } from "@/components/settings/UsageLimitsSettingsSection";
 import { VoiceInputSettingsSectionContent } from "@/components/settings/VoiceInputSettingsSection";
-import { PageShell } from "@/components/ui/page-shell";
+import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
+import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
+import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
+import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
+import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
+import type { SettingsProviderId } from "@/components/settings/settings-nav";
+import {
+  SettingsStoryChrome,
+  type SettingsStoryRoute,
+  useSettingsStoryRoute,
+} from "../../.ladle/story-settings-chrome";
+import {
+  SettingsStoryFixtures,
+  SettingsUpdatesStory,
+} from "../../.ladle/settings-story-fixtures";
 import type { ThemePreference } from "@/hooks/useTheme";
 import type { AudioInputDeviceOption } from "@/hooks/useAudioInputDevices";
 import type { PreferredAudioInputDeviceId } from "@/lib/audio-input-device-preference";
+import { SETTINGS_MACHINE_ROUTE_PATH } from "@/lib/route-paths";
 import {
   AppearanceSettingsSection,
   DebugSettingsSection,
   ExperimentsSettingsSection,
   GeneralSettingsSection,
   LocalOpenTargetSettingsSection,
+  ProviderSettingsSection,
   type LocalOpenTargetSettingsSectionProps,
 } from "./SettingsView";
+import { MachineSettingsView } from "./MachineSettingsView";
 
 export default {
-  title: "settings/Settings Page",
+  title: "settings/Settings",
 };
 
 type StoredTargetId = LocalOpenTargetSettingsSectionProps["directoryTargetId"];
@@ -393,72 +411,93 @@ function UsageLimitsStory() {
   );
 }
 
-function SettingsStoryFrame({
-  children,
-  useShell = false,
+function ProviderSettingsStory({
+  providerId,
 }: {
-  children: ReactNode;
-  useShell?: boolean;
+  providerId: SettingsProviderId;
 }) {
-  if (useShell) {
+  const [memoryEnabled, setMemoryEnabled] = useState(true);
+  const [subagentsDisabled, setSubagentsDisabled] = useState(false);
+  const [workflowsDisabled, setWorkflowsDisabled] = useState(false);
+
+  return (
+    <ProviderSettingsSection
+      providerId={providerId}
+      memoryEnabled={memoryEnabled}
+      subagentsDisabled={subagentsDisabled}
+      workflowsDisabled={workflowsDisabled}
+      disabled={false}
+      onMemoryEnabledChange={setMemoryEnabled}
+      onSubagentsDisabledChange={setSubagentsDisabled}
+      onWorkflowsDisabledChange={setWorkflowsDisabled}
+    />
+  );
+}
+
+function SettingsStoryContent({ route }: { route: SettingsStoryRoute }) {
+  if (route.kind === "machine") {
     return (
-      <div className="h-[1120px] bg-background p-4 md:p-5">
-        <PageShell contentClassName="pt-4 md:pt-5">
-          <div className="mx-auto w-full max-w-3xl space-y-6">{children}</div>
-        </PageShell>
-      </div>
+      <Routes>
+        <Route
+          path={SETTINGS_MACHINE_ROUTE_PATH}
+          element={<MachineSettingsView />}
+        />
+      </Routes>
     );
   }
+  if (route.kind === "provider") {
+    return <ProviderSettingsStory providerId={route.id} />;
+  }
 
-  return (
-    <div className="bg-background p-4 md:p-6">
-      <div className="mx-auto w-full max-w-3xl space-y-6">{children}</div>
-    </div>
-  );
+  switch (route.id) {
+    case "appearance":
+      return <AppearanceSettingsStory />;
+    case "keyboard":
+      return <KeyboardSettingsSection />;
+    case "usage":
+      return <UsageLimitsStory />;
+    case "files":
+      return <FilePreferencesStory />;
+    case "machines":
+      return <MachinesSettingsSection />;
+    case "updates":
+      return <SettingsUpdatesStory />;
+    case "experiments":
+      return <ExperimentsStory />;
+    case "marketplaces":
+      return <MarketplacesSettingsSection />;
+    case "community":
+      return <CommunitySettingsSection />;
+    case "archived":
+      return <ArchivedThreadsSettingsSection />;
+    case "general":
+      return (
+        <>
+          <GeneralSettingsStory desktopBrowserAvailable />
+          <VoiceInputStory />
+        </>
+      );
+  }
 }
 
-export function Overview() {
-  return (
-    <SettingsStoryFrame useShell>
-      <GeneralSettingsStory />
-      <AppearanceSettingsStory />
-      <UsageLimitsStory />
-      <VoiceInputStory />
-      <FilePreferencesStory />
-      <ExperimentsStory />
-    </SettingsStoryFrame>
-  );
-}
+/** One chrome-wrapped story with real navigation between Settings subpages. */
+export function FullPage() {
+  const navigate = useNavigate();
+  const route = useSettingsStoryRoute();
+  useEffect(() => {
+    const storyPath =
+      new URLSearchParams(window.location.hash.slice(1)).get("settingsPath") ??
+      new URLSearchParams(window.location.search).get("settingsPath");
+    if (storyPath?.startsWith("/settings") === true) {
+      navigate(storyPath, { replace: true });
+    }
+  }, [navigate]);
 
-export function General() {
   return (
-    <SettingsStoryFrame>
-      <GeneralSettingsStory desktopBrowserAvailable />
-      <VoiceInputStory />
-    </SettingsStoryFrame>
-  );
-}
-
-export function Appearance() {
-  return (
-    <SettingsStoryFrame>
-      <AppearanceSettingsStory />
-    </SettingsStoryFrame>
-  );
-}
-
-export function Files() {
-  return (
-    <SettingsStoryFrame>
-      <FilePreferencesStory />
-    </SettingsStoryFrame>
-  );
-}
-
-export function Experiments() {
-  return (
-    <SettingsStoryFrame>
-      <ExperimentsStory />
-    </SettingsStoryFrame>
+    <SettingsStoryFixtures>
+      <SettingsStoryChrome contentOwnsPageShell={route.kind === "machine"}>
+        <SettingsStoryContent route={route} />
+      </SettingsStoryChrome>
+    </SettingsStoryFixtures>
   );
 }
