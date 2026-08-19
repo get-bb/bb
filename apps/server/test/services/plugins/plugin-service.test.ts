@@ -136,6 +136,7 @@ describe("plugin service", () => {
       telemetry: { capture: (event) => captured.push(event) },
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
+      bundledPlugins: [],
       loadTimeoutMs: 2000,
     });
   }
@@ -650,15 +651,13 @@ describe("plugin service", () => {
   it("reports one anonymous plugin_installed event per user install", async () => {
     const captured: TelemetryEvent[] = [];
     const tracked = createTelemetryTrackedService(captured);
-    // This test exercises registration and lifecycle transitions, not plugin
-    // execution. An engine-incompatible plugin keeps runtime loading out of
-    // its time budget while taking the same install/reload/enable paths.
+    // Keep unrelated bundled plugins out of this telemetry-focused lifecycle.
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-tracked",
-      engines: ">=99.0.0",
       serverSource: "export default function plugin() {}",
     });
-    await tracked.installPath(rootDir);
+    const installed = await tracked.installPath(rootDir);
+    expect(installed.status).toBe("running");
     // A direct install may point at private code, so it reports no id.
     expect(captured).toEqual([
       {
@@ -673,8 +672,13 @@ describe("plugin service", () => {
     ]);
     // Reload and enablement are not installs.
     await tracked.reload("tracked");
-    await tracked.setEnabled("tracked", false);
-    await tracked.setEnabled("tracked", true);
+    expect(tracked.list().find((entry) => entry.id === "tracked")?.status).toBe(
+      "running",
+    );
+    expect((await tracked.setEnabled("tracked", false))?.status).toBe(
+      "disabled",
+    );
+    expect((await tracked.setEnabled("tracked", true))?.status).toBe("running");
     expect(captured).toHaveLength(1);
     await tracked.stop();
   });
@@ -684,7 +688,6 @@ describe("plugin service", () => {
     const tracked = createTelemetryTrackedService(captured);
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-reconciled",
-      engines: ">=99.0.0",
       serverSource: "export default function plugin() {}",
     });
     await tracked.installPath(rootDir);
@@ -694,8 +697,11 @@ describe("plugin service", () => {
     await tracked.start();
 
     expect(captured).toEqual([]);
+    expect(
+      tracked.list().find((entry) => entry.id === "reconciled")?.status,
+    ).toBe("running");
     await tracked.stop();
-  }, 30_000);
+  });
 
   it("hides names of plugins from third-party catalogs in the install event", () => {
     // A local or private marketplace can name internal code, so only the

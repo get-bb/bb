@@ -23,6 +23,7 @@ export const PLUGIN_HOST_ARTIFACT_CACHE_SEGMENT = "plugin-host-artifacts";
 // does not inherit module classification from an unrelated ancestor
 // package.json (which can also emit MODULE_TYPELESS_PACKAGE_JSON warnings).
 const ARTIFACT_FILE_NAME = "host.mjs";
+const LEGACY_ARTIFACT_FILE_NAMES = ["host.js"] as const;
 
 export type FetchPluginHostArtifact = (args: {
   pluginId: string;
@@ -47,6 +48,7 @@ export async function ensureCachedPluginHostArtifact(args: {
     digest: args.digest,
     byteLength: args.byteLength,
     fileName: ARTIFACT_FILE_NAME,
+    legacyFileNames: LEGACY_ARTIFACT_FILE_NAMES,
     // The cache is content-addressed and generic; the plugin id it belongs to
     // is the caller's business, so the fetch closes over it.
     fetchArtifact: ({ digest, byteLength }) =>

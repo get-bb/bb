@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   mkdtemp,
+  mkdir,
   readFile,
   readdir,
   rm,
@@ -165,6 +166,29 @@ describe("PluginHostManager", () => {
       Reflect.get(Object(second.output), "pid"),
     );
     expect(fetchArtifact).toHaveBeenCalledOnce();
+  });
+
+  it("migrates a verified legacy host.js cache entry without downloading", async () => {
+    const fetchArtifact = vi.fn(async () => artifactSource);
+    const { dataDir, manager } = await createManagerFixture({ fetchArtifact });
+    const command = callCommand();
+    const digestDirectory = join(
+      dataDir,
+      "plugin-host-artifacts",
+      command.pluginId,
+      command.artifact.digest,
+    );
+    await mkdir(digestDirectory, { recursive: true });
+    await writeFile(join(digestDirectory, "host.js"), artifactSource);
+
+    const result = await manager.call(command);
+
+    expect(result.output).toMatchObject({ input: { value: "hello" } });
+    expect(fetchArtifact).not.toHaveBeenCalled();
+    await expect(readdir(digestDirectory)).resolves.toEqual(["host.mjs"]);
+    await expect(readFile(join(digestDirectory, "host.mjs"))).resolves.toEqual(
+      artifactSource,
+    );
   });
 
   it("logs artifact and worker lifecycle transitions", async () => {
