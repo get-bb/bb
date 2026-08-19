@@ -123,7 +123,6 @@
     "@bb/test-helpers": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@ladle/react": "^5.0.3",
-    "@playwright/test": "1.62.1",
     "@rolldown/plugin-babel": "^0.2.3",
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/react": "^16.3.2",
