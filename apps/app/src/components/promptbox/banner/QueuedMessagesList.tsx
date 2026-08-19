@@ -77,7 +77,7 @@ import {
 } from "@/components/ui/markdown-prompt-mentions";
 import { normalizePromptBlockquoteBoundaries } from "@/components/ui/markdown-prompt-blockquote-boundaries";
 import {
-  QueuedEditorTypeaheadLayoutProvider,
+  QueuedEditorTypeaheadLayoutContext,
   type QueuedEditorTypeaheadLayout,
 } from "@/components/promptbox/queued-editor-typeahead-layout";
 
@@ -933,13 +933,11 @@ function clamp(value: number, minimum: number, maximum: number): number {
 
 function QueuedMessageInlineEditorSlot({
   editor,
-  onTypeaheadLayoutChange,
-  typeaheadLayout,
 }: {
   editor: QueuedMessageInlineEditor;
-  onTypeaheadLayoutChange: (layout: QueuedEditorTypeaheadLayout) => void;
-  typeaheadLayout: QueuedEditorTypeaheadLayout;
 }) {
+  const [typeaheadLayout, setTypeaheadLayout] =
+    useState<QueuedEditorTypeaheadLayout>({ height: 0, isOpen: false });
   const typeaheadReservation = typeaheadLayout.isOpen
     ? Math.ceil(typeaheadLayout.height) + TYPEAHEAD_MENU_GAP
     : 0;
@@ -954,16 +952,14 @@ function QueuedMessageInlineEditorSlot({
         label={`Editing queued message ${editor.queuedMessageIndex + 1}`}
         onCancel={editor.onDismiss}
       >
-        <QueuedEditorTypeaheadLayoutProvider
-          onLayoutChange={onTypeaheadLayoutChange}
-        >
+        <QueuedEditorTypeaheadLayoutContext.Provider value={setTypeaheadLayout}>
           <div
             data-queued-editor-typeahead-reservation=""
             style={{ paddingTop: typeaheadReservation }}
           >
             {editor.content}
           </div>
-        </QueuedEditorTypeaheadLayoutProvider>
+        </QueuedEditorTypeaheadLayoutContext.Provider>
       </InlineMessageEditorFrame>
       <OverflowFade placement="below" tone="surface-raised" className="z-10" />
     </li>
@@ -1009,30 +1005,7 @@ export function QueuedMessagesList({
   const [inlineEditorDesiredHeight, setInlineEditorDesiredHeight] = useState<
     number | null
   >(null);
-  const [reportedTypeaheadLayout, setReportedTypeaheadLayout] = useState<
-    QueuedEditorTypeaheadLayout & { editorId: string | null }
-  >({ editorId: null, height: 0, isOpen: false });
   const inlineEditorActive = inlineEditor !== undefined;
-  const inlineEditorId = inlineEditor?.queuedMessageId ?? null;
-  const inlineEditorTypeaheadLayout: QueuedEditorTypeaheadLayout =
-    reportedTypeaheadLayout.editorId === inlineEditorId
-      ? reportedTypeaheadLayout
-      : { height: 0, isOpen: false };
-  const handleTypeaheadLayoutChange = useCallback(
-    (layout: QueuedEditorTypeaheadLayout) => {
-      setReportedTypeaheadLayout((current) => {
-        if (
-          current.editorId === inlineEditorId &&
-          current.height === layout.height &&
-          current.isOpen === layout.isOpen
-        ) {
-          return current;
-        }
-        return { ...layout, editorId: inlineEditorId };
-      });
-    },
-    [inlineEditorId],
-  );
   const getScrollElement = useBottomAnchoredScroll()?.getScrollElement;
   const surfaceRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -1196,13 +1169,7 @@ export function QueuedMessagesList({
       resizeObserver?.disconnect();
       window.removeEventListener("resize", measureInlineEditorMaxHeight);
     };
-  }, [
-    getScrollElement,
-    inlineEditorActive,
-    inlineEditorTypeaheadLayout.height,
-    inlineEditorTypeaheadLayout.isOpen,
-    measureInlineEditorMaxHeight,
-  ]);
+  }, [getScrollElement, inlineEditorActive, measureInlineEditorMaxHeight]);
 
   // Render from a local order so a drag can reorder synchronously in the drop
   // event (no snap-back). The prop is re-adopted only when the queue's
@@ -1504,8 +1471,6 @@ export function QueuedMessagesList({
         <QueuedMessageInlineEditorSlot
           key={`inline-editor:${inlineEditor.queuedMessageId}`}
           editor={inlineEditor}
-          onTypeaheadLayoutChange={handleTypeaheadLayoutChange}
-          typeaheadLayout={inlineEditorTypeaheadLayout}
         />,
       );
       inlineEditorInserted = true;
@@ -1537,8 +1502,6 @@ export function QueuedMessagesList({
       <QueuedMessageInlineEditorSlot
         key={`inline-editor:${inlineEditor.queuedMessageId}`}
         editor={inlineEditor}
-        onTypeaheadLayoutChange={handleTypeaheadLayoutChange}
-        typeaheadLayout={inlineEditorTypeaheadLayout}
       />,
     );
   }

@@ -575,11 +575,7 @@ describe("QueuedMessagesList", () => {
                 ? {
                     queuedMessageId: "q_one",
                     queuedMessageIndex: 0,
-                    content: (
-                      <TypeaheadLayoutFixture
-                        layout={{ height: 120, isOpen: true }}
-                      />
-                    ),
+                    content: <div>Inline editor</div>,
                     onDismiss: noop,
                   }
                 : undefined
@@ -596,11 +592,6 @@ describe("QueuedMessagesList", () => {
     const composer = container.querySelector("[data-test-bottom-composer]");
 
     await waitFor(() => expect(surface?.style.height).toBe("140px"));
-    expect(
-      container.querySelector<HTMLElement>(
-        "[data-queued-editor-typeahead-reservation]",
-      )?.style.paddingTop,
-    ).toBe("128px");
     expect(surface?.compareDocumentPosition(composer as Node) ?? 0).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
@@ -803,7 +794,7 @@ describe("QueuedMessagesList", () => {
       neighborTop: 32,
     },
   ])(
-    "sizes a $label-item edit from only the neighbor that exists",
+    "reserves and scroll-aligns a $label queued editor in a constrained drawer",
     async ({ editorTop, expectedScrollTop, messages, neighborTop }) => {
       const viewport = document.createElement("div");
       Object.defineProperty(viewport, "clientHeight", { value: 500 });
@@ -886,14 +877,9 @@ describe("QueuedMessagesList", () => {
       const editorFrame = reservation.closest(
         '[data-inline-message-editor-frame="embedded"]',
       );
-      expect(editorFrame).not.toBeNull();
-      const editorHeader = Array.from(editorFrame?.children ?? []).find(
-        (element) => element.textContent?.includes("Editing queued message"),
+      expect(editorFrame?.firstElementChild?.textContent).toContain(
+        "Editing queued message",
       );
-      expect(
-        (editorHeader?.compareDocumentPosition(reservation) ?? 0) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).not.toBe(0);
       expect(scroll?.scrollTop).toBe(expectedScrollTop);
     },
   );
