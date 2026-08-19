@@ -13,8 +13,7 @@
     "branding": {
       "icon": "./icons/pi.svg"
     },
-    "server": "./server.ts",
-    "app": "./app.tsx"
+    "server": "./server.ts"
   },
   "keywords": [
     "bb-plugin"
@@ -24,8 +23,6 @@
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "workspace:*",
-    "@types/react": "^19.0.0",
-    "react": "^19.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
 }

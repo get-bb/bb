@@ -1090,8 +1090,27 @@ path is served to clients as a `logoUrl` and drawn through `<img>`, so its
 there is no `logoUrl` at all. For a monochrome mark, ship an `app.tsx` too and
 register the same artwork with
 `app.slots.experimental_providerIcon({ providerId, icon })` — it renders
-inline and inherits the theme. The four first-party provider plugins do
-exactly this (`plugins/provider-codex/app.tsx`).
+inline and inherits the theme. Example:
+
+```tsx
+// app.tsx
+import { definePluginApp } from "@get-bb/plugin-sdk/app";
+
+function EchoIcon({ className }: { className?: string }) {
+  return (
+    <svg fill="currentColor" viewBox="0 0 24 24" className={className}>
+      <path d="…" />
+    </svg>
+  );
+}
+
+export default definePluginApp((app) => {
+  app.slots.experimental_providerIcon({ providerId: "echo", icon: EchoIcon });
+});
+```
+
+(The four first-party provider plugins ship no `app.tsx`: bb vendors their
+marks itself, so an icon-only bundle would only add fetches at boot.)
 
 Ids are collision-rejected against core providers and other plugins'
 registrations; registrations replace wholesale on reload like every other
@@ -1716,7 +1735,7 @@ openWorkspaceFile }` — register a leaf
   A component beats the file logo for that provider; disabling the plugin
   falls back to it. One registration per provider id per plugin; if two
   plugins claim one provider id the host keeps the first by plugin id and
-  warns. Reference: `plugins/provider-codex/app.tsx`.
+  warns. See the `app.tsx` example under "The icon" above.
 
 Host components:
 

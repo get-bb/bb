@@ -326,7 +326,9 @@ a separate document where `currentColor` resolves to black — invisible on dark
 themes. Registrations are replaced wholesale with the rest of the plugin's
 slot set, so disable/uninstall/failed reload falls back to the vendored map,
 then `logoUrl`, then the generic glyph. The four first-party provider plugins
-register their own marks through this slot.
+do not use it: their marks are vendored in the host (`BUILT_IN_BRAND_ICONS`),
+and shipping an app bundle only to register the same SVGs cost four JS+CSS
+fetches and four icon remounts at every boot.
 
 **Audit before stabilizing.**
 
@@ -340,9 +342,11 @@ register their own marks through this slot.
 2. **Bundle size and boot ordering.** An icon now costs a frontend bundle: a
    provider plugin that previously shipped only a server entry pays esbuild +
    Tailwind on install and an extra module fetch at boot, and the vendored map
-   covers the window before the bundle loads. Confirm the cost is acceptable
-   for icon-only plugins, or add a lighter delivery path (e.g. a declared
-   inline SVG string sanitized by the host) before freezing the shape.
+   covers the window before the bundle loads. The first-party provider plugins
+   dropped their icon-only bundles for exactly this reason. Confirm the cost is
+   acceptable for third-party icon-only plugins, or add a lighter delivery
+   path (e.g. a declared inline SVG string sanitized by the host) before
+   freezing the shape.
 3. **Disposal and identity.** The icon component is resolved through a cached
    host wrapper keyed by provider id and `logoUrl`; the wrapper subscribes to
    the slot store so a disposed registration falls back mid-render. Audit that
