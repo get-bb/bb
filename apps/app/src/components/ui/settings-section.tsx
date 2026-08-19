@@ -5,7 +5,9 @@ export interface SettingsSectionProps {
   action?: ReactNode;
   children: ReactNode;
   description?: string;
-  title: string;
+  title: ReactNode;
+  /** A compact utility that belongs directly beside the section title. */
+  titleAction?: ReactNode;
 }
 
 export function SettingsSection({
@@ -13,6 +15,7 @@ export function SettingsSection({
   children,
   description,
   title,
+  titleAction,
 }: SettingsSectionProps) {
   return (
     <section className="space-y-3">
@@ -22,8 +25,13 @@ export function SettingsSection({
           description ? "items-start" : "items-center",
         )}
       >
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <h2 className="min-w-0 text-sm font-semibold text-foreground">
+              {title}
+            </h2>
+            {titleAction ? <div className="shrink-0">{titleAction}</div> : null}
+          </div>
           {description ? (
             <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
               {description}

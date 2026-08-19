@@ -102,6 +102,7 @@ function machine(
     isPrimary: true,
     providerStatus: null,
     statusPending: false,
+    statusFetching: false,
     statusError: false,
     issues: [],
     canRetryDaemonUpdate: false,

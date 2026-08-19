@@ -38,6 +38,7 @@
    * settled/closed-turn machinery, and a text-only destructive that clears AA in
    * dark mode (the --destructive fill is below the 4.5:1 text floor there). */
   --color-readback-foreground: var(--readback-foreground);
+  --color-version-upgrade: var(--version-upgrade);
   --color-timeline-accent: var(--timeline-accent);
   --color-file-accent: var(--file-accent);
   --color-accent: var(--accent);
@@ -457,6 +458,11 @@
   --subtle-foreground: oklch(0.5 0 0);
   /* Recede tier between muted (7.77:1) and subtle (6.00:1); ~6.83:1 on white. */
   --readback-foreground: oklch(0.47 0 0);
+  /* The version an update would move you to. Its own role rather than plain
+   * body text so the "this is the one you'd get" emphasis can be tuned without
+   * touching every other foreground, and derived from the anchors so custom
+   * palettes tint it instead of stranding it neutral beside their own text. */
+  --version-upgrade: color-mix(in oklch, var(--ink) 96%, var(--canvas));
   /* Soft "paper blue" timeline accent — the one tint in the otherwise
    * achromatic timeline. ~5.0:1 on white. */
   --timeline-accent: oklch(0.55 0.1 250);
@@ -703,6 +709,8 @@
   --subtle-foreground: oklch(0.68 0 0);
   /* Recede tier between muted (9.14:1) and subtle (6.35:1); ~7.24:1 on canvas. */
   --readback-foreground: oklch(0.715 0 0);
+  /* See the light block: the version an update would move you to. */
+  --version-upgrade: color-mix(in oklch, var(--ink) 96%, var(--canvas));
   /* Soft "paper blue" timeline accent, lifted for the dark canvas (~6:1). */
   --timeline-accent: oklch(0.72 0.09 250);
   --file-accent: var(--timeline-accent);

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
-import bbLogoUrl from "../../../../../assets/bb-logo.svg";
 import {
   ResourceInfiniteScrollSentinel,
   useResourceInfiniteItems,
@@ -20,6 +19,7 @@ import {
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { BbLogo } from "@/components/ui/bb-logo";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
@@ -128,17 +128,6 @@ export function ProviderLogo({
   return (
     <LogoIcon
       className={cn(getProviderIconColorClass(providerId), className)}
-    />
-  );
-}
-
-export function BbLogo({ className = "size-4" }: { className?: string }) {
-  return (
-    <img
-      src={bbLogoUrl}
-      alt=""
-      aria-hidden="true"
-      className={cn(className, "object-contain dark:invert")}
     />
   );
 }

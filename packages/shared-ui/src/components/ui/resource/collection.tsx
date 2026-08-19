@@ -553,7 +553,7 @@ export function ResourceBrowseCard({
       {headerAction ? (
         <span
           data-row-action
-          className="relative col-start-2 row-start-1 flex shrink-0 items-center justify-end whitespace-nowrap"
+          className="relative col-start-2 row-start-1 flex shrink-0 cursor-default items-center justify-end whitespace-nowrap"
         >
           {headerAction}
         </span>

@@ -45,6 +45,36 @@ export function providerCliEntries(
   }));
 }
 
+const PROVIDER_CLI_UPDATE_PROVIDERS = [
+  "codex",
+  "claudeCode",
+  "cursor",
+] as const satisfies readonly ProviderCliKey[];
+
+/** Provider rows Settings → Updates owns, including Cursor. */
+export function providerCliUpdateEntries(
+  status: ProviderCliStatusResponse,
+): ProviderCliStatusEntry[] {
+  return PROVIDER_CLI_UPDATE_PROVIDERS.map((provider) => ({
+    provider,
+    status: status[provider],
+  }));
+}
+
+/**
+ * Whether an issue is an *update* rather than a first install.
+ *
+ * `buildProviderCliIssue` deliberately reports a missing CLI too — onboarding
+ * and the compose box both need it to offer the install. Settings → Updates is
+ * not one of those surfaces: a CLI you never installed has no update, and
+ * listing it there put a permanent install prompt on an update page, counted it
+ * in "Update all", and made a fresh single-agent install look perpetually
+ * behind. The sidebar chips have always drawn this line; this is the same one.
+ */
+export function isProviderCliUpdateIssue(issue: ProviderCliIssue): boolean {
+  return issue.status.installed;
+}
+
 export function buildProviderCliIssue(
   entry: ProviderCliStatusEntry,
 ): ProviderCliIssue | null {

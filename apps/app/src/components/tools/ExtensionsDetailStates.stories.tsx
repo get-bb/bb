@@ -36,10 +36,10 @@ import {
   PluginProvenancePill,
 } from "@/components/tools/PluginDetail";
 import {
-  BbLogo,
   ProviderLogo,
   SkillProvenanceTooltip,
 } from "@/components/tools/SkillsCollection";
+import { BbLogo } from "@/components/ui/bb-logo";
 import {
   SkillDetailView,
   SkillOwnershipBadge,

@@ -6,13 +6,17 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Host } from "@bb/domain";
 import type { BbDesktopApi, BbDesktopInfo } from "@bb/desktop-contract";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import {
+  HOST_DAEMON_PROTOCOL_VERSION,
+  type ProviderCliKey,
+} from "@bb/host-daemon-contract";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import type {
   ProviderCliIssue,
   ProviderCliActionableIssue,
@@ -97,10 +101,14 @@ function makeHost(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
 }
 
 function makeUpdateIssue(args: {
-  provider: "codex" | "claudeCode";
+  provider: ProviderCliKey;
 }): ProviderCliActionableIssue {
-  const displayName = args.provider === "codex" ? "Codex" : "Claude Code";
-  const executableName = args.provider === "codex" ? "codex" : "claude";
+  const identity = {
+    codex: { displayName: "Codex", executableName: "codex" },
+    claudeCode: { displayName: "Claude Code", executableName: "claude" },
+    cursor: { displayName: "Cursor", executableName: "agent" },
+  }[args.provider];
+  const { displayName, executableName } = identity;
   const action = {
     kind: "update" as const,
     label: "Update" as const,
@@ -155,7 +163,7 @@ function makeMachine(args: {
   canRetryDaemonUpdate?: boolean;
 }): UpdateInventoryMachine {
   const issues = args.issues ?? [];
-  const upToDate = (provider: "codex" | "claudeCode") => {
+  const upToDate = (provider: ProviderCliKey) => {
     const issue = issues.find((entry) => entry.provider === provider);
     if (issue !== undefined) {
       return issue.status;
@@ -167,16 +175,17 @@ function makeMachine(args: {
       needsUpdate: false,
     };
   };
-  const cursorStatus = {
-    ...makeUpdateIssue({ provider: "codex" }).status,
-    displayName: "Cursor",
-    executableName: "agent",
-    installed: false,
-    currentVersion: null,
-    latestVersion: null,
-    needsUpdate: false,
-    installAction: null,
-  };
+  const cursorIssue = issues.find((entry) => entry.provider === "cursor");
+  const cursorStatus =
+    cursorIssue?.status ??
+    ({
+      ...makeUpdateIssue({ provider: "cursor" }).status,
+      installed: false,
+      currentVersion: null,
+      latestVersion: null,
+      needsUpdate: false,
+      installAction: null,
+    } as const);
   return {
     host: args.host,
     isPrimary: args.isPrimary ?? false,
@@ -189,6 +198,7 @@ function makeMachine(args: {
           }
         : null,
     statusPending: args.statusPending ?? false,
+    statusFetching: args.statusPending ?? false,
     statusError: args.statusError ?? false,
     issues,
     canRetryDaemonUpdate: args.canRetryDaemonUpdate ?? false,
@@ -209,7 +219,12 @@ function makeInventory(overrides: Partial<UpdateInventory>): UpdateInventory {
     desktopInfo: null,
     appUpdateAvailable: false,
     desktopUpdateReady: false,
-    machines: [],
+    machines: [
+      makeMachine({
+        host: makeHost({ id: "host_primary", name: "workstation" }),
+        isPrimary: true,
+      }),
+    ],
     pluginAttentionCount: 0,
     actionableCount: 0,
     hasAttention: false,
@@ -220,13 +235,17 @@ function makeInventory(overrides: Partial<UpdateInventory>): UpdateInventory {
 
 function renderSection(): void {
   render(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
-      <UpdatesSettingsSection />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <TooltipProvider>
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <UpdatesSettingsSection />
+        </QueryClientProvider>
+      </TooltipProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -251,7 +270,79 @@ afterEach(() => {
 });
 
 describe("UpdatesSettingsSection", () => {
-  it("keeps a recently checked healthy fleet quiet and accessible", () => {
+  it("checks for updates once when the view mounts", async () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const host = makeHost({ id: "host_1", name: "workstation" });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({ machines: [makeMachine({ host })] }),
+    );
+    vi.mocked(sdk.system.version).mockResolvedValue(
+      makeInventory({}).systemVersion!,
+    );
+
+    renderSection();
+
+    // Visiting the page is the request to check — there is no button for it.
+    expect(screen.queryByRole("button", { name: /check/i })).toBeNull();
+    await waitFor(() => {
+      expect(sdk.system.version).toHaveBeenCalledWith({ force: true });
+    });
+    // Exactly one: re-renders must not re-fire it, and the store's own
+    // single-flight guard must not be the only thing preventing a loop.
+    expect(sdk.system.version).toHaveBeenCalledTimes(1);
+  });
+
+  it("aligns Update all with the first machine heading", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [
+          makeMachine({
+            host: makeHost({ id: "host_1", name: "workstation" }),
+            issues: [makeUpdateIssue({ provider: "codex" })],
+          }),
+          makeMachine({
+            host: makeHost({ id: "host_2", name: "homelab" }),
+            issues: [makeUpdateIssue({ provider: "claudeCode" })],
+          }),
+        ],
+      }),
+    );
+
+    renderSection();
+
+    const bulkActions = screen.getByRole("toolbar", {
+      name: "Bulk update actions",
+    });
+    const updateAll = bulkActions.querySelector(
+      '[aria-label="Update all 2 CLI tools"]',
+    );
+    expect(updateAll).not.toBeNull();
+    expect(updateAll?.className).toContain("bg-primary");
+    expect(updateAll?.className).toContain("text-primary-foreground");
+    const workstationHeading = screen.getByRole("heading", {
+      name: "workstation",
+    });
+    const homelabHeading = screen.getByRole("heading", { name: "homelab" });
+    const workstationSection = workstationHeading.closest(
+      "[data-updates-machine]",
+    );
+    const homelabSection = homelabHeading.closest("[data-updates-machine]");
+    expect(workstationSection?.contains(bulkActions)).toBe(true);
+    expect(homelabSection?.contains(bulkActions)).toBe(false);
+    expect(bulkActions.querySelector('[data-icon="Download"]')).not.toBeNull();
+    expect(bulkActions.parentElement?.className).toContain("pr-4");
+  });
+
+  it("keeps a recently checked healthy fleet quiet and accessible", async () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
@@ -274,16 +365,48 @@ describe("UpdatesSettingsSection", () => {
 
     renderSection();
 
-    expect(screen.getByText("Checked 2m ago")).toBeDefined();
-    expect(screen.getByText("2 machines, all in sync")).toBeDefined();
-    expect(screen.queryByText("Up to date")).toBeNull();
+    // A settled row is a mark, named only to a screen reader and on hover.
+    // Opening the page runs the check, so there is no freshness stamp: the age
+    // of the claim is always "since you got here".
+    await waitFor(() => {
+      expect(screen.getByText("Up to date").className).toContain("sr-only");
+    });
+    expect(screen.queryByText("2 up to date")).toBeNull();
+    expect(screen.getByRole("heading", { name: /workstation/ })).toBeDefined();
+    expect(screen.getByText("This machine")).toBeDefined();
+    expect(screen.queryByText("studio-mac")).toBeNull();
+    expect(screen.queryByText(/Checked/)).toBeNull();
+    expect(screen.queryByText(/ago$/)).toBeNull();
     expect(screen.queryByText(/^In sync$/)).toBeNull();
+    expect(screen.queryByText("workstation, studio-mac")).toBeNull();
+    // Opening the page is the request to check, so there is no button to press
+    // and no freshness stamp to justify one.
+    expect(screen.queryByRole("button", { name: /check/i })).toBeNull();
+    // Nothing needs updating, so the page drops the "Updates" title entirely
+    // and the settled sentence is the heading.
+    expect(screen.queryByRole("heading", { name: "Updates" })).toBeNull();
+    // Being up to date is the state every row is expected to be in, so it
+    // carries no indicator: the page spends its dots on exceptions only.
+    const settled = screen.getByText(/^Up to date/);
+    expect(settled.parentElement?.querySelector(".bg-success")).toBeNull();
+    expect(document.querySelector(".bg-success")).toBeNull();
     expect(
-      screen.getByRole("group", { name: /workstation, Connected/ }),
-    ).toBeDefined();
+      document
+        .querySelector(
+          '[data-update-state="up-to-date"] [data-icon="CircleCheck"]',
+        )
+        ?.getAttribute("class"),
+    ).toContain("text-input");
+    expect(
+      document
+        .querySelector(
+          '[data-update-state="up-to-date"] [data-icon="CircleCheck"]',
+        )
+        ?.getAttribute("class"),
+    ).not.toContain("opacity-");
   });
 
-  it("does not call an offline fleet all in sync", () => {
+  it("does not call an offline fleet all in sync", async () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
@@ -305,16 +428,91 @@ describe("UpdatesSettingsSection", () => {
 
     renderSection();
 
-    expect(screen.getByText("1 machine was not checked")).toBeDefined();
-    expect(screen.queryByText(/all in sync/)).toBeNull();
+    expect(screen.getByText("homelab")).toBeDefined();
+    expect(screen.queryByText("1 offline")).toBeNull();
+    expect(screen.getByText("Offline")).toBeDefined();
+    const offlineIcon = document.querySelector(
+      '[data-update-state="offline"] [data-icon="CircleX"]',
+    );
+    expect(offlineIcon?.getAttribute("class")).toContain(
+      "text-subtle-foreground",
+    );
+    expect(offlineIcon?.getAttribute("class")).not.toContain("text-input");
+    const daemonRow = screen
+      .getByText("bb daemon")
+      .closest("[data-resource-row]");
+    expect(daemonRow).not.toBeNull();
+    expect(screen.getByText("bb app")).toBeDefined();
     expect(
-      within(screen.getByRole("group", { name: /homelab, Offline/ })).getByText(
-        "Offline — connect to check for updates",
-      ),
+      screen.getByRole("button", { name: "Open homelab settings" }),
+    ).toBeDefined();
+    // App and daemon rows use the bb identity mark; machine ownership comes
+    // from the section heading rather than a laptop glyph in the row.
+    expect(
+      daemonRow?.querySelector('[data-bb-update-role="daemon"]'),
+    ).not.toBeNull();
+    expect(
+      document.querySelector('[data-bb-update-role="app"]'),
+    ).not.toBeNull();
+    expect(daemonRow?.querySelector('[data-icon="Laptop"]')).toBeNull();
+    // An unreachable machine is not pending update work, so the page still
+    // leads with the settled answer instead of going silent.
+    // Every row states its own condition, and a settled one says when that was
+    // established rather than going blank.
+    await waitFor(() => {
+      expect(screen.getByText(/^Up to date/)).toBeDefined();
+    });
+    expect(screen.queryByText(/all in sync/)).toBeNull();
+  });
+
+  it("shows only machines with relevant health status in a mixed fleet", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const stalledHost = makeHost({
+      id: "host_3",
+      name: "homelab",
+      status: "disconnected",
+      lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
+      updatedAt: Date.now() - 3 * 60 * 1000,
+    });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [
+          makeMachine({
+            host: makeHost({ id: "host_1", name: "workstation" }),
+          }),
+          makeMachine({
+            host: makeHost({
+              id: "host_2",
+              name: "studio-mac",
+              status: "disconnected",
+            }),
+          }),
+          makeMachine({
+            host: stalledHost,
+            canRetryDaemonUpdate: true,
+          }),
+        ],
+      }),
+    );
+
+    renderSection();
+
+    expect(document.querySelectorAll("[data-updates-machine]")).toHaveLength(3);
+    expect(screen.queryByText("Needs attention")).toBeNull();
+    expect(screen.getByText("workstation")).toBeDefined();
+    expect(screen.getByText("studio-mac")).toBeDefined();
+    expect(screen.getByText("Offline")).toBeDefined();
+    expect(screen.getByText("homelab")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /^Failed · Retry on/ }),
     ).toBeDefined();
   });
 
-  it("explains and retries a stranded daemon update", () => {
+  it("treats a recent daemon protocol mismatch as an automatic update", () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
@@ -339,21 +537,438 @@ describe("UpdatesSettingsSection", () => {
 
     renderSection();
 
-    expect(screen.getByText("1 machine can't connect")).toBeDefined();
+    expect(screen.getByText("homelab")).toBeDefined();
+    expect(screen.queryByText("1 updating")).toBeNull();
+    // The machine owns the section; the row identifies the daemon explicitly.
+    expect(screen.getByText("bb daemon")).toBeDefined();
+    expect(screen.getAllByText("In progress").length).toBeGreaterThan(0);
     expect(
-      screen.getByText("Can't connect — its bb agent is out of date"),
-    ).toBeDefined();
-    expect(
-      screen.getByText(
-        `Needs update · daemon protocol ${HOST_DAEMON_PROTOCOL_VERSION - 1} · server protocol ${HOST_DAEMON_PROTOCOL_VERSION}`,
-      ),
-    ).toBeDefined();
+      document.querySelector('[data-updates-machine="host_1"]'),
+    ).not.toBeNull();
+    expect(screen.queryByText("1 machine is updating bb")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry update" })).toBeNull();
+    expect(screen.queryByText(/can't connect/i)).toBeNull();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "Retry update" }));
+  it("explains and retries a daemon update that has stalled", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const host = makeHost({
+      id: "host_1",
+      name: "homelab",
+      status: "disconnected",
+      lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
+      updatedAt: Date.now() - 3 * 60 * 1000,
+    });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [
+          makeMachine({
+            host,
+            canRetryDaemonUpdate: true,
+          }),
+        ],
+      }),
+    );
+
+    renderSection();
+
+    expect(screen.getByText("homelab")).toBeDefined();
+    expect(screen.queryByText("1 needs attention")).toBeNull();
+    // Not "stalled": that names an internal step and gives the reader nothing
+    // to weigh. How long it has been waiting is what makes it judgeable.
+    expect(
+      screen.getByRole("button", { name: "Failed · Retry on homelab now" }),
+    ).toBeDefined();
+    expect(screen.queryByText("1 machine needs attention")).toBeNull();
+    expect(screen.queryByText(/daemon protocol/)).toBeNull();
+    expect(
+      screen.getByText("bb daemon").closest("[data-resource-row]")?.className,
+    ).not.toContain("bg-surface-destructive");
+    // A stalled bb update is outstanding update work, so the page must not
+    // claim everything is settled while that row sits under the claim.
+    expect(screen.queryByText(/^Up to date/)).toBeNull();
+    // The row states the condition once; no banner repeats it above.
+    expect(
+      screen.getAllByRole("button", { name: /^Failed · Retry on/ }),
+    ).toHaveLength(1);
+
+    // One stuck machine already has its own Retry on the row, so a bulk sweep
+    // beside it would be two controls doing the same thing.
+    expect(
+      screen.queryByRole("button", { name: /Update all .* machines now/ }),
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Failed · Retry on homelab now",
+      }),
+    );
     expect(retryHostUpdateMutateMock).toHaveBeenCalledWith(
       host.id,
       expect.objectContaining({ onSuccess: expect.any(Function) }),
     );
+  });
+
+  it("names a machine running a newer bb than the server", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [
+          makeMachine({
+            host: makeHost({
+              id: "host_1",
+              name: "homelab",
+              status: "disconnected",
+              // Ahead of the server, so the machine cannot fix itself and no
+              // retry can help — the server is what has to move.
+              lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION + 1,
+            }),
+            canRetryDaemonUpdate: false,
+          }),
+        ],
+      }),
+    );
+
+    renderSection();
+
+    // "Offline" alone was true here and useless: it sends the reader to check
+    // a network that is working perfectly. The mark still says offline — that
+    // is the condition — but the row now names the fix beside the machine.
+    expect(screen.getByText("Update this app to reconnect")).toBeDefined();
+    // Nothing on this machine can resolve it, so the row offers no action.
+    expect(
+      screen.queryByRole("button", { name: /Update homelab now/ }),
+    ).toBeNull();
+  });
+
+  it("sweeps every machine stalled on the same bb update", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    // A server protocol bump rejects every enrolled daemon at once, so a
+    // broken rollout stalls the whole fleet rather than one machine.
+    const stalled = ["workstation", "studio-mac", "homelab"].map(
+      (name, index) =>
+        makeHost({
+          id: `host_${index}`,
+          name,
+          status: "disconnected",
+          lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
+          updatedAt: Date.now() - 3 * 60 * 1000,
+        }),
+    );
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: stalled.map((host) =>
+          makeMachine({ host, canRetryDaemonUpdate: true }),
+        ),
+      }),
+    );
+
+    renderSection();
+
+    expect(screen.queryByText(/^Up to date/)).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Update all 3 machines now",
+      }),
+    );
+    expect(retryHostUpdateMutateMock).toHaveBeenCalledTimes(3);
+    for (const host of stalled) {
+      expect(retryHostUpdateMutateMock).toHaveBeenCalledWith(host.id);
+    }
+    // Each row keeps its own Retry: the sweep is an addition, not a takeover.
+    expect(
+      screen.getByRole("button", {
+        name: "Failed · Retry on studio-mac now",
+      }),
+    ).toBeDefined();
+  });
+
+  it("shows only provider CLIs that need attention", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const host = makeHost({ id: "host_1", name: "workstation" });
+    const codexIssue = makeUpdateIssue({ provider: "codex" });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [
+          makeMachine({ host, issues: [codexIssue], isPrimary: true }),
+        ],
+      }),
+    );
+
+    renderSection();
+
+    const machineHeading = screen.getByRole("heading", {
+      name: /workstation/,
+    });
+    const machineSection = machineHeading.closest("section");
+    expect(machineSection).not.toBeNull();
+    // Settings chrome: the same caption weight every other settings section
+    // uses, so Updates does not read as a differently-built page.
+    expect(machineHeading.className).toContain("font-semibold");
+    expect(machineHeading.className).toContain("text-foreground");
+    const machineName = screen.getByText("workstation");
+    const thisMachine = screen.getByText("This machine");
+    expect(machineHeading.querySelector('[data-icon="Laptop"]')).not.toBeNull();
+    expect(machineName.nextElementSibling).toBe(thisMachine);
+    // No summary banner above the rows: with work outstanding the rows are
+    // the statement, and with none the settled card is the only thing shown.
+    expect(screen.getByText("bb app")).toBeDefined();
+    expect(screen.queryByLabelText(/available update/)).toBeNull();
+    expect(screen.getAllByText("workstation")).toHaveLength(1);
+    expect(screen.getByText("Codex")).toBeDefined();
+    expect(screen.queryByText("Claude Code")).toBeNull();
+    expect(screen.queryByText(/^Update available/)).toBeNull();
+    expect(screen.queryByText("Choose an update below.")).toBeNull();
+    const providerIcon = document.querySelector('[data-provider-icon="codex"]');
+    expect(providerIcon).not.toBeNull();
+    expect(providerIcon?.querySelector("svg")?.className.baseVal).toContain(
+      "text-muted-foreground",
+    );
+    // Icon-only. The accessible name is the state and the verb — the row
+    // already prints the CLI, its versions, and the machine above it. Row and
+    // bulk actions share the same quiet treatment so neither competes with the
+    // update inventory itself.
+    const updateButton = screen.getAllByRole("button", {
+      name: "Update available · Update Codex on workstation",
+    })[0];
+    expect(updateButton.textContent).toBe("");
+    // Drawn by the shared `ResourceActionButton`, so it carries that atom's
+    // muted treatment rather than a colour this page picked for itself.
+    expect(updateButton.className).toContain("text-muted-foreground");
+    expect(updateButton.className).not.toContain("bg-secondary");
+    expect(updateButton.className).not.toContain("bg-foreground");
+    // Versions sit inline after the name rather than flushed to the right
+    // edge, and only the version you'd move to is recoloured and weighted.
+    const versionMetadata = machineSection
+      ?.querySelector('[data-provider-icon="codex"]')
+      ?.closest("[data-resource-row]")
+      ?.querySelector("[data-version-metadata]");
+    expect(versionMetadata?.className).toContain("text-2xs");
+    expect(versionMetadata?.className).not.toContain("text-right");
+    expect(versionMetadata?.className).not.toContain("ml-auto");
+    // Not `font-mono`: that stack resolves to one face, so the target
+    // version's heavier weight rendered identically to the version you are on.
+    expect(versionMetadata?.className).not.toContain("font-mono");
+    const upgrade = versionMetadata?.querySelector(".text-version-upgrade");
+    expect(upgrade?.textContent).toBe("1.0.1");
+    expect(upgrade?.className).toContain("font-semibold");
+    expect(screen.queryByText("1 up to date")).toBeNull();
+  });
+
+  it("lists Cursor updates with the other provider CLIs", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const host = makeHost({ id: "host_1", name: "workstation" });
+    const cursorIssue = makeUpdateIssue({ provider: "cursor" });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [makeMachine({ host, issues: [cursorIssue] })],
+      }),
+    );
+
+    renderSection();
+
+    expect(
+      screen.getByRole("button", { name: "Open Cursor settings" }),
+    ).toBeDefined();
+    expect(
+      document.querySelector('[data-provider-icon="acp-cursor"]'),
+    ).not.toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Update available · Update Cursor on workstation",
+      }),
+    );
+    expect(startInstallMock).toHaveBeenCalledWith({
+      hostId: "host_1",
+      issue: cursorIssue,
+    });
+  });
+
+  it("names a machine once above all of its CLI updates", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const host = makeHost({ id: "host_1", name: "workstation" });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [
+          makeMachine({
+            host,
+            issues: [
+              makeUpdateIssue({ provider: "codex" }),
+              makeUpdateIssue({ provider: "claudeCode" }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    renderSection();
+
+    // The machine heads the group; its rows name only the tool. Repeating the
+    // hostname on every row was the redundancy this grouping removes.
+    expect(screen.getAllByText("workstation")).toHaveLength(1);
+    expect(screen.getByText("Codex")).toBeDefined();
+    expect(screen.getByText("Claude Code")).toBeDefined();
+    // Versions stay per row: the same CLI is routinely a different version on
+    // each host, which is why the rows cannot collapse to one per provider.
+    expect(
+      document
+        .querySelector('[data-updates-machine="host_1"]')
+        ?.querySelectorAll("[data-resource-row] [data-version-metadata]")
+        .length,
+    ).toBe(2);
+    // Each row still drives its own host-scoped install.
+    fireEvent.click(
+      screen.getAllByRole("button", {
+        name: /^Update available · Update/,
+      })[0],
+    );
+    expect(startInstallMock).toHaveBeenCalledTimes(1);
+    expect(startInstallMock.mock.calls[0]?.[0]).toMatchObject({
+      hostId: "host_1",
+    });
+  });
+
+  it("keeps background provider checks out of the compact view", async () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const host = makeHost({ id: "host_1", name: "workstation" });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [makeMachine({ host, statusPending: true })],
+      }),
+    );
+
+    renderSection();
+
+    // Every row states its own condition, and a settled one says when that was
+    // established rather than going blank.
+    await waitFor(() => {
+      expect(screen.getByText(/^Up to date/)).toBeDefined();
+    });
+    expect(screen.queryByText("1 up to date")).toBeNull();
+    expect(screen.getByRole("heading", { name: "workstation" })).toBeDefined();
+    expect(screen.queryByText("Checking provider CLIs…")).toBeNull();
+  });
+
+  it("offers a way out of a failed CLI check", async () => {
+    // The status query is session-static (staleTime Infinity, no refetch on
+    // mount/focus/reconnect), so an errored row used to be permanent for the
+    // life of the page: it named a problem with no affordance to clear it.
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const host = makeHost({ id: "host_1", name: "workstation" });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [makeMachine({ host, statusError: true })],
+      }),
+    );
+
+    renderSection();
+
+    await waitFor(() => {
+      expect(screen.getByText("Couldn't check for updates")).toBeDefined();
+    });
+    const retry = screen.getByRole("button", {
+      name: /Check workstation's CLIs again/,
+    });
+    expect(retry.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("keeps error red on the reason and off the recovery", () => {
+    // One rule for the whole page: red states what is wrong, never what fixes
+    // it. A destructive-tinted Retry reads as a second failure rather than a
+    // way out, and it drifted before because three branches each decided tone
+    // for themselves.
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const host = makeHost({ id: "host_1", name: "workstation" });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [makeMachine({ host, statusError: true })],
+      }),
+    );
+
+    renderSection();
+
+    expect(screen.getByText("Couldn't check for updates").className).toContain(
+      "text-destructive",
+    );
+    expect(
+      screen.getByRole("button", { name: /Check workstation's CLIs again/ })
+        .className,
+    ).not.toContain("text-destructive");
+  });
+
+  it("leaves never-installed CLIs off an update page", () => {
+    // An update page lists things that have an update. A CLI you never
+    // installed has no version to be behind, so it is a first-install decision
+    // and belongs on Providers — it used to sit here permanently with a
+    // Download control and count toward "Update all".
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const host = makeHost({ id: "host_1", name: "workstation" });
+    const missingCodex = makeUpdateIssue({ provider: "codex" });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [
+          makeMachine({
+            host,
+            issues: [
+              {
+                ...missingCodex,
+                status: {
+                  ...missingCodex.status,
+                  installed: false,
+                  currentVersion: null,
+                },
+              },
+              makeUpdateIssue({ provider: "claudeCode" }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    renderSection();
+
+    expect(screen.getByText("Claude Code")).toBeDefined();
+    expect(screen.queryByText("Codex")).toBeNull();
   });
 
   it("removes running and queued provider jobs from Update all", () => {
@@ -380,9 +995,21 @@ describe("UpdatesSettingsSection", () => {
     renderSection();
 
     expect(screen.queryByRole("button", { name: /Update all/ })).toBeNull();
-    expect(screen.getByText("2 updates in progress")).toBeDefined();
-    expect(screen.getByText("Running…")).toBeDefined();
-    expect(screen.getByText("Queued")).toBeDefined();
+    expect(screen.queryByText("2 updates in progress")).toBeNull();
+    // Running and queued are the same spinner: one is not a state the reader
+    // can act on differently from the other.
+    expect(
+      document.querySelectorAll(
+        '[data-updates-machine="host_1"] [data-resource-row] [data-update-state="in-progress"]',
+      ).length,
+    ).toBe(2);
+    for (const providerId of ["codex", "claude-code"]) {
+      expect(
+        document
+          .querySelector(`[data-provider-icon="${providerId}"] svg`)
+          ?.getAttribute("class"),
+      ).toContain("text-muted-foreground");
+    }
   });
 
   it("keeps a provider update failure and its command log on the row", () => {
@@ -422,8 +1049,14 @@ describe("UpdatesSettingsSection", () => {
     expect(screen.getByRole("alert").textContent).toBe(
       "Command exited with code 1",
     );
-    expect(screen.getByRole("button", { name: "Retry" })).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "View log" }));
+    expect(
+      screen.getByRole("button", {
+        name: "Failed · Retry Claude Code on workstation",
+      }),
+    ).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: "View Claude Code update log" }),
+    );
     expect(getProviderCliInstallSnapshot().logDialogState).toEqual(
       logDialogState,
     );
@@ -456,8 +1089,24 @@ describe("UpdatesSettingsSection", () => {
     renderSection();
     expect(screen.getByText("npx bb-app@latest")).toBeDefined();
     expect(screen.getByText("0.0.6")).toBeDefined();
+    // Icon-only row action: the accessible name carries what the label used to.
+    const copyButton = screen.getByRole("button", {
+      name: "Update available · Copy the upgrade command",
+    });
+    expect(copyButton.textContent).toBe("");
+    // Row actions are plain regardless of domain.
+    expect(copyButton.className).not.toContain("bg-secondary");
+    const updateSurface = document.querySelector(
+      '[data-updates-machine="host_primary"]',
+    );
+    // The house settings card, with its rows on the house divider — the same
+    // chrome every other section of Settings is drawn in.
+    expect(updateSurface?.querySelector(".bg-card")).not.toBeNull();
+    expect(updateSurface?.querySelector(".divide-y")).not.toBeNull();
+    expect(screen.queryByText(/^Update available/)).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+    // Opening the page is the check. Nothing to click, and the forced refresh
+    // still bypasses the cached version.
     await waitFor(() => {
       expect(sdk.system.version).toHaveBeenCalledWith({ force: true });
     });
@@ -475,8 +1124,9 @@ describe("UpdatesSettingsSection", () => {
       version: "0.0.5",
     };
     const checkForUpdates = vi.fn().mockResolvedValue(desktopInfo);
+    const installUpdate = vi.fn().mockResolvedValue(undefined);
     useDesktopUpdateInfoMock.mockReturnValue({
-      desktopApi: { checkForUpdates } as unknown as BbDesktopApi,
+      desktopApi: { checkForUpdates, installUpdate } as unknown as BbDesktopApi,
       desktopInfo,
       isDesktop: true,
     });
@@ -490,9 +1140,16 @@ describe("UpdatesSettingsSection", () => {
     );
 
     renderSection();
-    expect(screen.getByRole("button", { name: "Relaunch" })).toBeDefined();
+    const relaunch = screen.getByRole("button", {
+      name: /Relaunch bb to finish updating/,
+    });
+    expect(relaunch.querySelector("img")?.className).toContain("size-3");
+    expect(relaunch.className).toContain("border");
+    fireEvent.click(relaunch);
+    expect(installUpdate).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+    // On a desktop shell the load-time check goes through the bridge, not the
+    // server's version endpoint.
     await waitFor(() => {
       expect(checkForUpdates).toHaveBeenCalledTimes(1);
     });
@@ -518,7 +1175,7 @@ describe("UpdatesSettingsSection", () => {
 
     renderSection();
 
-    expect(screen.getByText("Available")).toBeDefined();
+    expect(screen.getByText("Update available")).toBeDefined();
     expect(screen.queryByText("Downloading in the background…")).toBeNull();
   });
 
@@ -542,14 +1199,20 @@ describe("UpdatesSettingsSection", () => {
     useUpdateInventoryMock.mockReturnValue(makeInventory({ desktopInfo }));
 
     renderSection();
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-
+    // The page already checked once on load; Retry is a second, explicit run.
     await waitFor(() => {
       expect(checkForUpdates).toHaveBeenCalledTimes(1);
     });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Failed · Retry the download" }),
+    );
+
+    await waitFor(() => {
+      expect(checkForUpdates).toHaveBeenCalledTimes(2);
+    });
   });
 
-  it("runs every actionable provider update across machines from Update all", () => {
+  it("runs every actionable provider update across machines from Update all", async () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
@@ -572,8 +1235,19 @@ describe("UpdatesSettingsSection", () => {
 
     renderSection();
     expect(useProviderCliInstallRunnerMock).toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "laptop" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "homelab" })).toBeDefined();
+    // The count stays in the accessible name while the compact visible
+    // treatment uses the established update glyph and a concise tooltip.
+    const updateAll = screen.getByRole("button", {
+      name: "Update all 2 CLI tools",
+    });
+    expect(updateAll.textContent).toBe("");
+    expect(updateAll.querySelector('[data-icon="Download"]')).not.toBeNull();
+    fireEvent.focus(updateAll);
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Update all");
 
-    fireEvent.click(screen.getByRole("button", { name: "Update all (2)" }));
+    fireEvent.click(updateAll);
     expect(startInstallMock).toHaveBeenCalledTimes(2);
     expect(startInstallMock).toHaveBeenNthCalledWith(1, {
       hostId: "host_1",
@@ -603,9 +1277,26 @@ describe("UpdatesSettingsSection", () => {
 
     renderSection();
 
-    expect(screen.getByText("Update manually")).toBeDefined();
-    expect(screen.getByText("1 update needs manual action")).toBeDefined();
+    // Where to do it, not the category: bb has no installer it can drive for
+    // this install, so the next step is a terminal.
+    expect(screen.getAllByText("Update in terminal").length).toBeGreaterThan(0);
+    expect(screen.queryByText("1 update needs manual action")).toBeNull();
     expect(screen.queryByRole("button", { name: "Update" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Update all/ })).toBeNull();
+  });
+
+  it("omits an empty machine container", async () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    useUpdateInventoryMock.mockReturnValue(makeInventory({ machines: [] }));
+
+    renderSection();
+
+    expect(document.querySelector("[data-updates-machine]")).toBeNull();
+    expect(screen.queryByText("No machines yet.")).toBeNull();
+    expect(screen.getByText("No machines available.")).toBeDefined();
   });
 });

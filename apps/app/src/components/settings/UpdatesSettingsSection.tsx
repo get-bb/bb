@@ -1,18 +1,38 @@
 import {
   useEffect,
-  useId,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
+import type { ProviderCliKey } from "@bb/host-daemon-contract";
 import type { SystemVersionResponse } from "@bb/server-contract";
+import {
+  RETRY_ACTION_ICON,
+  UPDATE_ACTION_ICON,
+  UPDATE_STATE_PRESENTATION,
+  type UpdateState,
+} from "@bb/domain/update-state";
 import { Button, type ButtonProps } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
+import {
+  ResourceActionButton,
+  ResourceListState,
+  ResourceRow,
+} from "@bb/shared-ui/resource-list";
+import {
   hasProviderCliAction,
+  isProviderCliUpdateIssue,
   useProviderCliInstallRunner,
   type ProviderCliActionableIssue,
   type ProviderCliIssue,
@@ -27,9 +47,13 @@ import {
   startAppUpdateCheck,
   subscribeAppUpdateCheck,
 } from "@/components/settings/app-update-check-store";
-import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
-import { SettingsBadge } from "@/components/ui/settings-section";
 import { appToast } from "@/components/ui/app-toast";
+import { BbLogo } from "@/components/ui/bb-logo";
+import {
+  SettingsBadge,
+  SettingsRowList,
+  SettingsSection,
+} from "@/components/ui/settings-section";
 import { invalidateHostProviderCliStatus } from "@/hooks/cache-owners/provider-cli-status-cache-owner";
 import { hydrateSystemVersionCache } from "@/hooks/cache-owners/system-version-cache-owner";
 import { useRetryHostUpdate } from "@/hooks/mutations/host-mutations";
@@ -39,25 +63,36 @@ import {
 } from "@/hooks/useUpdateInventory";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
-import { formatHostUpdateStatus } from "@/lib/host-update-status";
-import { formatRelativeTime } from "@/lib/relative-time";
-import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
+import {
+  hostCanRetryUpdate,
+  hostNeedsUpdate,
+  hostUpdateIsStalled,
+} from "@/lib/host-update-status";
+import {
+  getSettingsMachineRoutePath,
+  getSettingsProviderRoutePath,
+} from "@/lib/route-paths";
+import { getProviderIconInfo } from "@/lib/provider-icon";
 import { sdk } from "@/lib/sdk";
 
-const CHANGELOG_URL = "https://github.com/get-bb/bb/blob/main/CHANGELOG.md";
 const EMPTY_PROVIDER_CLI_FAILURES: ReadonlyMap<
   string,
   ProviderCliInstallFailure
 > = new Map();
+/** Stalled machines needed before the page offers a bulk retry. */
+const BULK_RETRY_THRESHOLD = 1;
 
-/**
- * The rows and the machine bands above them share one text edge: names start
- * at `pl-7` (28px), and the status dot sits centred on `left-3.5` (14px) —
- * the same column the child rows' hairline spine runs down. The dot therefore
- * caps the spine instead of pushing the machine name out of alignment.
- */
-const GUTTER_TEXT = "pl-7";
-const GUTTER_MARK = "absolute left-3.5 top-0 flex h-8 w-0 items-center";
+const PROVIDER_CLI_AGENT_PROVIDER_ID = {
+  codex: "codex",
+  claudeCode: "claude-code",
+  cursor: "acp-cursor",
+} as const satisfies Record<ProviderCliKey, string>;
+
+const PROVIDER_CLI_DISPLAY_ORDER = [
+  "codex",
+  "claudeCode",
+  "cursor",
+] as const satisfies readonly ProviderCliKey[];
 
 function updateCheckErrorDescription(error: unknown): string {
   if (error instanceof Error && error.message.length > 0) {
@@ -66,168 +101,437 @@ function updateCheckErrorDescription(error: unknown): string {
   return "The update check did not complete.";
 }
 
-function RowButton({ className, ...props }: ButtonProps) {
+/**
+ * A row action. The icon-only form delegates to the shared
+ * `ResourceActionButton`, which already owns the tooltip, the loading
+ * spinner, and a `disabledReason` that explains a blocked action rather than
+ * only greying it out. Labelled forms stay local — the shared atom is
+ * icon-only by design.
+ */
+export function UpdateActionButton({
+  label,
+  tooltipLabel,
+  icon,
+  visibleLabel,
+  className,
+  variant,
+  loading = false,
+  disabled = false,
+  disabledReason,
+  onClick,
+}: {
+  label: string;
+  /** Short tooltip when the accessible label is a full sentence. */
+  tooltipLabel?: string;
+  icon: IconName;
+  visibleLabel?: string;
+  className?: string;
+  variant?: ButtonProps["variant"];
+  loading?: boolean;
+  disabled?: boolean;
+  disabledReason?: ReactNode;
+  onClick?: () => void;
+}) {
+  if (visibleLabel === undefined) {
+    return (
+      <ResourceActionButton
+        label={label}
+        tooltipLabel={tooltipLabel}
+        icon={icon}
+        loading={loading}
+        disabled={disabled}
+        disabledReason={disabledReason}
+        className={cn(
+          "size-7",
+          variant === "default" &&
+            "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+          className,
+        )}
+        onClick={() => onClick?.()}
+      />
+    );
+  }
+  // Only a quiet button gets the quiet text colour. Applying it regardless
+  // painted `text-subtle-foreground` over a filled variant's own foreground —
+  // mid-grey on near-black, which is unreadable rather than merely quiet.
+  const isQuiet = variant === undefined || variant === "ghost";
   return (
     <Button
       type="button"
-      variant="outline"
+      variant={variant ?? "ghost"}
       size="sm"
-      className={cn("h-6 px-2 text-xs", className)}
-      {...props}
-    />
+      aria-label={label}
+      aria-busy={loading}
+      disabled={disabled}
+      className={cn(
+        "h-7 gap-1.5 px-2.5 font-normal",
+        isQuiet && "text-subtle-foreground hover:text-foreground",
+        className,
+      )}
+      onClick={onClick}
+    >
+      <Icon
+        aria-hidden
+        name={loading ? "Spinner" : icon}
+        className={cn("size-3.5", loading && "animate-spin")}
+      />
+      {visibleLabel}
+    </Button>
   );
 }
 
 export interface UpdatesSectionProps {
-  title: string;
-  /** Right-hand slot: the freshness stamp and any section-wide action. */
+  /** Which machine or supporting domain this block covers. */
+  domain: string;
+  title: ReactNode;
+  /** Right-hand slot for compact identity or contextual actions. */
   action?: ReactNode;
-  /** Quiet line below the card, for the one caveat worth stating. */
-  footnote?: string;
   children: ReactNode;
 }
 
 /**
- * A settings section whose card is flush — rows run edge to edge so their
- * separators and machine bands are full-bleed. Deliberately not
- * `SettingsSection`, whose padded card would inset every row.
+ * One machine or supporting update block, using the same settings chrome as
+ * the rest of Settings.
  */
 export function UpdatesSection({
+  domain,
   title,
   action,
-  footnote,
   children,
 }: UpdatesSectionProps) {
-  const titleId = useId();
-
   return (
-    <section aria-labelledby={titleId} className="space-y-2.5">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <h2 id={titleId} className="text-sm font-semibold text-foreground">
-          {title}
-        </h2>
-        {action !== undefined ? (
-          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5">
-            {action}
-          </div>
-        ) : null}
-      </div>
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
+    <div data-updates-domain={domain}>
+      <SettingsSection title={title} action={action}>
         {children}
-      </div>
-      {footnote !== undefined ? (
-        <p className="text-xs text-subtle-foreground">{footnote}</p>
-      ) : null}
-    </section>
-  );
-}
-
-/** Groups rows so the first one drops its top separator. */
-export function UpdatesRowList({ children }: { children: ReactNode }) {
-  return (
-    <div className="[&>*:first-child]:border-t-0 [&>*:first-child>*:first-child]:border-t-0">
-      {children}
+      </SettingsSection>
     </div>
   );
 }
 
-type RowTone = "default" | "attention" | "destructive";
+/** Rows owned by one machine, on the settings card's own divider. */
+export function UpdatesRowList({ children }: { children: ReactNode }) {
+  return <SettingsRowList>{children}</SettingsRowList>;
+}
 
+/**
+ * The grid every line in a card sits on: mark, content, trailing controls.
+ *
+ * One constant rather than one string per caller, because the whole point is
+ * that they agree — `ResourceRow` uses this template internally, so a row, a
+ * caption and bb's own row all end their content column in the same place and
+ * truncate long text at the same point.
+ */
+const ROW_GRID =
+  "grid min-w-0 grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-3";
+
+/**
+ * A row with no destination — bb itself, which has no page of its own to open.
+ * It borrows `ResourceRow`'s grid rather than its behaviour so its mark, name
+ * and action land on the same three columns as the rows that are navigable;
+ * a plain flex row put bb's name half a mark to the left of every CLI's.
+ */
 function UpdatesRow({
-  tone = "default",
-  indent = false,
+  leading,
   children,
+  className,
 }: {
-  tone?: RowTone;
-  indent?: boolean;
+  leading?: ReactNode;
   children: ReactNode;
+  className?: string;
 }) {
   return (
     <div
-      className={cn(
-        "relative flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-t border-border/70 py-2 pr-3 text-sm",
-        indent ? GUTTER_TEXT : "pl-3",
-        tone === "attention" && "bg-surface-attention",
-        tone === "destructive" && "bg-surface-destructive",
-      )}
+      className={cn(ROW_GRID, "py-2.5 text-sm first:pt-0 last:pb-0", className)}
     >
-      {indent ? (
-        <span
-          aria-hidden
-          className="absolute inset-y-0 left-3.5 w-px -translate-x-1/2 bg-border/85"
-        />
-      ) : null}
+      <span className="flex size-6 shrink-0 items-center justify-center">
+        {leading}
+      </span>
       {children}
     </div>
   );
 }
 
 /**
- * Name and version read as one phrase ("Codex 0.146.0") instead of being split
- * across a wide gutter; the right edge belongs to state and actions only.
+ * Versions read as part of the name's own phrase — "Codex 0.145.0 → 0.146.0" —
+ * rather than as a right-aligned column. Sitting in the same line box as the
+ * name is what keeps the baselines shared no matter how long the name is; a
+ * right-flushed column drifted away from the text it described and had to be
+ * re-anchored every time an action's width changed.
+ *
+ * Not `font-mono`. The mono stack resolves to a single face here, so
+ * `font-medium` on the target version rendered at exactly the same weight as
+ * the version you are on — measured identical widths at 400 through 700 — and
+ * the pair lost the contrast that makes it scannable. Mono is still right for
+ * the upgrade *command*, which is text you retype; a version number is prose.
+ *
+ * No current version means nothing is installed here; showing `latest` alone
+ * would read as the version you have, so the row's status label says it.
+ */
+function RowVersions({
+  current,
+  latest,
+}: {
+  current: string | null;
+  latest: string | null;
+}) {
+  if (current === null) {
+    return null;
+  }
+  return (
+    <span
+      data-version-metadata
+      className="min-w-0 shrink text-2xs text-muted-foreground"
+    >
+      {current}
+      {latest !== null && latest !== current ? (
+        <>
+          <span className="px-1">→</span>
+          {/* The only recoloured half of the pair: what you'd move to reads
+              louder than what you're on, so the row is scannable without
+              parsing two version numbers. Semibold, not medium — at 10px a
+              single step buys almost no contrast, and small text needs more
+              weight than body text to hold the same emphasis. */}
+          <span className="font-semibold text-version-upgrade">{latest}</span>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * The bb app's row. `detail` carries the same weight as a machine row's
+ * provider name: secondary to the thing's identity, ahead of its versions.
  */
 function RowName({
   name,
+  detail,
   current,
   latest,
 }: {
   name: string;
+  detail?: ReactNode;
   current: string | null;
   latest: string | null;
 }) {
   return (
-    <span className="flex min-w-40 flex-1 items-baseline gap-2">
-      <span className="truncate font-medium text-foreground">{name}</span>
-      {/* No current version means nothing is installed here; showing `latest`
-          alone would read as the version you have. The row's label says it. */}
-      {current === null ? null : (
-        <span className="shrink-0 font-mono text-xs text-readback-foreground">
-          {current}
-          {latest !== null && latest !== current ? (
-            <>
-              <span className="px-1 text-subtle-foreground">→</span>
-              <span className="font-semibold text-foreground">{latest}</span>
-            </>
-          ) : null}
-        </span>
-      )}
+    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+      <span className="truncate text-sm font-medium text-foreground">
+        {name}
+      </span>
+      {detail}
+      <RowVersions current={current} latest={latest} />
     </span>
   );
 }
 
 /**
- * The right-hand slot. A healthy row passes nothing: "Up to date" repeated
- * down a column carried no information, so the settled state is now the
- * absence of a label and only exceptions speak.
+ * A row's condition as one mark, named on hover.
+ *
+ * The bb card reports condition; the Providers card reports decisions. A
+ * condition is the same handful of words on every row — "Up to date", "Offline"
+ * — so spelling it out down a column reads as a wall of repetition that says
+ * nothing about which row differs. A mark says which row differs at a glance.
+ *
+ * The tooltip is the state's name and nothing more. It does not repeat what the
+ * row already prints (the CLI, the versions, the machine), and it never carries
+ * something the reader has to act on — that is a visible caption's job. The
+ * label is always in the accessibility tree, so nothing is hover-only for a
+ * screen reader.
  */
-function RowStatus({
-  tone = "subtle",
-  live = false,
+/**
+ * Red belongs to the statement of what is wrong, and to nothing else.
+ *
+ * A row says its condition exactly once — as words (`RowStateCaption`) or, when
+ * it has no words, as the inert glyph. That one element carries the error tone.
+ * Controls never do: a button is the way out of the problem, not part of it, and
+ * a destructive-red "Retry" reads as a second failure rather than a recovery.
+ *
+ * So there are two red surfaces on this page and no others. Anything that takes
+ * a click stays untinted, whatever state it belongs to.
+ */
+function stateTextClass(state: UpdateState): string {
+  return UPDATE_STATE_PRESENTATION[state].tone === "error"
+    ? "text-destructive"
+    : "text-muted-foreground";
+}
+
+/**
+ * A state's words, placed beside the version rather than beside its control.
+ *
+ * The trailing column is the control spine: one thing per row sits on it. When
+ * a row has both something to say and something to press, the words belong to
+ * the row's identity — left, flush after the version — and the control keeps
+ * the spine to itself.
+ */
+function RowStateCaption({
+  state,
   children,
 }: {
-  tone?: "subtle" | "attention" | "destructive";
-  live?: boolean;
+  state: UpdateState;
   children: ReactNode;
 }) {
   return (
-    <span
-      role={live ? "status" : undefined}
-      aria-live={live ? "polite" : undefined}
-      className={cn(
-        "text-xs",
-        tone === "subtle" && "text-subtle-foreground",
-        tone === "attention" && "text-warning-text",
-        tone === "destructive" && "text-destructive-text",
-      )}
-    >
+    <span className={cn("shrink-0 text-xs", stateTextClass(state))}>
       {children}
     </span>
   );
 }
 
+function RowStateControl({
+  state,
+  actionIcon,
+  actionLabel,
+  actionTooltip,
+  buttonLeading,
+  buttonLabel,
+  loading = false,
+  live = false,
+  onClick,
+}: {
+  state: UpdateState;
+  /**
+   * Overrides the state's glyph when the control does something other than the
+   * state implies — the web bb row copies an upgrade command rather than
+   * fetching anything, and a Download arrow there promises an install that
+   * never happens.
+   */
+  actionIcon?: IconName;
+  /**
+   * What clicking does. This is the accessible name, so it stays specific —
+   * two "Retry" buttons in a fleet are indistinguishable to a screen reader
+   * without the machine in them.
+   */
+  actionLabel?: string;
+  /**
+   * The visible tooltip, when it should be shorter than the accessible name.
+   * A tooltip sits next to the row that already prints the CLI, its versions
+   * and its machine, so repeating them there is noise; a screen reader has no
+   * such context and needs the long form.
+   */
+  actionTooltip?: string;
+  /** Optional decorative mark before a labelled action. */
+  buttonLeading?: ReactNode;
+  /** Renders the control as a labelled button carrying the state's glyph. */
+  buttonLabel?: string;
+  loading?: boolean;
+  live?: boolean;
+  onClick?: () => void;
+}) {
+  const presentation = UPDATE_STATE_PRESENTATION[state];
+  const icon = actionIcon ?? (presentation.icon as IconName | null);
+  // A retryable failure defaults to the shared retry glyph. A caller can
+  // provide a product mark when the action is specifically about that product.
+  const buttonIcon =
+    state === "failed" ? (RETRY_ACTION_ICON as IconName) : null;
+  const spin = loading || presentation.inFlight === true;
+  const srLabel = presentation.label;
+  // A spinner is self-evident on sight, so it gets no tooltip — but it still
+  // needs its words in the accessibility tree, where nothing is self-evident.
+  const explainOnHover = presentation.inFlight !== true;
+
+  // A state with a resolution is ONE labelled control carrying its mark — not
+  // a mark beside a button repeating it.
+  if (onClick !== undefined && buttonLabel !== undefined) {
+    return (
+      <span className="flex min-w-0 items-center gap-1.5">
+        {/* Untinted by rule — see `stateTextClass`. A failure's control wears
+            the reload glyph; everything else is label-only. */}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-label={[srLabel, actionLabel].filter(Boolean).join(" · ")}
+          aria-busy={loading}
+          disabled={loading}
+          className="h-6 shrink-0 gap-1.5 px-2 text-xs"
+          onClick={onClick}
+        >
+          {loading ? (
+            <Icon aria-hidden name="Loading" className="size-3 animate-spin" />
+          ) : buttonLeading !== undefined ? (
+            buttonLeading
+          ) : buttonIcon === null ? null : (
+            <Icon aria-hidden name={buttonIcon} className="size-3" />
+          )}
+          {buttonLabel}
+        </Button>
+      </span>
+    );
+  }
+
+  if (onClick !== undefined && icon !== null) {
+    return (
+      <span className="flex min-w-0 items-center gap-1.5">
+        <UpdateActionButton
+          label={[srLabel, actionLabel].filter(Boolean).join(" · ")}
+          tooltipLabel={actionTooltip ?? actionLabel ?? presentation.label}
+          icon={icon}
+          loading={loading}
+          onClick={onClick}
+        />
+      </span>
+    );
+  }
+
+  // A glyph-less state still holds the spine, so a column of rows keeps one
+  // right edge whether each row ends in an icon or a button.
+  if (icon === null) {
+    return <span className="flex h-7 shrink-0 items-center" />;
+  }
+
+  const mark = (
+    <span
+      role={live ? "status" : undefined}
+      aria-live={live ? "polite" : undefined}
+      data-update-state={state}
+      className="flex size-7 shrink-0 items-center justify-center"
+    >
+      <Icon
+        aria-hidden
+        name={icon}
+        className={cn(
+          "size-4",
+          spin && "animate-spin",
+          presentation.tone === "muted" &&
+            (state === "up-to-date" ? "text-input" : "text-subtle-foreground"),
+          presentation.tone === "error" && "text-destructive",
+        )}
+      />
+      <span className="sr-only">{srLabel}</span>
+    </span>
+  );
+
+  if (!explainOnHover) {
+    return <span className="flex min-w-0 items-center gap-1.5">{mark}</span>;
+  }
+
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      <TooltipProvider delayDuration={250}>
+        <Tooltip>
+          <TooltipTrigger asChild>{mark}</TooltipTrigger>
+          {/* The state and nothing else. Anything a reader has to act on is a
+              visible caption; anything the row already shows is not repeated. */}
+          <TooltipContent>{presentation.label}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </span>
+  );
+}
+
+/**
+ * The trailing column, flush to the card's inner edge. Section bulk actions
+ * land on the same edge, so every control on the page — per-row and
+ * per-section — shares one right spine against the content's left one.
+ */
+
 function RowActions({ children }: { children: ReactNode }) {
   return (
-    <span className="ml-auto flex shrink-0 items-center gap-2">{children}</span>
+    // `gap-1` is `ResourceRow`'s own gap between a row's meta and its action,
+    // so a bb row's status lands on the same spine as every machine row's.
+    <span className="ml-auto flex shrink-0 items-center justify-end gap-1">
+      {children}
+    </span>
   );
 }
 
@@ -237,6 +541,8 @@ export interface BbAppUpdateRowsProps {
   isDesktop: boolean;
   onRelaunchDesktop: (() => void) | null;
   onRetryDesktop: (() => void) | null;
+  /** A check is in flight; the row says so instead of asserting a result. */
+  isChecking?: boolean;
 }
 
 /**
@@ -250,15 +556,44 @@ export function BbAppUpdateRows({
   isDesktop,
   onRelaunchDesktop,
   onRetryDesktop,
+  isChecking = false,
 }: BbAppUpdateRowsProps) {
+  // No "checked 2m ago": opening this page runs the check, so the age of the
+  // claim is always "since you got here" and printing it just gives the reader
+  // a number to evaluate instead of an answer.
+  const settledStatus = isChecking ? (
+    <RowStateControl live state="in-progress" />
+  ) : (
+    <RowStateControl state="up-to-date" />
+  );
+  // Every branch below ends in the same shape — mark, name, status, action
+  // slot — so no branch can quietly drop a column and knock the row out of the
+  // page's spines.
+  // One indicator per row. The state's mark *is* the control where the state
+  // has a resolution, so a row never shows a condition beside a separate
+  // button that means the same thing.
+  const row = (name: ReactNode, indicator: ReactNode, caption?: ReactNode) => (
+    <UpdatesRow
+      leading={
+        <span data-bb-update-role="app" aria-hidden>
+          <BbLogo className="size-4" />
+        </span>
+      }
+    >
+      <span className="flex min-w-0 items-baseline gap-2">
+        {name}
+        {caption}
+      </span>
+      <RowActions>{indicator}</RowActions>
+    </UpdatesRow>
+  );
   if (isDesktop && desktopInfo === null) {
-    return (
-      <UpdatesRow>
-        <RowName name="bb desktop" current={null} latest={null} />
-        <RowActions>
-          <RowStatus live>Checking…</RowStatus>
-        </RowActions>
-      </UpdatesRow>
+    return row(
+      // One bb, however it happens to be packaged. The desktop shell and a
+      // web/npm install are two ways to reach the same thing to update, not
+      // two things, so the row does not rename itself per surface.
+      <RowName name="bb app" current={null} latest={null} />,
+      <RowStateControl live state="in-progress" />,
     );
   }
 
@@ -267,76 +602,66 @@ export function BbAppUpdateRows({
       desktopInfo.pendingVersion ?? desktopInfo.latestVersion;
     const latest = desktopInfo.updateAvailable ? pendingVersion : null;
     const name = (
-      <RowName
-        name="bb desktop"
-        current={desktopInfo.version}
-        latest={latest}
-      />
+      <RowName name="bb app" current={desktopInfo.version} latest={latest} />
     );
 
     if (desktopInfo.updateDownloaded) {
-      return (
-        <UpdatesRow tone="attention">
-          {name}
-          <RowActions>
-            <RowStatus tone="attention">Downloaded</RowStatus>
-            <RowButton onClick={() => onRelaunchDesktop?.()}>
-              Relaunch
-            </RowButton>
-          </RowActions>
-        </UpdatesRow>
+      return row(
+        name,
+        // One control: a small bb mark inside its own outlined labelled button.
+        <RowStateControl
+          state="restart-required"
+          buttonLeading={<BbLogo className="size-3" />}
+          buttonLabel="Relaunch"
+          actionLabel="Relaunch bb to finish updating"
+          onClick={() => onRelaunchDesktop?.()}
+        />,
       );
     }
     if (desktopInfo.downloadState === "downloading") {
-      return (
-        <UpdatesRow tone="attention">
-          {name}
-          <RowActions>
-            <RowStatus live tone="attention">
-              Downloading in the background…
-            </RowStatus>
-          </RowActions>
-        </UpdatesRow>
-      );
+      return row(name, <RowStateControl live state="in-progress" />);
     }
     if (desktopInfo.downloadState === "failed") {
-      return (
-        <UpdatesRow tone="destructive">
-          {name}
-          <RowActions>
-            <RowStatus tone="destructive">Download failed</RowStatus>
-            <RowButton onClick={() => onRetryDesktop?.()}>Retry</RowButton>
-          </RowActions>
-        </UpdatesRow>
+      return row(
+        name,
+        <RowStateControl
+          state="failed"
+          buttonLabel="Retry"
+          actionLabel="Retry the download"
+          onClick={() => onRetryDesktop?.()}
+        />,
+        <RowStateCaption state="failed">Download failed</RowStateCaption>,
       );
     }
     if (desktopInfo.updateAvailable) {
-      return (
-        <UpdatesRow tone="attention">
-          {name}
-          <RowActions>
-            <RowStatus tone="attention">Available</RowStatus>
-          </RowActions>
-        </UpdatesRow>
-      );
+      // The shell downloads on its own; the version pair in the name already
+      // says what is coming, so the mark only says it is in hand.
+      return row(name, <RowStateControl state="update-available" />);
     }
-    return <UpdatesRow>{name}</UpdatesRow>;
+    return row(name, settledStatus);
   }
 
   if (systemVersion === undefined) {
-    return (
-      <UpdatesRow>
-        <RowName name="bb-app" current={null} latest={null} />
-        <RowActions>
-          <RowStatus>Checking…</RowStatus>
-        </RowActions>
-      </UpdatesRow>
+    return row(
+      <RowName name="bb app" current={null} latest={null} />,
+      <RowStateControl state="in-progress" />,
     );
   }
 
   const name = (
     <RowName
-      name="bb-app"
+      name="bb app"
+      detail={
+        systemVersion.updateAvailable ? (
+          // The command is a readback of what the button copies, so it sits in
+          // the same slot a machine row gives its provider name — secondary to
+          // the thing's identity — instead of as a filled block competing with
+          // the version column for the right edge.
+          <span className="hidden truncate font-mono text-2xs text-muted-foreground sm:inline">
+            {systemVersion.upgradeCommand}
+          </span>
+        ) : undefined
+      }
       current={systemVersion.currentVersion}
       latest={
         systemVersion.updateAvailable ? systemVersion.latestVersion : null
@@ -344,44 +669,25 @@ export function BbAppUpdateRows({
     />
   );
 
-  if (systemVersion.isDevelopment) {
-    return (
-      <UpdatesRow>
-        {name}
-        <RowActions>
-          <RowStatus>Development mode</RowStatus>
-        </RowActions>
-      </UpdatesRow>
-    );
-  }
-
   if (systemVersion.updateAvailable) {
-    return (
-      <UpdatesRow tone="attention">
-        {name}
-        <RowActions>
-          <RowStatus tone="attention">Available</RowStatus>
-          {/* The command sits with the button that copies it, rather than
-              crowding the app name on the left. */}
-          <code className="hidden rounded-sm bg-muted/40 px-1.5 py-0.5 font-mono text-xs text-muted-foreground sm:inline">
-            {systemVersion.upgradeCommand}
-          </code>
-          <RowButton
-            onClick={() => {
-              void copyToClipboardWithToast(systemVersion.upgradeCommand, {
-                successMessage: "Upgrade command copied",
-                errorMessage: "Couldn't copy upgrade command",
-              });
-            }}
-          >
-            Copy
-          </RowButton>
-        </RowActions>
-      </UpdatesRow>
+    return row(
+      name,
+      <RowStateControl
+        state="update-available"
+        actionIcon="Copy"
+        actionLabel="Copy the upgrade command"
+        actionTooltip="Copy command"
+        onClick={() => {
+          void copyToClipboardWithToast(systemVersion.upgradeCommand, {
+            successMessage: "Upgrade command copied",
+            errorMessage: "Couldn't copy upgrade command",
+          });
+        }}
+      />,
     );
   }
 
-  return <UpdatesRow>{name}</UpdatesRow>;
+  return row(name, settledStatus);
 }
 
 export interface MachineUpdatesRowsProps {
@@ -389,282 +695,344 @@ export interface MachineUpdatesRowsProps {
   runningJobKey: string | null;
   queuedJobKeys: ReadonlySet<string>;
   failuresByJobKey?: ReadonlyMap<string, ProviderCliInstallFailure>;
-  retryUpdatePending: boolean;
   onStartInstall: (hostId: string, issue: ProviderCliActionableIssue) => void;
-  onRetryDaemonUpdate: (hostId: string) => void;
+  /** Opens that provider's own settings page — the row's real destination. */
+  onOpenProvider: (providerId: string) => void;
 }
 
-interface ProviderRowState {
-  label: string;
-  rowTone: RowTone;
-  statusTone: "subtle" | "attention" | "destructive";
-}
-
-function providerRowState({
-  issue,
-  installed,
-}: {
-  issue: ProviderCliIssue | null;
-  installed: boolean;
-}): ProviderRowState | null {
-  if (!installed) {
-    return { label: "Not installed", rowTone: "default", statusTone: "subtle" };
-  }
-  // Up to date: the version alone says it. No label, no tint.
-  if (issue === null) {
-    return null;
-  }
-  if (issue.action === null) {
-    return {
-      label: "Update manually",
-      rowTone: issue.status.versionUnsupported ? "destructive" : "attention",
-      statusTone: issue.status.versionUnsupported ? "destructive" : "attention",
-    };
-  }
-  if (issue.status.versionUnsupported) {
-    return {
-      label: "Update needed",
-      rowTone: "destructive",
-      statusTone: "destructive",
-    };
-  }
-  return { label: "Available", rowTone: "attention", statusTone: "attention" };
-}
-
-/** The band that heads a machine's rows. */
-function MachineBand({
-  connected,
-  name,
-  headingId,
-  statusLabel,
-  badge,
-  detail,
-  tone = "default",
-  children,
-}: {
-  connected: boolean;
-  name: string;
-  headingId: string;
-  statusLabel: string;
-  badge?: ReactNode;
-  detail?: ReactNode;
-  tone?: "default" | "destructive";
-  children?: ReactNode;
-}) {
+function machineHasRelevantHealthStatus(
+  machine: UpdateInventoryMachine,
+): boolean {
   return (
-    <div
-      className={cn(
-        "relative flex items-center justify-between gap-3 border-t text-sm",
-        GUTTER_TEXT,
-        "pr-3",
-        tone === "destructive"
-          ? "border-surface-destructive-border bg-surface-destructive"
-          : "border-border/70 bg-surface-recessed",
-        children === undefined ? "h-8" : "py-2",
-      )}
-    >
-      <span aria-hidden className={GUTTER_MARK}>
-        <MachineStatusDot
-          connected={connected}
-          className={cn(
-            "-translate-x-1/2",
-            // A stranded daemon is offline *and* broken; the shared hollow
-            // ring alone reads as merely idle.
-            tone === "destructive" && "border-destructive bg-destructive",
-          )}
-        />
-      </span>
-      <span className="flex min-w-0 flex-col">
-        <span className="flex min-w-0 items-center gap-2">
-          <h3
-            id={headingId}
-            className="truncate text-xs font-semibold text-foreground"
-          >
-            {name}
-            <span className="sr-only">, {statusLabel}</span>
-          </h3>
-          {badge}
-        </span>
-        {children}
-      </span>
-      {detail !== undefined ? <span className="shrink-0">{detail}</span> : null}
-    </div>
+    machine.statusError ||
+    machine.canRetryDaemonUpdate ||
+    machine.host.status !== "connected"
   );
 }
 
-/** One machine's rows: a header band, then a row per provider CLI. */
+function visibleProviderUpdateIssues(
+  machine: UpdateInventoryMachine,
+): ProviderCliIssue[] {
+  if (
+    machine.canRetryDaemonUpdate ||
+    machine.host.status !== "connected" ||
+    machine.statusError ||
+    machine.statusPending ||
+    machine.providerStatus === null
+  ) {
+    return [];
+  }
+  return machine.issues.filter(isProviderCliUpdateIssue);
+}
+
+/**
+ * A machine's bb daemon condition. The machine name now owns the section, so
+ * the row names the software that needs attention and uses the same bb mark as
+ * the app row. App-versus-daemon is text, never an unexplained icon swap.
+ */
+export function BbDaemonUpdateRow({
+  machine,
+  now,
+  retryUpdatePending,
+  onRetryDaemonUpdate,
+  onOpenMachine,
+}: {
+  machine: UpdateInventoryMachine;
+  now: number;
+  retryUpdatePending: boolean;
+  onRetryDaemonUpdate: (hostId: string) => void;
+  onOpenMachine: (hostId: string) => void;
+}) {
+  const { host } = machine;
+  const updateStalled =
+    machine.canRetryDaemonUpdate && hostUpdateIsStalled(host, now);
+  const updating = machine.canRetryDaemonUpdate && !updateStalled;
+  // The daemon is ahead of this server, so no amount of retrying on the
+  // machine can fix it — the server is the thing that has to move. Left
+  // unnamed, the row said only "Offline", which is true and useless: it sends
+  // the reader to check a network that is working. The caption says "this app"
+  // rather than "bb" because the opposite direction — a machine whose daemon
+  // is behind — is a different row entirely (it self-updates, with a Retry),
+  // and "Update bb" reads as an instruction to go touch the remote machine.
+  const machineIsAhead = hostNeedsUpdate(host) && !hostCanRetryUpdate(host);
+  const offline = host.status !== "connected";
+
+  // Words beside the name; the trailing column stays the control spine.
+  const daemonCaption = updateStalled ? (
+    <RowStateCaption state="failed">Update didn&apos;t finish</RowStateCaption>
+  ) : machineIsAhead ? (
+    <RowStateCaption state="offline">
+      Update this app to reconnect
+    </RowStateCaption>
+  ) : null;
+
+  return (
+    <ResourceRow
+      className="py-2"
+      actionsVisibility="always"
+      openLabel={`Open ${host.name} settings`}
+      onOpen={() => onOpenMachine(host.id)}
+      leading={
+        <span data-bb-update-role="daemon" aria-hidden>
+          <BbLogo className="size-4" />
+        </span>
+      }
+      title="bb daemon"
+      titleMeta={daemonCaption}
+      trailingMeta={null}
+      actions={
+        // One indicator. `waiting-to-retry` is the only machine state with a
+        // resolution here, so it is the only one drawn as a control; the rest
+        // are conditions and say so on hover.
+        updating ? (
+          <RowStateControl live state="in-progress" />
+        ) : updateStalled ? (
+          <RowStateControl
+            state="failed"
+            buttonLabel="Retry"
+            actionLabel={`Retry on ${host.name} now`}
+            loading={retryUpdatePending}
+            onClick={() => onRetryDaemonUpdate(host.id)}
+          />
+        ) : machineIsAhead ? (
+          // No "needs attention": that names a feeling, not a fix. The row
+          // says what is true (unreachable) and what resolves it (update the
+          // app it is talking to).
+          <RowStateControl state="offline" />
+        ) : offline ? (
+          <RowStateControl state="offline" />
+        ) : null
+      }
+    />
+  );
+}
+
+/** A recoverable provider status failure, kept distinct from bb's daemon. */
+export function ProviderCliCheckRow({
+  machine,
+  onRecheckClis,
+  onOpenMachine,
+}: {
+  machine: UpdateInventoryMachine;
+  onRecheckClis: (hostId: string) => void;
+  onOpenMachine: (hostId: string) => void;
+}) {
+  const { host } = machine;
+  return (
+    <ResourceRow
+      className="py-2"
+      actionsVisibility="always"
+      openLabel={`Open ${host.name} settings`}
+      onOpen={() => onOpenMachine(host.id)}
+      leading={
+        <Icon
+          aria-hidden
+          name="Terminal"
+          className="size-3.5 text-muted-foreground"
+        />
+      }
+      title="Provider CLIs"
+      titleMeta={
+        <RowStateCaption state="failed">
+          Couldn&apos;t check for updates
+        </RowStateCaption>
+      }
+      trailingMeta={null}
+      actions={
+        <RowStateControl
+          state="failed"
+          buttonLabel="Retry"
+          actionLabel={`Check ${host.name}'s CLIs again`}
+          loading={machine.statusFetching}
+          onClick={() => onRecheckClis(host.id)}
+        />
+      }
+    />
+  );
+}
+
+/**
+ * The one update state a CLI row is in.
+ *
+ * Keyed off the same vocabulary the bb rows and `bb updates` use, so a CLI
+ * that reads "update available" in Settings reads "update available" in the
+ * terminal too. A CLI with nothing wrong produces no issue and so no row.
+ *
+ * `not-installed` is absent on purpose: this page filters to update issues, so
+ * a CLI without an installed version never reaches a row here. The state still
+ * exists in the shared vocabulary because `bb updates` prints a full status
+ * table and does report it.
+ */
+function providerRowState({
+  issue,
+}: {
+  issue: ProviderCliIssue | null;
+}): UpdateState | null {
+  if (issue === null) {
+    return "up-to-date";
+  }
+  if (issue.action === null) {
+    return "update-manually";
+  }
+  return "update-available";
+}
+
+/** Provider update rows owned by the surrounding machine section. */
 export function MachineUpdatesRows({
   machine,
   runningJobKey,
   queuedJobKeys,
   failuresByJobKey = EMPTY_PROVIDER_CLI_FAILURES,
-  retryUpdatePending,
   onStartInstall,
-  onRetryDaemonUpdate,
+  onOpenProvider,
 }: MachineUpdatesRowsProps) {
   const { host } = machine;
-  const headingId = useId();
+  const updateIssues = visibleProviderUpdateIssues(machine);
   const issuesByProvider = new Map(
-    machine.issues.map((issue) => [issue.provider, issue]),
+    updateIssues.map((issue) => [issue.provider, issue]),
   );
 
-  /*
-   * A protocol-rejected daemon is disconnected, so this machine has no
-   * provider rows at all — the band has to carry the whole story on its own,
-   * which is why it is the one header allowed to run multi-line. The raw
-   * protocol numbers stay, demoted below the plain-language cause.
-   */
-  if (machine.canRetryDaemonUpdate) {
-    const daemonStatus = formatHostUpdateStatus(host);
-    return (
-      <div role="group" aria-labelledby={headingId}>
-        <MachineBand
-          connected={false}
-          tone="destructive"
-          name={host.name}
-          headingId={headingId}
-          statusLabel="Agent update required"
-          badge={
-            machine.isPrimary ? (
-              <SettingsBadge>this machine</SettingsBadge>
-            ) : null
-          }
-          detail={
-            <RowButton
-              aria-busy={retryUpdatePending}
-              disabled={retryUpdatePending}
-              onClick={() => onRetryDaemonUpdate(host.id)}
-            >
-              {retryUpdatePending ? "Retrying…" : "Retry update"}
-            </RowButton>
-          }
-        >
-          <span className="text-xs text-destructive-text">
-            Can't connect — its bb agent is out of date
-          </span>
-          <span className="text-2xs text-subtle-foreground">
-            Usually it updates itself.
-          </span>
-          {daemonStatus === null ? null : (
-            <span className="text-2xs text-subtle-foreground">
-              {daemonStatus}
-            </span>
-          )}
-        </MachineBand>
-      </div>
-    );
+  if (updateIssues.length === 0) {
+    return null;
   }
 
-  return (
-    <div role="group" aria-labelledby={headingId}>
-      <MachineBand
-        connected={host.status === "connected"}
-        name={host.name}
-        headingId={headingId}
-        statusLabel={host.status === "connected" ? "Connected" : "Offline"}
-        badge={
-          machine.isPrimary ? <SettingsBadge>this machine</SettingsBadge> : null
+  const rows = PROVIDER_CLI_DISPLAY_ORDER.filter((provider) =>
+    issuesByProvider.has(provider),
+  ).map((provider) => {
+    const status = machine.providerStatus?.[provider];
+    if (status === undefined) {
+      return null;
+    }
+    const issue = issuesByProvider.get(provider) ?? null;
+    const state = providerRowState({ issue });
+    const jobKey = providerCliJobKey(host.id, provider);
+    const running = runningJobKey === jobKey;
+    const queued = queuedJobKeys.has(jobKey);
+    const storedFailure = failuresByJobKey.get(jobKey) ?? null;
+    const failure =
+      issue !== null &&
+      storedFailure?.issueFingerprint === issue.fingerprint
+        ? storedFailure
+        : null;
+    const actionable =
+      issue !== null && hasProviderCliAction(issue) && !running && !queued;
+    const providerId = PROVIDER_CLI_AGENT_PROVIDER_ID[provider];
+    const ProviderIcon = getProviderIconInfo(providerId)?.icon;
+    return (
+      <ResourceRow
+        key={provider}
+        className="py-2"
+        actionsVisibility="always"
+        openLabel={`Open ${status.displayName} settings`}
+        onOpen={() => onOpenProvider(providerId)}
+        leading={
+          ProviderIcon === undefined ? null : (
+            <span data-provider-icon={providerId} aria-hidden>
+              <ProviderIcon className="size-3.5 text-muted-foreground" />
+            </span>
+          )
         }
-        detail={
-          host.status === "connected" ? undefined : (
-            <RowStatus>Offline — connect to check for updates</RowStatus>
+        title={status.displayName}
+        titleMeta={
+          <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+            <RowVersions
+              current={status.currentVersion}
+              latest={issue !== null ? status.latestVersion : null}
+            />
+            {failure === null ? null : (
+              <>
+                <RowStateCaption state="failed">Failed</RowStateCaption>
+                <span role="alert" className="text-xs text-destructive">
+                  {failure.logDialogState.message}
+                </span>
+              </>
+            )}
+          </span>
+        }
+        trailingMeta={null}
+        actions={
+          running ? (
+            <RowStateControl live state="in-progress" />
+          ) : queued ? (
+            <RowStateControl live state="in-progress" />
+          ) : failure !== null ? (
+            <span className="flex items-center gap-1">
+              <UpdateActionButton
+                label={`View ${status.displayName} update log`}
+                tooltipLabel="View log"
+                icon="File"
+                onClick={() =>
+                  openProviderCliInstallLog(failure.logDialogState)
+                }
+              />
+              {actionable ? (
+                <RowStateControl
+                  state="failed"
+                  actionLabel={`Retry ${status.displayName} on ${host.name}`}
+                  actionTooltip="Retry"
+                  onClick={() => onStartInstall(host.id, issue)}
+                />
+              ) : null}
+            </span>
+          ) : state === null ? null : (
+            <RowStateControl
+              state={state}
+              actionLabel={
+                actionable
+                  ? `${issue.action.label} ${status.displayName} on ${host.name}`
+                  : undefined
+              }
+              // Just the verb on hover. The row already carries the CLI's
+              // name, its versions, and the machine heading above it.
+              actionTooltip={actionable ? issue.action.label : undefined}
+              onClick={
+                actionable ? () => onStartInstall(host.id, issue) : undefined
+              }
+            />
           )
         }
       />
-      {host.status !== "connected" ? null : machine.statusError ? (
-        <UpdatesRow indent>
-          <RowStatus tone="destructive">
-            Couldn't check provider CLIs on this machine.
-          </RowStatus>
-        </UpdatesRow>
-      ) : machine.statusPending || machine.providerStatus === null ? (
-        <UpdatesRow indent>
-          <RowStatus live>Checking provider CLIs…</RowStatus>
-        </UpdatesRow>
-      ) : (
-        (["codex", "claudeCode"] as const).map((provider) => {
-          const status = machine.providerStatus?.[provider];
-          if (status === undefined) {
-            return null;
-          }
-          const issue = issuesByProvider.get(provider) ?? null;
-          const state = providerRowState({
-            issue,
-            installed: status.installed,
-          });
-          const jobKey = providerCliJobKey(host.id, provider);
-          const running = runningJobKey === jobKey;
-          const queued = queuedJobKeys.has(jobKey);
-          const storedFailure = failuresByJobKey.get(jobKey) ?? null;
-          const failure =
-            issue !== null &&
-            storedFailure?.issueFingerprint === issue.fingerprint
-              ? storedFailure
-              : null;
-          const actionable =
-            issue !== null &&
-            hasProviderCliAction(issue) &&
-            !running &&
-            !queued;
-          return (
-            <UpdatesRow
-              key={provider}
-              indent
-              tone={
-                running || queued
-                  ? "default"
-                  : failure !== null
-                    ? "destructive"
-                    : (state?.rowTone ?? "default")
-              }
-            >
-              <RowName
-                name={status.displayName}
-                current={status.currentVersion}
-                latest={issue !== null ? status.latestVersion : null}
-              />
-              <RowActions>
-                {failure !== null ? (
-                  <RowStatus tone="destructive">Failed</RowStatus>
-                ) : running ? (
-                  <RowStatus live tone="attention">
-                    <span className="inline-flex items-center gap-1.5">
-                      <Icon name="Spinner" className="size-3 animate-spin" />
-                      Running…
-                    </span>
-                  </RowStatus>
-                ) : queued ? (
-                  <RowStatus live>Queued</RowStatus>
-                ) : state === null ? null : (
-                  <RowStatus tone={state.statusTone}>{state.label}</RowStatus>
-                )}
-                {failure !== null ? (
-                  <RowButton
-                    onClick={() =>
-                      openProviderCliInstallLog(failure.logDialogState)
-                    }
-                  >
-                    View log
-                  </RowButton>
-                ) : null}
-                {actionable ? (
-                  <RowButton onClick={() => onStartInstall(host.id, issue)}>
-                    {failure === null ? issue.action.label : "Retry"}
-                  </RowButton>
-                ) : null}
-              </RowActions>
-              {failure !== null ? (
-                <p
-                  role="alert"
-                  className="basis-full text-xs text-destructive-text"
-                >
-                  {failure.logDialogState.message}
-                </p>
-              ) : null}
-            </UpdatesRow>
-          );
-        })
-      )}
+    );
+  });
+
+  return <>{rows}</>;
+}
+
+/** One machine owns one settings section; the badge makes local scope explicit. */
+export function MachineUpdatesSection({
+  machine,
+  action,
+  children,
+}: {
+  machine: UpdateInventoryMachine;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div data-updates-machine={machine.host.id}>
+      <UpdatesSection
+        domain="machine"
+        title={
+          <span className="flex min-w-0 items-center gap-2">
+            <Icon
+              name="Laptop"
+              className="size-4 shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+            <span className="truncate">{machine.host.name}</span>
+            {machine.isPrimary ? (
+              <SettingsBadge>This machine</SettingsBadge>
+            ) : null}
+          </span>
+        }
+        action={
+          action === undefined ? undefined : (
+            <div className="pr-4">{action}</div>
+          )
+        }
+      >
+        <UpdatesRowList>{children}</UpdatesRowList>
+      </UpdatesSection>
     </div>
   );
 }
@@ -685,9 +1053,12 @@ function useNow(intervalMs: number): number {
  */
 export function UpdatesSettingsSection() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const inventory = useUpdateInventory();
   const { desktopApi, desktopInfo, isDesktop } = useDesktopUpdateInfo();
   const retryHostUpdate = useRetryHostUpdate();
+  // The check store outlives this view, so an in-flight check stays visible
+  // across navigation and a failure still toasts even if we unmount.
   const isChecking = useSyncExternalStore(
     subscribeAppUpdateCheck,
     getAppUpdateCheckSnapshot,
@@ -696,43 +1067,28 @@ export function UpdatesSettingsSection() {
   const { failuresByJobKey, queuedJobKeys, runningJobKey, startInstall } =
     useProviderCliInstallRunner();
 
-  const allActionableIssues: {
+  const visibleProviderIssues: {
     hostId: string;
-    issue: ProviderCliActionableIssue;
+    issue: ProviderCliIssue;
   }[] = inventory.machines.flatMap((machine) =>
-    machine.issues
-      .filter(hasProviderCliAction)
-      .map((issue) => ({ hostId: machine.host.id, issue })),
+    visibleProviderUpdateIssues(machine).map((issue) => ({
+      hostId: machine.host.id,
+      issue,
+    })),
   );
-  const actionableIssues = allActionableIssues.filter(({ hostId, issue }) => {
-    const jobKey = providerCliJobKey(hostId, issue.provider);
-    return runningJobKey !== jobKey && !queuedJobKeys.has(jobKey);
-  });
-  const manualIssueCount = inventory.machines.reduce(
-    (count, machine) =>
-      count +
-      machine.issues.filter(
-        (issue) => issue.status.installed && !hasProviderCliAction(issue),
-      ).length,
-    0,
-  );
-
-  const strandedMachines = inventory.machines.filter(
-    (machine) => machine.canRetryDaemonUpdate,
-  ).length;
-  const checkingMachines = inventory.machines.filter(
-    (machine) =>
-      machine.host.status === "connected" &&
-      !machine.statusError &&
-      (machine.statusPending || machine.providerStatus === null),
-  ).length;
-  const uncheckedMachines = inventory.machines.filter(
-    (machine) =>
-      !machine.canRetryDaemonUpdate &&
-      (machine.host.status !== "connected" || machine.statusError),
-  ).length;
-  const activeInstallCount =
-    (runningJobKey === null ? 0 : 1) + queuedJobKeys.size;
+  const actionableIssues = visibleProviderIssues
+    .filter(
+      (
+        entry,
+      ): entry is {
+        hostId: string;
+        issue: ProviderCliActionableIssue;
+      } => hasProviderCliAction(entry.issue),
+    )
+    .filter(({ hostId, issue }) => {
+      const jobKey = providerCliJobKey(hostId, issue.provider);
+      return runningJobKey !== jobKey && !queuedJobKeys.has(jobKey);
+    });
 
   // Snapshot the hosts at click time: the check runs in a module-level store
   // so it survives navigating away, and must not read React state afterwards.
@@ -756,171 +1112,207 @@ export function UpdatesSettingsSection() {
     });
   }
 
-  /*
-   * "Up to date" is only credible next to a time, so the stamp — not the
-   * button — is what the section header leads with; checking is a quiet icon
-   * beside it.
-   */
-  const checkedLabel =
-    inventory.lastCheckedAt === null
-      ? null
-      : `Checked ${formatRelativeTime({ timestamp: inventory.lastCheckedAt, now })}`;
+  // Opening the page is the request to check, so there is no button to press.
+  // This waits for the host list rather than firing on the first render: the
+  // check invalidates each connected machine's CLI status, and on mount that
+  // list is still empty, so an immediate run would refresh the app version and
+  // silently skip every machine.
+  const hostsSettled = !inventory.isLoading;
+  const checkedOnLoad = useRef(false);
+  useEffect(() => {
+    if (checkedOnLoad.current || !hostsSettled) {
+      return;
+    }
+    checkedOnLoad.current = true;
+    handleCheckForUpdates();
+    // Deliberately runs once per mount; `handleCheckForUpdates` closes over the
+    // host snapshot taken at that moment, which is what the check should use.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hostsSettled]);
 
-  const machineSummary =
-    inventory.machines.length === 0
-      ? null
-      : strandedMachines > 0
-        ? `${strandedMachines} ${strandedMachines === 1 ? "machine" : "machines"} can't connect`
-        : uncheckedMachines > 0
-          ? `${uncheckedMachines} ${uncheckedMachines === 1 ? "machine was" : "machines were"} not checked`
-          : checkingMachines > 0
-            ? `Checking ${checkingMachines} ${checkingMachines === 1 ? "machine" : "machines"}…`
-            : activeInstallCount > 0
-              ? `${activeInstallCount} ${activeInstallCount === 1 ? "update" : "updates"} in progress`
-              : manualIssueCount > 0
-                ? `${manualIssueCount} ${manualIssueCount === 1 ? "update needs" : "updates need"} manual action`
-                : actionableIssues.length === 0
-                  ? `${inventory.machines.length} ${inventory.machines.length === 1 ? "machine" : "machines"}, all in sync`
-                  : null;
+  const appUpdateVisible =
+    desktopInfo?.updateAvailable === true ||
+    inventory.systemVersion?.updateAvailable === true ||
+    inventory.appUpdateAvailable;
+  const relevantFleetMachines = inventory.machines.filter(
+    machineHasRelevantHealthStatus,
+  );
+  // A machine whose own bb update has stalled is outstanding update work, not
+  // just fleet trivia: it is the third update domain, and the page would claim
+  // everything is settled while a stalled row sat under it.
+  const stalledMachines = relevantFleetMachines.filter(
+    (machine) =>
+      machine.canRetryDaemonUpdate && hostUpdateIsStalled(machine.host, now),
+  );
+  const appMachine =
+    inventory.machines.find((machine) => machine.isPrimary) ??
+    inventory.machines[0] ??
+    null;
+  const visibleMachines = inventory.machines.filter(
+    (machine) =>
+      machine.host.id === appMachine?.host.id ||
+      machineHasRelevantHealthStatus(machine) ||
+      visibleProviderUpdateIssues(machine).length > 0,
+  );
+  const hasUpdateWork =
+    appUpdateVisible ||
+    visibleProviderIssues.length > 0 ||
+    stalledMachines.length > 0;
+  const fleetIsHealthy = relevantFleetMachines.length === 0;
+  const showFallbackBbStatus =
+    !hasUpdateWork && !fleetIsHealthy && isDesktop && desktopInfo === null;
+
+  function retryDaemonUpdate(hostId: string): void {
+    retryHostUpdate.mutate(hostId, {
+      onSuccess: () => {
+        const machine = inventory.machines.find(
+          (candidate) => candidate.host.id === hostId,
+        );
+        appToast.success(
+          `Retrying the update on ${machine?.host.name ?? "this machine"}`,
+        );
+      },
+    });
+  }
+
+  // One toast for the whole sweep: a per-machine confirmation would stack as
+  // many toasts as there are stalled machines, which is exactly the pile the
+  // consolidated Updates page replaced.
+  function retryAllStalledDaemonUpdates(): void {
+    for (const machine of stalledMachines) {
+      retryHostUpdate.mutate(machine.host.id);
+    }
+    appToast.success(
+      `Retrying the update on ${stalledMachines.length} machines`,
+    );
+  }
+
+  const updateAllButton =
+    actionableIssues.length > 1 ? (
+      <UpdateActionButton
+        label={`Update all ${actionableIssues.length} CLI tools`}
+        tooltipLabel="Update all"
+        icon={UPDATE_ACTION_ICON}
+        variant="default"
+        onClick={() => {
+          for (const { hostId, issue } of actionableIssues) {
+            startInstall({ hostId, issue });
+          }
+        }}
+      />
+    ) : null;
+  const retryAllButton =
+    stalledMachines.length > BULK_RETRY_THRESHOLD ? (
+      <UpdateActionButton
+        label={`Update all ${stalledMachines.length} machines now`}
+        visibleLabel="Retry all"
+        icon="RotateCcw"
+        variant="default"
+        className="font-medium"
+        onClick={retryAllStalledDaemonUpdates}
+      />
+    ) : null;
+  const bulkActions =
+    retryAllButton !== null || updateAllButton !== null ? (
+      <div
+        role="toolbar"
+        aria-label="Bulk update actions"
+        className="flex flex-wrap items-center justify-end gap-2"
+      >
+        {retryAllButton}
+        {updateAllButton}
+      </div>
+    ) : null;
 
   return (
-    <>
-      <UpdatesSection
-        title="bb"
-        footnote="Connected machines follow the server version automatically."
-        action={
-          <>
-            {isChecking || checkedLabel !== null ? (
-              <span
-                role="status"
-                aria-atomic="true"
-                aria-live="polite"
-                className="text-xs text-subtle-foreground"
-              >
-                {isChecking ? "Checking…" : checkedLabel}
-              </span>
-            ) : null}
-            <RowButton
-              variant="ghost"
-              aria-label="Check for updates"
-              aria-busy={isChecking}
-              disabled={isChecking}
-              className="px-1.5 text-muted-foreground hover:text-foreground"
-              onClick={handleCheckForUpdates}
+    <div className="space-y-6">
+      {visibleMachines.length === 0 ? (
+        <ResourceListState state="empty" message="No machines available." />
+      ) : (
+        visibleMachines.map((machine, index) => {
+          const ownsApp = machine.host.id === appMachine?.host.id;
+          const showDaemon =
+            machine.canRetryDaemonUpdate || machine.host.status !== "connected";
+          return (
+            <MachineUpdatesSection
+              key={machine.host.id}
+              machine={machine}
+              action={index === 0 ? bulkActions : null}
             >
-              <Icon
-                aria-hidden
-                name={isChecking ? "Spinner" : "RotateCcw"}
-                className={cn("size-3.5", isChecking && "animate-spin")}
-              />
-            </RowButton>
-            <RowButton
-              variant="ghost"
-              className="text-muted-foreground hover:text-foreground"
-              onClick={() => openUrlInExternalBrowser(CHANGELOG_URL)}
-            >
-              What's new
-            </RowButton>
-          </>
-        }
-      >
-        <UpdatesRowList>
-          <BbAppUpdateRows
-            systemVersion={inventory.systemVersion}
-            desktopInfo={desktopInfo}
-            isDesktop={isDesktop}
-            onRelaunchDesktop={
-              desktopApi === null
-                ? null
-                : () => {
-                    void desktopApi.installUpdate().catch((error: unknown) => {
-                      appToast.error("Relaunch failed", {
-                        description: updateCheckErrorDescription(error),
-                      });
-                    });
+              {ownsApp ? (
+                <BbAppUpdateRows
+                  systemVersion={inventory.systemVersion}
+                  desktopInfo={desktopInfo}
+                  isDesktop={isDesktop}
+                  isChecking={isChecking}
+                  onRelaunchDesktop={
+                    desktopApi === null || showFallbackBbStatus
+                      ? null
+                      : () => {
+                          void desktopApi.installUpdate().catch((error) => {
+                            appToast.error("Relaunch failed", {
+                              description: updateCheckErrorDescription(error),
+                            });
+                          });
+                        }
                   }
-            }
-            onRetryDesktop={
-              desktopApi === null
-                ? null
-                : () => {
-                    void desktopApi
-                      .checkForUpdates()
-                      .catch((error: unknown) => {
-                        appToast.error("Update retry failed", {
-                          description: updateCheckErrorDescription(error),
-                        });
-                      });
+                  onRetryDesktop={
+                    desktopApi === null || showFallbackBbStatus
+                      ? null
+                      : () => {
+                          void desktopApi.checkForUpdates().catch((error) => {
+                            appToast.error("Update retry failed", {
+                              description: updateCheckErrorDescription(error),
+                            });
+                          });
+                        }
                   }
-            }
-          />
-        </UpdatesRowList>
-      </UpdatesSection>
-
-      <UpdatesSection
-        title="Machines"
-        action={
-          machineSummary === null &&
-          actionableIssues.length === 0 ? undefined : (
-            <>
-              {machineSummary === null ? null : (
-                <span
-                  role="status"
-                  aria-live="polite"
-                  className="text-xs text-subtle-foreground"
-                >
-                  {machineSummary}
-                </span>
-              )}
-              {actionableIssues.length > 0 ? (
-                <RowButton
-                  onClick={() => {
-                    for (const { hostId, issue } of actionableIssues) {
-                      startInstall({ hostId, issue });
-                    }
-                  }}
-                >
-                  Update all ({actionableIssues.length})
-                </RowButton>
+                />
               ) : null}
-            </>
-          )
-        }
-      >
-        {inventory.machines.length === 0 ? (
-          <p className="px-3 py-2.5 text-sm text-subtle-foreground">
-            {inventory.isLoading ? "Loading…" : "No machines yet."}
-          </p>
-        ) : (
-          <UpdatesRowList>
-            {inventory.machines.map((machine) => (
+              {showDaemon ? (
+                <BbDaemonUpdateRow
+                  machine={machine}
+                  now={now}
+                  retryUpdatePending={
+                    retryHostUpdate.isPending &&
+                    retryHostUpdate.variables === machine.host.id
+                  }
+                  onRetryDaemonUpdate={retryDaemonUpdate}
+                  onOpenMachine={(hostId) =>
+                    navigate(getSettingsMachineRoutePath(hostId))
+                  }
+                />
+              ) : null}
+              {machine.statusError ? (
+                <ProviderCliCheckRow
+                  machine={machine}
+                  onRecheckClis={(hostId) => {
+                    void invalidateHostProviderCliStatus({
+                      queryClient,
+                      hostId,
+                    });
+                  }}
+                  onOpenMachine={(hostId) =>
+                    navigate(getSettingsMachineRoutePath(hostId))
+                  }
+                />
+              ) : null}
               <MachineUpdatesRows
-                key={machine.host.id}
                 machine={machine}
                 runningJobKey={runningJobKey}
                 queuedJobKeys={queuedJobKeys}
                 failuresByJobKey={failuresByJobKey}
-                retryUpdatePending={
-                  retryHostUpdate.isPending &&
-                  retryHostUpdate.variables === machine.host.id
-                }
                 onStartInstall={(hostId, issue) =>
                   startInstall({ hostId, issue })
                 }
-                onRetryDaemonUpdate={(hostId) =>
-                  retryHostUpdate.mutate(hostId, {
-                    onSuccess: () => {
-                      appToast.success(
-                        `Update retry requested for ${machine.host.name}`,
-                      );
-                    },
-                  })
+                onOpenProvider={(providerId) =>
+                  navigate(getSettingsProviderRoutePath(providerId))
                 }
               />
-            ))}
-          </UpdatesRowList>
-        )}
-      </UpdatesSection>
-    </>
+            </MachineUpdatesSection>
+          );
+        })
+      )}
+    </div>
   );
 }

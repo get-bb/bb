@@ -7,7 +7,8 @@ import type { BbDesktopInfo } from "@bb/desktop-contract";
 import {
   buildProviderCliIssue,
   isProviderCliIssue,
-  providerCliEntries,
+  isProviderCliUpdateIssue,
+  providerCliUpdateEntries,
   type ProviderCliIssue,
 } from "@/components/provider-cli/provider-cli-install";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
@@ -30,6 +31,12 @@ export interface UpdateInventoryMachine {
   providerStatus: ProviderCliStatusResponse | null;
   statusPending: boolean;
   statusError: boolean;
+  /**
+   * A re-check is in flight. Distinct from `statusPending`: a query that has
+   * already errored stays in the error status while it refetches, so the row's
+   * Retry needs this to show it is working.
+   */
+  statusFetching: boolean;
   issues: ProviderCliIssue[];
   /** Daemon stuck on an old protocol version; the server can force a retry. */
   canRetryDaemonUpdate: boolean;
@@ -62,12 +69,21 @@ interface UseUpdateInventoryOptions {
   enabled?: boolean;
 }
 
+/** Build the per-machine provider inventory once at the query boundary. */
+export function buildUpdateInventoryProviderIssues(
+  providerStatus: ProviderCliStatusResponse,
+): ProviderCliIssue[] {
+  return providerCliUpdateEntries(providerStatus)
+    .map(buildProviderCliIssue)
+    .filter(isProviderCliIssue);
+}
+
 /**
  * One consolidated view of every update bb knows about: the bb app itself
  * (npm registry / desktop feed) plus provider CLIs on every connected
  * machine. Remote daemons follow the server version automatically via
- * protocol self-update, so per-machine bb rows only surface when a daemon is
- * stuck and needs a manual retry.
+ * protocol self-update. Per-machine bb rows show that automatic handoff while
+ * it is running, then offer manual recovery only if the update stalls.
  */
 export function useUpdateInventory(
   options?: UseUpdateInventoryOptions,
@@ -116,15 +132,14 @@ export function useUpdateInventory(
     const issues =
       providerStatus === null
         ? []
-        : providerCliEntries(providerStatus)
-            .map(buildProviderCliIssue)
-            .filter(isProviderCliIssue);
+        : buildUpdateInventoryProviderIssues(providerStatus);
     return {
       host,
       isPrimary: host.id === primaryHostId,
       providerStatus,
       statusPending: statusQuery?.isPending ?? false,
       statusError: statusQuery?.isError ?? false,
+      statusFetching: statusQuery?.isFetching ?? false,
       issues,
       canRetryDaemonUpdate: hostCanRetryUpdate(host),
     };
@@ -140,10 +155,15 @@ export function useUpdateInventory(
     !systemVersion.isDevelopment &&
     systemVersion.updateAvailable;
   const desktopUpdateReady = desktopInfo?.updateDownloaded === true;
+  // Counts what Settings → Updates actually lists. A never-installed CLI is an
+  // install prompt, not an update, and inflating this made a fresh single-agent
+  // setup read as permanently behind.
   const actionableCount =
     machines.reduce(
       (count, machine) =>
-        count + machine.issues.length + (machine.canRetryDaemonUpdate ? 1 : 0),
+        count +
+        machine.issues.filter(isProviderCliUpdateIssue).length +
+        (machine.canRetryDaemonUpdate ? 1 : 0),
       0,
     ) +
     (appUpdateAvailable ? 1 : 0) +
