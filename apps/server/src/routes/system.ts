@@ -204,7 +204,7 @@ export function registerSystemRoutes(
   });
 
   put(routes.experiments, (context, payload) => {
-    setExperiments(deps.db, payload);
+    setExperiments(deps.db, { ...getExperiments(deps.db), ...payload });
     // The same kind a config reload broadcasts: every window re-reads
     // /system/config and re-gates its experiment-flagged surfaces.
     deps.hub.notifySystem(["config-changed"]);

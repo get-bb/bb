@@ -11,6 +11,7 @@ import { z } from "zod";
  * database schema; experiment values use key/value persistence.
  */
 export const experimentKeys = [
+  "changelogPreview",
   "claudeCodeMockCliTraffic",
   "editMessages",
   "mobileApp",
@@ -24,10 +25,30 @@ export const experimentsSchema = z.record(experimentKeySchema, z.boolean());
 export type Experiments = z.infer<typeof experimentsSchema>;
 
 /**
+ * Update payloads keep the newest key optional so a CLI or SDK released before
+ * that experiment existed can still write the experiment object it knows.
+ * The server preserves any omitted value.
+ */
+export const experimentsUpdateSchema = z.union([
+  experimentsSchema,
+  z.record(
+    z.enum([
+      "claudeCodeMockCliTraffic",
+      "editMessages",
+      "newOnboarding",
+      "providerSessionReaping",
+    ]),
+    z.boolean(),
+  ),
+]);
+export type ExperimentsUpdate = z.infer<typeof experimentsUpdateSchema>;
+
+/**
  * Values for an installation that has never saved a toggle. `setExperiments`
  * persists every key, so one that has keeps its stored values instead.
  */
 export const defaultExperiments: Experiments = {
+  changelogPreview: false,
   claudeCodeMockCliTraffic: false,
   editMessages: true,
   mobileApp: false,

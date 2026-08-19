@@ -8,6 +8,11 @@ export interface SettingsSectionProps {
   title: ReactNode;
   /** A compact utility that belongs directly beside the section title. */
   titleAction?: ReactNode;
+  /**
+   * Extra classes for the card, e.g. a section whose whole body is one link
+   * and needs a positioning context and a hover state.
+   */
+  bodyClassName?: string;
 }
 
 export function SettingsSection({
@@ -16,6 +21,7 @@ export function SettingsSection({
   description,
   title,
   titleAction,
+  bodyClassName,
 }: SettingsSectionProps) {
   return (
     <section className="space-y-3">
@@ -40,7 +46,12 @@ export function SettingsSection({
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}
       </div>
-      <div className="rounded-lg border border-border bg-card px-4 py-3.5">
+      <div
+        className={cn(
+          "rounded-lg border border-border bg-card px-4 py-3.5",
+          bodyClassName,
+        )}
+      >
         {children}
       </div>
     </section>

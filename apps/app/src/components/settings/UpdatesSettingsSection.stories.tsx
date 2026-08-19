@@ -15,6 +15,7 @@ import {
 import {
   BbAppUpdateRows,
   BbDaemonUpdateRow,
+  ChangelogPreviewCard,
   MachineUpdatesRows,
   MachineUpdatesSection,
   ProviderCliCheckRow,
@@ -116,6 +117,15 @@ function StoryPage({ children }: { children: ReactNode }) {
   return (
     <SettingsStoryChrome activeSection="updates">
       <div className="space-y-6">{children}</div>
+    </SettingsStoryChrome>
+  );
+}
+
+/** The default-off changelog preview experiment in its enabled state. */
+export function ChangelogPreviewExperiment() {
+  return (
+    <SettingsStoryChrome activeSection="updates">
+      <ChangelogPreviewCard />
     </SettingsStoryChrome>
   );
 }

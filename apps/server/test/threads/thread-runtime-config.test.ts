@@ -861,6 +861,7 @@ describe("thread runtime config", () => {
       });
 
       setExperiments(harness.db, {
+        changelogPreview: false,
         claudeCodeMockCliTraffic: true,
         editMessages: false,
         mobileApp: false,

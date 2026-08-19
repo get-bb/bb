@@ -348,6 +348,7 @@ function ExperimentsStory() {
 
   return (
     <ExperimentsSettingsSection
+      changelogPreviewEnabled={state.experiments.changelogPreview}
       claudeCodeMockCliTrafficEnabled={
         state.experiments.claudeCodeMockCliTraffic
       }
@@ -356,6 +357,12 @@ function ExperimentsStory() {
       mobileAppEnabled={state.experiments.mobileApp}
       newOnboardingEnabled={state.experiments.newOnboarding}
       providerSessionReapingEnabled={state.experiments.providerSessionReaping}
+      onChangelogPreviewEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          changelogPreview: enabled,
+        }))
+      }
       onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,

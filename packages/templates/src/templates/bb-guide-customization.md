@@ -108,6 +108,8 @@ while the experiment is on.
 
 The `newOnboarding` experiment exposes the first-run agent and project setup
 guide.
+The default-off `changelogPreview` experiment shows the latest release notes
+as a compact, dismissible card on Settings → Updates.
 The default-on `editMessages` experiment enables editing eligible, accepted
 root user messages in Codex, Claude Code, and Pi threads, including failed or
 incomplete turns; turn it off to hide the editor. Opening the editor is

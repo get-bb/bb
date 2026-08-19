@@ -2,6 +2,7 @@ import type {
   AppKeybindingOverrides,
   AppSettings,
   Experiments,
+  ExperimentsUpdate,
 } from "@bb/domain";
 import type {
   DiscoverReposResult,
@@ -104,7 +105,9 @@ export interface SystemArea {
   transcribeVoice(
     args: SystemVoiceTranscriptionArgs,
   ): Promise<SystemVoiceTranscriptionResult>;
-  updateExperiments(args: Experiments): Promise<SystemUpdateExperimentsResult>;
+  updateExperiments(
+    args: ExperimentsUpdate,
+  ): Promise<SystemUpdateExperimentsResult>;
   updateGeneralSettings(
     args: AppSettings,
   ): Promise<SystemUpdateGeneralSettingsResult>;

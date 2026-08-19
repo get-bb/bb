@@ -111,6 +111,9 @@ message agents, or inspect projects, providers, and environments.
   project setup guide. Change it with
   `bb settings experiment newOnboarding <true|false>`. Use
   `bb settings replay-onboarding` to enable it and show the guide again.
+- The default-off `changelogPreview` experiment shows the latest release notes
+  on Settings → Updates. Change it with
+  `bb settings experiment changelogPreview <true|false>`.
 - The default-on `editMessages` experiment allows accepted root user messages
   in Codex, Claude Code, and Pi threads to be replaced and rerun, including
   failed or incomplete turns. Submitting an edit to a running thread stops and

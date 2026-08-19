@@ -14,6 +14,7 @@ describe("experiments settings", () => {
       expect(response.status).toBe(200);
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.experiments).toEqual({
+        changelogPreview: false,
         claudeCodeMockCliTraffic: false,
         editMessages: true,
         mobileApp: false,
@@ -29,6 +30,7 @@ describe("experiments settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          changelogPreview: true,
           claudeCodeMockCliTraffic: true,
           editMessages: true,
           mobileApp: true,
@@ -38,6 +40,7 @@ describe("experiments settings", () => {
       });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
+        changelogPreview: true,
         claudeCodeMockCliTraffic: true,
         editMessages: true,
         mobileApp: true,
@@ -45,6 +48,7 @@ describe("experiments settings", () => {
         providerSessionReaping: true,
       });
       expect(getExperiments(harness.db)).toEqual({
+        changelogPreview: true,
         claudeCodeMockCliTraffic: true,
         editMessages: true,
         mobileApp: true,
@@ -56,11 +60,44 @@ describe("experiments settings", () => {
       expect(
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
       ).toEqual({
+        changelogPreview: true,
         claudeCodeMockCliTraffic: true,
         editMessages: true,
         mobileApp: true,
         newOnboarding: true,
         providerSessionReaping: true,
+      });
+    });
+  });
+
+  it("preserves changelogPreview when an older client omits it", async () => {
+    await withTestHarness(async (harness) => {
+      const current = getExperiments(harness.db);
+      const enable = await harness.app.request("/api/v1/settings/experiments", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...current, changelogPreview: true }),
+      });
+      expect(enable.status).toBe(200);
+
+      const legacyPut = await harness.app.request(
+        "/api/v1/settings/experiments",
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            claudeCodeMockCliTraffic: true,
+            editMessages: true,
+            newOnboarding: false,
+            providerSessionReaping: false,
+          }),
+        },
+      );
+      expect(legacyPut.status).toBe(200);
+      expect(experimentsSchema.parse(await readJson(legacyPut))).toEqual({
+        ...current,
+        changelogPreview: true,
+        claudeCodeMockCliTraffic: true,
       });
     });
   });

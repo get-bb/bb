@@ -5,8 +5,9 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
 import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 import type { ProviderCliKey } from "@bb/host-daemon-contract";
 import type { SystemVersionResponse } from "@bb/server-contract";
@@ -47,8 +48,15 @@ import {
   startAppUpdateCheck,
   subscribeAppUpdateCheck,
 } from "@/components/settings/app-update-check-store";
+import {
+  CHANGELOG_RELEASE_META,
+  fetchLatestChangelogEntry,
+  LATEST_CHANGELOG_ENTRY,
+  type ChangelogBlock,
+} from "@/components/settings/changelog-preview";
 import { appToast } from "@/components/ui/app-toast";
 import { BbLogo } from "@/components/ui/bb-logo";
+import { OverflowFade } from "@/components/ui/overflow-fade";
 import {
   SettingsBadge,
   SettingsRowList,
@@ -68,17 +76,45 @@ import {
   hostNeedsUpdate,
   hostUpdateIsStalled,
 } from "@/lib/host-update-status";
+import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   getSettingsMachineRoutePath,
   getSettingsProviderRoutePath,
 } from "@/lib/route-paths";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { sdk } from "@/lib/sdk";
+import { rawStringLocalStorage } from "@/lib/browser-storage";
 
 const EMPTY_PROVIDER_CLI_FAILURES: ReadonlyMap<
   string,
   ProviderCliInstallFailure
 > = new Map();
+const CHANGELOG_URL = "https://getbb.app/changelog";
+const CHANGELOG_STALE_TIME_MS = 5 * 60_000;
+const CHANGELOG_DISMISSED_VERSION_STORAGE_KEY =
+  "bb.settings.updates.dismissed-changelog-version";
+
+function isNewerChangelogVersion(
+  candidate: string,
+  dismissed: string,
+): boolean {
+  const versionPattern = /^\d+(?:\.\d+)*$/;
+  if (!versionPattern.test(candidate) || !versionPattern.test(dismissed)) {
+    return candidate !== dismissed;
+  }
+  const candidateParts = candidate.split(".").map(Number);
+  const dismissedParts = dismissed.split(".").map(Number);
+  const partCount = Math.max(candidateParts.length, dismissedParts.length);
+  for (let index = 0; index < partCount; index += 1) {
+    const candidatePart = candidateParts[index] ?? 0;
+    const dismissedPart = dismissedParts[index] ?? 0;
+    if (candidatePart !== dismissedPart) {
+      return candidatePart > dismissedPart;
+    }
+  }
+  return false;
+}
+
 /** Stalled machines needed before the page offers a bulk retry. */
 const BULK_RETRY_THRESHOLD = 1;
 
@@ -535,6 +571,217 @@ function RowActions({ children }: { children: ReactNode }) {
   );
 }
 
+const CHANGELOG_INLINE_COMPONENTS: Components = {
+  p: ({ children }) => <>{children}</>,
+  a: ({ children, href }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
+      onClick={(event) => {
+        event.preventDefault();
+        if (href !== undefined) {
+          openUrlInExternalBrowser(href);
+        }
+      }}
+    >
+      {children}
+    </a>
+  ),
+  code: ({ children }) => (
+    <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
+      {children}
+    </code>
+  ),
+  strong: ({ children }) => (
+    <strong className="font-semibold text-foreground">{children}</strong>
+  ),
+};
+
+function ChangelogInline({ text }: { text: string }) {
+  return (
+    <ReactMarkdown components={CHANGELOG_INLINE_COMPONENTS} skipHtml>
+      {text}
+    </ReactMarkdown>
+  );
+}
+
+function ChangelogBlocks({
+  blocks,
+  lede = false,
+}: {
+  blocks: ChangelogBlock[];
+  lede?: boolean;
+}) {
+  return blocks.map((block, index) =>
+    block.kind === "list" ? (
+      <ul key={index} className="mt-2.5 space-y-1.5">
+        {block.items.map((item) => (
+          <li
+            key={item}
+            className="relative pl-4 text-sm leading-normal text-muted-foreground before:absolute before:left-0 before:top-2 before:size-1 before:rounded-sm before:bg-border"
+          >
+            <ChangelogInline text={item} />
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <p
+        key={index}
+        className={cn(
+          "mt-2.5 text-sm leading-relaxed text-muted-foreground first:mt-0",
+          lede && "text-foreground/80",
+        )}
+      >
+        <ChangelogInline text={block.text} />
+      </p>
+    ),
+  );
+}
+
+/**
+ * A compact card rendering of the same release structure as getbb.app. Version
+ * and date stay in a short metadata line so the release content owns the full
+ * card width. The bundled release stays available offline; the live source
+ * keeps it current.
+ */
+export function ChangelogPreviewCard() {
+  const changelogQuery = useQuery({
+    queryKey: ["updates", "changelog", "latest"],
+    queryFn: ({ signal }) => fetchLatestChangelogEntry(fetch, signal),
+    placeholderData: LATEST_CHANGELOG_ENTRY ?? undefined,
+    retry: false,
+    staleTime: CHANGELOG_STALE_TIME_MS,
+  });
+  const entry = changelogQuery.data ?? LATEST_CHANGELOG_ENTRY;
+  const [dismissedVersion, setDismissedVersion] = useState(() =>
+    rawStringLocalStorage.getItem(CHANGELOG_DISMISSED_VERSION_STORAGE_KEY, ""),
+  );
+  const releaseBodyRef = useRef<HTMLDivElement>(null);
+  const [moreBelow, setMoreBelow] = useState(false);
+  const syncFade = (node: HTMLDivElement | null) => {
+    if (node === null) {
+      return;
+    }
+    setMoreBelow(node.scrollTop + node.clientHeight < node.scrollHeight - 1);
+  };
+  useEffect(() => {
+    syncFade(releaseBodyRef.current);
+  }, [entry]);
+  if (entry === null) {
+    return null;
+  }
+  if (
+    dismissedVersion.length > 0 &&
+    (changelogQuery.dataUpdatedAt === 0 ||
+      !isNewerChangelogVersion(entry.version, dismissedVersion))
+  ) {
+    return null;
+  }
+  const releaseMeta = CHANGELOG_RELEASE_META[entry.version];
+  return (
+    <div data-updates-domain="changelog">
+      <SettingsSection
+        title={
+          <span
+            data-changelog-label
+            className="inline-flex rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs font-medium leading-none text-muted-foreground"
+          >
+            What's new
+          </span>
+        }
+        action={
+          <Tooltip delayDuration={300} disableHoverableContent>
+            <TooltipTrigger asChild>
+              <Button
+                data-changelog-dismiss
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7 text-muted-foreground hover:text-foreground"
+                aria-label={`Dismiss bb ${entry.version} changelog preview`}
+                onClick={() => {
+                  rawStringLocalStorage.setItem(
+                    CHANGELOG_DISMISSED_VERSION_STORAGE_KEY,
+                    entry.version,
+                  );
+                  setDismissedVersion(entry.version);
+                }}
+              >
+                <Icon aria-hidden name="X" className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Dismiss</TooltipContent>
+          </Tooltip>
+        }
+        bodyClassName="p-0"
+      >
+        <article data-changelog-preview className="min-w-0 p-4 sm:p-5">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span
+              data-changelog-version={entry.version}
+              className="inline-flex rounded-full border border-border bg-muted/30 px-2.5 py-1 font-mono text-xs font-semibold leading-none tracking-tight text-foreground"
+            >
+              {entry.version}
+            </span>
+            {releaseMeta === undefined ? null : (
+              <span className="text-xs text-muted-foreground">
+                {releaseMeta.date}
+              </span>
+            )}
+          </div>
+
+          <div className="relative mt-3 min-w-0">
+            <div
+              ref={releaseBodyRef}
+              data-changelog-release-scroll
+              onScroll={(event) => syncFade(event.currentTarget)}
+              className="max-h-56 overflow-y-auto pr-3"
+            >
+              <h3 className="text-lg font-semibold leading-snug tracking-tight text-foreground">
+                {releaseMeta?.headline ?? entry.version}
+              </h3>
+              {entry.lede.length === 0 ? null : (
+                <div className="mt-2">
+                  <ChangelogBlocks blocks={entry.lede} lede />
+                </div>
+              )}
+              {entry.sections.map((section) => (
+                <div key={section.title} className="mt-4">
+                  <h4 className="text-sm font-semibold leading-snug text-foreground">
+                    {section.title}
+                  </h4>
+                  <ChangelogBlocks blocks={section.blocks} />
+                </div>
+              ))}
+            </div>
+            {moreBelow ? <OverflowFade placement="below" inset /> : null}
+          </div>
+        </article>
+        <div
+          data-changelog-footer
+          className="flex items-center justify-end border-t border-border bg-muted/40 px-4 py-2.5 sm:px-5"
+        >
+          <button
+            type="button"
+            aria-label={`Open the full bb ${entry.version} changelog`}
+            onClick={() =>
+              openUrlInExternalBrowser(
+                `${CHANGELOG_URL}#${entry.version.replaceAll(".", "-")}`,
+              )
+            }
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            Full changelog
+            <Icon aria-hidden name="ExternalLink" className="size-3.5" />
+          </button>
+        </div>
+      </SettingsSection>
+    </div>
+  );
+}
+
 export interface BbAppUpdateRowsProps {
   systemVersion: SystemVersionResponse | undefined;
   desktopInfo: BbDesktopInfo | null;
@@ -910,8 +1157,7 @@ export function MachineUpdatesRows({
     const queued = queuedJobKeys.has(jobKey);
     const storedFailure = failuresByJobKey.get(jobKey) ?? null;
     const failure =
-      issue !== null &&
-      storedFailure?.issueFingerprint === issue.fingerprint
+      issue !== null && storedFailure?.issueFingerprint === issue.fingerprint
         ? storedFailure
         : null;
     const actionable =
@@ -1051,7 +1297,14 @@ function useNow(intervalMs: number): number {
  * Settings → Updates: one consolidated, per-machine view of bb and provider
  * CLI updates. Replaces the stacked update/provider-health toasts (BB-48).
  */
-export function UpdatesSettingsSection() {
+export interface UpdatesSettingsSectionProps {
+  /** Default-off experiment gate owned by Settings → Experiments. */
+  showChangelogPreview?: boolean;
+}
+
+export function UpdatesSettingsSection({
+  showChangelogPreview = false,
+}: UpdatesSettingsSectionProps = {}) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const inventory = useUpdateInventory();
@@ -1226,6 +1479,8 @@ export function UpdatesSettingsSection() {
 
   return (
     <div className="space-y-6">
+      {showChangelogPreview ? <ChangelogPreviewCard /> : null}
+
       {visibleMachines.length === 0 ? (
         <ResourceListState state="empty" message="No machines available." />
       ) : (

@@ -210,11 +210,13 @@ function appPaletteLabel(
 export interface ExperimentsSettingsSectionProps {
   /** True while the config query hasn't loaded or a toggle write is in flight. */
   disabled: boolean;
+  changelogPreviewEnabled: boolean;
   claudeCodeMockCliTrafficEnabled: boolean;
   editMessagesEnabled: boolean;
   mobileAppEnabled: boolean;
   newOnboardingEnabled: boolean;
   providerSessionReapingEnabled: boolean;
+  onChangelogPreviewEnabledChange: (enabled: boolean) => void;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
   onEditMessagesEnabledChange: (enabled: boolean) => void;
   onMobileAppEnabledChange: (enabled: boolean) => void;
@@ -997,18 +999,21 @@ export function ProviderSettingsSection({
 }
 
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
+const CHANGELOG_PREVIEW_EXPERIMENT_LABEL = "Changelog preview";
 const EDIT_MESSAGES_EXPERIMENT_LABEL = "Edit messages";
 const MOBILE_APP_EXPERIMENT_LABEL = "Mobile app";
 const NEW_ONBOARDING_EXPERIMENT_LABEL = "New onboarding";
 const PROVIDER_SESSION_REAPING_EXPERIMENT_LABEL =
   "Idle provider session release";
 export function ExperimentsSettingsSection({
+  changelogPreviewEnabled,
   claudeCodeMockCliTrafficEnabled,
   disabled,
   editMessagesEnabled,
   mobileAppEnabled,
   newOnboardingEnabled,
   providerSessionReapingEnabled,
+  onChangelogPreviewEnabledChange,
   onClaudeCodeMockCliTrafficEnabledChange,
   onEditMessagesEnabledChange,
   onMobileAppEnabledChange,
@@ -1021,6 +1026,18 @@ export function ExperimentsSettingsSection({
       description="Early features that are off by default. Opt in to try them."
     >
       <div className="space-y-5">
+        <SettingsWithControl
+          label={CHANGELOG_PREVIEW_EXPERIMENT_LABEL}
+          description="Show the latest release notes as a compact preview on the Updates page."
+        >
+          <Switch
+            checked={changelogPreviewEnabled}
+            disabled={disabled}
+            onCheckedChange={onChangelogPreviewEnabledChange}
+            aria-label={CHANGELOG_PREVIEW_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
         <SettingsWithControl
           label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
           labelBadge="dev-only"
@@ -1227,14 +1244,25 @@ export function SettingsView() {
   } else if (activeSection === "machines") {
     content = <MachinesSettingsSection />;
   } else if (activeSection === "updates") {
-    content = <UpdatesSettingsSection />;
+    content = (
+      <UpdatesSettingsSection
+        showChangelogPreview={experiments.changelogPreview}
+      />
+    );
   } else if (activeSection === "experiments") {
     content = (
       <ExperimentsSettingsSection
+        changelogPreviewEnabled={experiments.changelogPreview}
         claudeCodeMockCliTrafficEnabled={experiments.claudeCodeMockCliTraffic}
         disabled={
           systemConfigQuery.data === undefined ||
           updateExperimentsMutation.isPending
+        }
+        onChangelogPreviewEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            changelogPreview: enabled,
+          })
         }
         onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
           updateExperimentsMutation.mutate({

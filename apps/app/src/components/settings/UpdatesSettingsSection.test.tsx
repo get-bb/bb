@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -57,6 +58,12 @@ vi.mock("@/hooks/useUpdateInventory", () => ({
 
 vi.mock("@/hooks/useDesktopUpdateInfo", () => ({
   useDesktopUpdateInfo: vi.fn(),
+}));
+
+const openUrlInExternalBrowserMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/url-open-routing", () => ({
+  openUrlInExternalBrowser: openUrlInExternalBrowserMock,
 }));
 
 const retryHostUpdateMutateMock = vi.hoisted(() => vi.fn());
@@ -233,7 +240,9 @@ function makeInventory(overrides: Partial<UpdateInventory>): UpdateInventory {
   };
 }
 
-function renderSection(): void {
+function renderSection({
+  showChangelogPreview = false,
+}: { showChangelogPreview?: boolean } = {}): void {
   render(
     <MemoryRouter>
       <TooltipProvider>
@@ -242,7 +251,7 @@ function renderSection(): void {
             new QueryClient({ defaultOptions: { queries: { retry: false } } })
           }
         >
-          <UpdatesSettingsSection />
+          <UpdatesSettingsSection showChangelogPreview={showChangelogPreview} />
         </QueryClientProvider>
       </TooltipProvider>
     </MemoryRouter>,
@@ -254,6 +263,10 @@ const useDesktopUpdateInfoMock = vi.mocked(useDesktopUpdateInfo);
 const useProviderCliInstallRunnerMock = vi.mocked(useProviderCliInstallRunner);
 
 beforeEach(() => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockRejectedValue(new Error("Changelog unavailable offline")),
+  );
   useProviderCliInstallRunnerMock.mockReturnValue({
     failuresByJobKey: new Map(),
     queuedJobKeys: new Set<string>(),
@@ -264,9 +277,11 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
   resetAppUpdateCheckStoreForTests();
   resetProviderCliInstallStoreForTests();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("UpdatesSettingsSection", () => {
@@ -342,7 +357,44 @@ describe("UpdatesSettingsSection", () => {
     expect(bulkActions.parentElement?.className).toContain("pr-4");
   });
 
+  it("keeps the changelog preview behind its experiment", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    useUpdateInventoryMock.mockReturnValue(makeInventory({}));
+
+    renderSection();
+
+    expect(
+      document.querySelector('[data-updates-domain="changelog"]'),
+    ).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("keeps a recently checked healthy fleet quiet and accessible", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() =>
+        Promise.resolve(
+          new Response(`# Changelog
+
+## 9.9.9
+
+The canonical release summary.
+
+### New features
+
+- One current feature.
+
+### Fixes
+
+- One current fix.
+`),
+        ),
+      ),
+    );
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
@@ -363,7 +415,7 @@ describe("UpdatesSettingsSection", () => {
       }),
     );
 
-    renderSection();
+    renderSection({ showChangelogPreview: true });
 
     // A settled row is a mark, named only to a screen reader and on hover.
     // Opening the page runs the check, so there is no freshness stamp: the age
@@ -385,6 +437,112 @@ describe("UpdatesSettingsSection", () => {
     // Nothing needs updating, so the page drops the "Updates" title entirely
     // and the settled sentence is the heading.
     expect(screen.queryByRole("heading", { name: "Updates" })).toBeNull();
+    // The changelog is a preview card at the top of the page, not a row
+    // action: it is about the release, not about any one row. It stays
+    // reachable with nothing to install, and every word in it is the
+    // changelog's own.
+    expect(
+      screen.getByRole("button", { name: /^Open the full bb .* changelog$/ }),
+    ).toBeDefined();
+    const changelog = document.querySelector(
+      '[data-updates-domain="changelog"]',
+    );
+    await waitFor(() => {
+      expect(changelog?.textContent).toContain("9.9.9");
+    });
+    expect(
+      within(changelog as HTMLElement).getByRole("heading", {
+        level: 2,
+        name: "What's new",
+      }),
+    ).toBeDefined();
+    expect(
+      within(changelog as HTMLElement).getByRole("heading", {
+        level: 3,
+        name: "9.9.9",
+      }),
+    ).toBeDefined();
+    expect(changelog?.textContent).toContain("The canonical release summary.");
+    expect(
+      changelog?.querySelector('[data-changelog-version="9.9.9"]'),
+    ).not.toBeNull();
+    const changelogLabel = changelog?.querySelector("[data-changelog-label]");
+    expect(changelogLabel?.className).toContain("rounded-full");
+    expect(changelogLabel?.className).toContain("bg-muted/40");
+    const changelogPreview = changelog?.querySelector(
+      "[data-changelog-preview]",
+    );
+    expect(changelogPreview?.className).toContain("p-4");
+    expect(changelogPreview?.className).not.toContain("grid");
+    expect(
+      changelog?.querySelector("[data-changelog-release-scroll]")?.className,
+    ).toContain("max-h-56");
+    expect(
+      changelog?.querySelector("[data-changelog-footer]")?.className,
+    ).toContain("border-t");
+    expect(
+      changelog?.querySelector("[data-changelog-footer]")?.className,
+    ).toContain("bg-muted/40");
+    // The footer is one fixed label, so it cannot change length with whatever
+    // release happens to be bundled.
+    expect(changelog?.textContent).toContain("Full changelog");
+    // The card carries the whole release, not a fixed three: a truncated list
+    // reads as the complete set unless the reader already knows to doubt it.
+    for (const highlight of ["New features", "Fixes"]) {
+      expect(
+        within(changelog as HTMLElement).getByRole("heading", {
+          level: 4,
+          name: highlight,
+        }),
+      ).toBeDefined();
+    }
+    expect(changelog?.textContent).toContain("One current feature.");
+    expect(changelog?.textContent).toContain("One current fix.");
+    const dismissChangelog = screen.getByRole("button", {
+      name: "Dismiss bb 9.9.9 changelog preview",
+    });
+    expect(dismissChangelog.querySelector('[data-icon="X"]')).not.toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Open the full bb 9.9.9 changelog",
+      }),
+    );
+    expect(openUrlInExternalBrowserMock).toHaveBeenCalledWith(
+      "https://getbb.app/changelog#9-9-9",
+    );
+    fireEvent.click(dismissChangelog);
+    expect(
+      document.querySelector('[data-updates-domain="changelog"]'),
+    ).toBeNull();
+    expect(
+      window.localStorage.getItem(
+        "bb.settings.updates.dismissed-changelog-version",
+      ),
+    ).toBe("9.9.9");
+
+    cleanup();
+    renderSection({ showChangelogPreview: true });
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+    expect(
+      document.querySelector('[data-updates-domain="changelog"]'),
+    ).toBeNull();
+
+    cleanup();
+    window.localStorage.setItem(
+      "bb.settings.updates.dismissed-changelog-version",
+      "9.9.8",
+    );
+    renderSection({ showChangelogPreview: true });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", {
+          name: "Dismiss bb 9.9.9 changelog preview",
+        }),
+      ).toBeDefined();
+    });
+
     // Being up to date is the state every row is expected to be in, so it
     // carries no indicator: the page spends its dots on exceptions only.
     const settled = screen.getByText(/^Up to date/);

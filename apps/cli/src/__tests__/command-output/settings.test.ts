@@ -114,6 +114,26 @@ describe("bb settings commands", () => {
     });
   });
 
+  it("enables the changelog preview experiment", async () => {
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: defaultAppSettings,
+        experiments: defaultExperiments,
+      })),
+      "v1.settings.experiments.$put": put,
+    });
+
+    await runCommand(
+      ["settings", "experiment", "changelogPreview", "true"],
+      register,
+    );
+
+    expect(put).toHaveBeenCalledWith({
+      json: { ...defaultExperiments, changelogPreview: true },
+    });
+  });
+
   it("enables new onboarding before replaying the setup guide", async () => {
     const updateExperiments = vi.fn(async ({ json }) => json);
     const updateGeneralSettings = vi.fn(async ({ json }) => json);

@@ -65,3 +65,9 @@ every window and client sees the same value.
 - Enable it with `bb settings experiment mobileApp true`. It shows the
   **Add mobile device** card under Settings → Remote access and enables
   `bb connect machine-code`.
+
+## Changelog preview
+
+- The `changelogPreview` experiment defaults to false.
+- Enable it with `bb settings experiment changelogPreview true` to show the
+  latest release notes on Settings → Updates.
