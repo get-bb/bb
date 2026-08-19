@@ -1611,6 +1611,33 @@ describe("delta assembler background tasks and progress policy", () => {
     expect(events[1]).toMatchObject({ type: "turn/completed" });
   });
 
+  it("session.reset drops suppressed progress instead of flushing it", () => {
+    const { assembler, advance } = createClockedAssembler();
+    assemble(
+      assembler,
+      { kind: "turn.open" },
+      { kind: "item.open", key: TASK_KEY, item: taskShape() },
+    );
+    advance(100);
+    expect(
+      assemble(assembler, {
+        kind: "item.progress",
+        key: TASK_KEY,
+        snapshot: taskShape({ summary: "suppressed" }),
+      }),
+    ).toEqual([]);
+
+    // The window elapses, but the next traffic is a session replacement: the
+    // suppressed snapshot belongs to the session being replaced and must not
+    // flush across the reset boundary.
+    advance(600);
+    expect(assemble(assembler, { kind: "session.reset" })).toEqual([]);
+
+    // Nor later — the reset dropped it with the rest of the thread state.
+    const afterReset = assemble(assembler, { kind: "turn.open" });
+    expect(afterReset.map((event) => event.type)).toEqual(["turn/started"]);
+  });
+
   it("a close supersedes suppressed progress", () => {
     const { assembler, advance } = createClockedAssembler();
     assemble(

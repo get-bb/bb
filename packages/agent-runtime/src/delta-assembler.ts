@@ -1843,8 +1843,14 @@ export function createDeltaAssembler(
       const events: ThreadEvent[] = [];
       // Trailing-edge progress: suppressed snapshots whose throttle window has
       // elapsed land ahead of this batch (existing state only — flushing must
-      // not create thread state).
-      const existing = states.get(args.threadId);
+      // not create thread state). A batch that OPENS with session.reset skips
+      // the flush: everything suppressed belongs to the session being
+      // replaced, and the reset is about to drop it with the rest of the
+      // thread's assembly state.
+      const existing =
+        args.deltas[0]?.kind === "session.reset"
+          ? undefined
+          : states.get(args.threadId);
       if (existing !== undefined) {
         const progressKeysInBatch = new Set<string>();
         for (const delta of args.deltas) {
