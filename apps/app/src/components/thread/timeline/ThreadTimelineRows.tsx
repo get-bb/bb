@@ -406,6 +406,14 @@ interface ConversationRowProps {
   showAssistantMessageActions: boolean;
 }
 
+interface ConversationRowContentProps extends ConversationRowProps {
+  /**
+   * Resolved by the outer {@link ConversationRow} from the latest-actionable
+   * message-id contexts so this body only re-renders when its own value flips.
+   */
+  mobileActionDisplay: "inline" | "overflow";
+}
+
 const TimelineRendererStaticContext =
   createContext<TimelineRendererStaticContextValue | null>(null);
 // Kept out of the static renderer context on purpose: the metadata map covers
@@ -915,6 +923,11 @@ function buildRowConsumerMessageActions(args: {
     }));
 }
 
+/**
+ * Thin context reader: the latest-actionable message ids change on every new
+ * message, which re-renders every mounted row. Only the row whose
+ * `mobileActionDisplay` flips gets a new element below; the rest bail out.
+ */
 function ConversationRow({
   row,
   showAssistantMessageActions,
@@ -925,6 +938,47 @@ function ConversationRow({
   const latestActionableUserMessageId = useContext(
     LatestActionableUserMessageIdContext,
   );
+  const latestActionableMessageId =
+    row.role === "user"
+      ? latestActionableUserMessageId
+      : latestActionableAssistantMessageId;
+  return (
+    <ConversationRowContent
+      row={row}
+      showAssistantMessageActions={showAssistantMessageActions}
+      mobileActionDisplay={
+        row.id === latestActionableMessageId ? "inline" : "overflow"
+      }
+    />
+  );
+}
+
+/**
+ * Host `<div>` the sent-message inline editor portals into. Separate component
+ * so the ref-callback read stays out of {@link ConversationRowContent}: React
+ * Compiler treats a value passed to `ref` as a ref object and refuses to
+ * memoize any component that reads other fields of it during render.
+ */
+function InlineMessageEditorHost({
+  editor,
+}: {
+  editor: ThreadTimelineInlineMessageEditor;
+}) {
+  return (
+    <div className="ml-auto w-full max-w-[70%] max-md:max-w-full">
+      <div
+        ref={editor.onHostElementChange}
+        data-sent-message-inline-editor-host=""
+      />
+    </div>
+  );
+}
+
+const ConversationRowContent = memo(function ConversationRowContent({
+  row,
+  showAssistantMessageActions,
+  mobileActionDisplay,
+}: ConversationRowContentProps) {
   const {
     canSpawnChild,
     inlineMessageEditor,
@@ -954,14 +1008,7 @@ function ConversationRow({
     inlineMessageEditor !== undefined &&
     inlineMessageEditor.messageId === row.id
   ) {
-    return (
-      <div className="ml-auto w-full max-w-[70%] max-md:max-w-full">
-        <div
-          ref={inlineMessageEditor.onHostElementChange}
-          data-sent-message-inline-editor-host=""
-        />
-      </div>
-    );
+    return <InlineMessageEditorHost editor={inlineMessageEditor} />;
   }
   // The narrow, stable message reference plugin actions receive — sourced
   // from row fields, never the row object itself.
@@ -1034,9 +1081,7 @@ function ConversationRow({
         originKind={originKind}
         initiator={row.initiator}
         mentions={row.mentions}
-        mobileActionDisplay={
-          row.id === latestActionableUserMessageId ? "inline" : "overflow"
-        }
+        mobileActionDisplay={mobileActionDisplay}
         onAddToChat={onSelectionAddToChat}
         onEdit={onEdit}
         onOpenLink={onOpenLink}
@@ -1102,9 +1147,7 @@ function ConversationRow({
       resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
       role="assistant"
       showActions={showAssistantMessageActions}
-      mobileActionDisplay={
-        row.id === latestActionableAssistantMessageId ? "inline" : "overflow"
-      }
+      mobileActionDisplay={mobileActionDisplay}
       sourceSeqEnd={row.sourceSeqEnd}
       sourceSeqStart={row.sourceSeqStart}
       text={row.text}
@@ -1114,7 +1157,7 @@ function ConversationRow({
       workspaceRootPath={workspaceRootPath}
     />
   );
-}
+});
 
 function TimelineUnreadDivider({ autoScroll }: TimelineUnreadDividerProps) {
   const bottomAnchor = useBottomAnchoredScroll();
