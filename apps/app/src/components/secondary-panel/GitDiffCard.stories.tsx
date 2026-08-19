@@ -298,8 +298,9 @@ export function Overview() {
 // Aligned-fixture builders. Each takes a real-looking source file plus an
 // edit list and produces the FileContents pair AND the unified diff that
 // describes the change between them. Once GitDiffCard tags the file lines
-// onto the parsed fileDiff, the library shows expand-context buttons in
-// every gap between hunks.
+// onto the parsed fileDiff (during idle time on a fine pointer, or after the
+// card's "Expand context" action on touch devices), the library shows
+// expand-context buttons in every gap between hunks.
 // ---------------------------------------------------------------------------
 
 interface AlignedDiffEdit {
