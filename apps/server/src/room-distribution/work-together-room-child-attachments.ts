@@ -25,12 +25,14 @@ export type WorkTogetherRoomChildAttachmentV1 = Readonly<{
 export interface WorkTogetherRoomChildAttachmentPortV1 {
   attach(input: {
     bindingId: string;
+    cellId: string;
     workspaceId: string;
     parentThreadId: string;
     childThreadId: string;
   }): Promise<WorkTogetherRoomChildAttachmentV1>;
   list(input: {
     bindingId: string;
+    cellId: string;
     workspaceId: string;
     principal: Principal;
   }): Promise<readonly WorkTogetherRoomChildAttachmentV1[]>;
@@ -86,11 +88,12 @@ function projectAttachmentId(value: unknown): string {
 
 function requireScope(input: {
   bindingId: string;
+  cellId: string;
   workspaceId: string;
-  expectedWorkspaceId: string;
 }): void {
   if (
-    input.workspaceId !== input.expectedWorkspaceId ||
+    !CANONICAL_UUID.test(input.cellId) ||
+    !CANONICAL_UUID.test(input.workspaceId) ||
     !CANONICAL_UUID.test(input.bindingId)
   ) {
     unavailable("not_found");
@@ -100,24 +103,15 @@ function requireScope(input: {
 /** Cell-login adapter for opaque, WT-authoritative Room child attachments. */
 export function createWorkTogetherRoomChildAttachments(input: {
   pool: WorkTogetherRoomTaskSqlPool;
-  cellId: string;
-  workspaceId: string;
 }): WorkTogetherRoomChildAttachmentPortV1 {
-  if (
-    !CANONICAL_UUID.test(input.cellId) ||
-    !CANONICAL_UUID.test(input.workspaceId)
-  ) {
-    unavailable();
-  }
-
   return Object.freeze({
     async attach(
       request: Parameters<WorkTogetherRoomChildAttachmentPortV1["attach"]>[0],
     ) {
       requireScope({
         bindingId: request.bindingId,
+        cellId: request.cellId,
         workspaceId: request.workspaceId,
-        expectedWorkspaceId: input.workspaceId,
       });
       if (
         !BB_ID.test(request.parentThreadId) ||
@@ -133,7 +127,7 @@ export function createWorkTogetherRoomChildAttachments(input: {
           `select work_together.attach_bb_room_child_attachment($1,$2,$3,$4)
                     as attachment_id`,
           [
-            input.cellId,
+            request.cellId,
             request.bindingId,
             request.parentThreadId,
             request.childThreadId,
@@ -158,8 +152,8 @@ export function createWorkTogetherRoomChildAttachments(input: {
     ) {
       requireScope({
         bindingId: request.bindingId,
+        cellId: request.cellId,
         workspaceId: request.workspaceId,
-        expectedWorkspaceId: input.workspaceId,
       });
       if (
         request.principal.kind !== "human" ||
@@ -174,7 +168,7 @@ export function createWorkTogetherRoomChildAttachments(input: {
           `select attachment_id,parent_thread_id,child_thread_id
              from work_together.list_bb_room_child_attachments($1,$2,$3)
             limit ${MAX_ROOM_CHILDREN + 1}`,
-          [input.cellId, request.bindingId, request.principal.id],
+          [request.cellId, request.bindingId, request.principal.id],
         );
         if (result.rows.length > MAX_ROOM_CHILDREN) unavailable();
         const projected = result.rows.map(projectRow);

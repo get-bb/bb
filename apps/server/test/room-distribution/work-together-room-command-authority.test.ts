@@ -22,15 +22,19 @@ describe("Work Together Room command authority", () => {
       rows: [{ membership_role: "owner", is_task_assignee: true }],
     }));
     const authority = createWorkTogetherRoomCommandAuthority({
-      cellId,
-      workspaceId,
       pool: {
         connect: async () => ({ query, release }),
       },
     });
 
     await expect(
-      authority.read({ bindingId, workspaceId, taskId, principal: PRINCIPAL }),
+      authority.read({
+        bindingId,
+        cellId,
+        workspaceId,
+        taskId,
+        principal: PRINCIPAL,
+      }),
     ).resolves.toEqual({ role: "owner", isTaskAssignee: true });
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining(
@@ -65,8 +69,6 @@ describe("Work Together Room command authority", () => {
     async ({ rows }) => {
       const workspaceId = randomUUID();
       const authority = createWorkTogetherRoomCommandAuthority({
-        cellId: randomUUID(),
-        workspaceId,
         pool: {
           connect: async () => ({
             query: async () => ({ rows }),
@@ -78,6 +80,7 @@ describe("Work Together Room command authority", () => {
       await expect(
         authority.read({
           bindingId: randomUUID(),
+          cellId: randomUUID(),
           workspaceId,
           taskId: randomUUID(),
           principal: PRINCIPAL,
@@ -86,19 +89,18 @@ describe("Work Together Room command authority", () => {
     },
   );
 
-  it("rejects cross-workspace and non-human requests before opening SQL", async () => {
+  it("rejects an invalid cell or non-human request before opening SQL", async () => {
     const connect = vi.fn();
     const workspaceId = randomUUID();
     const authority = createWorkTogetherRoomCommandAuthority({
-      cellId: randomUUID(),
-      workspaceId,
       pool: { connect },
     });
 
     await expect(
       authority.read({
         bindingId: randomUUID(),
-        workspaceId: randomUUID(),
+        cellId: "not-a-cell",
+        workspaceId,
         taskId: randomUUID(),
         principal: PRINCIPAL,
       }),
@@ -106,6 +108,7 @@ describe("Work Together Room command authority", () => {
     await expect(
       authority.read({
         bindingId: randomUUID(),
+        cellId: randomUUID(),
         workspaceId,
         taskId: randomUUID(),
         principal: { ...PRINCIPAL, kind: "agent" },

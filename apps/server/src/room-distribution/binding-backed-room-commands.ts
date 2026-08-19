@@ -173,6 +173,7 @@ type SupportedRoomCommand =
 
 type RoomCommandScope = Readonly<{
   bindingId: string;
+  cellId: string;
   principal: Principal;
   publicStream: RoomCommandStreamV2;
   publicStreamId: string;
@@ -192,6 +193,7 @@ type RoomCommandAuthority = Awaited<
 type RoomTaskTitleSource = {
   read(input: {
     bindingId: string;
+    cellId: string;
     principal: Principal;
     taskId: string;
     workspaceId: string;
@@ -1069,6 +1071,7 @@ export function createBindingBackedRoomCommandHandler(
   async function currentAuthority(scope: RoomCommandScope) {
     return authorityPort.read({
       bindingId: scope.bindingId,
+      cellId: scope.cellId,
       workspaceId: scope.workspaceId,
       taskId: scope.taskId,
       principal: scope.principal,
@@ -1078,6 +1081,7 @@ export function createBindingBackedRoomCommandHandler(
   async function defaultPublishTitle(scope: RoomCommandScope): Promise<string> {
     const task = await taskProjection.read({
       bindingId: scope.bindingId,
+      cellId: scope.cellId,
       workspaceId: scope.workspaceId,
       taskId: scope.taskId,
       principal: scope.principal,

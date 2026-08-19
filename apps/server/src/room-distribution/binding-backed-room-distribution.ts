@@ -97,6 +97,7 @@ const FORBIDDEN_TASK_IDENTITY_KEYS = new Set([
 export interface WorkTogetherRoomTaskProjectionPortV1 {
   read(input: {
     bindingId: string;
+    cellId: string;
     workspaceId: string;
     taskId: string;
     principal: Principal;
@@ -809,6 +810,7 @@ export function createBindingBackedRoomDistributionV1(
       for (const child of localChildren(reservation)) {
         await childAttachments.attach({
           bindingId: context.bindingId,
+          cellId: reservation.cellId,
           workspaceId: reservation.workspaceId,
           parentThreadId: child.parentThreadId ?? unavailable(),
           childThreadId: child.id,
@@ -817,6 +819,7 @@ export function createBindingBackedRoomDistributionV1(
     }
     return childAttachments.list({
       bindingId: context.bindingId,
+      cellId: reservation.cellId,
       workspaceId: reservation.workspaceId,
       principal: context.principal,
     });
@@ -915,6 +918,7 @@ export function createBindingBackedRoomDistributionV1(
       const { reservation, thread, environment } = resolve(context.bindingId);
       const commandScope = {
         bindingId: context.bindingId,
+        cellId: reservation.cellId,
         publicStream: Object.freeze({ kind: "primary" as const }),
         publicStreamId: context.bindingId,
         workspaceId: reservation.workspaceId,
@@ -927,6 +931,7 @@ export function createBindingBackedRoomDistributionV1(
       const task = validateTaskProjection(
         await taskProjection.read({
           bindingId: context.bindingId,
+          cellId: reservation.cellId,
           workspaceId: reservation.workspaceId,
           taskId: reservation.taskId,
           principal: context.principal,
@@ -991,6 +996,7 @@ export function createBindingBackedRoomDistributionV1(
       return commands.execute(
         {
           bindingId: context.bindingId,
+          cellId: resolved.reservation.cellId,
           publicStream: stream,
           publicStreamId: resolved.publicStreamId,
           workspaceId: resolved.reservation.workspaceId,
@@ -1236,6 +1242,7 @@ export function createBindingBackedRoomDistributionV1(
         if (isPrimary) {
           cachedAuthority = await commands.readAuthority({
             bindingId: context.bindingId,
+            cellId: reservation.cellId,
             publicStream: Object.freeze({ kind: "primary" as const }),
             publicStreamId: context.bindingId,
             workspaceId: reservation.workspaceId,

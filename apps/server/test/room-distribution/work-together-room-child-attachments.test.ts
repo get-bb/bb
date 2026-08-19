@@ -31,8 +31,6 @@ function fixture(results: unknown[][]) {
   const connect = vi.fn(async () => ({ query, release }));
   const authority = createWorkTogetherRoomChildAttachments({
     pool: { connect },
-    cellId: CELL_ID,
-    workspaceId: WORKSPACE_ID,
   });
   return { authority, connect, query, release };
 }
@@ -43,6 +41,7 @@ describe("Work Together Room child attachment SQL adapter", () => {
     await expect(
       test.authority.attach({
         bindingId: BINDING_ID,
+        cellId: CELL_ID,
         workspaceId: WORKSPACE_ID,
         parentThreadId: "thr_parent",
         childThreadId: "thr_child",
@@ -55,6 +54,7 @@ describe("Work Together Room child attachment SQL adapter", () => {
     await expect(
       test.authority.list({
         bindingId: BINDING_ID,
+        cellId: CELL_ID,
         workspaceId: WORKSPACE_ID,
         principal: PRINCIPAL,
       }),
@@ -89,8 +89,9 @@ describe("Work Together Room child attachment SQL adapter", () => {
     const invalid = fixture([]);
     await expect(
       invalid.authority.attach({
-        bindingId: BINDING_ID,
-        workspaceId: randomUuid(),
+        bindingId: "not-a-binding",
+        cellId: CELL_ID,
+        workspaceId: WORKSPACE_ID,
         parentThreadId: "thr_parent",
         childThreadId: "thr_child",
       }),
@@ -101,6 +102,7 @@ describe("Work Together Room child attachment SQL adapter", () => {
     await expect(
       malformed.authority.list({
         bindingId: BINDING_ID,
+        cellId: CELL_ID,
         workspaceId: WORKSPACE_ID,
         principal: PRINCIPAL,
       }),
@@ -110,6 +112,7 @@ describe("Work Together Room child attachment SQL adapter", () => {
     await expect(
       duplicate.authority.list({
         bindingId: BINDING_ID,
+        cellId: CELL_ID,
         workspaceId: WORKSPACE_ID,
         principal: PRINCIPAL,
       }),
@@ -121,6 +124,7 @@ describe("Work Together Room child attachment SQL adapter", () => {
     await expect(
       wrongPrincipal.authority.list({
         bindingId: BINDING_ID,
+        cellId: CELL_ID,
         workspaceId: WORKSPACE_ID,
         principal: { id: "system:test", kind: "system", displayName: "System" },
       }),
@@ -137,12 +141,11 @@ describe("Work Together Room child attachment SQL adapter", () => {
           release,
         }),
       },
-      cellId: CELL_ID,
-      workspaceId: WORKSPACE_ID,
     });
     await expect(
       authority.list({
         bindingId: BINDING_ID,
+        cellId: CELL_ID,
         workspaceId: WORKSPACE_ID,
         principal: PRINCIPAL,
       }),
@@ -154,7 +157,3 @@ describe("Work Together Room child attachment SQL adapter", () => {
     expect(release).toHaveBeenCalledOnce();
   });
 });
-
-function randomUuid(): string {
-  return "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-}

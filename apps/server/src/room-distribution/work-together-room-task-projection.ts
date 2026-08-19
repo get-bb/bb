@@ -135,21 +135,14 @@ function project(rowValue: unknown, taskId: string): RoomJsonObject {
 /** Read canonical task display state through the cell login's single SQL function. */
 export function createWorkTogetherRoomTaskProjection(input: {
   pool: WorkTogetherRoomTaskSqlPool;
-  cellId: string;
-  workspaceId: string;
 }): WorkTogetherRoomTaskProjectionPortV1 {
-  if (
-    !CANONICAL_UUID.test(input.cellId) ||
-    !CANONICAL_UUID.test(input.workspaceId)
-  ) {
-    unavailable();
-  }
   return Object.freeze({
     async read(
       request: Parameters<WorkTogetherRoomTaskProjectionPortV1["read"]>[0],
     ) {
       if (
-        request.workspaceId !== input.workspaceId ||
+        !CANONICAL_UUID.test(request.cellId) ||
+        !CANONICAL_UUID.test(request.workspaceId) ||
         !CANONICAL_UUID.test(request.bindingId) ||
         !CANONICAL_UUID.test(request.taskId) ||
         request.principal.kind !== "human" ||
@@ -164,7 +157,7 @@ export function createWorkTogetherRoomTaskProjection(input: {
           `select task_id,task_version,title,brief,acceptance,objective,priority,status,
                   work_kind,assignee_display_name
              from work_together.bb_cell_room_task($1,$2,$3)`,
-          [input.cellId, request.bindingId, request.principal.id],
+          [request.cellId, request.bindingId, request.principal.id],
         );
         if (result.rows.length === 0) unavailable("not_found");
         if (result.rows.length !== 1) unavailable();

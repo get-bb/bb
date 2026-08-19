@@ -37,8 +37,6 @@ function fixture(rows: unknown[]) {
     pool: {
       connect: async () => ({ query, release }),
     },
-    cellId: CELL_ID,
-    workspaceId: WORKSPACE_ID,
   });
   return { projection, query, release };
 }
@@ -46,6 +44,7 @@ function fixture(rows: unknown[]) {
 function request() {
   return {
     bindingId: BINDING_ID,
+    cellId: CELL_ID,
     workspaceId: WORKSPACE_ID,
     taskId: TASK_ID,
     principal: PRINCIPAL,
@@ -98,17 +97,32 @@ describe("Work Together Room task projection", () => {
     },
   );
 
-  it("rejects a mismatched workspace before opening the pool", async () => {
+  it("queries the request cell rather than a boot-pinned workspace", async () => {
+    const otherCell = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const otherWorkspace = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const test = fixture([row()]);
+    await expect(
+      test.projection.read({
+        ...request(),
+        cellId: otherCell,
+        workspaceId: otherWorkspace,
+      }),
+    ).resolves.toMatchObject({ id: TASK_ID });
+    expect(test.query).toHaveBeenCalledWith(
+      expect.stringContaining("work_together.bb_cell_room_task($1,$2,$3)"),
+      [otherCell, BINDING_ID, PRINCIPAL.id],
+    );
+  });
+
+  it("rejects an invalid cell before opening the pool", async () => {
     const connect = vi.fn();
     const projection = createWorkTogetherRoomTaskProjection({
       pool: { connect },
-      cellId: CELL_ID,
-      workspaceId: WORKSPACE_ID,
     });
     await expect(
       projection.read({
         ...request(),
-        workspaceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        cellId: "not-a-cell",
       }),
     ).rejects.toMatchObject({ kind: "not_found" });
     expect(connect).not.toHaveBeenCalled();

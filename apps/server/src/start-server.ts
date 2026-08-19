@@ -195,15 +195,15 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
         ? undefined
         : createBindingBackedRoomDistributionV1(
             appDeps,
-            createWorkTogetherRoomTaskProjection(
-              principalRuntime.workTogetherRoomTaskRuntime,
-            ),
-            createWorkTogetherRoomChildAttachments(
-              principalRuntime.workTogetherRoomTaskRuntime,
-            ),
-            createWorkTogetherRoomCommandAuthority(
-              principalRuntime.workTogetherRoomTaskRuntime,
-            ),
+            createWorkTogetherRoomTaskProjection({
+              pool: principalRuntime.workTogetherRoomTaskRuntime.pool,
+            }),
+            createWorkTogetherRoomChildAttachments({
+              pool: principalRuntime.workTogetherRoomTaskRuntime.pool,
+            }),
+            createWorkTogetherRoomCommandAuthority({
+              pool: principalRuntime.workTogetherRoomTaskRuntime.pool,
+            }),
           );
   } catch (error) {
     await closeServerPrincipalRuntimeBestEffort(principalRuntime);

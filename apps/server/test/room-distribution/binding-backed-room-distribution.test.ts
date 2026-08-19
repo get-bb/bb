@@ -256,7 +256,7 @@ describe("binding-backed Work Together Room distribution", () => {
           bindingVersion: 3,
           generatedBranch: launch.generatedBranch,
         },
-        capabilities: ["read.mark"],
+        capabilities: ["result.publish", "context.apply", "read.mark"],
         subagents: [],
       });
       const ownerDistribution = createBindingBackedRoomDistributionV1(
@@ -268,10 +268,16 @@ describe("binding-backed Work Together Room distribution", () => {
       await expect(
         ownerDistribution.bootstrap(context(launch.bindingId)),
       ).resolves.toMatchObject({
-        capabilities: ["agent.interrupt", "read.mark"],
+        capabilities: [
+          "agent.interrupt",
+          "result.publish",
+          "context.apply",
+          "read.mark",
+        ],
       });
       expect(taskProjection.read).toHaveBeenCalledWith({
         bindingId: launch.bindingId,
+        cellId: launch.cellId,
         workspaceId: launch.workspaceId,
         taskId: launch.taskId,
         principal: PRINCIPAL,
@@ -496,7 +502,13 @@ describe("binding-backed Work Together Room distribution", () => {
         context(launch.bindingId),
       );
       expect(activeBootstrap).toMatchObject({
-        capabilities: ["message.send", "message.steer", "read.mark"],
+        capabilities: [
+          "message.send",
+          "message.steer",
+          "result.publish",
+          "context.apply",
+          "read.mark",
+        ],
         timeline: {
           activeTurnId: expect.stringMatching(/^turn_[A-Za-z0-9_-]{43}$/u),
           working: true,
@@ -888,12 +900,14 @@ describe("binding-backed Work Together Room distribution", () => {
       expect(commandAuthority.read).toHaveBeenCalledTimes(1);
       expect(childAuthority.attach).toHaveBeenNthCalledWith(1, {
         bindingId: launch.bindingId,
+        cellId: launch.cellId,
         workspaceId: launch.workspaceId,
         parentThreadId: provisioned.primaryThreadId,
         childThreadId: child.id,
       });
       expect(childAuthority.attach).toHaveBeenNthCalledWith(2, {
         bindingId: launch.bindingId,
+        cellId: launch.cellId,
         workspaceId: launch.workspaceId,
         parentThreadId: child.id,
         childThreadId: grandchild.id,
@@ -1751,13 +1765,13 @@ describe("binding-backed Work Together Room distribution", () => {
       expect(latestTimeline.olderCursor).toMatch(/^p\.[1-9][0-9]*$/u);
       const latestRowIds = latestTimeline.rows.map((row) => row.id);
       expect(latestRowIds.length).toBeGreaterThan(0);
-      expect(childAuthority.list).toHaveBeenCalledTimes(1);
+      expect(childAuthority.list).toHaveBeenCalledTimes(2);
 
       const older = await distribution.timeline(context(launch.bindingId), {
         subagentId,
         before: latestTimeline.olderCursor!,
       });
-      expect(childAuthority.list).toHaveBeenCalledTimes(2);
+      expect(childAuthority.list).toHaveBeenCalledTimes(4);
       expect(older).toMatchObject({
         schemaVersion: 1,
         timeline: {
@@ -1832,7 +1846,7 @@ describe("binding-backed Work Together Room distribution", () => {
         context(launch.bindingId),
         { subagentId, before: latestTimeline.olderCursor! },
       );
-      expect(childAuthority.list).toHaveBeenCalledTimes(3);
+      expect(childAuthority.list).toHaveBeenCalledTimes(7);
       const olderAfterTailTimeline = olderAfterTail.timeline as {
         rows: Array<{ id: string; kind: string; text?: string }>;
       };

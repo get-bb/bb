@@ -10,6 +10,7 @@ export type WorkTogetherRoomCommandAuthorityV1 = Readonly<{
 export interface WorkTogetherRoomCommandAuthorityPortV1 {
   read(input: {
     bindingId: string;
+    cellId: string;
     workspaceId: string;
     taskId: string;
     principal: Principal;
@@ -60,21 +61,14 @@ function project(rowValue: unknown): WorkTogetherRoomCommandAuthorityV1 {
 /** Read current Room command policy facts through the cell login only. */
 export function createWorkTogetherRoomCommandAuthority(input: {
   pool: WorkTogetherRoomCommandAuthoritySqlPool;
-  cellId: string;
-  workspaceId: string;
 }): WorkTogetherRoomCommandAuthorityPortV1 {
-  if (
-    !CANONICAL_UUID.test(input.cellId) ||
-    !CANONICAL_UUID.test(input.workspaceId)
-  ) {
-    unavailable();
-  }
   return Object.freeze({
     async read(
       request: Parameters<WorkTogetherRoomCommandAuthorityPortV1["read"]>[0],
     ) {
       if (
-        request.workspaceId !== input.workspaceId ||
+        !CANONICAL_UUID.test(request.cellId) ||
+        !CANONICAL_UUID.test(request.workspaceId) ||
         !CANONICAL_UUID.test(request.bindingId) ||
         !CANONICAL_UUID.test(request.taskId) ||
         request.principal.kind !== "human" ||
@@ -89,7 +83,7 @@ export function createWorkTogetherRoomCommandAuthority(input: {
           `select membership_role,is_task_assignee
              from work_together.bb_cell_room_command_authority($1,$2,$3,$4)`,
           [
-            input.cellId,
+            request.cellId,
             request.bindingId,
             request.taskId,
             request.principal.id,
