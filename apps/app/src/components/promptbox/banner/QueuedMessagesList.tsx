@@ -949,22 +949,22 @@ function QueuedMessageInlineEditorSlot({
       className="relative z-10 border-b border-border/35 px-2.5 py-1 last:border-b-0"
     >
       <OverflowFade placement="above" tone="surface-raised" className="z-10" />
-      <QueuedEditorTypeaheadLayoutProvider
-        onLayoutChange={onTypeaheadLayoutChange}
+      <InlineMessageEditorFrame
+        cancelLabel="Stop editing queued message"
+        label={`Editing queued message ${editor.queuedMessageIndex + 1}`}
+        onCancel={editor.onDismiss}
       >
-        <div
-          data-queued-editor-typeahead-reservation=""
-          style={{ paddingTop: typeaheadReservation }}
+        <QueuedEditorTypeaheadLayoutProvider
+          onLayoutChange={onTypeaheadLayoutChange}
         >
-          <InlineMessageEditorFrame
-            cancelLabel="Stop editing queued message"
-            label={`Editing queued message ${editor.queuedMessageIndex + 1}`}
-            onCancel={editor.onDismiss}
+          <div
+            data-queued-editor-typeahead-reservation=""
+            style={{ paddingTop: typeaheadReservation }}
           >
             {editor.content}
-          </InlineMessageEditorFrame>
-        </div>
-      </QueuedEditorTypeaheadLayoutProvider>
+          </div>
+        </QueuedEditorTypeaheadLayoutProvider>
+      </InlineMessageEditorFrame>
       <OverflowFade placement="below" tone="surface-raised" className="z-10" />
     </li>
   );

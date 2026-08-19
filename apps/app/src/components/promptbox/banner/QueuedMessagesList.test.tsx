@@ -784,6 +784,7 @@ describe("QueuedMessagesList", () => {
   it.each([
     {
       label: "first",
+      expectedScrollTop: 0,
       messages: [
         makeQueuedMessage("q_editing", "Edited queued message"),
         makeQueuedMessage("q_neighbor", "Following queued message"),
@@ -793,6 +794,7 @@ describe("QueuedMessagesList", () => {
     },
     {
       label: "last",
+      expectedScrollTop: 80,
       messages: [
         makeQueuedMessage("q_neighbor", "Previous queued message"),
         makeQueuedMessage("q_editing", "Edited queued message"),
@@ -802,7 +804,7 @@ describe("QueuedMessagesList", () => {
     },
   ])(
     "sizes a $label-item edit from only the neighbor that exists",
-    async ({ editorTop, messages, neighborTop }) => {
+    async ({ editorTop, expectedScrollTop, messages, neighborTop }) => {
       const viewport = document.createElement("div");
       Object.defineProperty(viewport, "clientHeight", { value: 500 });
       bottomAnchorMocks.scrollElement = viewport;
@@ -823,10 +825,16 @@ describe("QueuedMessagesList", () => {
           return new DOMRect(0, 32, 600, 180);
         }
         if (this.hasAttribute("data-queued-message-inline-editor")) {
-          return new DOMRect(0, editorTop, 600, 278);
+          const scrollTop =
+            this.closest<HTMLElement>("[data-queued-messages-scroll]")
+              ?.scrollTop ?? 0;
+          return new DOMRect(0, editorTop - scrollTop, 600, 278);
         }
         if (this.getAttribute("data-queued-message-id") === "q_neighbor") {
-          return new DOMRect(0, neighborTop, 600, 80);
+          const scrollTop =
+            this.closest<HTMLElement>("[data-queued-messages-scroll]")
+              ?.scrollTop ?? 0;
+          return new DOMRect(0, neighborTop - scrollTop, 600, 80);
         }
         return nativeGetBoundingClientRect.call(this);
       });
@@ -865,13 +873,28 @@ describe("QueuedMessagesList", () => {
       const surface = container.querySelector<HTMLElement>(
         'section[aria-label="Queued messages"]',
       );
+      const scroll = container.querySelector<HTMLElement>(
+        "[data-queued-messages-scroll]",
+      );
 
       await waitFor(() => expect(surface?.style.height).toBe("400px"));
+      const reservation = container.querySelector<HTMLElement>(
+        "[data-queued-editor-typeahead-reservation]",
+      );
+      if (!reservation) throw new Error("Expected typeahead reservation");
+      expect(reservation?.style.paddingTop).toBe("128px");
+      const editorFrame = reservation.closest(
+        '[data-inline-message-editor-frame="embedded"]',
+      );
+      expect(editorFrame).not.toBeNull();
+      const editorHeader = Array.from(editorFrame?.children ?? []).find(
+        (element) => element.textContent?.includes("Editing queued message"),
+      );
       expect(
-        container.querySelector<HTMLElement>(
-          "[data-queued-editor-typeahead-reservation]",
-        )?.style.paddingTop,
-      ).toBe("128px");
+        (editorHeader?.compareDocumentPosition(reservation) ?? 0) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).not.toBe(0);
+      expect(scroll?.scrollTop).toBe(expectedScrollTop);
     },
   );
 

@@ -2785,43 +2785,70 @@ describe("PromptBoxInternal mention triggers", () => {
 
   it("reports the queued editor typeahead's open state and measured height", async () => {
     const layouts: Array<{ height: number; isOpen: boolean }> = [];
+    const resizeCallbacks: Array<() => void> = [];
+    class ResizeObserverMock {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallbacks.push(() =>
+          callback([], this as unknown as ResizeObserver),
+        );
+      }
+
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    let menuHeight = 64;
     const nativeGetBoundingClientRect =
       HTMLElement.prototype.getBoundingClientRect;
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
-      function (this: HTMLElement) {
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
         if (this.hasAttribute("data-promptbox-typeahead-menu")) {
-          return new DOMRect(0, 0, 600, 144);
+          return new DOMRect(0, 0, 600, menuHeight);
         }
         return nativeGetBoundingClientRect.call(this);
-      },
-    );
+      });
     const promptBoxRef = createRef<PromptBoxHandle>();
 
-    render(
-      <QueuedEditorTypeaheadLayoutProvider
-        onLayoutChange={(layout) => layouts.push(layout)}
-      >
-        <PromptBoxInternal
-          {...createPromptBoxProps({
-            value: "@fix",
-            typeahead: buildTypeaheadConfig({
-              mentionSuggestions: [githubIssueSuggestion],
-            }),
-          })}
-          promptBoxRef={promptBoxRef}
-        />
-      </QueuedEditorTypeaheadLayoutProvider>,
-    );
+    try {
+      render(
+        <QueuedEditorTypeaheadLayoutProvider
+          onLayoutChange={(layout) => layouts.push(layout)}
+        >
+          <PromptBoxInternal
+            {...createPromptBoxProps({
+              value: "@fix",
+              typeahead: buildTypeaheadConfig({
+                mentionSuggestions: [githubIssueSuggestion],
+              }),
+            })}
+            promptBoxRef={promptBoxRef}
+          />
+        </QueuedEditorTypeaheadLayoutProvider>,
+      );
 
-    await focusPromptEnd(promptBoxRef);
-    await waitFor(() =>
-      expect(layouts).toContainEqual({ height: 144, isOpen: true }),
-    );
+      await focusPromptEnd(promptBoxRef);
+      await waitFor(() =>
+        expect(layouts).toContainEqual({ height: 64, isOpen: true }),
+      );
 
-    fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
-    await waitFor(() =>
-      expect(layouts.at(-1)).toEqual({ height: 0, isOpen: false }),
-    );
+      menuHeight = 144;
+      act(() => {
+        for (const notifyResize of resizeCallbacks) notifyResize();
+      });
+      await waitFor(() =>
+        expect(layouts.at(-1)).toEqual({ height: 144, isOpen: true }),
+      );
+
+      fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
+      await waitFor(() =>
+        expect(layouts.at(-1)).toEqual({ height: 0, isOpen: false }),
+      );
+    } finally {
+      cleanup();
+      rectSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 
   it("renders a plugin mention's named icon hint", async () => {
