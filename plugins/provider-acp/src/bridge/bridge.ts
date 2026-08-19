@@ -29,6 +29,7 @@ import {
   runBridgeRequest,
   withoutBridgeRuntimeEnv,
   type BridgeJsonRpcResponse,
+  type BridgeToolCallImage,
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
@@ -359,7 +360,12 @@ async function forwardDynamicToolCall(args: {
   threadId: string;
   tool: string;
 }): Promise<
-  | { ok: true; content: string; isError?: boolean }
+  | {
+      ok: true;
+      content: string;
+      images: BridgeToolCallImage[];
+      isError?: boolean;
+    }
   | { ok: false; error: string }
 > {
   const session = sessionsByBbThreadId.get(args.threadId);

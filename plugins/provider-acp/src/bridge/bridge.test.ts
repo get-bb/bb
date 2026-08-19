@@ -1450,6 +1450,7 @@ describe("acp bridge", () => {
 
     await expect(bridgeCall).resolves.toEqual({
       content: "environment directory updated",
+      images: [],
       isError: false,
       ok: true,
     });

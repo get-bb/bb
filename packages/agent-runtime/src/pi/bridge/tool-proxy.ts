@@ -1,5 +1,9 @@
 import { Type, type TSchema } from "@earendil-works/pi-ai";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import {
+  buildBridgeToolCallContent,
+  type BridgeToolCallImage,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 
 export interface DynamicToolDefinition {
   name: string;
@@ -10,7 +14,11 @@ export interface DynamicToolDefinition {
 export type ToolCallForwarder = (
   toolName: string,
   args: Record<string, unknown>,
-) => Promise<{ content: string; isError?: boolean }>;
+) => Promise<{
+  content: string;
+  images?: BridgeToolCallImage[];
+  isError?: boolean;
+}>;
 
 /**
  * Builds Pi-compatible ToolDefinition objects from dynamic tool definitions
@@ -34,7 +42,7 @@ export function buildDynamicTools(
       ) {
         const result = await forwardToolCall(def.name, params);
         return {
-          content: [{ type: "text" as const, text: result.content }],
+          content: buildBridgeToolCallContent(result),
           details: {},
           ...(result.isError ? { isError: true } : {}),
         };

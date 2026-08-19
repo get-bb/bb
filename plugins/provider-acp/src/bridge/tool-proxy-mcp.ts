@@ -1,4 +1,5 @@
 import {
+  buildBridgeToolCallContent,
   dynamicToolSchema,
   type DynamicTool,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -60,13 +61,24 @@ type BridgeRequestPayload =
     };
 
 type BridgeToolCallResponse =
-  | { ok: true; content: string; isError?: boolean }
+  | {
+      ok: true;
+      content: string;
+      images: { data: string; mimeType: string }[];
+      isError?: boolean;
+    }
   | { ok: false; error: string };
 
 const bridgeToolCallResponseSchema = z.union([
   z.object({
     ok: z.literal(true),
     content: z.string(),
+    // Defaulted rather than optional: this socket's two ends ship together, but
+    // the MCP process is re-executed from the packaged artifact and a missing
+    // key here would otherwise throw instead of degrading to a text result.
+    images: z
+      .array(z.object({ data: z.string(), mimeType: z.string() }))
+      .default([]),
     isError: z.boolean().optional(),
   }),
   z.object({ ok: z.literal(false), error: z.string() }),
@@ -315,7 +327,7 @@ async function handleRequest(
           return;
         }
         writeResult(message.id, {
-          content: [{ type: "text", text: result.content }],
+          content: buildBridgeToolCallContent(result),
           ...(result.isError ? { isError: true } : {}),
         });
       } catch (error) {

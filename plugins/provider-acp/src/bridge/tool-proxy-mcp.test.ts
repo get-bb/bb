@@ -34,6 +34,7 @@ afterEach(async () => {
 /** A stand-in for the bridge's TCP dynamic-tool socket that answers late. */
 async function listenFakeBridge(args: {
   responseDelayMs: number;
+  response?: unknown;
 }): Promise<{ port: number; server: Server; requests: unknown[] }> {
   const requests: unknown[] = [];
   const server = createServer((socket) => {
@@ -51,10 +52,12 @@ async function listenFakeBridge(args: {
         return;
       }
       requests.push(request);
+      const response = args.response ?? {
+        ok: true,
+        content: '{"answers":{"Which?":"B"}}',
+      };
       setTimeout(() => {
-        socket.end(
-          `${JSON.stringify({ ok: true, content: '{"answers":{"Which?":"B"}}' })}\n`,
-        );
+        socket.end(`${JSON.stringify(response)}\n`);
       }, args.responseDelayMs);
     });
   });
@@ -146,5 +149,30 @@ describe("bb-bridge MCP server keeps long tool calls alive", () => {
     ]);
     expect(progressCount).toBeGreaterThan(0);
     expect(fakeBridge.requests).toHaveLength(1);
+  }, 20_000);
+
+  // The response above carries no `images` key, so it also pins that an older
+  // packaged bridge still decodes. This one carries an image-only result.
+  it("relays an image-only result as an MCP image block", async () => {
+    const fakeBridge = await listenFakeBridge({
+      responseDelayMs: 0,
+      response: {
+        ok: true,
+        content: "",
+        images: [{ data: "iVBORw0KGgo=", mimeType: "image/png" }],
+      },
+    });
+    const client = await connectLikeOpenCode(fakeBridge.port);
+
+    const result = await client.callTool(
+      { name: "AskUserQuestion", arguments: {} },
+      CallToolResultSchema,
+      { timeout: 5_000 },
+    );
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content).toEqual([
+      { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
+    ]);
   }, 20_000);
 });

@@ -1,4 +1,6 @@
 import {
+  buildBridgeToolCallContent,
+  type BridgeToolCallImage,
   type DynamicTool,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import type { McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
@@ -15,7 +17,11 @@ export type DynamicToolDefinition = DynamicTool;
 export type ToolCallForwarder = (
   toolName: string,
   args: Record<string, unknown>,
-) => Promise<{ content: string; isError?: boolean }>;
+) => Promise<{
+  content: string;
+  images?: BridgeToolCallImage[];
+  isError?: boolean;
+}>;
 
 export function buildBridgeMcpServer(
   dynamicTools: DynamicToolDefinition[],
@@ -56,7 +62,7 @@ export function buildBridgeMcpServer(
       request.params.arguments ?? {},
     );
     return {
-      content: [{ type: "text" as const, text: result.content }],
+      content: buildBridgeToolCallContent(result),
       ...(result.isError ? { isError: true } : {}),
     };
   });

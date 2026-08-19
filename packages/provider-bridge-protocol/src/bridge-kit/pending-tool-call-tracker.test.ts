@@ -67,7 +67,11 @@ describe("createPendingToolCallTracker", () => {
         },
       }),
     ).toBe(true);
-    await expect(result).resolves.toEqual({ content: "hello", isError: false });
+    await expect(result).resolves.toEqual({
+      content: "hello",
+      images: [],
+      isError: false,
+    });
   });
 
   it("settles a pending call from an error response", async () => {
@@ -151,7 +155,11 @@ describe("createPendingToolCallTracker", () => {
         },
       }),
     ).toBe(true);
-    await expect(resultB).resolves.toEqual({ content: "b", isError: false });
+    await expect(resultB).resolves.toEqual({
+      content: "b",
+      images: [],
+      isError: false,
+    });
   });
 });
 

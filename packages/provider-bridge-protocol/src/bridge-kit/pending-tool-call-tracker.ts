@@ -1,11 +1,14 @@
 import {
   decodeToolCallResponsePayload,
   type BridgeJsonRpcResponse,
+  type BridgeToolCallImage,
   type BridgeToolCallRequest,
 } from "./bridge-tool-calls.js";
 
 export interface BridgeToolCallResult {
   content: string;
+  /** Absent on the failure paths below, which have no image to report. */
+  images?: BridgeToolCallImage[];
   isError?: boolean;
 }
 
