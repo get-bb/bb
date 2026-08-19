@@ -98,7 +98,14 @@ function flushPendingWrite(): void {
 export function writeCachedSidebarBootstrap(
   response: SidebarBootstrapResponse,
 ): void {
-  const bounded = boundSidebarBootstrapForCache(response);
+  // The write is best-effort and runs inside the query function: a
+  // malformed response must fail the cache copy, never the live data path.
+  let bounded: SidebarBootstrapResponse;
+  try {
+    bounded = boundSidebarBootstrapForCache(response);
+  } catch {
+    return;
+  }
   replay = bounded;
   const alreadyScheduled = pendingWrite !== null;
   pendingWrite = bounded;
