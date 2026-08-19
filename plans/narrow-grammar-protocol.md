@@ -679,6 +679,52 @@ protocol dialect remains:
   plugin-sdk, acp, codex, claude plugin suites all green after each stage;
   see the repo history for the per-commit runs.
 
+## Text-delta batching (2026-08-18, post-cutover; ENABLED at 100ms)
+
+The central assembler seam made per-token event volume a one-knob policy:
+the assembler now coalesces streamed-text events (assistant/reasoning/plan
+deltas via `message.delta`/`item.textDelta`, and command/fileChange
+`item.outputDelta` including the assembler's own snapshot-diff output) per
+stream within a flush window. **Production default is ON at 100ms**
+(`textDeltaFlushMs`, a `createDeltaAssembler` option threaded through
+`AgentRuntimeOptions` → adapter factory → `bridge-protocol-adapter`; 0
+disables, no per-provider config).
+
+Design (same no-timer trailing-edge discipline as the progress throttle):
+
+- Coalescing = concatenation per stream (event type + item id); the emitted
+  event is the same event type carrying the joined text.
+- The FIRST delta of a fresh stream emits immediately — perceived
+  time-to-first-token is unchanged; only the steady-state cadence drops to
+  ~one event per window.
+- Buffers flush synchronously: on the thread's next traffic once the window
+  elapsed, on stream close (`message.close` including the detach release,
+  `item.close` even when deduped), and before ANY non-batchable event for
+  the thread — the ordering barrier. Coalescing never reorders text
+  relative to item opens/closes, turn events, errors, or other streams'
+  flushes (a flush is itself a barrier: one due buffer carries every
+  buffer out, in arrival order).
+- An output-delta `reset` (snapshot restart) can never be absorbed: the
+  pending buffer flushes first, then the reset emits unmodified.
+- **`session.reset` FLUSHES buffered text rather than dropping it** —
+  deliberately different from the progress throttle's drop. A suppressed
+  progress snapshot is superseded by the terminal event, so dropping loses
+  nothing; dropped text would be lost for good. The buffered events were
+  fully assembled (scope, item id) when the old session's deltas arrived,
+  so flushing them ahead of the reset can never attribute text to the new
+  session. `session.ended` flushes before settlement for the same reason.
+- The per-bridge equivalence/conformance/calibration suites pin translation
+  fidelity per-delta: they construct assemblers with `textDeltaFlushMs: 0`
+  (via the shared `bridge-delta-assembly` test helper and the direct
+  harness constructions), so every golden stayed byte-exact. The dedicated
+  batching suite in `delta-assembler.test.ts` covers the policy with an
+  injected clock.
+
+Measured on a representative chatty turn (40 reasoning tokens + 200
+assistant tokens at 20ms cadence, 60 cumulative bash output snapshots at
+50ms): 310 events at window 0 → 92 events at 100ms (−70%), with identical
+final item text.
+
 ## Open questions for Michael
 
 1. Batch framing: one `thread/delta` per delta vs arrays (prototype: arrays).
