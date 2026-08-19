@@ -49,9 +49,7 @@ export async function listClaudeCodeBridgeModels(
 }
 
 export interface ClaudeCodeBridgeModelListMemoOptions {
-  list?: (
-    env?: NodeJS.ProcessEnv,
-  ) => ReturnType<typeof listClaudeCodeBridgeModels>;
+  list?: () => ReturnType<typeof listClaudeCodeBridgeModels>;
   now?: () => number;
   ttlMs: number;
 }
