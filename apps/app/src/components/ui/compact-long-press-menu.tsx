@@ -25,6 +25,12 @@ const LONG_PRESS_TARGET_STYLE: CSSProperties = {
   WebkitTouchCallout: "none",
 };
 
+// These menus nest (a project section wraps its thread rows), and pointer
+// events bubble from the row to the section. The innermost menu handles the
+// press first and claims the native event here so an enclosing menu does not
+// start its own timer and open a second drawer 700 ms later.
+const claimedPressEvents = new WeakSet<Event>();
+
 interface CompactLongPressMenuProps {
   /** The single element that receives the long-press gesture (a row). */
   children: ReactNode;
@@ -94,6 +100,10 @@ export function CompactLongPressMenu({
       if (!event.isPrimary) {
         return;
       }
+      if (claimedPressEvents.has(event.nativeEvent)) {
+        return;
+      }
+      claimedPressEvents.add(event.nativeEvent);
       clearPress();
       pressRef.current = {
         pointerId: event.pointerId,
@@ -141,9 +151,20 @@ export function CompactLongPressMenu({
 
   const handleContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
+      // An enclosed menu (or another handler) already took this one; the same
+      // rule Radix's ContextMenuTrigger applies through defaultPrevented.
+      if (event.defaultPrevented) {
+        return;
+      }
       // Right-click (or a browser-synthesized contextmenu after a long
       // press) opens the same drawer and must not show the native menu.
       event.preventDefault();
+      if (pressRef.current !== null) {
+        // Chrome Android fires contextmenu from the long press before our own
+        // timer; the lift that follows must not also activate the row.
+        suppressClickUntilRef.current =
+          Date.now() + POST_LONG_PRESS_CLICK_SUPPRESSION_MS;
+      }
       openMenu();
     },
     [openMenu],

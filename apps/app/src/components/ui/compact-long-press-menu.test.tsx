@@ -154,6 +154,57 @@ describe("CompactLongPressMenu", () => {
     expect(onRowClick).toHaveBeenCalledTimes(1);
   });
 
+  it("lets only the innermost menu open when menus nest (thread row inside a project section)", () => {
+    vi.useFakeTimers();
+    const onProjectOpenChange = vi.fn();
+    const onThreadOpenChange = vi.fn();
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <CompactLongPressMenu
+          label="Project actions"
+          onOpenChange={onProjectOpenChange}
+          items={<DropdownMenuItem>Rename project</DropdownMenuItem>}
+        >
+          <div data-testid="project-section">
+            <span>Project</span>
+            <CompactLongPressMenu
+              label="Thread actions"
+              onOpenChange={onThreadOpenChange}
+              items={<DropdownMenuItem>Rename thread</DropdownMenuItem>}
+            >
+              <a href="#thread" data-testid="row">
+                Thread row
+              </a>
+            </CompactLongPressMenu>
+          </div>
+        </CompactLongPressMenu>
+      </CompactViewportOverrideProvider>,
+    );
+    const row = screen.getByTestId("row");
+
+    // Touch long press on the row: the bubbling pointerdown must not start
+    // the project section's timer as well.
+    touchPointerDown(row);
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+    });
+    expect(onThreadOpenChange).toHaveBeenCalledWith(true);
+    expect(onProjectOpenChange).not.toHaveBeenCalled();
+
+    // Right-click on the row: same, through defaultPrevented.
+    onThreadOpenChange.mockClear();
+    fireEvent.contextMenu(row);
+    expect(onThreadOpenChange).toHaveBeenCalledWith(true);
+    expect(onProjectOpenChange).not.toHaveBeenCalled();
+
+    // A press on the section itself (outside any row) still opens its menu.
+    touchPointerDown(screen.getByText("Project"));
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+    });
+    expect(onProjectOpenChange).toHaveBeenCalledWith(true);
+  });
+
   it("opens from a right-click on a narrow window without the native menu", () => {
     const { row, onOpenChange } = renderRow();
     const event = new MouseEvent("contextmenu", {
