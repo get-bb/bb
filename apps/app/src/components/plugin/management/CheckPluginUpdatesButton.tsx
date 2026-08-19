@@ -17,7 +17,10 @@ import {
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 
 /** One-line toast summary of a full update check. */
-export function summarizeUpdateCheck(results: readonly PluginUpdatesEntry[]): {
+export function summarizeUpdateCheck(
+  results: readonly PluginUpdatesEntry[],
+  scope: { pluginId?: string } = {},
+): {
   tone: "success" | "message";
   title: string;
   description?: string;
@@ -41,7 +44,10 @@ export function summarizeUpdateCheck(results: readonly PluginUpdatesEntry[]): {
   }
   return {
     tone: "message",
-    title: "All plugins are up to date",
+    title:
+      scope.pluginId === undefined
+        ? "All plugins are up to date"
+        : `${scope.pluginId} is up to date`,
     ...(blocked.length > 0
       ? {
           description:
@@ -75,7 +81,10 @@ export function CheckPluginUpdatesButton({
     mutationFn: () =>
       checkPluginUpdates(fetch, pluginId === undefined ? {} : { id: pluginId }),
     onSuccess: (results) => {
-      const summary = summarizeUpdateCheck(results);
+      const summary = summarizeUpdateCheck(
+        results,
+        pluginId === undefined ? {} : { pluginId },
+      );
       appToast[summary.tone](summary.title, {
         description: summary.description,
       });

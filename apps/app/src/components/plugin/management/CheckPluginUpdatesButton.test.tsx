@@ -63,22 +63,22 @@ describe("summarizeUpdateCheck", () => {
   });
 
   it("reports up to date and mentions incompatible newer releases", () => {
-    expect(
-      summarizeUpdateCheck([
-        {
-          id: "a",
-          outcome: "incompatible",
-          devMode: false,
-          installed,
-          candidate: null,
-          blocked: { version: "3.0.0", reasons: ["needs bb >=9"] },
-          detail: null,
-        },
-      ]),
-    ).toEqual({
+    const blocked = {
+      id: "a",
+      outcome: "incompatible" as const,
+      devMode: false,
+      installed,
+      candidate: null,
+      blocked: { version: "3.0.0", reasons: ["needs bb >=9"] },
+      detail: null,
+    };
+    expect(summarizeUpdateCheck([blocked])).toEqual({
       tone: "message",
       title: "All plugins are up to date",
       description: "a has a newer release that needs a newer bb.",
+    });
+    expect(summarizeUpdateCheck([blocked], { pluginId: "a" })).toMatchObject({
+      title: "a is up to date",
     });
   });
 });
