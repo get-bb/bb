@@ -150,6 +150,8 @@ interface ThreadDetailPromptAreaProps {
     EnvironmentStatus,
     "destroying" | "destroyed"
   > | null;
+  /** Machine of the thread's environment; routes host-scoped model catalogs by host. */
+  environmentHostId?: string;
   environmentIcon?: IconName;
   environmentLabel?: string;
   onCreateNewThreadInWorktree?: () => void;
@@ -313,6 +315,7 @@ export function ThreadDetailPromptArea({
   environmentCheckout,
   environmentCompactLabel,
   environmentGoneStatus,
+  environmentHostId,
   environmentIcon,
   environmentLabel,
   onCreateNewThreadInWorktree,
@@ -580,6 +583,7 @@ export function ThreadDetailPromptArea({
   } = useThreadCreationOptions({
     enabled: thread.archivedAt === null,
     environmentId: thread.environmentId ?? undefined,
+    environmentHostId,
     scope: "component-local",
     resetKey: thread.id,
     initialProviderId: thread.providerId,

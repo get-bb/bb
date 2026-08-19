@@ -756,6 +756,70 @@ describe("useThreadCreationOptions", () => {
     ).toBe("host:project-host:worktree");
   });
 
+  it("routes a host-scoped component-local catalog by the environment's host", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          environmentId: "env_follow_up",
+          environmentHostId: "host_follow_up",
+          resetKey: "thr_host_scoped",
+          initialProviderId: "claude-code",
+          initialModel: "claude-opus-5",
+          initialReasoningLevel: "medium",
+          initialPermissionMode: "full",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          environmentId: undefined,
+          hostId: "host_follow_up",
+          providerId: "claude-code",
+        }),
+      );
+      expect(result.current.executionOptionsRouting).toEqual({
+        hostId: "host_follow_up",
+      });
+    });
+  });
+
+  it("keeps a workspace-scoped component-local catalog routed by environment", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          environmentId: "env_follow_up",
+          environmentHostId: "host_follow_up",
+          resetKey: "thr_workspace_scoped",
+          initialProviderId: "pi",
+          initialModel: "anthropic/opus",
+          initialReasoningLevel: "medium",
+          initialPermissionMode: "full",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          environmentId: "env_follow_up",
+          hostId: undefined,
+          providerId: "pi",
+        }),
+      );
+      expect(result.current.executionOptionsRouting).toEqual({
+        environmentId: "env_follow_up",
+      });
+    });
+  });
+
   it("loads provider composer actions for environmentless component-local threads", async () => {
     const { wrapper } = createQueryClientTestHarness();
 

@@ -2649,6 +2649,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           : undefined
       }
       environmentGoneStatus={threadEnvironmentGoneStatus}
+      environmentHostId={environment?.hostId}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
       onEscapeEmptyPrompt={undefined}

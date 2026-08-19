@@ -270,6 +270,7 @@ function PluginThreadChatBody({
         executionDefaultsThreadId: threadId,
         executionResetKey: threadId,
         executionEnvironmentId: thread.environmentId ?? undefined,
+        executionEnvironmentHostId: environment?.hostId,
         // "inherit" pins sends to the thread's own resolved defaults, never
         // widened by a plugin surface. "editable" is the opt-in that hands
         // the picker to the user for this thread alone.

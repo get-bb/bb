@@ -31,6 +31,12 @@ export type ScopedExecutionInputSources =
 export interface UsePromptModelReasoningOptions {
   enabled?: boolean;
   environmentId?: string;
+  /**
+   * The machine the environment lives on. Component-local composers route
+   * host-scoped provider catalogs by host so threads in different
+   * environments on one machine share a single execution-options query.
+   */
+  environmentHostId?: string;
   scope?: ThreadCreationOptionsScope;
   resetKey?: string | number | null;
   initialProviderId?: string;

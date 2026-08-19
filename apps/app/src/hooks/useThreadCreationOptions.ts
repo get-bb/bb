@@ -21,7 +21,11 @@ import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { REASONING_LABELS } from "@/lib/reasoning-labels";
-import { permissionModeRank, reconcileReasoningLevel } from "@bb/domain";
+import {
+  permissionModeRank,
+  providerModelCatalogDependsOnWorkspace,
+  reconcileReasoningLevel,
+} from "@bb/domain";
 import { selectPrimaryHost, useHosts } from "./queries/host-queries";
 import {
   useOnboardingAgents,
@@ -118,17 +122,35 @@ export interface UseThreadCreationOptionsResult<TExecutionInputSources> {
 
 interface ResolveThreadCreationProviderRoutingArgs {
   environmentId?: string;
+  environmentHostId?: string;
   environmentSelectionValue: string;
+  providerId: string;
   scope: "component-local" | "new-thread";
 }
 
 export function resolveThreadCreationProviderRouting({
   environmentId,
+  environmentHostId,
   environmentSelectionValue,
+  providerId,
   scope,
 }: ResolveThreadCreationProviderRoutingArgs): SystemProvidersQuery {
   if (scope === "component-local") {
-    return environmentId === undefined ? {} : { environmentId };
+    if (environmentId === undefined) {
+      return {};
+    }
+    // A host-scoped catalog is the same for every environment on the machine,
+    // so route by host: opening threads in different environments then shares
+    // one cached query instead of issuing a probe per environment. Workspace-
+    // scoped catalogs (and providers whose scope is unknown) keep the
+    // environment so the server can pass the workspace path through.
+    if (
+      environmentHostId !== undefined &&
+      !providerModelCatalogDependsOnWorkspace(providerId)
+    ) {
+      return { hostId: environmentHostId };
+    }
+    return { environmentId };
   }
   const parsed = parseEnvironmentValue(environmentSelectionValue);
   if (parsed?.type === "host") {
@@ -167,6 +189,7 @@ export function useThreadCreationOptions(
   const {
     enabled = true,
     environmentId,
+    environmentHostId,
     initialEnvironmentSelectionValue,
     initialModel,
     initialProviderId,
@@ -281,7 +304,9 @@ export function useThreadCreationOptions(
     ? resolveProviderRouting(rawEnvironmentSelectionValue)
     : resolveThreadCreationProviderRouting({
         environmentId,
+        environmentHostId,
         environmentSelectionValue: rawEnvironmentSelectionValue,
+        providerId: selectedProviderIdBeforeConnectedFallback,
         scope,
       });
   const shouldResolveConnectedProvider =
