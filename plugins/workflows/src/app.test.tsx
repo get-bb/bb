@@ -226,6 +226,98 @@ describe("workflow composer banner", () => {
     expect(slot.container.childElementCount).toBe(0);
   });
 
+  it("does not poll an idle thread; a workflow-runs signal for the thread triggers one refresh", async () => {
+    vi.useFakeTimers();
+    let runs: WorkflowRunView[] = [];
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: {
+          scope: { kind: "thread", threadId: "thr_idle" },
+        },
+        rpc: { workflowActiveRuns: () => ({ runs }) },
+      },
+    );
+
+    await act(async () => Promise.resolve());
+    expect(slot.rpcCalls).toHaveLength(1);
+    // Idle thread: no standing 1 s poll (this is what kept a phone's radio
+    // and main thread busy on every open thread with the plugin enabled).
+    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    expect(slot.rpcCalls).toHaveLength(1);
+
+    // A signal about a different thread is ignored.
+    await slot.emitRealtime("workflow-runs", { threadId: "thr_other" });
+    expect(slot.rpcCalls).toHaveLength(1);
+
+    // The service's signal for this thread refreshes once, and the banner
+    // starts polling because the refreshed set has an active run.
+    runs = [run];
+    await slot.emitRealtime("workflow-runs", { threadId: "thr_idle" });
+    await act(async () => Promise.resolve());
+    expect(slot.rpcCalls).toHaveLength(2);
+    expect(slot.getByText("Review the release")).toBeTruthy();
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(slot.rpcCalls).toHaveLength(3);
+
+    // Once the run set is empty again, polling stops.
+    runs = [];
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(slot.rpcCalls).toHaveLength(4);
+    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    expect(slot.rpcCalls).toHaveLength(4);
+    slot.unmount();
+  });
+
+  it("pauses polling while the document is hidden and refreshes once when it is visible again", async () => {
+    vi.useFakeTimers();
+    const setVisibility = (state: "visible" | "hidden") => {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => state,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: {
+          scope: { kind: "thread", threadId: "thr_scope" },
+        },
+        rpc: { workflowActiveRuns: () => ({ runs: [run] }) },
+      },
+    );
+    try {
+      await act(async () => Promise.resolve());
+      expect(slot.rpcCalls).toHaveLength(1);
+      await act(async () => vi.advanceTimersByTimeAsync(1_000));
+      expect(slot.rpcCalls).toHaveLength(2);
+
+      await act(async () => {
+        setVisibility("hidden");
+      });
+      await act(async () => vi.advanceTimersByTimeAsync(5_000));
+      expect(slot.rpcCalls).toHaveLength(2);
+
+      await act(async () => {
+        setVisibility("visible");
+      });
+      await act(async () => Promise.resolve());
+      // Catch-up refresh on return, then the 1 s cadence resumes.
+      expect(slot.rpcCalls).toHaveLength(3);
+      await act(async () => vi.advanceTimersByTimeAsync(1_000));
+      expect(slot.rpcCalls).toHaveLength(4);
+    } finally {
+      slot.unmount();
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "visible",
+      });
+    }
+  });
+
   it("opens the run in the workflow side panel without stopping it", async () => {
     const openThreadPanel = vi.fn(() => true);
     const slot = renderSlot(

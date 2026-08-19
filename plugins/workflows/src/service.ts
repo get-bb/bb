@@ -47,6 +47,7 @@ import {
   type WorkflowRunRow,
 } from "./data.js";
 import { parseWorkflowSource } from "./parser.js";
+import { WORKFLOW_RUNS_REALTIME_CHANNEL } from "./realtime-channel.js";
 import { executeWorkflowScript } from "./runtime.js";
 import {
   DEFAULT_WORKFLOW_SETTINGS,
@@ -424,6 +425,19 @@ export function createWorkflowService(
     if (signal.aborted) throw new Error("Workflow cancelled");
   }
 
+  /**
+   * Tell open pages that the run set for an origin thread changed. The
+   * composer banner polls only while it shows an active run, so this is how
+   * a freshly started run appears without a standing 1 s poll on idle
+   * threads. Ephemeral: a page that missed it catches up on its next
+   * refresh (visibility regain, reconnect, or its own active poll).
+   */
+  function publishRunsChanged(originThreadId: string): void {
+    bb.realtime.publish(WORKFLOW_RUNS_REALTIME_CHANNEL, {
+      threadId: originThreadId,
+    });
+  }
+
   async function stopChild(threadId: string): Promise<void> {
     const pending = childStops.get(threadId);
     if (pending !== undefined) return pending;
@@ -504,7 +518,7 @@ export function createWorkflowService(
         );
       }
     }
-    return createRun(db, {
+    const created = createRun(db, {
       projectId: input.projectId,
       originThreadId: input.originThreadId,
       environmentId: origin.environmentId,
@@ -519,6 +533,8 @@ export function createWorkflowService(
       settingsJson: JSON.stringify(currentSettings),
       resumedFromRunId: input.resumedFromRunId,
     });
+    publishRunsChanged(created.originThreadId);
+    return created;
   }
 
   function settingsForRun(run: WorkflowRunRow): WorkflowSettings {
@@ -1196,6 +1212,8 @@ export function createWorkflowService(
     args: Parameters<typeof settleRun>[1],
   ): Promise<void> {
     const outstanding = settleRun(db, args);
+    const settled = getRun(db, args.id);
+    if (settled !== null) publishRunsChanged(settled.originThreadId);
     controllers.get(args.id)?.abort();
     for (const call of outstanding) wakeCall(call);
     await stopChildren(
@@ -1461,6 +1479,7 @@ export function createWorkflowService(
       while (active.size < currentSettings.maxActiveRuns) {
         const run = claimQueuedRun(db, currentSettings.maxActiveRuns);
         if (run === null) break;
+        publishRunsChanged(run.originThreadId);
         const controller = new AbortController();
         controllers.set(run.id, controller);
         signal.addEventListener("abort", () => controller.abort(), {
@@ -1497,6 +1516,10 @@ export function createWorkflowService(
   async function stop(runId: string): Promise<boolean> {
     const childThreadIds = activeChildThreadsForRun(db, runId);
     const stopped = cancelRun(db, runId);
+    if (stopped) {
+      const run = getRun(db, runId);
+      if (run !== null) publishRunsChanged(run.originThreadId);
+    }
     controllers.get(runId)?.abort();
     await stopChildren(childThreadIds);
     return stopped;
