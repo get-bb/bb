@@ -54,6 +54,45 @@ const imageContentsRequester: RequestDiffFileContents = async () => ({
   sizeBytes: 20_480,
 });
 
+// A hunk in the middle of a longer file, plus both full sides, so the card's
+// on-demand "Expand context" affordance has surrounding lines to reach for.
+const CONTEXT_FILE_LINES = Array.from(
+  { length: 24 },
+  (_, index) => `export const line${index + 1} = ${index + 1};`,
+);
+const CONTEXT_OLD_FILE = `${CONTEXT_FILE_LINES.join("\n")}\n`;
+const CONTEXT_NEW_FILE = CONTEXT_OLD_FILE.replace(
+  "export const line12 = 12;",
+  "export const line12 = 1200;",
+);
+const CONTEXT_PATCH = [
+  "diff --git a/src/context.ts b/src/context.ts",
+  "index 1111111..2222222 100644",
+  "--- a/src/context.ts",
+  "+++ b/src/context.ts",
+  "@@ -11,3 +11,3 @@",
+  " export const line11 = 11;",
+  "-export const line12 = 12;",
+  "+export const line12 = 1200;",
+  " export const line13 = 13;",
+  "",
+].join("\n");
+
+// Resolves after a short delay so the loading state is visible on click.
+const contextContentsRequester: RequestDiffFileContents = async (
+  path,
+  side,
+) => {
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  return {
+    kind: "text",
+    file: {
+      name: path,
+      contents: side === "old" ? CONTEXT_OLD_FILE : CONTEXT_NEW_FILE,
+    },
+  };
+};
+
 function buildEntry(overrides: Partial<DiffFileEntry> = {}): DiffFileEntry {
   return {
     path: "src/file.ts",
@@ -133,10 +172,26 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
+        label="expand context on demand"
+        hint="text card with a contents fetcher: on a fine pointer the full file loads during idle time and pierre's gap buttons appear; on touch the card renders from the patch and offers Expand context under the diff"
+      >
+        <CardStage
+          entry={{ path: "src/context.ts" }}
+          patchState={{
+            status: "loaded",
+            patch: CONTEXT_PATCH,
+            truncated: false,
+          }}
+          onRequestFileContents={contextContentsRequester}
+        />
+      </StoryRow>
+      <StoryRow
         label="load on demand"
         hint="on_demand tier (large or binary): header + a Load diff CTA that triggers the fetch"
       >
-        <CardStage entry={{ loadMode: "on_demand", additions: 820, deletions: 140 }} />
+        <CardStage
+          entry={{ loadMode: "on_demand", additions: 820, deletions: 140 }}
+        />
       </StoryRow>
       <StoryRow
         label="too large"
@@ -226,11 +281,19 @@ export function StickyHeader() {
         >
           <CardStage
             entry={{ path: "src/first.ts" }}
-            patchState={{ status: "loaded", patch: TALL_PATCH, truncated: false }}
+            patchState={{
+              status: "loaded",
+              patch: TALL_PATCH,
+              truncated: false,
+            }}
           />
           <CardStage
             entry={{ path: "src/second.ts" }}
-            patchState={{ status: "loaded", patch: TALL_PATCH, truncated: false }}
+            patchState={{
+              status: "loaded",
+              patch: TALL_PATCH,
+              truncated: false,
+            }}
           />
         </div>
       </StoryRow>

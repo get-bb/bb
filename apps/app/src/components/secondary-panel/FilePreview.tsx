@@ -8,11 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  File as PierreFile,
-  VirtualizerContext,
-  useWorkerPool,
-} from "@pierre/diffs/react";
+import { File as PierreFile, VirtualizerContext } from "@pierre/diffs/react";
 import type { FileOptions } from "@pierre/diffs/react";
 import {
   DIFFS_TAG_NAME,
