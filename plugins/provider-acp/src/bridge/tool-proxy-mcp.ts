@@ -13,6 +13,8 @@ const ENV_PORT = "BB_ACP_DYNAMIC_TOOL_PORT";
 const ENV_TOKEN = "BB_ACP_DYNAMIC_TOOL_TOKEN";
 const ENV_THREAD_ID = "BB_ACP_DYNAMIC_TOOL_THREAD_ID";
 const ENV_TOOLS = "BB_ACP_DYNAMIC_TOOLS";
+/** Test-only override for the progress heartbeat interval (milliseconds). */
+const ENV_PROGRESS_INTERVAL_MS = "BB_ACP_DYNAMIC_TOOL_PROGRESS_INTERVAL_MS";
 
 export interface AcpMcpServerConfig {
   name: string;
@@ -62,12 +64,22 @@ interface JsonRpcMessage {
 interface McpServerEnvironment {
   host: string;
   port: number;
+  progressIntervalMs: number | undefined;
   threadId: string;
   token: string;
   tools: DynamicTool[];
 }
 
 let nextMcpToolCallId = 0;
+
+/**
+ * Interval between `notifications/progress` messages for a pending tools/call.
+ * The MCP TypeScript SDK client (OpenCode, and most ACP agents) fails a request
+ * after 60 seconds unless a progress notification for its `progressToken`
+ * resets the timer. AskUserQuestion waits on the user for minutes, so the call
+ * must send progress well inside that window (#1944).
+ */
+export const TOOL_CALL_PROGRESS_INTERVAL_MS = 15_000;
 
 export function buildAcpMcpServerConfig(
   args: BuildAcpMcpServerConfigArgs,
@@ -101,9 +113,15 @@ function readEnvironment(): McpServerEnvironment {
   }
   const parsedTools = JSON.parse(toolsJson) as unknown;
   const tools = dynamicToolSchema.array().parse(parsedTools);
+  const rawProgressInterval = process.env[ENV_PROGRESS_INTERVAL_MS];
+  const progressIntervalMs =
+    rawProgressInterval !== undefined && Number(rawProgressInterval) > 0
+      ? Number(rawProgressInterval)
+      : undefined;
   return {
     host,
     port,
+    progressIntervalMs,
     threadId,
     token,
     tools,
@@ -172,6 +190,35 @@ function objectParams(params: unknown): Record<string, unknown> {
     : {};
 }
 
+/** The `_meta.progressToken` of a request, when the client asked for one. */
+export function readProgressToken(params: unknown): string | number | null {
+  const meta = objectParams(objectParams(params)._meta).progressToken;
+  return typeof meta === "string" || typeof meta === "number" ? meta : null;
+}
+
+/**
+ * Sends `notifications/progress` for `progressToken` every `intervalMs` until
+ * the returned stop function runs. Progress is a counter: the MCP spec only
+ * requires it to increase, and the total is unknown while a user is typing.
+ */
+export function startProgressHeartbeat(args: {
+  intervalMs?: number;
+  progressToken: string | number;
+  write?: (message: unknown) => void;
+}): () => void {
+  const write = args.write ?? writeJson;
+  let progress = 0;
+  const timer = setInterval(() => {
+    progress += 1;
+    write({
+      jsonrpc: "2.0",
+      method: "notifications/progress",
+      params: { progressToken: args.progressToken, progress },
+    });
+  }, args.intervalMs ?? TOOL_CALL_PROGRESS_INTERVAL_MS);
+  return () => clearInterval(timer);
+}
+
 async function handleRequest(
   env: McpServerEnvironment,
   message: JsonRpcMessage,
@@ -217,12 +264,21 @@ async function handleRequest(
         !Array.isArray(rawArguments)
           ? (rawArguments as Record<string, unknown>)
           : {};
+      const progressToken = readProgressToken(message.params);
+      const stopHeartbeat =
+        progressToken === null
+          ? () => {}
+          : startProgressHeartbeat({
+              intervalMs: env.progressIntervalMs,
+              progressToken,
+            });
       try {
         const result = await callBridge(env, {
           arguments: toolArguments,
           callId: mcpToolCallId(tool.name),
           tool: tool.name,
         });
+        stopHeartbeat();
         if (!result.ok) {
           writeResult(message.id, {
             content: [{ type: "text", text: result.error }],
@@ -235,6 +291,7 @@ async function handleRequest(
           ...(result.isError ? { isError: true } : {}),
         });
       } catch (error) {
+        stopHeartbeat();
         writeResult(message.id, {
           content: [
             {
