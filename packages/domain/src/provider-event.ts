@@ -634,7 +634,7 @@ export const providerEventTypeValues = unscopedProviderEventSchema.options.map(
  * Events originating from the server/system layer (not from a provider process).
  * These do NOT carry `providerThreadId`.
  */
-const unscopedSystemEventSchema = z.union([
+const unscopedSystemEventSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("client/thread/start"),
