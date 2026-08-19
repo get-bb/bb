@@ -115,6 +115,14 @@ export interface AgentRuntimeOptions {
   /** Optional caller-provided skill roots to expose to provider sessions. */
   skillRoots?: readonly AgentRuntimeSkillRoot[];
 
+  /**
+   * Streamed-text coalescing window for the delta assembler: within the
+   * window, per-token text/output delta events concatenate into one timeline
+   * event per stream, flushed trailing-edge (no timers) and never reordered
+   * across other events. Default 100ms; 0 disables batching.
+   */
+  textDeltaFlushMs?: number;
+
   /** Called when a provider emits a translated event.
    *  Every event has `threadId` (bb ID) and `providerThreadId` (provider's internal ID). */
   onEvent: (event: ThreadEvent) => void;

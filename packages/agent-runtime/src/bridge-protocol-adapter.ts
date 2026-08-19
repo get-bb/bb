@@ -78,6 +78,11 @@ export interface BridgeProtocolAdapterOptions {
    * interpret — e.g. the ACP launch spec.
    */
   staticProviderOptions?: Record<string, unknown>;
+  /**
+   * Override for the delta assembler's streamed-text coalescing window
+   * (default 100ms; 0 disables batching). One knob for every provider.
+   */
+  textDeltaFlushMs?: number;
 }
 
 const threadIdentityNotificationParamsSchema = z
@@ -225,7 +230,12 @@ export function createBridgeProtocolAdapter(
   const threadIdsWithOpenWork = new Set<string>();
   // The narrow grammar: bridges emit parsed semantic deltas (`thread/delta`)
   // and this assembler constructs every canonical timeline event.
-  const deltaAssembler = createDeltaAssembler({ providerId: options.id });
+  const deltaAssembler = createDeltaAssembler({
+    providerId: options.id,
+    ...(options.textDeltaFlushMs === undefined
+      ? {}
+      : { textDeltaFlushMs: options.textDeltaFlushMs }),
+  });
 
   function gate(
     capability: keyof BridgeCapabilities & string,

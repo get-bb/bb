@@ -456,6 +456,9 @@ function createAgentRuntimeInternal(
     },
     onStderr: options.onStderr,
     skillRoots,
+    ...(options.textDeltaFlushMs !== undefined
+      ? { textDeltaFlushMs: options.textDeltaFlushMs }
+      : {}),
     workspacePath: options.workspacePath,
   });
 

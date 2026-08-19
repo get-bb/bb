@@ -51,6 +51,8 @@ export interface ProviderAdapterFactoryOptions {
   bridgeBundleDir?: string;
   bridgeNodeEnv?: Record<string, string>;
   bridgeNodeExecutablePath?: string;
+  /** Streamed-text coalescing window override for the delta assembler. */
+  textDeltaFlushMs?: number;
 }
 
 export type ProviderAdapterFactory = (

@@ -76,6 +76,8 @@ export interface RuntimeProviderProcessManagerArgs {
   ) => void;
   onStderr: AgentRuntimeOptions["onStderr"];
   skillRoots: readonly AgentRuntimeSkillRoot[];
+  /** Streamed-text coalescing window override for the delta assembler. */
+  textDeltaFlushMs?: number;
   workspacePath: string;
 }
 
@@ -477,6 +479,9 @@ export class RuntimeProviderProcessManager {
         : {}),
       ...(this.args.bridgeNodeExecutablePath !== undefined
         ? { bridgeNodeExecutablePath: this.args.bridgeNodeExecutablePath }
+        : {}),
+      ...(this.args.textDeltaFlushMs !== undefined
+        ? { textDeltaFlushMs: this.args.textDeltaFlushMs }
         : {}),
     };
 
