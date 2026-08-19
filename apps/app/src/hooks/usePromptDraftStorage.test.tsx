@@ -166,6 +166,59 @@ describe("usePromptDraftStorage", () => {
     expect([...result.current.inputThreadIds]).toEqual([]);
   });
 
+  it("does not re-read storage or re-render the batch when a draft edit keeps presence", () => {
+    const projectId = "proj-batch-keystrokes";
+    const threadRefs = Array.from({ length: 30 }, (_, index) => ({
+      id: `thr-batch-${index}`,
+      projectId,
+    }));
+    const composer = getPromptDraftAccessor({
+      kind: "thread",
+      projectId,
+      threadId: "thr-batch-3",
+    });
+    let batchRenders = 0;
+    const { result, rerender } = renderHook(() => {
+      batchRenders += 1;
+      return usePromptDraftInputThreadIds(threadRefs);
+    });
+    act(() => {
+      composer.setDraft({ text: "first", mentions: [], attachments: [] });
+    });
+    expect([...result.current]).toEqual(["thr-batch-3"]);
+
+    const getItem = vi.spyOn(Storage.prototype, "getItem");
+    const presenceReads = () =>
+      getItem.mock.calls.filter(([key]) => String(key).includes(projectId))
+        .length;
+    // The sidebar re-renders for unrelated reasons constantly; the presence
+    // snapshot must come from the cache, not 30 localStorage reads.
+    rerender();
+    expect(presenceReads()).toBe(0);
+
+    // A keystroke in an already-present draft: presence did not flip, so the
+    // batch subscriber is not notified (no sidebar render) and only the edited
+    // key is consulted.
+    const rendersBefore = batchRenders;
+    act(() => {
+      composer.setDraft({
+        text: "first keystroke",
+        mentions: [],
+        attachments: [],
+      });
+    });
+    expect(presenceReads()).toBeLessThanOrEqual(1);
+    expect(batchRenders).toBe(rendersBefore);
+
+    // Clearing flips presence: one notification, one render, one read.
+    act(() => {
+      composer.setDraft({ text: "", mentions: [], attachments: [] });
+    });
+    expect([...result.current]).toEqual([]);
+    expect(batchRenders).toBe(rendersBefore + 1);
+    getItem.mockRestore();
+  });
+
   it("uses project-agnostic storage for new-thread prompt contents", () => {
     window.localStorage.setItem(
       LEGACY_PROJECT_DRAFT_KEY,
