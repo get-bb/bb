@@ -8,10 +8,13 @@ import {
   createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
   createThreadInfoFixedPanelTab,
+  FIXED_PANEL_TABS_IDLE_EXPIRY_MS,
   getFixedPanelTabsStateStorageKey,
+  pruneFixedPanelTabsStorage,
   serializeFixedPanelTabsState,
 } from "./fixed-panel-tabs-state";
 import {
+  resetFixedPanelTabsStateForTest,
   useFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
 } from "./fixed-panel-tabs";
@@ -362,5 +365,105 @@ describe("fixed panel tab server sync", () => {
       ]);
     });
     expect(apiMocks.updateThreadTabs).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("fixed panel tab storage churn", () => {
+  it("does not rewrite localStorage when hydration and reconciliation leave the state unchanged", async () => {
+    resetFixedPanelTabsStateForTest();
+    const threadId = "sync-no-rewrite";
+    const remoteTab = createBrowserFixedPanelTab({
+      environmentId: null,
+      url: "https://remote.example.com",
+    });
+    const storageKey = getFixedPanelTabsStateStorageKey({ threadId });
+    window.localStorage.setItem(
+      storageKey,
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({
+          lastUsedAt: Date.now(),
+          secondary: {
+            activeTabId: remoteTab.id,
+            isOpen: true,
+            tabs: [remoteTab],
+          },
+        }),
+      }),
+    );
+    apiMocks.getThreadTabs.mockResolvedValue({
+      revision: 4,
+      tabs: [remoteTab],
+    });
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      const queryClient = createTestQueryClient();
+      const { result } = renderHook(
+        () => ({
+          state: useFixedPanelTabsState(threadId, threadId),
+          update: useUpdateFixedPanelTabsState(threadId, threadId),
+        }),
+        { wrapper: createQueryWrapper(queryClient) },
+      );
+
+      await waitFor(() => {
+        expect(apiMocks.getThreadTabs).toHaveBeenCalled();
+      });
+      await waitFor(() => {
+        expect(result.current.state.secondary.tabs).toEqual([remoteTab]);
+      });
+      // Server tabs match the persisted tabs: reconciliation must not touch
+      // storage on mount.
+      expect(setItem).not.toHaveBeenCalledWith(storageKey, expect.anything());
+
+      // A no-op updater must not reach the storage atom either.
+      act(() => {
+        result.current.update((current) => current);
+      });
+      expect(setItem).not.toHaveBeenCalledWith(storageKey, expect.anything());
+    } finally {
+      setItem.mockRestore();
+    }
+  });
+
+  it("prunes expired and malformed blobs and keeps fresh ones", () => {
+    const now = Date.now();
+    const freshKey = getFixedPanelTabsStateStorageKey({ threadId: "fresh" });
+    const expiredKey = getFixedPanelTabsStateStorageKey({
+      threadId: "expired",
+    });
+    const garbageKey = getFixedPanelTabsStateStorageKey({
+      threadId: "garbage",
+    });
+    const staleShapeKey = getFixedPanelTabsStateStorageKey({
+      threadId: "stale-shape",
+    });
+    window.localStorage.setItem(
+      freshKey,
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({ lastUsedAt: now }),
+      }),
+    );
+    window.localStorage.setItem(
+      expiredKey,
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({
+          lastUsedAt: now - FIXED_PANEL_TABS_IDLE_EXPIRY_MS - 1,
+        }),
+      }),
+    );
+    window.localStorage.setItem(garbageKey, "{not json");
+    window.localStorage.setItem(
+      staleShapeKey,
+      JSON.stringify({ lastUsedAt: now, secondary: "nope" }),
+    );
+    window.localStorage.setItem("unrelated", "keep");
+
+    pruneFixedPanelTabsStorage({ now });
+
+    expect(window.localStorage.getItem(freshKey)).not.toBeNull();
+    expect(window.localStorage.getItem(expiredKey)).toBeNull();
+    expect(window.localStorage.getItem(garbageKey)).toBeNull();
+    expect(window.localStorage.getItem(staleShapeKey)).toBeNull();
+    expect(window.localStorage.getItem("unrelated")).toBe("keep");
   });
 });

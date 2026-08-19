@@ -7,7 +7,7 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { atom } from "jotai";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import type { TerminalCreateTarget } from "@bb/server-contract";
@@ -227,13 +227,48 @@ function closeFixedSecondaryPanelState(
   };
 }
 
+let hasScheduledFixedPanelTabsStoragePrune = false;
+
+/**
+ * Prunes expired per-thread fixed-panel blobs from localStorage once per page
+ * load, from idle time. Previously every thread navigation re-scanned and
+ * schema-parsed every stored blob on the mount path; the scan only needs to
+ * run once per session, and never in the same task as a route change.
+ */
 export function useFixedPanelTabsStorageMaintenance(
-  panelStateId: FixedPanelTabsPanelStateId,
+  _panelStateId: FixedPanelTabsPanelStateId,
 ): void {
   useEffect(() => {
-    const now = Date.now();
-    pruneFixedPanelTabsStorage({ now });
-  }, [panelStateId]);
+    if (hasScheduledFixedPanelTabsStoragePrune) {
+      return;
+    }
+    hasScheduledFixedPanelTabsStoragePrune = true;
+    scheduleIdleFixedPanelTabsStoragePrune();
+  }, []);
+}
+
+const FIXED_PANEL_TABS_STORAGE_PRUNE_IDLE_TIMEOUT_MS = 5_000;
+const FIXED_PANEL_TABS_STORAGE_PRUNE_FALLBACK_DELAY_MS = 1_500;
+
+function scheduleIdleFixedPanelTabsStoragePrune(): void {
+  const run = () => {
+    pruneFixedPanelTabsStorage({ now: Date.now() });
+  };
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(run, {
+      timeout: FIXED_PANEL_TABS_STORAGE_PRUNE_IDLE_TIMEOUT_MS,
+    });
+    return;
+  }
+  window.setTimeout(run, FIXED_PANEL_TABS_STORAGE_PRUNE_FALLBACK_DELAY_MS);
+}
+
+/** Test-only: allow the once-per-page-load prune to be scheduled again. */
+export function resetFixedPanelTabsStorageMaintenanceForTest(): void {
+  hasScheduledFixedPanelTabsStoragePrune = false;
 }
 
 export function useFixedPanelTabsState(
@@ -241,6 +276,7 @@ export function useFixedPanelTabsState(
   syncThreadId: FixedPanelTabsSyncThreadId,
 ): FixedPanelTabsState {
   const stateAtom = getFixedPanelTabsStateAtom(panelStateId);
+  const store = useStore();
   const state = useAtomValue(stateAtom);
   const setState = useSetAtom(stateAtom);
   const queryClient = useQueryClient();
@@ -264,16 +300,23 @@ export function useFixedPanelTabsState(
       });
       return;
     }
-    setState((current) =>
-      ensureOpenFixedPanelHasActiveTab(
-        reconcileFixedPanelTabsState(current, tabsQuery.data.tabs),
-      ),
+    // Writing through the storage atom serializes and re-writes localStorage
+    // even when the reconciled value is the current one, so skip the write
+    // (and the store notification) when nothing changed.
+    const current = store.get(stateAtom);
+    const next = ensureOpenFixedPanelHasActiveTab(
+      reconcileFixedPanelTabsState(current, tabsQuery.data.tabs),
     );
+    if (next !== current) {
+      setState(next);
+    }
   }, [
     queryClient,
     resolvedThreadId,
     setState,
     state.secondary.tabs,
+    stateAtom,
+    store,
     tabsQuery.data,
   ]);
 
@@ -284,38 +327,38 @@ export function useUpdateFixedPanelTabsState(
   panelStateId: FixedPanelTabsPanelStateId,
   syncThreadId: FixedPanelTabsSyncThreadId,
 ): (update: FixedPanelTabsStateUpdater) => void {
-  const setState = useSetAtom(getFixedPanelTabsStateAtom(panelStateId));
+  const stateAtom = getFixedPanelTabsStateAtom(panelStateId);
+  const store = useStore();
+  const setState = useSetAtom(stateAtom);
   const queryClient = useQueryClient();
   return useCallback(
     (update: FixedPanelTabsStateUpdater) => {
       if (!hasThreadId(panelStateId)) return;
       const now = Date.now();
-      let tabsToPersist: readonly FixedPanelTab[] | null = null;
-      setState((current) => {
-        const next = ensureOpenFixedPanelHasActiveTab(update(current));
-        if (next === current) {
-          return current;
-        }
-        const touched = touchFixedPanelTabsState(next, now);
-        if (
-          !areThreadTabListsEquivalent(
-            current.secondary.tabs,
-            touched.secondary.tabs,
-          )
-        ) {
-          tabsToPersist = touched.secondary.tabs;
-        }
-        return touched;
-      });
-      if (tabsToPersist !== null && hasThreadId(syncThreadId)) {
+      // Read the atom directly so a no-op update never reaches the storage
+      // atom (a write always serializes and re-writes localStorage).
+      const current = store.get(stateAtom);
+      const next = ensureOpenFixedPanelHasActiveTab(update(current));
+      if (next === current) {
+        return;
+      }
+      const touched = touchFixedPanelTabsState(next, now);
+      setState(touched);
+      if (
+        hasThreadId(syncThreadId) &&
+        !areThreadTabListsEquivalent(
+          current.secondary.tabs,
+          touched.secondary.tabs,
+        )
+      ) {
         scheduleThreadTabsPersistence({
-          tabs: tabsToPersist,
+          tabs: touched.secondary.tabs,
           queryClient,
           threadId: syncThreadId,
         });
       }
     },
-    [panelStateId, queryClient, setState, syncThreadId],
+    [panelStateId, queryClient, setState, stateAtom, store, syncThreadId],
   );
 }
 

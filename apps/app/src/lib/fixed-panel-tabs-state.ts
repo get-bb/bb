@@ -1060,15 +1060,51 @@ export function pruneFixedPanelTabsStorage({
   }
 
   for (const key of keys) {
-    const result = parseFixedPanelTabsStateForStorage({
-      initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
-      now,
-      storedValue: localStorage.getItem(key),
-    });
-    if (result.shouldPrune) {
+    if (shouldPruneStoredFixedPanelTabsState(localStorage.getItem(key), now)) {
       localStorage.removeItem(key);
     }
   }
+}
+
+/**
+ * Prune decision for one stored blob. The idle-expiry check reads only
+ * `lastUsedAt` from the parsed JSON, so an expired blob (the common case in a
+ * long-lived browser profile) is dropped without a full schema parse; only
+ * blobs that are still fresh, or that carry no usable timestamp, go through
+ * the schema.
+ */
+function shouldPruneStoredFixedPanelTabsState(
+  storedValue: string | null,
+  now: number,
+): boolean {
+  if (storedValue === null) {
+    return false;
+  }
+  let parsedValue: unknown;
+  try {
+    parsedValue = JSON.parse(storedValue);
+  } catch {
+    return true;
+  }
+  if (typeof parsedValue !== "object" || parsedValue === null) {
+    return true;
+  }
+  const lastUsedAt = Reflect.get(parsedValue, "lastUsedAt");
+  if (
+    typeof lastUsedAt === "number" &&
+    Number.isInteger(lastUsedAt) &&
+    lastUsedAt >= 0
+  ) {
+    if (now - lastUsedAt > FIXED_PANEL_TABS_IDLE_EXPIRY_MS) {
+      return true;
+    }
+    return !fixedPanelTabsStateSchema.safeParse(parsedValue).success;
+  }
+  return parseFixedPanelTabsStateForStorage({
+    initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+    now,
+    storedValue,
+  }).shouldPrune;
 }
 
 export function areFixedPanelTabsEquivalent(
