@@ -132,9 +132,12 @@ export function useOverflowMeasurement({
       if (!element.isConnected) return;
       setMeasurement(nextMeasurement);
     };
-    applyMeasurement(readOverflowMeasurement(element));
-
     if (typeof ResizeObserver === "undefined") {
+      // Modern browsers deliver one initial ResizeObserver batch for every
+      // observed element. Waiting for that batch lets the shared observer
+      // complete all sibling layout reads before any React state write. A
+      // synchronous read here would instead force layout once per message.
+      applyMeasurement(readOverflowMeasurement(element));
       return;
     }
 

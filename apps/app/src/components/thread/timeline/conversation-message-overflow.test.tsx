@@ -8,6 +8,7 @@ import { useOverflowMeasurement } from "./conversation-message-overflow";
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 function OverflowProbe({ name }: { name: string }) {
@@ -17,9 +18,7 @@ function OverflowProbe({ name }: { name: string }) {
     enabled: true,
     measurementKey: name,
   });
-  return (
-    <div ref={ref} data-testid={name} data-measurement={measurement} />
-  );
+  return <div ref={ref} data-testid={name} data-measurement={measurement} />;
 }
 
 describe("useOverflowMeasurement", () => {
@@ -41,6 +40,20 @@ describe("useOverflowMeasurement", () => {
         disconnect = disconnect;
       },
     );
+    const scrollHeight = vi
+      .spyOn(HTMLElement.prototype, "scrollHeight", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.dataset.testid === "first" ? 80 : 20;
+      });
+    const clientHeight = vi
+      .spyOn(HTMLElement.prototype, "clientHeight", "get")
+      .mockReturnValue(20);
+    const scrollWidth = vi
+      .spyOn(HTMLElement.prototype, "scrollWidth", "get")
+      .mockReturnValue(20);
+    const clientWidth = vi
+      .spyOn(HTMLElement.prototype, "clientWidth", "get")
+      .mockReturnValue(20);
 
     render(
       <>
@@ -51,18 +64,12 @@ describe("useOverflowMeasurement", () => {
 
     const first = screen.getByTestId("first");
     const second = screen.getByTestId("second");
-    Object.defineProperties(first, {
-      scrollHeight: { configurable: true, value: 80 },
-      clientHeight: { configurable: true, value: 20 },
-      scrollWidth: { configurable: true, value: 20 },
-      clientWidth: { configurable: true, value: 20 },
-    });
-    Object.defineProperties(second, {
-      scrollHeight: { configurable: true, value: 20 },
-      clientHeight: { configurable: true, value: 20 },
-      scrollWidth: { configurable: true, value: 20 },
-      clientWidth: { configurable: true, value: 20 },
-    });
+    expect(first.dataset.measurement).toBe("unmeasured");
+    expect(second.dataset.measurement).toBe("unmeasured");
+    expect(scrollHeight).not.toHaveBeenCalled();
+    expect(clientHeight).not.toHaveBeenCalled();
+    expect(scrollWidth).not.toHaveBeenCalled();
+    expect(clientWidth).not.toHaveBeenCalled();
 
     act(() => {
       observerCallback?.(
@@ -76,6 +83,11 @@ describe("useOverflowMeasurement", () => {
 
     expect(constructorSpy).toHaveBeenCalledOnce();
     expect(observe).toHaveBeenCalledTimes(2);
+    expect(scrollHeight).toHaveBeenCalledTimes(2);
+    expect(clientHeight).toHaveBeenCalledTimes(2);
+    // The overflowing first row short-circuits before the width reads.
+    expect(scrollWidth).toHaveBeenCalledOnce();
+    expect(clientWidth).toHaveBeenCalledOnce();
     expect(first.dataset.measurement).toBe("overflowing");
     expect(second.dataset.measurement).toBe("fits");
   });
