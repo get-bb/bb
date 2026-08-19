@@ -222,6 +222,60 @@ export type BbDesktopBrowserSnapshot = z.infer<
   typeof bbDesktopBrowserSnapshotSchema
 >;
 
+/**
+ * Upper bound for find-in-page query text. Keeps a renderer bug from pushing an
+ * unbounded string into the page's find machinery.
+ */
+export const BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH = 1024;
+
+/**
+ * Renderer → main request to find `text` in a tab's page. `newSession` starts
+ * a new find session (the query changed); `false` steps through the matches of
+ * the current session in the `forward` direction. The main process maps this
+ * onto Electron's `webContents.findInPage`, whose `findNext` option carries
+ * the same start-a-new-session meaning under a confusing name.
+ */
+export const bbDesktopBrowserFindInPageRequestSchema = z
+  .object({
+    tabId: z.string().min(1),
+    text: z.string().min(1).max(BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH),
+    forward: z.boolean(),
+    newSession: z.boolean(),
+  })
+  .strict();
+export type BbDesktopBrowserFindInPageRequest = z.infer<
+  typeof bbDesktopBrowserFindInPageRequestSchema
+>;
+
+/** Renderer → main request to end a tab's find session (`webContents.stopFindInPage`). */
+export const bbDesktopBrowserStopFindInPageRequestSchema = z
+  .object({
+    tabId: z.string().min(1),
+    action: z.enum(["clearSelection", "keepSelection", "activateSelection"]),
+  })
+  .strict();
+export type BbDesktopBrowserStopFindInPageRequest = z.infer<
+  typeof bbDesktopBrowserStopFindInPageRequestSchema
+>;
+
+/**
+ * Main → renderer relay of a `found-in-page` result. Chromium reports interim
+ * counts (`finalUpdate: false`) while it scans a long page and a last one with
+ * `finalUpdate: true`; the renderer shows the latest result for its tab.
+ */
+export const bbDesktopBrowserFindResultSchema = z
+  .object({
+    tabId: z.string().min(1),
+    requestId: z.number().int(),
+    activeMatchOrdinal: z.number().int().nonnegative(),
+    matches: z.number().int().nonnegative(),
+    finalUpdate: z.boolean(),
+  })
+  .strict();
+export type BbDesktopBrowserFindResult = z.infer<
+  typeof bbDesktopBrowserFindResultSchema
+>;
+
 export type BbDesktopBrowserStateHandler = (
   state: BbDesktopBrowserState,
 ) => void;
@@ -233,6 +287,9 @@ export type BbDesktopBrowserScopedOpenTabHandler = (
 ) => void;
 export type BbDesktopBrowserSnapshotHandler = (
   snapshot: BbDesktopBrowserSnapshot,
+) => void;
+export type BbDesktopBrowserFindResultHandler = (
+  result: BbDesktopBrowserFindResult,
 ) => void;
 export type BbDesktopBrowserUnsubscribe = () => void;
 
@@ -270,5 +327,17 @@ export interface BbDesktopBrowserApi {
    */
   onSnapshot?(
     listener: BbDesktopBrowserSnapshotHandler,
+  ): BbDesktopBrowserUnsubscribe;
+  /**
+   * Find-in-page. All three are optional purely for version skew: the SPA
+   * routinely attaches to an older desktop shell whose preload predates
+   * find-in-page (see the wire-freeze note on
+   * {@link bbDesktopBrowserAttachRequestSchema}); the renderer feature-detects
+   * and leaves the find command unhandled when they are absent.
+   */
+  findInPage?(request: BbDesktopBrowserFindInPageRequest): void;
+  stopFindInPage?(request: BbDesktopBrowserStopFindInPageRequest): void;
+  onFindResult?(
+    listener: BbDesktopBrowserFindResultHandler,
   ): BbDesktopBrowserUnsubscribe;
 }

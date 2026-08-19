@@ -23,3 +23,9 @@ export const BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL =
   "bb-desktop:browser:scoped-open-tab";
 export const BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL =
   "bb-desktop:browser:snapshot";
+export const BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL =
+  "bb-desktop:browser:find-in-page";
+export const BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL =
+  "bb-desktop:browser:stop-find-in-page";
+export const BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL =
+  "bb-desktop:browser:find-result";

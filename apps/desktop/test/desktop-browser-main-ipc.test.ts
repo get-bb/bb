@@ -2,13 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
   type BbDesktopBrowserAttachRequest,
+  type BbDesktopBrowserFindInPageRequest,
   type BbDesktopBrowserNavigateRequest,
   type BbDesktopBrowserSetBoundsRequest,
   type BbDesktopBrowserSetVisibleRequest,
+  type BbDesktopBrowserStopFindInPageRequest,
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
@@ -16,6 +19,7 @@ import {
   BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
+  BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
 } from "../src/desktop-browser-ipc.js";
 import { registerDesktopBrowserIpc } from "../src/desktop-browser-main-ipc.js";
 import type { DesktopBrowserViewManager } from "../src/desktop-browser-view.js";
@@ -61,6 +65,10 @@ vi.mock("electron", () => ({
 
 type AttachCall = Parameters<DesktopBrowserViewManager["attach"]>[0];
 type DetachCall = Parameters<DesktopBrowserViewManager["detach"]>[0];
+type FindInPageCall = Parameters<DesktopBrowserViewManager["findInPage"]>[0];
+type StopFindInPageCall = Parameters<
+  DesktopBrowserViewManager["stopFindInPage"]
+>[0];
 type NavigateCall = Parameters<DesktopBrowserViewManager["navigate"]>[0];
 type SetBoundsCall = Parameters<DesktopBrowserViewManager["setBounds"]>[0];
 type SetVisibleCall = Parameters<DesktopBrowserViewManager["setVisible"]>[0];
@@ -94,6 +102,8 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
   public readonly destroyAllCalls: string[] = [];
   public readonly detachCalls: DetachCall[] = [];
   public readonly endWindowResizeCalls: WindowResizeCall[] = [];
+  public readonly findInPageCalls: FindInPageCall[] = [];
+  public readonly stopFindInPageCalls: StopFindInPageCall[] = [];
   public readonly goBackCalls: TabCommandCall[] = [];
   public readonly goForwardCalls: TabCommandCall[] = [];
   public readonly navigateCalls: NavigateCall[] = [];
@@ -121,6 +131,14 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
 
   endWindowResize(hostWindow: WindowResizeCall): void {
     this.endWindowResizeCalls.push(hostWindow);
+  }
+
+  findInPage(args: FindInPageCall): void {
+    this.findInPageCalls.push(args);
+  }
+
+  stopFindInPage(args: StopFindInPageCall): void {
+    this.stopFindInPageCalls.push(args);
   }
 
   goBack(args: TabCommandCall): void {
@@ -237,6 +255,64 @@ describe("registerDesktopBrowserIpc", () => {
     expect(manager.navigateCalls[0]?.request).toEqual(navigateRequest);
     expect(manager.reloadCalls).toEqual([
       { hostWindow: renderer.hostWindow, tabId: "browser:a" },
+    ]);
+  });
+
+  it("dispatches validated find-in-page requests and rejects malformed ones", () => {
+    const manager = new RecordingDesktopBrowserViewManager();
+    registerDesktopBrowserIpc(manager);
+    const renderer = createTrustedRenderer("main-window");
+    const untrustedSender = createUntrustedSender();
+    const findRequest: BbDesktopBrowserFindInPageRequest = {
+      tabId: "browser:a",
+      text: "WebContents",
+      forward: true,
+      newSession: true,
+    };
+    const stopRequest: BbDesktopBrowserStopFindInPageRequest = {
+      tabId: "browser:a",
+      action: "clearSelection",
+    };
+
+    for (const payload of [
+      { ...findRequest, text: "" },
+      { ...findRequest, text: "a".repeat(1025) },
+      { ...findRequest, forward: "yes" },
+      { ...findRequest, extra: true },
+      { tabId: "browser:a", text: "x" },
+    ]) {
+      sendBrowserIpc({
+        channel: BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
+        payload,
+        sender: renderer.sender,
+      });
+    }
+    sendBrowserIpc({
+      channel: BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
+      payload: findRequest,
+      sender: untrustedSender,
+    });
+    sendBrowserIpc({
+      channel: BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
+      payload: findRequest,
+      sender: renderer.sender,
+    });
+    sendBrowserIpc({
+      channel: BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
+      payload: { tabId: "browser:a", action: "explode" },
+      sender: renderer.sender,
+    });
+    sendBrowserIpc({
+      channel: BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
+      payload: stopRequest,
+      sender: renderer.sender,
+    });
+
+    expect(manager.findInPageCalls).toEqual([
+      { hostWindow: renderer.hostWindow, request: findRequest },
+    ]);
+    expect(manager.stopFindInPageCalls).toEqual([
+      { hostWindow: renderer.hostWindow, request: stopRequest },
     ]);
   });
 

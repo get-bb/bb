@@ -31,6 +31,7 @@ type AppSettings = z$1.infer<typeof appSettingsSchema>;
 
 declare const appKeybindingOverridesSchema: z$1.ZodArray<z$1.ZodObject<{
     command: z$1.ZodEnum<{
+        "browser.find": "browser.find";
         "browser.focusLocation": "browser.focusLocation";
         "browser.reload": "browser.reload";
         "composer.focus": "composer.focus";
@@ -7369,6 +7370,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
     dataDir: z$1.ZodString;
     defaultKeybindings: z$1.ZodArray<z$1.ZodObject<{
         command: z$1.ZodEnum<{
+            "browser.find": "browser.find";
             "browser.focusLocation": "browser.focusLocation";
             "browser.reload": "browser.reload";
             "composer.focus": "composer.focus";
@@ -7489,6 +7491,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
     hostDaemonPort: z$1.ZodNullable<z$1.ZodNumber>;
     keybindingOverrides: z$1.ZodArray<z$1.ZodObject<{
         command: z$1.ZodEnum<{
+            "browser.find": "browser.find";
             "browser.focusLocation": "browser.focusLocation";
             "browser.reload": "browser.reload";
             "composer.focus": "composer.focus";
@@ -7558,6 +7561,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
     }, z$1.core.$strict>>;
     keybindings: z$1.ZodArray<z$1.ZodObject<{
         command: z$1.ZodEnum<{
+            "browser.find": "browser.find";
             "browser.focusLocation": "browser.focusLocation";
             "browser.reload": "browser.reload";
             "composer.focus": "composer.focus";

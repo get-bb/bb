@@ -10,6 +10,7 @@ import {
 } from "react";
 import type {
   BbDesktopBrowserApi,
+  BbDesktopBrowserFindInPageRequest,
   BbDesktopBrowserState,
   BbDesktopBrowserViewportBounds,
   BbDesktopBrowserViewBounds,
@@ -32,6 +33,7 @@ import { useBrowserHistory } from "@/lib/browser-history";
 import { BROWSER_VIEW_BOUNDS_SYNC_EVENT } from "@/lib/browser-view-bounds-sync";
 import { useIsBrowserDimmingModalOpen } from "@/hooks/useBrowserDimmingModal";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { BrowserFindBar, type BrowserFindMatches } from "./BrowserFindBar";
 import { BrowserNewTabScreen } from "./BrowserNewTabScreen";
 import {
   registerBrowserView,
@@ -434,12 +436,14 @@ export function BrowserTabContent({
 }: BrowserTabContentProps) {
   const locationShortcut = useAppCommandShortcut("browser.focusLocation");
   const reloadShortcut = useAppCommandShortcut("browser.reload");
+  const findShortcut = useAppCommandShortcut("browser.find");
   const desktopBrowser = useMemo<BbDesktopBrowserApi | null>(
     () => getDesktopBrowserApi(),
     [],
   );
   const contentRef = useRef<HTMLDivElement>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
+  const findInputRef = useRef<HTMLInputElement>(null);
   const isPointerCoarse = usePointerCoarse();
   const {
     entries: recent,
@@ -451,6 +455,11 @@ export function BrowserTabContent({
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
   const [addressDraft, setAddressDraft] = useState(initialUrl);
   const [isEditing, setIsEditing] = useState(false);
+  const [isFindOpen, setIsFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findMatches, setFindMatches] = useState<BrowserFindMatches | null>(
+    null,
+  );
   // Bitmap stand-in pushed by the desktop main process while the native view
   // is hidden during a native window resize; null outside resize bursts.
   const [resizeSnapshotUrl, setResizeSnapshotUrl] = useState<string | null>(
@@ -567,10 +576,17 @@ export function BrowserTabContent({
     });
     setAttachedBrowserViewIdentity({ environmentId, tabId, threadId });
 
+    let lastSeenUrl: string | null = null;
     const unsubscribe = desktopBrowser.onState((nextState) => {
       if (nextState.tabId !== tabId) {
         return;
       }
+      // A navigation drops Chromium's find session with the old document, so
+      // the last match count no longer describes the page on screen.
+      if (lastSeenUrl !== null && lastSeenUrl !== nextState.url) {
+        setFindMatches(null);
+      }
+      lastSeenUrl = nextState.url;
       setState(nextState);
       setCurrentUrl(nextState.url);
       onUpdateRef.current({
@@ -595,9 +611,22 @@ export function BrowserTabContent({
       setResizeSnapshotUrl(snapshot.dataUrl);
     });
 
+    // Optional for version skew: an older shell's preload has no find-in-page
+    // channel, and the find command stays unhandled.
+    const unsubscribeFindResult = desktopBrowser.onFindResult?.((result) => {
+      if (result.tabId !== tabId) {
+        return;
+      }
+      setFindMatches({
+        activeMatchOrdinal: result.activeMatchOrdinal,
+        matches: result.matches,
+      });
+    });
+
     return () => {
       unsubscribe();
       unsubscribeSnapshot?.();
+      unsubscribeFindResult?.();
       // The native view survives this unmount. Only explicit tab close/thread
       // deletion owns detach; unmount just disconnects this component's state
       // listener and forgets any stale visibility ownership.
@@ -762,6 +791,81 @@ export function BrowserTabContent({
   }, [canShowNativeBrowserView, currentUrl, desktopBrowser]);
 
   useAppCommandHandler("browser.focusLocation", handleFocusLocation, 100);
+
+  const canFindInPage =
+    canShowNativeBrowserView &&
+    desktopBrowser !== null &&
+    desktopBrowser.findInPage !== undefined &&
+    hasPage;
+
+  const runFind = useCallback(
+    (args: Omit<BbDesktopBrowserFindInPageRequest, "tabId">) => {
+      desktopBrowser?.findInPage?.({ tabId, ...args });
+    },
+    [desktopBrowser, tabId],
+  );
+
+  const clearFind = useCallback(() => {
+    desktopBrowser?.stopFindInPage?.({ tabId, action: "clearSelection" });
+    setFindMatches(null);
+  }, [desktopBrowser, tabId]);
+
+  const focusFindInput = useCallback(() => {
+    findInputRef.current?.focus({ preventScroll: true });
+    window.requestAnimationFrame(() => {
+      findInputRef.current?.focus({ preventScroll: true });
+      findInputRef.current?.select();
+    });
+  }, []);
+
+  const handleFindQueryChange = useCallback(
+    (query: string) => {
+      setFindQuery(query);
+      if (query.length === 0) {
+        clearFind();
+        return;
+      }
+      runFind({ text: query, forward: true, newSession: true });
+    },
+    [clearFind, runFind],
+  );
+
+  const handleFindNext = useCallback(() => {
+    if (findQuery.length === 0) return;
+    runFind({ text: findQuery, forward: true, newSession: false });
+  }, [findQuery, runFind]);
+
+  const handleFindPrevious = useCallback(() => {
+    if (findQuery.length === 0) return;
+    runFind({ text: findQuery, forward: false, newSession: false });
+  }, [findQuery, runFind]);
+
+  const handleCloseFind = useCallback(() => {
+    setIsFindOpen(false);
+    clearFind();
+  }, [clearFind]);
+
+  const handleOpenFind = useCallback((): boolean => {
+    if (!canFindInPage) return false;
+    setIsFindOpen(true);
+    // Re-opening with the previous query highlights it again, like Chrome.
+    if (findQuery.length > 0) {
+      runFind({ text: findQuery, forward: true, newSession: true });
+    }
+    focusFindInput();
+    return true;
+  }, [canFindInPage, findQuery, focusFindInput, runFind]);
+
+  useAppCommandHandler("browser.find", handleOpenFind, 100);
+
+  // Close the bar when the page goes away (tab cleared, load error) so it
+  // never sits above a new-tab screen with nothing to search.
+  useEffect(() => {
+    if (isFindOpen && !canFindInPage) {
+      setIsFindOpen(false);
+      setFindMatches(null);
+    }
+  }, [canFindInPage, isFindOpen]);
   useAppCommandHandler(
     "browser.reload",
     () => {
@@ -805,6 +909,18 @@ export function BrowserTabContent({
         locationShortcut={locationShortcut}
         reloadShortcut={reloadShortcut}
       />
+      {isFindOpen ? (
+        <BrowserFindBar
+          inputRef={findInputRef}
+          query={findQuery}
+          matches={findMatches}
+          onQueryChange={handleFindQueryChange}
+          onFindNext={handleFindNext}
+          onFindPrevious={handleFindPrevious}
+          onClose={handleCloseFind}
+          shortcut={findShortcut}
+        />
+      ) : null}
       <div ref={contentRef} className="relative min-h-0 flex-1">
         {hasPageLoadError ? (
           <BrowserPageLoadError

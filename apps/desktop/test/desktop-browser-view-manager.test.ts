@@ -114,6 +114,24 @@ type FakeRenderProcessGoneListener = (
   details: FakeRenderProcessGoneDetails,
 ) => void;
 
+interface FakeFoundInPageResult {
+  activeMatchOrdinal: number;
+  finalUpdate: boolean;
+  matches: number;
+  requestId: number;
+  selectionArea: { height: number; width: number; x: number; y: number };
+}
+
+type FakeFoundInPageListener = (
+  event: FakeWebContentsEvent,
+  result: FakeFoundInPageResult,
+) => void;
+
+interface FakeFindInPageCall {
+  options: { findNext: boolean; forward: boolean };
+  text: string;
+}
+
 interface FakeWebContentsEventMap {
   "before-input-event": FakeBeforeInputListener;
   "will-frame-navigate": FakeWillFrameNavigateListener;
@@ -129,6 +147,7 @@ interface FakeWebContentsEventMap {
   "did-fail-load": FakeDidFailLoadListener;
   "context-menu": FakeContextMenuListener;
   "render-process-gone": FakeRenderProcessGoneListener;
+  "found-in-page": FakeFoundInPageListener;
 }
 
 interface FakeWebFrameMain {
@@ -234,6 +253,8 @@ const electronMock = vi.hoisted(() => {
     public historyEntries: Array<{ title: string; url: string }> = [];
     public readonly id: number;
     public readonly loadURLCalls: string[] = [];
+    public readonly findInPageCalls: FakeFindInPageCall[] = [];
+    public readonly stopFindInPageCalls: string[] = [];
     public reloadCalls = 0;
     public readonly pendingCaptureResolvers: Array<
       (image: FakeNativeImage) => void
@@ -253,6 +274,7 @@ const electronMock = vi.hoisted(() => {
       "did-fail-load": [],
       "context-menu": [],
       "render-process-gone": [],
+      "found-in-page": [],
     };
     private title = "";
     private url = "";
@@ -288,6 +310,24 @@ const electronMock = vi.hoisted(() => {
 
     focus(): void {
       this.focusCalls += 1;
+    }
+
+    findInPage(
+      text: string,
+      options: { findNext: boolean; forward: boolean },
+    ): number {
+      this.findInPageCalls.push({ text, options });
+      return this.findInPageCalls.length;
+    }
+
+    stopFindInPage(action: string): void {
+      this.stopFindInPageCalls.push(action);
+    }
+
+    emitFoundInPage(result: FakeFoundInPageResult): void {
+      for (const listener of this.listeners["found-in-page"]) {
+        listener(fakeWebContentsEvent, result);
+      }
     }
 
     getTitle(): string {
@@ -697,6 +737,111 @@ describe("DesktopBrowserViewManager", () => {
       }),
     ).toBe(false);
     expect(dispatchAppCommand).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes host focus for the find command so the find bar can receive typing", () => {
+    const dispatchAppCommand = vi.fn();
+    const focusHostWebContents = vi.fn();
+    const manager = createDesktopBrowserViewManager({
+      dispatchAppCommand,
+      focusHostWebContents,
+      partition: "persist:test",
+      resolveAppCommand: (input) =>
+        input.key === "f" && input.metaKey ? "browser.find" : null,
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 51,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com",
+    });
+    const webContents = requireFakeView(0).webContents;
+
+    expect(webContents.emitBeforeInput({ key: "f", meta: true })).toBe(true);
+    expect(focusHostWebContents).toHaveBeenCalledWith(51);
+    expect(dispatchAppCommand).toHaveBeenCalledWith({
+      command: "browser.find",
+      hostWebContentsId: 51,
+    });
+  });
+
+  it("drives webContents find-in-page and relays results to the host renderer", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 52,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com",
+    });
+    const webContents = requireFakeView(0).webContents;
+
+    manager.findInPage({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        text: "needle",
+        forward: true,
+        newSession: true,
+      },
+    });
+    manager.findInPage({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        text: "needle",
+        forward: false,
+        newSession: false,
+      },
+    });
+    // Unknown tab: no view, nothing to drive.
+    manager.findInPage({
+      hostWindow,
+      request: {
+        tabId: "browser:missing",
+        text: "needle",
+        forward: true,
+        newSession: true,
+      },
+    });
+    manager.stopFindInPage({
+      hostWindow,
+      request: { tabId: "browser:a", action: "clearSelection" },
+    });
+
+    // Electron's `findNext` carries the "start a new session" meaning.
+    expect(webContents.findInPageCalls).toEqual([
+      { text: "needle", options: { forward: true, findNext: true } },
+      { text: "needle", options: { forward: false, findNext: false } },
+    ]);
+    expect(webContents.stopFindInPageCalls).toEqual(["clearSelection"]);
+
+    webContents.emitFoundInPage({
+      requestId: 7,
+      activeMatchOrdinal: 2,
+      matches: 9,
+      finalUpdate: true,
+      selectionArea: { x: 0, y: 0, width: 10, height: 10 },
+    });
+    // The relay carries the tab id and drops the selection rect, which the
+    // renderer cannot use (the native view overlays its DOM).
+    expect(hostWindow.webContents.sentPayloads).toContainEqual({
+      tabId: "browser:a",
+      requestId: 7,
+      activeMatchOrdinal: 2,
+      matches: 9,
+      finalUpdate: true,
+    });
   });
 
   it("surfaces a loopback popup as an in-panel tab, never a native window", () => {

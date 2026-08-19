@@ -205,6 +205,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Reload page",
         "Reload the active embedded browser page.",
       ),
+      command(
+        "browser.find",
+        "Find in page",
+        "Open the find bar for the active embedded browser page.",
+      ),
     ],
   },
   {

@@ -266,6 +266,11 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     desktopOnly: true,
     none: ["modalOpen"],
   }),
+  binding("browser.find", "f", { mod: true }, {
+    all: ["mainSurface", "browserFocus"],
+    desktopOnly: true,
+    none: ["modalOpen"],
+  }),
   binding("workspace.openPreferred", "o", { mod: true }, mainWithoutModal),
   ...QUESTION_SELECT_APP_COMMAND_IDS.map((command, index) =>
     binding(command, String(index + 1), {}, {

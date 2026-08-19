@@ -225,7 +225,7 @@ delayed shortcut badges without disabling any shortcuts.
 | Composer  | Cycle model forward / backward            | `Alt+M` / `Alt+Shift+M`           | All clients              |
 | Composer  | Cycle provider forward / backward         | `Alt+P` / `Alt+Shift+P`           | All clients              |
 | Composer  | Cycle reasoning effort forward / backward | `Alt+T` / `Alt+Shift+T`           | All clients              |
-| Browser   | Focus location / reload                   | `Mod+L` / `Mod+R`                 | Desktop embedded browser |
+| Browser   | Focus location / reload / find in page    | `Mod+L` / `Mod+R` / `Mod+F`       | Desktop embedded browser |
 | Questions | Choose visible answer 1–9                 | `1` … `9`                         | While a question is open |
 
 Cycle commands wrap in both directions. Reasoning cycles only through the

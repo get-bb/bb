@@ -458,6 +458,7 @@ describe("app keybindings", () => {
         "terminal.open",
         "browser.focusLocation",
         "browser.reload",
+        "browser.find",
         "window.new",
       ]);
     });
