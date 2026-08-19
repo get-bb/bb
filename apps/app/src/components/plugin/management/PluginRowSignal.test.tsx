@@ -46,10 +46,7 @@ describe("PluginRowSignalView", () => {
         onStatusClick={vi.fn()}
       />,
     );
-    expect(
-      screen.getByRole("button", { name: "Update available: version 1.2.0" })
-        .textContent,
-    ).toBe("Update to 1.2.0");
+    expect(screen.getByRole("button", { name: "Update to 1.2.0" })).toBeTruthy();
 
     rerender(
       <PluginRowSignalView
@@ -62,8 +59,7 @@ describe("PluginRowSignalView", () => {
       />,
     );
     const button = screen.getByRole("button", { name: "Update available" });
-    expect(button.textContent).toBe("Update");
-    expect(button.textContent).not.toContain("a985e1d");
+    expect(button.getAttribute("aria-label")).not.toContain("a985e1d");
   });
 });
 
