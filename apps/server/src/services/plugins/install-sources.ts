@@ -15,7 +15,10 @@ import {
 } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import semver from "semver";
-import { spawnPortableOutputProcess } from "@bb/process-utils";
+import {
+  omitNpmScriptPolicyEnv,
+  spawnPortableOutputProcess,
+} from "@bb/process-utils";
 
 /**
  * What a `git:` spec asks for.
@@ -675,46 +678,6 @@ export async function promoteGitPluginArtifact(args: {
 export const INSTALL_COMMAND_TIMEOUT_MS = 5 * 60_000;
 
 /**
- * The environment a git/npm child inherits: ours, minus the npm config keys
- * that decide whether package scripts run.
- *
- * npm reads `npm_config_*` environment variables as configuration, and env
- * outranks every `.npmrc` in npm's precedence (cli > env > project > user >
- * global). Script policy is not the operator's to set here: installs pass
- * `--ignore-scripts` because nothing in a freshly fetched plugin's dependency
- * tree may execute, and an inherited value that contradicts that is at best
- * confusing and at worst a bypass attempt.
- *
- * It is also a live footgun. Launching bb through a package manager
- * (`pnpm start`) exports the user's whole `~/.npmrc` as `npm_config_*`, so an
- * ordinary `allow-scripts=@github/keytar,node-pty` line arrived at npm 12 as
- * if it were `--allow-scripts` and made every git and npm plugin install fail
- * with EALLOWSCRIPTS.
- *
- * Every other `npm_config_*` key is left alone on purpose. Env is a supported
- * way to configure bb's npm access — plugin-registration reads
- * `npm_config_registry` as bb's own registry default, and operators point npm
- * at a private registry, a shared cache, or an alternate userconfig the same
- * way. Dropping those would break real deployments while fixing nothing.
- */
-const SCRIPT_POLICY_NPM_CONFIG_ENV_KEYS = new Set([
-  "npm_config_allow_scripts",
-  "npm_config_ignore_scripts",
-  "npm_config_foreground_scripts",
-]);
-
-function packageManagerChildEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value === undefined) continue;
-    // npm case-folds config env keys, so normalize before matching.
-    if (SCRIPT_POLICY_NPM_CONFIG_ENV_KEYS.has(key.toLowerCase())) continue;
-    env[key] = value;
-  }
-  return env;
-}
-
-/**
  * Run a materialization command (git/npm), buffering output. Throws a clear
  * error when the binary is missing, the command times out, or it exits
  * non-zero (with the stderr tail — that is where git/npm explain themselves).
@@ -737,7 +700,7 @@ export async function runInstallCommand(
   const child = spawnPortableOutputProcess({
     command,
     args,
-    env: packageManagerChildEnv(),
+    env: omitNpmScriptPolicyEnv(process.env),
   });
   let stderr = "";
   let stdout = "";

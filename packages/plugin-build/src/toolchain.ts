@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { omitNpmScriptPolicyEnv } from "@bb/process-utils";
 
 const run = promisify(execFile);
 
@@ -222,7 +223,12 @@ export async function resolvePluginBuildToolchain(
           ([name, version]) => `${name}@${version}`,
         ),
       ],
-      { maxBuffer: 1024 * 1024 * 16 },
+      {
+        maxBuffer: 1024 * 1024 * 16,
+        // Script policy is bb's (`--ignore-scripts` above); an inherited
+        // `npm_config_allow_scripts` would make npm refuse the install.
+        env: omitNpmScriptPolicyEnv(process.env),
+      },
     );
     const staged = toolchainFrom(createRequire(join(staging, "noop.js")));
     if (staged === null) {

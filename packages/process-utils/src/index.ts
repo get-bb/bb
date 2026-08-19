@@ -543,6 +543,46 @@ export function sanitizeInheritedChildProcessEnv(
   return sanitizedEnv;
 }
 
+/**
+ * The `npm_config_*` keys that decide whether package scripts run. npm reads
+ * `npm_config_<key>` env as configuration above every `.npmrc` file (cli >
+ * env > project > user > global), and it case-folds the key.
+ *
+ * bb's own npm children (plugin installs, the plugin build toolchain fetch)
+ * always pass `--ignore-scripts`: nothing in a freshly fetched tree may
+ * execute, and that policy is bb's, not the environment's. An inherited value
+ * is also a live footgun: launching bb through a package manager (`pnpm
+ * start`) exports the user's whole `~/.npmrc` as `npm_config_*`, so an
+ * ordinary `allow-scripts=@github/keytar,node-pty` line reaches npm 11/12 as
+ * if it were `--allow-scripts`, which npm refuses on project-scoped installs
+ * (`EALLOWSCRIPTS`).
+ *
+ * Every other `npm_config_*` key is left alone on purpose: env is a supported
+ * way to point bb's npm at a private registry, a shared cache, or an
+ * alternate userconfig.
+ */
+export const NPM_SCRIPT_POLICY_ENV_KEYS: ReadonlySet<string> = new Set([
+  "npm_config_allow_scripts",
+  "npm_config_ignore_scripts",
+  "npm_config_foreground_scripts",
+]);
+
+/**
+ * The environment a bb-owned npm child inherits: `env` minus the npm
+ * script-policy keys (matched case-insensitively, as npm does).
+ */
+export function omitNpmScriptPolicyEnv(
+  env: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  const childEnv: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined) continue;
+    if (NPM_SCRIPT_POLICY_ENV_KEYS.has(key.toLowerCase())) continue;
+    childEnv[key] = value;
+  }
+  return childEnv;
+}
+
 function createCurrentDiagnosticDate(): Date {
   return new Date();
 }
