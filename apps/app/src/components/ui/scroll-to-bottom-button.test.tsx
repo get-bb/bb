@@ -25,6 +25,26 @@ describe("surfaces that stay over the timeline do not blur their backdrop", () =
     const button = view.getByRole("button", { name: "Scroll to latest event" });
     expect(button.className).not.toContain("backdrop-blur");
     expect(button.className).toContain("bg-background");
+    // With no blur behind it, a translucent hover token would let timeline
+    // text show through the button; the hover step must be opaque.
+    expect(button.className).not.toContain("hover:bg-state-hover");
+    expect(button.className).toContain("hover:bg-accent");
+    expect(button.className).not.toContain("invisible");
+    expect(button.querySelector(".animate-shine-icon")).not.toBeNull();
+  });
+
+  it("stops the shimmer and hides the button while it is not shown", () => {
+    // At the bottom of a streaming thread the button is mounted but hidden;
+    // an opacity-0 shimmer would still repaint every frame.
+    const view = render(
+      <ScrollToBottomButton visible={false} active onClick={() => {}} />,
+    );
+    const button = view.getByRole("button", {
+      name: "Scroll to latest event",
+      hidden: true,
+    });
+    expect(button.className).toContain("invisible");
+    expect(button.querySelector(".animate-shine-icon")).toBeNull();
   });
 
   it("keeps the shared page-header surface free of blur", () => {

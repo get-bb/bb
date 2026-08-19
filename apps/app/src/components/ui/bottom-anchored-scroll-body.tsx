@@ -861,7 +861,17 @@ export function BottomAnchoredScrollBody({
             </div>
             <div className="scroll-bottom-anchor" aria-hidden />
             {footer ? (
-              <div data-scroll-footer="" className="sticky bottom-0 z-20 shrink-0">
+              // The sticky footer is excluded from anchor selection outright:
+              // it moves with the scrollport, so anchoring to it (or to a
+              // control inside it) would turn its own height changes into
+              // scroll jumps. Static exclusion keeps the previous
+              // `.scroll-bottom-anchor-content *` coverage of this subtree
+              // without a toggling class; while the wrapper is not excluded
+              // it always wins selection anyway, so nothing else changes.
+              <div
+                data-scroll-footer=""
+                className="sticky bottom-0 z-20 shrink-0 [overflow-anchor:none]"
+              >
                 {footer}
               </div>
             ) : null}

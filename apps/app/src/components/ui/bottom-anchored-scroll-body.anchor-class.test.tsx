@@ -60,6 +60,12 @@ describe("BottomAnchoredScrollBody scroll-anchor exclusion", () => {
     ).toHaveLength(1);
     expect(contentWrapper.contains(sentinel)).toBe(false);
     expect(sentinel.parentElement).toBe(contentWrapper.parentElement);
+    // The sticky footer follows the scrollport, so it must never be picked as
+    // the anchor once the wrapper is excluded: the old `*` rule covered it,
+    // and now a static exclusion on the footer does.
+    const footer = container.querySelector("[data-scroll-footer]");
+    expect(footer?.className).toContain("[overflow-anchor:none]");
+    expect(footer?.previousElementSibling).toBe(sentinel);
   });
 
   it("never applies the exclusion class where scroll anchoring is unsupported", () => {

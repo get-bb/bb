@@ -134,8 +134,8 @@ describe("AutoHeightContainer growth easing", () => {
         <span>Streaming response</span>
       </AutoHeightContainer>,
     );
-    const wrapper = view.getByText("Streaming response").parentElement
-      ?.parentElement;
+    const wrapper =
+      view.getByText("Streaming response").parentElement?.parentElement;
     if (!wrapper) {
       throw new Error("AutoHeightContainer wrapper was not rendered");
     }

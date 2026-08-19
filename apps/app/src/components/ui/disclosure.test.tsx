@@ -50,8 +50,9 @@ describe("ExpandablePanel body height", () => {
   it("snaps content growth inside an open body but eases the toggle", () => {
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
     const view = renderPanel(true);
-    const region = view.getByText("Expanded body").parentElement?.parentElement
-      ?.parentElement;
+    const region =
+      view.getByText("Expanded body").parentElement?.parentElement
+        ?.parentElement;
     if (!region) {
       throw new Error("Panel body region was not rendered");
     }
@@ -79,9 +80,7 @@ describe("ExpandablePanel body height", () => {
     expect(region.style.transitionDuration).toBe("");
 
     // Growth after the toggle window is over snaps again.
-    vi.spyOn(performance, "now").mockReturnValue(
-      performance.now() + 10_000,
-    );
+    vi.spyOn(performance, "now").mockReturnValue(performance.now() + 10_000);
     fireResize();
     expect(region.style.transitionDuration).toBe("0s");
   });

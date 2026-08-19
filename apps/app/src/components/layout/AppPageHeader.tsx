@@ -58,8 +58,7 @@ export const HEADER_SEAM_CLASS = "border-b border-border-seam-vertical/60";
  * scroller, so nothing paints behind it and a blur would only add a
  * compositing pass on every frame.
  */
-export const APP_PAGE_HEADER_SURFACE_CLASS =
-  "bg-surface-scrim";
+export const APP_PAGE_HEADER_SURFACE_CLASS = "bg-surface-scrim";
 
 interface AppPageHeaderProps {
   center?: ReactNode;
