@@ -1282,26 +1282,21 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       status: PluginRuntimeStatus,
       detail: string,
     ): void {
-      // Every non-running outcome must leave a log line: without one, an
-      // engines mismatch after a host upgrade leaves the plugin gone with
-      // no trace outside the in-memory status (#1915).
       if (previous !== undefined) {
         setStatus(row.id, "running", `reload failed: ${detail}`);
-        logger.warn(
-          `plugin ${row.id} reload failed (kept previous instance): ${detail}`,
-        );
       } else {
         setStatus(row.id, status, detail);
-        logger.warn(`plugin ${row.id} not loaded (${status}): ${detail}`);
       }
     }
     const hung = hungServices.get(row.id);
     if (hung !== undefined && hung.size > 0) {
       // A previous instance's service never stopped; loading now would
       // double-start it (design §3: degraded rather than double-starting).
-      const detail = `service ${[...hung].join(", ")} did not stop`;
-      setStatus(row.id, "degraded", detail);
-      logger.warn(`plugin ${row.id} not loaded (degraded): ${detail}`);
+      setStatus(
+        row.id,
+        "degraded",
+        `service ${[...hung].join(", ")} did not stop`,
+      );
       return;
     }
     try {

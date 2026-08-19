@@ -226,47 +226,6 @@ export const pluginListResponseSchema = z.object({
 export type PluginListResponse = z.infer<typeof pluginListResponseSchema>;
 
 /**
- * Runtime statuses that mean an enabled plugin is not doing its job and the
- * user has to act: an `engines.bb` mismatch after a bb upgrade, a factory
- * crash, or a deleted plugin directory. `disabled` is a user choice, and
- * `needs-configuration` and `degraded` have their own in-product prompts, so
- * neither counts (#1915). The server applies this policy in
- * `GET /plugins/attention`; the app and CLI read the result.
- */
-export const PLUGIN_ATTENTION_STATUSES = [
-  "incompatible",
-  "error",
-  "missing",
-] as const satisfies readonly PluginRuntimeStatus[];
-
-export function pluginNeedsAttention(plugin: {
-  enabled: boolean;
-  status: PluginRuntimeStatus;
-}): boolean {
-  return (
-    plugin.enabled &&
-    (PLUGIN_ATTENTION_STATUSES as readonly PluginRuntimeStatus[]).includes(
-      plugin.status,
-    )
-  );
-}
-
-export const pluginAttentionEntrySchema = z.object({
-  id: z.string(),
-  status: pluginRuntimeStatusSchema,
-  statusDetail: z.string().nullable(),
-});
-export type PluginAttentionEntry = z.infer<typeof pluginAttentionEntrySchema>;
-
-/** Enabled plugins the server did not load; a small subset of the list. */
-export const pluginAttentionResponseSchema = z.object({
-  plugins: z.array(pluginAttentionEntrySchema),
-});
-export type PluginAttentionResponse = z.infer<
-  typeof pluginAttentionResponseSchema
->;
-
-/**
  * Which plugin of a source an install selects. A repository can hold several
  * plugins, indexed by a `.bb/plugins.json` collection manifest: "subdirectory"
  * is the primitive, "entry" resolves a manifest entry name, and "root" installs

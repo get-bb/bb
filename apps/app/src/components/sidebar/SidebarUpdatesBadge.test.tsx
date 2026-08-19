@@ -117,7 +117,6 @@ function renderBadge(inventory: Partial<UpdateInventory>) {
     appUpdateAvailable: false,
     desktopUpdateReady: false,
     machines: [],
-    pluginAttentionCount: 0,
     actionableCount: 0,
     hasAttention: false,
     ...inventory,
@@ -191,26 +190,6 @@ describe("SidebarUpdatesBadge", () => {
 
     expect(screen.getByTestId("sidebar-updates-badge-bb")).toBeTruthy();
     expect(screen.queryByTestId("sidebar-updates-badge-providers")).toBeNull();
-  });
-
-  it("shows a plugins chip that opens Installed plugins when a plugin is not running", () => {
-    renderBadge({ pluginAttentionCount: 1 });
-
-    const chip = screen.getByTestId("sidebar-updates-badge-plugins");
-    expect(chip.textContent).toContain("1 plugin needs attention");
-    expect(chip.getAttribute("href")).toBe(
-      "/extensions/plugins?view=installed",
-    );
-    expect(screen.queryByTestId("sidebar-updates-badge-bb")).toBeNull();
-    expect(screen.queryByTestId("sidebar-updates-badge-providers")).toBeNull();
-  });
-
-  it("pluralizes the plugins chip", () => {
-    renderBadge({ pluginAttentionCount: 3 });
-
-    expect(
-      screen.getByTestId("sidebar-updates-badge-plugins").textContent,
-    ).toContain("3 plugins need attention");
   });
 
   it("renders one mark per provider in a stable order when the same CLI is stale on several machines", () => {

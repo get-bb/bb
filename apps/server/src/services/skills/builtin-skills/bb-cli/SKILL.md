@@ -11,8 +11,6 @@ message agents, or inspect projects, providers, and environments.
 ## Start With Context
 
 - Use `bb status` to identify the current project, thread, and environment.
-  It also lists enabled plugins that are not running (incompatible, error,
-  missing); `bb plugin list` shows each plugin's status detail.
 - Prefer `--json` when command output will drive follow-up work.
 - Run `bb guide` for the system overview and `bb guide <chapter>` for full
   command reference.

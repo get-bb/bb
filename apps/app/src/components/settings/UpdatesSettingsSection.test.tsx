@@ -210,7 +210,6 @@ function makeInventory(overrides: Partial<UpdateInventory>): UpdateInventory {
     appUpdateAvailable: false,
     desktopUpdateReady: false,
     machines: [],
-    pluginAttentionCount: 0,
     actionableCount: 0,
     hasAttention: false,
     lastCheckedAt: null,

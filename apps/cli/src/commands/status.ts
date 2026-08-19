@@ -1,9 +1,5 @@
 import { Command } from "commander";
 import type { ThreadTimelinePendingTodos } from "@bb/domain";
-import type {
-  PluginAttentionEntry,
-  PluginRuntimeStatus,
-} from "@bb/server-contract";
 import { action } from "../action.js";
 import {
   resolveContextSnapshot,
@@ -35,32 +31,6 @@ interface StatusPayload {
     title: string | null;
   }> | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
-  /**
-   * Enabled plugins the server did not load (incompatible, error, missing).
-   * Null while the server is unreachable. An `engines.bb` mismatch after a bb
-   * upgrade otherwise unloads a plugin with no visible trace (#1915).
-   */
-  pluginsNeedingAttention: PluginAttentionEntry[] | null;
-}
-
-/**
- * One line, grouped by status in a stable order, e.g.
- * `2 plugins need attention (incompatible: notify; error: foo). Run bb plugin list.`
- */
-export function formatPluginAttentionLine(
-  entries: readonly PluginAttentionEntry[],
-): string {
-  const byStatus = new Map<PluginRuntimeStatus, string[]>();
-  for (const entry of entries) {
-    const ids = byStatus.get(entry.status) ?? [];
-    ids.push(entry.id);
-    byStatus.set(entry.status, ids);
-  }
-  const groups = [...byStatus.entries()]
-    .map(([status, ids]) => `${status}: ${ids.join(", ")}`)
-    .join("; ");
-  const noun = entries.length === 1 ? "plugin needs" : "plugins need";
-  return `${entries.length} ${noun} attention (${groups}). Run bb plugin list.`;
 }
 
 interface StatusCommandOptions {
@@ -89,49 +59,32 @@ export function registerStatusCommand(
           thread: null,
           childThreads: null,
           pendingTodos: null,
-          pluginsNeedingAttention: null,
         };
 
         let serverAvailable = false;
-        const sdk = createCliBbSdk(getUrl());
 
         // Best-effort: the data dir comes from system config (where theme/,
         // plugins, and the DB live). Works without any project/thread context.
-        const dataDirRequest = cliFetch(`${getUrl()}/api/v1/system/config`)
-          .then(async (response) => {
-            if (!response.ok) return null;
+        try {
+          const response = await cliFetch(`${getUrl()}/api/v1/system/config`);
+          if (response.ok) {
             const config = (await response.json()) as { dataDir?: unknown };
-            return typeof config.dataDir === "string" ? config.dataDir : null;
-          })
-          .catch(() => null); // Server unreachable — leave dataDir null.
-
-        // Best-effort too: a plugin that silently stopped loading should show
-        // up here without the user having to know to run bb plugin list.
-        const attentionRequest = sdk.plugins
-          .listAttention()
-          .then((result) => result.plugins)
-          .catch(() => null); // Older server or unreachable — leave null.
-
-        // The context lookup is independent of the two above; start all three
-        // together so `bb status` costs one round trip, not three.
-        const statusRequest =
-          context.projectId || context.threadId
-            ? sdk.status.get({
-                projectId: context.projectId,
-                threadId: context.threadId,
-              })
-            : null;
-        // Mark the rejection handled while the other requests settle; the
-        // `await` below still rethrows it so the user sees the error.
-        statusRequest?.catch(() => {});
-
-        payload.dataDir = await dataDirRequest;
-        if (payload.dataDir !== null) serverAvailable = true;
-        payload.pluginsNeedingAttention = await attentionRequest;
+            if (typeof config.dataDir === "string") {
+              payload.dataDir = config.dataDir;
+              serverAvailable = true;
+            }
+          }
+        } catch {
+          // Server unreachable — leave dataDir null.
+        }
 
         // Try to fetch enriched data from the server
-        if (statusRequest !== null) {
-          const status = await statusRequest;
+        if (context.projectId || context.threadId) {
+          const sdk = createCliBbSdk(getUrl());
+          const status = await sdk.status.get({
+            projectId: context.projectId,
+            threadId: context.threadId,
+          });
 
           if (status.project) {
             payload.project = {
@@ -224,16 +177,6 @@ export function registerStatusCommand(
         if (payload.dataDir) {
           console.log("");
           console.log(`Data dir: ${payload.dataDir}`);
-        }
-
-        if (
-          payload.pluginsNeedingAttention !== null &&
-          payload.pluginsNeedingAttention.length > 0
-        ) {
-          console.log("");
-          console.log(
-            formatPluginAttentionLine(payload.pluginsNeedingAttention),
-          );
         }
 
         if (!context.projectId && !context.threadId) {

@@ -195,12 +195,6 @@ export function registerPluginRoutes(
 
   app.get("/plugins", (context) => context.json({ plugins: plugins.list() }));
 
-  // Enabled plugins that are not running. The sidebar chip, the Extensions
-  // badge, and `bb status` poll this instead of the full inventory (#1915).
-  app.get("/plugins/attention", (context) =>
-    context.json({ plugins: plugins.listAttention() }),
-  );
-
   // Fast metadata for the bb CLI's help/proxy path and the app's
   // host-rendered UI contributions: no plugin code runs; empty (not an
   // error) while the experiment is off.

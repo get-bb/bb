@@ -204,9 +204,7 @@ added/updated/unchanged counts.
                                  install (--yes skips; non-TTY refuses without
                                  --yes). Use outdated to preview; pinned
                                  installs stay put
-  bb plugin list                 Status, services, schedules, handler timings.
-                                 `bb status` also names enabled plugins that
-                                 are incompatible, failed, or missing
+  bb plugin list                 Status, services, schedules, handler timings
   bb plugin source <id> [--json] Show requested/resolved source, subdirectory,
                                  semver range with its tag prefix and resolved
                                  tag, engine ranges, install time, and recent

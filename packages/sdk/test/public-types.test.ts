@@ -294,7 +294,6 @@ type ExpectedPluginsKey =
   | "getSource"
   | "install"
   | "list"
-  | "listAttention"
   | "listUpdateResults"
   | "marketplaces"
   | "reload"
