@@ -392,11 +392,10 @@ describe("buildPluginApp", () => {
     });
     // The vendored starter components bundle real npm deps (`bb plugin new`
     // runs npm install for authors); the offline test links them from the
-    // repo's own install instead.
+    // repo's own install instead. cva/clsx/tailwind-merge are deliberately
+    // absent: the build shims them to host slots, so linking them would
+    // hide a shim regression.
     await linkScaffoldDeps(targetDir, [
-      "class-variance-authority",
-      "clsx",
-      "tailwind-merge",
       "@radix-ui/react-slot",
       "@hugeicons/react",
       "@hugeicons/core-free-icons",
@@ -418,6 +417,11 @@ describe("buildPluginApp", () => {
       // forwardRef at module scope — the stub must provide it.
       react: { forwardRef: (render: unknown) => render },
       jsxRuntime: { jsx: () => ({}), jsxs: () => ({}), Fragment: {} },
+      // The vendored button calls cva() at module scope, and lib/utils reads
+      // clsx/twMerge; all three come from host slots, never the bundle.
+      classVarianceAuthority: { cva: () => () => "" },
+      clsx: { clsx: () => "" },
+      tailwindMerge: { twMerge: (value: string) => value },
       pluginSdkApp: {
         definePluginApp: (setup: unknown) => ({
           __bbPluginApp: true,
