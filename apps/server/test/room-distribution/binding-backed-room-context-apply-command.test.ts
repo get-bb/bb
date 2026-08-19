@@ -193,6 +193,42 @@ describe("Room context.apply command", () => {
     });
   });
 
+  it("accepts a WT delivery UUID as context.apply requestId", async () => {
+    await withTestHarness(async (harness) => {
+      const launch = {
+        bindingId: randomUUID(),
+        workspaceId: randomUUID(),
+        taskId: randomUUID(),
+        cellId: randomUUID(),
+        workKind: "conversation" as const,
+        candidateHostId: randomUUID(),
+        environmentTemplate: "isolated-scratch" as const,
+      };
+      const scratchTarget = target(harness, 704);
+      await createWorkTogetherRoomResourceProvisioner(harness.deps, {
+        resolveHost: () => scratchTarget,
+        resolve: () => scratchTarget,
+      }).provision({ principal: ALICE, launch });
+      const room = distribution(harness);
+      const envelope = opaqueEnvelope("uuid request id");
+      const requestId = randomUUID();
+      const accepted = await room.execute(contextFor(launch.bindingId), {
+        kind: "context.apply",
+        requestId,
+        stream: PRIMARY_STREAM,
+        contextVersion: 1,
+        digest: envelope.digest,
+        bytesBase64: envelope.bytesBase64,
+      });
+      expect(accepted.status).toBe(202);
+      expect(accepted.body).toMatchObject({
+        requestId,
+        commandKind: "context.apply",
+        result: { contextVersion: 1, digest: envelope.digest },
+      });
+    });
+  });
+
   it("rejects invalid apply shapes before admission", async () => {
     await withTestHarness(async (harness) => {
       const launch = {

@@ -154,7 +154,7 @@ type RoomResultPublishCommand = Readonly<{
 
 type RoomContextApplyCommand = Readonly<{
   kind: "context.apply";
-  requestId: ClientTurnRequestId;
+  requestId: string;
   contextVersion: number;
   digest: string;
   bytes: Buffer;
@@ -318,6 +318,14 @@ function requestId(value: RoomJsonValue | undefined): ClientTurnRequestId {
   const parsed = clientTurnRequestIdSchema.safeParse(value);
   if (!parsed.success) unavailable();
   return parsed.data;
+}
+
+/** WT Room-context deliveries key apply by UUID; BB native turns use creq_. */
+function contextApplyRequestId(value: RoomJsonValue | undefined): string {
+  if (typeof value !== "string") invalidRequest();
+  if (clientTurnRequestIdSchema.safeParse(value).success) return value;
+  if (CANONICAL_UUID.test(value)) return value;
+  invalidRequest();
 }
 
 function contextVersion(value: RoomJsonValue | undefined): number {
@@ -562,7 +570,7 @@ function decodeCommand(command: RoomJsonObject): SupportedRoomCommand {
       }
       return Object.freeze({
         kind: "context.apply",
-        requestId: requestId(command.requestId),
+        requestId: contextApplyRequestId(command.requestId),
         contextVersion: contextVersion(command.contextVersion),
         digest,
         bytes,
