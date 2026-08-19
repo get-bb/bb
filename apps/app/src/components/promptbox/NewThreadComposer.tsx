@@ -47,7 +47,6 @@ import {
 } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
-import { useThreads } from "@/hooks/queries/thread-queries";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import {
   usePromptDraftStorage,
@@ -58,6 +57,7 @@ import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
+import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
 import {
   arePromptDraftStatesEqual,
   getProjectStoredPromptAttachmentPaths,
@@ -373,14 +373,22 @@ export function NewThreadComposer({
       ? null
       : new Map(hosts.map((host) => [host.id, host.name]));
   }, [hostsQuery.data]);
-  const threadsQuery = useThreads(
-    { projectId, archived: false },
-    { enabled: Boolean(projectId) },
-  );
+  // The sidebar bootstrap already carries every unarchived thread of the
+  // selected project (`projectId` always resolves to a project in it once it
+  // has loaded), so the worktree-reuse options derive from that cache instead
+  // of a second, refetch-prone `GET /threads?projectId=` per composer mount.
+  const projectThreads = useMemo(() => {
+    const navigation = sidebarNavigationQuery.data;
+    if (!navigation) return undefined;
+    if (isProjectless) return navigation.personalProject.threads;
+    return navigation.projects.find((project) => project.id === projectId)
+      ?.threads;
+  }, [isProjectless, projectId, sidebarNavigationQuery.data]);
+  const reuseThreadOptionsLoading =
+    projectThreads === undefined && sidebarNavigationQuery.isLoading;
   const reuseThreadOptions = useMemo(
-    () =>
-      buildReuseThreadOptions(threadsQuery.data ?? [], worktreeHostNameById),
-    [threadsQuery.data, worktreeHostNameById],
+    () => buildReuseThreadOptions(projectThreads ?? [], worktreeHostNameById),
+    [projectThreads, worktreeHostNameById],
   );
 
   const seedSignature = JSON.stringify([
@@ -415,7 +423,7 @@ export function NewThreadComposer({
         primaryHostId,
         projectSources,
         reuseThreadOptions,
-        reuseThreadOptionsLoading: threadsQuery.isLoading,
+        reuseThreadOptionsLoading,
       }),
     [
       isProjectless,
@@ -423,7 +431,7 @@ export function NewThreadComposer({
       primaryHostId,
       projectSources,
       reuseThreadOptions,
-      threadsQuery.isLoading,
+      reuseThreadOptionsLoading,
     ],
   );
   const projectDefaultsQuery = useProjectDefaultExecutionOptions(
@@ -546,7 +554,7 @@ export function NewThreadComposer({
         primaryHostId,
         projectSources,
         reuseThreadOptions,
-        reuseThreadOptionsLoading: threadsQuery.isLoading,
+        reuseThreadOptionsLoading,
       }),
     [
       environmentSelectionValue,
@@ -555,7 +563,7 @@ export function NewThreadComposer({
       primaryHostId,
       projectSources,
       reuseThreadOptions,
-      threadsQuery.isLoading,
+      reuseThreadOptionsLoading,
     ],
   );
   const parsedEnvironment = useMemo(
@@ -879,6 +887,10 @@ export function NewThreadComposer({
     [navigate, projectId],
   );
   const [commandQuery, setCommandQuery] = useState<string | null>(null);
+  const [hasComposerFocused, setHasComposerFocused] = useState(false);
+  const handleEditorFocus = useCallback(() => {
+    setHasComposerFocused(true);
+  }, []);
   const providerPromptActions = useMemo(
     () => buildProviderPromptActionProps(selectedProviderComposerActions),
     [selectedProviderComposerActions],
@@ -896,9 +908,13 @@ export function NewThreadComposer({
     environmentId: reuseEnvironmentId,
     hostId: projectHostId,
     query: commandQuery,
+    composerFocused: hasComposerFocused,
   });
-  const { data: projectPromptHistory = [] } =
-    useProjectPromptHistory(projectId);
+  const promptHistoryEnabled = usePromptHistoryEnabled();
+  const { data: projectPromptHistory = [] } = useProjectPromptHistory(
+    projectId,
+    { enabled: promptHistoryEnabled },
+  );
   const promptHistoryDrafts = useMemo(
     () => promptHistoryEntriesToDrafts(projectPromptHistory),
     [projectPromptHistory],
@@ -1160,6 +1176,7 @@ export function NewThreadComposer({
               isLoadingMore: commandSuggestions.isLoadingMore,
               loadMore: commandSuggestions.loadMore,
               onQueryChange: setCommandQuery,
+              onEditorFocus: handleEditorFocus,
             },
           }}
           attachments={{

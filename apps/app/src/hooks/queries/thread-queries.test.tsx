@@ -1,16 +1,21 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ThreadListEntry } from "@bb/domain";
 import type {
+  SidebarBootstrapResponse,
   ThreadTimelineResponse,
   ThreadWithIncludesResponse,
 } from "@bb/server-contract";
+import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import * as api from "@/lib/api";
 import { sdk } from "@/lib/sdk";
+import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import {
+  sidebarNavigationQueryKey,
   threadDetailBootstrapQueryKey,
   threadHostFilePreviewQueryKey,
   threadQueuedMessagesQueryKey,
@@ -18,12 +23,16 @@ import {
   threadTimelineQueryKey,
 } from "./query-keys";
 import {
+  COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
   didThreadDetailBootstrapRefreshAfterMount,
   useArchivedThreads,
+  useChildThreads,
   useThread,
   useThreadDetailBootstrap,
   useThreadHostFilePreview,
+  useThreadMentionCandidates,
   useThreadQueuedMessages,
+  useThreadTimeline,
 } from "./thread-queries";
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -81,9 +90,56 @@ const THREAD_WITH_INCLUDES = {
   host: null,
 } satisfies ThreadWithIncludesResponse;
 
+function makeSidebarNavigation(
+  projectThreads: ThreadListEntry[],
+  personalThreads: ThreadListEntry[] = [],
+): SidebarBootstrapResponse {
+  return {
+    sections: [],
+    projects: [
+      {
+        id: "project-1",
+        kind: "standard",
+        name: "Project",
+        gitRemoteUrl: null,
+        createdAt: 1,
+        updatedAt: 1,
+        sources: [],
+        threads: projectThreads,
+        defaultExecutionOptions: null,
+      },
+    ],
+    personalProject: {
+      id: "proj_personal",
+      kind: "personal",
+      name: "Personal",
+      gitRemoteUrl: null,
+      createdAt: 1,
+      updatedAt: 1,
+      sources: [],
+      threads: personalThreads,
+      defaultExecutionOptions: null,
+    },
+  };
+}
+
+function mockMatchMedia(matching: readonly string[]) {
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+    matches: matching.includes(query),
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 beforeEach(() => {
@@ -408,5 +464,189 @@ describe("useThreadHostFilePreview", () => {
         refetchOnWindowFocus: true,
       }),
     );
+  });
+});
+
+describe("useChildThreads", () => {
+  it("derives children from the sidebar cache across projects without a list request", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const projectChild = makeThreadListEntry({
+      id: "child-1",
+      projectId: "project-1",
+      parentThreadId: "parent-1",
+    });
+    const personalChild = makeThreadListEntry({
+      id: "child-2",
+      projectId: "proj_personal",
+      parentThreadId: "parent-1",
+    });
+    const hiddenChild = makeThreadListEntry({
+      id: "child-hidden",
+      parentThreadId: "parent-1",
+      visibility: "hidden",
+    });
+    const otherChild = makeThreadListEntry({
+      id: "child-other",
+      parentThreadId: "parent-2",
+    });
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation(
+        [projectChild, hiddenChild, otherChild],
+        [personalChild],
+      ),
+    );
+
+    const { result } = renderHook(
+      () => useChildThreads({ enabled: true, parentThreadId: "parent-1" }),
+      { wrapper },
+    );
+
+    expect(result.current.data?.map((thread) => thread.id)).toEqual([
+      "child-1",
+      "child-2",
+    ]);
+    expect(result.current.isLoading).toBe(false);
+    expect(sdk.threads.list).not.toHaveBeenCalled();
+
+    // Realtime updates land in the sidebar cache and flow through.
+    const newChild = makeThreadListEntry({
+      id: "child-3",
+      parentThreadId: "parent-1",
+    });
+    act(() => {
+      queryClient.setQueryData(
+        sidebarNavigationQueryKey(),
+        makeSidebarNavigation([projectChild, newChild], [personalChild]),
+      );
+    });
+    await waitFor(() => {
+      expect(result.current.data?.map((thread) => thread.id)).toEqual([
+        "child-1",
+        "child-3",
+        "child-2",
+      ]);
+    });
+    expect(sdk.threads.list).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the parent-keyed list request without a sidebar cache", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const child = makeThreadListEntry({
+      id: "child-1",
+      parentThreadId: "parent-1",
+    });
+    vi.mocked(sdk.threads.list).mockResolvedValue([child]);
+
+    const { result } = renderHook(
+      () => useChildThreads({ enabled: true, parentThreadId: "parent-1" }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual([child]);
+    });
+    expect(sdk.threads.list).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(sdk.threads.list).mock.calls[0]?.[0]).toEqual({
+      archived: false,
+      parentThreadId: "parent-1",
+      signal: expect.any(AbortSignal),
+    });
+  });
+});
+
+describe("useThreadMentionCandidates", () => {
+  it("serves candidates from the sidebar cache without a list request", () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const visible = makeThreadListEntry({ id: "thread-visible" });
+    const hidden = makeThreadListEntry({
+      id: "thread-hidden",
+      visibility: "hidden",
+    });
+    const personal = makeThreadListEntry({
+      id: "thread-personal",
+      projectId: "proj_personal",
+    });
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation([visible, hidden], [personal]),
+    );
+
+    const { result } = renderHook(
+      () => useThreadMentionCandidates({ enabled: true }),
+      { wrapper },
+    );
+
+    expect(result.current.data?.map((thread) => thread.id)).toEqual([
+      "thread-visible",
+      "thread-personal",
+    ]);
+    expect(result.current.isLoading).toBe(false);
+    expect(sdk.threads.list).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the capped list request without a sidebar cache", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const thread = makeThreadListEntry({ id: "thread-1" });
+    vi.mocked(sdk.threads.list).mockResolvedValue([thread]);
+
+    const { result } = renderHook(
+      () => useThreadMentionCandidates({ enabled: true }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual([thread]);
+    });
+    expect(vi.mocked(sdk.threads.list).mock.calls[0]?.[0]).toEqual({
+      archived: false,
+      limit: 200,
+      signal: expect.any(AbortSignal),
+    });
+  });
+});
+
+describe("useThreadTimeline segment limit", () => {
+  it("asks for the compact first window on compact viewports and keeps it for deltas", async () => {
+    mockMatchMedia([COMPACT_VIEWPORT_QUERY]);
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(() => useThreadTimeline("thread-1"), {
+      wrapper,
+    });
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+    expect(vi.mocked(sdk.threads.timeline).mock.calls[0]?.[0]).toEqual({
+      threadId: "thread-1",
+      segmentLimit: String(COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT),
+      signal: expect.any(AbortSignal),
+    });
+
+    await queryClient.refetchQueries({
+      queryKey: threadTimelineQueryKey("thread-1"),
+    });
+    expect(vi.mocked(sdk.threads.timeline).mock.calls[1]?.[0]).toEqual({
+      threadId: "thread-1",
+      segmentLimit: String(COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT),
+      afterSequence: "0",
+      signal: expect.any(AbortSignal),
+    });
+  });
+
+  it("keeps the server default window on wide viewports", async () => {
+    mockMatchMedia([]);
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(() => useThreadTimeline("thread-1"), {
+      wrapper,
+    });
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+    expect(vi.mocked(sdk.threads.timeline).mock.calls[0]?.[0]).toEqual({
+      threadId: "thread-1",
+      signal: expect.any(AbortSignal),
+    });
   });
 });

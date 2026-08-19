@@ -82,13 +82,17 @@ function ThreadDetailSecondaryContentBody({
   const { renderBrowserDeck, ...threadSecondaryPanelProps } = secondaryPanel;
 
   // Mirror ForksRow's query (deduped by react-query) so the visibility gate
-  // accounts for the lazily fetched Forks row.
-  const forksQuery = useThreads({
-    projectId: metadata.thread.projectId,
-    sourceThreadId: metadata.thread.id,
-    originKind: "fork",
-    archived: false,
-  });
+  // accounts for the lazily fetched Forks row. Only the open panel renders the
+  // Info tab, so a closed panel does not need the request.
+  const forksQuery = useThreads(
+    {
+      projectId: metadata.thread.projectId,
+      sourceThreadId: metadata.thread.id,
+      originKind: "fork",
+      archived: false,
+    },
+    { enabled: isSecondaryPanelOpen },
+  );
   const hasForks = (forksQuery.data?.length ?? 0) > 0;
   const metadataContent = useMemo(
     () =>

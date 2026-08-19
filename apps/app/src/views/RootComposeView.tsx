@@ -145,7 +145,10 @@ import {
 import { resolveComposeHostId } from "./root-compose-environment-selection";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
 import { RootComposeEmptyWelcome } from "./RootComposeEmptyWelcome";
-import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
+import {
+  shouldLoadThreadStorageFileList,
+  useThreadStorageViewer,
+} from "@/components/secondary-panel/useThreadStorageViewer";
 import {
   useThreadFileTabs,
   type FileSearchSelection,
@@ -1091,7 +1094,11 @@ function RootComposeSurface({
     threadStorageRootPath: rootThreadStorageRootPath,
   } = useThreadStorageViewer({
     activePath: null,
-    fileListEnabled: rootPanelThreadId !== null,
+    fileListEnabled: shouldLoadThreadStorageFileList({
+      hasThread: rootPanelThreadId !== null,
+      isSecondaryPanelOpen,
+      secondaryTabs: fixedPanelTabsState.secondary.tabs,
+    }),
     filePreviewEnabled: false,
     threadId: rootPanelThreadId ?? undefined,
   });

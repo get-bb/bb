@@ -12,7 +12,7 @@
 import { useEffect, type ReactNode } from "react";
 import { Provider } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import {
   act,
   cleanup,
@@ -36,6 +36,7 @@ import { encodeReuseValue } from "@/components/pickers/environment-picker-value"
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { buildThreadHandoffLocationState } from "@/lib/thread-handoff-request";
+import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
 import { RootComposeView } from "@/views/RootComposeView";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
 
@@ -43,7 +44,7 @@ const mocks = vi.hoisted(() => ({
   promptBoxProps: [] as Array<Record<string, any>>,
   copyAttachments: vi.fn(),
   uploadAttachment: vi.fn(),
-  threadsLoading: false,
+  projectThreads: [] as ThreadListEntry[],
 }));
 
 vi.mock("@/components/promptbox/NewThreadPromptBox", () => ({
@@ -94,7 +95,7 @@ const OTHER_PROJECT = {
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useSidebarNavigation: () => ({
     data: {
-      projects: [PROJECT, OTHER_PROJECT],
+      projects: [{ ...PROJECT, threads: mocks.projectThreads }, OTHER_PROJECT],
       personalProject: {
         id: "personal",
         name: "Personal",
@@ -103,6 +104,7 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
       },
     },
     isError: false,
+    isLoading: false,
     isSuccess: true,
   }),
 }));
@@ -174,7 +176,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
-  useThreads: () => ({ data: [], isLoading: mocks.threadsLoading }),
   useThreadStorageFiles: () => ({
     data: undefined,
     error: null,
@@ -370,7 +371,7 @@ describe("PluginNewThreadComposer seeding", () => {
     mocks.promptBoxProps.length = 0;
     mocks.copyAttachments.mockReset();
     mocks.uploadAttachment.mockReset();
-    mocks.threadsLoading = false;
+    mocks.projectThreads = [];
     window.localStorage.clear();
     getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
       text: "",
@@ -659,8 +660,21 @@ describe("PluginNewThreadComposer seeding", () => {
     );
   });
 
-  it("submits a fork with its seeded environment while reuse options load", async () => {
-    mocks.threadsLoading = true;
+  it("derives reuse options from the sidebar bootstrap so a fork keeps its seeded worktree", async () => {
+    // No separate `GET /threads?projectId=` backs the worktree picker: the
+    // sidebar bootstrap rows are the source, so the seeded reuse environment
+    // resolves as soon as the bootstrap holds the source thread.
+    mocks.projectThreads = [
+      makeThreadListEntry({
+        id: "thr_source",
+        projectId: "proj_1",
+        environmentId: "env-source",
+        environmentHostId: "host_1",
+        environmentName: "source",
+        environmentBranchName: "feature/source",
+        environmentWorkspaceDisplayKind: "managed-worktree",
+      }),
+    ];
     const submitted: NewThreadRequest[] = [];
     render(
       <Provider>

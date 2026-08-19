@@ -344,6 +344,20 @@ export function applyToCachedThreadListsAndSidebarNavigation(
   });
 }
 
+/**
+ * Every thread row the sidebar bootstrap carries, across every project plus
+ * the personal project. The bootstrap lists all visible, unarchived threads
+ * (children included), so this is the complete live thread set.
+ */
+export function listSidebarNavigationThreads(
+  navigation: SidebarBootstrapResponse,
+): ThreadListEntry[] {
+  return [
+    ...navigation.projects.flatMap((project) => project.threads),
+    ...navigation.personalProject.threads,
+  ];
+}
+
 export function getCachedSidebarNavigationThreads(
   queryClient: QueryClient,
 ): ThreadListEntry[] {
@@ -353,10 +367,7 @@ export function getCachedSidebarNavigationThreads(
   if (!navigation) {
     return [];
   }
-  return [
-    ...navigation.projects.flatMap((project) => project.threads),
-    ...navigation.personalProject.threads,
-  ];
+  return listSidebarNavigationThreads(navigation);
 }
 
 export function snapshotCachedSidebarNavigation(

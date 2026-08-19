@@ -150,7 +150,10 @@ import {
   type ThreadSecondaryPanelFileOpenOptions,
 } from "./useThreadSecondaryPanelVisibility";
 import type { HostConnectionNotice } from "./ThreadTimelinePane";
-import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
+import {
+  shouldLoadThreadStorageFileList,
+  useThreadStorageViewer,
+} from "@/components/secondary-panel/useThreadStorageViewer";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   HostFilePreviewTabContent,
@@ -667,7 +670,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   );
   const [browserAddressFocusRequest, setBrowserAddressFocusRequest] =
     useState<BrowserAddressFocusRequest | null>(null);
-  const shouldLoadThreadStorageFiles = thread !== undefined;
+  const shouldLoadThreadStorageFiles = shouldLoadThreadStorageFileList({
+    hasThread: thread !== undefined,
+    isSecondaryPanelOpen,
+    secondaryTabs: fixedPanelTabsState.secondary.tabs,
+  });
   const {
     isThreadStorageFilesLoading,
     refetchThreadStorageFiles,

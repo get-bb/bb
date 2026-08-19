@@ -28,8 +28,12 @@ vi.mock("@/components/ui/sidebar.js", () => ({
   useOptionalIsSidebarShowing: () => true,
 }));
 
+const { useThreadsMock } = vi.hoisted(() => ({
+  useThreadsMock: vi.fn((..._args: unknown[]) => ({ data: [] })),
+}));
+
 vi.mock("@/hooks/queries/thread-queries", () => ({
-  useThreads: () => ({ data: [] }),
+  useThreads: useThreadsMock,
 }));
 
 vi.mock("jotai", async (importOriginal) => ({
@@ -295,6 +299,7 @@ function renderThreadDetail(
 afterEach(() => {
   cleanup();
   publishedHostedPanel = null;
+  useThreadsMock.mockClear();
 });
 
 describe("ThreadDetailSecondaryContent", () => {
@@ -352,5 +357,45 @@ describe("ThreadDetailSecondaryContent", () => {
         .getByTestId("inline-secondary-panel")
         .contains(screen.getByTestId("metadata-card")),
     ).toBe(true);
+  });
+
+  it("only requests the forks list while the secondary panel is open", () => {
+    const props = createProps();
+    const { rerender } = render(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent
+              {...props}
+              isSecondaryPanelOpen={false}
+            />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    expect(useThreadsMock).toHaveBeenLastCalledWith(
+      {
+        projectId: "proj-test",
+        sourceThreadId: "thread-1",
+        originKind: "fork",
+        archived: false,
+      },
+      { enabled: false },
+    );
+
+    rerender(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent {...props} isSecondaryPanelOpen />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    expect(useThreadsMock).toHaveBeenLastCalledWith(expect.anything(), {
+      enabled: true,
+    });
   });
 });

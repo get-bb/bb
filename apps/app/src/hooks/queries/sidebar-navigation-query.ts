@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { useMemo } from "react";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
+import { listSidebarNavigationThreads } from "@/hooks/cache-owners/query-cache";
 import { apiClient } from "@/lib/api-server";
 import { request, requestOptions } from "@/lib/api";
 import {
@@ -73,4 +75,27 @@ export function useProjectDisplayName(
     return data.personalProject.name;
   }
   return data.projects.find((project) => project.id === projectId)?.name;
+}
+
+/**
+ * Live view of every thread row in the sidebar-navigation cache, or
+ * `undefined` while the bootstrap has not loaded. This is a read-only observer:
+ * it never triggers the bootstrap fetch itself (the app shell owns that and the
+ * realtime subscriptions), it only re-renders when the cached payload changes.
+ * Thread-list surfaces that used to issue their own `GET /threads` can derive
+ * from this instead and keep a network fallback for the `undefined` case.
+ */
+export function useSidebarNavigationThreadsFromCache():
+  | ThreadListEntry[]
+  | undefined {
+  const { data } = useQuery<SidebarBootstrapResponse>({
+    queryKey: sidebarNavigationQueryKey(),
+    queryFn: ({ signal }) => fetchSidebarNavigation(signal),
+    ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
+    enabled: false,
+  });
+  return useMemo(
+    () => (data ? listSidebarNavigationThreads(data) : undefined),
+    [data],
+  );
 }

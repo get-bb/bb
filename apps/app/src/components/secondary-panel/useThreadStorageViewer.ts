@@ -1,3 +1,4 @@
+import type { FixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
   type ThreadStorageFileListOptions,
@@ -49,4 +50,31 @@ export function useThreadStorageViewer({
     threadStorageRootPath: threadStorageFiles?.storageRootPath ?? null,
     refetchThreadStorageFiles,
   };
+}
+
+interface ShouldLoadThreadStorageFileListArgs {
+  hasThread: boolean;
+  isSecondaryPanelOpen: boolean;
+  secondaryTabs: readonly Pick<FixedPanelTab, "kind">[];
+}
+
+/**
+ * The thread storage file list (`host.list_files`, up to 1000 rows) only feeds
+ * secondary-panel surfaces: the storage browser, storage-tab pruning, and
+ * local-file link resolution (which refetches on demand). It therefore loads
+ * once the panel is open or a storage tab already exists, not on every thread
+ * open, remount, or reconnect.
+ */
+export function shouldLoadThreadStorageFileList({
+  hasThread,
+  isSecondaryPanelOpen,
+  secondaryTabs,
+}: ShouldLoadThreadStorageFileListArgs): boolean {
+  if (!hasThread) {
+    return false;
+  }
+  return (
+    isSecondaryPanelOpen ||
+    secondaryTabs.some((tab) => tab.kind === "thread-storage-file-preview")
+  );
 }

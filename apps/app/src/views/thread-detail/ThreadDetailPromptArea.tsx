@@ -87,6 +87,7 @@ import {
 import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
+import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
 import { getProjectComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { buildThreadHandoffLocationState } from "@/lib/thread-handoff-request";
@@ -397,10 +398,11 @@ export function ThreadDetailPromptArea({
       setEditFocusNonce((nonce) => nonce + 1);
     },
   });
+  const promptHistoryEnabled = usePromptHistoryEnabled();
   const { data: promptHistoryEntries = [] } = useThreadPromptHistory(
     thread.id,
     {
-      enabled: true,
+      enabled: promptHistoryEnabled,
     },
   );
   const createQueuedMessage = useCreateThreadQueuedMessage();
