@@ -6,7 +6,11 @@ import type {
 import { pluginSettingsUpdateRequestSchema } from "@bb/server-contract";
 import { useQuery } from "@tanstack/react-query";
 import { createPluginsClient } from "./plugin-client";
-import { pluginListQueryKey, pluginSettingsViewQueryKey } from "./query-keys";
+import {
+  pluginAttentionQueryKey,
+  pluginListQueryKey,
+  pluginSettingsViewQueryKey,
+} from "./query-keys";
 
 type FetchLike = typeof fetch;
 
@@ -199,6 +203,20 @@ export function usePluginList(args: { enabled: boolean }) {
   return useQuery({
     queryKey: pluginListQueryKey(args.enabled),
     queryFn: () => fetchPluginList(fetch),
+    enabled: args.enabled,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Enabled plugins the server did not load (incompatible after a bb upgrade,
+ * failed, missing). A small server-owned summary, so the sidebar can poll it
+ * on every page load without the full inventory (#1915).
+ */
+export function usePluginAttention(args: { enabled: boolean }) {
+  return useQuery({
+    queryKey: pluginAttentionQueryKey(),
+    queryFn: () => createPluginsClient(fetch).listAttention(),
     enabled: args.enabled,
     staleTime: 30_000,
   });

@@ -602,6 +602,19 @@ describe("plugin service", () => {
     expect(lines).toContain(
       "warn plugin notify not loaded (incompatible): requires bb >=0.38.0 <0.39.0, this is 0.39.0",
     );
+    // The attention summary (GET /plugins/attention) names the plugin with
+    // its status and detail, and drops it once the user disables it.
+    const attention = () =>
+      after.listAttention().filter((plugin) => plugin.id === "notify");
+    expect(attention()).toEqual([
+      {
+        id: "notify",
+        status: "incompatible",
+        statusDetail: "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
+      },
+    ]);
+    await after.setEnabled("notify", false);
+    expect(attention()).toEqual([]);
     await after.stop();
   });
 

@@ -15,8 +15,8 @@ import {
   setPluginEnabled,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
+import { pluginNeedsAttention } from "@bb/server-contract";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { pluginNeedsAttention } from "@/hooks/usePluginAttention";
 import { getPluginDetailRoutePath } from "@/lib/route-paths";
 import {
   pluginRowSignal,
@@ -113,7 +113,10 @@ export function InstalledPluginRow({
   // Runtime health only (not a rolled-back update).
   const runtimeStatus = pluginRuntimeStatusPresentation(plugin);
   // Enabled, but the server never loaded it (incompatible, error, missing).
-  const notRunning = enabled && pluginNeedsAttention(plugin);
+  const notRunning = pluginNeedsAttention({
+    enabled: enabled === true,
+    status: plugin.status,
+  });
   const runtimeStatusToneClass =
     runtimeStatus?.tone === "error"
       ? "text-destructive-text"

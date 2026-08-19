@@ -1,6 +1,9 @@
 import { Command } from "commander";
 import type { ThreadTimelinePendingTodos } from "@bb/domain";
-import type { InstalledPlugin, PluginRuntimeStatus } from "@bb/server-contract";
+import type {
+  PluginAttentionEntry,
+  PluginRuntimeStatus,
+} from "@bb/server-contract";
 import { action } from "../action.js";
 import {
   resolveContextSnapshot,
@@ -38,31 +41,6 @@ interface StatusPayload {
    * upgrade otherwise unloads a plugin with no visible trace (#1915).
    */
   pluginsNeedingAttention: PluginAttentionEntry[] | null;
-}
-
-interface PluginAttentionEntry {
-  id: string;
-  status: PluginRuntimeStatus;
-  statusDetail: string | null;
-}
-
-const PLUGIN_ATTENTION_STATUSES: ReadonlySet<PluginRuntimeStatus> =
-  new Set<PluginRuntimeStatus>(["incompatible", "error", "missing"]);
-
-/** Same bucket the app's sidebar chip counts: enabled but not running. */
-export function pluginsNeedingAttention(
-  plugins: readonly InstalledPlugin[],
-): PluginAttentionEntry[] {
-  return plugins
-    .filter(
-      (plugin) =>
-        plugin.enabled && PLUGIN_ATTENTION_STATUSES.has(plugin.status),
-    )
-    .map((plugin) => ({
-      id: plugin.id,
-      status: plugin.status,
-      statusDetail: plugin.statusDetail,
-    }));
 }
 
 /**
@@ -115,42 +93,45 @@ export function registerStatusCommand(
         };
 
         let serverAvailable = false;
+        const sdk = createCliBbSdk(getUrl());
 
         // Best-effort: the data dir comes from system config (where theme/,
         // plugins, and the DB live). Works without any project/thread context.
-        try {
-          const response = await cliFetch(`${getUrl()}/api/v1/system/config`);
-          if (response.ok) {
+        const dataDirRequest = cliFetch(`${getUrl()}/api/v1/system/config`)
+          .then(async (response) => {
+            if (!response.ok) return null;
             const config = (await response.json()) as { dataDir?: unknown };
-            if (typeof config.dataDir === "string") {
-              payload.dataDir = config.dataDir;
-              serverAvailable = true;
-            }
-          }
-        } catch {
-          // Server unreachable — leave dataDir null.
-        }
+            return typeof config.dataDir === "string" ? config.dataDir : null;
+          })
+          .catch(() => null); // Server unreachable — leave dataDir null.
 
         // Best-effort too: a plugin that silently stopped loading should show
         // up here without the user having to know to run bb plugin list.
-        if (serverAvailable) {
-          try {
-            const list = await createCliBbSdk(getUrl()).plugins.list();
-            payload.pluginsNeedingAttention = pluginsNeedingAttention(
-              list.plugins,
-            );
-          } catch {
-            // Plugin list unavailable — leave null.
-          }
-        }
+        const attentionRequest = sdk.plugins
+          .listAttention()
+          .then((result) => result.plugins)
+          .catch(() => null); // Older server or unreachable — leave null.
+
+        // The context lookup is independent of the two above; start all three
+        // together so `bb status` costs one round trip, not three.
+        const statusRequest =
+          context.projectId || context.threadId
+            ? sdk.status.get({
+                projectId: context.projectId,
+                threadId: context.threadId,
+              })
+            : null;
+        // Mark the rejection handled while the other requests settle; the
+        // `await` below still rethrows it so the user sees the error.
+        statusRequest?.catch(() => {});
+
+        payload.dataDir = await dataDirRequest;
+        if (payload.dataDir !== null) serverAvailable = true;
+        payload.pluginsNeedingAttention = await attentionRequest;
 
         // Try to fetch enriched data from the server
-        if (context.projectId || context.threadId) {
-          const sdk = createCliBbSdk(getUrl());
-          const status = await sdk.status.get({
-            projectId: context.projectId,
-            threadId: context.threadId,
-          });
+        if (statusRequest !== null) {
+          const status = await statusRequest;
 
           if (status.project) {
             payload.project = {

@@ -94,38 +94,6 @@ describe("bb status command output", () => {
   });
 });
 
-const installedPlugin = (
-  id: string,
-  status: string,
-  statusDetail: string | null,
-  enabled = true,
-) => ({
-  id,
-  source: `path:/plugins/${id}`,
-  rootDir: `/plugins/${id}`,
-  version: "0.2.1",
-  provenance: "direct",
-  publisherLabel: null,
-  isOrphanedBuiltin: false,
-  sourceDisplay: `path · /plugins/${id}`,
-  updateState: {},
-  enabled,
-  description: null,
-  name: null,
-  icon: null,
-  iconUrl: null,
-  status,
-  statusDetail,
-  handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-  services: [],
-  schedules: [],
-  cliCommand: null,
-  hasSettings: false,
-  app: { hasApp: false, bundle: null },
-  logoUrl: null,
-  logoDarkUrl: null,
-});
-
 function jsonResponse(value: object): Response {
   return new Response(JSON.stringify(value), {
     status: 200,
@@ -133,14 +101,20 @@ function jsonResponse(value: object): Response {
   });
 }
 
-function stubServer(plugins: readonly object[]): void {
+function stubServer(
+  attention: ReadonlyArray<{
+    id: string;
+    status: string;
+    statusDetail: string | null;
+  }>,
+): void {
   vi.mocked(fetch).mockImplementation(async (input) => {
     const url = String(input instanceof Request ? input.url : input);
     if (url.endsWith("/api/v1/system/config")) {
       return jsonResponse({ dataDir: "/data/bb" });
     }
-    if (url.endsWith("/api/v1/plugins")) {
-      return jsonResponse({ plugins });
+    if (url.endsWith("/api/v1/plugins/attention")) {
+      return jsonResponse({ plugins: attention });
     }
     throw new Error(`unexpected fetch ${url}`);
   });
@@ -156,17 +130,14 @@ describe("bb status plugin attention", () => {
       () => ({ serverUrl: "http://server" }),
     );
 
-  it("reports enabled plugins the server did not load, grouped by status", async () => {
+  it("reports the server's attention summary, grouped by status", async () => {
     stubServer([
-      installedPlugin("automations", "running", null),
-      installedPlugin(
-        "notify",
-        "incompatible",
-        "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
-      ),
-      installedPlugin("foo", "error", "boom"),
-      // Disabled is a user choice, not a problem.
-      installedPlugin("old", "disabled", null, false),
+      {
+        id: "notify",
+        status: "incompatible",
+        statusDetail: "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
+      },
+      { id: "foo", status: "error", statusDetail: "boom" },
     ]);
 
     await runCommand(["status"], register);
@@ -179,7 +150,7 @@ describe("bb status plugin attention", () => {
   });
 
   it("prints no plugin line when every plugin runs", async () => {
-    stubServer([installedPlugin("automations", "running", null)]);
+    stubServer([]);
 
     await runCommand(["status"], register);
 
@@ -190,11 +161,11 @@ describe("bb status plugin attention", () => {
 
   it("includes the plugins in --json output", async () => {
     stubServer([
-      installedPlugin(
-        "notify",
-        "incompatible",
-        "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
-      ),
+      {
+        id: "notify",
+        status: "incompatible",
+        statusDetail: "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
+      },
     ]);
 
     await runCommand(["status", "--json"], register);
