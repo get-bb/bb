@@ -74,7 +74,7 @@ import {
 } from "../session-params.js";
 import { buildInterruptedClaudeTaskEvents } from "../task-translation.js";
 import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";
-import { listClaudeCodeBridgeModels } from "./model-list.js";
+import { createClaudeCodeBridgeModelListMemo } from "./model-list.js";
 import {
   claudeThreadForkParamsSchema,
   claudeThreadResumeParamsSchema,
@@ -663,6 +663,15 @@ async function applyLiveSessionSettings(
 const sessionIdEntropyPrefix = `bt${randomUUID().slice(0, 8)}-`;
 let translatorSessionSerial = 0;
 const CLAUDE_PROVIDER_ID = "claude-code";
+/**
+ * Model catalogs change on the order of releases; two minutes is enough to
+ * absorb the burst of picker, thread-open, and reconnect asks that hit one
+ * bridge, while the server-side memo owns the longer window.
+ */
+const MODEL_LIST_MEMO_TTL_MS = 2 * 60_000;
+const listModelsMemoized = createClaudeCodeBridgeModelListMemo({
+  ttlMs: MODEL_LIST_MEMO_TTL_MS,
+});
 
 function createSessionTranslator(): ClaudeEventTranslator {
   translatorSessionSerial += 1;
@@ -2010,7 +2019,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       sendResult(request.id, result);
       break;
     case "model/list":
-      sendResult(request.id, await listClaudeCodeBridgeModels());
+      sendResult(request.id, await listModelsMemoized());
       break;
     case "thread/start":
       await handleThreadStart(
