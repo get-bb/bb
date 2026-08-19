@@ -17,7 +17,13 @@ const CREQ = "creq_abcdefghjk" as ClientTurnRequestId;
 const CREQ_2 = "creq_bcdefghjkm" as ClientTurnRequestId;
 
 function createAssembler(): DeltaAssembler {
-  return createDeltaAssembler({ providerId: "pi", entropyPrefix: "as-test" });
+  // The base suite pins per-delta assembly; the dedicated batching suite
+  // below exercises textDeltaFlushMs with an injected clock.
+  return createDeltaAssembler({
+    providerId: "pi",
+    entropyPrefix: "as-test",
+    textDeltaFlushMs: 0,
+  });
 }
 
 function assemble(
@@ -1480,6 +1486,7 @@ describe("delta assembler background tasks and progress policy", () => {
       providerId: "claude-code",
       entropyPrefix: "as-test",
       now: () => nowMs,
+      textDeltaFlushMs: 0,
       ...(progressThrottleMs === undefined ? {} : { progressThrottleMs }),
     });
     return {
@@ -1896,5 +1903,390 @@ describe("bridge delta assembly helper", () => {
     expect(
       collector.assembleMessage({ method: "thread/identity", params: {} }),
     ).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Text-delta batching (streamed-text coalescing per flush window)
+// ---------------------------------------------------------------------------
+
+describe("delta assembler text-delta batching", () => {
+  function createBatchingAssembler(textDeltaFlushMs = 100) {
+    let nowMs = 0;
+    const assembler = createDeltaAssembler({
+      providerId: "pi",
+      entropyPrefix: "as-test",
+      now: () => nowMs,
+      textDeltaFlushMs,
+    });
+    return {
+      assembler,
+      advance(ms: number) {
+        nowMs += ms;
+      },
+    };
+  }
+
+  function assistantDelta(text: string, parentRef?: string): ThreadDelta {
+    return {
+      kind: "message.delta",
+      channel: "assistant",
+      streamKey: "assistant",
+      text,
+      ...(parentRef === undefined ? {} : { parentRef }),
+    };
+  }
+
+  it("emits the first delta of a fresh stream immediately, then coalesces", () => {
+    const { assembler, advance } = createBatchingAssembler();
+    assemble(assembler, { kind: "turn.open" });
+
+    const first = assemble(assembler, assistantDelta("Hel"));
+    expect(first.map((event) => event.type)).toEqual([
+      "item/started",
+      "item/agentMessage/delta",
+    ]);
+    expect(first[1]).toMatchObject({ delta: "Hel" });
+
+    // Inside the window: buffered, nothing emitted.
+    advance(20);
+    expect(assemble(assembler, assistantDelta("lo "))).toEqual([]);
+    advance(20);
+    expect(assemble(assembler, assistantDelta("wor"))).toEqual([]);
+
+    // Window elapsed: the coalesced buffer flushes trailing-edge ahead of
+    // this batch, and the incoming delta starts the next window's buffer.
+    advance(100);
+    const flushed = assemble(assembler, assistantDelta("ld"));
+    expect(flushed).toEqual([
+      expect.objectContaining({
+        type: "item/agentMessage/delta",
+        delta: "lo wor",
+      }),
+    ]);
+    advance(200);
+    expect(
+      assemble(assembler, { kind: "turn.boundary", status: "completed" }).map(
+        (event) => ("delta" in event ? event.delta : event.type),
+      ),
+    ).toEqual(["ld", "turn/completed"]);
+  });
+
+  it("a delta arriving after the window with no buffer emits alone at once", () => {
+    const { assembler, advance } = createBatchingAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    assemble(assembler, assistantDelta("a"));
+    // Nothing buffered; the stream went quiet past its window. The next
+    // delta must not wait for further traffic.
+    advance(150);
+    expect(assemble(assembler, assistantDelta("b"))).toEqual([
+      expect.objectContaining({
+        type: "item/agentMessage/delta",
+        delta: "b",
+      }),
+    ]);
+  });
+
+  it("flushes an elapsed buffer trailing-edge on the thread's next traffic", () => {
+    const { assembler, advance } = createBatchingAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    assemble(assembler, assistantDelta("a"));
+    advance(20);
+    expect(assemble(assembler, assistantDelta("b"))).toEqual([]);
+
+    // Later non-text traffic after the window elapsed carries the buffer out
+    // first.
+    advance(200);
+    const events = assemble(assembler, {
+      kind: "contextWindow",
+      used: 10,
+      size: 100,
+      estimated: true,
+      attach: "open",
+    });
+    expect(events.map((event) => event.type)).toEqual([
+      "item/agentMessage/delta",
+      "thread/contextWindowUsage/updated",
+    ]);
+    expect(events[0]).toMatchObject({ delta: "b" });
+  });
+
+  it("never reorders text across a non-batchable event (ordering barrier)", () => {
+    const { assembler, advance } = createBatchingAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    assemble(assembler, assistantDelta("first"));
+    advance(10);
+    // One batch: buffered text, then an item.open. The buffer must land
+    // before the item/started even though its window has not elapsed.
+    const events = assemble(
+      assembler,
+      assistantDelta(" second"),
+      bashOpen("cmd-1"),
+    );
+    expect(events.map((event) => event.type)).toEqual([
+      "item/agentMessage/delta",
+      "item/started",
+    ]);
+    expect(events[0]).toMatchObject({ delta: " second" });
+  });
+
+  it("message.close flushes the buffer and completes with the full text", () => {
+    const { assembler, advance } = createBatchingAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    assemble(assembler, assistantDelta("Hello"));
+    advance(10);
+    expect(assemble(assembler, assistantDelta(" world"))).toEqual([]);
+
+    const events = assemble(assembler, {
+      kind: "message.close",
+      channel: "assistant",
+    });
+    expect(events.map((event) => event.type)).toEqual([
+      "item/agentMessage/delta",
+      "item/completed",
+    ]);
+    expect(events[0]).toMatchObject({ delta: " world" });
+    expect(events[1]).toMatchObject({
+      item: expect.objectContaining({ text: "Hello world" }),
+    });
+  });
+
+  it("a detached stream release still flushes its buffered tail", () => {
+    const { assembler, advance } = createBatchingAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    assemble(assembler, assistantDelta("pre-tool"));
+    advance(10);
+    expect(assemble(assembler, assistantDelta(" tail"))).toEqual([]);
+
+    // Silent release (pi's tool-start detach): no completed item, but the
+    // buffered tail must not be lost.
+    const events = assemble(assembler, {
+      kind: "message.close",
+      channel: "assistant",
+      detach: true,
+    });
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "item/agentMessage/delta",
+        delta: " tail",
+      }),
+    ]);
+  });
+
+  it("window 0 disables batching entirely (one event per delta)", () => {
+    const { assembler, advance } = createBatchingAssembler(0);
+    assemble(assembler, { kind: "turn.open" });
+    assemble(assembler, assistantDelta("a"));
+    advance(1);
+    const events = assemble(
+      assembler,
+      assistantDelta("b"),
+      assistantDelta("c"),
+    );
+    expect(events.map((event) => event.type)).toEqual([
+      "item/agentMessage/delta",
+      "item/agentMessage/delta",
+    ]);
+    expect(events.map((event) => ("delta" in event ? event.delta : ""))).toEqual(
+      ["b", "c"],
+    );
+  });
+
+  it("keeps concurrent streams independent (no cross-stream merging)", () => {
+    const { assembler, advance } = createBatchingAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    // Two assistant streams under different parent tool calls.
+    assemble(assembler, assistantDelta("A1", "tool-a"));
+    assemble(assembler, assistantDelta("B1", "tool-b"));
+    advance(10);
+    expect(assemble(assembler, assistantDelta("A2", "tool-a"))).toEqual([]);
+    expect(assemble(assembler, assistantDelta("B2", "tool-b"))).toEqual([]);
+
+    advance(200);
+    const events = assemble(assembler, { kind: "turn.boundary", status: "completed" });
+    const deltas = events.filter(
+      (event) => event.type === "item/agentMessage/delta",
+    );
+    expect(deltas.map((event) => event.delta)).toEqual(["A2", "B2"]);
+    expect(new Set(deltas.map((event) => event.itemId)).size).toBe(2);
+  });
+
+  it("keeps assistant and reasoning channels independent", () => {
+    const { assembler, advance } = createBatchingAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    assemble(assembler, assistantDelta("think? no."));
+    assemble(assembler, {
+      kind: "message.delta",
+      channel: "reasoning",
+      streamKey: "reasoning",
+      text: "hm",
+    });
+    advance(10);
+    expect(assemble(assembler, assistantDelta(" more text"))).toEqual([]);
+    expect(
+      assemble(assembler, {
+        kind: "message.delta",
+        channel: "reasoning",
+        streamKey: "reasoning",
+        text: "mm",
+      }),
+    ).toEqual([]);
+
+    advance(200);
+    const events = assemble(assembler, { kind: "turn.boundary", status: "completed" });
+    expect(events.map((event) => event.type)).toEqual([
+      "item/agentMessage/delta",
+      "item/reasoning/textDelta",
+      "turn/completed",
+    ]);
+  });
+
+  it("coalesces command output deltas and flushes before the close", () => {
+    const { assembler, advance } = createBatchingAssembler();
+    assemble(assembler, { kind: "turn.open" }, bashOpen("cmd-1"));
+    const first = assemble(assembler, {
+      kind: "item.outputDelta",
+      key: { providerItemId: "cmd-1" },
+      channel: "command",
+      text: "line 1\n",
+    });
+    expect(first).toEqual([
+      expect.objectContaining({
+        type: "item/commandExecution/outputDelta",
+        delta: "line 1\n",
+      }),
+    ]);
+    advance(10);
+    expect(
+      assemble(assembler, {
+        kind: "item.outputDelta",
+        key: { providerItemId: "cmd-1" },
+        channel: "command",
+        text: "line 2\n",
+      }),
+    ).toEqual([]);
+
+    const events = assemble(assembler, {
+      kind: "item.close",
+      key: { providerItemId: "cmd-1" },
+      status: "completed",
+      exitCode: 0,
+      aggregatedOutput: "line 1\nline 2\n",
+      item: { type: "command", command: "npm test", cwd: "/repo" },
+    });
+    expect(events.map((event) => event.type)).toEqual([
+      "item/commandExecution/outputDelta",
+      "item/completed",
+    ]);
+    expect(events[0]).toMatchObject({ delta: "line 2\n" });
+    expect(events[1]).toMatchObject({
+      item: expect.objectContaining({ aggregatedOutput: "line 1\nline 2\n" }),
+    });
+  });
+
+  it("coalesces snapshot-diffed output and never absorbs a reset", () => {
+    const { assembler, advance } = createBatchingAssembler();
+    assemble(assembler, { kind: "turn.open" }, bashOpen("cmd-1"));
+    const key = { providerItemId: "cmd-1" };
+    const snapshot = (text: string): ThreadDelta => ({
+      kind: "command.outputSnapshot",
+      key,
+      text,
+    });
+
+    expect(assemble(assembler, snapshot("a"))).toEqual([
+      expect.objectContaining({ delta: "a" }),
+    ]);
+    advance(10);
+    expect(assemble(assembler, snapshot("ab"))).toEqual([]);
+    advance(10);
+    expect(assemble(assembler, snapshot("abc"))).toEqual([]);
+
+    // The snapshot restarted: the buffered suffix flushes first, then the
+    // reset delta emits unabsorbed — a reset can never ride a concatenation.
+    advance(10);
+    const events = assemble(assembler, snapshot("x"));
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "item/commandExecution/outputDelta",
+        delta: "bc",
+      }),
+      expect.objectContaining({
+        type: "item/commandExecution/outputDelta",
+        delta: "x",
+        reset: true,
+      }),
+    ]);
+  });
+
+  it("session.reset flushes buffered text instead of dropping it", () => {
+    const { assembler, advance } = createBatchingAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    assemble(assembler, assistantDelta("kept"));
+    advance(10);
+    expect(assemble(assembler, assistantDelta(" tail"))).toEqual([]);
+
+    // Unlike suppressed progress (superseded by the terminal snapshot),
+    // dropped text would be lost for good; the buffered event was fully
+    // assembled against the old session's ids and flushes ahead of the reset.
+    const events = assemble(assembler, { kind: "session.reset" });
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "item/agentMessage/delta",
+        delta: " tail",
+      }),
+    ]);
+  });
+
+  it("session.ended flushes buffered text before settlement", () => {
+    const { assembler, advance } = createBatchingAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    assemble(assembler, assistantDelta("partial"));
+    advance(10);
+    expect(assemble(assembler, assistantDelta(" answer"))).toEqual([]);
+
+    const events = assemble(assembler, {
+      kind: "session.ended",
+      reason: "interrupted",
+    });
+    expect(events.map((event) => event.type)).toEqual([
+      "item/agentMessage/delta",
+      "turn/completed",
+    ]);
+    expect(events[0]).toMatchObject({ delta: " answer" });
+  });
+
+  it("coalesces item-keyed text deltas (codex family) per channel", () => {
+    const { assembler, advance } = createBatchingAssembler();
+    assemble(assembler, { kind: "turn.open", providerTurnId: "turn-1" });
+    const textDelta = (channel: "agentMessage" | "reasoningText", text: string): ThreadDelta => ({
+      kind: "item.textDelta",
+      key: { providerItemId: `item-${channel}` },
+      channel,
+      text,
+      providerTurnId: "turn-1",
+    });
+
+    const first = assemble(assembler, textDelta("agentMessage", "a1"));
+    expect(first.map((event) => event.type)).toEqual([
+      "item/started",
+      "item/agentMessage/delta",
+    ]);
+    assemble(assembler, textDelta("reasoningText", "r1"));
+    advance(10);
+    expect(assemble(assembler, textDelta("agentMessage", "a2"))).toEqual([]);
+    expect(assemble(assembler, textDelta("reasoningText", "r2"))).toEqual([]);
+
+    advance(200);
+    const events = assemble(assembler, {
+      kind: "turn.boundary",
+      status: "completed",
+      providerTurnId: "turn-1",
+    });
+    expect(events.map((event) => event.type)).toEqual([
+      "item/agentMessage/delta",
+      "item/reasoning/textDelta",
+      "turn/completed",
+    ]);
   });
 });

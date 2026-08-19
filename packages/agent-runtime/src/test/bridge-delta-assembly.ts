@@ -35,7 +35,9 @@ export interface BridgeDeltaEventCollector {
 export function createBridgeDeltaEventCollector(
   providerId = "pi",
 ): BridgeDeltaEventCollector {
-  const assembler = createDeltaAssembler({ providerId });
+  // Bridge equivalence/conformance/calibration suites pin per-delta
+  // translation fidelity, so coalescing is explicitly disabled here.
+  const assembler = createDeltaAssembler({ providerId, textDeltaFlushMs: 0 });
   return {
     assembler,
     assembleMessage(message) {

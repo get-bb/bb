@@ -8,8 +8,11 @@
  * centrally), correlates accepted input with the queue-until-turn-opens and
  * claim-if-idle terminal rules, synthesizes `item/started` for delta-first
  * streams, pairs item opens with closes (echoing started fields), diffs
- * cumulative command-output snapshots, accumulates token usage, and settles
- * turns and items on session end.
+ * cumulative command-output snapshots, accumulates token usage, settles
+ * turns and items on session end, and coalesces streamed-text events per
+ * flush window (`textDeltaFlushMs`, the same trailing-edge no-timer
+ * discipline as the progress throttle) so chatty providers stop producing
+ * one timeline event per token.
  *
  * Turn-opening rule: only `turn.open`, a claiming `turn.boundary`, and
  * accepted-input lifecycle settlement (`provider.error`/`session.ended` with
@@ -123,6 +126,55 @@ interface PendingProgressState {
   turnScoped: boolean;
 }
 
+/**
+ * The streamed-text event family the assembler coalesces: consecutive events
+ * for one stream (event type + item id) concatenate into a single event per
+ * flush window. Everything else is an ordering barrier.
+ */
+type TextDeltaThreadEvent = Extract<
+  ThreadEvent,
+  {
+    type:
+      | "item/agentMessage/delta"
+      | "item/reasoning/textDelta"
+      | "item/reasoning/summaryTextDelta"
+      | "item/plan/delta"
+      | "item/commandExecution/outputDelta"
+      | "item/fileChange/outputDelta";
+  }
+>;
+
+function asTextDeltaEvent(event: ThreadEvent): TextDeltaThreadEvent | undefined {
+  switch (event.type) {
+    case "item/agentMessage/delta":
+    case "item/reasoning/textDelta":
+    case "item/reasoning/summaryTextDelta":
+    case "item/plan/delta":
+    case "item/commandExecution/outputDelta":
+    case "item/fileChange/outputDelta":
+      return event;
+    default:
+      return undefined;
+  }
+}
+
+/** A coalesced run of streamed-text deltas awaiting its trailing-edge flush. */
+interface PendingTextState {
+  /** The first suppressed event; the flush re-emits it with the joined text. */
+  event: TextDeltaThreadEvent;
+  text: string;
+}
+
+/**
+ * What delta handlers emit into. `assemble()` wraps the returned event array
+ * in a sink that applies the text-delta coalescing policy: streamed-text
+ * events may be buffered per stream, and every other event flushes the
+ * thread's buffers first (the ordering barrier).
+ */
+interface EventSink {
+  push(...newEvents: ThreadEvent[]): void;
+}
+
 interface OpenStreamState {
   bbItemId: string;
   parentToolCallId: string | undefined;
@@ -162,6 +214,14 @@ interface ThreadAssemblyState {
    */
   progressLastEmitByKey: Map<string, number>;
   pendingProgressByKey: Map<string, PendingProgressState>;
+  /**
+   * Text-delta coalescing (one emitted event per stream per flush window):
+   * last emission time per stream — absent means a fresh stream, whose first
+   * delta emits immediately so time-to-first-token is unchanged — and the
+   * coalesced text awaiting its trailing-edge flush.
+   */
+  textLastEmitByStream: Map<string, number>;
+  pendingTextByStream: Map<string, PendingTextState>;
 }
 
 export interface CreateDeltaAssemblerOptions {
@@ -180,6 +240,19 @@ export interface CreateDeltaAssemblerOptions {
    * now the central policy for every provider's progress stream.
    */
   progressThrottleMs?: number;
+  /**
+   * Coalescing window for streamed-text events (assistant/reasoning/plan
+   * deltas and command/fileChange output deltas) per stream. Within the
+   * window consecutive deltas concatenate into one emitted event of the same
+   * type; the buffer flushes trailing-edge with no timers — on the thread's
+   * next traffic once the window elapsed, on stream close, and before ANY
+   * non-batchable event for the thread (the ordering barrier: coalescing
+   * never reorders text relative to item opens/closes, turn events, errors,
+   * or other streams' flushes). The first delta of a fresh stream always
+   * emits immediately, keeping time-to-first-token unchanged. 100ms default;
+   * 0 disables batching (one event per delta).
+   */
+  textDeltaFlushMs?: number;
   /** Clock override for tests. */
   now?: () => number;
 }
@@ -244,6 +317,7 @@ export function createDeltaAssembler(
   const entropyPrefix =
     options.entropyPrefix ?? `da${randomUUID().slice(0, 8)}`;
   const progressThrottleMs = options.progressThrottleMs ?? 500;
+  const textDeltaFlushMs = options.textDeltaFlushMs ?? 100;
   const now = options.now ?? Date.now;
   // Monotonic per-assembler counters: ids stay unique across every thread,
   // turn, and session this assembler ever sees.
@@ -290,6 +364,8 @@ export function createDeltaAssembler(
       },
       progressLastEmitByKey: new Map(),
       pendingProgressByKey: new Map(),
+      textLastEmitByStream: new Map(),
+      pendingTextByStream: new Map(),
     };
     states.set(threadId, created);
     pruneIdleStates();
@@ -309,7 +385,8 @@ export function createDeltaAssembler(
         if (
           state.currentTurnId !== undefined ||
           state.openItemsByKey.size > 0 ||
-          state.pendingAccepted.length > 0
+          state.pendingAccepted.length > 0 ||
+          state.pendingTextByStream.size > 0
         ) {
           continue;
         }
@@ -369,7 +446,7 @@ export function createDeltaAssembler(
    */
   function flushElapsedPendingProgress(
     state: ThreadAssemblyState,
-    events: ThreadEvent[],
+    events: EventSink,
     skipKeys: ReadonlySet<string>,
   ): void {
     if (state.pendingProgressByKey.size === 0) {
@@ -390,6 +467,93 @@ export function createDeltaAssembler(
       state.progressLastEmitByKey.set(key, nowMs);
       events.push(pending.event);
     }
+  }
+
+  /**
+   * Flushes EVERY coalesced text buffer for the thread, in arrival order.
+   * All-or-nothing on purpose: any flush — like any non-batchable emission —
+   * is an ordering barrier, so buffered text can never be overtaken by (or
+   * overtake) later traffic.
+   */
+  function flushPendingText(
+    state: ThreadAssemblyState,
+    out: ThreadEvent[],
+  ): void {
+    if (state.pendingTextByStream.size === 0) {
+      return;
+    }
+    const nowMs = now();
+    for (const [streamKey, pending] of state.pendingTextByStream) {
+      out.push({ ...pending.event, delta: pending.text });
+      state.textLastEmitByStream.set(streamKey, nowMs);
+    }
+    state.pendingTextByStream.clear();
+    trimOldestEntries(state.textLastEmitByStream, MAX_ID_MAP_ENTRIES);
+  }
+
+  /**
+   * Trailing-edge text flush on the thread's next traffic: one buffer whose
+   * window elapsed flushes ALL buffers (a flush is itself a barrier).
+   */
+  function flushElapsedPendingText(
+    state: ThreadAssemblyState,
+    out: ThreadEvent[],
+  ): void {
+    const nowMs = now();
+    for (const streamKey of state.pendingTextByStream.keys()) {
+      const last = state.textLastEmitByStream.get(streamKey);
+      if (last === undefined || nowMs - last >= textDeltaFlushMs) {
+        flushPendingText(state, out);
+        return;
+      }
+    }
+  }
+
+  /** The text-delta coalescing policy for one batchable event. */
+  function bufferTextDelta(
+    state: ThreadAssemblyState,
+    event: TextDeltaThreadEvent,
+    out: ThreadEvent[],
+  ): void {
+    const streamKey = `${event.type}${SEP}${event.itemId}`;
+    // A reset can never be absorbed into a concatenation: flush what came
+    // before it, then emit the reset itself immediately.
+    if (
+      event.type === "item/commandExecution/outputDelta" &&
+      event.reset === true
+    ) {
+      flushPendingText(state, out);
+      out.push(event);
+      state.textLastEmitByStream.set(streamKey, now());
+      trimOldestEntries(state.textLastEmitByStream, MAX_ID_MAP_ENTRIES);
+      return;
+    }
+    const last = state.textLastEmitByStream.get(streamKey);
+    if (last === undefined) {
+      // First delta of a fresh stream: emit immediately (behind any pending
+      // older text — the barrier) so streaming starts with no added latency.
+      flushPendingText(state, out);
+      out.push(event);
+      state.textLastEmitByStream.set(streamKey, now());
+      trimOldestEntries(state.textLastEmitByStream, MAX_ID_MAP_ENTRIES);
+      return;
+    }
+    const pending = state.pendingTextByStream.get(streamKey);
+    if (now() - last >= textDeltaFlushMs) {
+      // Window elapsed: this delta rides out now, joined with the buffer.
+      if (pending === undefined) {
+        state.pendingTextByStream.set(streamKey, { event, text: event.delta });
+      } else {
+        pending.text += event.delta;
+      }
+      flushPendingText(state, out);
+      return;
+    }
+    if (pending === undefined) {
+      state.pendingTextByStream.set(streamKey, { event, text: event.delta });
+      return;
+    }
+    pending.text += event.delta;
   }
 
   function rememberSettledKey(state: ThreadAssemblyState, key: string): void {
@@ -431,7 +595,7 @@ export function createDeltaAssembler(
 
   function ensureTurnOpen(
     state: ThreadAssemblyState,
-    events: ThreadEvent[],
+    events: EventSink,
   ): string {
     if (state.currentTurnId !== undefined) {
       return state.currentTurnId;
@@ -866,7 +1030,7 @@ export function createDeltaAssembler(
     state: ThreadAssemblyState,
     fallback: DeltaNoTurnFallback | undefined,
     parentRef: string | undefined,
-    events: ThreadEvent[],
+    events: EventSink,
   ): void {
     if (fallback === undefined) {
       return;
@@ -899,7 +1063,7 @@ export function createDeltaAssembler(
   function handleDelta(
     state: ThreadAssemblyState,
     delta: ThreadDelta,
-    events: ThreadEvent[],
+    events: EventSink,
   ): void {
     switch (delta.kind) {
       case "input.accepted": {
@@ -1863,34 +2027,78 @@ export function createDeltaAssembler(
   return {
     assemble(args: AssembleDeltasArgs): ThreadEvent[] {
       const events: ThreadEvent[] = [];
-      // Trailing-edge progress: suppressed snapshots whose throttle window has
-      // elapsed land ahead of this batch (existing state only — flushing must
-      // not create thread state). A batch that OPENS with session.reset skips
-      // the flush: everything suppressed belongs to the session being
-      // replaced, and the reset is about to drop it with the rest of the
-      // thread's assembly state.
+      // The coalescing sink every handler emits through: a streamed-text
+      // event may buffer per stream; anything else flushes the thread's text
+      // buffers first — the ordering barrier that keeps coalescing from ever
+      // reordering text relative to item opens/closes, turn events, errors,
+      // or other streams' flushes. Flushing never creates thread state.
+      const sink: EventSink = {
+        push: (...newEvents: ThreadEvent[]): void => {
+          for (const event of newEvents) {
+            const textDelta =
+              textDeltaFlushMs > 0 ? asTextDeltaEvent(event) : undefined;
+            const state = states.get(args.threadId);
+            if (textDelta !== undefined && state !== undefined) {
+              bufferTextDelta(state, textDelta, events);
+              continue;
+            }
+            if (state !== undefined) {
+              flushPendingText(state, events);
+            }
+            events.push(event);
+          }
+        },
+      };
+      // Trailing-edge flushes: coalesced text and suppressed progress
+      // snapshots whose windows have elapsed land ahead of this batch
+      // (existing state only — flushing must not create thread state). A
+      // batch that OPENS with session.reset skips the progress flush:
+      // everything suppressed belongs to the session being replaced, and the
+      // reset is about to drop it (its text buffers still flush below —
+      // their events were fully assembled against the old session's ids).
       const existing =
         args.deltas[0]?.kind === "session.reset"
           ? undefined
           : states.get(args.threadId);
       if (existing !== undefined) {
+        flushElapsedPendingText(existing, events);
         const progressKeysInBatch = new Set<string>();
         for (const delta of args.deltas) {
           if (delta.kind === "item.progress") {
             progressKeysInBatch.add(itemKeyString(delta.key));
           }
         }
-        flushElapsedPendingProgress(existing, events, progressKeysInBatch);
+        flushElapsedPendingProgress(existing, sink, progressKeysInBatch);
       }
       for (const delta of args.deltas) {
         if (delta.kind === "session.reset") {
           // Provider-native id-space boundary: a fresh provider session may
           // reuse native turn/item ids, so the whole thread state (maps,
-          // settled sets, open items and streams) starts over.
+          // settled sets, open items and streams) starts over. Coalesced
+          // text FLUSHES first (unlike suppressed progress, which the
+          // terminal event supersedes, dropped text would be lost for good;
+          // the buffered events carry the old session's still-valid ids).
+          const state = states.get(args.threadId);
+          if (state !== undefined) {
+            flushPendingText(state, events);
+          }
           states.delete(args.threadId);
           continue;
         }
-        handleDelta(stateFor(args.threadId), delta, events);
+        if (
+          delta.kind === "message.close" ||
+          delta.kind === "item.close" ||
+          delta.kind === "session.ended"
+        ) {
+          // A settling stream (or session) flushes its coalesced text even
+          // when the delta itself emits nothing (detached release, deduped
+          // provider retry, session end on an idle thread).
+          const state = states.get(args.threadId);
+          if (state !== undefined) {
+            flushPendingText(state, events);
+          }
+        }
+        handleDelta(stateFor(args.threadId), delta, sink);
       }
       return events;
     },

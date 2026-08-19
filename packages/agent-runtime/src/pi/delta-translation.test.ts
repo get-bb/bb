@@ -62,6 +62,8 @@ function createHarness(options?: {
   const assembler = createDeltaAssembler({
     providerId: "pi",
     entropyPrefix: ENTROPY,
+    // Equivalence suites pin per-delta translation fidelity: no coalescing.
+    textDeltaFlushMs: 0,
   });
   return {
     assembler,

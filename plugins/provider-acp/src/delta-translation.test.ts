@@ -44,6 +44,8 @@ function createHarness(): AcpEquivalenceHarness {
   const assembler = createDeltaAssembler({
     providerId: "acp",
     entropyPrefix: ENTROPY,
+    // Equivalence suites pin per-delta translation fidelity: no coalescing.
+    textDeltaFlushMs: 0,
   });
   return {
     assembler,

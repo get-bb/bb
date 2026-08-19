@@ -76,6 +76,8 @@ export function createClaudeDeltaHarness(): ClaudeDeltaHarness {
   const assembler = createDeltaAssembler({
     providerId: "claude-code",
     entropyPrefix: CLAUDE_TEST_ENTROPY,
+    // Equivalence suites pin per-delta translation fidelity: no coalescing.
+    textDeltaFlushMs: 0,
   });
   return {
     assembler,
