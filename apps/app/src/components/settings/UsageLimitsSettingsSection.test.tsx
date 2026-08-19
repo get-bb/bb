@@ -2,7 +2,7 @@
 
 import type { ComponentProps } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Host } from "@bb/domain";
+import type { Host, ProviderInfo } from "@bb/domain";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UsageLimitsSettingsSectionContent } from "./UsageLimitsSettingsSection";
@@ -24,6 +24,25 @@ const remoteHost: Host = {
   id: "host-remote",
   name: "Build machine",
 };
+
+function provider(id: string, displayName: string): ProviderInfo {
+  return {
+    id,
+    displayName,
+    logoUrl: null,
+    available: true,
+    capabilities: {
+      supportsThreadArchive: false,
+      supportsThreadRename: false,
+      supportsServiceTier: false,
+      supportsNativeUserQuestion: false,
+      supportsFork: false,
+      supportsSessionRewind: false,
+      permissionModes: ["full"],
+    },
+    composerActions: [],
+  };
+}
 
 afterEach(cleanup);
 
@@ -99,6 +118,30 @@ describe("UsageLimitsSettingsSectionContent", () => {
     const heading = screen.getByRole("heading", { name: "Codex" });
     const status = screen.getByText(/Run `codex` to sign in/u);
     expect(heading.parentElement?.contains(status)).toBe(true);
+  });
+
+  it("renders usage reported by a plugin provider", () => {
+    renderContent({
+      usage: {
+        "echo-agent": {
+          status: "ok",
+          accountEmail: null,
+          planLabel: "Team",
+          windows: [
+            { label: "Monthly messages", usedPercent: 25, resetsAt: null },
+          ],
+        },
+      },
+      providers: [provider("echo-agent", "Echo Agent")],
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      onRefresh: vi.fn(),
+    });
+
+    expect(screen.getByRole("heading", { name: "Echo Agent" })).toBeDefined();
+    expect(screen.getByText("Monthly messages")).toBeDefined();
+    expect(screen.getByText("25% used")).toBeDefined();
   });
 
   it("selects which connected machine supplies usage", () => {

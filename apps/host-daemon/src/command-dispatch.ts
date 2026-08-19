@@ -518,20 +518,20 @@ const commandHandlers: CommandHandlerMap = {
     return {};
   },
   "thread.unarchive": async (command, options) => {
-    const runtime =
-      await options.runtimeManager.ensureProviderMaintenanceRuntime({
-        dataDir: options.dataDir,
-      });
     const bridgeLaunch = await resolveRuntimeBridgeLaunch(
       command.bridgeLaunch,
       options,
     );
-    await runtime.unarchiveThread({
-      threadId: command.threadId,
-      providerId: command.providerId,
-      providerThreadId: command.providerThreadId,
-      bridgeLaunch,
-    });
+    await options.runtimeManager.withProviderMaintenanceRuntime(
+      { dataDir: options.dataDir },
+      (runtime) =>
+        runtime.unarchiveThread({
+          threadId: command.threadId,
+          providerId: command.providerId,
+          providerThreadId: command.providerThreadId,
+          bridgeLaunch,
+        }),
+    );
     return {};
   },
   "interactive.resolve": resolveInteractiveRequest,

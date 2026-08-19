@@ -12,6 +12,7 @@ import { resolveAcpLaunchSpecForProviderId } from "./acp-launch-spec.js";
 import { listSystemProviderInfos } from "./execution-options.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import { resolveBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
+import { mapProviderMaintenanceRequests } from "./provider-maintenance-concurrency.js";
 
 function unknownProviderState(
   provider: ProviderInfo,
@@ -98,14 +99,12 @@ export async function getProviderStates(
       : (requireEnvironment(deps.db, query.environmentId).path ?? undefined);
   const providers = await listSystemProviderInfos(deps, { hostId });
   return {
-    providers: await Promise.all(
-      providers.map((provider) =>
-        getProviderState(deps, {
-          hostId,
-          provider,
-          ...(cwd === undefined ? {} : { cwd }),
-        }),
-      ),
+    providers: await mapProviderMaintenanceRequests(providers, (provider) =>
+      getProviderState(deps, {
+        hostId,
+        provider,
+        ...(cwd === undefined ? {} : { cwd }),
+      }),
     ),
   };
 }

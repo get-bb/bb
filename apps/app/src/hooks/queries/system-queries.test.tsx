@@ -25,6 +25,7 @@ import {
   useHostProviderCliStatus,
   useSystemExecutionOptions,
   useSystemProviderInfo,
+  useSystemProviders,
   useSystemProviderStates,
   useSystemUsageLimits,
 } from "./system-queries";
@@ -51,6 +52,7 @@ const EXECUTION_OPTIONS_RESPONSE: SystemExecutionOptionsResponse = {
 };
 
 const PROVIDER_CLI_STATUS_RESPONSE = {} as ProviderCliStatusResponse;
+const PROVIDERS: ProviderInfo[] = [];
 
 function providerStates(providerId: string): SystemProviderStatesResponse {
   return {
@@ -172,6 +174,21 @@ describe("useSystemProviderInfo", () => {
       signal: expect.any(AbortSignal),
     });
     expect(sdk.system.executionOptions).not.toHaveBeenCalled();
+  });
+});
+
+describe("useSystemProviders", () => {
+  it("routes provider metadata through the selected host", async () => {
+    vi.mocked(sdk.providers.list).mockResolvedValue(PROVIDERS);
+    const { wrapper } = createQueryClientTestHarness();
+
+    renderHook(() => useSystemProviders({ hostId: "host-a" }), { wrapper });
+
+    await waitFor(() => {
+      expect(sdk.providers.list).toHaveBeenCalledWith(
+        expect.objectContaining({ hostId: "host-a" }),
+      );
+    });
   });
 });
 

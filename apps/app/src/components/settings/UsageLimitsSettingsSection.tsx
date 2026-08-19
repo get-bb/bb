@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import type { Host } from "@bb/domain";
+import type { Host, ProviderInfo } from "@bb/domain";
 import type {
   ProviderUsage,
   ProviderUsageResponse,
@@ -22,6 +22,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
   useSystemConfig,
+  useSystemProviders,
   useSystemUsageLimits,
 } from "@/hooks/queries/system-queries";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
@@ -33,33 +34,49 @@ import { cn } from "@bb/shared-ui/lib/utils";
 
 interface ProviderConfig {
   name: string;
-  providerId: "codex" | "claude-code" | "acp-cursor";
+  providerId: string;
   signInHint: string;
   expiredHint: string;
 }
 
-const PROVIDERS: ProviderConfig[] = [
-  {
+const FIRST_PARTY_PROVIDER_CONFIGS: Readonly<
+  Partial<Record<string, Omit<ProviderConfig, "providerId">>>
+> = {
+  codex: {
     name: "Codex",
-    providerId: "codex",
     signInHint: "Run `codex` to sign in and see your usage.",
     expiredHint: "Your Codex session expired. Run `codex`, then reload usage.",
   },
-  {
+  "claude-code": {
     name: "Claude Code",
-    providerId: "claude-code",
     signInHint: "Run `claude` to sign in and see your usage.",
     expiredHint:
       "Your Claude session expired. Run `claude`, then reload usage.",
   },
-  {
+  "acp-cursor": {
     name: "Cursor",
-    providerId: "acp-cursor",
     signInHint: "Run `cursor-agent login` to sign in and see your usage.",
     expiredHint:
       "Your Cursor session expired. Run `cursor-agent login`, then reload usage.",
   },
-];
+};
+
+function providerConfig(
+  providerId: string,
+  displayName: string | undefined,
+): ProviderConfig {
+  const firstParty = FIRST_PARTY_PROVIDER_CONFIGS[providerId];
+  const name = displayName ?? firstParty?.name ?? providerId;
+  return {
+    providerId,
+    name,
+    signInHint:
+      firstParty?.signInHint ?? `Sign in to ${name}, then reload usage.`,
+    expiredHint:
+      firstParty?.expiredHint ??
+      `Your ${name} session expired. Sign in again, then reload usage.`,
+  };
+}
 
 function barColorClass(usedPercent: number): string {
   if (usedPercent >= 95) {
@@ -162,6 +179,7 @@ export interface UsageLimitsSettingsSectionContentProps {
   isError: boolean;
   isFetching: boolean;
   onRefresh: () => void;
+  providers?: readonly ProviderInfo[];
   hosts?: readonly Host[];
   selectedHostId?: string | null;
   onSelectHost?: (hostId: string) => void;
@@ -350,14 +368,30 @@ export function UsageLimitsSettingsSectionContent({
   isError,
   isFetching,
   onRefresh,
+  providers = [],
   hosts = [],
   selectedHostId = null,
   onSelectHost,
 }: UsageLimitsSettingsSectionContentProps) {
   const showMachinePicker = hosts.length > 1 && onSelectHost !== undefined;
-  const visibleProviders = PROVIDERS.filter(
-    (config) => usage[config.providerId]?.status !== "not_installed",
+  const providerById = new Map(
+    providers.map((provider) => [provider.id, provider] as const),
   );
+  const reportedProviderIds = Object.keys(usage);
+  const reportedProviderIdSet = new Set(reportedProviderIds);
+  const orderedProviderIds = [
+    ...providers
+      .filter((provider) => reportedProviderIdSet.has(provider.id))
+      .map((provider) => provider.id),
+    ...reportedProviderIds.filter(
+      (providerId) => !providerById.has(providerId),
+    ),
+  ];
+  const visibleProviders = orderedProviderIds
+    .filter((providerId) => usage[providerId]?.status !== "not_installed")
+    .map((providerId) =>
+      providerConfig(providerId, providerById.get(providerId)?.displayName),
+    );
   return (
     <SettingsSection
       title="Usage limits"
@@ -426,6 +460,10 @@ export function UsageLimitsSettingsSection() {
     hostId: usageHostId,
     enabled: systemConfigQuery.data !== undefined,
   });
+  const providersQuery = useSystemProviders({
+    hostId: usageHostId,
+    enabled: systemConfigQuery.data !== undefined,
+  });
 
   return (
     <UsageLimitsSettingsSectionContent
@@ -436,6 +474,7 @@ export function UsageLimitsSettingsSection() {
       onRefresh={() => {
         void usageQuery.refetch();
       }}
+      providers={providersQuery.data ?? []}
       hosts={hosts}
       selectedHostId={selectedHost?.id ?? null}
       onSelectHost={setSelectedHostId}

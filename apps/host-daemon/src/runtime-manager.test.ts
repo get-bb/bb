@@ -1328,6 +1328,40 @@ describe("RuntimeManager", () => {
     );
   });
 
+  it("shuts down provider maintenance workers after the request becomes idle", async () => {
+    vi.useFakeTimers();
+    try {
+      const dataDir = await makeTempDir("bb-provider-maintenance-idle-");
+      const runtime = createFakeRuntime();
+      const request = createDeferred<void>();
+      const requestStarted = createDeferred<void>();
+      const manager = new RuntimeManager({
+        createRuntime: () => runtime,
+        providerMaintenanceIdleTimeoutMs: 100,
+      });
+
+      const activeRequest = manager.withProviderMaintenanceRuntime(
+        { dataDir },
+        async () => {
+          requestStarted.resolve();
+          return request.promise;
+        },
+      );
+      await requestStarted.promise;
+      await vi.advanceTimersByTimeAsync(200);
+      expect(runtime.shutdown).not.toHaveBeenCalled();
+
+      request.resolve();
+      await activeRequest;
+      await vi.advanceTimersByTimeAsync(99);
+      expect(runtime.shutdown).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(runtime.shutdown).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not let stale provider maintenance creation replace a newer runtime", async () => {
     const dataDir = await makeTempDir("bb-provider-maintenance-race-");
     const staleRuntime = createFakeRuntime();

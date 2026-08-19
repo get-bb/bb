@@ -13,6 +13,7 @@ import {
 import { resolveAcpLaunchSpecForProviderId } from "./acp-launch-spec.js";
 import { listSystemProviderInfos } from "./execution-options.js";
 import { resolveBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
+import { mapProviderMaintenanceRequests } from "./provider-maintenance-concurrency.js";
 
 /**
  * Reads live subscription usage from every provider bridge that implements
@@ -26,8 +27,9 @@ export async function getProviderUsageLimits(
   const hostId = query.hostId ?? requirePrimaryHostId(deps);
   assertUsableHostId(deps, { hostId });
   const providers = await listSystemProviderInfos(deps, { hostId });
-  const entries = await Promise.all(
-    providers.map(async (provider): Promise<[string, ProviderUsage] | null> => {
+  const entries = await mapProviderMaintenanceRequests(
+    providers,
+    async (provider): Promise<[string, ProviderUsage] | null> => {
       const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, provider.id);
       if (bridgeLaunch === null) return null;
       const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(
@@ -57,7 +59,7 @@ export async function getProviderUsageLimits(
           },
         ];
       }
-    }),
+    },
   );
   return Object.fromEntries(
     entries.filter((entry): entry is [string, ProviderUsage] => entry !== null),
