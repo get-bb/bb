@@ -226,6 +226,9 @@
       "outputs": []
     },
     "@bb/app#dev": {
+      "dependsOn": [
+        "@bb/templates#generate:templates"
+      ],
       "cache": false,
       "persistent": true,
       "passThroughEnv": [
@@ -233,6 +236,9 @@
       ]
     },
     "storybook": {
+      "dependsOn": [
+        "@bb/templates#generate:templates"
+      ],
       "cache": false,
       "persistent": true,
       "passThroughEnv": [
@@ -240,6 +246,10 @@
       ]
     },
     "@bb/host-daemon#dev": {
+      "dependsOn": [
+        "@bb/templates#generate:templates",
+        "@bb/plugin-build#generate"
+      ],
       "cache": false,
       "persistent": true,
       "passThroughEnv": [
@@ -252,6 +262,8 @@
       // `@get-bb/plugin-sdk/provider-bridge` entry from the SDK dist, so a
       // clean worktree must build that runtime before the server starts.
       "dependsOn": [
+        "@bb/templates#generate:templates",
+        "@bb/plugin-build#generate",
         "@get-bb/plugin-sdk#build:runtime"
       ],
       "cache": false,
@@ -307,9 +319,68 @@
     // and tsc both use the `source` export condition — hash the sources of
     // dependency packages. Without it, a change in e.g. packages/domain
     // would cache-hit @bb/server#test/#typecheck and skip them stale.
+    //
+    // It also orders the cheap source generators: their outputs are
+    // gitignored `src/generated/*` modules that every source-resolving task
+    // may import (the prompt templates reach the browser app, the server, the
+    // CLI and the daemon; the plugin theme/runtime manifest reach every
+    // @bb/plugin-build consumer). One edge here covers all of them.
     "topo": {
       "dependsOn": [
-        "^topo"
+        "^topo",
+        "@bb/templates#generate:templates",
+        "@bb/plugin-build#generate"
+      ]
+    },
+    // ---- Source generators --------------------------------------------------
+    // Generated modules are never committed (see .gitignore). Each generator
+    // is a turbo task with explicit inputs/outputs, so staleness is
+    // structurally impossible and the files can never merge-conflict.
+    "@bb/templates#generate:templates": {
+      "dependsOn": [],
+      "inputs": [
+        "scripts/generate-templates.mjs",
+        "scripts/write-generated.mjs",
+        "src/templates/**"
+      ],
+      "outputs": [
+        "src/generated/templates.generated.ts"
+      ]
+    },
+    // Embeds the plugin SDK's bundled .d.ts and the registry starter items
+    // for `bb plugin new`. Reads bundled-types/ by file path — a task edge,
+    // not a package edge, which would create a cycle through @bb/sdk.
+    "@bb/templates#generate:plugin-scaffold": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types"
+      ],
+      "inputs": [
+        "scripts/generate-plugin-scaffold.mjs",
+        "scripts/write-generated.mjs",
+        "$TURBO_ROOT$/apps/app/package.json",
+        "$TURBO_ROOT$/packages/plugin-registry/r/**",
+        "$TURBO_ROOT$/packages/plugin-sdk/bundled-types/**"
+      ],
+      "outputs": [
+        "src/generated/plugin-sdk-dts.generated.ts",
+        "src/generated/plugin-starter-files.generated.ts"
+      ]
+    },
+    // Plugin theme CSS (from the app's theme.css + tw-animate-css) and the
+    // shared-runtime export manifest (introspected from installed packages).
+    "@bb/plugin-build#generate": {
+      "dependsOn": [],
+      "inputs": [
+        "scripts/generate-plugin-theme.mjs",
+        "scripts/generate-runtime-export-manifest.mjs",
+        "$TURBO_ROOT$/apps/app/package.json",
+        "$TURBO_ROOT$/apps/app/src/components/ui/theme.css",
+        "$TURBO_ROOT$/packages/plugin-sdk/src/**",
+        "$TURBO_ROOT$/packages/shared-ui/src/**",
+        "$TURBO_ROOT$/pnpm-lock.yaml"
+      ],
+      "outputs": [
+        "src/generated/**"
       ]
     },
     "typecheck": {
@@ -318,16 +389,86 @@
       ]
     },
     "@bb/templates#typecheck": {
-      // Templates embed the plugin SDK's generated declarations by file path.
-      // Keep the check from racing the SDK build without adding a package edge,
-      // which would create a dependency cycle through @bb/sdk.
       "dependsOn": [
-        "@get-bb/plugin-sdk#build",
+        "@bb/templates#generate:plugin-scaffold",
         "topo"
       ]
     },
+    // ---- Consumers of the `bb plugin new` scaffold embed -------------------
+    // apps/cli imports @bb/templates/plugin-scaffold (bb plugin new|types|
+    // migrate); apps/server's plugin-install test does too; the daemon bundles
+    // the CLI entry into host-daemon/dist/bb.
+    "@bb/cli#build": {
+      "dependsOn": [
+        "@bb/templates#generate:plugin-scaffold",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/tsconfig/*.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/scripts/build-node-entry.mjs",
+        "$TURBO_ROOT$/scripts/build-package.mjs",
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/scripts/precompress-app-dist.mjs",
+        "$TURBO_ROOT$/turbo.json"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "@bb/host-daemon#build": {
+      "dependsOn": [
+        "@bb/templates#generate:plugin-scaffold",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/tsconfig/*.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/scripts/build-node-entry.mjs",
+        "$TURBO_ROOT$/scripts/build-package.mjs",
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/scripts/precompress-app-dist.mjs",
+        "$TURBO_ROOT$/turbo.json"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "@bb/cli#typecheck": {
+      "dependsOn": [
+        "@bb/templates#generate:plugin-scaffold",
+        "topo"
+      ]
+    },
+    "@bb/server#typecheck": {
+      "dependsOn": [
+        "@bb/templates#generate:plugin-scaffold",
+        "topo"
+      ]
+    },
+    "@bb/cli#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@bb/templates#generate:plugin-scaffold",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
+    },
+    // Integration tests typecheck without the `source` condition, so
+    // @get-bb/plugin-sdk (reached through apps/server sources) resolves to the
+    // package's published `types`: bundled-types/.
     "@bb/integration-tests#typecheck": {
       "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
       "inputs": [
@@ -351,9 +492,12 @@
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
+    // plugin-scaffold-external packs @get-bb/plugin-sdk (prepack rebuilds its
+    // dist), so the SDK build stays a dependency alongside the embed.
     "@bb/templates#test": {
       "dependsOn": [
         "//#ensure-native-modules",
+        "@bb/templates#generate:plugin-scaffold",
         "@get-bb/plugin-sdk#build",
         "topo"
       ],
@@ -371,6 +515,7 @@
     "@bb/server#test": {
       "dependsOn": [
         "//#ensure-native-modules",
+        "@bb/templates#generate:plugin-scaffold",
         "@get-bb/plugin-sdk#build",
         "topo"
       ],
@@ -488,7 +633,11 @@
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
-    "@get-bb/plugin-sdk#build": {
+    // bundled-types/*.d.ts: the package's published `types` surface, the
+    // in-repo plugins' typecheck surface, and the source of the scaffold
+    // embed. ~20s (rollup-plugin-dts), so only real consumers depend on it.
+    "@get-bb/plugin-sdk#build:types": {
+      "dependsOn": [],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/*/package.json",
@@ -496,8 +645,40 @@
         "$TURBO_ROOT$/packages/plugin-sdk/scripts/**"
       ],
       "outputs": [
-        "bundled-types/**",
+        "bundled-types/**"
+      ]
+    },
+    // `build` = runtime dist + types (prepack runs both outside turbo).
+    "@get-bb/plugin-sdk#build": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/*/package.json",
+        "$TURBO_ROOT$/packages/*/src/**",
+        "$TURBO_ROOT$/packages/plugin-sdk/scripts/**"
+      ],
+      "outputs": [
         "dist/**"
+      ]
+    },
+    "@get-bb/plugin-sdk#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    // Several suites read bundled-types/*.d.ts from disk.
+    "@get-bb/plugin-sdk#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
     "@get-bb/plugin-sdk#build:runtime": {
@@ -511,14 +692,157 @@
         "dist/**"
       ]
     },
-    "@bb/plugin-build#typecheck": {
+    // ---- In-repo plugins typecheck against the SDK's bundled .d.ts ----------
+    // Either through a tsconfig `paths` map or through the workspace symlink's
+    // package `types` field; both land on bundled-types/, a build output.
+    "bb-plugin-cascade#typecheck": {
       "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
         "topo"
-      ],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/apps/app/src/components/ui/theme.css",
-        "$TURBO_ROOT$/pnpm-lock.yaml"
+      ]
+    },
+    "bb-plugin-composer-customization#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-echo-provider#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-replacement-lab-alpha#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-replacement-lab-beta#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-t3sidebar#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-thread-chat-demo#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-ask-user-question#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-automations#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-connect#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-custom-instructions#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-simple-notes#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-github#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-inline-vis#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-keep-awake#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-memory#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-provider-acp#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-provider-claude-code#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-provider-codex#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-provider-pi#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-provider-retry#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-secrets#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-side-chat#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-tasks#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
+      ]
+    },
+    "bb-plugin-workflows#typecheck": {
+      "dependsOn": [
+        "@get-bb/plugin-sdk#build:types",
+        "topo"
       ]
     },
     "@bb/plugin-registry#typecheck": {

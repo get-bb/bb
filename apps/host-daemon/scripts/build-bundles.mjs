@@ -6,7 +6,6 @@ import { bundleTargets } from "./bundle-manifest.mjs";
 import {
   createNativeExternalPatterns,
   externalPackagePatterns,
-  generateTemplatesIfRequested,
 } from "../../../scripts/build-utils.mjs";
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
@@ -14,9 +13,6 @@ const packageRoot = resolve(scriptsDir, "..");
 const workspaceRoot = resolve(packageRoot, "..", "..");
 
 async function main() {
-  await import("../../../packages/plugin-build/scripts/generate-runtime-export-manifest.mjs");
-  await generateTemplatesIfRequested(true);
-
   for (const target of bundleTargets) {
     await mkdir(dirname(target.outfile), { recursive: true });
     await build({

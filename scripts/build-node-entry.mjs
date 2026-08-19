@@ -1,17 +1,13 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  buildNodeEsmEntry,
-  copyDirectory,
-  generateTemplatesIfRequested,
-} from "./build-utils.mjs";
+import { buildNodeEsmEntry, copyDirectory } from "./build-utils.mjs";
 
 const packageRoot = process.cwd();
 const [entryPointArg, outfileArg, ...flags] = process.argv.slice(2);
 
 if (!entryPointArg || !outfileArg) {
   throw new Error(
-    "Usage: node scripts/build-node-entry.mjs <entrypoint> <outfile> [--clean-dist] [--executable] [--templates] [--external <pattern>] [--copy-dir <from> <to>]",
+    "Usage: node scripts/build-node-entry.mjs <entrypoint> <outfile> [--clean-dist] [--executable] [--external <pattern>] [--copy-dir <from> <to>]",
   );
 }
 
@@ -54,8 +50,6 @@ function parseCopyDirectories(args) {
   }
   return copyDirectories;
 }
-
-await generateTemplatesIfRequested(flags.includes("--templates"));
 
 await buildNodeEsmEntry({
   cleanDist: flags.includes("--clean-dist"),

@@ -26,8 +26,12 @@ out
 /apps/desktop/release/
 /apps/desktop/.electron-builder.generated.json
 
-# generated at build time (see @bb/sdk#generate:app-runtime-browser-bundle)
-/packages/sdk/src/app-runtime-browser-bundle.generated.ts
+# Generated at build time by turbo `generate:*` / `build:types` tasks (see
+# turbo.json). Never commit these: they are pure functions of tracked sources
+# and only produce merge conflicts.
+/packages/templates/src/generated/
+/packages/plugin-sdk/bundled-types/
+/packages/plugin-build/src/generated/
 
 # misc
 .DS_Store

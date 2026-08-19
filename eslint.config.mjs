@@ -91,6 +91,10 @@ export default [
       "**/coverage/**",
       "**/routeTree.gen.ts",
       "packages/core/src/generated/**",
+      // Build-time generated modules (gitignored; see turbo.json generators).
+      "packages/templates/src/generated/**",
+      "packages/plugin-build/src/generated/**",
+      "packages/plugin-sdk/bundled-types/**",
     ],
   },
   {

@@ -10,9 +10,12 @@
 // second time. Genuine npm packages remain external imports and resolve from
 // the consumer's own dependencies.
 //
-// The output is committed as bundled-types/*.d.ts (read at scaffold time by
-// @bb/templates via file path — no package edge, to avoid a dependency cycle).
-// Run with --check to fail (in CI/typecheck) when the committed copy is stale.
+// The output, bundled-types/*.d.ts, is NOT committed. It is the package's
+// published `types` surface and a build output of the turbo task
+// `@get-bb/plugin-sdk#build:types`; @bb/templates reads it at scaffold-embed
+// time by file path (no package edge, to avoid a dependency cycle), and the
+// in-repo plugins typecheck against it. Unchanged files are not rewritten so
+// mtimes stay stable for watchers.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -136,30 +139,15 @@ for (const [fileName, entry] of Object.entries(outputs)) {
   );
 }
 
-const check = process.argv.includes("--check");
-let stale = false;
-if (!check) mkdirSync(outDir, { recursive: true });
+mkdirSync(outDir, { recursive: true });
 
 for (const [fileName, content] of Object.entries(generated)) {
   const target = path.join(outDir, fileName);
   const current = existsSync(target) ? readFileSync(target, "utf8") : null;
-  const unchanged = current === content;
-  if (check) {
-    if (!unchanged) {
-      console.error(
-        `bundled-types/${fileName} is stale. Run \`pnpm --filter @get-bb/plugin-sdk build\`.`,
-      );
-      stale = true;
-    }
-  } else if (unchanged) {
+  if (current === content) {
     console.log(`Unchanged ${path.relative(pkgRoot, target)}`);
   } else {
     writeFileSync(target, content);
     console.log(`Wrote ${path.relative(pkgRoot, target)}`);
   }
-}
-
-if (check) {
-  if (stale) process.exit(1);
-  console.log("bundled-types/*.d.ts are up to date.");
 }

@@ -17,7 +17,7 @@ import {
   runtimeShimPlugin,
   RUNTIME_SLOT_BY_SPECIFIER,
 } from "./build-plugin-app.js";
-import { RUNTIME_EXPORT_MANIFEST } from "./runtime-export-manifest.js";
+import { RUNTIME_EXPORT_MANIFEST } from "./generated/runtime-export-manifest.generated.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
 
 /**

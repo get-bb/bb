@@ -1,5 +1,1 @@
 * text=auto eol=lf
-
-# Committed generated artifacts: collapse in review diffs and language stats.
-packages/plugin-sdk/bundled-types/** linguist-generated
-packages/templates/src/generated/** linguist-generated

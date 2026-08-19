@@ -89,12 +89,13 @@
   },
   "types": "./bundled-types/bb-plugin-sdk.d.ts",
   "scripts": {
-    "build": "node scripts/build-bundled-dts.mjs && node scripts/build-runtime.mjs",
+    "build": "node scripts/build-runtime.mjs",
     "build:runtime": "node scripts/build-runtime.mjs",
-    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "build:types": "node scripts/build-bundled-dts.mjs",
+    "clean": "rimraf bundled-types dist tsconfig.tsbuildinfo",
     "prepack": "node scripts/build-bundled-dts.mjs && node scripts/build-runtime.mjs",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "node scripts/build-bundled-dts.mjs --check && tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@bb/domain": "workspace:*",

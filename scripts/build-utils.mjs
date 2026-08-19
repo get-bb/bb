@@ -93,11 +93,3 @@ export async function buildNodeEsmEntry({
     await chmod(outfile, 0o755);
   }
 }
-
-export async function generateTemplatesIfRequested(enabled) {
-  if (!enabled) {
-    return;
-  }
-
-  await import("../packages/templates/scripts/generate-templates.mjs");
-}
