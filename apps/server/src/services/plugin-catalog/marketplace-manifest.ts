@@ -424,6 +424,27 @@ export function resolveEntryIcon(
   };
 }
 
+/**
+ * Where a person can read an entry's code before an install. A git entry
+ * links its repository; a subdirectory links the directory on GitHub, and the
+ * repository root elsewhere, because only GitHub's tree URL shape is known. An
+ * npm entry on the default registry links its public package page. A private
+ * registry has no public page bb can name, so that entry gets null.
+ */
+export function entryRepositoryUrl(entry: MarketplaceEntry): string | null {
+  if ("npm" in entry.source) {
+    return entry.source.npm.registry === undefined
+      ? `https://www.npmjs.com/package/${entry.source.npm.package}`
+      : null;
+  }
+  const git = entry.source.git;
+  const repository = git.url.replace(/\.git$/u, "");
+  if (git.subdir === undefined) return repository;
+  return new URL(repository).host === "github.com"
+    ? `${repository}/tree/HEAD/${git.subdir}`
+    : repository;
+}
+
 /** Human-readable source of an entry, shown before anything is installed. */
 export function entrySourceDisplay(entry: MarketplaceEntry): string {
   if ("npm" in entry.source) {

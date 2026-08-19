@@ -422,6 +422,14 @@ export const pluginCatalogSearchResultSchema = z.object({
   iconTinted: z.boolean().default(false),
   category: z.string(),
   source: z.string(),
+  /**
+   * Where a person can read the plugin's code before an install: the git
+   * repository of a git-sourced entry, or the public npm package page of an
+   * npm-sourced entry on the default registry. Null for plugins bundled with
+   * the app and for packages on a private registry. Older servers do not
+   * send it; those entries show no link.
+   */
+  repositoryUrl: z.string().nullable().default(null),
   /** Marketplace that lists the entry; plugins bundled with the app use `bb-community`. */
   marketplace: z.string(),
   marketplaceDisplayName: z.string(),

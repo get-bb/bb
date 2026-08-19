@@ -72,6 +72,7 @@ const GITHUB_CATALOG_ENTRY = {
   iconTinted: false,
   category: "Developer tools",
   source: "builtin:github",
+  repositoryUrl: null,
   marketplaceDisplayName: "BB Official",
   publisherKey: "builtin",
   publisherLabel: "BB Official",
@@ -110,6 +111,24 @@ describe("PluginDetail official catalog lifecycle", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Install GitHub" }));
     expect(onInstall).toHaveBeenCalledWith(GITHUB_CATALOG_ENTRY);
+  });
+
+  it("links the catalog entry's repository from the metadata line", () => {
+    render(
+      <CatalogPluginDetail
+        entry={{
+          ...GITHUB_CATALOG_ENTRY,
+          repositoryUrl: "https://github.com/acme/bb-github",
+        }}
+        onInstall={() => {}}
+      />,
+    );
+
+    const link = screen.getByRole("link", {
+      name: "github.com/acme/bb-github",
+    });
+    expect(link.getAttribute("href")).toBe("https://github.com/acme/bb-github");
+    expect(link.getAttribute("target")).toBe("_blank");
   });
 
   it("explains why an incompatible official plugin cannot be installed", () => {

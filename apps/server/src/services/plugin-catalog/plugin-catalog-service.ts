@@ -55,6 +55,7 @@ import {
   BUILTIN_PUBLISHER_LABEL,
   entryIconName,
   entryIconTinted,
+  entryRepositoryUrl,
   entrySourceDisplay,
   CURATED_MARKETPLACE_NAME,
   parseMarketplaceManifestJson,
@@ -419,6 +420,8 @@ export function createPluginCatalogService(deps: {
       iconTinted: iconHash !== null,
       category: entry.category,
       source: builtinPluginSource(entry.name),
+      // The build ships the code; there is no separate repository to open.
+      repositoryUrl: null,
       // Plugins bundled with the app are BB's own, so the store groups them
       // with the official marketplace rather than inventing a fourth origin.
       marketplace: CURATED_MARKETPLACE_NAME,
@@ -496,6 +499,7 @@ export function createPluginCatalogService(deps: {
       ...entryIconAsset(row.name, entry.id),
       category: entryCategory(entry, official),
       source: entrySourceDisplay(entry),
+      repositoryUrl: entryRepositoryUrl(entry),
       marketplace: row.name,
       marketplaceDisplayName: catalog.displayName,
       publisherKey: row.name,

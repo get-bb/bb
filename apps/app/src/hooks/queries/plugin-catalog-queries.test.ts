@@ -155,6 +155,8 @@ describe("plugin catalog queries", () => {
         iconTinted: false,
         category: "Project management",
         source: "npm:@bb-plugins/todoist",
+        // A server from before the field defaults to no link.
+        repositoryUrl: null,
         marketplace: "acme-plugins",
         marketplaceDisplayName: "Acme Plugins",
         publisherKey: "acme-plugins",

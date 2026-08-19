@@ -397,11 +397,30 @@ function BrowseCard({
   // The publisher label, not the marketplace's raw display name: a third-party
   // manifest names itself, and the raw name would print a reserved BB label on
   // the card that the server already refused to grant.
-  const footerMeta = entry.official ? undefined : (
-    <span className="text-2xs text-subtle-foreground">
-      {entry.publisherLabel}
-    </span>
-  );
+  // The repository link sits with the publisher label: both say where the
+  // plugin comes from. The card footer ignores pointer events so clicks fall
+  // through to the open button; the link opts back in to take its own click.
+  const repositoryLink =
+    entry.repositoryUrl === null ? null : (
+      <a
+        href={entry.repositoryUrl}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={`Open ${entry.displayName} repository`}
+        className="pointer-events-auto inline-flex items-center gap-0.5 underline underline-offset-2 hover:text-foreground"
+      >
+        repo
+        <Icon name="ExternalLink" className="size-2.5" aria-hidden />
+      </a>
+    );
+  const footerMeta =
+    entry.official && repositoryLink === null ? undefined : (
+      <span className="text-2xs text-subtle-foreground">
+        {entry.official ? null : entry.publisherLabel}
+        {!entry.official && repositoryLink !== null ? " · " : null}
+        {repositoryLink}
+      </span>
+    );
   const headerAction =
     installedPluginId !== null ? (
       <ResourceInstallControl

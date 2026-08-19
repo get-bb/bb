@@ -237,6 +237,8 @@ export interface PluginCatalogSearchEntry {
   iconTinted: boolean;
   category: string;
   source: string;
+  /** Public repository or package page of the entry's code; null when none. */
+  repositoryUrl: string | null;
   marketplace: string;
   marketplaceDisplayName: string;
   /** Stable publisher identity, for grouping; never the label, which a
@@ -264,6 +266,7 @@ function toPluginCatalogSearchEntry(
     iconTinted: data.iconTinted,
     category: data.category,
     source: data.source,
+    repositoryUrl: data.repositoryUrl,
     marketplace: data.marketplace,
     marketplaceDisplayName: data.marketplaceDisplayName,
     publisherKey: data.publisherKey,

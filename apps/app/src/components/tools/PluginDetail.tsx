@@ -110,6 +110,14 @@ function PluginPath({ path }: { path: string }) {
 }
 
 /**
+ * The repository link's text: the URL without its scheme, so a GitHub entry
+ * reads as `github.com/owner/repo` and a reader knows the destination.
+ */
+export function repositoryLinkLabel(url: string): string {
+  return url.replace(/^https?:\/\//u, "").replace(/\/+$/u, "");
+}
+
+/**
  * Read-only detail for an uninstalled catalog entry.
  *
  * The catalog exposes identity, category, description, and compatibility. It
@@ -147,6 +155,19 @@ export function CatalogPluginDetail({
                   {entry.author.name}
                 </a>
               )}
+            </span>
+          )}
+          {entry.repositoryUrl === null ? null : (
+            <span>
+              {" · "}
+              <a
+                href={entry.repositoryUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2"
+              >
+                {repositoryLinkLabel(entry.repositoryUrl)}
+              </a>
             </span>
           )}
         </>
