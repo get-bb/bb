@@ -634,7 +634,9 @@ function PullRequestBannerLink({
       className={cn(
         "flex items-center gap-1.5 text-xs text-muted-foreground no-underline transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         PROMPT_STACK_INLAY_SEGMENT_CLASS,
-        SEGMENT_SHRINK_CLASS,
+        // Preserve the checked status pill (min-w-9) plus the inlay's px-2.
+        // Labels may still truncate, but the two status glyphs must not clip.
+        "min-w-13 overflow-hidden",
       )}
     >
       <PullRequestStatusPill pullRequest={pullRequest} className="h-4" />

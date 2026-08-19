@@ -4,6 +4,7 @@ import type {
   WorkspaceFileStatus,
   WorkspaceStatus,
 } from "@bb/domain";
+import type { PullRequestMergeMethod } from "@bb/server-contract";
 import {
   ThreadPromptContextBanner,
   type ContextBannerMergeBaseConfig,
@@ -317,6 +318,25 @@ const uncommittedSection = sectionFor(dirtyUncommittedStatus);
 const uncommittedManySection = sectionFor(dirtyUncommittedManyStatus);
 const untrackedSection = sectionFor(untrackedOnlyStatus);
 const committedSection = sectionFor(committedUnmergedStatus);
+const committedManyFiles: WorkspaceFileStatus[] = Array.from(
+  { length: 72 },
+  (_, index) => ({
+    path: `apps/app/src/committed-fixture-${index + 1}.tsx`,
+    status: "M",
+    insertions: 10,
+    deletions: 2,
+  }),
+);
+const committedManySection: WorkspaceChangedFilesSection = {
+  ...committedSection,
+  files: committedManyFiles,
+  stats: {
+    ...committedSection.stats,
+    files: committedManyFiles,
+    insertions: 720,
+    deletions: 144,
+  },
+};
 
 const featureBranchMergeBase: ContextBannerMergeBaseConfig = {
   branch: "main",
@@ -443,6 +463,16 @@ function buildPullRequestFixture(
 }
 
 const pullRequestFixture = buildPullRequestFixture();
+const pendingPullRequestFixture = buildPullRequestFixture({
+  checks: {
+    state: "pending",
+    totalCount: 3,
+    passedCount: 1,
+    failedCount: 0,
+    pendingCount: 2,
+  },
+  attention: "checks_pending",
+});
 
 const pullRequestStateRows: readonly {
   label: string;
@@ -597,6 +627,7 @@ interface RowConfig {
   childThreads?: ThreadPromptChildThreadsSection | null;
   pullRequest?: ThreadPullRequest | null;
   pullRequestActions?: boolean;
+  pullRequestMergeMethod?: PullRequestMergeMethod;
   initiallyExpandedSection?: ThreadPromptContextBannerExpandedSection | null;
 }
 
@@ -609,6 +640,7 @@ function ContextBannerPreview({
   childThreads = null,
   pullRequest = null,
   pullRequestActions = false,
+  pullRequestMergeMethod = "merge",
   initiallyExpandedSection = null,
   size,
 }: RowConfig & { size: PromptStageSize }) {
@@ -642,6 +674,7 @@ function ContextBannerPreview({
                       actions: {
                         onMarkReady: noop,
                         onMerge: noop,
+                        selectedMergeMethod: pullRequestMergeMethod,
                       },
                     }
                   : {}),
@@ -832,6 +865,17 @@ export function Overview() {
         hint="committed branch changes use the same label with or without PR context"
       >
         <Row pullRequest={pullRequestFixture} section={committedSection} />
+      </StoryRow>
+      <StoryRow
+        label="pull request + many committed + actions"
+        hint="the GitHub status pill stays intact beside a long committed summary and merge action"
+      >
+        <Row
+          pullRequest={pendingPullRequestFixture}
+          pullRequestActions
+          pullRequestMergeMethod="squash"
+          section={committedManySection}
+        />
       </StoryRow>
       <StoryRow
         label="uncommitted (collapsed)"
