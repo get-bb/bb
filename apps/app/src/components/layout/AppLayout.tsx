@@ -78,7 +78,6 @@ import {
   SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
-import { useSelectableContentRegionTracking } from "@/hooks/useSelectableContentRegionTracking";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
@@ -409,7 +408,6 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  useSelectableContentRegionTracking();
   const quickCreateProject = useQuickCreateProjectController();
   const isCompactViewport = useIsCompactViewport();
   const threadSplitsEnabled = useThreadSplitsEnabled();

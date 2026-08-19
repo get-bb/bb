@@ -56,25 +56,11 @@
     user-select: text !important;
   }
 
-  /* Explicit content participates in selection only while its own region is
-   * active. Select All is handled on that region element, so it stays inside
-   * the clicked conversation, log, preview, or diagnostic value without a
-   * global keyboard override. */
+  /* Reading surfaces are statically selectable so beginning a drag does not
+   * invalidate styles across a long timeline. The document-level tracker
+   * scopes Select All without changing selection styles. */
   body.bb-app-shell .select-text {
-    user-select: none !important;
-  }
-
-  body.bb-app-shell [data-selectable-content-region][data-selection-active],
-  body.bb-app-shell .select-text[data-selection-active],
-  body.bb-app-shell [data-selection-active] .select-text {
     user-select: text !important;
-  }
-
-  /* Blink otherwise crosses from a focused content region into a later
-   * contenteditable and can produce a highlighted-but-empty selection. */
-  body.bb-app-shell:has([data-selection-active])
-    :where(input, textarea, [contenteditable]:not([contenteditable="false"])) {
-    user-select: none !important;
   }
 
   body.bb-app-shell

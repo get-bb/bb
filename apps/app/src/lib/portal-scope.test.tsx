@@ -61,6 +61,7 @@ describe("usePortalScopeProps", () => {
     const content = baseElement.querySelector('[role="dialog"]');
     expect(content).not.toBeNull();
     expect(content!.getAttribute("data-bb-portaled-overlay")).toBe("");
+    expect(content!.getAttribute("data-selectable-content-region")).toBe("");
     // Portaled out of the plugin mount subtree, so it must carry its own
     // scope root for the plugin stylesheet to reach it.
     expect(content!.getAttribute("data-bb-plugin-root")).toBe("");
@@ -79,6 +80,7 @@ describe("usePortalScopeProps", () => {
     const content = baseElement.querySelector('[role="dialog"]');
     expect(content).not.toBeNull();
     expect(content!.hasAttribute("data-bb-plugin-root")).toBe(false);
+    expect(content!.hasAttribute("data-selectable-content-region")).toBe(false);
     expect(content!.getAttribute("data-bb-portaled-overlay")).toBe("");
     expect(baseElement.querySelectorAll("[data-bb-plugin-root]").length).toBe(
       0,

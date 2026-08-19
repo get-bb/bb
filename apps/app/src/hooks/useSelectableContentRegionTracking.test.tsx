@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useSelectableContentRegionTracking } from "./useSelectableContentRegionTracking";
 
 function SelectionTracker() {
@@ -73,26 +73,20 @@ function dispatchSelectAll(target: Element): KeyboardEvent {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   cleanup();
   document.body.replaceChildren();
   window.getSelection()?.removeAllRanges();
 });
 
 describe("useSelectableContentRegionTracking", () => {
-  it("switches the active selection boundary with pointer interaction", () => {
+  it("tracks pointer interaction without changing selectable-content styles", () => {
     render(<SelectionTracker />);
     const fixture = createFixture();
+    const regionMarkup = fixture.mainRegion.outerHTML;
 
     fireEvent.pointerDown(fixture.mainMessage);
-    expect(fixture.mainRegion.hasAttribute("data-selection-active")).toBe(true);
-    expect(document.activeElement).toBe(fixture.mainRegion);
-
-    fireEvent.pointerDown(fixture.sideMessage);
-    expect(fixture.mainRegion.hasAttribute("data-selection-active")).toBe(
-      false,
-    );
-    expect(fixture.sideRegion.hasAttribute("data-selection-active")).toBe(true);
-    expect(document.activeElement).toBe(fixture.sideRegion);
+    expect(fixture.mainRegion.outerHTML).toBe(regionMarkup);
   });
 
   it("scopes Select All to the active content boundary", () => {
@@ -120,33 +114,23 @@ describe("useSelectableContentRegionTracking", () => {
     const event = dispatchSelectAll(fixture.mainLink);
 
     expect(document.activeElement).toBe(fixture.mainLink);
-    expect(fixture.mainRegion.hasAttribute("data-selection-active")).toBe(true);
     expect(event.defaultPrevented).toBe(true);
     expect(window.getSelection()?.toString()).toContain(
       "Main timeline message",
     );
   });
 
-  it("leaves app chrome, editors, and nested controls to their native behavior", () => {
+  it("suppresses Select All in app chrome but leaves editors and controls native", () => {
     render(<SelectionTracker />);
     const fixture = createFixture();
 
-    for (const target of [
-      fixture.sidebar,
-      fixture.composer,
-      fixture.mainAction,
-    ]) {
-      fireEvent.pointerDown(fixture.mainMessage);
-      expect(fixture.mainRegion.hasAttribute("data-selection-active")).toBe(
-        true,
-      );
-
+    for (const target of [fixture.composer, fixture.mainAction]) {
       fireEvent.pointerDown(target);
       expect(dispatchSelectAll(target).defaultPrevented).toBe(false);
-      expect(fixture.mainRegion.hasAttribute("data-selection-active")).toBe(
-        false,
-      );
     }
+
+    fireEvent.pointerDown(fixture.sidebar);
+    expect(dispatchSelectAll(fixture.sidebar).defaultPrevented).toBe(true);
   });
 
   it("allows an explicitly selectable control to scope Select All", () => {
@@ -162,18 +146,39 @@ describe("useSelectableContentRegionTracking", () => {
     );
   });
 
-  it("removes managed focus state and event behavior when unmounted", () => {
+  it("delegates shadow-root Select All to the browser's composed-tree selection", () => {
+    render(<SelectionTracker />);
+    const fixture = createFixture();
+    const shadowHost = document.createElement("div");
+    shadowHost.attachShadow({ mode: "open" }).innerHTML =
+      "<code>shadow-root file contents</code>";
+    fixture.mainRegion.append(shadowHost);
+    const shadowText =
+      shadowHost.shadowRoot!.querySelector("code")!.firstChild!;
+    const setBaseAndExtent = vi.spyOn(
+      window.getSelection()!,
+      "setBaseAndExtent",
+    );
+
+    fireEvent.pointerDown(shadowHost);
+    const event = dispatchSelectAll(fixture.mainRegion);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(setBaseAndExtent).toHaveBeenCalledWith(
+      expect.any(Text),
+      0,
+      shadowText,
+      "shadow-root file contents".length,
+    );
+  });
+
+  it("removes document-level event behavior when unmounted", () => {
     const { unmount } = render(<SelectionTracker />);
     const fixture = createFixture();
 
     fireEvent.pointerDown(fixture.mainMessage);
-    expect(fixture.mainRegion.getAttribute("tabindex")).toBe("-1");
 
     unmount();
-    expect(fixture.mainRegion.hasAttribute("data-selection-active")).toBe(
-      false,
-    );
-    expect(fixture.mainRegion.hasAttribute("tabindex")).toBe(false);
     expect(dispatchSelectAll(fixture.mainRegion).defaultPrevented).toBe(false);
   });
 });

@@ -20,13 +20,12 @@ describe("app text selection policy", () => {
     );
   });
 
-  it("activates one explicit content region at a time", () => {
+  it("keeps explicit content selectable without pointer-time style changes", () => {
     expect(compactCss).toContain(
-      "body.bb-app-shell .select-text { user-select: none !important; }",
+      "body.bb-app-shell .select-text { user-select: text !important; }",
     );
-    expect(compactCss).toContain(
-      "body.bb-app-shell [data-selectable-content-region][data-selection-active], body.bb-app-shell .select-text[data-selection-active], body.bb-app-shell [data-selection-active] .select-text { user-select: text !important; }",
-    );
+    expect(css).not.toContain("data-selection-active");
+    expect(css).not.toContain(":has([data-selection-active])");
   });
 
   it("keeps nested controls out of selectable content", () => {

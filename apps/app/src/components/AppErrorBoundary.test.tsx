@@ -2,6 +2,7 @@
 import { createRoot } from "react-dom/client";
 import { act } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SelectableContentRegionTracker } from "../hooks/useSelectableContentRegionTracking";
 import { AppErrorBoundary } from "./AppErrorBoundary";
 
 afterEach(() => {
@@ -51,6 +52,37 @@ describe("AppErrorBoundary", () => {
     // The message stays reachable so a report can carry it.
     expect(container.textContent).toContain("render exploded");
     expect(container.querySelector("pre")?.classList).toContain("select-text");
+    dispose();
+  });
+
+  it("keeps crash details selectable after the child tree fails", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { container, render, dispose } = mountRoot();
+
+    function Boom(): never {
+      throw new Error("selectable crash details");
+    }
+    render(
+      <>
+        <SelectableContentRegionTracker />
+        <AppErrorBoundary>
+          <Boom />
+        </AppErrorBoundary>
+      </>,
+    );
+
+    const details = container.querySelector("pre")!;
+    details.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    const selectAll = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "a",
+      metaKey: true,
+    });
+    details.dispatchEvent(selectAll);
+
+    expect(selectAll.defaultPrevented).toBe(true);
+    expect(getSelection()?.toString()).toContain("selectable crash details");
     dispose();
   });
 

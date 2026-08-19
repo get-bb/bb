@@ -7,6 +7,7 @@ import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { AppToaster } from "./components/AppToaster";
 import { registerProviderCliInstallQueryClient } from "./components/provider-cli/provider-cli-install-store";
 import { initializePreferredTheme } from "./hooks/useTheme";
+import { SelectableContentRegionTracker } from "./hooks/useSelectableContentRegionTracking";
 import { initializeFavicon } from "./lib/favicon-color-preference";
 import { installForeignDomMutationGuard } from "./lib/foreign-dom-mutation-guard";
 import {
@@ -55,6 +56,7 @@ createRoot(document.getElementById("root")!, {
   },
 }).render(
   <StrictMode>
+    <SelectableContentRegionTracker />
     {/* Outside the providers: a crash in the query client or the router has to
         land here too, or it still takes the window white. */}
     <AppErrorBoundary>

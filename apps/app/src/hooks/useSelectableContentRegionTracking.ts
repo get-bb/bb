@@ -1,8 +1,6 @@
 import { useEffect } from "react";
 
 const SELECTABLE_CONTENT_REGION = "[data-selectable-content-region]";
-const ACTIVE_ATTRIBUTE = "data-selection-active";
-const MANAGED_TAB_INDEX_ATTRIBUTE = "data-selection-managed-tab-index";
 const SELECTION_CONTROL = [
   "button",
   "select",
@@ -43,11 +41,58 @@ function closestContentRegion(target: Element): HTMLElement | null {
   );
 }
 
+function isSkippedSelectionSubtree(element: Element): boolean {
+  return (
+    isEditableTarget(element) ||
+    isSelectionControlTarget(element) ||
+    element.matches('script, style, template, [hidden], [aria-hidden="true"]')
+  );
+}
+
+function getComposedChildren(node: Node): readonly Node[] {
+  if (node instanceof HTMLSlotElement) {
+    const assignedNodes = node.assignedNodes({ flatten: true });
+    if (assignedNodes.length > 0) return assignedNodes;
+  }
+  if (node instanceof Element && node.shadowRoot !== null) {
+    return Array.from(node.shadowRoot.childNodes);
+  }
+  return Array.from(node.childNodes);
+}
+
+function getComposedTextEndpoints(region: HTMLElement): {
+  first: Text;
+  last: Text;
+} | null {
+  let first: Text | null = null;
+  let last: Text | null = null;
+
+  function visit(node: Node) {
+    if (node instanceof Text) {
+      if (node.data.length === 0) return;
+      first ??= node;
+      last = node;
+      return;
+    }
+    if (
+      node !== region &&
+      node instanceof Element &&
+      isSkippedSelectionSubtree(node)
+    ) {
+      return;
+    }
+    for (const child of getComposedChildren(node)) visit(child);
+  }
+
+  visit(region);
+  return first === null || last === null ? null : { first, last };
+}
+
 export function useSelectableContentRegionTracking() {
   useEffect(() => {
     let activeRegion: HTMLElement | null = null;
 
-    function handleRegionKeyDown(event: KeyboardEvent) {
+    function handleSelectAll(event: KeyboardEvent) {
       if (
         event.defaultPrevented ||
         event.altKey ||
@@ -55,54 +100,25 @@ export function useSelectableContentRegionTracking() {
         !(event.metaKey || event.ctrlKey) ||
         event.key.toLowerCase() !== "a" ||
         isEditableTarget(closestElement(event.target)) ||
-        isSelectionControlTarget(closestElement(event.target)) ||
-        activeRegion === null
+        isSelectionControlTarget(closestElement(event.target))
       ) {
         return;
       }
 
       event.preventDefault();
-      const selection = window.getSelection();
-      if (selection === null) return;
-      const range = document.createRange();
-      range.selectNodeContents(activeRegion);
-      selection.removeAllRanges();
-      selection.addRange(range);
-    }
-
-    function setActiveRegion(region: HTMLElement | null, focusRegion = false) {
-      if (activeRegion === region) {
-        if (
-          focusRegion &&
-          region !== null &&
-          !region.contains(document.activeElement)
-        ) {
-          region.focus({ preventScroll: true });
-        }
+      if (activeRegion === null || !activeRegion.isConnected) {
         return;
       }
 
-      if (activeRegion !== null) {
-        activeRegion.removeEventListener("keydown", handleRegionKeyDown);
-        activeRegion.removeAttribute(ACTIVE_ATTRIBUTE);
-        if (activeRegion.hasAttribute(MANAGED_TAB_INDEX_ATTRIBUTE)) {
-          activeRegion.removeAttribute(MANAGED_TAB_INDEX_ATTRIBUTE);
-          activeRegion.removeAttribute("tabindex");
-        }
-      }
-
-      activeRegion = region;
-      if (activeRegion === null) return;
-
-      activeRegion.setAttribute(ACTIVE_ATTRIBUTE, "");
-      if (!activeRegion.hasAttribute("tabindex")) {
-        activeRegion.tabIndex = -1;
-        activeRegion.setAttribute(MANAGED_TAB_INDEX_ATTRIBUTE, "");
-      }
-      activeRegion.addEventListener("keydown", handleRegionKeyDown);
-      if (focusRegion) {
-        activeRegion.focus({ preventScroll: true });
-      }
+      const endpoints = getComposedTextEndpoints(activeRegion);
+      const selection = window.getSelection();
+      if (endpoints === null || selection === null) return;
+      selection.setBaseAndExtent(
+        endpoints.first,
+        0,
+        endpoints.last,
+        endpoints.last.data.length,
+      );
     }
 
     function updateActiveRegion(event: Event) {
@@ -112,21 +128,25 @@ export function useSelectableContentRegionTracking() {
         isEditableTarget(target) ||
         isSelectionControlTarget(target)
       ) {
-        setActiveRegion(null);
+        activeRegion = null;
         return;
       }
-      setActiveRegion(
-        closestContentRegion(target),
-        event.type === "pointerdown",
-      );
+      activeRegion = closestContentRegion(target);
     }
 
     window.addEventListener("pointerdown", updateActiveRegion, true);
     window.addEventListener("focusin", updateActiveRegion, true);
+    window.addEventListener("keydown", handleSelectAll);
     return () => {
       window.removeEventListener("pointerdown", updateActiveRegion, true);
       window.removeEventListener("focusin", updateActiveRegion, true);
-      setActiveRegion(null);
+      window.removeEventListener("keydown", handleSelectAll);
+      activeRegion = null;
     };
   }, []);
+}
+
+export function SelectableContentRegionTracker() {
+  useSelectableContentRegionTracking();
+  return null;
 }
