@@ -31,6 +31,46 @@ describe("scopePluginUtilities", () => {
     );
   });
 
+  it("drops the self arm for sibling combinators so a portal root cannot reach host siblings", () => {
+    // `[&~*]:hidden` compiles to `.X ~ *`. With the root itself as `.X` the
+    // subject would be a sibling of the root in document.body; @scope never
+    // matched that, and neither may this.
+    const hidden = String.raw`.\[\&\~\*\]\:hidden`;
+    expect(scopeUtilities(`${hidden}{&~*{display:none}}`)).toBe(
+      `@layer utilities{${SCOPE} ${hidden}{&~*{display:none}}}`,
+    );
+    // Flat, relative, and nested-under-@media forms leak the same way.
+    expect(scopeUtilities(`${hidden} ~ *{display:none}`)).toBe(
+      `@layer utilities{${SCOPE} ${hidden} ~ *{display:none}}`,
+    );
+    expect(scopeUtilities(".a{+ .b{color:red}}")).toBe(
+      `@layer utilities{${SCOPE} .a{+ .b{color:red}}}`,
+    );
+    expect(
+      scopeUtilities(".a{@media (hover:hover){&:hover + .b{color:red}}}"),
+    ).toBe(
+      `@layer utilities{${SCOPE} .a{@media (hover:hover){&:hover + .b{color:red}}}}`,
+    );
+  });
+
+  it("keeps both arms when a sibling combinator precedes & so the subject stays on the element", () => {
+    expect(scopeUtilities(".x{.a ~ &{color:red}}")).toBe(
+      `@layer utilities{${SCOPE} .x,${SCOPE}.x{.a ~ &{color:red}}}`,
+    );
+    expect(scopeUtilities(".x{&:hover{color:red}}")).toBe(
+      `@layer utilities{${SCOPE} .x,${SCOPE}.x{&:hover{color:red}}}`,
+    );
+  });
+
+  it("keeps both arms when + or ~ only appear escaped, in attributes, or inside :is()", () => {
+    const peer = String.raw`.peer-checked\:hidden:is(:where(.peer):checked ~ *)`;
+    expect(scopeUtilities(`${peer}{display:none}`)).toContain(
+      `${SCOPE}${peer}`,
+    );
+    const attr = String.raw`[data-x~="a"].mt-\[calc\(1px\+2px\)\]`;
+    expect(scopeUtilities(`${attr}{margin:0}`)).toContain(`${SCOPE}${attr}`);
+  });
+
   it("keeps the scope in front of a pseudo-element so the selector stays valid", () => {
     // A suffix form would produce the invalid `.foo::before:where(…)`.
     expect(scopeUtilities(".content-x::before{content:'x'}")).toContain(
@@ -46,14 +86,18 @@ describe("scopePluginUtilities", () => {
   });
 
   it("scopes rules nested in conditional at-rules", () => {
-    const scoped = scopeUtilities("@media (min-width:40rem){.md-flex{display:flex}}");
+    const scoped = scopeUtilities(
+      "@media (min-width:40rem){.md-flex{display:flex}}",
+    );
     expect(scoped).toBe(
       `@layer utilities{@media (min-width:40rem){${SCOPE} .md-flex,${SCOPE}.md-flex{display:flex}}}`,
     );
   });
 
   it("leaves keyframe selectors alone", () => {
-    const scoped = scopeUtilities("@keyframes spin{from{rotate:0deg}to{rotate:360deg}}");
+    const scoped = scopeUtilities(
+      "@keyframes spin{from{rotate:0deg}to{rotate:360deg}}",
+    );
     expect(scoped).toBe(
       "@layer utilities{@keyframes spin{from{rotate:0deg}to{rotate:360deg}}}",
     );
@@ -62,12 +106,14 @@ describe("scopePluginUtilities", () => {
   it("leaves theme variables and @property registrations unscoped", () => {
     const css = [
       "@layer theme{:root{--color-red:red}}",
-      "@property --tw-scale-x{syntax:\"*\";inherits:false}",
+      '@property --tw-scale-x{syntax:"*";inherits:false}',
       "@layer utilities{.scale-x-50{--tw-scale-x:50%}}",
     ].join("");
     const scoped = scopePluginUtilities(css, ROOTS);
     expect(scoped).toContain("@layer theme{:root{--color-red:red}}");
-    expect(scoped).toContain('@property --tw-scale-x{syntax:"*";inherits:false}');
+    expect(scoped).toContain(
+      '@property --tw-scale-x{syntax:"*";inherits:false}',
+    );
     expect(scoped).toContain(`${SCOPE}.scale-x-50`);
   });
 
@@ -83,7 +129,10 @@ describe("scopePluginUtilities", () => {
     // A Tailwind upgrade that moves utilities out of the layer must fail the
     // build: a globally-scoped `.flex-col` overrides the host's own layout.
     expect(() =>
-      scopePluginUtilities("@layer theme{.flex-col{flex-direction:column}}", ROOTS),
+      scopePluginUtilities(
+        "@layer theme{.flex-col{flex-direction:column}}",
+        ROOTS,
+      ),
     ).toThrow(/class rule outside the utilities layer/);
   });
 

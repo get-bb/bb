@@ -82,7 +82,9 @@ describe("plugin app runtime shim", () => {
     );
     await writeFile(
       join(dir, "app.ts"),
-      'import "./app.css";\nexport const utilityClass = "flex-col";\n',
+      'import "./app.css";\n' +
+        'export const utilityClass = "flex-col";\n' +
+        'export const siblingClass = "[&~*]:hidden";\n',
     );
     await writeFile(
       join(dir, "app.css"),
@@ -102,6 +104,11 @@ describe("plugin app runtime shim", () => {
       ':where([data-bb-plugin="css-fixture"], [data-bb-plugin-root]:not([data-bb-plugin]))';
     expect(css).toContain(`${scope} .flex-col`);
     expect(css).toContain(`${scope}.flex-col`);
+    // A sibling variant gets only the descendant arm: with a portal root as
+    // the subject's origin, `.X ~ *` would otherwise reach host siblings.
+    const sibling = String.raw`.\[\&\~\*\]\:hidden`;
+    expect(css).toContain(`${scope} ${sibling}`);
+    expect(css).not.toContain(`${scope}${sibling}`);
     expect(css).not.toContain("@scope");
     expect(css).not.toContain(`${scope} .bb71-authored-decoration`);
     expect(css).toContain(".bb71-authored-decoration");

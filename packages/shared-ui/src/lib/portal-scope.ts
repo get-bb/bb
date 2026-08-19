@@ -5,7 +5,7 @@
  * scope attributes are unconditional: portaled overlay content (dialog,
  * select, popover, …) lands in document.body, outside the plugin's
  * `[data-bb-plugin]` mount, and must carry its own scope root for the
- * plugin's compiled stylesheet (`@scope ([data-bb-plugin="<id>"], …)`) to
+ * plugin's compiled stylesheet (`:where([data-bb-plugin="<id>"], …)`) to
  * reach it. `__BB_PLUGIN_ID__` is an esbuild define stamped by
  * `bb plugin build`; outside that pipeline (registry copies, tests) it is
  * undefined and the generic root attribute alone keeps legacy behavior. In

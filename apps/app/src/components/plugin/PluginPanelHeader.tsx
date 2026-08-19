@@ -89,7 +89,7 @@ export function PluginPanelHeaderActions({
         >
           <PluginContext.Provider value={panel.pluginId}>
             {/* data-bb-plugin-root: the accessory is plugin code, so the
-                plugin's @scope'd stylesheet must apply here too. */}
+                plugin's scoped stylesheet must apply here too. */}
             <div
               data-bb-plugin-root=""
               data-bb-plugin={panel.pluginId}

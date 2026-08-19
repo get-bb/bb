@@ -32,9 +32,17 @@
  * Versus `@scope` the second arm is marginally more permissive for a compound
  * selector whose subject is not its first compound (`@scope` would require a
  * strict ancestor to match `.a > .b`, this matches when the root itself is
- * `.a`). That widening stays inside the scope root's own subtree, so it cannot
- * leak onto the host or another plugin's pane — which is the property the
- * scoping exists to guarantee.
+ * `.a`). Descendant and child combinators keep that widening inside the scope
+ * root's own subtree, so it cannot leak onto the host or another plugin's
+ * pane — which is the property the scoping exists to guarantee.
+ *
+ * Sibling combinators are the exception. `[&~*]:hidden` compiles to
+ * `.X { &~* { … } }`, and with the root itself as `.X` the subject is a
+ * sibling of the root — a host element or another plugin's portal in
+ * `document.body`. `@scope` never matched that (the subject must be in
+ * scope), so the self arm is omitted when the selector, or any style rule
+ * nested in it, has a top-level `+` or `~` combinator after its `&`. The
+ * descendant arm still covers siblings that live inside a root.
  */
 
 /**
@@ -137,8 +145,13 @@ function scopeStatements(css: string, scope: string): string {
         return `${statement.prelude}{${body}}`;
       }
 
+      const nestedSibling = hasNestedSiblingRule(statement.body);
       const selectors = splitSelectorList(prelude)
-        .flatMap((selector) => [`${scope} ${selector}`, `${scope}${selector}`])
+        .flatMap((selector) =>
+          nestedSibling || hasSiblingCombinator(selector)
+            ? [`${scope} ${selector}`]
+            : [`${scope} ${selector}`, `${scope}${selector}`],
+        )
         .join(",");
       return `${selectors}{${statement.body}}`;
     })
@@ -214,6 +227,59 @@ function splitSelectorList(selectors: string): string[] {
 
   parts.push(selectors.slice(start));
   return parts.map((part) => part.trim()).filter((part) => part.length > 0);
+}
+
+/**
+ * Whether any style rule nested in a rule body (directly or under a
+ * conditional at-rule) can place its subject outside the parent's element —
+ * i.e. has a sibling combinator after its `&`. Tailwind emits variants such
+ * as `[&~*]:hidden` as nested `&~*` rules rather than flat selectors.
+ */
+function hasNestedSiblingRule(body: string): boolean {
+  return splitStatements(body).some((statement) => {
+    if (statement.body === null) return false;
+    const prelude = statement.prelude.trim();
+    if (prelude.startsWith("@")) {
+      const name = /^@([\w-]+)/.exec(prelude)?.[1]?.toLowerCase() ?? "";
+      return (
+        NESTED_STYLE_RULE_AT_RULES.has(name) &&
+        hasNestedSiblingRule(statement.body)
+      );
+    }
+    return (
+      splitSelectorList(prelude).some(hasSiblingCombinator) ||
+      hasNestedSiblingRule(statement.body)
+    );
+  });
+}
+
+/**
+ * Whether a selector has a top-level `+` or `~` combinator after its last
+ * top-level `&` (or anywhere, for a selector without `&` — including a
+ * relative nested selector such as `~ *`). `.a ~ &` keeps its subject on the
+ * parent element, so it does not count. Escapes, strings, `(...)` and `[...]`
+ * are skipped so `.\[\&\~\*\]`, `[data-x~="a"]`, `calc(1px\+2px)` and
+ * `:is(.peer ~ *)` do not count either.
+ */
+function hasSiblingCombinator(selector: string): boolean {
+  let depth = 0;
+  let found = false;
+  for (let index = 0; index < selector.length; index += 1) {
+    const char = selector[index];
+    if (char === "\\") {
+      index += 1;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      index = findStringEnd(selector, index);
+      continue;
+    }
+    if (char === "(" || char === "[") depth += 1;
+    else if (char === ")" || char === "]") depth -= 1;
+    else if (depth === 0 && char === "&") found = false;
+    else if (depth === 0 && (char === "+" || char === "~")) found = true;
+  }
+  return found;
 }
 
 /** Index of the `}` closing the block that opens at `openIndex`. */
