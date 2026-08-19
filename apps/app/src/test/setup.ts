@@ -1,5 +1,13 @@
 /// <reference types="vitest/jsdom" />
 
+// `Icon` renders extended-registry glyphs as an empty placeholder until
+// `@bb/shared-ui/icon-extended` has evaluated; in the app every route chunk
+// imports it statically. Load it once here so component tests see the same
+// synchronous icons a mounted route does, instead of a placeholder that fills
+// in outside `act`. `components/ui/icon.test.tsx` resets modules to cover the
+// cold path.
+import "@bb/shared-ui/icon-extended";
+
 /**
  * Shared vitest setup.
  *

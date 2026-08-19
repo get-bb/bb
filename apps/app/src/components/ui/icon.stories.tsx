@@ -22,7 +22,6 @@ const USAGE: Partial<Record<IconName, string>> = {
   ArrowDown: "Scroll-to-bottom button when conversation is scrolled up",
   ArrowRight: "Rename arrow in diff file headers (old → new)",
   ArrowUp: "Submit prompt button",
-  AudioLines: "Voice recording indicator (pulsing) and idle wave",
   Beaker: "Experiments section in Settings navigation",
   Bug: "Report a bug link in sidebar footer",
   Check:
@@ -38,7 +37,6 @@ const USAGE: Partial<Record<IconName, string>> = {
   ChevronsUp: "Git diff toolbar expand-all",
   Circle: "Radio item indicator in menus",
   CircleCheck: "Auth callback success state",
-  CircleDashed: "Dashed status circle",
   CircleQuestion: "Thread needs user input and timeline question rows",
   CircleX: "Auth callback failure state",
   ClosePluginPane: "Close a split pane containing a plugin surface",
@@ -46,7 +44,6 @@ const USAGE: Partial<Record<IconName, string>> = {
   Clock: "Thread duration and timestamp affordances, automation prompt action",
   Code: "Right-panel source file visual, Mermaid source toggle",
   Columns2: "Git diff toolbar “split view”",
-  Container: "Container icon",
   Copy: "CopyButton, metadata-value copy buttons",
   CornerDownLeft: "Mod+Enter submit hint in prompt footer",
   CornerDownRight:
@@ -58,7 +55,6 @@ const USAGE: Partial<Record<IconName, string>> = {
   File: "Right-panel markdown/doc file visual, Open file action",
   FileDiff: "Right panel diff tab, thread changes banner section",
   FileQuestion: "FilePreview empty state (passed via local iconName variable)",
-  FileX2: "FilePreview missing-file state (passed via local iconName variable)",
   Folder: "EmptyState “no projects”, sidebar project row when collapsed",
   FolderOpen: "Sidebar project row when expanded",
   FolderPlus: "(currently unused — was Add local path in project actions menu)",

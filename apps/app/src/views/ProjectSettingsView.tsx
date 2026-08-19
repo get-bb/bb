@@ -1,5 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+// Route views render icons outside the shell's core set. Importing the
+// extended registry here ships it as a static dependency of this route chunk,
+// so those icons never flash blank waiting for an on-demand load.
+import "@bb/shared-ui/icon-extended";
 import {
   findLocalPathProjectSourceForHost,
   isLocalPathProjectSource,

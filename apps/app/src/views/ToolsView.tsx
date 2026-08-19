@@ -6,6 +6,10 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+// Route views render icons outside the shell's core set. Importing the
+// extended registry here ships it as a static dependency of this route chunk,
+// so those icons never flash blank waiting for an on-demand load.
+import "@bb/shared-ui/icon-extended";
 import { useMutation } from "@tanstack/react-query";
 import { buildPluginEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 import { appToast } from "@/components/ui/app-toast";

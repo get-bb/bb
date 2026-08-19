@@ -1,5 +1,9 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+// Route views render icons outside the shell's core set. Importing the
+// extended registry here ships it as a static dependency of this route chunk,
+// so those icons never flash blank waiting for an on-demand load.
+import "@bb/shared-ui/icon-extended";
 import type { Host, PermissionMode } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
