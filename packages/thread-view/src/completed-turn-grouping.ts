@@ -171,6 +171,10 @@ function groupCompletedTurnSummaryMessages(
   let externalBoundaryIndex = 0;
   let preserveNextTerminalMessage = false;
   let sawMidTurnUserInput = false;
+  // True once the turn has produced assistant/tool output. User input that
+  // precedes any output (the turn-starting row, or several initial rows from a
+  // grouped `inputGroups` request) is initial input, not a mid-turn follow-up.
+  let sawTurnOutput = false;
 
   function appendSummaryGroup(sourceMessages: EventProjectionMessage[]): void {
     if (sourceMessages.length === 0) {
@@ -199,8 +203,9 @@ function groupCompletedTurnSummaryMessages(
     // beside the user row instead of burying it inside that segment's
     // collapsed summary. The first assistant/error message after mid-turn user
     // input is kept too — it is the direct reply the user already read while
-    // the turn was streaming. The turn-starting user row must not trigger any
-    // of this, or every ordinary turn would surface its interim messages.
+    // the turn was streaming. Initial user rows (before any output) must not
+    // trigger any of this, or every ordinary turn would surface its interim
+    // messages.
     const sourceMessages = groupedMessages;
     groupedMessages = [];
     const terminalMessage = preserveLastTerminalMessage
@@ -239,10 +244,8 @@ function groupCompletedTurnSummaryMessages(
     flushExternalBoundariesBefore(message);
     if (isTimelineUngroupableMessage(message)) {
       const isUserInputBoundary = isTimelineUserInputBoundaryMessage(message);
-      const isMidTurnUserInput =
-        isUserInputBoundary &&
-        (items.length > 0 || groupedMessages.length > 0);
-      flushGroupedMessages(isUserInputBoundary);
+      const isMidTurnUserInput = isUserInputBoundary && sawTurnOutput;
+      flushGroupedMessages(isMidTurnUserInput);
       items.push({
         kind: "ungrouped-message",
         message,
@@ -253,6 +256,7 @@ function groupCompletedTurnSummaryMessages(
       }
       continue;
     }
+    sawTurnOutput = true;
     if (preserveNextTerminalMessage && isTimelineTerminalMessage(message)) {
       flushGroupedMessages();
       items.push({

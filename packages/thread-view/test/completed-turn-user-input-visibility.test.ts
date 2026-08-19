@@ -1,5 +1,4 @@
 import type { ThreadEventRow } from "@bb/domain";
-import { turnScope } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   createTimelineEventFactory,
@@ -26,46 +25,6 @@ function renderTimeline(
       turnMessageDetail: "summary",
     },
   });
-}
-
-function answeredUserQuestionEvent(seq: number): ThreadEventRow {
-  return {
-    id: `evt-user-question-${seq}`,
-    threadId: "thread-1",
-    seq,
-    createdAt: seq,
-    scope: turnScope("turn-1"),
-    type: "system/userQuestion/lifecycle",
-    data: {
-      interactionId: "pint_question_1",
-      providerId: "claude-code",
-      providerRequestId: "request-question-1",
-      status: "resolved",
-      resolution: {
-        kind: "user_answer",
-        answers: {
-          "question-1": { selected: ["all"] },
-        },
-      },
-      statusReason: null,
-      payload: {
-        kind: "user_question",
-        questions: [
-          {
-            id: "question-1",
-            prompt: "Which changes should I include?",
-            shortLabel: "Scope",
-            multiSelect: false,
-            options: [
-              { value: "all", label: "All of them" },
-              { value: "none", label: "None" },
-            ],
-            allowFreeText: false,
-          },
-        ],
-      },
-    },
-  } as ThreadEventRow;
 }
 
 describe("completed turn user input visibility", () => {
@@ -148,6 +107,46 @@ describe("completed turn user input visibility", () => {
     ]);
   });
 
+  it("keeps interim messages folded when the turn starts from several grouped input rows", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "Fix the bug\n\nThen add a regression test",
+      input: [
+        {
+          type: "text",
+          text: "Fix the bug\n\nThen add a regression test",
+          mentions: [],
+        },
+      ],
+      inputGroups: [
+        [{ type: "text", text: "Fix the bug", mentions: [] }],
+        [{ type: "text", text: "Then add a regression test", mentions: [] }],
+      ],
+    });
+    const timeline = renderTimeline(
+      [
+        request,
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: request.data.requestId }),
+        event.assistantCompleted({ itemId: "a1", text: "Looking into it." }),
+        event.commandCompleted({ itemId: "tool-1", command: "grep bug" }),
+        event.assistantCompleted({ itemId: "a2", text: "Found the cause." }),
+        event.assistantCompleted({ itemId: "a3", text: "Fixed and verified." }),
+        event.turnCompleted(),
+      ],
+      "idle",
+    );
+
+    const userTexts = timeline.rows.flatMap((row) =>
+      row.kind === "conversation" && row.role === "user" ? [row.text] : [],
+    );
+    expect(userTexts).toEqual(["Fix the bug", "Then add a regression test"]);
+    expect(topLevelAssistantTexts(timeline.rows)).toEqual([
+      "Fixed and verified.",
+    ]);
+  });
+
   it("keeps an answered question and the report preceding it visible after the turn completes", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const request = event.clientTurnRequested({
@@ -164,7 +163,15 @@ describe("completed turn user input visibility", () => {
           itemId: "a1",
           text: "Audit complete. Which changes should I include?",
         }),
-        answeredUserQuestionEvent(6),
+        event.userQuestionLifecycle({ interactionId: "pint_question_1" }),
+        event.userQuestionLifecycle({
+          interactionId: "pint_question_1",
+          status: "resolved",
+          resolution: {
+            kind: "user_answer",
+            answers: { "question-1": { selected: ["all"] } },
+          },
+        }),
         event.assistantCompleted({ itemId: "a2", text: "Final runbook." }),
         event.turnCompleted(),
       ],

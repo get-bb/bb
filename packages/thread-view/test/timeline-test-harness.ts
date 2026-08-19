@@ -19,6 +19,7 @@ import type {
   ThreadEventWarningCategory,
   ThreadTurnInitiator,
   TurnRequestTarget,
+  UserQuestionPendingInteractionResolution,
 } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import type {
@@ -257,6 +258,16 @@ interface PermissionGrantLifecycleArgs extends DefaultTurnEventOptions {
   toolName?: string;
 }
 
+interface UserQuestionLifecycleArgs extends DefaultTurnEventOptions {
+  interactionId?: string;
+  providerId?: string;
+  providerRequestId?: string;
+  questionPrompt?: string;
+  resolution?: UserQuestionPendingInteractionResolution | null;
+  status?: "pending" | "resolving" | "resolved" | "interrupted";
+  statusReason?: string | null;
+}
+
 interface LegacyUserMessageArgs extends EventFactoryRowOptions {
   text: string;
   turnId?: string;
@@ -326,6 +337,9 @@ export interface TimelineEventFactory {
   providerError(
     args: ProviderErrorArgs,
   ): ThreadEventRowOfType<"provider/error">;
+  userQuestionLifecycle(
+    args?: UserQuestionLifecycleArgs,
+  ): ThreadEventRowOfType<"system/userQuestion/lifecycle">;
   providerUnhandled(
     args?: ProviderUnhandledArgs,
   ): ThreadEventRowOfType<"provider/unhandled">;
@@ -805,6 +819,41 @@ export function createTimelineEventFactory(
                 write: [],
               },
             },
+          },
+        },
+      };
+    },
+    userQuestionLifecycle(args = {}) {
+      const base = nextDefaultTurnScopedRowBase(
+        "user-question-lifecycle",
+        args,
+      );
+      return {
+        ...base,
+        type: "system/userQuestion/lifecycle",
+        data: {
+          interactionId: args.interactionId ?? "pint_question_1",
+          providerId: args.providerId ?? "claude-code",
+          providerRequestId: args.providerRequestId ?? "request-question-1",
+          status: args.status ?? "pending",
+          resolution: args.resolution ?? null,
+          statusReason: args.statusReason ?? null,
+          payload: {
+            kind: "user_question",
+            questions: [
+              {
+                id: "question-1",
+                prompt:
+                  args.questionPrompt ?? "Which changes should I include?",
+                shortLabel: "Scope",
+                multiSelect: false,
+                options: [
+                  { value: "all", label: "All of them" },
+                  { value: "none", label: "None" },
+                ],
+                allowFreeText: false,
+              },
+            ],
           },
         },
       };
