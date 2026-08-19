@@ -380,44 +380,60 @@ describe("slow query index plans", () => {
   });
 
   it("uses selective indexes for conversation-outline events", () => {
-    const { db, logger, thread } = setup();
+    const { db, thread } = setup();
 
-    listStoredConversationOutlineEventRows(db, { threadId: thread.id });
-
-    const debugLog = findOnlyDebugLog({
-      logger,
-      predicate: (fields) =>
-        fields.operation === "all" && fields.sql.includes('from "events"'),
+    // The slow-query log truncates this union past 1,000 chars; capture the
+    // statement itself.
+    const captured = captureStatements(db, () => {
+      listStoredConversationOutlineEventRows(db, { threadId: thread.id });
     });
-    assertEmittedQueryPlanUsesIndex({
+    const outline = captured.filter((query) =>
+      query.sql.includes('from "events"'),
+    );
+    expect(outline).toHaveLength(1);
+    const [query] = outline;
+    expect(query?.params).toEqual([
+      thread.id,
+      "client/turn/requested",
+      "turn/input/accepted",
+      "turn/started",
+      "turn/completed",
+      "system/manager/user_message",
+      "system/thread/interrupted",
+      "system/error",
+      "provider/error",
+      "item/agentMessage/delta",
+      "item/plan/delta",
+      thread.id,
+      "item/completed",
+      "agentMessage",
+      "plan",
+      thread.id,
+      "item/started",
+      "item/completed",
+      "item/backgroundTask/progress",
+      "item/backgroundTask/completed",
+      "backgroundTask",
+      "toolCall",
+    ]);
+    const details = queryPlanDetails({
       db,
-      debugLog,
-      indexName: "events_thread_type_item_kind_sequence_idx",
-      params: [
-        thread.id,
-        "client/turn/requested",
-        "turn/input/accepted",
-        "turn/started",
-        "turn/completed",
-        "system/manager/user_message",
-        "system/thread/interrupted",
-        "system/error",
-        "provider/error",
-        "item/agentMessage/delta",
-        "item/plan/delta",
-        thread.id,
-        "item/completed",
-        "agentMessage",
-        "plan",
-        thread.id,
-        "item/started",
-        "item/completed",
-        "item/backgroundTask/progress",
-        "item/backgroundTask/completed",
-        "backgroundTask",
-        "toolCall",
-      ],
+      params: query?.params ?? [],
+      sql: query?.sql ?? "",
     });
+    // Each union branch stays on a thread/type index (the lifecycle branch has
+    // no item kind); the superseded-snapshot check on the structural branch
+    // probes the background-task partial index instead of scanning.
+    expect(
+      details.match(/USING INDEX events_thread_type_sequence_idx/gu),
+    ).toHaveLength(1);
+    expect(
+      details.match(/USING INDEX events_thread_type_item_kind_sequence_idx/gu),
+    ).toHaveLength(2);
+    expect(details).toMatch(
+      /USING COVERING INDEX events_background_task_thread_type_item_sequence_idx/u,
+    );
+    expect(details).not.toMatch(/SCAN events/u);
 
     db.$client.close();
   });

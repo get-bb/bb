@@ -1536,13 +1536,17 @@ function storedEventRowsByParentToolCallIdsConditions(
 
   const eventParentToolCallId = sql<string>`json_extract(${events.data}, '$.parentToolCallId')`;
   const itemParentToolCallId = sql<string>`json_extract(${events.data}, '$.item.parentToolCallId')`;
+  // The snapshot check goes before the JSON parent tests: it is a type
+  // comparison for most rows and an indexed probe for progress rows, while
+  // each `json_extract` parses the whole payload — hundreds of KB for a
+  // workflow snapshot. SQLite evaluates these terms in order.
   const conditions: SQL[] = [
     eq(events.threadId, args.threadId),
+    isNotSupersededBackgroundTaskProgress,
     or(
       inArray(eventParentToolCallId, parentToolCallIds),
       inArray(itemParentToolCallId, parentToolCallIds),
     )!,
-    isNotSupersededBackgroundTaskProgress,
   ];
   if (args.excludedTypes && args.excludedTypes.length > 0) {
     conditions.push(notInArray(events.type, [...args.excludedTypes]));
@@ -2570,6 +2574,7 @@ export function listStoredConversationOutlineEventRows(
         eq(events.threadId, args.threadId),
         inArray(events.type, structuralItemLifecycleTypes),
         inArray(events.itemKind, structuralItemKinds),
+        isNotSupersededBackgroundTaskProgress,
       ),
     );
 

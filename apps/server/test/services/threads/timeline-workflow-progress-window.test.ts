@@ -21,6 +21,7 @@ import type {
   TimelineRow,
 } from "@bb/server-contract";
 import {
+  buildThreadConversationOutline,
   buildThreadTimelineWithProfile,
   THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
 } from "../../../src/services/threads/timeline.js";
@@ -287,9 +288,10 @@ function buildPage(
   db: DbConnection,
   thread: Thread,
   cursor: TimelinePaginationCursor | null,
+  eventBudget = LARGE_BUDGET,
 ) {
   return buildThreadTimelineWithProfile(db, thread, {
-    eventBudget: LARGE_BUDGET,
+    eventBudget,
     includeProviderUnhandledOperations: false,
     includeNestedRows: false,
     maxInlineOutputChars: 32_000,
@@ -385,5 +387,20 @@ describe("workflow progress snapshots across timeline pages", () => {
     expect(
       latest.response.rows.filter((row) => row.kind === "turn"),
     ).toHaveLength(1);
+
+    // The event-count budget counts the same rows. The thread has ~15 live
+    // events, so a budget of 30 binds only if the 45 superseded snapshots are
+    // counted.
+    const eventBudgeted = buildPage(db, thread, null, 30);
+    expect(eventBudgeted.response.timelinePage.hasOlderRows).toBe(false);
+    expect(eventBudgeted.response.rows).toEqual(latest.response.rows);
+
+    // The conversation outline reads the task's structural rows too; it must
+    // not decode every old snapshot to list two messages.
+    const outline = buildThreadConversationOutline(db, thread, { maxSeq: 0 });
+    expect(outline.items.map((item) => item.role)).toEqual([
+      "user",
+      "assistant",
+    ]);
   });
 });

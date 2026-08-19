@@ -19,6 +19,7 @@ import {
   appendStoredThreadEventsInTransaction,
   findStoredEventRow,
   findStoredTimelineWindowByteBudgetFloor,
+  findTimelineWindowBudgetFloorSequence,
   getActiveStoredTurnId,
   getHighWaterMarks,
   getLastStoredProviderThreadId,
@@ -32,6 +33,7 @@ import {
   listEvents,
   listLatestGoalEventRowsByThreadIds,
   listRecentStoredEventRows,
+  listStoredConversationOutlineEventRows,
   listTimelineSegmentAnchorsDescending,
   findTimelineSegmentAnchorSequenceAfter,
   getTimelineSegmentAnchorAtSequence,
@@ -1574,6 +1576,28 @@ describe("events", () => {
         threadId: thread.id,
       }).reduce((bytes, row) => bytes + Buffer.byteLength(row.data), 0),
     );
+    // The event-count floor counts the same rows: a budget of 2 lands on the
+    // second-newest surviving row (6), not on a superseded snapshot (5).
+    expect(
+      findTimelineWindowBudgetFloorSequence(db, {
+        eventBudget: 2,
+        excludedTypes: [],
+        threadId: thread.id,
+      }),
+    ).toBe(2);
+    expect(
+      findTimelineWindowBudgetFloorSequence(db, {
+        eventBudget: 1,
+        excludedTypes: [],
+        threadId: thread.id,
+      }),
+    ).toBe(6);
+    // The conversation outline reads the structural task rows too.
+    expect(
+      listStoredConversationOutlineEventRows(db, {
+        threadId: thread.id,
+      }).map((row) => row.sequence),
+    ).toEqual([1, 2, 6, 7]);
   });
 
   it("lists accepted input rows for requested client turn sequences", () => {
