@@ -7,7 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { act } from "react";
+import { act, type ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   FilePreview,
@@ -15,6 +15,10 @@ import {
   getCsvTruncationNote,
 } from "./FilePreview";
 import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
+import {
+  PierreWorkerPoolGateContext,
+  type PierreWorkerPoolGate,
+} from "@/lib/pierre-worker-pool-gate";
 
 interface MockPierreFileProps {
   file: {
@@ -102,7 +106,8 @@ vi.mock("@pierre/diffs/react", async () => {
       React.useLayoutEffect(() => {
         const host = hostRef.current;
         if (host === null) return;
-        const shadowRoot = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+        const shadowRoot =
+          host.shadowRoot ?? host.attachShadow({ mode: "open" });
         const code = document.createElement("code");
         code.dataset.code = "";
         code.scrollLeft = 240;
@@ -143,19 +148,36 @@ vi.mock("@pierre/diffs/react", async () => {
         shadowRoot.replaceChildren(code);
       }, [file.contents, selectedLines]);
 
-      return React.createElement(
-        "diffs-container",
-        {
-          ref: hostRef,
-          "data-instance-id": String(instanceId),
-          "data-render-count": String(pierreMock.state.renderCount),
-          "data-testid": "pierre-file",
-        },
-      );
+      return React.createElement("diffs-container", {
+        ref: hostRef,
+        "data-instance-id": String(instanceId),
+        "data-render-count": String(pierreMock.state.renderCount),
+        "data-testid": "pierre-file",
+      });
     },
-    useWorkerPool: () => pierreMock.workerPool,
+    WorkerPoolContext: React.createContext(undefined),
   };
 });
+
+/**
+ * The code view reads the workspace pool from the worker-pool gate (see
+ * ThreadDetailWorkerPoolProvider); tests that exercise pool-driven behavior
+ * render inside a ready gate that publishes the mock pool.
+ */
+function renderWithWorkerPool(ui: ReactElement) {
+  const gate: PierreWorkerPoolGate = {
+    ready: true,
+    pool: pierreMock.workerPool as unknown as NonNullable<
+      PierreWorkerPoolGate["pool"]
+    >,
+    request: () => undefined,
+  };
+  return render(
+    <PierreWorkerPoolGateContext.Provider value={gate}>
+      {ui}
+    </PierreWorkerPoolGateContext.Provider>,
+  );
+}
 
 describe("FilePreview", () => {
   beforeEach(() => {
@@ -216,7 +238,7 @@ describe("FilePreview", () => {
   });
 
   it("rerenders the code view when the Pierre worker pool advances", async () => {
-    render(
+    renderWithWorkerPool(
       <FilePreview
         headerMode="none"
         path="apps/app/src/lib/thread-read-state.ts"
@@ -264,7 +286,7 @@ describe("FilePreview", () => {
       managerState: "initializing",
     });
 
-    render(
+    renderWithWorkerPool(
       <FilePreview
         headerMode="none"
         path="apps/app/src/lib/thread-read-state.ts"
@@ -344,7 +366,7 @@ describe("FilePreview", () => {
     const cacheKey =
       "file-preview:/api/v1/projects/proj/files/content:thread-read-state.ts";
 
-    render(
+    renderWithWorkerPool(
       <FilePreview
         headerMode="none"
         path="apps/app/src/lib/thread-read-state.ts"
@@ -606,7 +628,8 @@ describe("FilePreview", () => {
 
   it("reloads an HTML iframe only when the fetched source changes", () => {
     const path = "reports/preview.html";
-    const htmlPreviewUrl = "/api/v1/threads/thread-1/worktree/files/preview.html";
+    const htmlPreviewUrl =
+      "/api/v1/threads/thread-1/worktree/files/preview.html";
     const firstPreview = {
       kind: "text" as const,
       content: "<!doctype html><h1>First</h1>",

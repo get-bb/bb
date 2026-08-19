@@ -14,6 +14,8 @@ import type {
   SelectionSide,
 } from "@pierre/diffs";
 import { useResolvedCodeThemePair } from "@/lib/code-theme";
+import { PierreWorkerPoolBoundary } from "@/lib/pierre-worker-pool-boundary";
+import { useRequirePierreWorkerPool } from "@/lib/pierre-worker-pool-gate";
 import { FileDiff as DiffView } from "@pierre/diffs/react";
 import { useIntersectionObserver } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
@@ -1168,6 +1170,12 @@ function GitDiffCardRawDiffBody({
       onSelectionAddToChat,
     ],
   );
+  // `DiffView` captures the worker pool when it creates its instance, so wait
+  // for the workspace to build the pool before the first render.
+  const isWorkerPoolReady = useRequirePierreWorkerPool();
+  if (!isWorkerPoolReady) {
+    return <GitDiffCardBodySkeleton />;
+  }
   return (
     <div
       ref={containerRef}
@@ -1177,11 +1185,13 @@ function GitDiffCardRawDiffBody({
       onPointerUpCapture={lineSelectionActions.onPointerUpCapture}
     >
       <div className="w-full max-w-full" style={GIT_DIFF_CARD_VIEW_STYLE}>
-        <DiffView
-          fileDiff={fileDiff}
-          options={options}
-          selectedLines={lineSelectionActions.selectedRange}
-        />
+        <PierreWorkerPoolBoundary>
+          <DiffView
+            fileDiff={fileDiff}
+            options={options}
+            selectedLines={lineSelectionActions.selectedRange}
+          />
+        </PierreWorkerPoolBoundary>
       </div>
       {lineSelectionActions.menu}
     </div>

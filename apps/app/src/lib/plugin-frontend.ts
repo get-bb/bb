@@ -22,7 +22,6 @@ import * as radixTooltip from "@radix-ui/react-tooltip";
 import * as sonner from "sonner";
 import * as vaul from "vaul";
 import * as pierreDiffs from "@pierre/diffs";
-import * as pierreDiffsReact from "@pierre/diffs/react";
 import { createDebouncedCallbackScheduler } from "@bb/domain";
 import type {
   PluginContentScriptDisposer,
@@ -37,6 +36,7 @@ import {
   isPluginAppDefinition,
 } from "./plugin-app-definition";
 import { setPluginLogoUrls, type PluginLogoUrls } from "./plugin-logos";
+import { createGatedPierreDiffsReact } from "./plugin-pierre-diffs-react";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 import {
   removePluginSlotRegistrations,
@@ -254,7 +254,9 @@ export function installPluginRuntime(): void {
     sonner,
     vaul,
     pierreDiffs,
-    pierreDiffsReact,
+    // Diff components wrapped in the host's worker-pool gate; see
+    // plugin-pierre-diffs-react.tsx.
+    pierreDiffsReact: createGatedPierreDiffsReact(),
   };
 }
 

@@ -188,6 +188,28 @@ describe("installPluginRuntime", () => {
     installPluginRuntime();
     expect((globalThis as RuntimeHost).__bbPluginRuntime).toBe(runtime);
   });
+
+  it("hands plugins every @pierre/diffs/react export, with the diff components gated", async () => {
+    installPluginRuntime();
+    const runtime = (globalThis as RuntimeHost).__bbPluginRuntime as Record<
+      string,
+      unknown
+    >;
+    const pierreDiffsReact = await import("@pierre/diffs/react");
+    const slot = runtime.pierreDiffsReact as Record<string, unknown>;
+    // The shim destructures the manifest's export list from this slot; a
+    // name missing here becomes `undefined` in every plugin bundle.
+    expect(Object.keys(slot).sort()).toEqual(
+      Object.keys(pierreDiffsReact).sort(),
+    );
+    // Non-component exports pass through unchanged...
+    expect(slot.useVirtualizer).toBe(pierreDiffsReact.useVirtualizer);
+    expect(slot.WorkerPoolContext).toBe(pierreDiffsReact.WorkerPoolContext);
+    // ...while the diff components wait for the host's worker pool, so a
+    // plugin diff cannot capture "no pool" before the workspace builds it.
+    expect(slot.FileDiff).not.toBe(pierreDiffsReact.FileDiff);
+    expect(slot.File).not.toBe(pierreDiffsReact.File);
+  });
 });
 
 describe("createPluginFrontendPageLifecycle", () => {

@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { File as PierreFile, useWorkerPool } from "@pierre/diffs/react";
+import { File as PierreFile } from "@pierre/diffs/react";
 import type { FileOptions } from "@pierre/diffs/react";
 import {
   DIFFS_TAG_NAME,
@@ -36,6 +36,11 @@ import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { useResolvedCodeThemePair } from "@/lib/code-theme";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
+import { PierreWorkerPoolBoundary } from "@/lib/pierre-worker-pool-boundary";
+import {
+  usePierreWorkerPool,
+  useRequirePierreWorkerPool,
+} from "@/lib/pierre-worker-pool-gate";
 import type {
   FilePreviewLineRange,
   WorkspaceFilePreviewStatusLabel,
@@ -1171,10 +1176,7 @@ function findPreviewScrollViewport(container: HTMLElement): HTMLElement | null {
   return null;
 }
 
-function scrollPreviewTargetLine(
-  container: HTMLElement,
-  line: HTMLElement,
-) {
+function scrollPreviewTargetLine(container: HTMLElement, line: HTMLElement) {
   const viewport = findPreviewScrollViewport(container);
   if (viewport === null) return;
 
@@ -1250,7 +1252,10 @@ function FilePreviewCode({
   const preferredTheme = usePreferredTheme();
   const codeTheme = useResolvedCodeThemePair();
   const containerRef = useRef<HTMLDivElement>(null);
-  const workerPool = useWorkerPool();
+  // `PierreFile` captures the worker pool when it creates its instance, so
+  // wait for the workspace to build the pool before the first render.
+  const isWorkerPoolReady = useRequirePierreWorkerPool();
+  const workerPool = usePierreWorkerPool();
   const lastWorkerPoolStatsKeyRef = useRef<string | null>(null);
   const [workerPoolStats, setWorkerPoolStats] =
     useState<FilePreviewWorkerPoolStats | null>(null);
@@ -1403,7 +1408,7 @@ function FilePreviewCode({
     workerHighlightCacheState,
   ]);
 
-  if (shouldWaitForWorkerPool) {
+  if (shouldWaitForWorkerPool || !isWorkerPoolReady) {
     return <FilePreviewLoading />;
   }
 
@@ -1417,13 +1422,15 @@ function FilePreviewCode({
       onPointerMoveCapture={lineSelectionActions.onPointerMoveCapture}
       onPointerUpCapture={lineSelectionActions.onPointerUpCapture}
     >
-      <PierreFile
-        key={`${file.cacheKey ?? file.name}:${workerHighlightCacheState}`}
-        disableWorkerPool={workerPoolStats?.workersFailed === true}
-        file={file}
-        options={options}
-        selectedLines={selectedLines}
-      />
+      <PierreWorkerPoolBoundary>
+        <PierreFile
+          key={`${file.cacheKey ?? file.name}:${workerHighlightCacheState}`}
+          disableWorkerPool={workerPoolStats?.workersFailed === true}
+          file={file}
+          options={options}
+          selectedLines={selectedLines}
+        />
+      </PierreWorkerPoolBoundary>
       {lineSelectionActions.menu}
     </div>
   );
