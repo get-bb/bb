@@ -723,8 +723,8 @@ bb thread log "$SMOKE_THREAD_ID" --format json \
 Inspect logs and state:
 
 ```bash
-tail -n 200 "$LOGS_DIR/server.log"
-tail -n 200 "$LOGS_DIR/host-daemon.log"
+tail -n 200 "$SERVER_LOG_DIR"/server*.log
+tail -n 200 "$DAEMON_LOG_DIR"/host-daemon*.log
 curl -fsS "$BB_SERVER_URL/api/v1/threads/$SMOKE_THREAD_ID" | jq
 ```
 

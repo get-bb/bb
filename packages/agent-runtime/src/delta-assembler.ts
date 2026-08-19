@@ -144,7 +144,9 @@ type TextDeltaThreadEvent = Extract<
   }
 >;
 
-function asTextDeltaEvent(event: ThreadEvent): TextDeltaThreadEvent | undefined {
+function asTextDeltaEvent(
+  event: ThreadEvent,
+): TextDeltaThreadEvent | undefined {
   switch (event.type) {
     case "item/agentMessage/delta":
     case "item/reasoning/textDelta":
@@ -177,6 +179,7 @@ interface EventSink {
 
 interface OpenStreamState {
   bbItemId: string;
+  channel: "assistant" | "reasoning";
   parentToolCallId: string | undefined;
   text: string;
 }
@@ -284,9 +287,11 @@ export interface DeltaAssembler {
 const SEP = THREAD_DELTA_KEY_SEPARATOR;
 
 function itemKeyString(key: DeltaItemKey): string {
-  return [key.providerItemId ?? "", key.channel ?? "", key.parentRef ?? ""].join(
-    SEP,
-  );
+  return [
+    key.providerItemId ?? "",
+    key.channel ?? "",
+    key.parentRef ?? "",
+  ].join(SEP);
 }
 
 function streamKeyString(args: {
@@ -643,9 +648,7 @@ export function createDeltaAssembler(
     state.commandSnapshotsByKey.clear();
   }
 
-  function currentOrLastTurnId(
-    state: ThreadAssemblyState,
-  ): string | undefined {
+  function currentOrLastTurnId(state: ThreadAssemblyState): string | undefined {
     return state.currentTurnId ?? state.lastTurnId;
   }
 
@@ -1244,9 +1247,7 @@ export function createDeltaAssembler(
           ...(delta.resultText === undefined
             ? {}
             : { resultText: delta.resultText }),
-          ...(delta.exitCode === undefined
-            ? {}
-            : { exitCode: delta.exitCode }),
+          ...(delta.exitCode === undefined ? {} : { exitCode: delta.exitCode }),
           ...(delta.aggregatedOutput === undefined
             ? {}
             : { aggregatedOutput: delta.aggregatedOutput }),
@@ -1532,7 +1533,12 @@ export function createDeltaAssembler(
       case "message.delta": {
         const turnId = state.currentTurnId;
         if (turnId === undefined) {
-          pushNoTurnFallback(state, delta.noTurnFallback, delta.parentRef, events);
+          pushNoTurnFallback(
+            state,
+            delta.noTurnFallback,
+            delta.parentRef,
+            events,
+          );
           return;
         }
         const streamKey = streamKeyString({
@@ -1544,7 +1550,12 @@ export function createDeltaAssembler(
         let stream = state.openStreamsByKey.get(streamKey);
         if (stream === undefined) {
           const bbItemId = mintItemId();
-          stream = { bbItemId, parentToolCallId, text: "" };
+          stream = {
+            bbItemId,
+            channel: delta.channel,
+            parentToolCallId,
+            text: "",
+          };
           state.openStreamsByKey.set(streamKey, stream);
           const item: ThreadEventItem =
             delta.channel === "assistant"
@@ -1587,7 +1598,12 @@ export function createDeltaAssembler(
         }
         const turnId = state.currentTurnId;
         if (turnId === undefined) {
-          pushNoTurnFallback(state, delta.noTurnFallback, delta.parentRef, events);
+          pushNoTurnFallback(
+            state,
+            delta.noTurnFallback,
+            delta.parentRef,
+            events,
+          );
           return;
         }
         // Settling always releases the stream: later text mints a fresh item
@@ -1981,11 +1997,33 @@ export function createDeltaAssembler(
               : "interrupted";
         const itemStatus: ThreadEventItemStatus =
           turnStatus === "failed" ? "failed" : "interrupted";
+        for (const stream of state.openStreamsByKey.values()) {
+          const item: ThreadEventItem =
+            stream.channel === "assistant"
+              ? {
+                  type: "agentMessage",
+                  id: stream.bbItemId,
+                  text: stream.text,
+                }
+              : {
+                  type: "reasoning",
+                  id: stream.bbItemId,
+                  summary: [],
+                  content: stream.text.length === 0 ? [] : [stream.text],
+                };
+          events.push({
+            type: "item/completed",
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+            item: withParentToolCallId(item, stream.parentToolCallId),
+          });
+        }
         for (const open of state.openItemsByKey.values()) {
           // Thread-attached items (background tasks) have a provider-owned
           // lifecycle that outlives sessions; bridges drain them with explicit
           // item.close deltas when the backing session dies.
-          if (open.threadAttached || !("status" in open.item)) {
+          if (open.threadAttached) {
             continue;
           }
           events.push({

@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ClientTurnRequestId, ThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
-import type {
-  DeltaItemShape,
-  ThreadDelta,
-} from "@bb/provider-bridge-protocol";
+import type { DeltaItemShape, ThreadDelta } from "@bb/provider-bridge-protocol";
 import {
   createDeltaAssembler,
   diffCumulativeText,
@@ -46,7 +43,9 @@ describe("delta assembler", () => {
 
   it("queues accepted input and drains it right after turn/started", () => {
     const assembler = createAssembler();
-    expect(assemble(assembler, { kind: "input.accepted", clientRequestId: CREQ })).toEqual([]);
+    expect(
+      assemble(assembler, { kind: "input.accepted", clientRequestId: CREQ }),
+    ).toEqual([]);
 
     const events = assemble(assembler, { kind: "turn.open" });
     expect(events.map((event) => event.type)).toEqual([
@@ -342,9 +341,7 @@ describe("delta assembler", () => {
       item: { type: "tool", tool: "task", args: {} },
     });
     const parentBbId =
-      parentStarted[0]?.type === "item/started"
-        ? parentStarted[0].item.id
-        : "";
+      parentStarted[0]?.type === "item/started" ? parentStarted[0].item.id : "";
     const childStarted = assemble(assembler, {
       kind: "item.open",
       key: { providerItemId: "tc-child", parentRef: "agent-parent-1" },
@@ -595,9 +592,7 @@ describe("delta assembler", () => {
       key: { providerItemId: "tc-1" },
       text: "FIRST\nSECOND\n",
     });
-    expect(appended).toEqual([
-      expect.objectContaining({ delta: "SECOND\n" }),
-    ]);
+    expect(appended).toEqual([expect.objectContaining({ delta: "SECOND\n" })]);
     const reset = assemble(assembler, {
       kind: "command.outputSnapshot",
       key: { providerItemId: "tc-1" },
@@ -731,9 +726,7 @@ describe("delta assembler", () => {
       estimated: true,
       attach: "currentOrLast",
     });
-    expect(events).toEqual([
-      expect.objectContaining({ scope: threadScope() }),
-    ]);
+    expect(events).toEqual([expect.objectContaining({ scope: threadScope() })]);
   });
 
   it("scopes context.compacted to the current-or-last turn and drops it with none", () => {
@@ -864,9 +857,7 @@ describe("delta assembler", () => {
       rawType: "sdk/unknown",
       vouchedTurn: true,
     });
-    expect(late).toEqual([
-      expect.objectContaining({ scope: threadScope() }),
-    ]);
+    expect(late).toEqual([expect.objectContaining({ scope: threadScope() })]);
   });
 
   it("drops onlyIfNoTurn unhandled events while a turn is open", () => {
@@ -1090,6 +1081,39 @@ describe("delta assembler", () => {
     expect(assembler.getOpenTurnId(THREAD_ID)).toBeUndefined();
   });
 
+  it("session.ended completes an open message stream before the turn", () => {
+    const assembler = createAssembler();
+    assemble(
+      assembler,
+      { kind: "turn.open" },
+      {
+        kind: "message.delta",
+        channel: "assistant",
+        streamKey: "assistant",
+        text: "partial answer",
+      },
+    );
+
+    const events = assemble(assembler, {
+      kind: "session.ended",
+      reason: "interrupted",
+    });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          text: "partial answer",
+        }),
+      }),
+      expect.objectContaining({
+        type: "turn/completed",
+        status: "interrupted",
+      }),
+    ]);
+  });
+
   it("session.ended with an error fails the turn and surfaces the error first", () => {
     const assembler = createAssembler();
     assemble(assembler, { kind: "turn.open" });
@@ -1194,7 +1218,11 @@ describe("delta assembler (keyed provider turns)", () => {
       assembler,
       { kind: "turn.open", providerTurnId: "parent-turn" },
       { kind: "turn.open", providerTurnId: "child-turn" },
-      { kind: "turn.boundary", providerTurnId: "child-turn", status: "completed" },
+      {
+        kind: "turn.boundary",
+        providerTurnId: "child-turn",
+        status: "completed",
+      },
       {
         kind: "item.close",
         key: { providerItemId: "msg-1" },
@@ -1498,7 +1526,9 @@ describe("delta assembler background tasks and progress policy", () => {
   }
 
   function taskShape(
-    overrides: Partial<Extract<DeltaItemShape, { type: "backgroundTask" }>> = {},
+    overrides: Partial<
+      Extract<DeltaItemShape, { type: "backgroundTask" }>
+    > = {},
   ): Extract<DeltaItemShape, { type: "backgroundTask" }> {
     return {
       type: "backgroundTask",
@@ -1631,7 +1661,10 @@ describe("delta assembler background tasks and progress policy", () => {
     // Unrelated later traffic after the window elapses carries the pending
     // snapshot out first.
     advance(600);
-    const events = assemble(assembler, { kind: "turn.boundary", status: "completed" });
+    const events = assemble(assembler, {
+      kind: "turn.boundary",
+      status: "completed",
+    });
     expect(events[0]).toMatchObject({
       type: "item/backgroundTask/progress",
       item: expect.objectContaining({ summary: "suppressed" }),
@@ -1699,7 +1732,11 @@ describe("delta assembler background tasks and progress policy", () => {
     assemble(
       assembler,
       { kind: "turn.open" },
-      { kind: "item.open", key: { providerItemId: "tool-1" }, item: { type: "tool", tool: "read" } },
+      {
+        kind: "item.open",
+        key: { providerItemId: "tool-1" },
+        item: { type: "tool", tool: "read" },
+      },
     );
     advance(100);
     // Suppressed turn-scoped message progress.
@@ -1714,9 +1751,9 @@ describe("delta assembler background tasks and progress policy", () => {
 
     // The turn is gone; the pending progress must not resurface later.
     advance(600);
-    expect(assemble(assembler, { kind: "turn.open" }).map((e) => e.type)).toEqual([
-      "turn/started",
-    ]);
+    expect(
+      assemble(assembler, { kind: "turn.open" }).map((e) => e.type),
+    ).toEqual(["turn/started"]);
   });
 
   it("message progress seeds its window at open and throttles per item", () => {
@@ -1724,7 +1761,11 @@ describe("delta assembler background tasks and progress policy", () => {
     assemble(
       assembler,
       { kind: "turn.open" },
-      { kind: "item.open", key: { providerItemId: "tool-1" }, item: { type: "tool", tool: "read" } },
+      {
+        kind: "item.open",
+        key: { providerItemId: "tool-1" },
+        item: { type: "tool", tool: "read" },
+      },
     );
     advance(100);
     expect(
@@ -1743,7 +1784,10 @@ describe("delta assembler background tasks and progress policy", () => {
     // The newer progress supersedes the suppressed one: exactly one emission,
     // carrying the latest state.
     expect(events).toEqual([
-      expect.objectContaining({ type: "item/toolCall/progress", message: "later" }),
+      expect.objectContaining({
+        type: "item/toolCall/progress",
+        message: "later",
+      }),
     ]);
   });
 
@@ -2087,9 +2131,9 @@ describe("delta assembler text-delta batching", () => {
       "item/agentMessage/delta",
       "item/agentMessage/delta",
     ]);
-    expect(events.map((event) => ("delta" in event ? event.delta : ""))).toEqual(
-      ["b", "c"],
-    );
+    expect(
+      events.map((event) => ("delta" in event ? event.delta : "")),
+    ).toEqual(["b", "c"]);
   });
 
   it("keeps concurrent streams independent (no cross-stream merging)", () => {
@@ -2103,7 +2147,10 @@ describe("delta assembler text-delta batching", () => {
     expect(assemble(assembler, assistantDelta("B2", "tool-b"))).toEqual([]);
 
     advance(200);
-    const events = assemble(assembler, { kind: "turn.boundary", status: "completed" });
+    const events = assemble(assembler, {
+      kind: "turn.boundary",
+      status: "completed",
+    });
     const deltas = events.filter(
       (event) => event.type === "item/agentMessage/delta",
     );
@@ -2133,7 +2180,10 @@ describe("delta assembler text-delta batching", () => {
     ).toEqual([]);
 
     advance(200);
-    const events = assemble(assembler, { kind: "turn.boundary", status: "completed" });
+    const events = assemble(assembler, {
+      kind: "turn.boundary",
+      status: "completed",
+    });
     expect(events.map((event) => event.type)).toEqual([
       "item/agentMessage/delta",
       "item/reasoning/textDelta",
@@ -2251,15 +2301,22 @@ describe("delta assembler text-delta batching", () => {
     });
     expect(events.map((event) => event.type)).toEqual([
       "item/agentMessage/delta",
+      "item/completed",
       "turn/completed",
     ]);
     expect(events[0]).toMatchObject({ delta: " answer" });
+    expect(events[1]).toMatchObject({
+      item: { type: "agentMessage", text: "partial answer" },
+    });
   });
 
   it("coalesces item-keyed text deltas (codex family) per channel", () => {
     const { assembler, advance } = createBatchingAssembler();
     assemble(assembler, { kind: "turn.open", providerTurnId: "turn-1" });
-    const textDelta = (channel: "agentMessage" | "reasoningText", text: string): ThreadDelta => ({
+    const textDelta = (
+      channel: "agentMessage" | "reasoningText",
+      text: string,
+    ): ThreadDelta => ({
       kind: "item.textDelta",
       key: { providerItemId: `item-${channel}` },
       channel,

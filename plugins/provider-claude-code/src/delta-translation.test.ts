@@ -1024,6 +1024,48 @@ describe("claude streaming", () => {
     );
   });
 
+  it("settles a partially streamed assistant message when interrupted", () => {
+    const harness = createClaudeDeltaHarness();
+
+    const deltaEvents = harness.translate({
+      type: "stream_event",
+      event: {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: "partial answer" },
+      },
+      session_id: "sess-1",
+    });
+    const started = deltaEvents.find(
+      (event) =>
+        event.type === "item/started" && event.item.type === "agentMessage",
+    );
+
+    const settled = harness.settleSession();
+
+    expect(started).toMatchObject({
+      type: "item/started",
+      item: {
+        type: "agentMessage",
+        id: expect.stringMatching(ITEM_ID_PATTERN),
+      },
+    });
+    expect(settled).toEqual([
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          id: started?.type === "item/started" ? started.item.id : "",
+          text: "partial answer",
+        }),
+      }),
+      expect.objectContaining({
+        type: "turn/completed",
+        status: "interrupted",
+      }),
+    ]);
+  });
+
   it("streams thinking and finalizes it on the assistant message", () => {
     const harness = createClaudeDeltaHarness();
 

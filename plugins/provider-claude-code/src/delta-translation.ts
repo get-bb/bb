@@ -670,6 +670,12 @@ export function createClaudeDeltaTranslator() {
             mirrorCloseTurn(state);
           }
           break;
+        case "session.ended":
+          if (state.mirror.turnOpen || state.mirror.pendingInputs > 0) {
+            mirrorOpenTurn(state);
+            mirrorCloseTurn(state);
+          }
+          break;
         default:
           break;
       }
@@ -1495,7 +1501,7 @@ export function createClaudeDeltaTranslator() {
     if (state.mirror.turnOpen) {
       deltas.push(
         ...withMirror(state, [
-          { kind: "turn.boundary", status: "interrupted" },
+          { kind: "session.ended", reason: "interrupted" },
         ]),
       );
     }
