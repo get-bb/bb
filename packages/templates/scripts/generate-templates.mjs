@@ -255,6 +255,12 @@ const SHIMMED_SPECIFIERS = new Set([
   "@radix-ui/react-tooltip",
   "sonner",
   "vaul",
+  // Host-resident libraries: shimmed for bundle size, not singleton
+  // semantics. zod is not a slot (its namespace would bloat the host's boot
+  // chunk), so the scaffold keeps it in dependencies.
+  "clsx",
+  "tailwind-merge",
+  "class-variance-authority",
 ]);
 const registryDir = path.join(packageRoot, "..", "plugin-registry", "r");
 const appPackageJson = JSON.parse(
