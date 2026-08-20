@@ -1072,23 +1072,9 @@ export default async function plugin(
         throw new Error("Thread-storage files require a thread ID");
       }
       const relativePath = requireThreadStoragePath(filePath);
-      const [thread, storage] = await Promise.all([
-        bb.sdk.threads.get({
-          threadId: source.threadId,
-          include: "environment",
-        }),
-        // The bounded listing is the SDK surface that also resolves the
-        // thread's absolute storage root on its owning host.
-        bb.sdk.threads.storageFiles({
-          threadId: source.threadId,
-          limit: "1",
-        }),
-      ]);
-      const environment =
-        "environment" in thread ? thread.environment : undefined;
-      if (!environment) {
-        throw new Error("This thread has no environment");
-      }
+      const storage = await bb.sdk.threads.storageLocation({
+        threadId: source.threadId,
+      });
       if (!isAbsoluteHostPath(storage.storageRootPath)) {
         throw new Error("This thread has no absolute storage path");
       }
@@ -1099,7 +1085,7 @@ export default async function plugin(
           ...relativePath.split("/"),
         ),
         rootPath,
-        hostId: environment.hostId,
+        hostId: storage.hostId,
       };
     }
     throw new Error(

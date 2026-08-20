@@ -20,6 +20,7 @@ import {
   threadQueryKey,
   threadQueuedMessagesQueryKey,
   threadSearchQueryKey,
+  threadStorageLocationQueryKey,
   threadTimelineQueryKey,
 } from "./queries/query-keys";
 import {
@@ -324,10 +325,10 @@ describe("system cache effects", () => {
     queryClient.clear();
   });
 
-  it("refetches errored queries after reconnect", async () => {
+  it("recovers a failed active thread-storage location query after reconnect", async () => {
     const queryClient = createCacheEffectQueryClient();
     queryClient.mount();
-    const erroredKey = hostsQueryKey();
+    const erroredKey = threadStorageLocationQueryKey("thread-1");
     const queryFn = vi
       .fn<() => Promise<string>>()
       .mockRejectedValueOnce(new Error("server restarting"))

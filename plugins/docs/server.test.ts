@@ -5,10 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import type { PluginRpcClient, PluginRpcHandlers } from "@get-bb/plugin-sdk";
-import {
-  createFakePluginHost,
-  makeThreadResponse,
-} from "@get-bb/plugin-sdk/testing";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import simpleNotes, { docsRpcContract } from "./server";
 
 const temporaryDirectories: string[] = [];
@@ -1311,16 +1308,8 @@ describe("Docs vault operations", () => {
           }),
         },
         threads: {
-          get: async () => ({
-            ...makeThreadResponse({
-              id: "thread_1",
-              environmentId: "environment_1",
-            }),
-            environment: { hostId: "host_remote" },
-          }),
-          storageFiles: async () => ({
-            files: [],
-            truncated: false,
+          storageLocation: async () => ({
+            hostId: "host_remote",
             storageRootPath,
           }),
         },
@@ -1356,13 +1345,9 @@ describe("Docs vault operations", () => {
       sha256: "updated-thread-sha",
     });
 
-    expect(host.harness.sdk.callsTo("threads.get")).toEqual([
-      [{ threadId: "thread_1", include: "environment" }],
-      [{ threadId: "thread_1", include: "environment" }],
-    ]);
-    expect(host.harness.sdk.callsTo("threads.storageFiles")).toEqual([
-      [{ threadId: "thread_1", limit: "1" }],
-      [{ threadId: "thread_1", limit: "1" }],
+    expect(host.harness.sdk.callsTo("threads.storageLocation")).toEqual([
+      [{ threadId: "thread_1" }],
+      [{ threadId: "thread_1" }],
     ]);
     expect(host.harness.sdk.callsTo("files.read")).toEqual([
       [
@@ -1403,8 +1388,7 @@ describe("Docs vault operations", () => {
         path: "../outside.md",
       }),
     ).rejects.toThrow("Invalid thread-storage path");
-    expect(harness.sdk.callsTo("threads.get")).toEqual([]);
-    expect(harness.sdk.callsTo("threads.storageFiles")).toEqual([]);
+    expect(harness.sdk.callsTo("threads.storageLocation")).toEqual([]);
   });
 
   it("publishes watched filesystem changes without waiting for the poll", async () => {

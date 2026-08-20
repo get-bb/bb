@@ -196,6 +196,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "allThreadQueuedMessagesQueryKeyPrefix",
     "allThreadStorageFilePreviewQueryKeyPrefix",
     "allThreadStorageFilesQueryKeyPrefix",
+    "allThreadStorageLocationsQueryKeyPrefix",
     "allThreadStoragePathsQueryKeyPrefix",
     "allThreadTimelineQueryKeyPrefix",
     "allThreadTimelineTurnSummaryDetailsQueryKeyPrefix",
