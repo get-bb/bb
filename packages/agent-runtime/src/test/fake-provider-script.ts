@@ -699,6 +699,40 @@ function handleMessage(message: JsonRecord): void {
     return;
   }
 
+  if (method === "provider/installation/status") {
+    send({
+      jsonrpc: "2.0",
+      id: getJsonRpcId(message.id) ?? 0,
+      result: {
+        executableName: "fake-provider",
+        executablePath: "/fake/bin/fake-provider",
+        installed: true,
+        installSource: "external",
+        currentVersion: "999.0.0",
+        latestVersion: "999.0.0",
+        minimumSupportedVersion: "1.0.0",
+        npmPackageName: null,
+        npmGlobalPackageVersion: null,
+        installAction: null,
+        needsUpdate: false,
+        versionUnsupported: false,
+      },
+    });
+    return;
+  }
+
+  if (method === "provider/installation/run") {
+    send({
+      jsonrpc: "2.0",
+      id: getJsonRpcId(message.id) ?? 0,
+      result: {
+        available: false,
+        message: "Fake provider installation is unavailable",
+      },
+    });
+    return;
+  }
+
   if (method === "skills/configure") {
     send({
       jsonrpc: "2.0",

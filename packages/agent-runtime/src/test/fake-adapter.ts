@@ -214,9 +214,19 @@ function buildCommandPlan(command: AdapterCommand): ProviderCommandPlan {
       };
     case "provider/health":
     case "provider/usage":
-    case "provider/installation/status":
-    case "provider/installation/run":
       return { kind: "noop", reason: `${command.type} unsupported` };
+    case "provider/installation/status":
+      return {
+        kind: "request",
+        method: "provider/installation/status",
+        params: {},
+      };
+    case "provider/installation/run":
+      return {
+        kind: "request",
+        method: "provider/installation/run",
+        params: { action: command.action },
+      };
     default: {
       const _exhaustive: never = command;
       throw new Error(`Unhandled fake adapter command: ${String(_exhaustive)}`);
