@@ -142,40 +142,48 @@ function createScriptedPiAgentSession(): ScriptedPiAgentSession {
     getContextUsage: vi.fn(() => undefined),
     hasExtensionHandlers: vi.fn(() => false),
     isStreaming: false,
-    prompt: vi.fn(async (promptText: string) => {
-      // A prompt the agent handles without emitting a single SDK event: the
-      // bridge's own pi/prompt/settled report is then the only signal that can
-      // settle the turn (#1431).
-      if (promptText === ZERO_WORK_PROMPT_TEXT) {
-        return;
-      }
-      scriptedTurnCounter += 1;
-      const text = `hello from turn ${scriptedTurnCounter}`;
-      emit(asPiSdkEvent({ type: "agent_start" }));
-      emit(
-        asPiSdkEvent({
-          type: "message_update",
-          assistantMessageEvent: {
-            type: "text_delta",
-            contentIndex: 0,
-            delta: text,
-          },
-        }),
-      );
-      emit(
-        asPiSdkEvent({
-          type: "agent_end",
-          messages: [
-            {
-              role: "assistant",
-              content: [{ type: "text", text }],
-              usage: { input: 12, output: 5 },
+    prompt: vi.fn(
+      async (
+        promptText: string,
+        options?: { preflightResult?: (accepted: boolean) => void },
+      ) => {
+        // Pi accepts a prompt it is about to run in preflight, which is what
+        // tells the bridge the input was consumed rather than queued.
+        options?.preflightResult?.(true);
+        // A prompt the agent handles without emitting a single SDK event: the
+        // bridge's own pi/prompt/settled report is then the only signal that
+        // can settle the turn (#1431).
+        if (promptText === ZERO_WORK_PROMPT_TEXT) {
+          return;
+        }
+        scriptedTurnCounter += 1;
+        const text = `hello from turn ${scriptedTurnCounter}`;
+        emit(asPiSdkEvent({ type: "agent_start" }));
+        emit(
+          asPiSdkEvent({
+            type: "message_update",
+            assistantMessageEvent: {
+              type: "text_delta",
+              contentIndex: 0,
+              delta: text,
             },
-          ],
-          willRetry: false,
-        }),
-      );
-    }),
+          }),
+        );
+        emit(
+          asPiSdkEvent({
+            type: "agent_end",
+            messages: [
+              {
+                role: "assistant",
+                content: [{ type: "text", text }],
+                usage: { input: 12, output: 5 },
+              },
+            ],
+            willRetry: false,
+          }),
+        );
+      },
+    ),
     sessionManager: { getLeafId: vi.fn(() => "pi-conformance-checkpoint") },
     setActiveToolsByName: vi.fn(),
     subscribe: vi.fn((listener: (event: AgentSessionEvent) => void) => {

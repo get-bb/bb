@@ -235,12 +235,32 @@ function emitSessionEvent(event: AgentSessionEvent): void {
 
 function createQueueUpdateEvent(
   steering: readonly string[],
+  followUp: readonly string[] = [],
 ): AgentSessionEvent {
   return {
     type: "queue_update",
     steering,
-    followUp: [],
+    followUp,
   };
+}
+
+/**
+ * Every dispatch installs pi's preflight hook: it is how the session learns
+ * that pi took an input it did not queue.
+ */
+function withPreflight(
+  options: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return { ...options, preflightResult: expect.any(Function) };
+}
+
+/** Report pi's preflight acceptance for the most recent dispatch. */
+function reportPreflightAccepted(accepted = true): void {
+  const call = mockPrompt.mock.calls.at(-1);
+  const options = call?.[1] as
+    | { preflightResult?: (accepted: boolean) => void }
+    | undefined;
+  options?.preflightResult?.(accepted);
 }
 
 function createAgentEndEvent(willRetry = false): AgentSessionEvent {
@@ -284,6 +304,7 @@ async function flushDeferredSteerSettlement(): Promise<void> {
 describe("PiSdkSession", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPrompt.mockReset();
     mockSessionState.isStreaming = false;
     mockSessionEventListeners.length = 0;
     mockGetActiveToolNames.mockReturnValue([]);
@@ -669,8 +690,8 @@ describe("PiSdkSession", () => {
     );
 
     await session.start();
-    await session.prompt("first follow-up");
-    await session.prompt("second follow-up");
+    await session.prompt("first follow-up").settled;
+    await session.prompt("second follow-up").settled;
 
     expect(mockSetActiveToolsByName).toHaveBeenCalledTimes(2);
     expect(mockSetActiveToolsByName).toHaveBeenNthCalledWith(1, [
@@ -690,11 +711,57 @@ describe("PiSdkSession", () => {
     const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), vi.fn());
 
     await session.start();
-    await session.prompt("queued follow-up");
+    session.prompt("queued follow-up");
 
-    expect(mockPrompt).toHaveBeenCalledWith("queued follow-up", {
-      streamingBehavior: "followUp",
+    expect(mockPrompt).toHaveBeenCalledWith(
+      "queued follow-up",
+      withPreflight({ streamingBehavior: "followUp" }),
+    );
+  });
+
+  it("accepts a queued follow-up prompt only once pi reads it", async () => {
+    mockSessionState.isStreaming = true;
+    mockPrompt.mockImplementationOnce(async () => {
+      emitSessionEvent(createQueueUpdateEvent([], ["expanded follow-up"]));
+      reportPreflightAccepted();
     });
+    const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), vi.fn());
+
+    await session.start();
+    const dispatch = session.prompt("queued follow-up");
+    let consumed = false;
+    void dispatch.consumed.then(() => {
+      consumed = true;
+    });
+    await flushAsyncWork();
+
+    // Pi queued the prompt behind the live run: it has not read the input, and
+    // the run it lands in reports its own settlement.
+    expect(consumed).toBe(false);
+    await expect(dispatch.settled).resolves.toBeNull();
+
+    emitSessionEvent(createQueueUpdateEvent([], []));
+    await expect(dispatch.consumed).resolves.toBeUndefined();
+  });
+
+  it("accepts an unqueued prompt when pi reports preflight acceptance", async () => {
+    let releaseRun: (() => void) | undefined;
+    mockPrompt.mockImplementationOnce(async () => {
+      reportPreflightAccepted();
+      await new Promise<void>((resolve) => {
+        releaseRun = resolve;
+      });
+    });
+    const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), vi.fn());
+
+    await session.start();
+    const dispatch = session.prompt("direct prompt");
+
+    // Pi started the run with the input, so the turn is accepted long before
+    // the run it started settles.
+    await expect(dispatch.consumed).resolves.toBeUndefined();
+    releaseRun?.();
+    await expect(dispatch.settled).resolves.toEqual({});
   });
 
   it("resolves queued steer once the SDK accepts it and monitors consumption", async () => {
@@ -712,9 +779,10 @@ describe("PiSdkSession", () => {
     });
     await steerPromise;
 
-    expect(mockPrompt).toHaveBeenCalledWith("interrupting steer", {
-      streamingBehavior: "steer",
-    });
+    expect(mockPrompt).toHaveBeenCalledWith(
+      "interrupting steer",
+      withPreflight({ streamingBehavior: "steer" }),
+    );
     expect(steerAccepted).toBe(true);
     expect(onDone).not.toHaveBeenCalled();
 
@@ -731,9 +799,10 @@ describe("PiSdkSession", () => {
     await session.start();
     await session.steer("handled steer");
 
-    expect(mockPrompt).toHaveBeenCalledWith("handled steer", {
-      streamingBehavior: "steer",
-    });
+    expect(mockPrompt).toHaveBeenCalledWith(
+      "handled steer",
+      withPreflight({ streamingBehavior: "steer" }),
+    );
   });
 
   it("rejects steer consumption when the SDK prompt rejects", async () => {
@@ -814,6 +883,36 @@ describe("PiSdkSession", () => {
     );
   });
 
+  it("keeps a queued follow-up pending past the agent end that continues into it", async () => {
+    mockSessionState.isStreaming = true;
+    mockPrompt.mockImplementationOnce(async () => {
+      emitSessionEvent(createQueueUpdateEvent([], ["queued follow-up"]));
+    });
+    const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), vi.fn());
+
+    await session.start();
+    const dispatch = session.prompt("queued follow-up");
+    let settledConsumption: "consumed" | "failed" | undefined;
+    void dispatch.consumed.then(
+      () => {
+        settledConsumption = "consumed";
+      },
+      () => {
+        settledConsumption = "failed";
+      },
+    );
+
+    // Pi drains its follow-up queue by continuing the same run after
+    // agent_end, so that event is terminal for steering only.
+    emitSessionEvent(createAgentEndEvent());
+    await flushDeferredSteerSettlement();
+
+    expect(settledConsumption).toBeUndefined();
+
+    emitSessionEvent(createQueueUpdateEvent([], []));
+    await expect(dispatch.consumed).resolves.toBeUndefined();
+  });
+
   it("keeps queued steer consumption pending when auto retry starts", async () => {
     mockSessionState.isStreaming = true;
     mockPrompt.mockImplementationOnce(async () => {
@@ -867,11 +966,19 @@ describe("PiSdkSession", () => {
     const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), vi.fn());
 
     await session.start();
-    await session.prompt("idle follow-up");
+    session.prompt("idle follow-up");
     await session.steer("idle steer");
 
-    expect(mockPrompt).toHaveBeenNthCalledWith(1, "idle follow-up", {});
-    expect(mockPrompt).toHaveBeenNthCalledWith(2, "idle steer", {});
+    expect(mockPrompt).toHaveBeenNthCalledWith(
+      1,
+      "idle follow-up",
+      withPreflight(),
+    );
+    expect(mockPrompt).toHaveBeenNthCalledWith(
+      2,
+      "idle steer",
+      withPreflight(),
+    );
   });
 
   it("reports pending steer consumption failure when the session closes", async () => {
@@ -891,7 +998,7 @@ describe("PiSdkSession", () => {
     expect(onDone).toHaveBeenCalledTimes(1);
     expect(onDone).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: "Pi SDK session stopped before steer consumed",
+        message: "Pi SDK session stopped before input was consumed",
       }),
     );
   });
@@ -904,7 +1011,7 @@ describe("PiSdkSession", () => {
     const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), onDone);
 
     await session.start();
-    await session.prompt("retry after auth storage miss");
+    await session.prompt("retry after auth storage miss").settled;
 
     expect(mockPrompt).toHaveBeenCalledTimes(9);
     expect(onDone).not.toHaveBeenCalled();
@@ -917,7 +1024,12 @@ describe("PiSdkSession", () => {
     const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), onDone);
 
     await session.start();
-    await session.prompt("fail after retry budget");
+    const dispatch = session.prompt("fail after retry budget");
+    void dispatch.consumed.catch(() => undefined);
+    await expect(dispatch.settled).resolves.toEqual({ error: authError });
+    await expect(dispatch.consumed).rejects.toThrow(
+      "No API key found for anthropic.",
+    );
 
     expect(mockPrompt).toHaveBeenCalledTimes(9);
     expect(onDone).toHaveBeenCalledTimes(1);
@@ -927,7 +1039,7 @@ describe("PiSdkSession", () => {
   it("stays processing across retryable agent-end events", async () => {
     const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), vi.fn());
     await session.start();
-    await session.prompt("retry me");
+    session.prompt("retry me");
 
     emitSessionEvent(createAgentEndEvent(true));
     expect(session.getIsProcessing()).toBe(true);
@@ -939,7 +1051,7 @@ describe("PiSdkSession", () => {
   it("stays processing while Pi performs post-turn streaming work", async () => {
     const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), vi.fn());
     await session.start();
-    await session.prompt("trigger auto compaction");
+    session.prompt("trigger auto compaction");
 
     emitSessionEvent(createAgentEndEvent());
     mockSessionState.isStreaming = true;

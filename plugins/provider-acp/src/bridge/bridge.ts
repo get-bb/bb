@@ -137,6 +137,24 @@ interface PendingAcpPermission {
   options: AcpPermissionOption[];
 }
 
+/**
+ * Turn input bb handed the bridge, waiting to reach the agent. ACP has no
+ * provider acknowledgement to correlate acceptance against, so the designed
+ * correlation point is the `session/prompt` request that carries the input:
+ * before that the agent has not seen the input at all, and a queued steer can
+ * still be dropped by a failed or stopping turn.
+ */
+interface AcpPendingTurnInput {
+  clientRequestId: string;
+  input: PromptInput[];
+  /**
+   * The command to answer once the input reaches the agent, or `null` for a
+   * steer, which is answered at queue time. Waiting for the cancelled prompt
+   * to be reissued would risk the runtime's 30-second command timeout.
+   */
+  requestId: AcpBridgeRequestId | null;
+}
+
 interface AcpThreadSession {
   bbThreadId: string;
   providerThreadId: string;
@@ -154,7 +172,7 @@ interface AcpThreadSession {
    * the provider-local `"compaction"` maintenance prompt, or none.
    */
   activePromptKind: "turn" | "compaction" | null;
-  queuedInputs: PromptInput[][];
+  queuedInputs: AcpPendingTurnInput[];
   /** True while a session/prompt request is outstanding. */
   promptRequestPending: boolean;
   /** True after a steer sent session/cancel for the current prompt. */
@@ -201,6 +219,8 @@ interface BridgeRuntimeRequest {
 const { send, sendResult, sendError } = createBridgeIo<
   BridgeNotification | BridgeRuntimeRequest
 >();
+
+type AcpBridgeRequestId = Parameters<typeof sendResult>[0];
 
 function sendNotification(
   method: string,
@@ -1793,7 +1813,10 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
     return;
   }
   session.stopping = true;
-  session.queuedInputs = [];
+  dropQueuedTurnInputs(
+    session,
+    "ACP session stopped before the steer was sent",
+  );
   cancelPendingPermissions(session);
 
   if (session.activePromptKind !== null && !session.connection.exited) {
@@ -1825,7 +1848,10 @@ function releaseSession(session: AcpThreadSession): void {
     return;
   }
   session.stopping = true;
-  session.queuedInputs = [];
+  dropQueuedTurnInputs(
+    session,
+    "ACP session released before the steer was sent",
+  );
   cancelPendingPermissions(session);
   session.connection.kill();
   removeSession(session);
@@ -1851,12 +1877,58 @@ function requestSteerCancel(session: AcpThreadSession): void {
   });
 }
 
+/**
+ * Accepted-input correlation (turn/input/accepted): the input reached the
+ * agent, so bb can attach it to the turn it runs in. Reporting acceptance
+ * before the `session/prompt` request goes out would claim an input the agent
+ * may never be given.
+ */
+function acceptTurnInput(
+  session: AcpThreadSession,
+  pending: AcpPendingTurnInput,
+): void {
+  sendThreadDeltas(session.bbThreadId, [
+    { kind: "input.accepted", clientRequestId: pending.clientRequestId },
+  ]);
+  const requestId = takeTurnInputRequestId(pending);
+  if (requestId !== null) {
+    sendResult(requestId, { threadId: session.bbThreadId });
+  }
+}
+
+/**
+ * Report input the turn ended without ever sending. Reply, never drop (#853):
+ * a command still waiting on the input fails instead of hanging, and no
+ * acceptance is reported for a turn the agent never received it in.
+ */
+function dropTurnInput(pending: AcpPendingTurnInput, reason: string): void {
+  const requestId = takeTurnInputRequestId(pending);
+  if (requestId !== null) {
+    sendError(requestId, -32000, reason);
+  }
+}
+
+/** Answers a command at most once, whatever else happens to the input. */
+function takeTurnInputRequestId(
+  pending: AcpPendingTurnInput,
+): AcpBridgeRequestId | null {
+  const requestId = pending.requestId;
+  pending.requestId = null;
+  return requestId;
+}
+
+function dropQueuedTurnInputs(session: AcpThreadSession, reason: string): void {
+  for (const pending of session.queuedInputs.splice(0)) {
+    dropTurnInput(pending, reason);
+  }
+}
+
 function finishTurn(
   session: AcpThreadSession,
   stopReason: z.infer<typeof acpStopReasonSchema>,
 ): void {
   session.activePromptKind = null;
-  session.queuedInputs = [];
+  dropQueuedTurnInputs(session, "ACP turn ended before the steer was sent");
   session.promptRequestPending = false;
   session.cancelRequested = false;
   emitForSession(session, ACP_TURN_COMPLETED_METHOD, {
@@ -1865,16 +1937,20 @@ function finishTurn(
   });
 }
 
-function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
+function runTurn(
+  session: AcpThreadSession,
+  firstInput: AcpPendingTurnInput,
+): void {
   session.activePromptKind = "turn";
   emitForSession(session, ACP_TURN_STARTED_METHOD, {
     threadId: session.bbThreadId,
   });
 
   session.turnSettled = (async () => {
-    let input = firstInput;
+    let pending = firstInput;
     for (;;) {
       if (session.stopping) {
+        dropTurnInput(pending, "ACP session is stopping");
         finishTurn(session, "cancelled");
         return;
       }
@@ -1887,10 +1963,14 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
           method: "session/prompt",
           params: {
             sessionId: session.providerThreadId,
-            prompt: buildPromptContentBlocks(session, input),
+            prompt: buildPromptContentBlocks(session, pending.input),
           },
           resultSchema: acpPromptResultSchema,
         });
+        // The agent has the input now, and the turn it runs in is already
+        // open, so the acceptance names that turn instead of waiting as a
+        // pending claim any stale terminal could take (#2014).
+        acceptTurnInput(session, pending);
         // A steer that stacked behind the cancelled prompt still needs its own
         // cancel; otherwise this prompt can hang and strand the later input.
         if (session.queuedInputs.length > 0) {
@@ -1900,7 +1980,12 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
         stopReason = result.stopReason;
       } catch (error) {
         session.promptRequestPending = false;
-        session.queuedInputs = [];
+        // Answered already unless the request never went out at all.
+        dropTurnInput(pending, "ACP turn failed before the prompt was sent");
+        dropQueuedTurnInputs(
+          session,
+          "ACP turn failed before the steer was sent",
+        );
         session.cancelRequested = false;
         // An exited agent already produced an error notification from the
         // connection's exit handler; only report in-protocol prompt failures.
@@ -1921,7 +2006,7 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
       if (!session.stopping) {
         const next = session.queuedInputs.shift();
         if (next) {
-          input = next;
+          pending = next;
           continue;
         }
       }
@@ -1953,7 +2038,10 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
  * every other stop reason or prompt rejection fails the turn with the agent's
  * own reason rather than being reported as a shrunk context.
  */
-function startCompaction(session: AcpThreadSession): void {
+function startCompaction(
+  session: AcpThreadSession,
+  pending: AcpPendingTurnInput,
+): void {
   session.activePromptKind = "compaction";
   emitForSession(session, ACP_COMPACTION_STARTED_METHOD, {
     threadId: session.bbThreadId,
@@ -1968,15 +2056,17 @@ function startCompaction(session: AcpThreadSession): void {
     session.turnSettled = undefined;
   };
 
-  session.turnSettled = session.connection
-    .request({
-      method: "session/prompt",
-      params: {
-        sessionId: session.providerThreadId,
-        prompt: [{ type: "text", text: "/compact" }],
-      },
-      resultSchema: acpPromptResultSchema,
-    })
+  const promptResult = session.connection.request({
+    method: "session/prompt",
+    params: {
+      sessionId: session.providerThreadId,
+      prompt: [{ type: "text", text: "/compact" }],
+    },
+    resultSchema: acpPromptResultSchema,
+  });
+  acceptTurnInput(session, pending);
+
+  session.turnSettled = promptResult
     .then((result) => {
       finish(
         result.stopReason === "end_turn"
@@ -2320,21 +2410,22 @@ async function handleRequest(
         sendError(request.id, -32000, "A turn is already active");
         return;
       }
-      // Accepted-input correlation (turn/input/accepted): the assembler owns
-      // the queue-until-turn-opens behavior, so the bridge only reports the
-      // acceptance.
-      sendThreadDeltas(session.bbThreadId, [
-        { kind: "input.accepted", clientRequestId: params.clientRequestId },
-      ]);
+      const pending: AcpPendingTurnInput = {
+        clientRequestId: params.clientRequestId,
+        input: params.input,
+        requestId: request.id,
+      };
+      // Both paths answer the command and report the acceptance once the
+      // `session/prompt` request carrying the input has gone out.
+      //
       // A standalone builtin `/compact` mention is bb's manual-compaction
       // request, not model input: it runs the agent's own compaction command
       // instead of becoming a prompt.
       if (isStandaloneBuiltinCompactCommand(params.input)) {
-        startCompaction(session);
+        startCompaction(session, pending);
       } else {
-        runTurn(session, params.input);
+        runTurn(session, pending);
       }
-      sendResult(request.id, { threadId: params.threadId });
       return;
     }
 
@@ -2353,12 +2444,15 @@ async function handleRequest(
         );
         return;
       }
-      // A steer joins the active turn: the assembler emits the acceptance
-      // into the turn it holds open.
-      sendThreadDeltas(session.bbThreadId, [
-        { kind: "input.accepted", clientRequestId: params.clientRequestId },
-      ]);
-      session.queuedInputs.push(params.input);
+      // A steer joins the active turn, but the agent only learns about it
+      // when the cancelled prompt is reissued with it. The command answers now
+      // — the bridge has the input — while the acceptance waits for that
+      // reissue, so a steer the turn drops is never reported as accepted.
+      session.queuedInputs.push({
+        clientRequestId: params.clientRequestId,
+        input: params.input,
+        requestId: null,
+      });
       requestSteerCancel(session);
       sendResult(request.id, { threadId: params.threadId });
       return;

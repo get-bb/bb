@@ -212,6 +212,15 @@ function threadEvents(
   return assembleCapturedThreadEvents(messages);
 }
 
+/** Turn lifecycle only, without the provider diagnostics around it. */
+function turnEvents(
+  messages: readonly BridgeJsonRpcOutputMessage[],
+): ThreadEvent[] {
+  return threadEvents(messages).filter((event) =>
+    event.type.startsWith("turn/"),
+  );
+}
+
 interface ControlledPiAgentSession {
   abort: ReturnType<typeof vi.fn>;
   bindExtensions: ReturnType<typeof vi.fn>;
@@ -220,6 +229,7 @@ interface ControlledPiAgentSession {
   emit(event: AgentSessionEvent): void;
   extensionRunner: { emit: ReturnType<typeof vi.fn> };
   finishAbort(): void;
+  finishPrompt(): void;
   getActiveToolNames: ReturnType<typeof vi.fn>;
   getContextUsage: ReturnType<typeof vi.fn>;
   hasExtensionHandlers: ReturnType<typeof vi.fn>;
@@ -233,6 +243,7 @@ interface ControlledPiAgentSession {
 
 function createControlledPiAgentSession(): ControlledPiAgentSession {
   let finishAbort: (() => void) | undefined;
+  let finishPrompt: (() => void) | undefined;
   let extensionShutdownHandler: (() => void) | undefined;
   const listeners: ControlledPiAgentSessionListener[] = [];
   const abort = vi.fn(
@@ -263,11 +274,30 @@ function createControlledPiAgentSession(): ControlledPiAgentSession {
       finishAbort();
       finishAbort = undefined;
     },
+    finishPrompt() {
+      if (!finishPrompt) {
+        throw new Error("Expected Pi prompt to be running");
+      }
+      finishPrompt();
+      finishPrompt = undefined;
+    },
     getActiveToolNames: vi.fn(() => []),
     getContextUsage: vi.fn(() => undefined),
     hasExtensionHandlers: vi.fn(() => false),
     isStreaming: false,
-    prompt: vi.fn(async () => {}),
+    // Pi accepts the prompt in preflight and only settles when the run it
+    // started ends, so a dispatched prompt stays open until a test finishes it.
+    prompt: vi.fn(
+      async (
+        _text: string,
+        options?: { preflightResult?: (accepted: boolean) => void },
+      ) => {
+        options?.preflightResult?.(true);
+        await new Promise<void>((resolve) => {
+          finishPrompt = resolve;
+        });
+      },
+    ),
     requestExtensionShutdown(): void {
       if (!extensionShutdownHandler) {
         throw new Error("Expected Pi extension shutdown handler to be bound");
@@ -290,11 +320,12 @@ function createControlledPiAgentSession(): ControlledPiAgentSession {
 
 function createQueueUpdateEvent(
   steering: readonly string[],
+  followUp: readonly string[] = [],
 ): AgentSessionEvent {
   return {
     type: "queue_update",
     steering,
-    followUp: [],
+    followUp,
   };
 }
 
@@ -1137,9 +1168,10 @@ describe("pi bridge", () => {
       );
       await bridge.flushWork();
 
-      expect(piSession.prompt).toHaveBeenCalledWith("interrupting steer", {
-        streamingBehavior: "steer",
-      });
+      expect(piSession.prompt).toHaveBeenCalledWith(
+        "interrupting steer",
+        expect.objectContaining({ streamingBehavior: "steer" }),
+      );
       await expect(bridge.waitForResponse(22)).resolves.toMatchObject({
         id: 22,
         result: { threadId: "thread-steer-consumption" },
@@ -1170,12 +1202,16 @@ describe("pi bridge", () => {
         ]),
       );
       await bridge.waitForResponse(51);
+      piSession.finishPrompt();
       await bridge.flushWork();
 
       // The accepted input opened a turn the SDK never worked on; the settle
       // signal must still close it, or the runtime waits forever.
       expect(threadEvents(bridge.messages)).toContainEqual(
-        expect.objectContaining({ type: "turn/completed", status: "completed" }),
+        expect.objectContaining({
+          type: "turn/completed",
+          status: "completed",
+        }),
       );
     } finally {
       bridge.restore();
@@ -1259,6 +1295,66 @@ describe("pi bridge", () => {
           error: { message: "Nothing to compact" },
         }),
       );
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("holds a turn/start pi queued behind a live run until pi reads it", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const piSession = createControlledPiAgentSession();
+    piSession.isStreaming = true;
+    // Pi queues a prompt that arrives while a run is still live and returns
+    // straight away: the dispatch call settling is not the run settling.
+    piSession.prompt.mockImplementation(
+      async (
+        _text: string,
+        options?: { preflightResult?: (accepted: boolean) => void },
+      ) => {
+        piSession.emit(createQueueUpdateEvent([], ["queued prompt"]));
+        options?.preflightResult?.(true);
+      },
+    );
+    mockCreateAgentSession.mockImplementation(async () => ({
+      session: piSession,
+    }));
+
+    try {
+      bridge.sendRequest(
+        80,
+        "thread/start",
+        sessionParams({ threadId: "thread-queued-turn" }),
+      );
+      await bridge.waitForResponse(80);
+
+      bridge.sendRequest(
+        81,
+        "turn/start",
+        turnStartParams("thread-queued-turn", [
+          { type: "text", text: "queued prompt" },
+        ]),
+      );
+      await bridge.flushWork();
+      await bridge.flushWork();
+
+      // Accepting queued input lets the queue-time settle report claim it and
+      // complete an empty turn for a message pi has not read (#2014).
+      expect(turnEvents(bridge.messages)).toEqual([]);
+
+      piSession.emit(createQueueUpdateEvent([], []));
+      await expect(bridge.waitForResponse(81)).resolves.toMatchObject({
+        id: 81,
+        result: { threadId: "thread-queued-turn" },
+      });
+
+      piSession.emit({ type: "agent_start" });
+      await bridge.flushWork();
+
+      // The acceptance lands in the turn pi opened for the input it read.
+      expect(turnEvents(bridge.messages)).toEqual([
+        expect.objectContaining({ type: "turn/started" }),
+        expect.objectContaining({ type: "turn/input/accepted" }),
+      ]);
     } finally {
       bridge.restore();
     }

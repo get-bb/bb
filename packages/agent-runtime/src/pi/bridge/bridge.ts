@@ -635,7 +635,7 @@ async function handleRequest(
       await handleThreadFork(request.id, request.params);
       break;
     case "turn/start":
-      handleTurnStart(request.id, request.params);
+      await handleTurnStart(request.id, request.params);
       break;
     case "turn/steer":
       await handleTurnSteer(request.id, request.params);
@@ -834,27 +834,33 @@ async function handleThreadFork(
   );
 }
 
+/**
+ * Dispatch turn input and report the settlement of the run it starts. The
+ * returned promise resolves once pi consumed the input.
+ */
 function startPiPrompt(
   threadSession: ThreadSession,
   threadId: string,
   text: string,
   images: ImageContent[],
-): void {
-  void threadSession.session
-    .prompt(text, images.length > 0 ? images : undefined)
-    .then(
-      () =>
-        reportPromptSettled({
-          sessionSerial: threadSession.sessionSerial,
-          threadId,
-        }),
-      (error: unknown) =>
-        reportPromptSettled({
-          error,
-          sessionSerial: threadSession.sessionSerial,
-          threadId,
-        }),
-    );
+): Promise<void> {
+  const dispatch = threadSession.session.prompt(
+    text,
+    images.length > 0 ? images : undefined,
+  );
+  void dispatch.settled.then((outcome) => {
+    // Input pi queued into a run it did not start has no settlement of its
+    // own. Reporting one anyway settles whichever turn is open when it lands.
+    if (outcome === null) {
+      return;
+    }
+    reportPromptSettled({
+      ...(outcome.error !== undefined ? { error: outcome.error } : {}),
+      sessionSerial: threadSession.sessionSerial,
+      threadId,
+    });
+  });
+  return dispatch.consumed;
 }
 
 /**
@@ -885,8 +891,10 @@ function startPiCompaction(
 }
 
 /**
- * Accepted-input correlation (turn/input/accepted): the assembler owns the
- * queue-until-turn-opens behavior, so the bridge only reports the acceptance.
+ * Accepted-input correlation (turn/input/accepted): acceptance means pi
+ * consumed the input, never that bb handed it over, so every caller reports it
+ * only after pi read the input. The assembler owns the queue-until-turn-opens
+ * behavior, so the bridge only reports the acceptance.
  */
 function recordAcceptedTurnInput(params: TurnStartParams): void {
   sendThreadDeltas(params.threadId, [
@@ -894,7 +902,10 @@ function recordAcceptedTurnInput(params: TurnStartParams): void {
   ]);
 }
 
-function handleTurnStart(id: string | number, params: TurnStartParams): void {
+async function handleTurnStart(
+  id: string | number,
+  params: TurnStartParams,
+): Promise<void> {
   // Requests resolve the session by bb threadId — pi's stable session handle.
   const threadSession = sessions.get(params.threadId);
   if (!threadSession || threadSession.closing) {
@@ -918,9 +929,18 @@ function handleTurnStart(id: string | number, params: TurnStartParams): void {
     return;
   }
 
-  recordAcceptedTurnInput(params);
-  startPiPrompt(threadSession, params.threadId, text, images);
-  sendResult(id, { threadId: params.threadId });
+  try {
+    await startPiPrompt(threadSession, params.threadId, text, images);
+    // Like steer, a new turn is accepted only once pi read the input. Pi
+    // queues a prompt that arrives while a run is still unwinding, and that
+    // run's settle report would otherwise claim the queued input and complete
+    // an empty turn for a message pi has not answered yet.
+    recordAcceptedTurnInput(params);
+    sendResult(id, { threadId: params.threadId });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendError(id, -32000, message);
+  }
 }
 
 async function handleTurnSteer(
@@ -949,8 +969,11 @@ async function handleTurnSteer(
       text,
       images.length > 0 ? images : undefined,
     );
-    // A steer joins the active turn; its acceptance is reported only once
-    // the SDK actually accepted the queued input.
+    // A steer joins the turn the assembler already holds open, so its
+    // acceptance can never be the pending claim a stale terminal takes. It is
+    // reported once the SDK took the steering message: pi delivers steering
+    // only between assistant turns, and waiting for that would leave the
+    // steered message unrendered for the length of the running tool call.
     sendThreadDeltas(params.threadId, [
       { kind: "input.accepted", clientRequestId: params.clientRequestId },
     ]);

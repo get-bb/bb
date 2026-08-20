@@ -38,23 +38,51 @@ type AppendSystemPromptOverride = (base: string[]) => string[];
 
 interface RunPromptArgs {
   images?: ImageContent[];
+  pending: PendingInputConsumption;
   streamingBehavior: PiStreamingBehavior;
   text: string;
 }
 
-interface RunPromptResult {
-  steerConsumptionPromise: Promise<void> | null;
-}
+/**
+ * Which of pi's two input queues holds a dispatch pi did not run immediately.
+ * A steering message interrupts the current assistant turn; a follow-up waits
+ * for it. They drain independently, so a dispatch is correlated against the
+ * queue it was placed in.
+ */
+type PiInputQueue = "followUp" | "steering";
 
-interface PendingSteerConsumption {
+interface PendingInputConsumption {
+  queue: PiInputQueue;
   queuedText: string | null;
   reject: (error: Error) => void;
   resolve: () => void;
 }
 
-interface TrackedSteerConsumption {
-  pending: PendingSteerConsumption;
+interface TrackedInputConsumption {
+  pending: PendingInputConsumption;
   promise: Promise<void>;
+}
+
+/** The outcome of an agent run pi started for a dispatched input. */
+export interface PiPromptRunOutcome {
+  /** Omitted when the run finished without a fatal error. */
+  error?: unknown;
+}
+
+/** How pi took a dispatched turn input. */
+export interface PiInputDispatch {
+  /**
+   * Resolves once pi consumed the input — it started a run with it, or the
+   * queue that held it delivered it. Rejects when pi refused the input or the
+   * session ended before delivery.
+   */
+  consumed: Promise<void>;
+  /**
+   * The outcome of the run pi started for this input, or `null` when pi queued
+   * the input into a run it did not start. That run's own dispatch reports its
+   * settlement; a second report would settle whatever turn is open by then.
+   */
+  settled: Promise<PiPromptRunOutcome | null>;
 }
 
 type PiStreamingBehavior = NonNullable<PromptOptions["streamingBehavior"]>;
@@ -183,8 +211,11 @@ export class PiSdkSession {
   private isProcessing = false;
   private isCompacting = false;
   private manualCompactionCompletionCount = 0;
-  private readonly pendingSteerConsumptions: PendingSteerConsumption[] = [];
-  private lastObservedSteeringQueue: string[] = [];
+  private readonly pendingInputConsumptions: PendingInputConsumption[] = [];
+  private lastObservedQueues: Record<PiInputQueue, string[]> = {
+    followUp: [],
+    steering: [],
+  };
   private autoRetryInProgress = false;
   private terminalSteerSettlementTimeout:
     | ReturnType<typeof setTimeout>
@@ -297,47 +328,89 @@ export class PiSdkSession {
     // Subscribe to session events
     this.unsubscribe = session.subscribe((event: AgentSessionEvent) => {
       this.trackProcessingState(event);
-      this.observeSteerConsumption(event);
+      this.observeInputConsumption(event);
       this.observeTerminalSteerSettlement(event);
       this.onEvent(event);
     });
   }
 
-  async prompt(text: string, images?: ImageContent[]): Promise<void> {
-    if (!this.session) return;
-    this.isProcessing = true;
-    try {
-      await this.runPromptWithTransientAuthRetry({
-        images,
-        streamingBehavior: "followUp",
-        text,
-      });
-    } catch (error) {
-      this.isProcessing = false;
-      this.rejectPendingSteerConsumptions(
-        "Pi SDK prompt failed before steer consumed",
-      );
-      this.onDone(error);
+  /**
+   * Dispatch turn input. Pi either starts a run with it or, when a run is
+   * already live, queues it as a follow-up — so the caller learns consumption
+   * and settlement separately instead of treating the dispatch call returning
+   * as either one.
+   */
+  prompt(text: string, images?: ImageContent[]): PiInputDispatch {
+    if (!this.session) {
+      const consumed = Promise.reject(new Error("No active Pi SDK session"));
+      // A caller that only watches settlement must not turn this into an
+      // unhandled rejection.
+      void consumed.catch(() => undefined);
+      return { consumed, settled: Promise.resolve(null) };
     }
+    this.isProcessing = true;
+    const tracked = this.trackPendingInputConsumption("followUp");
+    const settled = this.runPromptWithTransientAuthRetry({
+      images,
+      pending: tracked.pending,
+      streamingBehavior: "followUp",
+      text,
+    }).then(
+      (): PiPromptRunOutcome | null => {
+        if (tracked.pending.queuedText !== null) {
+          return null;
+        }
+        // Pi handled the input without queueing it and without a preflight
+        // report (an SDK that predates the hook, or a prompt handled before
+        // preflight): the returned call is then the only consumption signal.
+        this.resolvePendingInputConsumption(tracked.pending);
+        return {};
+      },
+      (error: unknown): PiPromptRunOutcome | null => {
+        this.isProcessing = false;
+        const queued = tracked.pending.queuedText !== null;
+        this.rejectPendingInputConsumption(tracked.pending, asError(error));
+        this.rejectPendingInputConsumptions(
+          "Pi SDK prompt failed before input was consumed",
+        );
+        this.onDone(error);
+        return queued ? null : { error };
+      },
+    );
+    return { consumed: tracked.promise, settled };
   }
 
+  /**
+   * Steer the live run. Resolves once the SDK took the steering message, not
+   * once it read it: pi delivers steering between assistant turns, so a steer
+   * sent during a long tool call waits for that tool, and the runtime's
+   * 30-second command timeout would fail a steer that is still on its way.
+   * A steer the run ends without reading is reported through `onDone`.
+   */
   async steer(text: string, images?: ImageContent[]): Promise<void> {
     if (!this.session) {
       throw new Error("No active Pi SDK session");
     }
+    const tracked = this.trackPendingInputConsumption("steering");
     try {
-      const result = await this.runPromptWithTransientAuthRetry({
+      await this.runPromptWithTransientAuthRetry({
         images,
+        pending: tracked.pending,
         streamingBehavior: "steer",
         text,
       });
-      if (result.steerConsumptionPromise) {
-        this.monitorSteerConsumption(result.steerConsumptionPromise);
-      }
     } catch (error) {
+      this.rejectPendingInputConsumption(tracked.pending, asError(error));
       this.onDone(error);
       throw error;
     }
+    if (tracked.pending.queuedText === null) {
+      // Pi handled the steer without queueing it, so no delivery event is
+      // coming: the returned call is the consumption signal.
+      this.resolvePendingInputConsumption(tracked.pending);
+      return;
+    }
+    this.monitorSteerConsumption(tracked.promise);
   }
 
   async compact(): Promise<void> {
@@ -366,8 +439,8 @@ export class PiSdkSession {
   }
 
   detach(): void {
-    this.rejectPendingSteerConsumptions(
-      "Pi SDK session detached before steer consumed",
+    this.rejectPendingInputConsumptions(
+      "Pi SDK session detached before input was consumed",
     );
     if (this.unsubscribe) {
       this.unsubscribe();
@@ -378,8 +451,8 @@ export class PiSdkSession {
   }
 
   stop(): void {
-    this.rejectPendingSteerConsumptions(
-      "Pi SDK session stopped before steer consumed",
+    this.rejectPendingInputConsumptions(
+      "Pi SDK session stopped before input was consumed",
     );
     this.detach();
     const session = this.session;
@@ -389,8 +462,8 @@ export class PiSdkSession {
 
   async closeGracefully(timeoutMs: number): Promise<string | undefined> {
     const session = this.session;
-    this.rejectPendingSteerConsumptions(
-      "Pi SDK session closed before steer consumed",
+    this.rejectPendingInputConsumptions(
+      "Pi SDK session closed before input was consumed",
     );
     this.detach();
     if (!session) {
@@ -453,7 +526,9 @@ export class PiSdkSession {
     }
   }
 
-  private trackPendingSteerConsumption(): TrackedSteerConsumption {
+  private trackPendingInputConsumption(
+    queue: PiInputQueue,
+  ): TrackedInputConsumption {
     let resolvePromise: (() => void) | undefined;
     let rejectPromise: ((error: Error) => void) | undefined;
     const promise = new Promise<void>((resolve, reject) => {
@@ -461,39 +536,45 @@ export class PiSdkSession {
       rejectPromise = reject;
     });
     if (!resolvePromise || !rejectPromise) {
-      throw new Error("Failed to track Pi steer consumption");
+      throw new Error("Failed to track Pi input consumption");
     }
 
-    const pending: PendingSteerConsumption = {
+    const pending: PendingInputConsumption = {
+      queue,
       queuedText: null,
       reject: rejectPromise,
       resolve: resolvePromise,
     };
-    this.pendingSteerConsumptions.push(pending);
+    this.pendingInputConsumptions.push(pending);
     void promise.catch(() => undefined);
     return { pending, promise };
   }
 
-  private observeSteerConsumption(event: AgentSessionEvent): void {
+  private observeInputConsumption(event: AgentSessionEvent): void {
     if (event.type !== "queue_update") {
       return;
     }
+    this.observeQueue("steering", event.steering);
+    this.observeQueue("followUp", event.followUp);
+  }
 
-    const addedQueuedTexts = listMultisetDifference(
-      event.steering,
-      this.lastObservedSteeringQueue,
-    );
+  private observeQueue(
+    queue: PiInputQueue,
+    queuedTexts: readonly string[],
+  ): void {
+    const lastObserved = this.lastObservedQueues[queue];
+    const addedQueuedTexts = listMultisetDifference(queuedTexts, lastObserved);
     const removedQueuedTexts = listMultisetDifference(
-      this.lastObservedSteeringQueue,
-      event.steering,
+      lastObserved,
+      queuedTexts,
     );
-    this.lastObservedSteeringQueue = [...event.steering];
+    this.lastObservedQueues[queue] = [...queuedTexts];
 
     for (const queuedText of addedQueuedTexts) {
       // Pi queue_update exposes SDK-transformed text, so correlate by FIFO queue
-      // additions rather than by the raw BB steer text.
-      const pending = this.pendingSteerConsumptions.find(
-        (entry) => entry.queuedText === null,
+      // additions rather than by the raw BB input text.
+      const pending = this.pendingInputConsumptions.find(
+        (entry) => entry.queue === queue && entry.queuedText === null,
       );
       if (!pending) {
         break;
@@ -502,11 +583,13 @@ export class PiSdkSession {
     }
 
     for (const queuedText of removedQueuedTexts) {
-      const pending = this.pendingSteerConsumptions.find(
-        (entry) => entry.queuedText === queuedText,
+      // Pi drops a queued message from the queue when it reads it into the
+      // conversation, which is the only moment the input is truly consumed.
+      const pending = this.pendingInputConsumptions.find(
+        (entry) => entry.queue === queue && entry.queuedText === queuedText,
       );
       if (pending) {
-        this.resolvePendingSteerConsumption(pending);
+        this.resolvePendingInputConsumption(pending);
       }
     }
   }
@@ -528,16 +611,22 @@ export class PiSdkSession {
     if (event.type === "auto_retry_end") {
       this.autoRetryInProgress = false;
       if (!event.success) {
-        this.rejectPendingSteerConsumptions(
+        this.rejectPendingInputConsumptions(
           "Pi auto retry ended before steer was consumed",
+          "steering",
         );
       }
     }
   }
 
   private scheduleTerminalSteerSettlement(): void {
+    // Only steering is terminal at agent_end: pi drains its follow-up queue by
+    // continuing the same run after that event, so a queued follow-up is still
+    // on its way to being read.
     if (
-      this.pendingSteerConsumptions.length === 0 ||
+      !this.pendingInputConsumptions.some(
+        (entry) => entry.queue === "steering",
+      ) ||
       this.terminalSteerSettlementTimeout !== undefined
     ) {
       return;
@@ -548,8 +637,9 @@ export class PiSdkSession {
       if (this.autoRetryInProgress) {
         return;
       }
-      this.rejectPendingSteerConsumptions(
+      this.rejectPendingInputConsumptions(
         "Pi turn ended before steer was consumed",
+        "steering",
       );
     }, 0);
   }
@@ -562,33 +652,41 @@ export class PiSdkSession {
     this.terminalSteerSettlementTimeout = undefined;
   }
 
-  private resolvePendingSteerConsumption(
-    pending: PendingSteerConsumption,
+  private resolvePendingInputConsumption(
+    pending: PendingInputConsumption,
   ): void {
-    const index = this.pendingSteerConsumptions.indexOf(pending);
+    const index = this.pendingInputConsumptions.indexOf(pending);
     if (index === -1) {
       return;
     }
-    this.pendingSteerConsumptions.splice(index, 1);
+    this.pendingInputConsumptions.splice(index, 1);
     pending.resolve();
   }
 
-  private rejectPendingSteerConsumption(
-    pending: PendingSteerConsumption,
+  /** Reports whether this call was the one that settled the consumption. */
+  private rejectPendingInputConsumption(
+    pending: PendingInputConsumption,
     error: Error,
-  ): void {
-    const index = this.pendingSteerConsumptions.indexOf(pending);
+  ): boolean {
+    const index = this.pendingInputConsumptions.indexOf(pending);
     if (index === -1) {
-      return;
+      return false;
     }
-    this.pendingSteerConsumptions.splice(index, 1);
+    this.pendingInputConsumptions.splice(index, 1);
     pending.reject(error);
+    return true;
   }
 
-  private rejectPendingSteerConsumptions(message: string): void {
+  private rejectPendingInputConsumptions(
+    message: string,
+    queue?: PiInputQueue,
+  ): void {
     this.clearTerminalSteerSettlement();
-    const pendingSteers = this.pendingSteerConsumptions.splice(0);
-    for (const pending of pendingSteers) {
+    for (const pending of this.pendingInputConsumptions.splice(0)) {
+      if (queue !== undefined && pending.queue !== queue) {
+        this.pendingInputConsumptions.push(pending);
+        continue;
+      }
       pending.reject(new Error(message));
     }
   }
@@ -624,10 +722,11 @@ export class PiSdkSession {
 
   private async runPromptWithTransientAuthRetry(
     args: RunPromptArgs,
-  ): Promise<RunPromptResult> {
+  ): Promise<void> {
     for (let attempt = 0; ; attempt += 1) {
       try {
-        return await this.runPromptOnce(args);
+        await this.runPromptOnce(args);
+        return;
       } catch (error) {
         if (
           !(error instanceof Error) ||
@@ -641,42 +740,33 @@ export class PiSdkSession {
     }
   }
 
-  private async runPromptOnce(args: RunPromptArgs): Promise<RunPromptResult> {
+  private async runPromptOnce(args: RunPromptArgs): Promise<void> {
     if (!this.session) {
       throw new Error("No active Pi SDK session");
     }
     this.ensureCustomToolsActive();
-    if (this.session.isStreaming) {
-      const steerConsumption =
-        args.streamingBehavior === "steer"
-          ? this.trackPendingSteerConsumption()
-          : null;
-      try {
-        await this.session.prompt(args.text, {
-          streamingBehavior: args.streamingBehavior,
-          ...(args.images && args.images.length > 0
-            ? { images: args.images }
-            : {}),
-        });
-      } catch (error) {
-        if (steerConsumption) {
-          this.rejectPendingSteerConsumption(
-            steerConsumption.pending,
-            error instanceof Error ? error : new Error(String(error)),
-          );
-        }
-        throw error;
-      }
-      if (steerConsumption && steerConsumption.pending.queuedText === null) {
-        this.resolvePendingSteerConsumption(steerConsumption.pending);
-      }
-      return { steerConsumptionPromise: steerConsumption?.promise ?? null };
-    }
+    const pending = args.pending;
     await this.session.prompt(args.text, {
+      ...(this.session.isStreaming
+        ? { streamingBehavior: args.streamingBehavior }
+        : {}),
       ...(args.images && args.images.length > 0 ? { images: args.images } : {}),
+      // Pi reports preflight acceptance after it queued the input and before
+      // it starts a run with it. Input pi did not queue is therefore consumed
+      // the moment preflight accepts it; queued input waits for its queue to
+      // deliver it. Nothing else reports the start of a run pi handles without
+      // emitting a single SDK event.
+      preflightResult: (accepted: boolean) => {
+        if (accepted && pending.queuedText === null) {
+          this.resolvePendingInputConsumption(pending);
+        }
+      },
     });
-    return { steerConsumptionPromise: null };
   }
+}
+
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 type PiModel = NonNullable<ReturnType<ModelRuntime["getModel"]>>;
