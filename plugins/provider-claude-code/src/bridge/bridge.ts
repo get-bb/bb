@@ -231,6 +231,12 @@ interface ThreadSession {
   sessionOptions: SdkSessionOptions;
   sessionSerial: number;
   closing: boolean;
+  /**
+   * Claude can report a terminal authentication error while leaving its CLI
+   * stream open. Preserve the failed turn, then rebuild the child before the
+   * next turn so a terminal reauthentication can take effect.
+   */
+  restartBeforeNextTurnReason: string | null;
   streamEnded: boolean;
   /** Every session-scoped notification is translated through this. */
   translator: ClaudeDeltaTranslator;
@@ -325,7 +331,8 @@ interface ReplaceThreadSessionArgs {
   threadSession: ThreadSession;
 }
 
-interface ReplaceEndedThreadSessionArgs {
+interface ReplaceThreadSessionBeforeNextTurnArgs {
+  reason: string;
   threadId: string;
   threadSession: ThreadSession;
 }
@@ -870,6 +877,7 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     sessionOptions: args.sessionOptions,
     sessionSerial,
     closing: false,
+    restartBeforeNextTurnReason: null,
     streamEnded: false,
     translator: createClaudeDeltaTranslator(),
     pendingInteractiveRequests: new Map(),
@@ -1184,8 +1192,8 @@ function replaceThreadSession(args: ReplaceThreadSessionArgs): void {
   sendSessionReset(args.threadId);
 }
 
-function replaceEndedThreadSession(
-  args: ReplaceEndedThreadSessionArgs,
+function replaceThreadSessionBeforeNextTurn(
+  args: ReplaceThreadSessionBeforeNextTurnArgs,
 ): ThreadSession | undefined {
   const providerThreadId =
     args.threadSession.providerThreadId ??
@@ -1211,22 +1219,52 @@ function replaceEndedThreadSession(
   replaceThreadSession({
     providerThreadId,
     replacementSession,
-    reason: "Thread session replaced after Claude SDK stream ended",
+    reason: args.reason,
     threadId: args.threadId,
     threadSession: args.threadSession,
   });
   return replacementSession;
 }
 
-function getWritableThreadSession(threadId: string): ThreadSession | undefined {
+function getWritableThreadSession(
+  threadId: string,
+  intent: "new-turn" | "steer",
+): ThreadSession | undefined {
   const threadSession = sessions.get(threadId);
   if (!threadSession || threadSession.closing) {
     return undefined;
   }
-  if (!threadSession.streamEnded) {
+  const replacementReason = threadSession.streamEnded
+    ? "Thread session replaced after Claude SDK stream ended"
+    : intent === "new-turn"
+      ? threadSession.restartBeforeNextTurnReason
+      : null;
+  if (replacementReason === null) {
     return threadSession;
   }
-  return replaceEndedThreadSession({ threadId, threadSession });
+  return replaceThreadSessionBeforeNextTurn({
+    reason: replacementReason,
+    threadId,
+    threadSession,
+  });
+}
+
+function getAuthenticationFailureRestartReason(
+  message: SDKMessage,
+): string | null {
+  // Unlike an SDK stream failure, these terminal synthetic messages leave the
+  // old Claude CLI child alive with its pre-reauthentication credentials.
+  if (message.type !== "assistant") {
+    return null;
+  }
+  switch (message.error) {
+    case "authentication_failed":
+      return "Claude session restarted after authentication failed";
+    case "oauth_org_not_allowed":
+      return "Claude session restarted after OAuth organization authorization failed";
+    default:
+      return null;
+  }
 }
 
 function getCurrentThreadSession(
@@ -1259,6 +1297,12 @@ function createOnSdkMessage(
     ) {
       threadSession.providerThreadId = providerThreadId;
       sendThreadIdentity(args.threadIdRef.current, providerThreadId);
+    }
+    const authenticationFailureRestartReason =
+      getAuthenticationFailureRestartReason(message);
+    if (authenticationFailureRestartReason !== null) {
+      threadSession.restartBeforeNextTurnReason =
+        authenticationFailureRestartReason;
     }
     trackSdkAssistantPermissionEscalation(threadSession, message);
     emitForSession(threadSession, args.threadIdRef.current, "sdk/message", {
@@ -2201,7 +2245,7 @@ async function runTurnStart(
     return;
   }
 
-  const threadSession = getWritableThreadSession(params.threadId);
+  const threadSession = getWritableThreadSession(params.threadId, "new-turn");
   if (!threadSession) {
     sendError(id, -32000, "No active session");
     return;
@@ -2273,7 +2317,7 @@ async function runTurnSteer(
     return;
   }
 
-  const threadSession = getWritableThreadSession(params.threadId);
+  const threadSession = getWritableThreadSession(params.threadId, "steer");
   if (!threadSession) {
     sendError(id, -32000, "No active session");
     return;

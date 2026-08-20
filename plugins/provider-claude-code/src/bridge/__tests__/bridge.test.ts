@@ -428,6 +428,35 @@ function createStaleResumeErrorMessage(
   };
 }
 
+function createAuthenticationErrorMessage(sessionId: string): SDKMessage {
+  return {
+    type: "assistant",
+    error: "authentication_failed",
+    message: {
+      id: "authentication-error-message",
+      type: "message",
+      role: "assistant",
+      container: null,
+      content: [
+        {
+          type: "text",
+          text: "Failed to authenticate: OAuth session expired and could not be refreshed",
+          citations: null,
+        },
+      ],
+      context_management: null,
+      model: "<synthetic>",
+      stop_details: null,
+      stop_reason: "stop_sequence",
+      stop_sequence: "",
+      usage: createResultUsage(),
+    },
+    parent_tool_use_id: null,
+    uuid: "00000000-0000-4000-8000-000000000002",
+    session_id: sessionId,
+  };
+}
+
 function createAssistantToolUseMessage(
   args: AssistantToolUseMessageArgs,
 ): SDKMessage {
@@ -3440,6 +3469,101 @@ describe("bridge", () => {
       queries[1]?.finish();
       await bridge.waitForResponse(3);
     } finally {
+      bridge.restore();
+    }
+  });
+
+  it("restarts a Claude session before the next turn after an authentication failure", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-authentication-failure";
+      const providerThreadId = "provider-thread-authentication-failure";
+      sendResumeThread({
+        bridge,
+        providerThreadId,
+        requestId: 1,
+        threadId,
+      });
+      await bridge.waitForResponse(1);
+
+      bridge.sendRequest(
+        2,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId,
+          input: [{ type: "text", text: "before reauthentication" }],
+        }),
+      );
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        "before reauthentication",
+      );
+      await bridge.waitForResponse(2);
+
+      queries[0]?.emit(createAuthenticationErrorMessage(providerThreadId));
+      queries[0]?.emit({
+        type: "result",
+        subtype: "error_during_execution",
+        duration_ms: 0,
+        duration_api_ms: 0,
+        is_error: true,
+        num_turns: 0,
+        stop_reason: null,
+        total_cost_usd: 0,
+        usage: createResultUsage(),
+        modelUsage: {},
+        permission_denials: [],
+        errors: [
+          "Failed to authenticate: OAuth session expired and could not be refreshed",
+        ],
+        uuid: "00000000-0000-4000-8000-000000000003",
+        session_id: providerThreadId,
+      });
+      await bridge.flushWork();
+
+      expect(getFailedTurns(bridge.messages)).toHaveLength(1);
+      expect(queries).toHaveLength(1);
+      expect(queries[0]?.close).not.toHaveBeenCalled();
+
+      bridge.sendRequest(
+        3,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId,
+          input: [{ type: "text", text: "after reauthentication" }],
+        }),
+      );
+      await bridge.flushWork();
+
+      expect(queries).toHaveLength(2);
+      expect(queries[0]?.close).toHaveBeenCalledOnce();
+      expect(getLatestQueryOptions()).toMatchObject({
+        resume: providerThreadId,
+      });
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        "after reauthentication",
+      );
+      await bridge.waitForResponse(3);
+
+      bridge.sendRequest(4, "thread/stop", {
+        threadId,
+        providerThreadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await bridge.flushWork();
+      queries[1]?.finish();
+      await bridge.waitForResponse(4);
+    } finally {
+      queries.forEach((query) => query.finish());
       bridge.restore();
     }
   });
