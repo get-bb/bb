@@ -765,11 +765,10 @@ export function translateCodexEventToDeltas(
             : {}),
           // The Codex turn id is the value codex thread/fork accepts as
           // lastTurnId, and unlike any in-memory map it survives bridge and
-          // runtime restarts. Only completed turns are fork points — a failed
-          // or interrupted turn may be absent from the rollout.
-          ...(status === "completed"
-            ? { providerCheckpointId: handledEvent.params.turn.id }
-            : {}),
+          // runtime restarts. turn/completed is terminal even when the status
+          // is failed or interrupted, so all of its native ids are fork
+          // checkpoints.
+          providerCheckpointId: handledEvent.params.turn.id,
         },
       ];
     }

@@ -192,6 +192,7 @@ function seedEditableThread(
     firstCompletionStatus?: ThreadEventTurnStatus | null;
     firstProviderCheckpoint?: string | null;
     firstProviderThreadId?: string;
+    firstTurnId?: string;
     includeIdentity?: boolean;
     includeSecondTurn?: boolean;
     providerId?: string;
@@ -238,7 +239,7 @@ function seedEditableThread(
     requestSequence: 2,
     text: "First message",
     threadId: thread.id,
-    turnId: "turn-first",
+    turnId: args.firstTurnId ?? "turn-first",
     ...(args.firstCompletionStatus !== undefined
       ? { completionStatus: args.firstCompletionStatus }
       : {}),
@@ -1195,8 +1196,10 @@ describe("editThreadMessage", () => {
 
   it("falls back to a legacy Codex turn id when history has no checkpoint", async () => {
     await withTestHarness(async (harness) => {
+      const legacyCodexTurnId = "019f1234-5678-7abc-8def-0123456789ab";
       const { environment, thread } = seedEditableThread(harness, {
         firstProviderCheckpoint: null,
+        firstTurnId: legacyCodexTurnId,
       });
       const editPromise = editThreadMessage(harness.deps, {
         environment,
@@ -1213,7 +1216,7 @@ describe("editThreadMessage", () => {
         (queued) => queued.command.type === "thread.rewind.prepare",
       );
       expect(rewind.command).toMatchObject({
-        retainThroughProviderCheckpoint: "turn-first",
+        retainThroughProviderCheckpoint: legacyCodexTurnId,
       });
       if (rewind.command.type !== "thread.rewind.prepare") {
         throw new Error("Expected a thread.rewind.prepare command");
@@ -1224,6 +1227,34 @@ describe("editThreadMessage", () => {
       await expect(editPromise).resolves.toMatchObject({ ok: true });
     });
   });
+
+  it.each(["completed", "failed", "interrupted"] as const)(
+    "does not send a bb turn id to Codex when a %s turn has no checkpoint",
+    async (firstCompletionStatus) => {
+      await withTestHarness(async (harness) => {
+        const { environment, thread } = seedEditableThread(harness, {
+          firstCompletionStatus,
+          firstProviderCheckpoint: null,
+          firstTurnId: "da2f291120-t3",
+        });
+
+        await expect(
+          editThreadMessage(harness.deps, {
+            environment,
+            thread,
+            payload: {
+              operationId: `edit-op-missing-${firstCompletionStatus}-codex-checkpoint`,
+              expectedRequestSequence: 7,
+              input: [{ type: "text", text: "Replacement", mentions: [] }],
+            },
+          }),
+        ).rejects.toThrow("no editable history checkpoint");
+        expect(
+          listQueuedThreadCommands(harness, "thread.rewind.prepare", thread.id),
+        ).toHaveLength(0);
+      });
+    },
+  );
 
   it("leaves the original suffix untouched when Codex cannot stage the rewind", async () => {
     await withTestHarness(async (harness) => {
