@@ -1015,7 +1015,10 @@ export function BbAppUpdateRows({
           // the same slot a machine row gives its provider name — secondary to
           // the thing's identity — instead of as a filled block competing with
           // the version column for the right edge.
-          <span className="hidden truncate font-mono text-2xs text-muted-foreground sm:inline">
+          <span
+            className="hidden select-text truncate font-mono text-2xs text-muted-foreground sm:inline"
+            data-select-all-scope=""
+          >
             {systemVersion.upgradeCommand}
           </span>
         ) : undefined
