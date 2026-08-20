@@ -1,4 +1,11 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   AvailableModel,
   PermissionMode,
@@ -109,7 +116,6 @@ export interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   modelOptions: ModelPickerOption[];
   moreModelOptions: ModelPickerOption[];
   isLoadingModels: boolean;
-  isResolvingInitialProvider: boolean;
   modelLoadFailed: boolean;
   modelLoadError: SystemExecutionOptionsModelLoadError | null;
   reasoningOptions: PickerOption<ReasoningLevel>[];
@@ -163,6 +169,10 @@ export function resolveThreadCreationProviderRouting({
 }
 
 const NO_MODEL_LOAD_ERROR: SystemExecutionOptionsModelLoadError | null = null;
+
+type InitialConnectedProviderResolution =
+  | { status: "unresolved" }
+  | { status: "resolved"; providerId: string | null };
 
 function sanitizeStoredEnvironmentValue(stored: string): string {
   // Legacy guard: earlier iterations briefly persisted `reuse:<envId>` to
@@ -230,6 +240,8 @@ export function useThreadCreationOptions(
         initialServiceTier,
       }),
     );
+  const [initialConnectedProvider, setInitialConnectedProvider] =
+    useState<InitialConnectedProviderResolution>({ status: "unresolved" });
   const localProviderSelectionsRef = useRef<
     Map<string, ModelReasoningSelection>
   >(new Map());
@@ -309,20 +321,47 @@ export function useThreadCreationOptions(
         providerId: selectedProviderIdBeforeConnectedFallback,
         scope,
       });
-  const shouldResolveConnectedProvider =
+  const canResolveConnectedProvider =
     executionOptionsQueryEnabled &&
     scope === "new-thread" &&
     preferConnectedProviderWhenUnset &&
     selectedProviderIdBeforeConnectedFallback.length === 0;
+  const shouldResolveConnectedProvider =
+    canResolveConnectedProvider &&
+    initialConnectedProvider.status === "unresolved";
   const connectedAgentsQuery = useOnboardingAgents({
     enabled: shouldResolveConnectedProvider,
     ...executionOptionsRouting,
   });
-  const connectedProviderId = shouldResolveConnectedProvider
+  const queriedConnectedProviderId = shouldResolveConnectedProvider
     ? connectedAgentsQuery.data?.agents.find(
         (agent) => agent.status === "connected",
       )?.providerId
     : undefined;
+  const connectedProviderId =
+    initialConnectedProvider.status === "resolved"
+      ? (initialConnectedProvider.providerId ?? undefined)
+      : queriedConnectedProviderId;
+  // This is an initial default, not a host-scoped live selection. Once the
+  // first routed probe settles, retain its answer so changing machines does
+  // not silently reselect the provider or wait on onboarding health checks.
+  useEffect(() => {
+    if (!shouldResolveConnectedProvider || connectedAgentsQuery.isPending) {
+      return;
+    }
+    setInitialConnectedProvider((current) =>
+      current.status === "resolved"
+        ? current
+        : {
+            status: "resolved",
+            providerId: queriedConnectedProviderId ?? null,
+          },
+    );
+  }, [
+    connectedAgentsQuery.isPending,
+    queriedConnectedProviderId,
+    shouldResolveConnectedProvider,
+  ]);
   const rawSelectedProviderId =
     selectedProviderIdBeforeConnectedFallback || connectedProviderId || "";
   // Omission delegates the no-selection fallback to the server, whose product
@@ -343,8 +382,6 @@ export function useThreadCreationOptions(
     (executionOptionsQuery.isLoading ||
       (executionOptionsQuery.isPlaceholderData &&
         (executionOptionsQuery.data?.models.length ?? 0) === 0));
-  const isResolvingInitialProvider =
-    shouldResolveConnectedProvider && connectedAgentsQuery.isPending;
   const modelLoadError =
     executionOptionsQuery.data?.modelLoadError ?? NO_MODEL_LOAD_ERROR;
   const modelLoadFailed =
@@ -654,7 +691,7 @@ export function useThreadCreationOptions(
   const touchedFieldsPendingReset =
     usesLocalThreadSelections && threadResetKeyRef.current !== resetKey;
   const effectiveInitialProviderSource: ExecutionInputFieldSource | undefined =
-    shouldResolveConnectedProvider &&
+    canResolveConnectedProvider &&
     connectedProviderId !== undefined &&
     effectiveProviderId === connectedProviderId
       ? "client-preference"
@@ -989,7 +1026,6 @@ export function useThreadCreationOptions(
     modelOptions,
     moreModelOptions,
     isLoadingModels,
-    isResolvingInitialProvider,
     modelLoadFailed,
     modelLoadError,
     reasoningOptions,

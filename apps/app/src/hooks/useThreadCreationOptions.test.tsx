@@ -1049,7 +1049,7 @@ describe("useThreadCreationOptions", () => {
     });
   });
 
-  it("uses the connected provider from the selected machine as create provenance", async () => {
+  it("latches the initial connected provider instead of resolving it again after a machine switch", async () => {
     window.localStorage.setItem(
       "bb.promptbox.environment",
       "host:remote-host:local",
@@ -1076,12 +1076,33 @@ describe("useThreadCreationOptions", () => {
         signal: expect.any(AbortSignal),
       });
       expect(result.current.selectedProviderId).toBe(PROJECT_PROVIDER_ID);
-      expect(result.current.isResolvingInitialProvider).toBe(false);
       expect(result.current.executionInputSources).toMatchObject({
         providerId: "client-preference",
       });
       expect(result.current.executionInputSources.model).toBeUndefined();
     });
+    const initialDiscoveryCallCount = vi.mocked(sdk.system.onboardingAgents)
+      .mock.calls.length;
+
+    act(() => {
+      result.current.setEnvironmentSelectionValue("host:second-host:local");
+    });
+
+    await waitFor(() => {
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hostId: "second-host",
+          providerId: PROJECT_PROVIDER_ID,
+        }),
+      );
+      expect(result.current.selectedProviderId).toBe(PROJECT_PROVIDER_ID);
+    });
+    expect(sdk.system.onboardingAgents).toHaveBeenCalledTimes(
+      initialDiscoveryCallCount,
+    );
+    expect(sdk.system.onboardingAgents).not.toHaveBeenCalledWith(
+      expect.objectContaining({ hostId: "second-host" }),
+    );
   });
 
   it("routes reusable root-composer worktrees through their environment", async () => {

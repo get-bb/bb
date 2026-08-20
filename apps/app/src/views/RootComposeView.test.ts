@@ -150,10 +150,8 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
     branchMutationBlockerTitle: null,
     isCopyingAttachments: false,
     isLoadingModels: false,
-    isResolvingInitialProvider: false,
     isSubmitting: false,
     isUploading: false,
-    managedWorktreeAvailabilityPending: false,
     managedWorktreeUnavailableReason: null,
     modelLoadError: null,
     projectDefaultsStatus: "resolved",
@@ -173,19 +171,9 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
     ]
   >([
     [
-      "provider resolution after a machine switch",
-      { isResolvingInitialProvider: true },
-      "Selecting a provider for the selected machine...",
-    ],
-    [
       "model loading after a machine switch",
       { isLoadingModels: true },
       "Loading models from the selected machine...",
-    ],
-    [
-      "worktree validation after a machine switch",
-      { managedWorktreeAvailabilityPending: true },
-      "Checking worktree availability on the selected machine...",
     ],
     [
       "provider setup failure",

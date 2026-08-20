@@ -192,10 +192,8 @@ export interface ResolveNewThreadSubmitDisabledReasonArgs {
   branchMutationBlockerTitle: string | null;
   isCopyingAttachments: boolean;
   isLoadingModels: boolean;
-  isResolvingInitialProvider: boolean;
   isSubmitting: boolean;
   isUploading: boolean;
-  managedWorktreeAvailabilityPending: boolean;
   managedWorktreeUnavailableReason: string | null;
   modelLoadError: SystemExecutionOptionsModelLoadError | null;
   projectDefaultsStatus: ProjectDefaultsState["status"];
@@ -211,10 +209,8 @@ export function resolveNewThreadSubmitDisabledReason({
   branchMutationBlockerTitle,
   isCopyingAttachments,
   isLoadingModels,
-  isResolvingInitialProvider,
   isSubmitting,
   isUploading,
-  managedWorktreeAvailabilityPending,
   managedWorktreeUnavailableReason,
   modelLoadError,
   projectDefaultsStatus,
@@ -235,9 +231,6 @@ export function resolveNewThreadSubmitDisabledReason({
       ? "Could not load the project's execution defaults."
       : "Loading the project's execution defaults...";
   }
-  if (isResolvingInitialProvider) {
-    return "Selecting a provider for the selected machine...";
-  }
   if (!selectedProviderId) return "Select a provider.";
   if (isLoadingModels) {
     return "Loading models from the selected machine...";
@@ -255,9 +248,6 @@ export function resolveNewThreadSubmitDisabledReason({
   }
   if (!selectedThreadModel) return "Select a model.";
   if (submissionEnvironmentUnavailable) return "Select an environment.";
-  if (managedWorktreeAvailabilityPending) {
-    return "Checking worktree availability on the selected machine...";
-  }
   if (managedWorktreeUnavailableReason) {
     return managedWorktreeUnavailableReason;
   }
@@ -581,7 +571,6 @@ export function NewThreadComposer({
     environmentSelectionValue,
     hasMultipleProviders,
     isLoadingModels,
-    isResolvingInitialProvider,
     modelLoadError,
     modelLoadFailed,
     modelOptions,
@@ -713,10 +702,12 @@ export function NewThreadComposer({
   const worktreeUnavailable = worktreeDisabledReason !== null;
   const requestsManagedWorktree =
     isHostMode && parsedEnvironment.mode === "worktree";
-  const managedWorktreeAvailabilityPending =
-    requestsManagedWorktree && !isProjectless && branchesQuery.isLoading;
   const managedWorktreeUnavailable =
     requestsManagedWorktree && worktreeUnavailable;
+  // Branch data enriches the picker and can downgrade a confirmed non-Git or
+  // commitless source, but loading it is not a creation prerequisite. A
+  // default worktree request is resolved authoritatively by the server during
+  // thread creation, including another host.list_branches inspection.
   useEffect(() => {
     if (
       !worktreeUnavailable ||
@@ -1092,10 +1083,8 @@ export function NewThreadComposer({
         : null,
     isCopyingAttachments,
     isLoadingModels,
-    isResolvingInitialProvider,
     isSubmitting,
     isUploading,
-    managedWorktreeAvailabilityPending,
     managedWorktreeUnavailableReason: managedWorktreeUnavailable
       ? worktreeDisabledReason
       : null,
@@ -1121,7 +1110,6 @@ export function NewThreadComposer({
         submissionEnvironment === null ||
         !selectedProviderId ||
         !selectedThreadModel ||
-        managedWorktreeAvailabilityPending ||
         managedWorktreeUnavailable
       ) {
         return;
@@ -1159,7 +1147,6 @@ export function NewThreadComposer({
     [
       clearReuseEnvironment,
       executionInputSources,
-      managedWorktreeAvailabilityPending,
       managedWorktreeUnavailable,
       onSubmit,
       permissionMode,

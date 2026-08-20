@@ -87,6 +87,23 @@ describe("resolveRootComposeThreadEnvironment", () => {
     });
   });
 
+  it("can submit the server-resolved default while branch metadata is still loading", () => {
+    expect(
+      resolveRootComposeThreadEnvironment({
+        defaultBranch: undefined,
+        defaultWorktreeBaseBranch: undefined,
+        environmentValue: hostWorktreeEnvironmentValue,
+        projectId,
+        selectedBranch: null,
+      }),
+    ).toMatchObject({
+      workspace: {
+        type: "managed-worktree",
+        baseBranch: { kind: "default" },
+      },
+    });
+  });
+
   it("sends smart remote default base branch for managed worktrees without an explicit pick", () => {
     expect(
       resolveRootComposeThreadEnvironment({
