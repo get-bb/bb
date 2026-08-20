@@ -108,6 +108,19 @@ checkout path. The checkout instance id is the sanitized path to the checkout,
 relative to your home directory, plus a short hash suffix. Separate worktrees
 can run alongside each other and the packaged `npx bb-app@latest` instance.
 
+To test the production bundle and serving path without switching to production
+data or ports, use:
+
+```bash
+pnpm start:worktree
+```
+
+This builds the same optimized frontend and runtime artifacts as `pnpm start`,
+then serves the app from the BB server on the checkout-specific dev server port.
+It keeps the normal checkout-specific dev data directory and host-daemon port.
+There is no Vite dev server or hot reload in this mode; rerun the command after
+source changes. As with `pnpm dev`, worktree starts do not send telemetry.
+
 To run that same source dev server with the Electron desktop shell:
 
 ```bash

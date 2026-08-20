@@ -7,7 +7,12 @@ import {
   resolveInheritedDevSkillsRootPaths,
   toDevProcessEnv,
 } from "@bb/config/runtime";
-import { createDevTurboCommand } from "../src/commands/run-dev.js";
+import {
+  createDevTurboCommand,
+  createStartWorktreeCommand,
+  resolveDevLaunchMode,
+  toDevLaunchProcessEnv,
+} from "../src/commands/run-dev.js";
 import { migrateLegacyDevData } from "../src/lib/legacy-dev-data-migration.js";
 import {
   expectedDevDataDir,
@@ -224,6 +229,57 @@ describe("run-dev", () => {
       ],
       command: "pnpm",
     });
+  });
+
+  it("runs the production-style source launcher for worktree start", () => {
+    const command = createStartWorktreeCommand();
+
+    expect(command.command).toBe(process.execPath);
+    expect(command.args).toEqual([
+      "--conditions=source",
+      "--import",
+      "tsx",
+      path.resolve(import.meta.dirname, "../../..", "scripts/start-bb.mjs"),
+      "--worktree-runtime-policy",
+    ]);
+  });
+
+  it("accepts only the supported dev launch mode", () => {
+    expect(resolveDevLaunchMode([])).toBe("vite");
+    expect(resolveDevLaunchMode(["--worktree"])).toBe("worktree");
+    expect(() => resolveDevLaunchMode(["--watch"])).toThrow(
+      "Expected no arguments or --worktree",
+    );
+  });
+
+  it("uses production serving with checkout-specific dev selectors", () => {
+    const config = resolveDevInstanceConfig({
+      homeDir: "/Users/tester",
+      repoRoot: "/Users/tester/src/bb",
+    });
+
+    const env = toDevLaunchProcessEnv({
+      baseEnv: {
+        BB_DATA_DIR: "/Users/tester/.bb",
+        BB_DEV_APP_PORT: "5173",
+        BB_TELEMETRY: "true",
+        NODE_ENV: "development",
+        OPENAI_API_KEY: "test-key",
+      },
+      config,
+      mode: "worktree",
+    });
+
+    expect(env).toMatchObject({
+      BB_DATA_DIR: config.dataDir,
+      BB_HOST_DAEMON_PORT: String(config.ports.hostDaemonPort),
+      BB_SERVER_PORT: String(config.ports.serverPort),
+      BB_SERVER_URL: config.serverUrl,
+      BB_TELEMETRY: "false",
+      NODE_ENV: "production",
+      OPENAI_API_KEY: "test-key",
+    });
+    expect(env.BB_DEV_APP_PORT).toBeUndefined();
   });
 
   it("migrates legacy flat dev data into the checkout instance", async () => {

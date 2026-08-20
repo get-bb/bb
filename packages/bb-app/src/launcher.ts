@@ -55,11 +55,13 @@ import {
 } from "@bb/config/inference-model";
 import { validateLogLevel } from "@bb/config/log-level";
 import { validateOptionalUrl } from "@bb/config/public-url";
-import { parseServerBindHost } from "@bb/config/server";
+import { parseServerBindHost, type ServerBindHost } from "@bb/config/server";
 import {
   BB_PROD_HOST_DAEMON_PORT,
   BB_LOOPBACK_HOST,
   BB_PROD_SERVER_PORT,
+  parseDataDirEnvValue,
+  parsePortValue,
   resolveConfiguredDataDir,
   resolveDataDirDatabasePath,
   resolvePortFromEnv,
@@ -211,6 +213,26 @@ export interface ResolveBbAppRuntimeContextArgs {
   homeDir: string;
   options: LauncherCliOptions;
   serverUrlMode: "local" | "managed";
+  worktreePolicy?: WorktreeRuntimePolicy;
+}
+
+export interface WorktreeRuntimePolicy {
+  dataDir: string;
+  devAppPort: null;
+  hostDaemonPort: number;
+  inheritedSkillsRoots: string;
+  serverBindHost: ServerBindHost;
+  serverPort: number;
+  telemetry: false;
+}
+
+export interface ResolveWorktreeRuntimePolicyArgs {
+  env: NodeJS.ProcessEnv;
+  homeDir: string;
+}
+
+export interface RunBbAppOptions {
+  worktreePolicy: WorktreeRuntimePolicy | null;
 }
 
 export interface BbAppStartContext {
@@ -564,6 +586,7 @@ interface ResolveBbAppRuntimeStateArgs {
   homeDir: string;
   options: LauncherCliOptions;
   serverUrlMode: "local" | "managed";
+  worktreePolicy?: WorktreeRuntimePolicy;
 }
 
 interface RunConfigCommandArgs {
@@ -807,6 +830,72 @@ export function resolveDataDir(args: ResolveDataDirArgs): string {
 
 export function resolvePort(args: ResolvePortArgs): number {
   return resolvePortFromEnv(args);
+}
+
+function requireWorktreePolicyEnvValue(
+  env: NodeJS.ProcessEnv,
+  name: string,
+): string {
+  const value = env[name];
+  if (value === undefined) {
+    throw new Error(`${name} is required for worktree startup`);
+  }
+  return value;
+}
+
+export function resolveWorktreeRuntimePolicy(
+  args: ResolveWorktreeRuntimePolicyArgs,
+): WorktreeRuntimePolicy {
+  const rawDataDir = requireWorktreePolicyEnvValue(args.env, "BB_DATA_DIR");
+  const rawHostDaemonPort = requireWorktreePolicyEnvValue(
+    args.env,
+    "BB_HOST_DAEMON_PORT",
+  );
+  const inheritedSkillsRoots = requireWorktreePolicyEnvValue(
+    args.env,
+    "BB_INHERITED_SKILLS_ROOTS",
+  );
+  const rawServerPort = requireWorktreePolicyEnvValue(
+    args.env,
+    "BB_SERVER_PORT",
+  );
+  return {
+    dataDir: parseDataDirEnvValue({
+      homeDir: args.homeDir,
+      rawDataDir,
+    }),
+    devAppPort: null,
+    hostDaemonPort: parsePortValue({
+      name: "BB_HOST_DAEMON_PORT",
+      rawPort: rawHostDaemonPort,
+    }),
+    inheritedSkillsRoots,
+    serverBindHost: parseServerBindHost(
+      args.env.BB_SERVER_BIND_HOST ?? BB_LOOPBACK_HOST,
+    ),
+    serverPort: parsePortValue({
+      name: "BB_SERVER_PORT",
+      rawPort: rawServerPort,
+    }),
+    telemetry: false,
+  };
+}
+
+function applyWorktreeRuntimePolicy(
+  env: NodeJS.ProcessEnv,
+  policy: WorktreeRuntimePolicy,
+): NodeJS.ProcessEnv {
+  const nextEnv: NodeJS.ProcessEnv = {
+    ...env,
+    BB_DATA_DIR: policy.dataDir,
+    BB_HOST_DAEMON_PORT: String(policy.hostDaemonPort),
+    BB_INHERITED_SKILLS_ROOTS: policy.inheritedSkillsRoots,
+    BB_SERVER_BIND_HOST: policy.serverBindHost,
+    BB_SERVER_PORT: String(policy.serverPort),
+    BB_TELEMETRY: String(policy.telemetry),
+  };
+  delete nextEnv.BB_DEV_APP_PORT;
+  return nextEnv;
 }
 
 function createEnvFromOptions(
@@ -1311,21 +1400,28 @@ export async function resolveBbAppRuntimeState(
   });
   const config = await readManagedConfig({ dataDir: initialContext.dataDir });
   const envFile = await readManagedEnvFile({ dataDir: initialContext.dataDir });
-  const managedEnv = applyManagedConfigEnv({
+  const persistedEnv = applyManagedConfigEnv({
     config,
     envFile,
     env: initialEnv,
   });
+  const applyRuntimePolicy = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv =>
+    args.worktreePolicy === undefined
+      ? env
+      : applyWorktreeRuntimePolicy(env, args.worktreePolicy);
+  const managedEnv = applyRuntimePolicy(persistedEnv);
 
   if (args.serverUrlMode === "local") {
     const localEnv = { ...managedEnv };
     const localServerEnv = stripThreadContextEnv(
-      createServerBaseEnv({
-        config,
-        envFile,
-        env: initialEnv,
-        serverBindHostOverride: args.options.serverBindHost,
-      }),
+      applyRuntimePolicy(
+        createServerBaseEnv({
+          config,
+          envFile,
+          env: initialEnv,
+          serverBindHostOverride: args.options.serverBindHost,
+        }),
+      ),
     );
     delete localEnv.BB_SERVER_URL;
     delete localServerEnv.BB_SERVER_URL;
@@ -1359,12 +1455,14 @@ export async function resolveBbAppRuntimeState(
     }),
     env: finalEnv,
     serverEnv: stripThreadContextEnv(
-      createServerBaseEnv({
-        config,
-        envFile,
-        env: initialEnv,
-        serverBindHostOverride: args.options.serverBindHost,
-      }),
+      applyRuntimePolicy(
+        createServerBaseEnv({
+          config,
+          envFile,
+          env: initialEnv,
+          serverBindHostOverride: args.options.serverBindHost,
+        }),
+      ),
     ),
   };
 }
@@ -3186,6 +3284,7 @@ async function runStopCommand(args: { dataDir: string }): Promise<void> {
 
 export async function runBbApp(
   cliArgs: string[] = process.argv.slice(2),
+  options: RunBbAppOptions = { worktreePolicy: null },
 ): Promise<void> {
   const parsedArgs = parseLauncherArgs(cliArgs);
 
@@ -3217,6 +3316,9 @@ export async function runBbApp(
       command.kind === "host-daemon"
         ? "managed"
         : "local",
+    ...(options.worktreePolicy === null
+      ? {}
+      : { worktreePolicy: options.worktreePolicy }),
   });
 
   if (command.kind === "start") {

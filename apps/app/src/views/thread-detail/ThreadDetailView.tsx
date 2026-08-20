@@ -2896,21 +2896,28 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             fileTabContent,
             fileTabContentFillsRegion:
               activePluginPanelTab !== null &&
-              pluginThreadPanelActions.find(
-                (candidate) =>
-                  candidate.pluginId === activePluginPanelTab.pluginId &&
-                  candidate.id === activePluginPanelTab.actionId,
-              )?.layout === "flush",
+              // A plugin `fileOpener` owns its own layout and scrolling, so it
+              // gets the definite-height region rather than the preview's
+              // scroll container — the same treatment as a "flush" action tab.
+              // Its actionId is `file-opener:<id>`, which never matches a
+              // threadPanelAction, so it needs its own arm here.
+              (activePluginPanelTab.fileOpenerOwner !== undefined ||
+                pluginThreadPanelActions.find(
+                  (candidate) =>
+                    candidate.pluginId === activePluginPanelTab.pluginId &&
+                    candidate.id === activePluginPanelTab.actionId,
+                )?.layout === "flush"),
             splitPanelStateId: thread.id,
             splitTabModels: syncedOrderedSecondaryFileTabs,
             renderSplitTabContent,
             splitTabContentFillsRegion: (tab) =>
               tab.kind === "plugin-panel" &&
-              pluginThreadPanelActions.find(
-                (candidate) =>
-                  candidate.pluginId === tab.pluginId &&
-                  candidate.id === tab.actionId,
-              )?.layout === "flush",
+              (tab.fileOpenerOwner !== undefined ||
+                pluginThreadPanelActions.find(
+                  (candidate) =>
+                    candidate.pluginId === tab.pluginId &&
+                    candidate.id === tab.actionId,
+                )?.layout === "flush"),
             renderBrowserDeck,
             isBrowserTabActive,
             isOpen: isSecondaryPanelOpen,

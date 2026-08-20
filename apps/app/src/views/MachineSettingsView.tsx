@@ -1,11 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-// Route views render icons outside the shell's core set. Importing the
-// extended registry here ships it as a static dependency of this route chunk,
-// so those icons never flash blank waiting for an on-demand load.
-import "@bb/shared-ui/icon-extended";
 import type { Host, PermissionMode } from "@bb/domain";
-import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import {
   providerCliKeyValues,
   type HostPlatform,
@@ -14,12 +9,12 @@ import {
 import { Button } from "@bb/shared-ui/button";
 import { DialogFooter, DialogHeader, DialogTitle } from "@bb/shared-ui/dialog";
 import { DialogDescription } from "@bb/shared-ui/dialog";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Pill } from "@bb/shared-ui/pill";
 import { ResourceOverflowMenu } from "@bb/shared-ui/resource-list";
 import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
-import { MachineStatusIcon } from "@/components/machines/MachineStatusDot";
+import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { PageShell } from "@/components/ui/page-shell.js";
 import {
   SettingsBadge,
@@ -46,7 +41,6 @@ import {
   hostCanRetryUpdate,
 } from "@/lib/host-update-status";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { PersistentHostIconName } from "@/lib/host-display";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
@@ -90,7 +84,7 @@ function headerMeta({
   platformLabel: string | null;
   now: number;
 }): string {
-  const parts: string[] = [];
+  const parts: string[] = [host.status === "connected" ? "Online" : "Offline"];
   if (host.status !== "connected" && host.lastSeenAt !== null) {
     parts.push(
       `last seen ${formatRelativeTime({ timestamp: host.lastSeenAt, now })}`,
@@ -145,14 +139,6 @@ function PermissionLimitCards({
                     <span className="size-2 rounded-full bg-foreground" />
                   ) : null}
                 </span>
-                <Icon
-                  aria-hidden
-                  name={option.iconName}
-                  className={cn(
-                    "mt-0.5 size-4 shrink-0 text-muted-foreground",
-                    option.tone === "warning" && "text-warning-text",
-                  )}
-                />
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm text-foreground">
                     {option.label}
@@ -174,24 +160,14 @@ function PermissionLimitCards({
 
 interface DetailRowProps {
   label: string;
-  icon?: IconName;
   children: ReactNode;
 }
 
-function DetailRow({ label, icon, children }: DetailRowProps) {
+function DetailRow({ label, children }: DetailRowProps) {
   return (
-    <SettingsRow className="items-start sm:items-center">
-      <span className="flex min-w-0 items-center gap-2 text-foreground">
-        {icon ? (
-          <Icon
-            aria-hidden
-            name={icon}
-            className="size-4 shrink-0 text-muted-foreground"
-          />
-        ) : null}
-        <span>{label}</span>
-      </span>
-      <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 text-right text-subtle-foreground">
+    <SettingsRow className="flex-col items-stretch gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+      <span className="shrink-0 text-foreground">{label}</span>
+      <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 text-left text-subtle-foreground sm:ml-auto sm:justify-end sm:text-right">
         {children}
       </div>
     </SettingsRow>
@@ -308,48 +284,40 @@ export function MachineSettingsView() {
             <Icon name="ChevronLeft" className="size-3.5" />
             Machines
           </Link>
-          <SettingsSection
-            title={
-              <span className="flex min-w-0 items-center gap-2">
-                <Icon
-                  name={PersistentHostIconName}
-                  className="size-4 shrink-0 text-muted-foreground"
-                  aria-hidden
-                />
-                <span className="truncate">{host.name}</span>
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2">
+                <h1 className="min-w-0 truncate text-sm font-semibold text-foreground">
+                  {host.name}
+                </h1>
                 {isThisMachine ? (
                   <SettingsBadge>This machine</SettingsBadge>
                 ) : null}
                 {showMachineIdentityBadges && isPrimary ? (
                   <SettingsBadge>Primary</SettingsBadge>
                 ) : null}
-              </span>
-            }
-            titleAction={
-              <ResourceOverflowMenu
-                label={`${host.name} actions`}
-                items={[
-                  {
-                    label: "Rename",
-                    icon: "Edit",
-                    onSelect: () => {
-                      renameHost.reset();
-                      setRenameOpen(true);
-                    },
-                  },
-                ]}
-              />
-            }
-          >
-            <SettingsRowList>
-              <SettingsRow>
-                <MachineStatusIcon connected={host.status === "connected"} />
+              </div>
+              <div className="mt-1 flex min-w-0 items-center gap-2">
+                <MachineStatusDot connected={host.status === "connected"} />
                 <p className="min-w-0 text-xs text-subtle-foreground/75">
                   {headerMeta({ host, platformLabel, now })}
                 </p>
-              </SettingsRow>
-            </SettingsRowList>
-          </SettingsSection>
+              </div>
+            </div>
+            <ResourceOverflowMenu
+              label={`${host.name} actions`}
+              items={[
+                {
+                  label: "Rename",
+                  icon: "Edit",
+                  onSelect: () => {
+                    renameHost.reset();
+                    setRenameOpen(true);
+                  },
+                },
+              ]}
+            />
+          </div>
         </div>
 
         <SettingsSection
@@ -389,7 +357,7 @@ export function MachineSettingsView() {
               ) : (
                 <>
                   {installedProviders.length > 0 ? (
-                    <span className="flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">
+                    <span className="flex min-w-0 flex-wrap items-center justify-start gap-x-3 gap-y-1 sm:justify-end">
                       {installedProviders.map((entry) => (
                         <span
                           key={entry.providerId}
@@ -438,7 +406,7 @@ export function MachineSettingsView() {
 
         <SettingsSection title="Machine information">
           <SettingsRowList>
-            <DetailRow label="Projects" icon="FolderGit">
+            <DetailRow label="Projects">
               {projects.length === 0 ? (
                 <span>None</span>
               ) : (
@@ -457,7 +425,7 @@ export function MachineSettingsView() {
                 </span>
               )}
             </DetailRow>
-            <DetailRow label="Updates" icon={UPDATE_ACTION_ICON}>
+            <DetailRow label="Updates">
               <span>{updateStatus ?? "Up to date"}</span>
               {hostCanRetryUpdate(host) ? (
                 <Button

@@ -615,6 +615,104 @@ describe("useThreadFileTabs file opener diversion", () => {
     expect(result.current.activeWorkspaceFilePath).toBe("src/index.ts");
   });
 
+  // The file search builds its tab through its own path (it replaces the
+  // new-tab screen rather than appending a tab), so diversion has to be
+  // applied there too. It was not, and every file picked from the "+" screen
+  // silently got the built-in preview while links and `bb thread open`
+  // diverted correctly.
+  it("diverts a workspace file picked from the file search", () => {
+    registerNotesOpener();
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "opener-search",
+        syncThreadId: "opener-search",
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    act(() => result.current.openTab({ kind: "new-tab" }));
+    act(() =>
+      result.current.selectFileSearchResult({
+        source: "workspace",
+        path: "notes/todo.md",
+      }),
+    );
+
+    expect(result.current.activePluginPanelTab).toMatchObject({
+      kind: "plugin-panel",
+      pluginId: "notes",
+      actionId: "file-opener:editor",
+      title: "todo.md",
+    });
+    const params = JSON.parse(
+      result.current.activePluginPanelTab?.paramsJson ?? "null",
+    ) as { path: string; source: { kind: string; environmentId: string | null } };
+    expect(params.path).toBe("notes/todo.md");
+    expect(params.source).toMatchObject({
+      kind: "workspace",
+      environmentId: "env_1",
+    });
+    // The new-tab screen is replaced, not appended to.
+    expect(result.current.isNewTabActive).toBe(false);
+    expect(
+      result.current.orderedSecondaryFileTabs.map((tab) => tab.kind),
+    ).toEqual(["plugin-panel"]);
+  });
+
+  it("keeps the built-in preview for an unmatched file search extension", () => {
+    registerNotesOpener();
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "opener-search-unmatched",
+        syncThreadId: "opener-search-unmatched",
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    act(() => result.current.openTab({ kind: "new-tab" }));
+    act(() =>
+      result.current.selectFileSearchResult({
+        source: "workspace",
+        path: "src/main.rs",
+      }),
+    );
+
+    expect(result.current.activePluginPanelTab).toBeNull();
+    expect(result.current.activeWorkspaceFilePath).toBe("src/main.rs");
+  });
+
+  it("honors a pinned built-in preference from the file search", () => {
+    window.localStorage.setItem(
+      "bb.fileOpenerByExtension",
+      JSON.stringify({ md: "__builtin__" }),
+    );
+    registerNotesOpener();
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "opener-search-pinned",
+        syncThreadId: "opener-search-pinned",
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    act(() => result.current.openTab({ kind: "new-tab" }));
+    act(() =>
+      result.current.selectFileSearchResult({
+        source: "workspace",
+        path: "notes/todo.md",
+      }),
+    );
+
+    expect(result.current.activePluginPanelTab).toBeNull();
+    expect(result.current.activeWorkspaceFilePath).toBe("notes/todo.md");
+  });
+
   it("falls back to the built-in preview when no opener is registered", () => {
     const { result } = renderThreadHook(() =>
       useThreadFileTabs({

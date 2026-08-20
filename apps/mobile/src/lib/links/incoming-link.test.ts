@@ -44,7 +44,7 @@ describe("parseIncomingLink", () => {
   it("leaves dev-client and other schemes alone", () => {
     expect(
       parseIncomingLink(
-        "exp+bb-mobile://expo-development-client/?url=http://127.0.0.1:8082",
+        "exp+bb-app://expo-development-client/?url=http://127.0.0.1:8082",
       ),
     ).toEqual({ kind: "foreign" });
     expect(parseIncomingLink("mailto:x@y.z")).toEqual({ kind: "foreign" });
@@ -144,7 +144,7 @@ describe("resolveIncomingLink", () => {
   it("passes foreign URLs through untouched", () => {
     expect(
       resolveIncomingLink(
-        "exp+bb-mobile://expo-development-client/?url=x",
+        "exp+bb-app://expo-development-client/?url=x",
         context,
       ),
     ).toEqual({ kind: "passthrough" });

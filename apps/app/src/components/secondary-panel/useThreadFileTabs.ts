@@ -516,12 +516,41 @@ export function useThreadFileTabs({
 
   const selectFileSearchResult = useCallback(
     (selection: FileSearchSelection) => {
-      const tab = createTabForFileSearchSelection({
+      // Opener diversion, same as `openTab`. The file search builds its tab
+      // through its own path (it replaces the new-tab screen rather than
+      // appending a tab), so without this a plugin `fileOpener` was skipped
+      // for every file picked from the "+" screen while still applying to
+      // links and `bb thread open`.
+      const openerTab = createFileOpenerTabForRequest({
+        fileOpeners,
+        preference: fileOpenerPreference,
         projectId,
+        request:
+          selection.source === "workspace"
+            ? {
+                kind: "workspace-file-preview",
+                tab: {
+                  lineRange: null,
+                  path: selection.path,
+                  source: { kind: "working-tree" },
+                  statusLabel: null,
+                },
+              }
+            : {
+                kind: "thread-storage-file-preview",
+                tab: { lineRange: null, path: selection.path },
+              },
         resolvedEnvironmentId,
-        selection,
         threadId: resolvedFileOwnerThreadId,
       });
+      const tab =
+        openerTab ??
+        createTabForFileSearchSelection({
+          projectId,
+          resolvedEnvironmentId,
+          selection,
+          threadId: resolvedFileOwnerThreadId,
+        });
       if (tab === null) return;
 
       if (selection.source === "workspace") {
@@ -535,6 +564,8 @@ export function useThreadFileTabs({
       );
     },
     [
+      fileOpenerPreference,
+      fileOpeners,
       projectId,
       recordRecentItem,
       resolvedEnvironmentId,

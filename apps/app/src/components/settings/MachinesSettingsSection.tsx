@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Host, PermissionMode } from "@bb/domain";
 import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
@@ -16,7 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ResourceRowDetailChevron } from "@bb/shared-ui/resource-list";
 import {
@@ -28,7 +28,7 @@ import {
 import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
 import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
 import { appToast } from "@/components/ui/app-toast";
-import { MachineStatusIcon } from "@/components/machines/MachineStatusDot";
+import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { MachineRenameDialog } from "@/components/settings/MachineRenameDialog";
 import {
   SettingsBadge,
@@ -45,7 +45,6 @@ import { useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
-import { PersistentHostIconName } from "@/lib/host-display";
 import { getSettingsMachineRoutePath } from "@/lib/route-paths";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
@@ -76,39 +75,6 @@ const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   unknown: null,
 };
 
-function MachineMetadataIcon({
-  icon,
-  label,
-  children,
-  className,
-}: {
-  icon: IconName;
-  label: string;
-  children?: ReactNode;
-  className?: string;
-}) {
-  return (
-    <TooltipProvider delayDuration={250}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            role="img"
-            aria-label={label}
-            className={cn(
-              "inline-flex shrink-0 items-center gap-1 text-subtle-foreground/75",
-              className,
-            )}
-          >
-            <Icon aria-hidden name={icon} className="size-3.5" />
-            {children}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
 interface MachineRowProps {
   host: Host;
   isPrimary: boolean;
@@ -138,10 +104,12 @@ function MachineRow({
 }: MachineRowProps) {
   const permission = PERMISSION_MODE_PRESENTATION[host.maxPermissionMode];
   const projectLabel = `${projectCount} ${projectCount === 1 ? "project" : "projects"}`;
-  const offlineTooltip =
-    host.lastSeenAt === null
-      ? "Offline"
-      : `Offline · last seen ${formatRelativeTime({ timestamp: host.lastSeenAt, now })}`;
+  const connectionLabel =
+    host.status === "connected"
+      ? "Online"
+      : host.lastSeenAt === null
+        ? "Offline"
+        : `Offline · last seen ${formatRelativeTime({ timestamp: host.lastSeenAt, now })}`;
   const updateStatus = formatHostUpdateStatus(host);
   const removeItem = (
     <DropdownMenuItem
@@ -173,12 +141,8 @@ function MachineRow({
         <Link
           to={getSettingsMachineRoutePath(host.id)}
           aria-label={`Open ${host.name}`}
-          className="flex min-w-0 flex-1 items-center gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex min-w-0 flex-1 items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <Icon
-            name={PersistentHostIconName}
-            className="size-4 shrink-0 text-muted-foreground"
-          />
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex min-w-0 items-center gap-1.5">
               <span className="min-w-0 truncate text-sm font-medium text-foreground">
@@ -189,35 +153,27 @@ function MachineRow({
               ) : null}
               {showPrimaryBadge ? <SettingsBadge>primary</SettingsBadge> : null}
             </div>
-            <div className="flex min-w-0 items-center gap-2 text-xs text-subtle-foreground/75">
-              <MachineStatusIcon
-                connected={host.status === "connected"}
-                tooltip={
-                  host.status === "connected" ? "Online" : offlineTooltip
-                }
-                className="size-3.5 [&_[data-icon]]:size-3.5"
-              />
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-subtle-foreground/75">
+              <span className="inline-flex shrink-0 items-center gap-1.5">
+                <MachineStatusDot connected={host.status === "connected"} />
+                {connectionLabel}
+              </span>
               {platformLabel === null ? null : (
                 <span className="truncate">{platformLabel}</span>
               )}
-              <MachineMetadataIcon icon="FolderGit" label={projectLabel}>
-                <span aria-hidden>{projectCount}</span>
-              </MachineMetadataIcon>
-              <MachineMetadataIcon
-                icon={permission.iconName}
-                label={permission.label}
-                className={
-                  permission.tone === "warning"
-                    ? "text-warning-text"
-                    : undefined
-                }
-              />
+              <span className="shrink-0">{projectLabel}</span>
+              <span
+                className={cn(
+                  "shrink-0",
+                  permission.tone === "warning" && "text-warning-text",
+                )}
+              >
+                {permission.label}
+              </span>
               {updateStatus === null ? null : (
-                <MachineMetadataIcon
-                  icon="AlertTriangle"
-                  label={updateStatus}
-                  className="text-warning-text"
-                />
+                <span className="min-w-0 text-warning-text">
+                  {updateStatus}
+                </span>
               )}
             </div>
           </div>
@@ -315,22 +271,14 @@ export function MachinesSettingsSection() {
         title="Machines"
         description={MACHINES_SECTION_DESCRIPTION}
         action={
-          <TooltipProvider delayDuration={250}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-7 text-muted-foreground hover:text-foreground"
-                  aria-label="Add machine"
-                  onClick={() => setAddDialogOpen(true)}
-                >
-                  <Icon name="Plus" className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Add machine</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setAddDialogOpen(true)}
+          >
+            <Icon name="Plus" className="size-3.5" />
+            Add a machine
+          </Button>
         }
       >
         {hosts === undefined ? (

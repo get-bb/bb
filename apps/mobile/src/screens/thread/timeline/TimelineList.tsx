@@ -90,11 +90,14 @@ function UnreadDividerRow() {
       className="flex-row items-center gap-2 px-4 py-1"
       testID="timeline-unread-divider"
     >
-      <View className="h-px flex-1 bg-attention" />
-      <Text variant="chrome" className="text-attention">
+      <Text
+        variant="chrome"
+        weight="medium"
+        className="uppercase tracking-wider text-timeline-accent"
+      >
         New
       </Text>
-      <View className="h-px flex-1 bg-attention" />
+      <View className="h-px flex-1 bg-timeline-accent" />
     </View>
   );
 }

@@ -9,6 +9,7 @@ export {
   resolveBbAppStartContext,
   resolveDataDir,
   resolvePort,
+  resolveWorktreeRuntimePolicy,
   runBbApp,
   runBbCli,
   runBbHostDaemon,
@@ -37,5 +38,8 @@ export type {
   ResolveBbAppStartContextArgs,
   ResolveDataDirArgs,
   ResolvePortArgs,
+  ResolveWorktreeRuntimePolicyArgs,
+  RunBbAppOptions,
   StartCommand,
+  WorktreeRuntimePolicy,
 } from "./launcher.js";

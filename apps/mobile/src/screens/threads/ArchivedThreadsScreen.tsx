@@ -78,7 +78,6 @@ function ArchivedRow({
       <View className="min-w-0 flex-1">
         <SidebarThreadRowView
           row={row}
-          selected={false}
           subtitle={subtitle}
           onPress={onPress}
           onLongPress={onLongPress}

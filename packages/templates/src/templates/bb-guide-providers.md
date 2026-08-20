@@ -42,15 +42,15 @@ provider's global configuration.
 
 Subscription limit recovery
 
-The opt-in builtin Provider retry plugin recognizes structured Codex and Claude
-Code subscription windows. Enable it under Extensions → Plugins or run
-`bb plugin enable provider-retry`. If a provider terminally rejects an accepted
-turn whose execution settings remain available, the plugin waits in memory
-until the reported reset plus a short buffer, then starts one agent-only
-`Please continue.` turn on the existing provider conversation. Prior output or
-tool activity does not block recovery. Threads sharing a machine/provider
-subscription are released one at a time. Provider-native retries remain
-authoritative while the provider reports that it will retry on its own.
+The builtin Provider retry plugin is enabled on fresh installations and
+recognizes structured Codex and Claude Code subscription windows. If a provider
+terminally rejects an accepted turn whose execution settings remain available,
+the plugin waits in memory until the reported reset plus a short buffer, then
+starts one agent-only `Please continue.` turn on the existing provider
+conversation. Prior output or tool activity does not block recovery. Threads
+sharing a machine/provider subscription are released one at a time.
+Provider-native retries remain authoritative while the provider reports that
+it will retry on its own.
 
 Automatic waits default to a maximum of six hours. Longer reset windows are not
 scheduled. Set `maximumWait` to `24 hours` or `No limit` under the plugin

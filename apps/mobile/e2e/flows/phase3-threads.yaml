@@ -87,20 +87,8 @@ env:
     notVisible: "Renamed thread"
     timeout: 15000
 - assertVisible: ".*Archived Renamed thread.*"
-# Drawer: the sidebar lists the same project; go to Settings → Archived.
-- swipe:
-    start: 2%, 50%
-    end: 70%, 50%
-- extendedWaitUntil:
-    visible:
-      id: "drawer-thread-list"
-    timeout: 10000
-- assertVisible:
-    id: "drawer-new-thread"
-- assertVisible: "Mobile E2E Project"
-- takeScreenshot: phase3-drawer
-- tapOn:
-    id: "drawer-settings"
+# Workspace menu → Settings → Archived.
+- runFlow: ../subflows/open-settings.yaml
 - extendedWaitUntil:
     visible:
       id: "settings-screen"
@@ -149,17 +137,13 @@ env:
 - extendedWaitUntil:
     visible: "Renamed thread"
     timeout: 15000
-# Search (via the drawer row; the header icons can sit under the dev-client's
-# floating gear on larger simulators).
-- swipe:
-    start: 2%, 50%
-    end: 70%, 50%
+# Search from the home header.
 - extendedWaitUntil:
     visible:
-      id: "drawer-search"
+      id: "home-search"
     timeout: 10000
 - tapOn:
-    id: "drawer-search"
+    id: "home-search"
 - extendedWaitUntil:
     visible:
       id: "thread-search-input"

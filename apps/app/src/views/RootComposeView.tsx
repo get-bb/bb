@@ -2358,11 +2358,14 @@ function RootComposeSurface({
             fileTabContent,
             fileTabContentFillsRegion:
               activePluginPanelTab !== null &&
-              rootPanelNewThreadPanelActions.find(
-                (candidate) =>
-                  candidate.pluginId === activePluginPanelTab.pluginId &&
-                  candidate.id === activePluginPanelTab.actionId,
-              )?.layout === "flush",
+              // See ThreadDetailView: a `fileOpener` tab owns its layout, and
+              // its `file-opener:<id>` actionId never matches a panel action.
+              (activePluginPanelTab.fileOpenerOwner !== undefined ||
+                rootPanelNewThreadPanelActions.find(
+                  (candidate) =>
+                    candidate.pluginId === activePluginPanelTab.pluginId &&
+                    candidate.id === activePluginPanelTab.actionId,
+                )?.layout === "flush"),
             renderBrowserDeck,
             isBrowserTabActive,
             isOpen: isSecondaryPanelOpen,

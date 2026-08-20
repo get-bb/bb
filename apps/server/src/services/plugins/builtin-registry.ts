@@ -108,7 +108,7 @@ export const BUILTIN_PLUGINS = [
   {
     name: "provider-retry",
     pluginId: "provider-retry",
-    defaultEnabled: false,
+    defaultEnabled: true,
     category: "Agent interaction",
   },
   {

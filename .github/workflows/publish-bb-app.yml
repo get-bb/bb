@@ -717,6 +717,31 @@ jobs:
             apps/desktop/release/desktop-version-linux.json
           if-no-files-found: error
 
+  nightly-mobile-ios:
+    name: Build bb Nightly iOS (EAS)
+    # Same gate as the desktop jobs: only after the npm publish succeeded on
+    # the scheduled or manual nightly path. The reusable workflow starts an
+    # EAS production build that auto-submits to TestFlight.
+    if: >-
+      ${{ !cancelled()
+      && needs.publish.result == 'success'
+      && (github.event_name == 'schedule'
+      || (inputs.npm_tag == 'nightly' && inputs.dry_run == false)
+      || needs.publish-nightly.result == 'success') }}
+    needs:
+      - publish
+      - publish-nightly
+    uses: ./.github/workflows/mobile-ios-eas.yml
+    with:
+      profile: production
+      submit: true
+      # The reusable workflow keeps the numeric base (0.38.1 for
+      # 0.38.1-nightly.N.M); iOS rejects prerelease version strings.
+      version: ${{ needs.publish-nightly.outputs.version || needs.publish.outputs.version }}
+    secrets:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+
   nightly-desktop-publish:
     name: Publish bb Nightly desktop
     needs:

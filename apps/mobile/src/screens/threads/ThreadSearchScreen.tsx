@@ -168,7 +168,6 @@ function SearchBody() {
       return (
         <SidebarThreadRowView
           row={item.row}
-          selected={false}
           subtitle={subtitle}
           onPress={onPress}
           onLongPress={onLongPress}

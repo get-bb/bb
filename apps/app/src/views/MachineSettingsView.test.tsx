@@ -177,9 +177,10 @@ describe("MachineSettingsView", () => {
 
     renderView();
 
-    expect(
-      await screen.findByRole("heading", { name: /dev-vm/u }),
-    ).toBeDefined();
+    const machineHeading = await screen.findByRole("heading", {
+      name: /dev-vm/u,
+    });
+    expect(machineHeading.tagName).toBe("H1");
     const checkedByMode = Object.fromEntries(
       (await screen.findAllByRole("radio")).map((option) => [
         option.textContent?.startsWith("Accept Edits")
@@ -197,21 +198,23 @@ describe("MachineSettingsView", () => {
     });
     expect(
       screen
-        .getByRole("radio", { name: /Accept Edits/u })
-        .querySelector('[data-icon="FolderEdit"]'),
-    ).not.toBeNull();
+        .getAllByRole("radio")
+        .every((option) => option.querySelector("[data-icon]") === null),
+    ).toBe(true);
+    const machineSubtitle = screen.getByText(/^Online ·/u);
+    expect(machineSubtitle.closest("section")).toBeNull();
+    expect(screen.queryByRole("img", { name: "Online" })).toBeNull();
     expect(
       screen
-        .getByRole("radio", { name: /Approve for me/u })
-        .querySelector('[data-icon="SecurityCheck"]'),
-    ).not.toBeNull();
+        .getByRole("heading", { name: /dev-vm/u })
+        .querySelector("[data-icon]"),
+    ).toBeNull();
     expect(
       screen
-        .getByRole("radio", { name: /Full Access/u })
-        .querySelector('[data-icon="SquareUnlock02"]'),
-    ).not.toBeNull();
-    expect(screen.getByRole("img", { name: "Online" })).toBeDefined();
-    expect(document.querySelector('[data-icon="FolderGit"]')).not.toBeNull();
+        .getByRole("heading", { name: "Machine information" })
+        .closest("section")
+        ?.querySelector("[data-icon]"),
+    ).toBeNull();
     expect(
       document.querySelector('[data-provider-icon="codex"]'),
     ).not.toBeNull();
@@ -226,6 +229,15 @@ describe("MachineSettingsView", () => {
         .getByRole("heading", { name: "Provider CLIs" })
         .querySelector("[data-icon]"),
     ).toBeNull();
+    const installedLabel = screen.getByText("Installed");
+    expect(installedLabel.parentElement?.className).toContain("flex-col");
+    expect(installedLabel.parentElement?.className).toContain("sm:flex-row");
+    expect(installedLabel.nextElementSibling?.className).toContain(
+      "justify-start",
+    );
+    expect(installedLabel.nextElementSibling?.className).toContain(
+      "sm:justify-end",
+    );
     // The page exists so the modes can explain themselves.
     expect(screen.getByText(/No sandbox and no approvals/u)).toBeDefined();
   });
@@ -247,7 +259,7 @@ describe("MachineSettingsView", () => {
     expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
   });
 
-  it("names an offline machine's status icon", async () => {
+  it("shows an offline machine's status as text", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([
       host({ status: "disconnected", lastSeenAt: Date.now() - 60_000 }),
@@ -256,8 +268,8 @@ describe("MachineSettingsView", () => {
 
     renderView();
 
-    expect(await screen.findByRole("img", { name: "Offline" })).toBeDefined();
-    expect(screen.queryByText(/^Offline ·/u)).toBeNull();
+    expect(await screen.findByText(/^Offline · last seen/u)).toBeDefined();
+    expect(screen.queryByRole("img", { name: "Offline" })).toBeNull();
   });
 
   it("links update issues to Updates in a warning pill", async () => {

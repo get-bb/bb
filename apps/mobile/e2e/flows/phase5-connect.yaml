@@ -134,23 +134,8 @@ env:
 - assertVisible: "Rich thread"
 - takeScreenshot: p5-connect-home
 # Servers list: mode pills + handle.
-# Open the drawer from the header toggle, not the edge swipe: on a freshly
-# enrolled bb connect profile the edge swipe that opens the drawer also fires
-# the press of the home row under the touch (the drawer pan's touch
-# cancellation does not reach the row's Pressable in time), which pushes that
-# thread over the drawer. Direct-mode profiles do not show this; see the
-# Phase 7 integration entry in plans/bb-mobile-progress.md.
-- tapOn: "Show navigation menu"
-- extendedWaitUntil:
-    visible:
-      id: "drawer-thread-list"
-    timeout: 10000
-- extendedWaitUntil:
-    visible:
-      id: "drawer-settings"
-    timeout: 10000
-- tapOn:
-    id: "drawer-settings"
+# Workspace menu → Settings.
+- runFlow: ../subflows/open-settings.yaml
 - extendedWaitUntil:
     visible:
       id: "settings-screen"

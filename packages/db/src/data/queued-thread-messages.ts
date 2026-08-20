@@ -18,7 +18,7 @@ import type {
   DbTransaction,
 } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
-import { queuedThreadMessages, threads } from "../schema.js";
+import { environments, queuedThreadMessages, threads } from "../schema.js";
 import { createQueuedThreadMessageClaimToken, createQueuedThreadMessageId } from "../ids.js";
 import {
   createOrderKeyAfter,
@@ -471,40 +471,52 @@ function applyPreservedLeadGroupAfterReorder(
     : queuedMessages;
 }
 
+/**
+ * Inserts a queued message inside a caller-owned transaction. Callers that
+ * must admit the message against the current thread and environment rows (so
+ * an archive or destroy that lands between their read and this insert cannot
+ * slip a row in) run their checks in the same transaction, then call this.
+ * The caller notifies `queue-changed` after the transaction commits.
+ */
+export function createQueuedThreadMessageInTransaction(
+  tx: DbTransaction,
+  input: CreateQueuedThreadMessageInput,
+) {
+  const now = Date.now();
+  const id = createQueuedThreadMessageId();
+  const lastQueuedMessage = getLastQueuedThreadMessage(tx, input.threadId);
+  const sortKey = lastQueuedMessage
+    ? createOrderKeyAfter({ previousKey: lastQueuedMessage.sortKey })
+    : createOrderKeyBetween({ previousKey: null, nextKey: null });
+  return tx
+    .insert(queuedThreadMessages)
+    .values({
+      id,
+      threadId: input.threadId,
+      content: JSON.stringify(input.content),
+      senderThreadId: input.senderThreadId ?? null,
+      model: input.model,
+      reasoningLevel: input.reasoningLevel,
+      permissionMode: input.permissionMode,
+      serviceTier: input.serviceTier,
+      groupWithNext: false,
+      claimedAt: null,
+      claimToken: null,
+      sortKey,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning()
+    .get();
+}
+
 export function createQueuedThreadMessage(
   db: DbConnection,
   notifier: DbNotifier,
   input: CreateQueuedThreadMessageInput,
 ) {
-  const now = Date.now();
-  const id = createQueuedThreadMessageId();
   const row = db.transaction(
-    (tx) => {
-      const lastQueuedMessage = getLastQueuedThreadMessage(tx, input.threadId);
-      const sortKey = lastQueuedMessage
-        ? createOrderKeyAfter({ previousKey: lastQueuedMessage.sortKey })
-        : createOrderKeyBetween({ previousKey: null, nextKey: null });
-      return tx
-        .insert(queuedThreadMessages)
-        .values({
-          id,
-          threadId: input.threadId,
-          content: JSON.stringify(input.content),
-          senderThreadId: input.senderThreadId ?? null,
-          model: input.model,
-          reasoningLevel: input.reasoningLevel,
-          permissionMode: input.permissionMode,
-          serviceTier: input.serviceTier,
-          groupWithNext: false,
-          claimedAt: null,
-          claimToken: null,
-          sortKey,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning()
-        .get();
-    },
+    (tx) => createQueuedThreadMessageInTransaction(tx, input),
     { behavior: "immediate" },
   );
   notifier.notifyThread(input.threadId, ["queue-changed"]);
@@ -594,12 +606,16 @@ export function listIdleThreadsWithQueuedMessages(
     })
     .from(queuedThreadMessages)
     .innerJoin(threads, eq(threads.id, queuedThreadMessages.threadId))
+    // A gone environment (destroying/destroyed) is never reprovisioned, so its
+    // queued rows can never drain. Leave them out of the sweep instead of
+    // failing the same send every cycle (#1789).
+    .innerJoin(environments, eq(environments.id, threads.environmentId))
     .where(
       and(
         eq(threads.status, "idle"),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
-        isNotNull(threads.environmentId),
+        notInArray(environments.status, ["destroying", "destroyed"]),
         isNull(queuedThreadMessages.claimedAt),
         isNull(queuedThreadMessages.claimToken),
       ),

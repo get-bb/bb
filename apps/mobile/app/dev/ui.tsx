@@ -2,10 +2,11 @@
 // can be eyeballed per palette × mode on the simulator. Not product UI.
 import { BUILTIN_THEME_IDS } from "@bb/domain";
 import { Redirect } from "expo-router";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { e2eModeEnabled } from "@/app-shell";
+import { VoiceBar, type VoiceBarController } from "@/composer";
 import { useTheme } from "@/theme/ThemeProvider";
 import type { ThemeModePreference } from "@/theme/theme-preference";
 import {
@@ -41,12 +42,37 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 const MODES: ThemeModePreference[] = ["system", "light", "dark"];
 
+/**
+ * Speech-like synthetic input levels for the voice bar showcase: a slow
+ * syllable envelope with jitter, so the waveform scrolls without a mic.
+ */
+function syntheticVoiceLevel(): number {
+  const t = Date.now() / 1000;
+  const syllable =
+    Math.max(0, Math.sin(t * 5.3)) * (0.6 + 0.4 * Math.sin(t * 0.7));
+  const pause = Math.sin(t * 0.45) > 0.75 ? 0 : 1;
+  const jitter = 0.75 + Math.random() * 0.25;
+  return Math.min(1, 0.06 + syllable * jitter * pause);
+}
+
 function UiGalleryScreen() {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const [checked, setChecked] = useState(true);
   const [text, setText] = useState("");
   const [pressed, setPressed] = useState(false);
+  const [voiceState, setVoiceState] = useState<"recording" | "transcribing">(
+    "recording",
+  );
+  const voice = useMemo(
+    (): VoiceBarController => ({
+      state: voiceState,
+      readLevel: syntheticVoiceLevel,
+      stop: async () => setVoiceState("transcribing"),
+      cancel: () => setVoiceState("recording"),
+    }),
+    [voiceState],
+  );
   const sheet = useSheet();
   const scrollSheet = useSheet();
   const menu = useSheet();
@@ -275,6 +301,18 @@ function UiGalleryScreen() {
         </View>
         <Text variant="caption">
           Long-press the first row for an ActionSheet.
+        </Text>
+      </Section>
+
+      <Section title="Voice bar (synthetic levels)">
+        <View
+          className="rounded-2xl border border-border bg-card"
+          testID="dev-ui-voice-bar"
+        >
+          <VoiceBar voice={voice} />
+        </View>
+        <Text variant="caption">
+          Check → transcribing (frozen, breathing); X → back to recording.
         </Text>
       </Section>
 

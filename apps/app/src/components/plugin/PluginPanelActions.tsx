@@ -383,7 +383,11 @@ function FileOpenerTabContent({
     >
       {(opener, BoundOriginal) => (
         <div
-          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          // `h-full` matters: the region this mounts into is a block box, so
+          // `flex-1` alone leaves the wrapper at content height and an opener
+          // that sizes itself with `flex-1` collapses to nothing. Same shape
+          // as the action-tab wrapper above.
+          className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
           data-testid="plugin-file-opener-tab-content"
         >
           <opener.component

@@ -1630,3 +1630,32 @@ the `expo-share-intent` native rebuild; provider CLI install / remove machine
 `Mobile E2E` run need the workflows on `main`); a CI flow set that also runs
 the Phase 7 flows would need the harness seeds `ci-run-flows.sh` does not
 create yet.
+
+## Navigation — drawer removed, home is the root (2026-08-20)
+
+What changed: the left drawer (`app/(drawer)/`, `expo-router/drawer`,
+`DrawerContent.tsx`) is gone. Home (`app/index.tsx`) is the root of the
+native stack. The drawer duplicated the home thread list; its only unique
+jobs — server switcher, Settings, display options, archived — moved to a
+**workspace menu**: the header's left avatar (the active server's initials
+with the realtime dot, `home-workspace-menu`) opens a bottom sheet
+(`src/screens/shell/WorkspaceMenu.tsx`) with the server rows, Add server,
+Archived threads, Settings (and UI gallery under E2E). Search and display
+options stay in the header's right slot. `SidebarActionsProvider` lost
+`onBeforeNavigate` and `SidebarThreadList` / `SidebarThreadRowView` lost
+`selected` (only the drawer highlighted the open thread).
+
+Why: on a phone the thread list is the home screen; a second copy of it in a
+drawer costs an edge gesture and a scrim, and the connect-mode edge-swipe
+press-through (Phase 7 integration note) goes away with it. Concept
+mockups for the alternatives (root home, bottom tabs, title thread switcher,
+inbox-first home) were made in this thread; "root home" was chosen as the
+smallest change. A title-tap thread switcher is the follow-up if
+thread-to-thread jumps turn out to be frequent.
+
+Flows: every `drawer-*` step now runs `e2e/subflows/open-settings.yaml`
+(avatar → `workspace-settings`); `phase1-shell` asserts the sheet's profile
+label / "Connected" / Add server; `phase3-threads` searches from
+`home-search`; `phase5-connect` no longer needs the header-toggle workaround.
+Verified: `turbo run typecheck lint test --filter=@bb/mobile` (813 tests).
+Not driven on device in this pass: the Maestro flows above.

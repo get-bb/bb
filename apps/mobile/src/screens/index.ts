@@ -37,7 +37,7 @@ export {
   SkillsLibraryScreen,
 } from "./extensions";
 export { ConnectionBanner } from "./shell/ConnectionBanner";
-export { DrawerContent } from "./shell/DrawerContent";
+export { WorkspaceMenuButton } from "./shell/WorkspaceMenu";
 export { RootNavigator } from "./shell/RootNavigator";
 export { RouteErrorBoundary } from "./shell/RouteErrorBoundary";
 export { Screen, type ScreenProps } from "./shell/Screen";

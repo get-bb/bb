@@ -20,8 +20,8 @@ import { ThemeProvider } from "@/theme";
 import { useAppFonts } from "@/theme/useAppFonts";
 import { SheetProvider, Toaster } from "@/ui";
 
-// Deep links into a pushed screen still get the drawer/home underneath.
-export const unstable_settings = { anchor: "(drawer)" };
+// Deep links into a pushed screen still get home underneath.
+export const unstable_settings = { anchor: "index" };
 
 export { RouteErrorBoundary as ErrorBoundary };
 

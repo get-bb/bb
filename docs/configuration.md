@@ -789,13 +789,13 @@ the plugin so it can be surfaced as needing attention.
 
 ### Provider retry plugin
 
-The builtin Provider retry plugin is disabled on fresh installations. Enable
-it under Extensions → Plugins or with `bb plugin enable provider-retry`. It
+The builtin Provider retry plugin is enabled on fresh installations. It
 automatically waits for structured Codex and Claude Code subscription-window
 resets when the failed turn was accepted, the provider has stopped its own
 retries, and the original execution settings remain available. Prior output or
 tool activity does not block recovery. Recovery sends one agent-only
-`Please continue.` turn on the existing provider conversation.
+`Please continue.` turn on the existing provider conversation. Disable it
+under Extensions → Plugins or with `bb plugin disable provider-retry`.
 The `maximumWait` setting defaults to `6 hours`; resets beyond that horizon are
 not scheduled. Choose `24 hours` or `No limit` under the plugin settings, or
 configure it from the CLI:
@@ -926,9 +926,9 @@ enrolled to other servers. Atomic reservations under
 
 ## Source Development
 
-For source development only, `pnpm dev` and `pnpm start` load the repo-root
-dotenv cascade. Add a repo-root `.env` only when you need to override the
-defaults described above.
+For source development only, `pnpm dev`, `pnpm start:worktree`, and `pnpm start`
+load the repo-root dotenv cascade. Add a repo-root `.env` only when you need to
+override the defaults described above.
 
 The standard [dotenv-cli](https://github.com/entropitor/dotenv-cli) cascade
 applies to source development. `pnpm dev` loads `.env`, `.env.local`,
@@ -940,6 +940,14 @@ Vite app bind to loopback by default; an explicit `BB_DEV_APP_HOST` still
 overrides the Vite listener. Remote HTTP dev via `BB_DEV_APP_HOST` also requires
 `BB_SERVER_BIND_HOST=0.0.0.0` for realtime updates; the Tailscale Serve HTTPS
 path avoids this because WebSocket traffic goes through the Vite proxy.
+`pnpm start:worktree` loads the same development dotenv cascade and uses the
+same checkout-specific data directory, server port, and host-daemon port. It
+builds production artifacts and serves the frontend bundle from the main
+server, so there is no separate Vite listener or hot reload. Telemetry remains
+disabled for this source-development command. Its worktree data directory,
+ports, inherited skills, listener host, absent Vite port, and telemetry policy
+take precedence over conflicting values saved in that instance's `config.json`
+or `env.json`.
 `pnpm start` loads `.env`, `.env.local`, `.env.production`, and
 `.env.production.local`.
 

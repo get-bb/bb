@@ -7,9 +7,9 @@ Status: Phase 7 (settings, machines, updates, plugins, skills, share,
 haptics, CI) — M4, the last build milestone, over Direct mode and bb connect;
 M5 (SPA-in-WebView plugin surfaces, tablet layout, store releases) is
 deferred. Direct-mode and bb connect server profiles (QR / code pairing, desktop-session
-cookie, re-pair), the app shell (drawer + stack, connection banner, settings),
+cookie, re-pair), the app shell (root stack, connection banner, settings),
 theme/design system, the per-profile SDK/realtime/query layer, the grouped
-thread list (drawer + home, long-press menus, organize/sort, search, archived),
+thread list (home, long-press menus, organize/sort, search, archived),
 thread creation on the shared composer (mentions, attachments, voice, fork /
 handoff seeds), the thread detail screen (`/threads/[id]`: the virtualized
 timeline with every row kind, markdown, inline diffs, terminal output, images +
@@ -39,7 +39,8 @@ app/                     Expo Router routes (thin: each file re-exports a screen
                          KeyboardProvider › PaletteProvider › ThemeProvider ›
                          ProfilesProvider (QueryClientProvider per profile) ›
                          SheetProvider › RootNavigator + Toaster
-  (drawer)/              Drawer (expo-router/drawer) with the home screen (thread list)
+  index.tsx              home: the thread list + compose dock; the workspace menu (server
+                         switcher / archived / Settings) opens from the header avatar
   threads/[id].tsx       thread detail (Phase 4a, read-only); threads/search.tsx;
                          threads/[id]/terminal/ (index: the thread's terminals,
                          [terminalId]: one terminal full screen, any orientation);
@@ -329,7 +330,7 @@ cd apps/mobile && pnpm e2e:ios
 ```
 
 `phase1-shell.yaml` drives the real first-run flow (Add server → home →
-drawer → Settings → Server status shows realtime connected); `smoke.yaml`
+workspace menu → Settings → Server status shows realtime connected); `smoke.yaml`
 opens the Phase 0 diagnostics screen; `phase3-threads.yaml` exercises the
 thread list (rename, pin, archive, Settings → Archived → unarchive, search);
 `phase3-compose.yaml` creates a thread from the home dock (`bb://compose`
@@ -434,11 +435,7 @@ expires the session (`POST /__stub/expire-session`: banner, then the app
 re-mints and reconnects by itself) → the stub revokes the machine
 (`/__stub/revoke-machine`: "needs to be paired again" banner) → tap the
 banner → "Sign in again" re-pairs the same profile with a new code → home
-connected again. After enrollment the flow opens the drawer from the header
-toggle ("Show navigation menu") instead of the edge swipe: on a bb connect
-profile the swipe that opens the drawer also presses the home row under the
-touch and pushes that thread (see the Phase 7 integration entry in
-`plans/bb-mobile-progress.md`). The flow needs the stub started with
+connected again. The flow needs the stub started with
 `BB_MOBILE_E2E_SIMULATOR=<udid>` once (it installs its root certificate in
 that simulator) and drives the stub through `e2e/scripts/connect-stub-control.js`
 (plain-HTTP control port 42997).
@@ -760,34 +757,49 @@ devserver.yaml` drives the same screens against the checkout's dev server
 
 ## Release (EAS)
 
-Nothing is published yet: no Expo/EAS account exists, so `app.json` has no
-`extra.eas.projectId` (push registration, in a later PR, needs it). The
-steps, once the account is created (Apple team `9QCU24SXK5`, bundle id
-`app.getbb.mobile`):
+The app lives in the EAS project `@bb-team/bb-app` (id in
+`app.json` → `extra.eas.projectId`; the Expo slug `bb-app` also names the
+dev-client scheme `exp+bb-app://`). Apple team `9QCU24SXK5`, bundle id
+`app.getbb.mobile`, App Store Connect app `6803559210`. EAS holds the iOS
+credentials (distribution certificate, App Store provisioning profile, APNs
+push key); nobody needs a local Xcode signing setup to ship.
 
-1. `npm i -g eas-cli && eas login`, then `eas init` in `apps/mobile` (writes
-   `extra.eas.projectId` into `app.json`; commit it — the push module reads it
-   and Settings → Notifications turns on).
-2. Credentials: `eas credentials -p ios` — distribution certificate +
-   provisioning profiles (EAS-managed), and upload an **APNs key** so Expo
-   Push can deliver to the app (`eas credentials` → Push Notifications). For
-   Android later: `eas credentials -p android` (keystore, FCM V1 service
-   account) and fill `ASSETLINKS_SHA256_FINGERPRINTS` on the connect workers
-   with the signing fingerprint.
-3. Builds from the profiles in `eas.json`: `development` (simulator dev
-   client), `development-device` (dev client for a physical iPhone — needed
-   for push acceptance), `preview` (internal distribution / ad-hoc) and
-   `production` (App Store / TestFlight; `autoIncrement` bumps the build
-   number, `appVersionSource: remote` keeps it on EAS), for example
-   `eas build -p ios --profile preview`; `eas submit -p ios` uploads the
-   production build to TestFlight. The `expo-modules-jsi` pnpm patch and the
-   `lightningcss` override ship with the repo and apply on EAS
-   (`pnpm install` runs there too); the build image must provide Xcode 26.x.
-4. Universal links need the signed app's team id in the AASA the connect
-   gate serves (`packages/connect-db/src/app-links.ts`) and a physical-device
-   check against `https://<handle>.getbb.app/threads/…`.
-5. `eas update` (JS-only fixes over the air) is deferred: `expo-updates` is
-   not installed, so the profiles define no update channels.
+- **Log in once**: `pnpm exec eas login` (or `EXPO_TOKEN`). `eas-cli` is a
+  pinned devDependency, so use `pnpm exec eas …` from `apps/mobile`.
+- **Build profiles** (`eas.json`): `development` (simulator dev client),
+  `development-device` (dev client for a physical iPhone; needed for push
+  acceptance), `preview` (internal ad-hoc), `production` (App Store /
+  TestFlight; `autoIncrement` + `appVersionSource: remote` keep the build
+  number on EAS, `version` in `app.json` is the marketing version).
+- **TestFlight by hand**: `pnpm exec eas build -p ios --profile production`,
+  then `pnpm exec eas submit -p ios --latest`. The submit profile reads the
+  App Store Connect API key from the gitignored `apps/mobile/asc-api-key.p8`
+  (key id and issuer id are in `eas.json`); get the `.p8` from a teammate or
+  App Store Connect → Users and Access → Integrations → App Store Connect API
+  (role App Manager, one-time download). Both commands also work with
+  `--non-interactive`.
+- **CI**: `.github/workflows/mobile-ios-eas.yml` writes the `.p8` from the
+  `ASC_API_KEY_P8` secret, optionally sets `app.json` `version`, and runs
+  `eas build -p ios --profile <profile> [--auto-submit]` with
+  `EXPO_TOKEN`. EAS builds, then uploads to TestFlight; the job waits for
+  both and fails when either fails. Logs are on expo.dev under the project's
+  Builds and Submissions (the run summary links them).
+  Run it alone from the Actions tab ("Mobile iOS (EAS)") or
+  `gh workflow run mobile-ios-eas.yml -f profile=production -f submit=true`.
+  The nightly `publish-bb-app.yml` calls the same workflow after the npm
+  nightly publish with the numeric base of the nightly version. Repo
+  secrets: `EXPO_TOKEN` (a robot token from the `bb-team` Expo org) and
+  `ASC_API_KEY_P8` (the `.p8` contents).
+- The `expo-modules-jsi` pnpm patch and the `lightningcss` override ship
+  with the repo and apply on EAS; the default build image provides
+  Xcode 26.x.
+- Universal links need the signed app's team id in the AASA the connect gate
+  serves (`packages/connect-db/src/app-links.ts`) and a physical-device
+  check against `https://<handle>.getbb.app/threads/…`. Android signing
+  (`eas credentials -p android`, FCM V1, `ASSETLINKS_SHA256_FINGERPRINTS`)
+  is still open.
+- `eas update` (JS-only fixes over the air) is deferred: `expo-updates` is
+  not installed, so the profiles define no update channels.
 
 ## Local state
 
@@ -841,5 +853,6 @@ palette, run `pnpm --filter @bb/mobile theme:generate` and commit the result;
   `keyboardShouldPersistTaps="handled"` on its scroll body so rows are
   reachable by VoiceOver/Maestro and a tap lands while the keyboard is up.
 - Maestro on iOS: `back` is not a thing; tap `id: BackButton`. The dev
-  client's floating gear sits over the header's right icons on larger
-  simulators, so flows reach search/options through the drawer rows.
+  client's floating gear can sit over the header's right icons on larger
+  simulators; Settings is reached through the header avatar on the left
+  (`e2e/subflows/open-settings.yaml`).
