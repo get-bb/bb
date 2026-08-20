@@ -519,9 +519,10 @@ export interface PluginProviderCapabilities {
   /** The provider bridge implements the sessionless `provider/health`
    * request. This is host-local readiness, not a network health check. */
   experimental_providerHealth: boolean;
-  /** The provider bridge implements the sessionless `provider/usage`
-   * request. A supported method may still report that usage is unavailable
-   * for a particular provider or return no usage windows. */
+  /** The provider exposes subscription usage through the sessionless
+   * `provider/usage` request. False means callers skip the request and usage
+   * settings omit the provider. A shared bridge that declares true may still
+   * report usage unavailable for one provider id or return no windows. */
   experimental_providerUsage: boolean;
   /** The provider accepts a fast/priority service-tier choice — shows the
    * service-tier toggle in the picker. */

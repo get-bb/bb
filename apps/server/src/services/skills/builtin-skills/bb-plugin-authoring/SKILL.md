@@ -1065,8 +1065,9 @@ bb.agents.experimental_registerProvider({
   displayName: "Echo Agent", // 1-80 chars, shown in the picker
   icon: "./icons/echo.svg", // optional; same grammar as bb.branding.icon
   capabilities: {
-    // Sessionless methods are declared here so bb can avoid unsupported host
-    // probes. A true usage method may return no windows or supported: false.
+    // Sessionless support is declared here so bb can avoid unsupported host
+    // probes and hide providers that never expose usage. A shared bridge that
+    // declares usage may still return no windows or supported: false for one id.
     experimental_providerHealth: false,
     experimental_providerUsage: false,
     supportsServiceTier: false,

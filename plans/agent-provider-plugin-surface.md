@@ -1068,7 +1068,7 @@ bb.agents.experimental_registerProvider({
     supportsNativeSessionRewind: true, // edit-past-message affordance
     supportsManualCompaction: true, // compact affordance
     experimental_providerHealth: true, // bridge implements provider/health
-    experimental_providerUsage: true, // bridge implements provider/usage
+    experimental_providerUsage: true, // provider exposes subscription usage
     // MERGE CANDIDATE: fork + rewind may collapse into
     // `fork: "none" | "tip" | "checkpoint"` (rewind ≙ checkpoint fork) —
     // verify per provider how edit-message rewind is implemented before

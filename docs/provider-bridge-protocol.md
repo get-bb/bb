@@ -85,9 +85,10 @@ widen it.
 The sessionless `provider/health` and `provider/usage` methods are different:
 their support is declared by each provider through
 `bb.agents.experimental_registerProvider`, so the server can skip an
-unsupported host probe and clients can render that fact before a bridge has
-started. A shared bridge may declare a method for every provider it owns and
-still return `{ supported: false }` for one provider id; a successful usage
+unsupported host probe and clients can omit providers that never expose usage
+before a bridge has started. A shared bridge may declare a method for every
+provider it owns and still return `{ supported: false }` for one provider id;
+a successful usage
 result may likewise contain an empty `windows` array.
 
 Every capability listed there gates a request method, which is why the set

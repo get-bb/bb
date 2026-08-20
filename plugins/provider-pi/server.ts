@@ -13,8 +13,8 @@ export default function plugin(bb: BbPluginApi) {
     icon: "./icons/pi.svg",
     capabilities: {
       experimental_providerHealth: true,
-      // Pi handles the method and currently answers `supported: false`.
-      experimental_providerUsage: true,
+      // Pi does not expose subscription usage, so usage settings omit it.
+      experimental_providerUsage: false,
       supportsServiceTier: false,
       supportsNativeUserQuestion: false,
       fork: "checkpoint",

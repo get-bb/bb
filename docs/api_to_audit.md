@@ -20,9 +20,9 @@ policy at the server boundary before making the helper stable.
 ## Provider bridge maintenance (`PluginProviderCapabilities.experimental_providerHealth`, `PluginProviderCapabilities.experimental_providerUsage`, `ProviderInfo.experimental_providerHealth`, `ProviderInfo.experimental_providerUsage`, `BRIDGE_REQUEST_METHODS.experimentalProviderHealth`, `BRIDGE_REQUEST_METHODS.experimentalProviderUsage`, `experimental_providerMaintenanceParamsSchema`, `experimental_providerHealthSchema`, `experimental_providerHealthResultSchema`, `experimental_providerUsageSchema`, `experimental_providerUsageWindowSchema`, and `experimental_providerUsageResultSchema`)
 
 **What it does.** Adds optional, sessionless `provider/health` and
-`provider/usage` requests to provider bridges. Each provider declares method
-support at registration so the server can skip unsupported host probes and the
-app can render unsupported usage before starting a bridge. Health reports
+`provider/usage` requests to provider bridges. Each provider declares support
+at registration so the server can skip unsupported host probes and the app can
+omit providers that never expose usage before starting a bridge. Health reports
 cheap host-local readiness and supported recovery actions; usage reports
 provider-normalized subscription windows. The maintenance runtime supplies the
 provider id, working directory when one exists, and the same provider-scoped

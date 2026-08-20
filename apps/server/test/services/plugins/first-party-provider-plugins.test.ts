@@ -28,6 +28,7 @@ const FIRST_PARTY_PROVIDER_PLUGINS = [
     supportsThreadRename: true,
     supportsWorkflows: false,
     supportsManualCompaction: true,
+    supportsUsage: true,
   },
   {
     builtinName: "provider-claude-code",
@@ -38,6 +39,7 @@ const FIRST_PARTY_PROVIDER_PLUGINS = [
     supportsThreadRename: false,
     supportsWorkflows: true,
     supportsManualCompaction: true,
+    supportsUsage: true,
   },
   {
     builtinName: "provider-pi",
@@ -48,6 +50,7 @@ const FIRST_PARTY_PROVIDER_PLUGINS = [
     supportsThreadRename: false,
     supportsWorkflows: false,
     supportsManualCompaction: true,
+    supportsUsage: false,
   },
   {
     builtinName: "provider-acp",
@@ -58,6 +61,7 @@ const FIRST_PARTY_PROVIDER_PLUGINS = [
     supportsThreadRename: false,
     supportsWorkflows: false,
     supportsManualCompaction: false,
+    supportsUsage: true,
   },
 ] as const;
 
@@ -131,6 +135,9 @@ describe("first-party provider plugins", () => {
           );
           expect(registry.supportsManualCompaction(plugin.providerId)).toBe(
             plugin.supportsManualCompaction,
+          );
+          expect(registration.info.experimental_providerUsage, label).toBe(
+            plugin.supportsUsage,
           );
           // The declaration is metadata only; the implementation is the
           // plugin's own built bridge artifact (pi's is daemon-bundled).
