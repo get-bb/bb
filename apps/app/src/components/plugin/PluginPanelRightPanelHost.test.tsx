@@ -458,11 +458,16 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanelTabContent", () => ({
   HostScopedFilePreviewTabContent: ({
     activePath,
     hostId,
+    isPanelOpen,
   }: {
     activePath: string;
     hostId: string;
+    isPanelOpen: boolean;
   }) => (
-    <div>
+    <div
+      data-testid="host-scoped-file-preview"
+      data-panel-open={isPanelOpen ? "true" : "false"}
+    >
       host:{hostId}:{activePath}
     </div>
   ),
@@ -858,6 +863,15 @@ describe("PluginPanelRightPanelHost", () => {
     expect(
       await screen.findByText("host:host-explicit:/tmp/example.log"),
     ).toBeTruthy();
+    expect(
+      screen.getByTestId("host-scoped-file-preview").dataset.panelOpen,
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Hide right panel" }));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("host-scoped-file-preview").dataset.panelOpen,
+      ).toBe("false");
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Open storage file" }));
     expect(

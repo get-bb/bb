@@ -725,6 +725,7 @@ export function PluginPanelRightPanelHost({
             <LazyHostScopedFilePreviewTabContent
               activePath={tab.path}
               hostId={tab.hostId}
+              isPanelOpen={isOpen}
               lineRange={tab.lineRange}
             />
           );

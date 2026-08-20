@@ -130,6 +130,11 @@ export interface HostFilePreviewTabContentProps {
 export interface HostScopedFilePreviewTabContentProps {
   activePath: string;
   hostId: string;
+  /**
+   * Whether the secondary panel is open. The retained panel body stays
+   * mounted while closed, but its host read must pause until it is visible.
+   */
+  isPanelOpen: boolean;
   lineRange: FilePreviewLineRange | null;
   onOpenInEditor?: (path: string) => void;
 }
@@ -493,6 +498,7 @@ export function HostFilePreviewTabContent({
 export function HostScopedFilePreviewTabContent({
   activePath,
   hostId,
+  isPanelOpen,
   lineRange,
   onOpenInEditor,
 }: HostScopedFilePreviewTabContentProps) {
@@ -502,7 +508,7 @@ export function HostScopedFilePreviewTabContent({
     isFetching,
     isLoading,
     refetch,
-  } = useHostFilePreview(hostId, activePath);
+  } = useHostFilePreview(hostId, activePath, { enabled: isPanelOpen });
   return (
     <SecondaryPanelFilePreview
       activePath={activePath}
