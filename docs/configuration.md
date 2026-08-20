@@ -789,13 +789,13 @@ the plugin so it can be surfaced as needing attention.
 
 ### Provider retry plugin
 
-The builtin Provider retry plugin is disabled on fresh installations. Enable
-it under Extensions → Plugins or with `bb plugin enable provider-retry`. It
+The builtin Provider retry plugin is enabled on fresh installations. It
 automatically waits for structured Codex and Claude Code subscription-window
 resets when the failed turn was accepted, the provider has stopped its own
 retries, and the original execution settings remain available. Prior output or
 tool activity does not block recovery. Recovery sends one agent-only
-`Please continue.` turn on the existing provider conversation.
+`Please continue.` turn on the existing provider conversation. Disable it
+under Extensions → Plugins or with `bb plugin disable provider-retry`.
 The `maximumWait` setting defaults to `6 hours`; resets beyond that horizon are
 not scheduled. Choose `24 hours` or `No limit` under the plugin settings, or
 configure it from the CLI:
