@@ -5,8 +5,9 @@ import type {
 import { getProjectionSummaryCount } from "./apply-turn-message-detail.js";
 import { getMessageStartedAt } from "./format-helpers.js";
 import {
-  findLastTerminalTimelineMessage,
+  isChildLifecycleSystemSteerMessage,
   isSingletonContextManagementOperation,
+  isTimelineTerminalMessage,
   isTimelineUngroupableMessage,
 } from "./timeline-message-helpers.js";
 
@@ -190,14 +191,17 @@ function groupCompletedTurnSummaryMessages(
       return;
     }
 
-    // Human follow-ups split one provider turn into multiple visible exchange
-    // segments. Keep each segment's last assistant/error message beside the
-    // user row instead of burying it inside that segment's collapsed summary.
+    // Human and child-lifecycle boundaries split one provider turn into visible
+    // exchanges. Preserve only an assistant/error directly beside the boundary.
     const sourceMessages = groupedMessages;
     groupedMessages = [];
-    const terminalMessage = preserveLastTerminalMessage
-      ? findLastTerminalTimelineMessage(sourceMessages)
-      : undefined;
+    const lastMessage = sourceMessages.at(-1);
+    const terminalMessage =
+      preserveLastTerminalMessage &&
+      lastMessage !== undefined &&
+      isTimelineTerminalMessage(lastMessage)
+        ? lastMessage
+        : undefined;
     if (!terminalMessage) {
       appendSummaryGroup(sourceMessages);
       return;
@@ -229,7 +233,8 @@ function groupCompletedTurnSummaryMessages(
     flushExternalBoundariesBefore(message);
     if (isTimelineUngroupableMessage(message)) {
       flushGroupedMessages(
-        message.kind === "user" && message.initiator === "user",
+        (message.kind === "user" && message.initiator === "user") ||
+          isChildLifecycleSystemSteerMessage(message),
       );
       items.push({
         kind: "ungrouped-message",

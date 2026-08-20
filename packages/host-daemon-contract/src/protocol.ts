@@ -1,3 +1,7 @@
+// Version 144 closes Pi's prior assistant stream at each assistant
+// `message_start`, so later assistant output uses a new canonical item id.
+// Older daemons can merge separate assistant outputs and prune visible text.
+//
 // Version 143 lets daemons from before session-open's `localApiPort` field
 // reach the protocol-version check by defaulting that field at the server
 // boundary. Without it, those daemons receive `invalid_request` instead of
@@ -90,7 +94,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 143 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 144 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

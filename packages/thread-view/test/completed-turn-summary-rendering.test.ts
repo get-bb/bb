@@ -586,6 +586,227 @@ describe("completed turn summary rendering", () => {
     ]);
   });
 
+  it("keeps cproxy parent responses visible across a child completion steer", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const childTell = event.clientTurnRequested({
+      initiator: "agent",
+      senderThreadId: "thr_child",
+      target: { kind: "new-turn" },
+      text: "Child report: the implementation is ready.",
+    });
+    const lifecycle = event.clientTurnRequested({
+      initiator: "system",
+      senderThreadId: null,
+      systemMessageKind: "child-completed",
+      systemMessageSubject: {
+        kind: "thread",
+        threadId: "thr_child",
+        threadName: "Implementation worker",
+      },
+      target: { kind: "auto", expectedTurnId: "turn-1" },
+      text: "Implementation worker completed: the fix is ready.",
+    });
+
+    const timeline = renderCompletedTimeline({
+      events: [
+        childTell,
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: childTell.data.requestId }),
+        event.assistantCompleted({
+          itemId: "assistant-detailed",
+          text: "I reviewed the implementation in detail and confirmed the important invariants.",
+        }),
+        lifecycle,
+        event.inputAccepted({ clientRequestId: lifecycle.data.requestId }),
+        event.assistantCompleted({
+          itemId: "assistant-final",
+          text: "Done.",
+        }),
+        event.turnCompleted(),
+      ],
+    });
+
+    const conversations = timeline.rows.filter(
+      (row): row is Extract<TimelineRow, { kind: "conversation" }> =>
+        row.kind === "conversation",
+    );
+    expect(conversations.map((row) => row.text)).toEqual([
+      "Child report: the implementation is ready.",
+      "I reviewed the implementation in detail and confirmed the important invariants.",
+      "Implementation worker completed: the fix is ready.",
+      "Done.",
+    ]);
+    expect(conversations.map((row) => row.id)).toEqual([
+      expect.any(String),
+      expect.stringContaining("assistant-detailed"),
+      expect.any(String),
+      expect.stringContaining("assistant-final"),
+    ]);
+  });
+
+  it("keeps a Terminal-Bench streamed response visible across a child completion steer", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const lifecycle = event.clientTurnRequested({
+      initiator: "system",
+      senderThreadId: null,
+      systemMessageKind: "child-completed",
+      systemMessageSubject: {
+        kind: "thread",
+        threadId: "thr_terminal_bench",
+        threadName: "Terminal-Bench worker",
+      },
+      target: { kind: "auto", expectedTurnId: "turn-1" },
+      text: "Terminal-Bench worker completed: all checks passed.",
+    });
+
+    const timeline = renderCompletedTimeline({
+      events: [
+        event.turnStarted(),
+        event.assistantDelta({
+          itemId: "assistant-before-lifecycle",
+          delta: "The full benchmark analysis remains intact.",
+        }),
+        lifecycle,
+        event.inputAccepted({ clientRequestId: lifecycle.data.requestId }),
+        event.assistantCompleted({
+          itemId: "assistant-before-lifecycle",
+          text: "The full benchmark analysis remains intact.",
+        }),
+        event.commandCompleted({
+          itemId: "tool-after-lifecycle",
+          command: "terminal-bench run --task regression",
+        }),
+        event.assistantCompleted({
+          itemId: "assistant-final",
+          text: "Verified.",
+        }),
+        event.turnCompleted(),
+      ],
+    });
+
+    expect(rowSignatures(timeline.rows)).toEqual([
+      "conversation:assistant",
+      "conversation:user",
+      "turn:6-6",
+      "conversation:assistant",
+    ]);
+    expect(
+      timeline.rows
+        .filter(
+          (row): row is Extract<TimelineRow, { kind: "conversation" }> =>
+            row.kind === "conversation",
+        )
+        .map((row) => row.text),
+    ).toEqual([
+      "The full benchmark analysis remains intact.",
+      "Terminal-Bench worker completed: all checks passed.",
+      "Verified.",
+    ]);
+  });
+
+  it("does not move an assistant across a command at a lifecycle boundary", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const lifecycle = event.clientTurnRequested({
+      initiator: "system",
+      senderThreadId: null,
+      systemMessageKind: "child-completed",
+      systemMessageSubject: {
+        kind: "thread",
+        threadId: "thr_child",
+        threadName: "Implementation worker",
+      },
+      target: { kind: "auto", expectedTurnId: "turn-1" },
+      text: "Implementation worker completed: source order preserved.",
+    });
+
+    const timeline = renderCompletedTimeline({
+      events: [
+        event.turnStarted(),
+        event.assistantCompleted({
+          itemId: "assistant-before-command",
+          text: "This response precedes the validation command.",
+        }),
+        event.commandCompleted({
+          itemId: "command-before-lifecycle",
+          command: "pnpm test",
+        }),
+        lifecycle,
+        event.inputAccepted({ clientRequestId: lifecycle.data.requestId }),
+        event.assistantCompleted({
+          itemId: "assistant-final",
+          text: "Done.",
+        }),
+        event.turnCompleted(),
+      ],
+    });
+
+    expect(timeline.rows.map((row) => row.kind)).toEqual([
+      "turn",
+      "conversation",
+      "conversation",
+    ]);
+    const turnRow = requireOnlyTurnRow(timeline.rows);
+    expect(rowSignatures(turnRow.children ?? [])).toEqual([
+      "conversation:assistant",
+      "work:command",
+    ]);
+    expect(
+      timeline.rows
+        .filter(
+          (row): row is Extract<TimelineRow, { kind: "conversation" }> =>
+            row.kind === "conversation",
+        )
+        .map((row) => row.text),
+    ).toEqual([
+      "Implementation worker completed: source order preserved.",
+      "Done.",
+    ]);
+  });
+
+  it("keeps an unlabeled system steer folded into the completed-turn summary", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const housekeeping = event.clientTurnRequested({
+      initiator: "system",
+      senderThreadId: null,
+      systemMessageKind: "unlabeled",
+      systemMessageSubject: null,
+      target: { kind: "auto", expectedTurnId: "turn-1" },
+      text: "[bb system] Continue after reconnect.",
+    });
+
+    const timeline = renderCompletedTimeline({
+      events: [
+        event.turnStarted(),
+        event.assistantCompleted({
+          itemId: "assistant-before-housekeeping",
+          text: "The response before reconnect is housekeeping context.",
+        }),
+        housekeeping,
+        event.inputAccepted({ clientRequestId: housekeeping.data.requestId }),
+        event.commandCompleted({
+          itemId: "tool-after-housekeeping",
+          command: "git status --short",
+        }),
+        event.assistantCompleted({
+          itemId: "assistant-final",
+          text: "Done.",
+        }),
+        event.turnCompleted(),
+      ],
+    });
+
+    expect(rowSignatures(timeline.rows)).toEqual([
+      "turn:1-7",
+      "conversation:assistant",
+    ]);
+    const turnRow = requireOnlyTurnRow(timeline.rows);
+    expect(rowSignatures(turnRow.children ?? [])).toEqual([
+      "conversation:assistant",
+      "conversation:user",
+      "work:command",
+    ]);
+  });
+
   it("splits completed turn summaries around converted legacy user messages", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
 

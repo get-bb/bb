@@ -604,6 +604,236 @@ describe("pi delta translation equivalence", () => {
     );
   });
 
+  it("assigns distinct ids to consecutive assistant messages without a tool boundary", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+
+    harness.translate(loadFixture("message-start-assistant.json"));
+    const firstDeltaEvents = harness.translate({
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "text_delta",
+        contentIndex: 0,
+        delta:
+          "The detailed response stays visible after the child lifecycle update.",
+      },
+    } as AgentSessionEvent);
+    const firstItemId = agentMessageDeltaId(firstDeltaEvents);
+
+    const firstCompletedEvents = harness.translate(
+      loadFixture("message-start-assistant.json"),
+    );
+    const secondDeltaEvents = harness.translate({
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "text_delta",
+        contentIndex: 0,
+        delta: "Done.",
+      },
+    } as AgentSessionEvent);
+    const secondItemId = agentMessageDeltaId(secondDeltaEvents);
+    const finalEvents = harness.translate({
+      type: "agent_end",
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Done." }],
+          stopReason: "stop",
+        },
+      ],
+      willRetry: false,
+    } as AgentSessionEvent);
+
+    expect(firstItemId).toMatch(ITEM_ID_PATTERN);
+    expect(secondItemId).toMatch(ITEM_ID_PATTERN);
+    expect(secondItemId).not.toBe(firstItemId);
+    expect(firstCompletedEvents).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          id: firstItemId,
+          type: "agentMessage",
+          text: "The detailed response stays visible after the child lifecycle update.",
+        }),
+      }),
+    );
+    expect(finalEvents).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          id: secondItemId,
+          type: "agentMessage",
+          text: "Done.",
+        }),
+      }),
+    );
+  });
+
+  it("settles retry partial output before assigning the retried assistant a new id", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+    harness.translate(loadFixture("message-start-assistant.json"));
+
+    const partialEvents = harness.translate({
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "text_delta",
+        contentIndex: 0,
+        delta: "Partial output before retry.",
+      },
+    } as AgentSessionEvent);
+    const partialItemId = agentMessageDeltaId(partialEvents);
+    const retryEvents = harness.translate(
+      createPiAgentErrorEvent("temporary provider failure", true),
+    );
+    const retryBoundaryEvents = harness.translate(
+      loadFixture("message-start-assistant.json"),
+    );
+    const retriedEvents = harness.translate({
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "text_delta",
+        contentIndex: 0,
+        delta: "Full output after retry.",
+      },
+    } as AgentSessionEvent);
+    const retriedItemId = agentMessageDeltaId(retriedEvents);
+    const finalEvents = harness.translate({
+      type: "agent_end",
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Full output after retry." }],
+          stopReason: "stop",
+        },
+      ],
+      willRetry: false,
+    } as AgentSessionEvent);
+
+    expect(partialItemId).toMatch(ITEM_ID_PATTERN);
+    expect(retryEvents.some((event) => event.type === "item/completed")).toBe(
+      false,
+    );
+    expect(retryBoundaryEvents).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          id: partialItemId,
+          type: "agentMessage",
+          text: "Partial output before retry.",
+        }),
+      }),
+    );
+    expect(retriedItemId).toMatch(ITEM_ID_PATTERN);
+    expect(retriedItemId).not.toBe(partialItemId);
+    expect(finalEvents).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          id: retriedItemId,
+          type: "agentMessage",
+          text: "Full output after retry.",
+        }),
+      }),
+    );
+  });
+
+  it("does not duplicate a completed assistant at an empty aborted boundary", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+    harness.translate(loadFixture("message-start-assistant.json"));
+
+    const textEvents = harness.translate({
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "text_delta",
+        contentIndex: 0,
+        delta: "Completed before the abort.",
+      },
+    } as AgentSessionEvent);
+    const completedItemId = agentMessageDeltaId(textEvents);
+    const boundaryEvents = harness.translate(
+      loadFixture("message-start-assistant.json"),
+    );
+    const emptyBoundaryEvents = harness.translate(
+      loadFixture("message-start-assistant.json"),
+    );
+    const abortEvents = harness.translate({
+      type: "agent_end",
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Completed before the abort." }],
+          api: "anthropic-messages",
+          provider: "anthropic",
+          model: "claude-haiku-4-5",
+          usage: {
+            input: 10,
+            output: 5,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 15,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+          stopReason: "stop",
+          timestamp: 1777995781000,
+        },
+        {
+          role: "assistant",
+          content: [],
+          api: "anthropic-messages",
+          provider: "anthropic",
+          model: "claude-haiku-4-5",
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+          stopReason: "aborted",
+          errorMessage: "Request aborted",
+          timestamp: 1777995782000,
+        },
+      ],
+      willRetry: false,
+    } satisfies AgentSessionEvent);
+    const completedAssistantEvents = [
+      ...boundaryEvents,
+      ...emptyBoundaryEvents,
+      ...abortEvents,
+    ].filter(
+      (event) =>
+        event.type === "item/completed" && event.item.type === "agentMessage",
+    );
+
+    expect(completedItemId).toMatch(ITEM_ID_PATTERN);
+    expect(boundaryEvents).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          id: completedItemId,
+          text: "Completed before the abort.",
+        }),
+      }),
+    );
+    expect(emptyBoundaryEvents).toEqual([]);
+    expect(completedAssistantEvents).toHaveLength(1);
+  });
+
   it("assigns a new assistant id after a tool call interrupts streaming", () => {
     const harness = createHarness();
     harness.translate(loadFixture("agent-start.json"));
@@ -755,8 +985,7 @@ describe("pi delta translation equivalence", () => {
 
     const started = events.find(
       (event) =>
-        event.type === "item/started" &&
-        event.item.type === "commandExecution",
+        event.type === "item/started" && event.item.type === "commandExecution",
     );
     if (started?.type !== "item/started") {
       throw new Error("expected a commandExecution item/started");

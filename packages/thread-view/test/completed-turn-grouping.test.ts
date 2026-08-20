@@ -1,9 +1,11 @@
-import { turnScope } from "@bb/domain";
+import { turnScope, type SystemMessageKind } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { groupCompletedTurnMessages } from "../src/completed-turn-grouping.js";
 import type { CompletedTurnMessageGroups } from "../src/completed-turn-grouping.js";
 import type {
   EventProjectionAssistantTextMessage,
+  EventProjectionCommandMessage,
+  EventProjectionErrorMessage,
   EventProjectionMessage,
   EventProjectionOperationMessage,
   EventProjectionTurnRequest,
@@ -39,8 +41,36 @@ function assistantMessage(
   };
 }
 
+function commandMessage(args: MessageBaseArgs): EventProjectionCommandMessage {
+  return {
+    ...messageBase(args),
+    kind: "command",
+    callId: args.id,
+    command: "pnpm test",
+    cwd: "/repo",
+    parsedIntents: [],
+    source: null,
+    output: "",
+    exitCode: 0,
+    completedAt: args.seq,
+    approvalStatus: null,
+    status: "completed",
+  };
+}
+
+function errorMessage(args: MessageBaseArgs): EventProjectionErrorMessage {
+  return {
+    ...messageBase(args),
+    kind: "error",
+    message: args.id,
+    detail: null,
+    rawType: "provider/error",
+  };
+}
+
 interface UserMessageArgs extends MessageBaseArgs {
   initiator?: EventProjectionUserMessage["initiator"];
+  systemMessageKind?: SystemMessageKind;
   turnRequest?: EventProjectionTurnRequest;
 }
 
@@ -50,7 +80,7 @@ function userMessage(args: UserMessageArgs): EventProjectionUserMessage {
     kind: "user",
     initiator: args.initiator ?? "user",
     senderThreadId: null,
-    systemMessageKind: "unlabeled",
+    systemMessageKind: args.systemMessageKind ?? "unlabeled",
     systemMessageSubject: null,
     turnRequest: args.turnRequest ?? {
       isGrouped: false,
@@ -250,6 +280,138 @@ describe("groupCompletedTurnMessages", () => {
       ["assistant-before", "agent-steer", "system-steer", "assistant-after"],
     ]);
   });
+
+  it.each([
+    "child-needs-attention",
+    "child-completed",
+    "child-failed",
+    "child-interrupted",
+    "child-outcome-batch",
+  ] satisfies SystemMessageKind[])(
+    "preserves the preceding terminal message at a %s system steer",
+    (systemMessageKind) => {
+      const assistantBefore = assistantMessage({
+        id: "assistant-before",
+        seq: 1,
+      });
+      const lifecycle = userMessage({
+        id: "child-lifecycle",
+        initiator: "system",
+        seq: 2,
+        systemMessageKind,
+        turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
+      });
+      const assistantAfter = assistantMessage({
+        id: "assistant-after",
+        seq: 3,
+      });
+      const groups = groupCompletedTurnMessages(
+        completedTurn(
+          [assistantBefore, lifecycle, assistantAfter],
+          assistantAfter,
+        ),
+      );
+
+      expect(groups.summaryItems).toEqual([
+        { kind: "ungrouped-message", message: assistantBefore },
+        { kind: "ungrouped-message", message: lifecycle },
+      ]);
+      expect(groups.terminalMessages).toEqual([assistantAfter]);
+    },
+  );
+
+  it("does not move an assistant across work before a lifecycle boundary", () => {
+    const assistantBefore = assistantMessage({
+      id: "assistant-before",
+      seq: 1,
+    });
+    const command = commandMessage({ id: "command", seq: 2 });
+    const lifecycle = userMessage({
+      id: "child-lifecycle",
+      initiator: "system",
+      seq: 3,
+      systemMessageKind: "child-completed",
+      turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
+    });
+    const assistantAfter = assistantMessage({
+      id: "assistant-after",
+      seq: 4,
+    });
+    const groups = groupCompletedTurnMessages(
+      completedTurn(
+        [assistantBefore, command, lifecycle, assistantAfter],
+        assistantAfter,
+      ),
+    );
+
+    expect(groups.summaryItems).toEqual([
+      expect.objectContaining({
+        kind: "summary",
+        sourceMessages: [assistantBefore, command],
+      }),
+      { kind: "ungrouped-message", message: lifecycle },
+    ]);
+    expect(groups.terminalMessages).toEqual([assistantAfter]);
+  });
+
+  it("preserves an error directly before a lifecycle boundary", () => {
+    const errorBefore = errorMessage({ id: "provider-error", seq: 1 });
+    const lifecycle = userMessage({
+      id: "child-lifecycle",
+      initiator: "system",
+      seq: 2,
+      systemMessageKind: "child-failed",
+      turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
+    });
+    const assistantAfter = assistantMessage({
+      id: "assistant-after",
+      seq: 3,
+    });
+    const groups = groupCompletedTurnMessages(
+      completedTurn([errorBefore, lifecycle, assistantAfter], assistantAfter),
+    );
+
+    expect(groups.summaryItems).toEqual([
+      { kind: "ungrouped-message", message: errorBefore },
+      { kind: "ungrouped-message", message: lifecycle },
+    ]);
+    expect(groups.terminalMessages).toEqual([assistantAfter]);
+  });
+
+  it.each(["pending", "rejected"] as const)(
+    "keeps a %s lifecycle request folded",
+    (status) => {
+      const assistantBefore = assistantMessage({
+        id: "assistant-before",
+        seq: 1,
+      });
+      const lifecycle = userMessage({
+        id: "child-lifecycle",
+        initiator: "system",
+        seq: 2,
+        systemMessageKind: "child-completed",
+        turnRequest: { isGrouped: false, kind: "steer", status },
+      });
+      const assistantAfter = assistantMessage({
+        id: "assistant-after",
+        seq: 3,
+      });
+      const groups = groupCompletedTurnMessages(
+        completedTurn(
+          [assistantBefore, lifecycle, assistantAfter],
+          assistantAfter,
+        ),
+      );
+
+      expect(groups.summaryItems).toEqual([
+        expect.objectContaining({
+          kind: "summary",
+          sourceMessages: [assistantBefore, lifecycle],
+        }),
+      ]);
+      expect(groups.terminalMessages).toEqual([assistantAfter]);
+    },
+  );
 
   it("segments summary groups around converted legacy user messages", () => {
     const turn = completedTurn(

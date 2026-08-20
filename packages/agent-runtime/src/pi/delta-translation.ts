@@ -60,6 +60,7 @@ const piEventTypeSchema = z
       "agent_start",
       "compaction_end",
       "compaction_start",
+      "message_start",
       "message_update",
       "tool_execution_end",
       "tool_execution_start",
@@ -180,6 +181,17 @@ const piCompactionNoopMessages = new Set([
 function isPiCompactionNoop(errorMessage: string): boolean {
   return piCompactionNoopMessages.has(errorMessage.trim());
 }
+
+const piAssistantMessageStartEventSchema = z
+  .object({
+    type: z.literal("message_start"),
+    message: z
+      .object({
+        role: z.literal("assistant"),
+      })
+      .passthrough(),
+  })
+  .passthrough();
 
 const piMessageUpdateEventSchema = z
   .object({
@@ -782,6 +794,23 @@ export function createPiDeltaTranslator(
           claimIfIdle: true,
         });
         return deltas;
+      }
+
+      case "message_start": {
+        const piEvent = piAssistantMessageStartEventSchema.safeParse(event);
+        if (!piEvent.success) {
+          return [];
+        }
+        // The next assistant start finalizes accumulated prior text; the first
+        // start has no open stream and is a no-op in the shared assembler.
+        return [
+          {
+            kind: "message.close",
+            channel: "assistant",
+            streamKey: ASSISTANT_STREAM_KEY,
+            ...parentRefField,
+          },
+        ];
       }
 
       case "message_update": {
