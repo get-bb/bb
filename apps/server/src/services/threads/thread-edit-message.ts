@@ -260,11 +260,14 @@ function resolveEditableTurnCandidate(
   ) {
     conflict("This earlier turn has no provider history");
   }
+  // Runtime-assembled Codex timelines have bb-minted turn ids and persist the
+  // native Codex turn id as the checkpoint. Older timelines used the native
+  // id directly and have no checkpoint, so retain that compatibility fallback.
   const precedingProviderCheckpoint =
     precedingTurnId === null
       ? null
       : thread.providerId === "codex"
-        ? precedingTurnId
+        ? (precedingCompletion?.providerCheckpointId ?? precedingTurnId)
         : (precedingCompletion?.providerCheckpointId ?? null);
   if (precedingTurnId !== null && precedingProviderCheckpoint === null) {
     conflict("This earlier provider turn has no editable history checkpoint");
