@@ -94,6 +94,8 @@ function createTunnelFixture() {
 
 describe("ConnectTunnel socket lifecycle", () => {
   afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     fakeWebSockets.instances.length = 0;
     fakeWebSockets.options.length = 0;
   });
@@ -195,32 +197,95 @@ describe("ConnectTunnel socket lifecycle", () => {
     }
   });
 
-  it("retries an HTTP rejection without waiting for close", async () => {
-    vi.useFakeTimers();
-    const { fakeHost, tunnel } = createTunnelFixture();
+  it.each([429, 500])(
+    "retries a transient HTTP %i rejection without waiting for close",
+    async (statusCode) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-08-20T18:23:28.000Z"));
+      vi.spyOn(Math, "random").mockReturnValue(0.5);
+      const { fakeHost, tunnel } = createTunnelFixture();
 
-    try {
-      await tunnel.start();
-      const socket = fakeWebSockets.instances[0]!;
-      const response = { statusCode: 500, resume: vi.fn() };
+      try {
+        await tunnel.start();
+        const socket = fakeWebSockets.instances[0]!;
+        const response = {
+          statusCode,
+          headers: {
+            "cf-ray": "incident-ray",
+            "x-bb-request-id": `request-${statusCode}`,
+          },
+          resume: vi.fn(),
+        };
 
-      socket.emit("unexpected-response", {}, response);
+        socket.emit("unexpected-response", {}, response);
 
-      expect(response.resume).toHaveBeenCalledOnce();
-      expect(tunnel.status().lastError).toBe("tunnel rejected: HTTP 500");
-      const nextRetryAt = tunnel.status().nextRetryAt;
-      expect(nextRetryAt).not.toBeNull();
+        expect(response.resume).toHaveBeenCalledOnce();
+        expect(tunnel.status().lastError).toBe(
+          `tunnel rejected: HTTP ${statusCode} (request request-${statusCode})`,
+        );
+        expect(tunnel.status().nextRetryAt).toBe(Date.now() + 1_800);
+        const rejectionLog = fakeHost.harness.logEntries.find((entry) =>
+          entry.message.includes('"event":"tunnel_handshake_rejected"'),
+        );
+        expect(JSON.parse(rejectionLog?.message ?? "{}")).toMatchObject({
+          event: "tunnel_handshake_rejected",
+          attemptId: "connect-1",
+          statusCode,
+          cfRay: "incident-ray",
+          requestId: `request-${statusCode}`,
+          retryInMs: 1_800,
+        });
 
-      await vi.advanceTimersByTimeAsync(nextRetryAt! - Date.now());
+        socket.emit("close", 1006, Buffer.from("late close"));
+        await vi.advanceTimersByTimeAsync(1_799);
+        expect(fakeWebSockets.instances).toHaveLength(1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(fakeWebSockets.instances).toHaveLength(2);
+        expect(tunnel.status().nextRetryAt).toBeNull();
 
-      expect(fakeWebSockets.instances).toHaveLength(2);
-      expect(tunnel.status().nextRetryAt).toBeNull();
-    } finally {
-      tunnel.stop();
-      vi.useRealTimers();
-      await fakeHost.harness.dispose();
-    }
-  });
+        fakeWebSockets.instances[1]!.emit("open");
+        expect(tunnel.status()).toMatchObject({
+          state: "connected",
+          lastError: null,
+          nextRetryAt: null,
+        });
+      } finally {
+        tunnel.stop();
+        await fakeHost.harness.dispose();
+      }
+    },
+  );
+
+  it.each([401, 403])(
+    "stops retrying after credential rejection HTTP %i",
+    async (statusCode) => {
+      vi.useFakeTimers();
+      const { clearCredential, fakeHost, tunnel } = createTunnelFixture();
+
+      try {
+        await tunnel.start();
+        const resume = vi.fn();
+        fakeWebSockets.instances[0]!.emit(
+          "unexpected-response",
+          {},
+          { statusCode, headers: {}, resume },
+        );
+
+        expect(resume).toHaveBeenCalledOnce();
+        expect(tunnel.status()).toMatchObject({
+          state: "disconnected",
+          paired: false,
+          nextRetryAt: null,
+        });
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(fakeWebSockets.instances).toHaveLength(1);
+        expect(clearCredential).toHaveBeenCalledOnce();
+      } finally {
+        tunnel.stop();
+        await fakeHost.harness.dispose();
+      }
+    },
+  );
 
   it("schedules one retry when rejection is followed by close", async () => {
     vi.useFakeTimers();

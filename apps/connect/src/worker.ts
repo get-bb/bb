@@ -10,6 +10,7 @@ import {
   parseCookie,
   markMachineSeen,
   resolveLabel,
+  type ResolvedLabel,
   verifyMachineCredentialDetails,
   verifySessionCookie,
 } from "./session.js";
@@ -53,6 +54,63 @@ function text(body: string, status: number): Response {
     status,
     headers: { "content-type": "text/plain; charset=utf-8" },
   });
+}
+
+const TUNNEL_REQUEST_ID_HEADER = "x-bb-request-id";
+
+type TunnelDialFailureStage =
+  | "resolve_label"
+  | "credential_hash"
+  | "durable_object_binding"
+  | "durable_object_dispatch";
+
+function errorBoolean(error: unknown, property: string): boolean | null {
+  if (typeof error !== "object" || error === null) return null;
+  try {
+    const value = Reflect.get(error, property);
+    return typeof value === "boolean" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Log a tunnel failure without including the Authorization credential. */
+function tunnelDialFailure(args: {
+  request: Request;
+  requestId: string;
+  label: string;
+  ownerKind: "server" | "machine" | null;
+  ownerId: string | null;
+  stage: TunnelDialFailureStage;
+  error: unknown;
+}): Response {
+  console.error(
+    JSON.stringify({
+      event: "tunnel_dial_failed",
+      requestId: args.requestId,
+      cfRay: args.request.headers.get("cf-ray"),
+      label: args.label,
+      ownerKind: args.ownerKind,
+      ownerId: args.ownerId,
+      stage: args.stage,
+      errorName: args.error instanceof Error ? args.error.name : null,
+      errorMessage:
+        args.error instanceof Error ? args.error.message : String(args.error),
+      remote: errorBoolean(args.error, "remote"),
+      retryable: errorBoolean(args.error, "retryable"),
+      overloaded: errorBoolean(args.error, "overloaded"),
+    }),
+  );
+  return new Response(
+    `bb connect: tunnel handshake failed (request ${args.requestId})\n`,
+    {
+      status: 500,
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+        [TUNNEL_REQUEST_ID_HEADER]: args.requestId,
+      },
+    },
+  );
 }
 
 // Matches the bb dashboard's visual language (Inter, --canvas/--ink tokens,
@@ -334,21 +392,36 @@ export default {
     // avoids both stale credentials and a cached negative immediately after a
     // machine label is assigned.
     const isTunnelDial = url.pathname === "/__tunnel";
-    const resolved = await resolveLabel(
-      label,
-      db,
-      isTunnelDial ? { fresh: true } : undefined,
-    );
+    const tunnelRequestId = isTunnelDial ? crypto.randomUUID() : null;
+    let resolved: ResolvedLabel | null;
+    try {
+      resolved = await resolveLabel(
+        label,
+        db,
+        isTunnelDial ? { fresh: true } : undefined,
+      );
+    } catch (error) {
+      if (tunnelRequestId === null) throw error;
+      return tunnelDialFailure({
+        request,
+        requestId: tunnelRequestId,
+        label,
+        ownerKind: null,
+        ownerId: null,
+        stage: "resolve_label",
+        error,
+      });
+    }
     if (!resolved) return text(`bb connect: no server for "${label}"\n`, 404);
 
     // Server routing stays exactly as on main (the bare label). Machine labels
     // are new and use ownership-generation identity from their first dial.
     const routingKey =
       resolved.kind === "machine" ? resolved.routingKey : label;
-    const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(routingKey));
 
     // Tunnel client connection — bare label only (share hosts are visitor-facing).
     if (url.pathname === "/__tunnel") {
+      const requestId = tunnelRequestId ?? crypto.randomUUID();
       if (target !== null) return text("bb connect: not found\n", 404);
       const auth = request.headers.get("authorization") ?? "";
       const credential = auth.startsWith("Bearer ") ? auth.slice(7) : "";
@@ -362,23 +435,42 @@ export default {
           403,
         );
       }
-      if ((await sha256Hex(credential)) !== owner.credentialHash) {
-        return text("bb connect: invalid credential\n", 401);
+      let stage: TunnelDialFailureStage = "credential_hash";
+      try {
+        if ((await sha256Hex(credential)) !== owner.credentialHash) {
+          return text("bb connect: invalid credential\n", 401);
+        }
+        const forward = new URL(request.url);
+        forward.searchParams.delete("serverId");
+        forward.searchParams.delete("machineId");
+        if (resolved.kind === "server") {
+          forward.searchParams.set("serverId", owner.id);
+        } else {
+          forward.searchParams.set("machineId", owner.id);
+        }
+        const headers = new Headers(request.headers);
+        stripCloudDevHeader(headers);
+        headers.set(TUNNEL_REQUEST_ID_HEADER, requestId);
+        stage = "durable_object_binding";
+        const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(routingKey));
+        stage = "durable_object_dispatch";
+        return await stub.fetch(
+          new Request(new Request(forward, request), { headers }),
+        );
+      } catch (error) {
+        return tunnelDialFailure({
+          request,
+          requestId,
+          label,
+          ownerKind: resolved.kind,
+          ownerId: owner.id,
+          stage,
+          error,
+        });
       }
-      const forward = new URL(request.url);
-      forward.searchParams.delete("serverId");
-      forward.searchParams.delete("machineId");
-      if (resolved.kind === "server") {
-        forward.searchParams.set("serverId", owner.id);
-      } else {
-        forward.searchParams.set("machineId", owner.id);
-      }
-      const headers = new Headers(request.headers);
-      stripCloudDevHeader(headers);
-      return stub.fetch(
-        new Request(new Request(forward, request), { headers }),
-      );
     }
+
+    const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(routingKey));
 
     // Reserve the /__ namespace: never proxy internal paths from outside.
     if (url.pathname.startsWith("/__"))

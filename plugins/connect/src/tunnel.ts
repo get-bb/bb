@@ -45,6 +45,18 @@ import type { ConnectStateName, ConnectStatus } from "./types.js";
 
 const DISCONNECT_TIMEOUT_MS = 5_000;
 const TUNNEL_HANDSHAKE_TIMEOUT_MS = 15_000;
+const RECONNECT_JITTER_RATIO = 0.2;
+
+/** Keep reconnects under the shared backoff cap while spreading simultaneous dials. */
+function jitterReconnectDelay(delayMs: number): number {
+  const multiplier =
+    1 - RECONNECT_JITTER_RATIO + Math.random() * RECONNECT_JITTER_RATIO;
+  return Math.max(1, Math.round(delayMs * multiplier));
+}
+
+function responseHeader(value: string | string[] | undefined): string | null {
+  return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+}
 
 async function notifyCloudOfDisconnect(
   credential: ConnectCredential,
@@ -101,6 +113,7 @@ export class ConnectTunnel {
   private nextRetryAt: number | null = null;
   private shareRetryTimer: ReturnType<typeof setTimeout> | undefined;
   private shareActivationEpoch = 0;
+  private connectionAttempt = 0;
 
   constructor(private readonly options: ConnectTunnelOptions) {}
 
@@ -439,8 +452,9 @@ export class ConnectTunnel {
     if (!credential || this.stopped) return;
 
     const tunnelUrl = tunnelUrlForServer(credential.serverUrl);
+    const attemptId = `connect-${++this.connectionAttempt}`;
     this.options.log.info(
-      `tunnel connecting to ${tunnelUrl} (origin ${this.options.getLoopbackBaseUrl()})`,
+      `tunnel connecting attemptId=${attemptId} url=${tunnelUrl} origin=${this.options.getLoopbackBaseUrl()}`,
     );
     let tunnel: NodeWebSocket;
     try {
@@ -463,9 +477,9 @@ export class ConnectTunnel {
     let retryScheduled = false;
     let handshakeDeadline: ReturnType<typeof setTimeout> | undefined;
 
-    const scheduleReconnect = (detail: string): void => {
+    const scheduleReconnect = (detail: string): number | null => {
       if (retryScheduled || this.stopped || this.tunnel !== tunnel) {
-        return;
+        return null;
       }
       retryScheduled = true;
       clearTimeout(handshakeDeadline);
@@ -474,7 +488,9 @@ export class ConnectTunnel {
       this.session = undefined;
       this.remoteClients = 0;
       const stable = connectedAt ? Date.now() - connectedAt : 0;
-      const delay = this.backoff.nextDelayAfterClose(stable);
+      const delay = jitterReconnectDelay(
+        this.backoff.nextDelayAfterClose(stable),
+      );
       if (this.lastError === null) {
         this.lastError = `can't reach ${connectApexHost(credential.serverUrl)} — connection closed`;
       }
@@ -488,6 +504,7 @@ export class ConnectTunnel {
         this.openTunnel();
       }, delay);
       this.publish();
+      return delay;
     };
 
     // `ws`'s handshakeTimeout is a socket idle timeout: a peer that drips
@@ -510,7 +527,7 @@ export class ConnectTunnel {
       this.connected = true;
       this.lastError = null;
       this.nextRetryAt = null;
-      this.options.log.info("tunnel connected");
+      this.options.log.info(`tunnel connected attemptId=${attemptId}`);
       this.session = new TunnelSession({
         tunnel,
         log: this.options.log,
@@ -534,8 +551,25 @@ export class ConnectTunnel {
         this.credentialRejected(statusCode);
         return;
       }
-      this.lastError = `tunnel rejected: HTTP ${statusCode}`;
-      scheduleReconnect(this.lastError);
+      const requestId = responseHeader(res.headers?.["x-bb-request-id"]);
+      const cfRay = responseHeader(res.headers?.["cf-ray"]);
+      const correlation = requestId
+        ? ` (request ${requestId})`
+        : cfRay
+          ? ` (CF Ray ${cfRay})`
+          : "";
+      this.lastError = `tunnel rejected: HTTP ${statusCode}${correlation}`;
+      const retryInMs = scheduleReconnect(this.lastError);
+      this.options.log.warn(
+        JSON.stringify({
+          event: "tunnel_handshake_rejected",
+          attemptId,
+          statusCode,
+          cfRay,
+          requestId,
+          retryInMs,
+        }),
+      );
       tunnel.terminate();
     });
     tunnel.on("error", (e: Error) => {
@@ -548,10 +582,19 @@ export class ConnectTunnel {
         e,
         connectApexHost(credential.serverUrl),
       );
+      this.options.log.warn(
+        JSON.stringify({
+          event: "tunnel_transport_error",
+          attemptId,
+          errorName: e.name,
+          errorMessage: e.message,
+        }),
+      );
+      this.publish();
     });
     tunnel.on("close", (code: number, reason: Buffer) => {
       scheduleReconnect(
-        `tunnel closed (code ${code}${reason.length > 0 ? `, ${reason.toString()}` : ""})`,
+        `tunnel closed attemptId=${attemptId} (code ${code}${reason.length > 0 ? `, ${reason.toString()}` : ""})`,
       );
     });
   }

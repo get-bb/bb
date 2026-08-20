@@ -180,6 +180,7 @@ const mockHandleAssignMachineLabel = vi.mocked(handleAssignMachineLabel);
 /** A resolved server row; overrides let a test tweak one field. */
 function resolvedServer(
   over: Partial<{
+    credentialHash: string | null;
     lastSeenAt: Date | null;
     userId: string;
   }> = {},
@@ -189,7 +190,8 @@ function resolvedServer(
     userId: over.userId ?? OWNER,
     server: {
       id: "srv1",
-      credentialHash: "abc",
+      credentialHash:
+        over.credentialHash === undefined ? "abc" : over.credentialHash,
       revokedAt: null,
       lastSeenAt: over.lastSeenAt ?? null,
     },
@@ -424,6 +426,102 @@ describe("gate tunnel authentication", () => {
     );
     expect(new URL(captured[0].url).searchParams.get("serverId")).toBeNull();
     expect(captured[0].headers.get("x-bb-cloud-dev-host")).toBeNull();
+  });
+
+  it("returns a request-correlated 500 when Durable Object dispatch fails", async () => {
+    const credential = "bbcred_server_secret";
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(credential),
+    );
+    const hash = [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    mockResolveLabel.mockResolvedValue(
+      resolvedServer({ credentialHash: hash }),
+    );
+    const upstreamError = Object.assign(new Error("DO unavailable"), {
+      remote: true,
+      retryable: true,
+      overloaded: false,
+    });
+    const { env, ctx, captured } = makeEnv(() => Promise.reject(upstreamError));
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const response = await worker.fetch(
+        visitorRequest("sawyer.getbb.app", "/__tunnel?v=1", {
+          headers: {
+            authorization: `Bearer ${credential}`,
+            "cf-ray": "incident-ray",
+            upgrade: "websocket",
+          },
+        }),
+        env as never,
+        ctx,
+      );
+
+      expect(response.status).toBe(500);
+      const requestId = response.headers.get("x-bb-request-id");
+      expect(requestId).toMatch(/^[0-9a-f-]{36}$/u);
+      expect(await response.text()).toContain(`request ${requestId}`);
+      expect(captured[0].headers.get("x-bb-request-id")).toBe(requestId);
+      const logLine = String(errorLog.mock.calls[0]?.[0]);
+      expect(JSON.parse(logLine)).toMatchObject({
+        event: "tunnel_dial_failed",
+        requestId,
+        cfRay: "incident-ray",
+        label: "sawyer",
+        ownerKind: "server",
+        ownerId: "srv1",
+        stage: "durable_object_dispatch",
+        errorName: "Error",
+        errorMessage: "DO unavailable",
+        remote: true,
+        retryable: true,
+        overloaded: false,
+      });
+      expect(logLine).not.toContain(credential);
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
+  it("correlates a fresh D1 resolution failure without dispatching to the DO", async () => {
+    mockResolveLabel.mockRejectedValue(new Error("D1 unavailable"));
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const response = await worker.fetch(
+        visitorRequest("sawyer.getbb.app", "/__tunnel?v=1", {
+          headers: {
+            authorization: "Bearer not-logged",
+            "cf-ray": "d1-ray",
+            upgrade: "websocket",
+          },
+        }),
+        env as never,
+        ctx,
+      );
+
+      expect(response.status).toBe(500);
+      expect(captured).toHaveLength(0);
+      const requestId = response.headers.get("x-bb-request-id");
+      expect(JSON.parse(String(errorLog.mock.calls[0]?.[0]))).toMatchObject({
+        event: "tunnel_dial_failed",
+        requestId,
+        cfRay: "d1-ray",
+        label: "sawyer",
+        ownerKind: null,
+        ownerId: null,
+        stage: "resolve_label",
+        errorMessage: "D1 unavailable",
+      });
+      expect(String(errorLog.mock.calls[0]?.[0])).not.toContain("not-logged");
+    } finally {
+      errorLog.mockRestore();
+    }
   });
 
   it("dials immediately after a negative resolve and label assignment", async () => {
