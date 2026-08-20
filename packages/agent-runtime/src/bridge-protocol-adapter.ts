@@ -639,7 +639,11 @@ export function createBridgeProtocolAdapter(
         const parsed = sessionReplacedNotificationParamsSchema.safeParse(
           event.params,
         );
-        if (!parsed.success || parsed.data.providerThreadId === null) {
+        if (
+          !parsed.success ||
+          parsed.data.providerThreadId === null ||
+          !parsed.data.contextLost
+        ) {
           return [];
         }
         return [
@@ -648,9 +652,8 @@ export function createBridgeProtocolAdapter(
             threadId: parsed.data.threadId,
             providerThreadId: parsed.data.providerThreadId,
             category: "general",
-            summary: parsed.data.contextLost
-              ? "Provider session was replaced; provider-side context was lost."
-              : "Provider session was replaced.",
+            summary:
+              "Provider session was replaced; provider-side context was lost.",
             details: parsed.data.reason,
             scope: { kind: "thread" },
           },

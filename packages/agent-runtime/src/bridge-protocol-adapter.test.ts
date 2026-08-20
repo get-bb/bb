@@ -365,8 +365,21 @@ describe("translateEvent", () => {
     expect(adapter.hasOpenThreadWork?.(work)).toBe(false);
   });
 
-  it("surfaces session/replaced as a visible warning with the context fate", () => {
+  it("only surfaces session/replaced when provider context was lost", () => {
     const adapter = makeAdapter();
+    expect(
+      adapter.translateEvent({
+        jsonrpc: "2.0",
+        method: "session/replaced",
+        params: {
+          threadId: "thr_1",
+          providerThreadId: "p_2",
+          reason: "authentication recovery required a new process",
+          contextLost: false,
+        },
+      }),
+    ).toStrictEqual([]);
+
     const events = adapter.translateEvent({
       jsonrpc: "2.0",
       method: "session/replaced",
