@@ -19,6 +19,7 @@ interface TimelineTestRowArgs {
   endSequence?: number;
   id: string;
   sequence: number;
+  turnRequestStatus?: "accepted" | "pending" | "rejected";
 }
 
 interface TimelineTurnTestRowArgs extends TimelineTestRowArgs {
@@ -51,7 +52,11 @@ function userRow(args: TimelineTestRowArgs): TimelineUserConversationRow {
     text: args.id,
     mentions: [],
     attachments: null,
-    turnRequest: { isGrouped: false, kind: "message", status: "accepted" },
+    turnRequest: {
+      isGrouped: false,
+      kind: "message",
+      status: args.turnRequestStatus ?? "accepted",
+    },
   };
 }
 
@@ -361,6 +366,28 @@ describe("timeline page row merging", () => {
     expect(merge.rows).toHaveLength(2);
     expect(merge.rows[0]).toBe(olderUser);
     expect(merge.rows[1]).toBe(updatedTail);
+  });
+
+  it("replaces a pending message row when the server accepts it", () => {
+    const pendingMessage = userRow({
+      id: "submitted-message",
+      sequence: 1,
+      turnRequestStatus: "pending",
+    });
+    const acceptedMessage = userRow({
+      id: "submitted-message",
+      sequence: 1,
+      turnRequestStatus: "accepted",
+    });
+
+    const merge = mergeLatestTimelineRows({
+      latestWindowStartSequence: 0,
+      loadedRows: [pendingMessage],
+      latestRows: [acceptedMessage],
+    });
+
+    expect(merge.rows).toEqual([acceptedMessage]);
+    expect(merge.rows[0]).toBe(acceptedMessage);
   });
 
   it("rebuilds when latest advances past the loaded rows with a gap between", () => {

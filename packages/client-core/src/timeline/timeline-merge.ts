@@ -154,6 +154,8 @@ function appendTimelineRowsPreservingOrder(
 }
 
 function timelineRowIdentitySignature(row: TimelineRow): string {
+  const turnRequest =
+    row.kind === "conversation" && row.role === "user" ? row.turnRequest : null;
   return [
     row.kind,
     row.id,
@@ -163,6 +165,12 @@ function timelineRowIdentitySignature(row: TimelineRow): string {
     row.sourceSeqEnd,
     row.startedAt,
     row.createdAt,
+    // Acceptance is projected onto the original message row without extending
+    // its source sequence range. Include the request fields so a refetch swaps
+    // a pending row for the accepted one instead of preserving stale identity.
+    turnRequest?.isGrouped,
+    turnRequest?.kind,
+    turnRequest?.status,
   ].join("\u001f");
 }
 
