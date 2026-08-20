@@ -55,14 +55,13 @@ type SidebarSplitResizeCursor = "col-resize" | "row-resize";
 export interface SidebarSplitTabDescriptor {
   id: string;
   label: string;
-  leadingVisual: ReactNode;
 }
 
 export interface SidebarSplitPaneRenderArgs {
   group: SidebarTabGroup;
   isFocused: boolean;
-  isSplitPane: boolean;
-  isVisible: boolean;
+  isLeftEdge: boolean;
+  isTopRow: boolean;
   onBeginTabDrag: (
     tabId: string,
     event: ReactPointerEvent<HTMLElement>,
@@ -75,20 +74,12 @@ export interface SidebarSplitPaneRenderArgs {
   showOuterControls: boolean;
 }
 
-export interface SidebarSplitHeaderRenderArgs {
-  panes: readonly SidebarSplitPaneRenderArgs[];
-  renderTabGroups: (
-    renderGroup: (pane: SidebarSplitPaneRenderArgs) => ReactNode,
-  ) => ReactNode;
-}
-
 interface SidebarSplitContainerProps {
   activeTabId: string;
   onActivateTab: (tabId: string) => void;
   onGlobalTabReorder: (request: SecondaryPanelTabReorderRequest) => void;
   panelStateId: string;
   renderPane: (args: SidebarSplitPaneRenderArgs) => ReactNode;
-  renderSplitHeader?: (args: SidebarSplitHeaderRenderArgs) => ReactNode;
   tabs: readonly SidebarSplitTabDescriptor[];
 }
 
@@ -98,7 +89,6 @@ export function SidebarSplitContainer({
   onGlobalTabReorder,
   panelStateId,
   renderPane,
-  renderSplitHeader,
   tabs,
 }: SidebarSplitContainerProps) {
   const availableTabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
@@ -396,8 +386,8 @@ export function SidebarSplitContainer({
     return renderPane({
       group,
       isFocused: true,
-      isSplitPane: false,
-      isVisible: true,
+      isLeftEdge: true,
+      isTopRow: true,
       onBeginTabDrag: (tabId, event) =>
         beginTabDrag(firstPane.paneId, tabId, event),
       onReorderTab: (request) => reorderTab(firstPane.paneId, request),
@@ -409,73 +399,29 @@ export function SidebarSplitContainer({
     });
   }
 
-  const splitPanes = listPanes(state.layout.root);
-  const splitPaneRenderArgs = splitPanes.flatMap((pane, index) => {
-    const group = getSidebarGroupForPane(state, pane.paneId);
-    if (group === null) return [];
-    return [
-      {
-        group,
-        isFocused: pane.paneId === state.layout.focusedPaneId,
-        isSplitPane: true,
-        isVisible: true,
-        onBeginTabDrag: (
-          tabId: string,
-          event: ReactPointerEvent<HTMLElement>,
-        ) => beginTabDrag(pane.paneId, tabId, event),
-        onReorderTab: (request: SecondaryPanelTabReorderRequest) =>
-          reorderTab(pane.paneId, request),
-        onFocusPane: () => focusPane(pane.paneId),
-        onMoveActiveTabToSide: activeTabPositionHandler,
-        onSelectTab: (tabId: string) => selectTab(pane.paneId, tabId),
-        paneId: pane.paneId,
-        showOuterControls: index === splitPanes.length - 1,
-      },
-    ];
-  });
-  const splitPaneRenderArgsById = new Map(
-    splitPaneRenderArgs.map((pane) => [pane.paneId, pane]),
-  );
-  const splitHeader = renderSplitHeader?.({
-    panes: splitPaneRenderArgs,
-    renderTabGroups: (renderGroup) => (
-      <SidebarSplitHeaderTree
-        node={state.layout.root}
-        onResize={resize}
-        onResizeDragChange={setResizeCursor}
-        paneRenderArgsById={splitPaneRenderArgsById}
-        path={[]}
-        renderGroup={renderGroup}
-      />
-    ),
-  });
-
   return (
     <div
       className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       data-sidebar-split-container=""
     >
-      {splitHeader}
-      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        <SidebarSplitTree
-          node={state.layout.root}
-          path={[]}
-          isTopRow
-          isRightEdge
-          dimsInactiveSplits={dimsInactiveSplits}
-          focusedPaneId={state.layout.focusedPaneId}
-          hasSharedHeader={splitHeader !== undefined}
-          renderPane={renderPane}
-          state={state}
-          onBeginTabDrag={beginTabDrag}
-          onFocusPane={focusPane}
-          onMoveActiveTabToSide={activeTabPositionHandler}
-          onReorderTab={reorderTab}
-          onResize={resize}
-          onResizeDragChange={setResizeCursor}
-          onSelectTab={selectTab}
-        />
-      </div>
+      <SidebarSplitTree
+        node={state.layout.root}
+        path={[]}
+        isLeftEdge
+        isTopRow
+        isRightEdge
+        dimsInactiveSplits={dimsInactiveSplits}
+        focusedPaneId={state.layout.focusedPaneId}
+        renderPane={renderPane}
+        state={state}
+        onBeginTabDrag={beginTabDrag}
+        onFocusPane={focusPane}
+        onMoveActiveTabToSide={activeTabPositionHandler}
+        onReorderTab={reorderTab}
+        onResize={resize}
+        onResizeDragChange={setResizeCursor}
+        onSelectTab={selectTab}
+      />
       <IframeDragGuardOverlay
         active={resizeCursor !== null}
         cursor={resizeCursor ?? "col-resize"}
@@ -487,7 +433,7 @@ export function SidebarSplitContainer({
 interface SidebarSplitTreeProps {
   dimsInactiveSplits: boolean;
   focusedPaneId: string;
-  hasSharedHeader: boolean;
+  isLeftEdge: boolean;
   isRightEdge: boolean;
   isTopRow: boolean;
   node: LayoutNode;
@@ -510,68 +456,6 @@ interface SidebarSplitTreeProps {
   state: SidebarSplitState;
 }
 
-interface SidebarSplitHeaderTreeProps {
-  node: LayoutNode;
-  onResize: (path: SplitPath, childIndex: number, fraction: number) => void;
-  onResizeDragChange: (cursor: SidebarSplitResizeCursor | null) => void;
-  paneRenderArgsById: ReadonlyMap<string, SidebarSplitPaneRenderArgs>;
-  path: SplitPath;
-  renderGroup: (pane: SidebarSplitPaneRenderArgs) => ReactNode;
-}
-
-function SidebarSplitHeaderTree(props: SidebarSplitHeaderTreeProps) {
-  if (props.node.type === "pane") {
-    const pane = props.paneRenderArgsById.get(props.node.paneId);
-    return pane === undefined ? null : (
-      <div
-        className="flex h-full min-w-0 flex-1 overflow-hidden"
-        data-sidebar-split-tab-slot={pane.paneId}
-      >
-        {props.renderGroup(pane)}
-      </div>
-    );
-  }
-  const node = props.node;
-  const sizes = node.sizes;
-  return (
-    <div
-      className="flex h-full min-w-0 flex-1 flex-row overflow-hidden"
-      data-sidebar-split-surface="header"
-      data-sidebar-split-track={sidebarSplitPathKey(props.path)}
-    >
-      {node.children.map((child, index) => (
-        <Fragment key={sidebarSplitSubtreeKey(child)}>
-          {index > 0 ? (
-            <SidebarSplitDivider
-              appearance="tab"
-              childIndex={index - 1}
-              dir="row"
-              hidden={false}
-              path={props.path}
-              surface="header"
-              onResize={(fraction) =>
-                props.onResize(props.path, index - 1, fraction)
-              }
-              onResizeDragChange={props.onResizeDragChange}
-            />
-          ) : null}
-          <div
-            className="flex h-full min-w-0"
-            data-sidebar-split-child-index={index}
-            style={{ flex: `${sizes[index] ?? 1} 1 0px` }}
-          >
-            <SidebarSplitHeaderTree
-              {...props}
-              node={child}
-              path={[...props.path, index]}
-            />
-          </div>
-        </Fragment>
-      ))}
-    </div>
-  );
-}
-
 function SidebarSplitTree(props: SidebarSplitTreeProps) {
   if (props.node.type === "pane") {
     return <SidebarSplitLeaf {...props} pane={props.node} />;
@@ -583,19 +467,12 @@ function SidebarSplitTree(props: SidebarSplitTreeProps) {
         "flex min-h-0 min-w-0 flex-1",
         node.dir === "row" ? "flex-row" : "flex-col",
       )}
-      data-sidebar-split-surface="body"
-      data-sidebar-split-track={sidebarSplitPathKey(props.path)}
     >
       {node.children.map((child, index) => (
         <Fragment key={sidebarSplitSubtreeKey(child)}>
           {index > 0 ? (
             <SidebarSplitDivider
-              appearance="pane"
-              childIndex={index - 1}
               dir={node.dir}
-              hidden={false}
-              path={props.path}
-              surface="body"
               onResize={(fraction) =>
                 props.onResize(props.path, index - 1, fraction)
               }
@@ -604,13 +481,15 @@ function SidebarSplitTree(props: SidebarSplitTreeProps) {
           ) : null}
           <div
             className="flex min-h-0 min-w-0"
-            data-sidebar-split-child-index={index}
             style={{ flex: `${node.sizes[index] ?? 1} 1 0px` }}
           >
             <SidebarSplitTree
               {...props}
               node={child}
               path={[...props.path, index]}
+              isLeftEdge={
+                props.isLeftEdge && (node.dir === "col" || index === 0)
+              }
               isTopRow={props.isTopRow && (node.dir === "row" || index === 0)}
               isRightEdge={
                 props.isRightEdge &&
@@ -634,14 +513,13 @@ function SidebarSplitLeaf(
   const group = groupId === null ? undefined : props.state.groups[groupId];
   if (group === undefined) return null;
   const isFocused = pane.paneId === props.focusedPaneId;
-  const reserveOuterControl =
-    !props.hasSharedHeader && props.isTopRow && props.isRightEdge;
+  const showOuterControls = props.isTopRow && props.isRightEdge;
   const context: PaneContextValue = {
     paneId: pane.paneId,
     isFocused,
     isSplitPane: true,
     secondaryPanelHost: null,
-    reservesWindowPanelToggle: reserveOuterControl,
+    reservesWindowPanelToggle: showOuterControls,
     onRequestClose: null,
     isMaximized: false,
     onToggleMaximize: null,
@@ -662,8 +540,8 @@ function SidebarSplitLeaf(
           {props.renderPane({
             group,
             isFocused,
-            isSplitPane: true,
-            isVisible: true,
+            isLeftEdge: props.isLeftEdge,
+            isTopRow: props.isTopRow,
             onBeginTabDrag: (tabId, event) =>
               props.onBeginTabDrag(pane.paneId, tabId, event),
             onReorderTab: (request) => props.onReorderTab(pane.paneId, request),
@@ -671,7 +549,7 @@ function SidebarSplitLeaf(
             onMoveActiveTabToSide: props.onMoveActiveTabToSide,
             onSelectTab: (tabId) => props.onSelectTab(pane.paneId, tabId),
             paneId: pane.paneId,
-            showOuterControls: reserveOuterControl,
+            showOuterControls,
           })}
         </section>
         <div
@@ -690,23 +568,13 @@ function SidebarSplitLeaf(
 }
 
 function SidebarSplitDivider({
-  appearance,
-  childIndex,
   dir,
-  hidden,
   onResize,
   onResizeDragChange,
-  path,
-  surface,
 }: {
-  appearance: "pane" | "tab";
-  childIndex: number;
   dir: "row" | "col";
-  hidden: boolean;
   onResize: (fraction: number) => void;
   onResizeDragChange: (cursor: SidebarSplitResizeCursor | null) => void;
-  path: SplitPath;
-  surface: "body" | "header";
 }) {
   const horizontal = dir === "row";
   const finishResizeRef = useRef<(() => void) | null>(null);
@@ -739,28 +607,20 @@ function SidebarSplitDivider({
       const pointerDownPosition = horizontal ? event.clientX : event.clientY;
       const span = end - start;
       if (span <= 0) return;
-      const pairs = [
-        createSidebarSplitResizePair(previous, next),
-        findSidebarSplitPeerPair({
-          childIndex,
-          divider,
-          path,
-          surface,
-        }),
-      ].filter((pair): pair is SidebarSplitResizePair => pair !== null);
+      const pair = createSidebarSplitResizePair(previous, next);
       hitTarget.setPointerCapture(pointerId);
       divider.dataset.dragging = "true";
       let pendingFraction: number | null = null;
       let receivedPointerMove = false;
       let finished = false;
       const applyPointerPosition = (pointerEvent: PointerEvent) => {
-        const pointer = horizontal ? pointerEvent.clientX : pointerEvent.clientY;
+        const pointer = horizontal
+          ? pointerEvent.clientX
+          : pointerEvent.clientY;
         const fraction = clampSplitPairFraction((pointer - start) / span);
         pendingFraction = fraction;
-        for (const pair of pairs) {
-          pair.previous.style.flex = `${pair.total * fraction} 1 0px`;
-          pair.next.style.flex = `${pair.total * (1 - fraction)} 1 0px`;
-        }
+        pair.previous.style.flex = `${pair.total * fraction} 1 0px`;
+        pair.next.style.flex = `${pair.total * (1 - fraction)} 1 0px`;
       };
       const move = (moveEvent: PointerEvent) => {
         if (moveEvent.pointerId !== pointerId) return;
@@ -783,10 +643,8 @@ function SidebarSplitDivider({
           onResize(pendingFraction);
           return;
         }
-        for (const pair of pairs) {
-          pair.previous.style.flex = pair.previousFlex;
-          pair.next.style.flex = pair.nextFlex;
-        }
+        pair.previous.style.flex = pair.previousFlex;
+        pair.next.style.flex = pair.nextFlex;
       };
       const onUp = (upEvent: PointerEvent) => {
         if (upEvent.pointerId !== pointerId) return;
@@ -810,7 +668,7 @@ function SidebarSplitDivider({
       finishResizeRef.current = () => finish(false);
       onResizeDragChange(horizontal ? "col-resize" : "row-resize");
     },
-    [childIndex, horizontal, onResize, onResizeDragChange, path, surface],
+    [horizontal, onResize, onResizeDragChange],
   );
   return (
     <div
@@ -822,11 +680,8 @@ function SidebarSplitDivider({
       }
       aria-orientation={horizontal ? "vertical" : "horizontal"}
       className={cn(
-        "group relative z-[25] shrink-0 transition-colors hover:bg-ring/40 data-[dragging]:bg-ring/40",
-        appearance === "tab"
-          ? ["bg-border-seam-vertical/60", MACOS_APP_REGION_NO_DRAG_CLASS]
-          : "bg-transparent",
-        hidden && "invisible pointer-events-none",
+        "group relative z-[25] shrink-0 bg-border-seam transition-colors hover:bg-ring/40 data-[dragging]:bg-ring/40",
+        MACOS_APP_REGION_NO_DRAG_CLASS,
         horizontal ? "w-px cursor-col-resize" : "h-px cursor-row-resize",
       )}
     >
@@ -874,47 +729,6 @@ function createSidebarSplitResizePair(
   };
 }
 
-function findSidebarSplitPeerPair({
-  childIndex,
-  divider,
-  path,
-  surface,
-}: {
-  childIndex: number;
-  divider: HTMLElement;
-  path: SplitPath;
-  surface: "body" | "header";
-}): SidebarSplitResizePair | null {
-  const container = divider.closest<HTMLElement>(
-    "[data-sidebar-split-container]",
-  );
-  if (container === null) return null;
-  const peerSurface = surface === "body" ? "header" : "body";
-  const pathKey = sidebarSplitPathKey(path);
-  const peerTrack = Array.from(
-    container.querySelectorAll<HTMLElement>("[data-sidebar-split-track]"),
-  ).find(
-    (track) =>
-      track.dataset.sidebarSplitSurface === peerSurface &&
-      track.dataset.sidebarSplitTrack === pathKey,
-  );
-  if (peerTrack === undefined) return null;
-  const children = Array.from(peerTrack.children).filter(
-    (child): child is HTMLElement =>
-      child instanceof HTMLElement &&
-      child.dataset.sidebarSplitChildIndex !== undefined,
-  );
-  const previous = children.find(
-    (child) => child.dataset.sidebarSplitChildIndex === String(childIndex),
-  );
-  const next = children.find(
-    (child) => child.dataset.sidebarSplitChildIndex === String(childIndex + 1),
-  );
-  return previous === undefined || next === undefined
-    ? null
-    : createSidebarSplitResizePair(previous, next);
-}
-
 function nextSidebarSplitGroupId(state: SidebarSplitState): string {
   let sequence = 1;
   while (state.groups[`group-split-${sequence}`] !== undefined) sequence += 1;
@@ -925,8 +739,4 @@ function sidebarSplitSubtreeKey(node: LayoutNode): string {
   return listPanes(node)
     .map((pane) => `${pane.paneId}:${sidebarPaneGroupId(pane) ?? "unknown"}`)
     .join("|");
-}
-
-function sidebarSplitPathKey(path: SplitPath): string {
-  return path.length === 0 ? "root" : path.join(".");
 }

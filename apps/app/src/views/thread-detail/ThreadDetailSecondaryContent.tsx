@@ -157,9 +157,8 @@ function ThreadDetailSecondaryContentBody({
               renderBrowserDeck?.({
                 activeBrowserTabId,
                 canHandleBrowserCommands:
-                  canShowNativeBrowserView && pane.isVisible && pane.isFocused,
-                canShowNativeBrowserView:
-                  canShowNativeBrowserView && pane.isVisible,
+                  canShowNativeBrowserView && pane.isFocused,
+                canShowNativeBrowserView,
                 onNativeFocus: pane.onFocusPane,
               })
             }

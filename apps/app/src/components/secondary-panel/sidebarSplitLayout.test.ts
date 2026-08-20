@@ -9,7 +9,6 @@ import {
 import {
   SIDEBAR_FIXED_DIFF_TAB_ID,
   SIDEBAR_FIXED_INFO_TAB_ID,
-  closeSidebarPane,
   createSidebarSplitState,
   focusSidebarPane,
   getSidebarGroupForPane,
@@ -23,8 +22,6 @@ import {
   resizeSidebarSplit,
   selectSidebarTab,
   serializeSidebarSplitState,
-  swapSidebarPanes,
-  toggleSidebarPaneMaximize,
   sidebarPaneNode,
   sidebarSplitStorageKey,
   type SidebarSplitState,
@@ -72,7 +69,6 @@ function persistedStateWithPaneCount(count: number): SidebarSplitState {
       },
       focusedPaneId: "pane-0",
     },
-    maximizedPaneId: null,
   };
 }
 
@@ -108,17 +104,18 @@ describe("sidebar split layout", () => {
     ).toEqual(TABS);
   });
 
-  it("continues to parse the current raw v1 state without an envelope", () => {
+  it("continues to parse the original raw v1 state", () => {
     const split = splitOff(
       createSidebarSplitState(TABS, SIDEBAR_FIXED_INFO_TAB_ID),
       "file-a",
     );
     const parsed = parseSidebarSplitState(
-      JSON.stringify(split),
+      JSON.stringify({ ...split, maximizedPaneId: null }),
       TABS,
       SIDEBAR_FIXED_INFO_TAB_ID,
     );
     expect(parsed).toEqual(split);
+    expect(parsed).not.toHaveProperty("maximizedPaneId");
   });
 
   it("preserves state identity for no-op reconciliation, selection, and focus", () => {
@@ -296,7 +293,7 @@ describe("sidebar split layout", () => {
     ).toContain("terminal-a");
   });
 
-  it("preserves browser, terminal, and plugin tab ownership across persistence and recombination", () => {
+  it("preserves browser, terminal, and plugin tabs across persistence", () => {
     const liveTabIds = [
       SIDEBAR_FIXED_INFO_TAB_ID,
       "browser:docs:env-a",
@@ -327,18 +324,11 @@ describe("sidebar split layout", () => {
       liveTabIds,
       liveTabIds[2] ?? "",
     );
-    let recombined = restored;
-    while (countPanes(recombined.layout.root) > 1) {
-      const closingPane = listPanes(recombined.layout.root).at(-1);
-      if (closingPane === undefined) break;
-      recombined = closeSidebarPane(recombined, closingPane.paneId);
-    }
-    const survivor = getSidebarGroupForPane(
-      recombined,
-      recombined.layout.focusedPaneId,
+    const restoredTabIds = listPanes(restored.layout.root).flatMap(
+      (pane) => getSidebarGroupForPane(restored, pane.paneId)?.tabIds ?? [],
     );
-    expect(new Set(survivor?.tabIds)).toEqual(new Set(liveTabIds));
-    expect(survivor?.tabIds).toHaveLength(liveTabIds.length);
+    expect(new Set(restoredTabIds)).toEqual(new Set(liveTabIds));
+    expect(restoredTabIds).toHaveLength(liveTabIds.length);
   });
 
   it("keeps fixed tabs singleton while removing closed tabs", () => {
@@ -437,28 +427,7 @@ describe("sidebar split layout", () => {
     expect(collided).toBe(state);
   });
 
-  it("recombines a focused closed pane deterministically without losing tabs", () => {
-    let state = splitOff(
-      createSidebarSplitState(TABS, SIDEBAR_FIXED_INFO_TAB_ID),
-      "file-a",
-    );
-    const closingPaneId = state.layout.focusedPaneId;
-    state = selectSidebarTab(state, closingPaneId, "file-a");
-    const closed = closeSidebarPane(state, closingPaneId);
-    const survivor = getSidebarGroupForPane(
-      closed,
-      closed.layout.focusedPaneId,
-    );
-    expect(countPanes(closed.layout.root)).toBe(1);
-    expect(survivor?.tabIds).toEqual([
-      SIDEBAR_FIXED_INFO_TAB_ID,
-      SIDEBAR_FIXED_DIFF_TAB_ID,
-      "file-a",
-    ]);
-    expect(survivor?.activeTabId).toBe("file-a");
-  });
-
-  it("moves, swaps, and maximizes panes through the shared split operations", () => {
+  it("moves panes through the shared split operations", () => {
     const split = splitOff(
       createSidebarSplitState(TABS, SIDEBAR_FIXED_INFO_TAB_ID),
       "file-a",
@@ -479,28 +448,6 @@ describe("sidebar split layout", () => {
     expect(moved.layout.root.type).toBe("split");
     if (moved.layout.root.type !== "split") return;
     expect(moved.layout.root.dir).toBe("col");
-
-    const sourceTabsBeforeSwap = getSidebarGroupForPane(
-      moved,
-      sourcePaneId,
-    )?.tabIds;
-    const targetTabsBeforeSwap = getSidebarGroupForPane(
-      moved,
-      targetPaneId,
-    )?.tabIds;
-    const swapped = swapSidebarPanes(moved, sourcePaneId, targetPaneId);
-    expect(getSidebarGroupForPane(swapped, sourcePaneId)?.tabIds).toEqual(
-      targetTabsBeforeSwap,
-    );
-    expect(getSidebarGroupForPane(swapped, targetPaneId)?.tabIds).toEqual(
-      sourceTabsBeforeSwap,
-    );
-
-    const maximized = toggleSidebarPaneMaximize(swapped, targetPaneId);
-    expect(maximized.maximizedPaneId).toBe(targetPaneId);
-    expect(
-      toggleSidebarPaneMaximize(maximized, targetPaneId).maximizedPaneId,
-    ).toBe(null);
   });
 
   it("uses the existing split cap and clamps divider fractions", () => {

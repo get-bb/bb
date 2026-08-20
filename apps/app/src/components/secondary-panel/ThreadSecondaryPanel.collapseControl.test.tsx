@@ -402,12 +402,12 @@ describe("ThreadSecondaryPanel full-screen control", () => {
       document.querySelectorAll(
         '[data-testid="thread-secondary-panel-top-chrome"]',
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
     expect(
-      panes.some((pane) =>
+      panes.every((pane) =>
         pane.querySelector('[data-testid="thread-secondary-panel-top-chrome"]'),
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(document.querySelectorAll("header")).toHaveLength(0);
     const newTabControls = screen.getAllByRole("button", {
       name: "Open new tab",
@@ -417,7 +417,7 @@ describe("ThreadSecondaryPanel full-screen control", () => {
     expect(onOpenNewTab).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps one conversation restore control across split tab rows", () => {
+  it("keeps pane-local tab rows and one restore control in a stacked split", () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
     const fileTab = createWorkspaceFilePreviewFixedPanelTab({
       environmentId: "env-test",
@@ -438,7 +438,7 @@ describe("ThreadSecondaryPanel full-screen control", () => {
       initial,
       initial.layout.focusedPaneId,
       fileTab.id,
-      { paneId: initial.layout.focusedPaneId, zone: "right" },
+      { paneId: initial.layout.focusedPaneId, zone: "bottom" },
       { groupId: "group-file" },
     );
     window.localStorage.setItem(
@@ -491,6 +491,40 @@ describe("ThreadSecondaryPanel full-screen control", () => {
       name: "Exit Full Screen",
     });
     expect(restoreControls).toHaveLength(1);
+    const panes = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-split-pane-id]"),
+    );
+    expect(panes).toHaveLength(2);
+    expect(
+      panes.map(
+        (pane) =>
+          pane.querySelector("[data-sidebar-split-tab-group]")?.textContent,
+      ),
+    ).toEqual([
+      expect.stringContaining("Info"),
+      expect.stringContaining("index.ts"),
+    ]);
+    expect(
+      panes.map(
+        (pane) =>
+          pane.querySelectorAll(
+            '[data-testid="thread-secondary-panel-top-chrome"]',
+          ).length,
+      ),
+    ).toEqual([1, 1]);
+    expect(
+      screen
+        .getByRole("separator", {
+          name: "Resize stacked right panel panes",
+        })
+        .getAttribute("aria-orientation"),
+    ).toBe("horizontal");
+    expect(
+      panes.map(
+        (pane) =>
+          pane.querySelectorAll('[aria-label="Exit Full Screen"]').length,
+      ),
+    ).toEqual([1, 0]);
     const restoreControl = restoreControls[0];
     if (restoreControl === undefined)
       throw new Error("Missing restore control");

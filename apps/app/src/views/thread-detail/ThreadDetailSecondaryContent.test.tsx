@@ -23,7 +23,6 @@ const secondaryPanelMockState = vi.hoisted(() => ({
         activeBrowserTabId: string,
         pane: {
           isFocused: boolean;
-          isVisible: boolean;
           onFocusPane: () => void;
         },
       ) => ReactNode)
@@ -404,7 +403,6 @@ describe("ThreadDetailSecondaryContent", () => {
     const onFocusPane = vi.fn();
     browserDeckForTab("browser-split", {
       isFocused: true,
-      isVisible: true,
       onFocusPane,
     });
     expect(renderBrowserDeck).toHaveBeenLastCalledWith({
@@ -416,25 +414,12 @@ describe("ThreadDetailSecondaryContent", () => {
 
     browserDeckForTab("browser-split", {
       isFocused: false,
-      isVisible: true,
       onFocusPane,
     });
     expect(renderBrowserDeck).toHaveBeenLastCalledWith({
       activeBrowserTabId: "browser-split",
       canHandleBrowserCommands: false,
       canShowNativeBrowserView: true,
-      onNativeFocus: onFocusPane,
-    });
-
-    browserDeckForTab("browser-split", {
-      isFocused: true,
-      isVisible: false,
-      onFocusPane,
-    });
-    expect(renderBrowserDeck).toHaveBeenLastCalledWith({
-      activeBrowserTabId: "browser-split",
-      canHandleBrowserCommands: false,
-      canShowNativeBrowserView: false,
       onNativeFocus: onFocusPane,
     });
   });

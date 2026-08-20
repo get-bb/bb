@@ -101,7 +101,6 @@ import type { SplitSide } from "@/lib/split-layout";
 import { PaneArrangementButton } from "@/views/thread-detail/PaneMaximizeButton";
 import {
   SidebarSplitContainer,
-  type SidebarSplitHeaderRenderArgs,
   type SidebarSplitPaneRenderArgs,
   type SidebarSplitTabDescriptor,
 } from "./SidebarSplitContainer";
@@ -270,7 +269,6 @@ export interface ThreadSecondaryPanelProps {
     tabId: string,
     pane: {
       isFocused: boolean;
-      isVisible: boolean;
       onFocusPane: () => void;
     },
   ) => ReactNode;
@@ -666,10 +664,13 @@ export function ThreadSecondaryPanel({
     onSelectSurfaceTab?: (tabId: string) => void;
     onMoveActiveTabToSide?: (side: SplitSide) => void;
     onSurfaceFileTabReorder: SecondaryPanelTabReorderHandler;
+    paneId: string | null;
+    reserveLeadingChrome: boolean;
     showDiffSurfaceTab: boolean;
     showInfoSurfaceTab: boolean;
+    showNewTabControl: boolean;
     showOuterControls: boolean;
-    showTopChrome?: boolean;
+    usesWindowChrome: boolean;
   }
 
   interface PanelTabGroupArgs {
@@ -834,10 +835,13 @@ export function ThreadSecondaryPanel({
     onMoveActiveTabToSide,
     onSelectSurfaceTab,
     onSurfaceFileTabReorder,
+    paneId,
+    reserveLeadingChrome,
     showDiffSurfaceTab,
     showInfoSurfaceTab,
+    showNewTabControl,
     showOuterControls,
-    showTopChrome = true,
+    usesWindowChrome,
   }: PanelSurfaceArgs) => {
     const activeSurfaceFileTab = fileSurfaceTabs?.find((tab) => tab.isActive);
     const hasActiveSurfaceFileTab = activeSurfaceFileTab !== undefined;
@@ -856,57 +860,58 @@ export function ThreadSecondaryPanel({
             showsSurfaceDiffToolbar,
           )}
         >
-          {showTopChrome ? (
+          <div
+            data-testid="thread-secondary-panel-top-chrome"
+            className={cn(
+              CHROME_ROW_CLASS,
+              "min-w-0 justify-between gap-2 px-4",
+              usesDesktopChrome && usesWindowChrome && MACOS_WINDOW_DRAG_CLASS,
+              usesDesktopChrome &&
+                usesWindowChrome &&
+                MACOS_CHROME_CONTROL_AXIS_CLASS,
+            )}
+          >
             <div
-              data-testid="thread-secondary-panel-top-chrome"
               className={cn(
-                CHROME_ROW_CLASS,
-                "min-w-0 justify-between gap-2 px-4",
-                usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
-                usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
+                "flex min-w-0 flex-1 items-center gap-1",
+                `transition-[padding] ${PANEL_COLLAPSE_TRANSITION_CLASS}`,
+                reserveLeadingChrome &&
+                  collapsedPanelTrafficLightReserveClassName,
               )}
+              data-sidebar-split-tab-group={paneId ?? undefined}
+              role="toolbar"
+              aria-label="Right panel views"
             >
-              <div
-                className={cn(
-                  "flex min-w-0 flex-1 items-center gap-1",
-                  `transition-[padding] ${PANEL_COLLAPSE_TRANSITION_CLASS}`,
-                  showOuterControls &&
-                    collapsedPanelTrafficLightReserveClassName,
-                )}
-                role="toolbar"
-                aria-label="Right panel views"
-              >
-                {renderPanelTabGroup({
-                  activeSurfaceTab,
-                  fileSurfaceTabs,
-                  onBeginTabDrag,
-                  onSelectSurfaceTab,
-                  onSurfaceFileTabReorder,
-                  showDiffSurfaceTab,
-                  showInfoSurfaceTab,
-                  showNewTabButton,
-                })}
-              </div>
-              {showOuterControls ? (
-                <div
-                  className="flex min-w-0 shrink-0 items-center gap-1"
-                  onPointerDown={(event) => event.stopPropagation()}
-                >
-                  {renderConversationCollapseButton(onMoveActiveTabToSide)}
-                  {renderAsDrawer || inlinePanelToggle === "button" ? (
-                    renderHidePanelButton()
-                  ) : inlinePanelToggle === "reserved" ? (
-                    <div
-                      aria-hidden
-                      className={getReservedInlinePanelToggleClassName(
-                        usesDesktopChrome,
-                      )}
-                    />
-                  ) : null}
-                </div>
-              ) : null}
+              {renderPanelTabGroup({
+                activeSurfaceTab,
+                fileSurfaceTabs,
+                onBeginTabDrag,
+                onSelectSurfaceTab,
+                onSurfaceFileTabReorder,
+                showDiffSurfaceTab,
+                showInfoSurfaceTab,
+                showNewTabButton: showNewTabControl,
+              })}
             </div>
-          ) : null}
+            {showOuterControls ? (
+              <div
+                className="flex min-w-0 shrink-0 items-center gap-1"
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                {renderConversationCollapseButton(onMoveActiveTabToSide)}
+                {renderAsDrawer || inlinePanelToggle === "button" ? (
+                  renderHidePanelButton()
+                ) : inlinePanelToggle === "reserved" ? (
+                  <div
+                    aria-hidden
+                    className={getReservedInlinePanelToggleClassName(
+                      usesDesktopChrome,
+                    )}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           {showsSurfaceDiffToolbar ? (
             <GitDiffToolbar
               selectionValue={gitDiffSelectValue}
@@ -982,7 +987,6 @@ export function ThreadSecondaryPanel({
               {
                 id: SIDEBAR_FIXED_INFO_TAB_ID,
                 label: "Info",
-                leadingVisual: <Icon name="Info" />,
               },
             ]
           : []),
@@ -991,14 +995,12 @@ export function ThreadSecondaryPanel({
               {
                 id: SIDEBAR_FIXED_DIFF_TAB_ID,
                 label: "Diff",
-                leadingVisual: <Icon name="FileDiff" />,
               },
             ]
           : []),
         ...(visibleFileTabs ?? []).map((tab) => ({
           id: tab.id,
           label: tab.filename,
-          leadingVisual: tab.leadingVisual,
         })),
       ] satisfies SidebarSplitTabDescriptor[])
     : [];
@@ -1038,97 +1040,6 @@ export function ThreadSecondaryPanel({
       onGlobalTabReorder={onFileTabReorder}
       panelStateId={splitPanelStateId}
       tabs={splitTabs}
-      renderSplitHeader={({
-        panes,
-        renderTabGroups,
-      }: SidebarSplitHeaderRenderArgs) => {
-        const focusedPane = panes.find((pane) => pane.isFocused) ?? panes[0];
-        return (
-          <div className={getSecondaryPanelChromeStackClassName(false)}>
-            <div
-              data-testid="thread-secondary-panel-top-chrome"
-              className={cn(
-                CHROME_ROW_CLASS,
-                "relative min-w-0",
-                usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
-                usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
-              )}
-            >
-              <div
-                className="absolute inset-0 flex min-w-0 overflow-hidden"
-                role="toolbar"
-                aria-label="Right panel views"
-              >
-                {renderTabGroups((pane) => {
-                  const index = panes.findIndex(
-                    (candidate) => candidate.paneId === pane.paneId,
-                  );
-                  const paneModel = resolveSplitPaneModel(pane);
-                  return (
-                    <div
-                      key={pane.paneId}
-                      className={cn(
-                        "flex h-full min-w-0 flex-1 items-center gap-1 overflow-hidden px-2",
-                        `transition-[padding] ${PANEL_COLLAPSE_TRANSITION_CLASS}`,
-                        index === 0 && [
-                          "pl-4",
-                          collapsedPanelTrafficLightReserveClassName,
-                        ],
-                        index === panes.length - 1 &&
-                          (showNewTabButton ? "pr-28" : "pr-20"),
-                      )}
-                      data-sidebar-split-tab-group={pane.paneId}
-                      role="group"
-                      aria-label={`Pane ${index + 1} tabs`}
-                      onPointerDown={pane.onFocusPane}
-                    >
-                      {renderPanelTabGroup({
-                        activeSurfaceTab: paneModel,
-                        fileSurfaceTabs: resolveSplitPaneFileTabs(pane),
-                        onBeginTabDrag: pane.onBeginTabDrag,
-                        onSelectSurfaceTab: pane.onSelectTab,
-                        onSurfaceFileTabReorder: pane.onReorderTab,
-                        showDiffSurfaceTab: pane.group.tabIds.includes(
-                          SIDEBAR_FIXED_DIFF_TAB_ID,
-                        ),
-                        showInfoSurfaceTab: pane.group.tabIds.includes(
-                          SIDEBAR_FIXED_INFO_TAB_ID,
-                        ),
-                        showNewTabButton: false,
-                      })}
-                    </div>
-                  );
-                })}
-              </div>
-              <div
-                className="absolute right-4 z-30 flex min-w-0 shrink-0 items-center gap-1 bg-sidebar pl-1"
-                onPointerDown={(event) => event.stopPropagation()}
-              >
-                {showNewTabButton ? (
-                  <NewTabButton
-                    onOpenNewTab={onOpenNewTab}
-                    shortcut={newTabShortcut}
-                    usesDesktopChrome={usesDesktopChrome}
-                  />
-                ) : null}
-                {renderConversationCollapseButton(
-                  focusedPane?.onMoveActiveTabToSide,
-                )}
-                {renderAsDrawer || inlinePanelToggle === "button" ? (
-                  renderHidePanelButton()
-                ) : inlinePanelToggle === "reserved" ? (
-                  <div
-                    aria-hidden
-                    className={getReservedInlinePanelToggleClassName(
-                      usesDesktopChrome,
-                    )}
-                  />
-                ) : null}
-              </div>
-            </div>
-          </div>
-        );
-      }}
       renderPane={(pane: SidebarSplitPaneRenderArgs) => {
         const activePaneTabId = pane.group.activeTabId;
         const paneModel = resolveSplitPaneModel(pane);
@@ -1147,7 +1058,6 @@ export function ThreadSecondaryPanel({
             isPaneBrowserActive && browserDeckForTab
               ? browserDeckForTab(activePaneTabId, {
                   isFocused: pane.isFocused,
-                  isVisible: pane.isVisible,
                   onFocusPane: pane.onFocusPane,
                 })
               : null,
@@ -1165,31 +1075,21 @@ export function ThreadSecondaryPanel({
           onMoveActiveTabToSide: pane.onMoveActiveTabToSide,
           onSelectSurfaceTab: pane.onSelectTab,
           onSurfaceFileTabReorder: pane.onReorderTab,
+          paneId: pane.paneId,
+          reserveLeadingChrome: pane.isTopRow && pane.isLeftEdge,
           showDiffSurfaceTab: pane.group.tabIds.includes(
             SIDEBAR_FIXED_DIFF_TAB_ID,
           ),
           showInfoSurfaceTab: pane.group.tabIds.includes(
             SIDEBAR_FIXED_INFO_TAB_ID,
           ),
-          showOuterControls: !pane.isSplitPane && pane.showOuterControls,
-          showTopChrome: !pane.isSplitPane,
+          showNewTabControl: pane.showOuterControls && showNewTabButton,
+          showOuterControls: pane.showOuterControls,
+          usesWindowChrome: pane.isTopRow,
         });
       }}
     />
-  ) : (
-    renderPanelSurface({
-      activeSurfaceTab: activeTab,
-      browserSurface: browserDeck,
-      fileSurfaceContent: fileTabContent,
-      fileSurfaceContentFillsRegion: fileTabContentFillsRegion ?? false,
-      fileSurfaceTabs: fileTabs,
-      isBrowserSurfaceActive: isBrowserTabActive,
-      onSurfaceFileTabReorder: onFileTabReorder,
-      showDiffSurfaceTab: shouldShowGitDiffTab,
-      showInfoSurfaceTab: showInfoTab,
-      showOuterControls: true,
-    })
-  );
+  ) : null;
 
   const asideMarkup = (
     <aside
@@ -1238,10 +1138,6 @@ export function ThreadSecondaryPanel({
           // Inside the split-workspace host, the hairline resize handle is the
           // visible seam; elsewhere the panel carries its own hairline border
           // (it slides with the panel through the open/close animation).
-          // Collapsing the conversation drops the timeline and the resize
-          // handle to zero width, so this border would land directly on the app
-          // sidebar's own `border-r` and read as one thick double seam. The
-          // sidebar owns that boundary, so give the border up while collapsed.
           // Collapsing the conversation drops the timeline and the resize
           // handle to zero width, so this border would land directly on the app
           // sidebar's own `border-r` and read as one thick 2px seam. The
