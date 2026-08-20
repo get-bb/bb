@@ -72,6 +72,7 @@ const acceptedSteer = {
   kind: "steer" as const,
   status: "accepted" as const,
 };
+const handleStoryMessageEdit = () => undefined;
 
 interface StoryMentionArgs {
   resource: PromptMentionResource;
@@ -538,6 +539,29 @@ export function Overview() {
 
   return (
     <StoryCard>
+      <StoryRow
+        label="short with actions"
+        hint="a short accepted message keeps its bubble width when edit becomes available"
+      >
+        <TimelineStage revealMessageActions>
+          <ConversationMessageContent
+            role="user"
+            originKind={null}
+            initiator="user"
+            senderThreadId={null}
+            senderThreadTitle={null}
+            senderIsPluginSideChat={false}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
+            text="hi"
+            attachments={null}
+            mentions={[]}
+            turnRequest={acceptedMessage}
+            onAddToChat={handleAddToChat}
+            onEdit={handleStoryMessageEdit}
+          />
+        </TimelineStage>
+      </StoryRow>
       <StoryRow
         label="raw thread ID"
         hint="known IDs become linked pills in prose and exact inline-code spans"
