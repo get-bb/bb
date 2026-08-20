@@ -26,12 +26,7 @@ function waitForProcess(child) {
 }
 
 export async function runBuildProcess(request) {
-  const child = spawn(request.command, request.args, {
-    cwd: request.cwd,
-    detached: supportsProcessGroups(),
-    env: request.env,
-    stdio: "inherit",
-  });
+  let child;
   let stopPromise;
   const stopChild = () => {
     stopPromise ??= stopProcessGroupLeaderFirst({
@@ -42,10 +37,18 @@ export async function runBuildProcess(request) {
   };
   const handleSigint = () => stopChild();
   const handleSigterm = () => stopChild();
+  // Register before spawn so a child that becomes ready immediately cannot
+  // prompt another process to signal us before the handlers exist.
   process.on("SIGINT", handleSigint);
   process.on("SIGTERM", handleSigterm);
 
   try {
+    child = spawn(request.command, request.args, {
+      cwd: request.cwd,
+      detached: supportsProcessGroups(),
+      env: request.env,
+      stdio: "inherit",
+    });
     const result = await waitForProcess(child);
     await stopPromise;
     return result;
