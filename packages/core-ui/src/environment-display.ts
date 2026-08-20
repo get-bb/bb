@@ -20,8 +20,9 @@ export interface EnvironmentDisplayHostContext {
 export interface EnvironmentDisplayInfo {
   /**
    * Human-readable environment label: a custom environment name when present,
-   * "Provisioning" while the environment is still being set up, otherwise
-   * "Working locally", "Working remotely", or "Worktree".
+   * "Provisioning" while the environment is still being set up, "Destroyed"
+   * once it is being torn down or gone, otherwise "Working locally",
+   * "Working remotely", or "Worktree".
    */
   modeLabel: string;
   /**
@@ -62,22 +63,29 @@ export function formatEnvironmentDisplay({
   // Managed worktrees can also sit in a prepared metadata-inference stage with
   // no workspace path before the actual provision request is queued. Report the
   // setup lifecycle honestly instead of guessing "Working locally".
+  // A destroyed managed worktree also has no path. It is gone, not being set
+  // up, so it must not read as "Provisioning" (#1789).
+  const isGoneDisplay =
+    environment.status === "destroying" || environment.status === "destroyed";
   const isProvisioningDisplay =
-    environment.status === "provisioning" ||
-    (environment.workspaceProvisionType === "managed-worktree" &&
-      environment.path === null);
+    !isGoneDisplay &&
+    (environment.status === "provisioning" ||
+      (environment.workspaceProvisionType === "managed-worktree" &&
+        environment.path === null));
   const directModeLabel =
     host.locality === "remote" ? "Working remotely" : "Working locally";
   const directCompactModeLabel =
     host.locality === "remote" ? "Remote" : "Local";
-  const generatedModeLabel =
-    isProvisioningDisplay
+  const generatedModeLabel = isGoneDisplay
+    ? "Destroyed"
+    : isProvisioningDisplay
       ? "Provisioning"
       : mode === "worktree"
         ? "Worktree"
         : directModeLabel;
-  const generatedCompactModeLabel =
-    isProvisioningDisplay
+  const generatedCompactModeLabel = isGoneDisplay
+    ? "Destroyed"
+    : isProvisioningDisplay
       ? "Provisioning"
       : mode === "worktree"
         ? "Worktree"

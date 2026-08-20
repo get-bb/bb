@@ -40,6 +40,11 @@ import {
 } from "../../services/environments/environment-cleanup-internal.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../../services/environments/lifecycle-outcome.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
+import {
+  goneThreadEnvironmentDetails,
+  threadEnvironmentUnavailableDetails,
+  throwThreadEnvironmentUnavailable,
+} from "../../services/lib/lifecycle-api-errors.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 import { validatePromptAttachmentReferences } from "../../services/projects/attachments.js";
 import {
@@ -252,12 +257,47 @@ function queuedMessagePayloadFromSendRequest(
   };
 }
 
+/**
+ * A queued message can only drain into the thread's environment. A gone
+ * environment (`destroying`/`destroyed`) is never reprovisioned, so accepting
+ * the message would park it in the queue forever while the thread keeps
+ * reporting `idle` and the auto-send sweep fails every cycle (#1789). Refuse
+ * with the same 409 the direct send path returns.
+ *
+ * A thread with no environment row is accepted while it has never run: the
+ * queue is how messages wait for provisioning. Once the thread has a provider
+ * thread id, a missing environment means the row was pruned after destroy, and
+ * the direct send path already refuses with `never_attached`.
+ */
+function ensureQueuedMessageEnvironmentIsNotGone(
+  deps: AppDeps,
+  thread: Thread,
+): void {
+  if (thread.environmentId === null) {
+    if (getLastProviderThreadId(deps, thread.id) !== null) {
+      throwThreadEnvironmentUnavailable(
+        threadEnvironmentUnavailableDetails("never_attached", null),
+      );
+    }
+    return;
+  }
+  const environment = getEnvironment(deps.db, thread.environmentId);
+  if (!environment) {
+    return;
+  }
+  const goneDetails = goneThreadEnvironmentDetails(environment);
+  if (goneDetails) {
+    throwThreadEnvironmentUnavailable(goneDetails);
+  }
+}
+
 async function createQueuedMessageForThread(
   deps: AppDeps,
   args: CreateQueuedMessageForThreadArgs,
 ): Promise<ThreadQueuedMessage> {
   const { payload, thread } = args;
   ensureThreadIsWritable(thread);
+  ensureQueuedMessageEnvironmentIsNotGone(deps, thread);
   await validatePromptAttachmentReferences({
     dataDir: deps.config.dataDir,
     input: payload.input,
