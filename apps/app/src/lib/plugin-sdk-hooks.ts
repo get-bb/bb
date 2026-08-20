@@ -394,7 +394,7 @@ export function useBbNavigate(): BbNavigate {
   );
 }
 
-export function experimental_useAppPanel(): ExperimentalAppPanel {
+function useExperimentalAppPanel(): ExperimentalAppPanel {
   const pluginId = usePluginId();
   const appNavigation = useAppNavigationHost();
   const openFixedTab = useCallback<ExperimentalAppPanel["openFixedTab"]>(
@@ -420,7 +420,7 @@ export function experimental_useAppPanel(): ExperimentalAppPanel {
   return useMemo(() => ({ openFixedTab }), [openFixedTab]);
 }
 
-export function experimental_useFixedTabTarget<Target extends JsonValue>(
+function useExperimentalFixedTabTarget<Target extends JsonValue>(
   tab: ExperimentalPluginFixedTabReference<Target>,
 ): ExperimentalFixedTabTargetDelivery<Target> | null {
   const pluginId = usePluginId();
@@ -440,6 +440,11 @@ export function experimental_useFixedTabTarget<Target extends JsonValue>(
     target: delivery.target,
   };
 }
+
+export {
+  useExperimentalAppPanel as experimental_useAppPanel,
+  useExperimentalFixedTabTarget as experimental_useFixedTabTarget,
+};
 
 function reconcileComposerMentions(
   currentText: string,

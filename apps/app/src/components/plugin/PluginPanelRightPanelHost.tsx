@@ -349,6 +349,7 @@ export function PluginPanelRightPanelHost({
     [
       fixedViewTabs,
       fixedTabOwnerId,
+      fixedTabTargetSequenceRef,
       panel?.experimental_fixedTabs,
       revealPanel,
       updatePanelState,

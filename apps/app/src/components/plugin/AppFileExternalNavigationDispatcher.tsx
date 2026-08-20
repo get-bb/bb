@@ -17,18 +17,19 @@ export function AppFileExternalNavigationDispatcher({
   const resolvedTarget = useResolvedLiveFileTarget(intent.target, {
     enabled: true,
   });
-  const localTargets = useLocalOpenTargets({
-    enabled: resolvedTarget.status === "available",
-    ...(resolvedTarget.status === "available"
-      ? { openContext: resolvedTarget.openContext }
-      : {}),
-  });
+  const { isLoading: areLocalTargetsLoading, openPathInPreferredFileTarget } =
+    useLocalOpenTargets({
+      enabled: resolvedTarget.status === "available",
+      ...(resolvedTarget.status === "available"
+        ? { openContext: resolvedTarget.openContext }
+        : {}),
+    });
 
   useEffect(() => {
     if (
       didSettleRef.current ||
       resolvedTarget.status === "loading" ||
-      localTargets.isLoading
+      areLocalTargetsLoading
     ) {
       return;
     }
@@ -41,15 +42,15 @@ export function AppFileExternalNavigationDispatcher({
       return;
     }
     const location = getExperimentalFileLocationStart(intent.location);
-    void localTargets.openPathInPreferredFileTarget({
+    void openPathInPreferredFileTarget({
       columnNumber: location.columnNumber,
       lineNumber: location.lineNumber,
       path: resolvedTarget.absolutePath,
     });
   }, [
     intent.location,
-    localTargets.isLoading,
-    localTargets.openPathInPreferredFileTarget,
+    areLocalTargetsLoading,
+    openPathInPreferredFileTarget,
     onSettled,
     resolvedTarget,
   ]);
