@@ -189,15 +189,17 @@ stable, plugin-owner-and-panel-scoped reference. `experimental_useAppPanel()`
 can select one of the calling plugin's eligible tabs on the current surface
 and optionally submit a JSON-safe target. The tab's `experimental_target`
 validator owns the target type and policy; `experimental_useFixedTabTarget()`
-delivers the validated value with a sequence and explicit `consume()`. Tab
-selection stays durable while delivery is memory-only. Core Changes targets
-and plugin targets resolve through the same feature-agnostic controller.
+returns the validated current-session value with a sequence and explicit
+`clear()`. Tab selection stays durable. Each tab's target remains memory-only,
+but survives inactive-tab, closed-panel, and route remounts until its owner
+clears it or the app refreshes. Core Changes targets and plugin targets resolve
+through the same feature-agnostic controller.
 
 **Public surface.** `ExperimentalFixedTabTargetContract`,
 `ExperimentalPluginFixedTabReference`,
 `ExperimentalPluginFixedTabRegistration`,
 `ExperimentalPluginFixedTabDeclaration`, `ExperimentalAppPanelSurface`,
-`ExperimentalFixedTabTargetDelivery`, `ExperimentalOpenFixedTabOptions`,
+`ExperimentalFixedTabTargetState`, `ExperimentalOpenFixedTabOptions`,
 `ExperimentalAppPanel`, `experimental_useAppPanel`, and
 `experimental_useFixedTabTarget`. The frontend testing runtime mirrors this
 with `ExperimentalFixedTabOpenCall`, the
@@ -221,9 +223,10 @@ the `experimental_fixedTabOpenCalls` inspection list.
    plugin and current nav panel, with no cross-plugin addressing or global ids.
 7. Confirm sync type guards remain the right owner validation contract and
    define error reporting if a validator throws or becomes stale after reload.
-8. Exercise repeated equal targets, explicit consumption, crashes, close and
-   remount, refresh, and compact drawer animation; targets must never persist
-   or replay after consumption.
+8. Exercise repeated equal targets, explicit clearing, crashes, inactive-tab,
+   panel, and route remounts, refresh, and compact drawer animation. Targets
+   must survive remounts in the current app session, never survive refresh, and
+   never reappear after their owner clears them.
 9. Decide whether a future cross-thread surface should navigate before opening;
    the initial public surface intentionally supports only `{ kind: "current" }`.
 10. Keep core and plugin destinations on the same resolver and verify the

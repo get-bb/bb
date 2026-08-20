@@ -20,7 +20,7 @@ import type {
   PluginRpcClient,
   PluginSettingsState,
   ExperimentalAppPanel,
-  ExperimentalFixedTabTargetDelivery,
+  ExperimentalFixedTabTargetState,
   ExperimentalPluginFixedTabReference,
   JsonValue,
 } from "@get-bb/plugin-sdk";
@@ -422,22 +422,22 @@ function useExperimentalAppPanel(): ExperimentalAppPanel {
 
 function useExperimentalFixedTabTarget<Target extends JsonValue>(
   tab: ExperimentalPluginFixedTabReference<Target>,
-): ExperimentalFixedTabTargetDelivery<Target> | null {
+): ExperimentalFixedTabTargetState<Target> | null {
   const pluginId = usePluginId();
-  const delivery = useAppFixedTabTarget(
+  const state = useAppFixedTabTarget(
     getPluginFixedTabOwnerId(pluginId, tab.panelId),
     tab.id,
   );
-  if (delivery === null || tab.experimental_target === undefined) return null;
+  if (state === null || tab.experimental_target === undefined) return null;
   try {
-    if (!tab.experimental_target.validate(delivery.target)) return null;
+    if (!tab.experimental_target.validate(state.target)) return null;
   } catch {
     return null;
   }
   return {
-    consume: delivery.consume,
-    sequence: delivery.sequence,
-    target: delivery.target,
+    clear: state.clear,
+    sequence: state.sequence,
+    target: state.target,
   };
 }
 

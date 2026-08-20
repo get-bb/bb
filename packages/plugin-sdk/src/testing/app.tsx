@@ -58,7 +58,7 @@ import {
   type ExperimentalFileLinkProps,
   type ExperimentalFileOpenOptions,
   type ExperimentalAppPanel,
-  type ExperimentalFixedTabTargetDelivery,
+  type ExperimentalFixedTabTargetState,
   type ExperimentalOpenFixedTabOptions,
   type ExperimentalPluginFixedTabReference,
   type NewThreadComposerProps,
@@ -185,7 +185,7 @@ interface SlotEnv {
 }
 
 interface TestFixedTabTargetStore {
-  consume(sequence: number): void;
+  clear(sequence: number): void;
   getSnapshot(): {
     panelId: string;
     sequence: number;
@@ -575,30 +575,30 @@ const testPluginSdkApp = {
   },
   experimental_useFixedTabTarget<Target extends JsonValue>(
     tab: ExperimentalPluginFixedTabReference<Target>,
-  ): ExperimentalFixedTabTargetDelivery<Target> | null {
+  ): ExperimentalFixedTabTargetState<Target> | null {
     const store = useSlotEnv("experimental_useFixedTabTarget").fixedTabTarget;
-    const delivery = useSyncExternalStore(
+    const state = useSyncExternalStore(
       store.subscribe,
       store.getSnapshot,
       store.getSnapshot,
     );
     if (
-      delivery === null ||
-      delivery.panelId !== tab.panelId ||
-      delivery.tabId !== tab.id ||
+      state === null ||
+      state.panelId !== tab.panelId ||
+      state.tabId !== tab.id ||
       tab.experimental_target === undefined
     ) {
       return null;
     }
     try {
-      if (!tab.experimental_target.validate(delivery.target)) return null;
+      if (!tab.experimental_target.validate(state.target)) return null;
     } catch {
       return null;
     }
     return {
-      consume: () => store.consume(delivery.sequence),
-      sequence: delivery.sequence,
-      target: delivery.target,
+      clear: () => store.clear(state.sequence),
+      sequence: state.sequence,
+      target: state.target,
     };
   },
   useComposer(): PluginComposerApi {
@@ -944,7 +944,7 @@ export interface RenderSlotOptions<
   openFileExternally?: (options: ExperimentalFileOpenOptions) => boolean;
   /** Host acceptance for an owner-scoped fixed-tab selection. */
   experimental_openFixedTab?: (call: ExperimentalFixedTabOpenCall) => boolean;
-  /** Initial transient delivery visible to `experimental_useFixedTabTarget`. */
+  /** Initial session target visible to `experimental_useFixedTabTarget`. */
   experimental_fixedTabTarget?: {
     panelId: string;
     tabId: string;
@@ -1118,7 +1118,7 @@ export function renderSlot<
       fixedTabTargetListeners.add(listener);
       return () => fixedTabTargetListeners.delete(listener);
     },
-    consume(sequence) {
+    clear(sequence) {
       if (fixedTabTargetSnapshot?.sequence !== sequence) return;
       fixedTabTargetSnapshot = null;
       for (const listener of fixedTabTargetListeners) listener();
@@ -1152,7 +1152,17 @@ export function renderSlot<
         ...(target === undefined ? {} : { target }),
       };
       experimental_fixedTabOpenCalls.push(call);
-      return options.experimental_openFixedTab?.(call) ?? false;
+      const accepted = options.experimental_openFixedTab?.(call) ?? false;
+      if (accepted && target !== undefined) {
+        fixedTabTargetSnapshot = {
+          panelId: panelOptions.tab.panelId,
+          sequence: (fixedTabTargetSnapshot?.sequence ?? 0) + 1,
+          tabId: panelOptions.tab.id,
+          target,
+        };
+        for (const listener of fixedTabTargetListeners) listener();
+      }
+      return accepted;
     },
   };
   const sidebarActionCalls: SidebarActionCall[] = [];

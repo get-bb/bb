@@ -1636,19 +1636,20 @@ export interface ExperimentalFileLinkProps extends Omit<
 export type ExperimentalAppPanelSurface = { kind: "current" };
 
 /**
- * A transient target delivered to its owning fixed tab. Calling `consume`
- * prevents the target from replaying if the tab remounts later.
+ * The owning fixed tab's current memory-only target. It survives tab, panel,
+ * and route remounts during the current app session, but is never persisted
+ * across a refresh. Call `clear` when the owner returns to its untargeted state.
  */
-export interface ExperimentalFixedTabTargetDelivery<Target extends JsonValue> {
+export interface ExperimentalFixedTabTargetState<Target extends JsonValue> {
   readonly sequence: number;
   readonly target: Target;
-  consume(): void;
+  clear(): void;
 }
 
 export type ExperimentalOpenFixedTabOptions<Target extends JsonValue> = {
   surface: ExperimentalAppPanelSurface;
   tab: ExperimentalPluginFixedTabReference<Target>;
-  /** Omit to select the tab without delivering a transient target. */
+  /** Omit to select the tab without replacing its current session target. */
   target?: NoInfer<Target>;
 };
 
@@ -1743,10 +1744,10 @@ export interface PluginSdkApp {
   useBbNavigate(): BbNavigate;
   /** Select one of this plugin's eligible fixed tabs on the current surface. */
   experimental_useAppPanel(): ExperimentalAppPanel;
-  /** Read and consume a validated transient target inside its owning tab. */
+  /** Read or clear the owning tab's validated, session-scoped target. */
   experimental_useFixedTabTarget<Target extends JsonValue>(
     tab: ExperimentalPluginFixedTabReference<Target>,
-  ): ExperimentalFixedTabTargetDelivery<Target> | null;
+  ): ExperimentalFixedTabTargetState<Target> | null;
   useComposer(): PluginComposerApi;
   /**
    * The sidebar's live thread view (see {@link PluginSidebarThreadsState}).

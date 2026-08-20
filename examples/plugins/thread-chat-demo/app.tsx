@@ -9,7 +9,7 @@
 // - `messageAction`, host-rendered chrome on every chat message (and the
 //   text-selection menu): "Open in demo panel" opens this plugin's own
 //   thread panel anchored on the clicked message via `openPanel`.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   definePluginApp,
   experimental_useAppPanel,
@@ -103,23 +103,24 @@ function ThreadChatDemoPanel({ subPath }: { subPath: string }) {
 }
 
 function DemoThreadFixedTab() {
-  const delivery = experimental_useFixedTabTarget(demoThreadFixedTab);
-  const [threadId, setThreadId] = useState<string | null>(null);
-  useEffect(() => {
-    if (delivery === null) return;
-    setThreadId(delivery.target.threadId);
-    delivery.consume();
-  }, [delivery]);
-  return threadId === null ? (
+  const targetState = experimental_useFixedTabTarget(demoThreadFixedTab);
+  return targetState === null ? (
     <p className="p-4 text-sm text-muted-foreground">
       Choose “Open compact tab” from the demo page.
     </p>
   ) : (
-    <ThreadChat threadId={threadId} variant="compact" className="h-full" />
+    <ThreadChat
+      key={targetState.sequence}
+      threadId={targetState.target.threadId}
+      variant="compact"
+      className="h-full"
+    />
   );
 }
 
-const demoThreadFixedTab = {
+const demoThreadFixedTab: ExperimentalPluginFixedTabRegistration<
+  DemoThreadTarget
+> = {
   panelId: "thread-chat-demo",
   id: "compact-thread",
   title: "Compact thread",
@@ -127,7 +128,7 @@ const demoThreadFixedTab = {
   component: DemoThreadFixedTab,
   layout: "flush",
   experimental_target: { validate: isDemoThreadTarget },
-} satisfies ExperimentalPluginFixedTabRegistration<DemoThreadTarget>;
+};
 
 interface DemoPanelParams {
   anchorText?: string;

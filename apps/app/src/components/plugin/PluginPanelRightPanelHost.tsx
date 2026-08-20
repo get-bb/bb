@@ -3,7 +3,6 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -72,7 +71,8 @@ import {
   getPluginFixedTabOwnerId,
   openAppFixedTabFromDestinations,
   type AppFixedTabDestination,
-  type AppFixedTabTargetDelivery,
+  type AppFixedTabTargetSnapshot,
+  type AppFixedTabTargetState,
 } from "@/lib/app-fixed-tab-navigation";
 import {
   normalizeExperimentalFileOpenOptions,
@@ -94,6 +94,9 @@ const RIGHT_PANEL_TOGGLE_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} ${C
 
 const compactDrawerOpenAtomFamily = atomFamily((_panelStateId: string) =>
   atom(false),
+);
+const fixedTabTargetsAtomFamily = atomFamily((_panelStateId: string) =>
+  atom<ReadonlyMap<string, AppFixedTabTargetSnapshot>>(new Map()),
 );
 
 function findPluginRightPanelTogglePortal(
@@ -284,16 +287,13 @@ export function PluginPanelRightPanelHost({
       secondary: { ...state.secondary, isOpen: true },
     }));
   }, [isCompactViewport, setCompactDrawerOpen, updatePanelState]);
-  const [fixedTabTargetDelivery, setFixedTabTargetDelivery] =
-    useState<AppFixedTabTargetDelivery | null>(null);
-  const fixedTabTargetSequenceRef = useRef(0);
+  const [fixedTabTargets, setFixedTabTargets] = useAtom(
+    fixedTabTargetsAtomFamily(panelStateId),
+  );
   const fixedTabOwnerId = getPluginFixedTabOwnerId(
     pluginId,
     panel?.id ?? panelPath,
   );
-  useEffect(() => {
-    setFixedTabTargetDelivery(null);
-  }, [fixedTabOwnerId]);
   const fixedTabDestinations = useMemo<readonly AppFixedTabDestination[]>(
     () =>
       (panel?.experimental_fixedTabs ?? []).flatMap((registration) => {
@@ -308,9 +308,7 @@ export function PluginPanelRightPanelHost({
               tabId: registration.id,
             },
             open: (target) => {
-              if (target === undefined) {
-                setFixedTabTargetDelivery(null);
-              } else {
+              if (target !== undefined) {
                 const result = jsonValueSchema.safeParse(target);
                 if (
                   !result.success ||
@@ -325,17 +323,16 @@ export function PluginPanelRightPanelHost({
                 } catch {
                   return false;
                 }
-                fixedTabTargetSequenceRef.current += 1;
-                const sequence = fixedTabTargetSequenceRef.current;
-                setFixedTabTargetDelivery({
-                  consume: () =>
-                    setFixedTabTargetDelivery((current) =>
-                      current?.sequence === sequence ? null : current,
-                    ),
-                  ownerId: fixedTabOwnerId,
-                  sequence,
-                  tabId: registration.id,
-                  target: result.data,
+                setFixedTabTargets((current) => {
+                  const previous = current.get(registration.id);
+                  const next = new Map(current);
+                  next.set(registration.id, {
+                    ownerId: fixedTabOwnerId,
+                    sequence: (previous?.sequence ?? 0) + 1,
+                    tabId: registration.id,
+                    target: result.data,
+                  });
+                  return next;
                 });
               }
               updatePanelState((state) =>
@@ -350,9 +347,9 @@ export function PluginPanelRightPanelHost({
     [
       fixedViewTabs,
       fixedTabOwnerId,
-      fixedTabTargetSequenceRef,
       panel?.experimental_fixedTabs,
       revealPanel,
+      setFixedTabTargets,
       updatePanelState,
     ],
   );
@@ -586,6 +583,31 @@ export function PluginPanelRightPanelHost({
           (registration) => registration.id === activeTab.fixedTabId,
         ) ?? null)
       : null;
+  const activeFixedTabTargetSnapshot =
+    activeFixedTabRegistration === null
+      ? null
+      : (fixedTabTargets.get(activeFixedTabRegistration.id) ?? null);
+  const activeFixedTabTargetState =
+    useMemo<AppFixedTabTargetState | null>(() => {
+      if (activeFixedTabTargetSnapshot === null) return null;
+      return {
+        ...activeFixedTabTargetSnapshot,
+        clear: () => {
+          setFixedTabTargets((current) => {
+            const latest = current.get(activeFixedTabTargetSnapshot.tabId);
+            if (
+              latest?.sequence !== activeFixedTabTargetSnapshot.sequence ||
+              latest.ownerId !== activeFixedTabTargetSnapshot.ownerId
+            ) {
+              return current;
+            }
+            const next = new Map(current);
+            next.delete(activeFixedTabTargetSnapshot.tabId);
+            return next;
+          });
+        },
+      };
+    }, [activeFixedTabTargetSnapshot, setFixedTabTargets]);
   const fixedTabContent = useMemo(() => {
     if (panel === null || activeFixedTabRegistration === null || !isOpen) {
       return null;
@@ -599,14 +621,14 @@ export function PluginPanelRightPanelHost({
         slotId={activeFixedTabRegistration.id}
         instanceId={panel.id}
       >
-        <AppFixedTabTargetProvider delivery={fixedTabTargetDelivery}>
+        <AppFixedTabTargetProvider state={activeFixedTabTargetState}>
           <FixedTabComponent subPath={subPath} />
         </AppFixedTabTargetProvider>
       </PluginSlotMount>
     );
   }, [
     activeFixedTabRegistration,
-    fixedTabTargetDelivery,
+    activeFixedTabTargetState,
     isOpen,
     panel,
     pluginId,

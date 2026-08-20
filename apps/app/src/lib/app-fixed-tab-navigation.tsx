@@ -33,26 +33,30 @@ export function openAppFixedTabFromDestinations(
   return destination?.open(intent.target) ?? false;
 }
 
-export interface AppFixedTabTargetDelivery {
-  consume(): void;
+export interface AppFixedTabTargetSnapshot {
   ownerId: string;
   sequence: number;
   tabId: string;
   target: JsonValue;
 }
 
-const AppFixedTabTargetContext =
-  createContext<AppFixedTabTargetDelivery | null>(null);
+export interface AppFixedTabTargetState extends AppFixedTabTargetSnapshot {
+  clear(): void;
+}
+
+const AppFixedTabTargetContext = createContext<AppFixedTabTargetState | null>(
+  null,
+);
 
 export function AppFixedTabTargetProvider({
   children,
-  delivery,
+  state,
 }: {
   children: ReactNode;
-  delivery: AppFixedTabTargetDelivery | null;
+  state: AppFixedTabTargetState | null;
 }) {
   return (
-    <AppFixedTabTargetContext.Provider value={delivery}>
+    <AppFixedTabTargetContext.Provider value={state}>
       {children}
     </AppFixedTabTargetContext.Provider>
   );
@@ -61,9 +65,7 @@ export function AppFixedTabTargetProvider({
 export function useAppFixedTabTarget(
   ownerId: string,
   tabId: string,
-): AppFixedTabTargetDelivery | null {
-  const delivery = useContext(AppFixedTabTargetContext);
-  return delivery?.ownerId === ownerId && delivery.tabId === tabId
-    ? delivery
-    : null;
+): AppFixedTabTargetState | null {
+  const state = useContext(AppFixedTabTargetContext);
+  return state?.ownerId === ownerId && state.tabId === tabId ? state : null;
 }

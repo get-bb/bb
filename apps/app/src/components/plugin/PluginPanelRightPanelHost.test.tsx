@@ -668,20 +668,20 @@ describe("PluginPanelRightPanelHost", () => {
     ).toBe(false);
   });
 
-  it("validates and transiently delivers a plugin-owned fixed-tab target", async () => {
+  it("retains a validated fixed-tab target across panel and route remounts for the app session", async () => {
     function Details() {
-      const delivery = useAppFixedTabTarget(
+      const targetState = useAppFixedTabTarget(
         getPluginFixedTabOwnerId("demo", "board"),
         "details",
       );
       return (
         <div data-testid="targeted-details-content">
           Details
-          {delivery === null ? null : (
+          {targetState === null ? null : (
             <>
-              <output>{JSON.stringify(delivery.target)}</output>
-              <button type="button" onClick={delivery.consume}>
-                Consume target
+              <output>{JSON.stringify(targetState.target)}</output>
+              <button type="button" onClick={targetState.clear}>
+                Clear target
               </button>
             </>
           )}
@@ -712,8 +712,10 @@ describe("PluginPanelRightPanelHost", () => {
         },
       },
     ];
+    browserState.available = true;
 
-    renderHost();
+    const store = createStore();
+    const initialRender = renderHost("board", "", store);
     expect(await screen.findByTestId("navigation-content")).toBeTruthy();
 
     fireEvent.click(
@@ -730,8 +732,43 @@ describe("PluginPanelRightPanelHost", () => {
       screen.getByText('{"kind":"record","recordId":"issue-42"}'),
     ).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Consume target" }));
-    expect(screen.queryByRole("button", { name: "Consume target" })).toBeNull();
+    fireEvent.click(screen.getByText("Add tab"));
+    expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open browser" }));
+    expect(await screen.findByTestId("plugin-page-browser")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(
+      await screen.findByText('{"kind":"record","recordId":"issue-42"}'),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide right panel" }));
+    expect(screen.queryByTestId("targeted-details-content")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show right panel" }));
+    expect(
+      await screen.findByText('{"kind":"record","recordId":"issue-42"}'),
+    ).toBeTruthy();
+
+    initialRender.unmount();
+    const routeRemount = renderHost("board", "", store);
+    expect(
+      await screen.findByText('{"kind":"record","recordId":"issue-42"}'),
+    ).toBeTruthy();
+
+    routeRemount.unmount();
+    renderHost();
+    expect(await screen.findByTestId("navigation-content")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(await screen.findByTestId("targeted-details-content")).toBeTruthy();
+    expect(screen.queryByText(/issue-42/)).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open targeted fixed tab" }),
+    );
+    expect(
+      await screen.findByText('{"kind":"record","recordId":"issue-42"}'),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Clear target" }));
+    expect(screen.queryByRole("button", { name: "Clear target" })).toBeNull();
     const persistedValues = Array.from(
       { length: localStorage.length },
       (_, index) => localStorage.getItem(localStorage.key(index) ?? "") ?? "",

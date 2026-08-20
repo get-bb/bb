@@ -1622,11 +1622,13 @@ Slot props contracts (versioned, additive-only):
   plugin on that page, call
   `experimental_useAppPanel().openFixedTab({ surface: { kind: "current" }, tab,
 target? })`. Inside the fixed-tab component,
-  `experimental_useFixedTabTarget(tab)` returns `{ sequence, target, consume }`
-  after validation. Apply the target and call `consume()` so it cannot replay
-  on a later remount. Selection persists through the host's ordinary panel
-  state; target delivery is memory-only. Invalid, unavailable, untargeted, or
-  other-plugin references return false without changing valid panel state.
+  `experimental_useFixedTabTarget(tab)` returns `{ sequence, target, clear }`
+  after validation. The per-tab target survives inactive-tab, closed-panel,
+  and route remounts for the current app session; call `clear()` when the tab
+  returns to its untargeted state. Selection persists through the host's
+  ordinary panel state, while targets remain memory-only and disappear on app
+  refresh. Invalid, unavailable, untargeted, or other-plugin references return
+  false without changing valid panel state.
 
   `experimental_sidebarAccessory` is a no-props, presentational component at
   the trailing edge of the sidebar row. It can own SDK hooks for a live count
@@ -1908,10 +1910,11 @@ className?, leadingContent?, messageActions? }` —
   accepts a plugin's own eligible fixed-tab registration, validates any target
   through that registration's `experimental_target` contract, opens the shared
   panel, and returns host acceptance. The controller does not interpret target
-  shapes. Targeted fixed tabs use `experimental_useFixedTabTarget(tab)` and
-  call delivery `consume()` after applying the target. The frontend harness
-  records accepted calls in `experimental_fixedTabOpenCalls`, gates them with
-  `experimental_openFixedTab`, and seeds delivery with
+  shapes. Targeted fixed tabs use `experimental_useFixedTabTarget(tab)` to read
+  current-session state and call `clear()` when returning to an untargeted
+  state. The frontend harness records accepted calls in
+  `experimental_fixedTabOpenCalls`, gates them with
+  `experimental_openFixedTab`, and seeds state with
   `experimental_fixedTabTarget`.
 - `experimental_NewThreadComposer` — bb's complete compose surface for
   CREATING a thread (the create-side counterpart to `ThreadChat`): prompt

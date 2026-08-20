@@ -2117,36 +2117,33 @@ function GithubPanel({ subPath }: PluginNavPanelProps) {
 }
 
 function GithubDetailsFixedTab() {
-  const delivery = experimental_useFixedTabTarget(githubDetailsFixedTab);
-  const [selection, setSelection] =
-    useState<GithubDetailsFixedTabTarget | null>(null);
-  useEffect(() => {
-    if (delivery === null) return;
-    setSelection(delivery.target);
-    delivery.consume();
-  }, [delivery]);
-
-  if (selection === null) {
+  const targetState = experimental_useFixedTabTarget(githubDetailsFixedTab);
+  if (targetState === null) {
     return (
       <EmptyState message="Select an issue or pull request from the GitHub list." />
     );
   }
+  const selection = targetState.target;
   return selection.itemKind === "issue" ? (
     <IssueDetailView
+      key={targetState.sequence}
       repo={selection.repo}
       number={selection.number}
-      onBack={() => setSelection(null)}
+      onBack={targetState.clear}
     />
   ) : (
     <PullDetailView
+      key={targetState.sequence}
       repo={selection.repo}
       number={selection.number}
-      onBack={() => setSelection(null)}
+      onBack={targetState.clear}
     />
   );
 }
 
-const githubDetailsFixedTab = {
+const githubDetailsFixedTab: ExperimentalPluginFixedTabRegistration<
+  GithubDetailsFixedTabTarget
+> = {
   panelId: "github",
   id: "details",
   title: "Details",
@@ -2154,7 +2151,7 @@ const githubDetailsFixedTab = {
   component: GithubDetailsFixedTab,
   layout: "padded",
   experimental_target: { validate: isGithubDetailsFixedTabTarget },
-} satisfies ExperimentalPluginFixedTabRegistration<GithubDetailsFixedTabTarget>;
+};
 
 function ListView({
   kind,

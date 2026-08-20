@@ -550,9 +550,11 @@ Every `experimental_fixedTabs` registration must include `panelId` equal to its
 containing nav panel's `id`; it is also an owner-scoped reference. Add
 `experimental_target: { validate }` for a typed JSON-safe transient target,
 select it with `experimental_useAppPanel().openFixedTab({ surface: { kind:
-"current" }, tab, target? })`, and read/consume delivery inside the fixed tab
-with `experimental_useFixedTabTarget(tab)`. Selection persists; targets never
-do. A plugin can address only its own eligible tab on the current nav panel.
+"current" }, tab, target? })`, and read the target state inside the fixed tab
+with `experimental_useFixedTabTarget(tab)`. Target state survives tab, panel,
+and route remounts for the current app session; call `clear()` when returning to
+the tab's untargeted state. Selection persists across refreshes, but targets do
+not. A plugin can address only its own eligible tab on the current nav panel.
 `import { toast } from
 "sonner"` reaches the host toaster; react, the portaling radix families,
 sonner, vaul, @pierre/diffs, and the host-resident clsx, tailwind-merge, and

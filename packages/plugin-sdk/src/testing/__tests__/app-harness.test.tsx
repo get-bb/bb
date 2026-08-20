@@ -59,7 +59,7 @@ const taskDetailsTab = {
 
 function FixedTabProbe() {
   const panel = experimental_useAppPanel();
-  const delivery = experimental_useFixedTabTarget(taskDetailsTab);
+  const targetState = experimental_useFixedTabTarget(taskDetailsTab);
   return (
     <div>
       <button
@@ -74,9 +74,20 @@ function FixedTabProbe() {
       >
         Open details
       </button>
-      {delivery === null ? null : (
-        <button type="button" onClick={delivery.consume}>
-          Consume {delivery.target.taskId}
+      <button
+        type="button"
+        onClick={() =>
+          panel.openFixedTab({
+            surface: { kind: "current" },
+            tab: taskDetailsTab,
+          })
+        }
+      >
+        Select details
+      </button>
+      {targetState === null ? null : (
+        <button type="button" onClick={targetState.clear}>
+          Clear {targetState.target.taskId}
         </button>
       )}
     </div>
@@ -1169,7 +1180,7 @@ describe("renderSlot", () => {
     ]);
   });
 
-  it("records validated fixed-tab opens and exposes consumable transient delivery", () => {
+  it("records fixed-tab opens and retains target state until the owner clears it", () => {
     const slot = renderSlot(
       { component: FixedTabProbe },
       {},
@@ -1183,17 +1194,24 @@ describe("renderSlot", () => {
       },
     );
 
-    const consume = slot.getByRole("button", { name: "Consume TASK-7" });
-    fireEvent.click(consume);
-    expect(slot.queryByRole("button", { name: "Consume TASK-7" })).toBeNull();
+    fireEvent.click(slot.getByRole("button", { name: "Clear TASK-7" }));
+    expect(slot.queryByRole("button", { name: "Clear TASK-7" })).toBeNull();
 
     fireEvent.click(slot.getByRole("button", { name: "Open details" }));
+    expect(slot.getByRole("button", { name: "Clear TASK-42" })).toBeTruthy();
+    fireEvent.click(slot.getByRole("button", { name: "Select details" }));
+    expect(slot.getByRole("button", { name: "Clear TASK-42" })).toBeTruthy();
     expect(slot.inspection.experimental_fixedTabOpenCalls).toEqual([
       {
         surface: { kind: "current" },
         panelId: "tasks",
         tabId: "details",
         target: { kind: "task", taskId: "TASK-42" },
+      },
+      {
+        surface: { kind: "current" },
+        panelId: "tasks",
+        tabId: "details",
       },
     ]);
   });
