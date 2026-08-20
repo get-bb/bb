@@ -151,11 +151,12 @@ describe("UsageLimitsSettingsSectionContent", () => {
     expect(screen.getByText("25% used")).toBeDefined();
   });
 
-  it("renders every registry provider in registry order", () => {
+  it("renders supported registry providers in registry order", () => {
     renderContent({
       usage: { codex: { status: "unauthenticated" } },
       providers: [
         provider("echo-agent", "Echo Agent"),
+        provider("no-usage", "No Usage", false),
         provider("codex", "Codex from registry"),
       ],
       isLoading: false,
@@ -169,10 +170,11 @@ describe("UsageLimitsSettingsSectionContent", () => {
         .getAllByRole("heading", { level: 3 })
         .map((heading) => heading.textContent),
     ).toEqual(["Echo Agent", "Codex from registry"]);
+    expect(screen.queryByRole("heading", { name: "No Usage" })).toBeNull();
     expect(screen.getByText("Usage not provided.")).toBeDefined();
   });
 
-  it("shows a loading message for every known provider", () => {
+  it("loads supported providers and hides unsupported providers", () => {
     renderContent({
       usage: {},
       providers: [
@@ -186,9 +188,11 @@ describe("UsageLimitsSettingsSectionContent", () => {
     });
 
     expect(screen.getByRole("heading", { name: "Codex" })).toBeDefined();
-    expect(screen.getByRole("heading", { name: "Echo Agent" })).toBeDefined();
+    expect(
+      screen.queryByRole("heading", { name: "Echo Agent" }),
+    ).toBeNull();
     expect(screen.getByText("Loading usage…")).toBeDefined();
-    expect(screen.getByText("Usage not provided.")).toBeDefined();
+    expect(screen.queryByText("Usage not provided.")).toBeNull();
   });
 
   it("shows an initial loading message before the provider list arrives", () => {
