@@ -3,7 +3,7 @@
  *
  * `plugin-frontend` holds the plugin runtime shim (plugin design §5.1): it
  * imports every library a plugin may resolve at runtime — React, the portal
- * Radix families, sonner, vaul, `@pierre/diffs` (and Shiki behind it) — plus
+ * Radix families, sonner, @silk-hq/components, `@pierre/diffs` (and Shiki behind it) — plus
  * `plugin-sdk-app-impl`, which reaches the promptbox editor and the markdown
  * renderer. Statically importing it from `App` put roughly 1.9 MB of
  * JavaScript in front of first paint even when the page had no plugins.

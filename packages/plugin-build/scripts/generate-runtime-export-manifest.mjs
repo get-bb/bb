@@ -1,6 +1,6 @@
 // Regenerates src/generated/runtime-export-manifest.generated.ts from the
 // repo's installed shared-runtime packages. `bb plugin build` shims the
-// shared-runtime modules (react, the portaling radix families, sonner, vaul,
+// shared-runtime modules (react, the portaling radix families, sonner, silk,
 // ...) as ESM re-exports over globalThis.__bbPluginRuntime, and ESM needs
 // static named-export lists — so we introspect the real modules once. The
 // output is not committed: turbo runs this as `@bb/plugin-build#generate`
@@ -50,9 +50,9 @@ const RUNTIME_MODULE_IDS = [
   "@radix-ui/react-popover",
   "@radix-ui/react-select",
   "@radix-ui/react-tooltip",
-  // toast() must reach the host toaster; vaul mutates document.body styles.
+  // toast() must reach the host toaster.
   "sonner",
-  "vaul",
+  "@silk-hq/components",
   // Diff rendering: FileDiff reads the host's WorkerPoolContextProvider
   // (React context identity requires one module copy) and sharing keeps
   // shiki's grammars out of plugin bundles.
@@ -181,7 +181,7 @@ const entries = entryChunks.join("\n");
 
 const output = `// GENERATED FILE — do not edit by hand.
 // Named exports of the plugin SDK app facade and shared runtime modules
-// (react@${reactVersion}, the shimmed radix/sonner/vaul/pierre packages, the
+// (react@${reactVersion}, the shimmed radix/sonner/silk/pierre packages, the
 // host-resident clsx/tailwind-merge/cva libraries, and the shared-ui icon
 // module), derived from SDK source/build metadata and the host app's
 // installed copies.

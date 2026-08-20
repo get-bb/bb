@@ -104,11 +104,6 @@
       "types": "./src/components/ui/dialog.tsx",
       "default": "./src/components/ui/dialog.tsx"
     },
-    "./drawer": {
-      "source": "./src/components/ui/drawer.tsx",
-      "types": "./src/components/ui/drawer.tsx",
-      "default": "./src/components/ui/drawer.tsx"
-    },
     "./dropdown-menu": {
       "source": "./src/components/ui/dropdown-menu.tsx",
       "types": "./src/components/ui/dropdown-menu.tsx",
@@ -259,11 +254,6 @@
       "types": "./src/components/ui/separator.tsx",
       "default": "./src/components/ui/separator.tsx"
     },
-    "./sheet": {
-      "source": "./src/components/ui/sheet.tsx",
-      "types": "./src/components/ui/sheet.tsx",
-      "default": "./src/components/ui/sheet.tsx"
-    },
     "./skeleton": {
       "source": "./src/components/ui/skeleton.tsx",
       "types": "./src/components/ui/skeleton.tsx",
@@ -362,7 +352,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "vaul": "^1.1.2"
+    "@silk-hq/components": "0.10.1"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
@@ -403,14 +393,14 @@
     "input-otp": "^1.4.2",
     "lucide-react": "^1.23.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
     "react-day-picker": "^10.0.1",
+    "react-dom": "^19.0.0",
     "react-hook-form": "^7.80.0",
     "react-resizable-panels": "^2.1.7",
     "recharts": "^2.15.4",
     "tailwind-merge": "^3.4.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
-    "vaul": "^1.1.2"
+    "@silk-hq/components": "0.10.1"
   }
 }

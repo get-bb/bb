@@ -97,7 +97,7 @@ describe("Docs official plugin frontend bundle", () => {
         definePluginApp: (setup: unknown) => ({ __bbPluginApp: true, setup }),
       },
       sonner: componentStub,
-      vaul: componentStub,
+      silkHq: componentStub,
       pierreDiffs: componentStub,
       pierreDiffsReact: componentStub,
       radixContextMenu: componentStub,

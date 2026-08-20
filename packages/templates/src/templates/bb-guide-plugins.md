@@ -286,7 +286,7 @@ ordinary plugin package with its own package.json and bb manifest. An optional
 collection manifest at .bb/plugins.json indexes them:
 
   {
-    "$schema": "https://getbb.app/schemas/plugins.schema.json",
+    "$schema": "<https://getbb.app/schemas/plugins.schema.json>",
     "schemaVersion": 1,
     "name": "acme-plugins",
     "plugins": [
@@ -326,7 +326,7 @@ to the bundled copy and update automatically when the BB app updates.
 
 The BB Community marketplace (reserved name `bb-community`) lists reviewed
 plugins that live outside the app bundle. bb reads its manifest from
-https://getbb.app/marketplace/v1/marketplace.json (override the URL with
+<https://getbb.app/marketplace/v1/marketplace.json> (override the URL with
 BB_MARKETPLACE_URL) at startup and every two hours, with a conditional
 request. bb stores the last catalog it validated: an unreachable server or an
 invalid manifest keeps that catalog, and the app bundles a seed snapshot for
@@ -342,7 +342,7 @@ Anyone can host a marketplace manifest. Add one with its https manifest URL,
 with git:<url>[@<ref>] (bb reads marketplace.json from the checkout), or with
 path:<directory> on the bb server's machine:
 
-  bb marketplace add https://plugins.acme.dev/marketplace.json
+  bb marketplace add <https://plugins.acme.dev/marketplace.json>
   bb marketplace add git:github.com/acme/bb-marketplace@main
   bb marketplace add path:/work/acme-marketplace
 
@@ -535,7 +535,7 @@ components/ui/ and `npx shadcn add @bb/<name>` pulls more from the BB
 component registry (the full stock shadcn set, version-matched to the
 running BB via the pinned ref in components.json). `import { toast } from
 "sonner"` reaches the host toaster; react, the portaling radix families,
-sonner, vaul, @pierre/diffs, and the host-resident clsx, tailwind-merge, and
+sonner, @silk-hq/components, @pierre/diffs, and the host-resident clsx, tailwind-merge, and
 class-variance-authority libraries are runtime-shimmed (never bundled) —
 though source and diffs should go through the host's own
 experimental_SourceCode / experimental_Diff components rather than
@@ -627,7 +627,7 @@ the running bb — repinning the devDependency, or rewriting types/ for a
 plugin that still vendors them. Run it in a cloned or older plugin, and `bb
 plugin types --check` in CI. `bb plugin build` and `bb plugin dev` keep a
 vendored plugin in step for you. Need a symbol the types
-don't explain? Clone the repo: https://github.com/get-bb/bb. The API in
+don't explain? Clone the repo: <https://github.com/get-bb/bb>. The API in
 one line each — bb.log (plugin-scoped logger behind `bb plugin logs`);
 bb.settings.define (declarative settings incl. secrets, editable via
 `bb plugin config`); bb.storage.kv (JSON rows ≤256KB) and

@@ -68,7 +68,8 @@ upstream, or replace them with a plugin.
 
 | ID     | Area | Why core owns it | Upstream status | Reassess when |
 | ------ | ---- | ---------------- | --------------- | ------------- |
-| _None_ |      |                  |                 |               |
+| F-001  | Compact web sheets/drawers use `@silk-hq/components` via `ResponsiveDrawerShell`; desktop stays Radix; Vaul/`drawer`/`sheet` removed; plugin runtime exposes Silk and SDK major 1 | Canonical overlay lifecycle, WebKit app-root inert policy, plugin frontend runtime singleton, and SDK compatibility gates are cross-client core contracts | Fork-only | Upstream gains an equivalent non-inerting mobile sheet primitive or plugin-only overlay runtime |
+
 
 When adding a row, use a stable `F-###` id and link the implementing pull
 request. Remove the row when the delta is removed or accepted upstream.

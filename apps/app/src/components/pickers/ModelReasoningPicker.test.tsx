@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import type { AvailableModel, ReasoningLevel } from "@bb/domain";
 import type {
@@ -566,38 +567,40 @@ describe("ModelReasoningPicker", () => {
     expect(onModelChange).toHaveBeenCalledWith("o4-mini");
   });
 
-  it("resets retained mobile browse state after the drawer closes", () => {
-    const frames: FrameRequestCallback[] = [];
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      frames.push(callback);
-      return frames.length;
-    });
+  it("resets retained mobile browse state after the drawer closes", async () => {
     renderPicker({ compact: true, modelOptions: manyCodexModels });
     const trigger = screen.getByRole("button", {
       name: "Provider, model and reasoning",
     });
 
     fireEvent.click(trigger);
-    act(() => frames.shift()?.(0));
-    act(() => frames.shift()?.(16));
-    const search = screen.getByPlaceholderText(
+    const search = (await screen.findByPlaceholderText(
       "Search models",
-    ) as HTMLInputElement;
+    )) as HTMLInputElement;
     fireEvent.change(search, { target: { value: "o4" } });
     expect(search.value).toBe("o4");
 
-    fireEvent.keyDown(document, { key: "Escape" });
-    const drawer = document.querySelector<HTMLElement>(
-      "[data-persistent-drawer-content]",
-    );
-    fireEvent.transitionEnd(drawer as HTMLElement, {
-      propertyName: "transform",
+    // Silk terminal lifecycle owns the reset (idleOutside), not CSS transitionEnd.
+    fireEvent.keyDown(document, {
+      key: "Escape",
+      code: "Escape",
+      keyCode: 27,
+      which: 27,
+      bubbles: true,
     });
-    fireEvent.click(trigger);
+    await waitFor(() => {
+      const retained = document.querySelector<HTMLInputElement>(
+        'input[placeholder="Search models"]',
+      );
+      expect(retained).not.toBeNull();
+      expect(retained!.value).toBe("");
+    });
 
-    expect(
-      (screen.getByPlaceholderText("Search models") as HTMLInputElement).value,
-    ).toBe("");
+    fireEvent.click(trigger);
+    const reopened = (await screen.findByPlaceholderText(
+      "Search models",
+    )) as HTMLInputElement;
+    expect(reopened.value).toBe("");
     expect(screen.getByText("o4-mini")).not.toBeNull();
   });
 

@@ -396,7 +396,7 @@ interface PluginThreadHeaderActionProps {
 The header clips nothing, but it is a short row. Anything taller than 28px
 must be a portalled popover, not an inline panel. `bb plugin build` shims the
 portal-owning packages to the host's singletons, so a vendored Radix or
-`vaul` popover portals correctly and stacks above the thread content.
+Silk/Radix popover portals correctly and stacks above the thread content.
 
 ### Example: the subagents chip
 

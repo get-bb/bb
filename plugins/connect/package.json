@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Remote access via getbb.app — this bb becomes reachable at https://<handle>.getbb.app. Disable to cut off all remote access.",
+  "description": "Remote access via getbb.app \u2014 this bb becomes reachable at https://<handle>.getbb.app. Disable to cut off all remote access.",
   "engines": {
-    "bb": ">=0.0"
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=1.0.0"
   },
   "bb": {
     "name": "Remote access",
-    "description": "Remote access via getbb.app — this bb becomes reachable at https://<handle>.getbb.app. Disable to cut off all remote access.",
+    "description": "Remote access via getbb.app \u2014 this bb becomes reachable at https://<handle>.getbb.app. Disable to cut off all remote access.",
     "branding": {
       "icon": "Smartphone"
     },
@@ -48,7 +49,7 @@
     "react-dom": "^19.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
-    "vaul": "^1.1.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.1",
+    "@silk-hq/components": "0.10.1"
   }
 }

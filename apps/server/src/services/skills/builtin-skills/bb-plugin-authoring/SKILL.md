@@ -2017,7 +2017,7 @@ only `definePluginApp` + the hooks):
 - Never bundled (runtime-shimmed, import freely): react, the portaling
   radix families (`@radix-ui/react-dialog`, `-alert-dialog`, `-popover`,
   `-select`, `-dropdown-menu`, `-context-menu`, `-menubar`, `-hover-card`,
-  `-tooltip`, `-navigation-menu`), `sonner`, `vaul`, `@pierre/diffs` (+
+  `-tooltip`, `-navigation-menu`), `sonner`, `@silk-hq/components`, `@pierre/diffs` (+
   `/react`). Your vendored overlays therefore share the host's
   dismissable-layer/focus/scroll-lock world — stacking against host
   overlays behaves correctly.

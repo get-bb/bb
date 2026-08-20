@@ -308,14 +308,18 @@ describe("MessageActionBar", () => {
       document.body.querySelector<HTMLElement>('[data-side="top"]');
     expect(content).not.toBeNull();
     expect(content!.getAttribute("data-bb-portaled-overlay")).toBe("");
-    expect(document.body.querySelector("[data-vaul-drawer]")).toBeNull();
+    expect(document.body.querySelector("[data-bb-sheet-content]")).toBeNull();
+    expect(document.body.querySelector("[data-bb-sheet-view]")).toBeNull();
+    // Anchored Radix popover content may use role=dialog; Silk sheets must not.
 
     fireEvent.click(
       within(content!).getByRole("button", { name: "Add to chat" }),
     );
 
     expect(onAddToChat).toHaveBeenCalledWith("Quote this message.");
+    // Anchored surface must dismiss; absence of Silk is not enough.
     expect(document.body.querySelector('[data-side="top"]')).toBeNull();
+    expect(document.body.querySelector("[data-bb-sheet-content]")).toBeNull();
   });
 
   it("confirms a mobile overflow copy on the trigger instead of toasting", async () => {

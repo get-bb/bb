@@ -4,7 +4,7 @@ import * as reactDomClient from "react-dom/client";
 import * as jsxRuntime from "react/jsx-runtime";
 import * as jsxDevRuntime from "react/jsx-dev-runtime";
 // Shared-singleton packages (plugin design §5.5): the portaling radix
-// families + sonner + vaul. Vendored plugin components import these
+// families + sonner + @silk-hq/components. Vendored plugin components import these
 // specifiers; `bb plugin build` shims them to the slots installed below, so
 // plugin overlays live in the host's dismissable-layer/focus/scroll-lock
 // world and plugin toast() reaches the host toaster. Importing them here
@@ -20,7 +20,7 @@ import * as radixPopover from "@radix-ui/react-popover";
 import * as radixSelect from "@radix-ui/react-select";
 import * as radixTooltip from "@radix-ui/react-tooltip";
 import * as sonner from "sonner";
-import * as vaul from "vaul";
+import * as silkHq from "@silk-hq/components";
 import * as pierreDiffs from "@pierre/diffs";
 // Host-resident libraries (RUNTIME_SLOT_BY_SPECIFIER rule 2): no singleton
 // semantics, but every plugin app used to bundle its own copy — the
@@ -230,7 +230,7 @@ interface BbPluginRuntime {
   radixSelect: unknown;
   radixTooltip: unknown;
   sonner: unknown;
-  vaul: unknown;
+  silkHq: unknown;
   pierreDiffs: unknown;
   pierreDiffsReact: unknown;
   clsx: unknown;
@@ -271,7 +271,7 @@ export function installPluginRuntime(): void {
     radixSelect,
     radixTooltip,
     sonner,
-    vaul,
+    silkHq,
     pierreDiffs,
     // Diff components wrapped in the host's worker-pool gate; see
     // plugin-pierre-diffs-react.tsx.

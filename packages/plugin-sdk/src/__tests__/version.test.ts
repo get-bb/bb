@@ -9,6 +9,6 @@ describe("plugin SDK compatibility version", () => {
     ) as { version: string };
 
     expect(packageJson.version).toBe(PLUGIN_SDK_VERSION);
-    expect(PLUGIN_SDK_VERSION).toMatch(/^0\./u);
+    expect(PLUGIN_SDK_VERSION).toMatch(/^1\./u);
   });
 });

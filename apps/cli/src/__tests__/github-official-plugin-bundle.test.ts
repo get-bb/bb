@@ -63,7 +63,7 @@ describe("GitHub official plugin frontend bundle", () => {
     // The temp copy has no node_modules; link @bb/shared-ui (the plugin's UI
     // components — its own deps resolve through the workspace realpath) so
     // buildPluginApp can bundle it. Shimmed packages — react, radix portal
-    // families, sonner, vaul, pierre, clsx, tailwind-merge, cva, the
+    // families, sonner, silk, pierre, clsx, tailwind-merge, cva, the
     // shared-ui icon — never resolve from disk.
     const sharedUiLink = join(pluginDir, "node_modules", "@bb", "shared-ui");
     await mkdir(dirname(sharedUiLink), { recursive: true });
@@ -105,7 +105,7 @@ describe("GitHub official plugin frontend bundle", () => {
       },
       // Shimmed singleton packages the vendored components import.
       sonner: componentStub,
-      vaul: componentStub,
+      silkHq: componentStub,
       radixDropdownMenu: componentStub,
       radixSelect: componentStub,
       pierreDiffs: componentStub,

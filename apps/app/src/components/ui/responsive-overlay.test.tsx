@@ -6,8 +6,8 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
-import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -17,10 +17,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@bb/shared-ui/dialog";
-import {
-  PersistentResponsiveDrawerShell,
-  ResponsiveDrawerShell,
-} from "@bb/shared-ui/responsive-overlay";
+import { ResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
 
 afterEach(() => {
   cleanup();
@@ -28,9 +25,15 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function mockPointerCoarse(matches: boolean) {
+function mockPointerCoarse(
+  matches: boolean,
+  options: { reducedMotion?: boolean } = {},
+) {
+  const reducedMotion = options.reducedMotion ?? true;
   vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
-    matches: query === POINTER_COARSE_QUERY && matches,
+    matches:
+      (query === POINTER_COARSE_QUERY && matches) ||
+      (reducedMotion && query.includes("prefers-reduced-motion")),
     media: query,
     onchange: null,
     addListener: () => {},
@@ -39,6 +42,12 @@ function mockPointerCoarse(matches: boolean) {
     removeEventListener: () => {},
     dispatchEvent: () => false,
   }));
+}
+
+async function flush() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  });
 }
 
 describe("ResponsiveDrawerShell", () => {
@@ -50,21 +59,17 @@ describe("ResponsiveDrawerShell", () => {
       </ResponsiveDrawerShell>,
     );
 
-    expect(
-      document.querySelector("[data-persistent-drawer-content]"),
-    ).toBeNull();
-    expect(
-      document.querySelector("[data-persistent-drawer-backdrop]"),
-    ).toBeNull();
+    expect(document.querySelector("[data-bb-sheet-content]")).toBeNull();
+    expect(document.querySelector("[data-bb-sheet-backdrop]")).toBeNull();
+    expect(document.querySelector("[data-bb-sheet-view]")).toBeNull();
   });
 
-  it("starts the persistent shell before it realizes content two frames later", () => {
+  it("starts the Silk shell before it realizes content two frames later", async () => {
     mockPointerCoarse(true);
-    const frames: FrameRequestCallback[] = [];
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      frames.push(callback);
-      return frames.length;
-    });
+    vi.useFakeTimers();
+    // Hold the realization latch on the fallback timer while Silk still gets
+    // synchronous travel with skipped animations.
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
     const appTree = document.createElement("main");
     document.body.appendChild(appTree);
 
@@ -79,84 +84,374 @@ describe("ResponsiveDrawerShell", () => {
         </ResponsiveDrawerShell>,
       );
 
-      const content = document.querySelector<HTMLElement>(
-        "[data-persistent-drawer-content]",
-      );
-      expect(content?.getAttribute("data-state")).toBe("open");
+      await act(async () => {
+        vi.advanceTimersByTime(0);
+      });
+
+      expect(document.querySelector("[data-bb-sheet-content]")).not.toBeNull();
       expect(
-        document.querySelector("[data-responsive-drawer-placeholder]"),
+        document.querySelector("[data-bb-sheet-placeholder]"),
       ).not.toBeNull();
       expect(screen.queryByRole("button", { name: "Choose model" })).toBeNull();
       expect(appTree.hasAttribute("inert")).toBe(false);
       expect(appTree.getAttribute("aria-hidden")).toBeNull();
 
-      act(() => frames.shift()?.(0));
+      await act(async () => {
+        vi.advanceTimersByTime(119);
+      });
       expect(screen.queryByRole("button", { name: "Choose model" })).toBeNull();
-      act(() => frames.shift()?.(16));
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
       expect(screen.getByRole("button", { name: "Choose model" })).toBeTruthy();
     } finally {
       appTree.remove();
     }
   });
 
-  it("retains realized content across close and reopen", () => {
+  it("retains realized content across close and reopen", async () => {
     mockPointerCoarse(true);
-    const frames: FrameRequestCallback[] = [];
-    const requestAnimationFrame = vi
-      .spyOn(window, "requestAnimationFrame")
-      .mockImplementation((callback) => {
-        frames.push(callback);
-        return frames.length;
-      });
-
     const view = render(
       <ResponsiveDrawerShell open={true} onOpenChange={() => {}}>
-        <input aria-label="Search models" />
+        <input aria-label="Search models" defaultValue="keep" />
       </ResponsiveDrawerShell>,
     );
-    act(() => frames.shift()?.(0));
-    act(() => frames.shift()?.(16));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("textbox", { name: "Search models" }),
+      ).toBeTruthy();
+    });
     const input = screen.getByRole("textbox", { name: "Search models" });
+    fireEvent.change(input, { target: { value: "mutated" } });
 
     view.rerender(
       <ResponsiveDrawerShell open={false} onOpenChange={() => {}}>
-        <input aria-label="Search models" />
+        <input aria-label="Search models" defaultValue="keep" />
       </ResponsiveDrawerShell>,
     );
+    await flush();
     expect(
       screen.getByRole("textbox", { name: "Search models", hidden: true }),
     ).toBe(input);
+    expect(input).toHaveProperty("value", "mutated");
 
     view.rerender(
       <ResponsiveDrawerShell open={true} onOpenChange={() => {}}>
-        <input aria-label="Search models" />
+        <input aria-label="Search models" defaultValue="keep" />
       </ResponsiveDrawerShell>,
     );
+    await flush();
     expect(screen.getByRole("textbox", { name: "Search models" })).toBe(input);
-    expect(requestAnimationFrame).toHaveBeenCalledTimes(2);
   });
 
-  it("uses the timer fallback when animation frames do not run", () => {
+  it("uses the timer fallback when animation frames do not run", async () => {
     vi.useFakeTimers();
+    mockPointerCoarse(true);
     vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
     render(
       <ResponsiveDrawerShell open={true} onOpenChange={() => {}}>
         <button type="button">Project option</button>
       </ResponsiveDrawerShell>,
     );
-    act(() => vi.advanceTimersByTime(120));
+    await act(async () => {
+      vi.advanceTimersByTime(120);
+    });
     expect(screen.getByRole("button", { name: "Project option" })).toBeTruthy();
+  });
+
+  it("opens without applying modal state to the app tree", async () => {
+    mockPointerCoarse(true);
+    const onContentAnimationEnd = vi.fn();
+    const view = render(
+      <>
+        <main data-testid="large-app-tree" />
+        <ResponsiveDrawerShell
+          open={false}
+          onOpenChange={() => {}}
+          srLabel="Details"
+          onContentAnimationEnd={onContentAnimationEnd}
+        >
+          <button type="button">Panel action</button>
+        </ResponsiveDrawerShell>
+      </>,
+    );
+
+    const appTree = screen.getByTestId("large-app-tree");
+    expect(document.querySelector("[data-bb-sheet-content]")).toBeNull();
+    expect(appTree.getAttribute("aria-hidden")).toBeNull();
+    expect(appTree.hasAttribute("inert")).toBe(false);
+
+    view.rerender(
+      <>
+        <main data-testid="large-app-tree" />
+        <ResponsiveDrawerShell
+          open={true}
+          onOpenChange={() => {}}
+          srLabel="Details"
+          onContentAnimationEnd={onContentAnimationEnd}
+        >
+          <button type="button">Panel action</button>
+        </ResponsiveDrawerShell>
+      </>,
+    );
+
+    await waitFor(() => {
+      expect(onContentAnimationEnd).toHaveBeenCalledWith(true);
+    });
+    expect(appTree.getAttribute("aria-hidden")).toBeNull();
+    expect(appTree.hasAttribute("inert")).toBe(false);
+    const backdrop = document.querySelector<HTMLElement>(
+      "[data-bb-sheet-backdrop]",
+    );
+    expect(backdrop?.className).not.toContain("backdrop-blur");
+  });
+
+  it("closes from the backdrop exactly once per activation", async () => {
+    mockPointerCoarse(true);
+    const onOpenChange = vi.fn((next: boolean) => {
+      void next;
+    });
+    render(
+      <ResponsiveDrawerShell
+        open={true}
+        onOpenChange={onOpenChange}
+        srLabel="Details"
+      >
+        <button type="button">Panel action</button>
+      </ResponsiveDrawerShell>,
+    );
+    await flush();
+
+    const backdrop = document.querySelector<HTMLElement>(
+      "[data-bb-sheet-backdrop]",
+    );
+    const dialog = document.querySelector<HTMLElement>("[role='dialog']");
+    expect(backdrop).not.toBeNull();
+    expect(dialog).not.toBeNull();
+    expect(dialog?.getAttribute("data-state")).toBe("open");
+    await act(async () => {
+      fireEvent.pointerDown(backdrop as HTMLElement, {
+        button: 0,
+        pointerId: 1,
+        clientX: 5,
+        clientY: 5,
+      });
+      fireEvent.pointerUp(backdrop as HTMLElement, {
+        button: 0,
+        pointerId: 1,
+        clientX: 5,
+        clientY: 5,
+      });
+      fireEvent.click(backdrop as HTMLElement, { clientX: 5, clientY: 5 });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(
+      onOpenChange.mock.calls.filter((call) => call[0] === false),
+    ).toHaveLength(1);
+  });
+
+  it("closes from the Escape key", async () => {
+    mockPointerCoarse(true);
+    const onOpenChange = vi.fn();
+    render(
+      <ResponsiveDrawerShell
+        open
+        onOpenChange={onOpenChange}
+        srLabel="Details"
+      >
+        <button type="button">Panel action</button>
+      </ResponsiveDrawerShell>,
+    );
+    await flush();
+    const dialog = screen.getByRole("dialog", { name: "Details" });
+    (dialog as HTMLElement).focus();
+    fireEvent.keyDown(dialog, {
+      key: "Escape",
+      code: "Escape",
+      keyCode: 27,
+      which: 27,
+      bubbles: true,
+    });
+    await waitFor(() => {
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+  });
+
+  it("Escape dismisses only the topmost open sheet, not a closed persistClosed shell", async () => {
+    mockPointerCoarse(true);
+    const onSidebarOpenChange = vi.fn();
+    const onOverlayOpenChange = vi.fn();
+    render(
+      <>
+        <ResponsiveDrawerShell
+          open={false}
+          onOpenChange={onSidebarOpenChange}
+          srLabel="Sidebar"
+          persistClosed
+          contentPlacement="left"
+        >
+          <button type="button">Sidebar item</button>
+        </ResponsiveDrawerShell>
+        <ResponsiveDrawerShell
+          open
+          onOpenChange={onOverlayOpenChange}
+          srLabel="Details"
+        >
+          <button type="button">Panel action</button>
+        </ResponsiveDrawerShell>
+      </>,
+    );
+    await flush();
+
+    fireEvent.keyDown(document, {
+      key: "Escape",
+      code: "Escape",
+      keyCode: 27,
+      which: 27,
+      bubbles: true,
+    });
+
+    await waitFor(() => {
+      expect(onOverlayOpenChange).toHaveBeenCalledWith(false);
+    });
+    expect(onSidebarOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("still settles terminal callbacks when reduced motion is off under jsdom", async () => {
+    // jsdom still skips Silk spring travel (geometry), but reduced-motion
+    // must not be the only path that reaches idleInside/idleOutside.
+    mockPointerCoarse(true, { reducedMotion: false });
+    const onContentAnimationEnd = vi.fn();
+    const view = render(
+      <ResponsiveDrawerShell
+        open={true}
+        onOpenChange={() => {}}
+        srLabel="Details"
+        onContentAnimationEnd={onContentAnimationEnd}
+      >
+        <button type="button">Panel action</button>
+      </ResponsiveDrawerShell>,
+    );
+
+    await waitFor(() => {
+      expect(onContentAnimationEnd).toHaveBeenCalledWith(true);
+    });
+
+    view.rerender(
+      <ResponsiveDrawerShell
+        open={false}
+        onOpenChange={() => {}}
+        srLabel="Details"
+        onContentAnimationEnd={onContentAnimationEnd}
+      >
+        <button type="button">Panel action</button>
+      </ResponsiveDrawerShell>,
+    );
+
+    await waitFor(() => {
+      expect(onContentAnimationEnd).toHaveBeenCalledWith(false);
+    });
+    expect(
+      onContentAnimationEnd.mock.calls.filter((call) => call[0] === true),
+    ).toHaveLength(1);
+    expect(
+      onContentAnimationEnd.mock.calls.filter((call) => call[0] === false),
+    ).toHaveLength(1);
+  });
+
+  it("emits one settled callback per terminal travel state", async () => {
+    mockPointerCoarse(true);
+    const onContentAnimationEnd = vi.fn();
+    const view = render(
+      <ResponsiveDrawerShell
+        open={true}
+        onOpenChange={() => {}}
+        srLabel="Details"
+        onContentAnimationEnd={onContentAnimationEnd}
+      >
+        <button type="button">Panel action</button>
+      </ResponsiveDrawerShell>,
+    );
+    await waitFor(() => {
+      expect(onContentAnimationEnd).toHaveBeenCalledWith(true);
+    });
+    expect(onContentAnimationEnd).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <ResponsiveDrawerShell
+        open={false}
+        onOpenChange={() => {}}
+        srLabel="Details"
+        onContentAnimationEnd={onContentAnimationEnd}
+      >
+        <button type="button">Panel action</button>
+      </ResponsiveDrawerShell>,
+    );
+    await waitFor(() => {
+      expect(onContentAnimationEnd).toHaveBeenCalledWith(false);
+    });
+    expect(
+      onContentAnimationEnd.mock.calls.filter((call) => call[0] === false),
+    ).toHaveLength(1);
+  });
+
+  it("keeps the latest close callback after a parent rerender", async () => {
+    mockPointerCoarse(true);
+    const firstOnOpenChange = vi.fn();
+    const nextOnOpenChange = vi.fn();
+    const view = render(
+      <ResponsiveDrawerShell
+        open={true}
+        onOpenChange={firstOnOpenChange}
+        srLabel="Details"
+      >
+        <input aria-label="Panel input" />
+      </ResponsiveDrawerShell>,
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "Panel input" })).toBeTruthy();
+    });
+    const input = screen.getByRole("textbox", { name: "Panel input" });
+    input.focus();
+
+    view.rerender(
+      <ResponsiveDrawerShell
+        open={true}
+        onOpenChange={nextOnOpenChange}
+        srLabel="Details"
+      >
+        <input aria-label="Panel input" />
+      </ResponsiveDrawerShell>,
+    );
+
+    expect(document.activeElement).toBe(input);
+    const backdrop = document.querySelector<HTMLElement>(
+      "[data-bb-sheet-backdrop]",
+    ) as HTMLElement;
+    fireEvent.pointerDown(backdrop, {
+      button: 0,
+      pointerId: 1,
+      clientX: 4,
+      clientY: 4,
+    });
+    fireEvent.pointerUp(backdrop, {
+      button: 0,
+      pointerId: 1,
+      clientX: 4,
+      clientY: 4,
+    });
+    fireEvent.click(backdrop, { clientX: 4, clientY: 4 });
+    await waitFor(() => {
+      expect(nextOnOpenChange).toHaveBeenCalledWith(false);
+    });
+    expect(firstOnOpenChange).not.toHaveBeenCalled();
   });
 });
 
 describe("responsive Dialog", () => {
-  it("links the persistent mobile dialog to its title and description", () => {
+  it("links the persistent mobile dialog to its title and description", async () => {
     mockPointerCoarse(true);
-    const frames: FrameRequestCallback[] = [];
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      frames.push(callback);
-      return frames.length;
-    });
 
     render(
       <CompactViewportOverrideProvider isCompactViewport>
@@ -169,22 +464,20 @@ describe("responsive Dialog", () => {
       </CompactViewportOverrideProvider>,
     );
 
-    act(() => frames.shift()?.(0));
-    act(() => frames.shift()?.(16));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "New project" }),
+      ).toBeTruthy();
+    });
 
     const dialog = screen.getByRole("dialog", { name: "New project" });
-    expect(dialog.getAttribute("aria-describedby")).toBe(
+    expect(dialog.getAttribute("aria-describedby")).toContain(
       screen.getByText("Choose a project location.").id,
     );
   });
 
-  it("uses custom IDs and asChild elements for mobile dialog labels", () => {
+  it("uses custom IDs and asChild elements for mobile dialog labels", async () => {
     mockPointerCoarse(true);
-    const frames: FrameRequestCallback[] = [];
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      frames.push(callback);
-      return frames.length;
-    });
 
     render(
       <CompactViewportOverrideProvider isCompactViewport>
@@ -201,314 +494,18 @@ describe("responsive Dialog", () => {
       </CompactViewportOverrideProvider>,
     );
 
-    act(() => frames.shift()?.(0));
-    act(() => frames.shift()?.(16));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Custom project" }),
+      ).toBeTruthy();
+    });
 
     const dialog = screen.getByRole("dialog", { name: "Custom project" });
     expect(screen.getByRole("heading", { level: 3 }).id).toBe("custom-title");
-    expect(dialog.getAttribute("aria-labelledby")).toBe("custom-title");
-    expect(dialog.getAttribute("aria-describedby")).toBe("custom-description");
+    expect(dialog.getAttribute("aria-labelledby")).toContain("custom-title");
+    expect(dialog.getAttribute("aria-describedby")).toContain(
+      "custom-description",
+    );
     expect(document.querySelector("#custom-description")?.tagName).toBe("DIV");
-  });
-});
-
-describe("PersistentResponsiveDrawerShell", () => {
-  it("opens without applying modal state to the app tree", () => {
-    mockPointerCoarse(true);
-    const onContentAnimationEnd = vi.fn();
-    const view = render(
-      <>
-        <main data-testid="large-app-tree" />
-        <PersistentResponsiveDrawerShell
-          open={false}
-          onOpenChange={() => {}}
-          srLabel="Details"
-          onContentAnimationEnd={onContentAnimationEnd}
-        >
-          <button type="button">Panel action</button>
-        </PersistentResponsiveDrawerShell>
-      </>,
-    );
-
-    const appTree = screen.getByTestId("large-app-tree");
-    const content = document.querySelector<HTMLElement>(
-      "[data-persistent-drawer-content]",
-    );
-    expect(content).not.toBeNull();
-    expect(content?.getAttribute("aria-hidden")).toBe("true");
-    expect(appTree.getAttribute("aria-hidden")).toBeNull();
-    expect(appTree.hasAttribute("inert")).toBe(false);
-    // The retained backdrop stays mounted at opacity 0 for the app's lifetime;
-    // a backdrop-filter on it would keep a full-viewport blur pass alive.
-    const backdrop = document.querySelector<HTMLElement>(
-      "[data-persistent-drawer-backdrop]",
-    );
-    expect(backdrop?.className).not.toContain("backdrop-blur");
-
-    view.rerender(
-      <>
-        <main data-testid="large-app-tree" />
-        <PersistentResponsiveDrawerShell
-          open={true}
-          onOpenChange={() => {}}
-          srLabel="Details"
-          onContentAnimationEnd={onContentAnimationEnd}
-        >
-          <button type="button">Panel action</button>
-        </PersistentResponsiveDrawerShell>
-      </>,
-    );
-
-    expect(content?.getAttribute("aria-hidden")).toBe("false");
-    expect(appTree.getAttribute("aria-hidden")).toBeNull();
-    fireEvent.transitionEnd(content as HTMLElement, {
-      propertyName: "transform",
-    });
-    expect(onContentAnimationEnd).toHaveBeenLastCalledWith(true);
-  });
-
-  it("closes from the backdrop and the Escape key", () => {
-    mockPointerCoarse(true);
-    const onOpenChange = vi.fn();
-    render(
-      <PersistentResponsiveDrawerShell
-        open={true}
-        onOpenChange={onOpenChange}
-        srLabel="Details"
-      >
-        <button type="button">Panel action</button>
-      </PersistentResponsiveDrawerShell>,
-    );
-
-    fireEvent.click(
-      document.querySelector<HTMLElement>(
-        "[data-persistent-drawer-backdrop]",
-      ) as HTMLElement,
-    );
-    expect(onOpenChange).toHaveBeenLastCalledWith(false);
-
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(onOpenChange).toHaveBeenLastCalledWith(false);
-    expect(onOpenChange).toHaveBeenCalledTimes(2);
-  });
-
-  it("lets a nested portaled surface handle Escape first", () => {
-    mockPointerCoarse(true);
-    const onOpenChange = vi.fn();
-    render(
-      <PersistentResponsiveDrawerShell
-        open={true}
-        onOpenChange={onOpenChange}
-        srLabel="Details"
-      >
-        <button type="button">Panel action</button>
-      </PersistentResponsiveDrawerShell>,
-    );
-
-    const nestedAction = document.createElement("button");
-    nestedAction.setAttribute("data-bb-portaled-overlay", "");
-    nestedAction.addEventListener("keydown", (event) => {
-      event.preventDefault();
-    });
-    document.body.appendChild(nestedAction);
-
-    try {
-      fireEvent.keyDown(nestedAction, { key: "Escape" });
-      expect(onOpenChange).not.toHaveBeenCalled();
-    } finally {
-      nestedAction.remove();
-    }
-  });
-
-  it("does not take Tab focus from a portaled child surface", () => {
-    mockPointerCoarse(true);
-    render(
-      <PersistentResponsiveDrawerShell
-        open={true}
-        onOpenChange={() => {}}
-        srLabel="Details"
-      >
-        <button type="button">Panel action</button>
-      </PersistentResponsiveDrawerShell>,
-    );
-
-    const nestedAction = document.createElement("button");
-    nestedAction.setAttribute("data-bb-portaled-overlay", "");
-    document.body.appendChild(nestedAction);
-    nestedAction.focus();
-
-    try {
-      fireEvent.keyDown(nestedAction, { key: "Tab" });
-      expect(document.activeElement).toBe(nestedAction);
-      fireEvent.keyDown(nestedAction, { key: "Tab", shiftKey: true });
-      expect(document.activeElement).toBe(nestedAction);
-    } finally {
-      nestedAction.remove();
-    }
-  });
-
-  it("closes nested drawers from the top and then closes the parent", () => {
-    mockPointerCoarse(true);
-
-    function NestedDrawers() {
-      const [parentOpen, setParentOpen] = useState(true);
-      const [childOpen, setChildOpen] = useState(false);
-      return (
-        <>
-          <output data-testid="parent-state">{String(parentOpen)}</output>
-          <output data-testid="child-state">{String(childOpen)}</output>
-          <PersistentResponsiveDrawerShell
-            open={parentOpen}
-            onOpenChange={setParentOpen}
-            srLabel="Parent"
-          >
-            <button type="button">Parent action</button>
-            <button type="button" onClick={() => setChildOpen(true)}>
-              Open child
-            </button>
-            <PersistentResponsiveDrawerShell
-              open={childOpen}
-              onOpenChange={setChildOpen}
-              srLabel="Child"
-            >
-              <button type="button">Child action</button>
-            </PersistentResponsiveDrawerShell>
-          </PersistentResponsiveDrawerShell>
-        </>
-      );
-    }
-
-    render(<NestedDrawers />);
-    fireEvent.click(screen.getByRole("button", { name: "Open child" }));
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.getByTestId("child-state").textContent).toBe("false");
-    expect(screen.getByTestId("parent-state").textContent).toBe("true");
-
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.getByTestId("parent-state").textContent).toBe("false");
-  });
-
-  it("traps focus on coarse pointers and restores the trigger after close", () => {
-    mockPointerCoarse(true);
-
-    function FocusDrawer() {
-      const [open, setOpen] = useState(false);
-      return (
-        <>
-          <button type="button" onClick={() => setOpen(true)}>
-            Open details
-          </button>
-          <PersistentResponsiveDrawerShell
-            open={open}
-            onOpenChange={setOpen}
-            srLabel="Details"
-          >
-            <button type="button">First action</button>
-            <button type="button">Last action</button>
-          </PersistentResponsiveDrawerShell>
-        </>
-      );
-    }
-
-    render(<FocusDrawer />);
-    const trigger = screen.getByRole("button", { name: "Open details" });
-    trigger.focus();
-    fireEvent.click(trigger);
-    const panel = screen.getByRole("dialog", { name: "Details" });
-    expect(document.activeElement).toBe(panel);
-
-    fireEvent.keyDown(document, { key: "Tab" });
-    expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "First action" }),
-    );
-    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
-    expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Last action" }),
-    );
-
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(document.activeElement).toBe(trigger);
-  });
-
-  it("keeps panel focus and uses the latest close callback after a parent rerender", () => {
-    mockPointerCoarse(false);
-    const requestAnimationFrame = vi
-      .spyOn(window, "requestAnimationFrame")
-      .mockImplementation((callback) => {
-        callback(performance.now());
-        return 1;
-      });
-    const firstOnOpenChange = vi.fn();
-    const nextOnOpenChange = vi.fn();
-    const view = render(
-      <PersistentResponsiveDrawerShell
-        open={true}
-        onOpenChange={firstOnOpenChange}
-        srLabel="Details"
-      >
-        <input aria-label="Panel input" />
-      </PersistentResponsiveDrawerShell>,
-    );
-    const input = screen.getByRole("textbox", { name: "Panel input" });
-    input.focus();
-
-    view.rerender(
-      <PersistentResponsiveDrawerShell
-        open={true}
-        onOpenChange={nextOnOpenChange}
-        srLabel="Details"
-      >
-        <input aria-label="Panel input" />
-      </PersistentResponsiveDrawerShell>,
-    );
-
-    expect(requestAnimationFrame).not.toHaveBeenCalled();
-    expect(document.activeElement).toBe(input);
-    fireEvent.click(
-      document.querySelector<HTMLElement>(
-        "[data-persistent-drawer-backdrop]",
-      ) as HTMLElement,
-    );
-    expect(firstOnOpenChange).not.toHaveBeenCalled();
-    expect(nextOnOpenChange).toHaveBeenCalledWith(false);
-    requestAnimationFrame.mockRestore();
-  });
-
-  it("closes when the handle moves past the drag threshold", () => {
-    mockPointerCoarse(true);
-    const onOpenChange = vi.fn();
-    render(
-      <PersistentResponsiveDrawerShell
-        open={true}
-        onOpenChange={onOpenChange}
-        srLabel="Details"
-      >
-        <button type="button">Panel action</button>
-      </PersistentResponsiveDrawerShell>,
-    );
-
-    const content = document.querySelector<HTMLElement>(
-      "[data-persistent-drawer-content]",
-    ) as HTMLElement;
-    const handle = document.querySelector<HTMLElement>(
-      "[data-persistent-drawer-handle]",
-    ) as HTMLElement;
-    const readHeight = vi.fn(() => 400);
-    Object.defineProperty(content, "clientHeight", {
-      configurable: true,
-      get: readHeight,
-    });
-    handle.setPointerCapture = vi.fn();
-
-    fireEvent.pointerDown(handle, {
-      button: 0,
-      clientY: 200,
-      pointerId: 1,
-    });
-    fireEvent.pointerMove(handle, { clientY: 330, pointerId: 1 });
-    fireEvent.pointerUp(handle, { clientY: 330, pointerId: 1 });
-
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-    expect(readHeight).toHaveBeenCalledTimes(1);
   });
 });

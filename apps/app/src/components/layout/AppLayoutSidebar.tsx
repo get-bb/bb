@@ -26,9 +26,9 @@ interface AppLayoutSidebarProps {
  * every trip through Settings used to pay it again on the way back, in the
  * same task as the destination page render.
  *
- * Mobile closes are intentionally deferred so the compositor can finish the
- * slide before the expensive React state commit; the visible body is held
- * during that window so the close does not swap content mid-slide.
+ * Mobile closes flip controlled open immediately so Silk can exit, while the
+ * visible body is held until settled-closed so the close does not swap
+ * content mid-slide.
  */
 export function AppLayoutSidebar({
   mode,

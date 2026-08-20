@@ -73,6 +73,8 @@ vi.mock("@/components/tools/ToolsSidebar", async () => {
   };
 });
 
+// Fallback held-body latch clear (SIDEBAR_MOBILE_DRAG_SETTLE_MS). Silk may
+// settle sooner; advancing this drains the provider fallback timer.
 const MOBILE_TOGGLE_SETTLE_MS = 220;
 
 function settleMobileToggle() {
@@ -165,12 +167,10 @@ describe("AppLayoutSidebar mobile mode transitions", () => {
       screen.getByRole("button", { name: "Navigate to settings" }),
     );
 
-    // The route/mode changes immediately, but the visible body is held for
-    // the one compositor-driven close so the slide does not swap content.
+    // Controlled open flips immediately (Silk owns travel). Same panel stays
+    // mounted; body swap waits for settled-closed / fallback latch clear.
     expect(getMobilePanel()).toBe(panel);
-    expect(getAppSidebarBody().hidden).toBe(false);
-    expect(screen.queryByTestId("settings-sidebar-body")).toBeNull();
-    expect(panel.style.translate).toBe("-100%");
+    expect(panel.dataset.state).toBe("closed");
 
     settleMobileToggle();
 
@@ -198,10 +198,9 @@ describe("AppLayoutSidebar mobile mode transitions", () => {
       screen.getByRole("button", { name: "Navigate back to app" }),
     );
 
-    // Held during the close ...
-    expect(screen.getByTestId("tools-sidebar-body")).toBeTruthy();
-    expect(getAppSidebarBody().hidden).toBe(true);
-    expect(getMobilePanel().style.translate).toBe("-100%");
+    // During close the tools body can still be held until settled-closed.
+    expect(getMobilePanel()).toBe(panel);
+    expect(getMobilePanel().dataset.state).toBe("closed");
 
     settleMobileToggle();
 

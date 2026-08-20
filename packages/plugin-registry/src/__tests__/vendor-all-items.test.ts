@@ -151,7 +151,7 @@ describe("plugin component registry", () => {
     expect(js).toContain("globalThis.__bbPluginRuntime");
     // (sonner has no vendored component — plugins import { toast } directly;
     // that shim is asserted in apps/cli plugin-build.test.ts.)
-    for (const slot of ["radixDialog", "radixAlertDialog", "vaul"]) {
+    for (const slot of ["radixDialog", "radixAlertDialog", "silkHq"]) {
       expect(js).toContain(`.${slot}`);
     }
     expect(js).not.toMatch(/from\s*["']react["']/);

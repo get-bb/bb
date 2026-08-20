@@ -1,3 +1,4 @@
+@import "@silk-hq/components/layered-styles.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 @source "..";

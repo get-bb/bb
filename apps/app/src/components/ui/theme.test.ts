@@ -338,6 +338,20 @@ describe("theme.css sidebar width registration", () => {
 
 // Paint-cost guards for iOS/WebKit: the shimmer sweep and the scroll-anchor
 // exclusion must not restyle or repaint more of the timeline than they need.
+describe("theme.css Silk low-level layer ordering", () => {
+  it("imports Silk layered styles before Tailwind so utility layers win", () => {
+    const silkAt = css.indexOf(
+      '@import "@silk-hq/components/layered-styles.css";',
+    );
+    const tailwindAt = css.indexOf('@import "tailwindcss";');
+    expect(silkAt).toBeGreaterThanOrEqual(0);
+    expect(tailwindAt).toBeGreaterThan(silkAt);
+    expect(css).not.toMatch(
+      /@import\s+["']@silk-hq\/components\/unlayered-styles\.css["']/,
+    );
+  });
+});
+
 describe("theme.css shimmer and scroll-anchor paint scope", () => {
   function ruleBody(selector: string, source = css): string {
     const at = source.indexOf(`${selector} {`);

@@ -16,6 +16,7 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { setCompactSidebarDrawerShowing } from "./sidebar-mobile-drawer-visibility.js";
+import { ResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
 
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "min(90vw, 320px)";
@@ -30,32 +31,15 @@ const SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX = 12;
 const SIDEBAR_MOBILE_SWIPE_OPEN_RATIO = 0.33;
 const SIDEBAR_MOBILE_SWIPE_OPEN_FLING_MIN_RATIO = 0.12;
 const SIDEBAR_MOBILE_SWIPE_OPEN_FLING_VELOCITY_PX_PER_SEC = 450;
+// Fallback only: clear the held-body closing latch if Silk never reports a
+// terminal settled-closed callback. Open/close controlled state updates
+// immediately so Silk can start travel without a pre-motion delay.
 const SIDEBAR_MOBILE_DRAG_SETTLE_MS = 220;
 // Upper bound on how long the closed compact drawer stays empty after boot
 // before its subtree is realized regardless of main-thread idleness.
 const SIDEBAR_MOBILE_REALIZE_TIMEOUT_MS = 1000;
-const SIDEBAR_MOBILE_DRAG_SETTLE_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
-// The panel moves on the `translate` property, matching Tailwind v4's
-// `-translate-x-full` utilities. Inline motion styles MUST use the same
-// property: an inline `transform` does not interpolate against the class
-// `translate`, so a slide written as `transform` silently snaps.
-const SIDEBAR_MOBILE_PANEL_SETTLE_TRANSITION = `translate ${SIDEBAR_MOBILE_DRAG_SETTLE_MS}ms ${SIDEBAR_MOBILE_DRAG_SETTLE_EASING}`;
-const SIDEBAR_MOBILE_BACKDROP_SETTLE_TRANSITION = `opacity ${SIDEBAR_MOBILE_DRAG_SETTLE_MS}ms ${SIDEBAR_MOBILE_DRAG_SETTLE_EASING}`;
 const SIDEBAR_MOBILE_WHEEL_SWIPE_OPEN_DISTANCE_PX = 90;
 const SIDEBAR_MOBILE_WHEEL_SWIPE_RESET_MS = 250;
-// Fraction of the panel width a drag must cover before release closes the
-// drawer (mirrors the old vaul closeThreshold).
-const SIDEBAR_MOBILE_DRAG_CLOSE_RATIO = 0.25;
-const SIDEBAR_MOBILE_DRAG_CLOSE_FLING_VELOCITY_PX_PER_SEC = 450;
-// The transitions below must match SIDEBAR_MOBILE_DRAG_SETTLE_MS /
-// SIDEBAR_MOBILE_DRAG_SETTLE_EASING; Tailwind arbitrary values cannot
-// interpolate the constants. Keep the translated panel style-ready while it
-// is closed. WebKit otherwise rebuilds its style and accessibility subtrees
-// when `visibility` flips during every open.
-const SIDEBAR_MOBILE_PANEL_TRANSITION_CLASS =
-  "[transition:translate_220ms_cubic-bezier(0.32,0.72,0,1)]";
-const SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS =
-  "[transition:opacity_220ms_cubic-bezier(0.32,0.72,0,1)]";
 const SIDEBAR_GROUP_LABEL_BASE_CLASS =
   "duration-200 flex shrink-0 items-center rounded-md px-1 text-xs font-medium text-sidebar-foreground/75 outline-none ring-sidebar-ring transition-[margin,opa] ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0";
 const SIDEBAR_GROUP_LABEL_COLLAPSED_CLASS =
@@ -101,88 +85,6 @@ function getSidebarMobilePanelWidth(): number {
 
 function clampSidebarMobileSwipeProgress(value: number): number {
   return Math.min(1, Math.max(0, value));
-}
-
-function getSidebarMobileMotionNodes(): {
-  panel: HTMLElement | null;
-  backdrop: HTMLElement | null;
-} {
-  if (typeof document === "undefined") {
-    return { panel: null, backdrop: null };
-  }
-
-  const panel = document.querySelector(
-    '[data-sidebar="panel"][data-vaul-drawer-direction]',
-  );
-  const backdrop = document.querySelector("[data-sidebar-mobile-backdrop]");
-
-  return {
-    panel: panel instanceof HTMLElement ? panel : null,
-    backdrop: backdrop instanceof HTMLElement ? backdrop : null,
-  };
-}
-
-function getSidebarMobilePanelTranslate(
-  progress: number,
-  side: "left" | "right",
-): string {
-  const hiddenPercent = (1 - progress) * 100;
-  return side === "left" ? `-${hiddenPercent}%` : `${hiddenPercent}%`;
-}
-
-function applySidebarMobileDragStyles({
-  progress,
-  settling,
-}: {
-  progress: number;
-  settling: boolean;
-}) {
-  const { panel, backdrop } = getSidebarMobileMotionNodes();
-  const side = panel?.dataset.side === "right" ? "right" : "left";
-
-  if (panel !== null) {
-    panel.setAttribute("data-vaul-animate", "false");
-    panel.style.translate = getSidebarMobilePanelTranslate(progress, side);
-    panel.style.transition = settling
-      ? SIDEBAR_MOBILE_PANEL_SETTLE_TRANSITION
-      : "none";
-  }
-
-  if (backdrop !== null) {
-    backdrop.setAttribute("data-vaul-animate", "false");
-    backdrop.style.opacity = String(progress);
-    backdrop.style.transition = settling
-      ? SIDEBAR_MOBILE_BACKDROP_SETTLE_TRANSITION
-      : "none";
-    // The deferred open keeps data-state="closed" (pointer-events-none)
-    // until the settle commit, while the panel is still `inert` — without
-    // this inline override a rapid second tap during the slide-in falls
-    // through both layers onto the page below.
-    backdrop.style.pointerEvents = progress > 0 ? "auto" : "";
-  }
-}
-
-function clearSidebarMobileDragAttributes() {
-  const { panel, backdrop } = getSidebarMobileMotionNodes();
-  panel?.removeAttribute("data-vaul-animate");
-  backdrop?.removeAttribute("data-vaul-animate");
-}
-
-function clearSidebarMobileDragStyles() {
-  const { panel, backdrop } = getSidebarMobileMotionNodes();
-
-  if (panel !== null) {
-    panel.removeAttribute("data-vaul-animate");
-    panel.style.translate = "";
-    panel.style.transition = "";
-  }
-
-  if (backdrop !== null) {
-    backdrop.removeAttribute("data-vaul-animate");
-    backdrop.style.opacity = "";
-    backdrop.style.transition = "";
-    backdrop.style.pointerEvents = "";
-  }
 }
 
 function createSidebarInsetSwipeSession({
@@ -274,7 +176,7 @@ function isInsideHorizontalScrollRegion(target: Element): boolean {
       return true;
     }
     if (
-      element.matches('[data-sidebar="inset"], [data-sidebar-mobile-backdrop]')
+      element.matches('[data-sidebar="inset"], [data-bb-sheet-backdrop]')
     ) {
       return false;
     }
@@ -319,8 +221,8 @@ function shouldIgnoreSidebarSwipeTarget(target: EventTarget | null): boolean {
         '[role="slider"]',
         '[data-sidebar="panel"]',
         '[data-sidebar="trigger"]',
-        "[data-vaul-drawer]",
-        "[data-vaul-no-drag]",
+        "[data-bb-sidebar-sheet-panel]",
+        "[data-bb-sidebar-no-drag]",
         "[data-no-sidebar-swipe]",
       ].join(", "),
     ) !== null
@@ -355,7 +257,7 @@ function isSidebarInsetSwipeTarget(target: EventTarget | null): boolean {
 
   return (
     target.closest(
-      '[data-sidebar="inset"], [data-sidebar-mobile-backdrop][data-state="closed"]',
+      '[data-sidebar="inset"], [data-bb-sheet-backdrop][data-state="closed"]',
     ) !== null
   );
 }
@@ -454,16 +356,17 @@ type SidebarContext = {
   closeMobileSidebar: () => void;
   isMobileSidebarClosing: boolean;
   /**
+   * Clears the held-body closing latch once Silk reports settled-closed (or
+   * the fallback timer fires). Used by the compact panel shell.
+   */
+  notifyMobileSidebarSettled: (settledOpen: boolean) => void;
+  /**
    * Whether the compact drawer's subtree is mounted. It starts false so the
    * closed, inert panel adds no render work to boot; the first open (or an
    * idle window, at most one second after boot) latches it true for the
    * rest of the session. Always false outside compact viewports.
    */
   isMobileSidebarRealized: boolean;
-  suppressMobileOpenAnimation: boolean;
-  setSuppressMobileOpenAnimation: (suppress: boolean) => void;
-  suppressMobileCloseAnimation: boolean;
-  setSuppressMobileCloseAnimation: (suppress: boolean) => void;
   isCompactViewport: boolean;
   toggleSidebar: () => void;
 };
@@ -566,10 +469,6 @@ const SidebarProvider = React.forwardRef<
   ) => {
     const isCompactViewport = useIsCompactViewport();
     const [openMobile, setOpenMobile] = React.useState(false);
-    const [suppressMobileOpenAnimation, setSuppressMobileOpenAnimation] =
-      React.useState(false);
-    const [suppressMobileCloseAnimation, setSuppressMobileCloseAnimation] =
-      React.useState(false);
     const [isMobileSidebarClosing, setIsMobileSidebarClosing] =
       React.useState(false);
     const [hasRealizedMobileSidebar, setHasRealizedMobileSidebar] =
@@ -600,61 +499,52 @@ const SidebarProvider = React.forwardRef<
       };
     }, [isCompactViewport, openMobile]);
 
+    const notifyMobileSidebarSettled = React.useCallback(
+      (settledOpen: boolean) => {
+        if (settledOpen) {
+          return;
+        }
+        clearMobileSettleTimeout();
+        setIsMobileSidebarClosing(false);
+      },
+      [clearMobileSettleTimeout],
+    );
+
     // Stable identity: sidebar rows close the drawer on navigation, and an
     // unstable callback would re-render every memoized row on each toggle.
     // Reads the open state through a ref instead of closing over it.
     const closeMobileSidebar = React.useCallback(() => {
-      if (!openMobileRef.current || mobileSettleTimeoutRef.current !== null) {
+      if (!openMobileRef.current) {
         return;
       }
 
-      // Start the compositor transition while React state stays open. The
-      // close commit (panel `inert`, data-state flips) then pays its style
-      // recalculation after the panel has moved offscreen instead of
-      // consuming the whole transition window.
+      // Flip controlled open immediately so Silk starts exit travel now.
+      // Hold the visible body until settled-closed (or the fallback timer).
+      clearMobileSettleTimeout();
       setIsMobileSidebarClosing(true);
-      applySidebarMobileDragStyles({ progress: 0, settling: true });
+      flushSync(() => {
+        setOpenMobile(false);
+      });
       mobileSettleTimeoutRef.current = window.setTimeout(() => {
         mobileSettleTimeoutRef.current = null;
-        flushSync(() => {
-          setSuppressMobileOpenAnimation(false);
-          setSuppressMobileCloseAnimation(true);
-          setIsMobileSidebarClosing(false);
-          setOpenMobile(false);
-        });
-        clearSidebarMobileDragAttributes();
+        setIsMobileSidebarClosing(false);
       }, SIDEBAR_MOBILE_DRAG_SETTLE_MS);
-    }, []);
+    }, [clearMobileSettleTimeout]);
 
-    // The symmetric deferred open. The persistent panel already holds its
-    // full content, so the compositor can slide it in before React knows the
-    // drawer is open. The open commit (panel `inert` removal, data-state
-    // flips) then pays its style recalculation — ~280 ms on iOS Safari for a
-    // large sidebar — after the slide instead of blocking its first frame.
-    // The panel stays `inert` until the commit lands one settle window
-    // later; the drag helper puts inline pointer-events on the backdrop so
-    // taps during the slide land on the backdrop, not the page below.
+    // Open immediately so Silk starts enter travel without a pre-motion delay.
     const openMobileSidebar = React.useCallback(() => {
-      if (openMobileRef.current || mobileSettleTimeoutRef.current !== null) {
+      if (openMobileRef.current) {
         return;
       }
 
-      // Mount the subtree now if boot has not realized it yet, so it commits
-      // during the slide instead of after the settle.
+      clearMobileSettleTimeout();
+      setIsMobileSidebarClosing(false);
+      // Mount the subtree now if boot has not realized it yet.
       realizeMobileSidebar();
-      applySidebarMobileDragStyles({ progress: 1, settling: true });
-      mobileSettleTimeoutRef.current = window.setTimeout(() => {
-        mobileSettleTimeoutRef.current = null;
-        flushSync(() => {
-          // The panel already sits at the open transform; suppressing the
-          // open animation keeps the commit from replaying the slide.
-          setSuppressMobileOpenAnimation(true);
-          setSuppressMobileCloseAnimation(false);
-          setOpenMobile(true);
-        });
-        clearSidebarMobileDragAttributes();
-      }, SIDEBAR_MOBILE_DRAG_SETTLE_MS);
-    }, [realizeMobileSidebar]);
+      flushSync(() => {
+        setOpenMobile(true);
+      });
+    }, [clearMobileSettleTimeout, realizeMobileSidebar]);
 
     React.useEffect(
       () => () => {
@@ -679,14 +569,6 @@ const SidebarProvider = React.forwardRef<
       }
       return scheduleSidebarMobileRealization(realizeMobileSidebar);
     }, [hasRealizedMobileSidebar, isCompactViewport, realizeMobileSidebar]);
-
-    React.useEffect(() => {
-      if (openMobile) {
-        setSuppressMobileCloseAnimation(false);
-      } else {
-        setSuppressMobileOpenAnimation(false);
-      }
-    }, [openMobile]);
 
     const [_open, _setOpen] = React.useState(defaultOpen);
     const open = openProp ?? _open;
@@ -736,11 +618,8 @@ const SidebarProvider = React.forwardRef<
         openMobileSidebar,
         closeMobileSidebar,
         isMobileSidebarClosing,
+        notifyMobileSidebarSettled,
         isMobileSidebarRealized,
-        suppressMobileOpenAnimation,
-        setSuppressMobileOpenAnimation,
-        suppressMobileCloseAnimation,
-        setSuppressMobileCloseAnimation,
         toggleSidebar,
       }),
       [
@@ -753,11 +632,8 @@ const SidebarProvider = React.forwardRef<
         openMobileSidebar,
         closeMobileSidebar,
         isMobileSidebarClosing,
+        notifyMobileSidebarSettled,
         isMobileSidebarRealized,
-        suppressMobileOpenAnimation,
-        setSuppressMobileOpenAnimation,
-        suppressMobileCloseAnimation,
-        setSuppressMobileCloseAnimation,
         toggleSidebar,
       ],
     );
@@ -829,56 +705,10 @@ const Sidebar = React.forwardRef<
       setOpenMobile,
       closeMobileSidebar,
       isMobileSidebarRealized,
-      suppressMobileOpenAnimation,
-      setSuppressMobileOpenAnimation,
-      suppressMobileCloseAnimation,
-      setSuppressMobileCloseAnimation,
     } = useSidebar();
     const width = React.useContext(SidebarWidthContext);
     // Written on the consuming elements themselves (see SidebarWidthContext).
     const widthStyle = { "--sidebar-width": width } as React.CSSProperties;
-    const handleOpenMobileChange = React.useCallback(
-      (nextOpen: boolean) => {
-        if (nextOpen) {
-          setSuppressMobileCloseAnimation(false);
-        } else {
-          setSuppressMobileOpenAnimation(false);
-        }
-        setOpenMobile(nextOpen);
-      },
-      [
-        setOpenMobile,
-        setSuppressMobileCloseAnimation,
-        setSuppressMobileOpenAnimation,
-      ],
-    );
-    const shouldSuppressMobileCloseAnimation =
-      !openMobile && suppressMobileCloseAnimation;
-    const mobilePanelMotionStyle = React.useMemo<
-      React.CSSProperties | undefined
-    >(() => {
-      if (shouldSuppressMobileCloseAnimation) {
-        return {
-          translate: side === "left" ? "-100%" : "100%",
-          transition: "none",
-        };
-      }
-
-      return undefined;
-    }, [shouldSuppressMobileCloseAnimation, side]);
-    const mobileBackdropStyle = React.useMemo<
-      React.CSSProperties | undefined
-    >(() => {
-      if (shouldSuppressMobileCloseAnimation) {
-        return {
-          opacity: 0,
-          pointerEvents: "none",
-          transition: "none",
-        };
-      }
-
-      return undefined;
-    }, [shouldSuppressMobileCloseAnimation]);
 
     if (collapsible === "none") {
       return (
@@ -897,24 +727,17 @@ const Sidebar = React.forwardRef<
     }
 
     if (isCompactViewport) {
-      // The mobile drawer stays mounted across open/close (#1261). Closing
-      // translates the panel off-screen instead of unmounting it, so a
-      // reopen replays no mount work. While closed the translated panel is
-      // `inert`, so it cannot trap focus or taps. It stays style-ready because
-      // a visibility flip makes WebKit rebuild the subtree during every open.
-      // The subtree itself is realized once, off the boot critical path or on
-      // the first open, and then retained (the provider owns the latch).
+      // Silk keeps the sheet shell mounted across open/close (#1261). The
+      // product subtree realizes once off the boot path (or on first open)
+      // and stays retained via the provider latch.
       return (
         <SidebarMobilePanel
           ref={ref}
           side={side}
           variant={variant}
           open={openMobile}
-          onOpenChange={handleOpenMobileChange}
+          onOpenChange={setOpenMobile}
           onDismiss={closeMobileSidebar}
-          suppressOpenAnimation={suppressMobileOpenAnimation}
-          panelMotionStyle={mobilePanelMotionStyle}
-          backdropStyle={mobileBackdropStyle}
           className={className}
           style={style}
           {...props}
@@ -981,50 +804,13 @@ const Sidebar = React.forwardRef<
 );
 Sidebar.displayName = "Sidebar";
 
-type SidebarPanelDragSession = {
-  kind: "pointer" | "touch";
-  id: number;
-  startX: number;
-  startY: number;
-  panelWidth: number;
-  lastProgress: number;
-  lastClientX: number;
-  lastTimeMs: number;
-  velocityX: number;
-  isDragging: boolean;
-  startTarget: Element | null;
-};
-
-function suppressNextSidebarPanelDragClick() {
-  const cleanup = () => {
-    window.removeEventListener("click", suppressClick, { capture: true });
-    window.clearTimeout(timeout);
-  };
-  const suppressClick = (event: MouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    cleanup();
-  };
-  const timeout = window.setTimeout(cleanup, 400);
-  window.addEventListener("click", suppressClick, {
-    capture: true,
-    once: true,
-  });
-}
-
 interface SidebarMobilePanelProps extends React.ComponentProps<"div"> {
   side: "left" | "right";
   variant: "sidebar" | "floating" | "inset";
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  // Deferred close: starts the slide-out transition immediately and flips the
-  // React state after the settle window. Backdrop taps and Escape use this;
-  // the drag paths call `onOpenChange(false)` directly because their panel is
-  // already at the closed transform when they settle.
+  /** Deferred close used by backdrop/Escape; keeps AppLayoutSidebar body hold. */
   onDismiss: () => void;
-  suppressOpenAnimation: boolean;
-  panelMotionStyle?: React.CSSProperties;
-  backdropStyle?: React.CSSProperties;
 }
 
 const SIDEBAR_MOBILE_TAB_STOP_SELECTOR = [
@@ -1061,16 +847,10 @@ function getSidebarMobileTabStops(panel: HTMLElement): HTMLElement[] {
 }
 
 /**
- * The persistent mobile sidebar drawer. Unlike the previous vaul drawer it
- * never unmounts its children: closing translates the panel off-screen, while
- * `inert` takes it out of hit-testing, focus order, and the accessibility
- * tree. Reopening therefore replays no mount cost or visibility-driven style
- * rebuild (#1261).
- *
- * The DOM contract the swipe-open code in SidebarInset relies on is kept:
- * `[data-sidebar="panel"][data-vaul-drawer-direction]` selects the panel,
- * `[data-sidebar-mobile-backdrop]` the backdrop, and inline styles written by
- * the shared drag helpers win over the class-driven state styles.
+ * Compact sidebar sheet. Silk owns travel; the product panel stays realized
+ * after the provider latch so reopen skips mount cost (#1261). Swipe-open
+ * code in SidebarInset still finds the panel via
+ * `[data-sidebar="panel"][data-bb-sidebar-sheet-panel]`.
  */
 const SidebarMobilePanel = React.forwardRef<
   HTMLDivElement,
@@ -1083,20 +863,15 @@ const SidebarMobilePanel = React.forwardRef<
       open,
       onOpenChange,
       onDismiss,
-      suppressOpenAnimation,
-      panelMotionStyle,
-      backdropStyle,
       className,
       style,
       children,
-      onPointerDown,
-      onTouchStart,
       ...props
     },
     ref,
   ) => {
+    const { notifyMobileSidebarSettled } = useSidebar();
     const panelRef = React.useRef<HTMLDivElement | null>(null);
-    const backdropRef = React.useRef<HTMLDivElement | null>(null);
     const setPanelRef = React.useCallback(
       (node: HTMLDivElement | null) => {
         panelRef.current = node;
@@ -1108,82 +883,53 @@ const SidebarMobilePanel = React.forwardRef<
       },
       [ref],
     );
-    const dragSessionRef = React.useRef<SidebarPanelDragSession | null>(null);
-    const removeDragListenersRef = React.useRef<(() => void) | null>(null);
-    const settleTimeoutRef = React.useRef<number | null>(null);
 
-    const clearDragSession = React.useCallback(() => {
-      removeDragListenersRef.current?.();
-      removeDragListenersRef.current = null;
-      dragSessionRef.current = null;
-    }, []);
-
-    const clearSettleTimeout = React.useCallback(() => {
-      if (settleTimeoutRef.current !== null) {
-        window.clearTimeout(settleTimeoutRef.current);
-        settleTimeoutRef.current = null;
+    React.useEffect(() => {
+      if (!open) {
+        return;
       }
-    }, []);
-
-    // The drag helpers write inline transform/opacity/transition onto the
-    // persistent panel and backdrop. With vaul those nodes unmounted on
-    // close, so stale styles could never survive; now they must be cleared
-    // whenever the open state settles so class-driven styles take over.
-    React.useLayoutEffect(() => {
-      clearSidebarMobileDragStyles();
+      const previouslyFocused =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      const shouldMoveFocus =
+        previouslyFocused?.matches('[data-sidebar="trigger"]:focus-visible') ??
+        false;
+      if (!shouldMoveFocus) {
+        return;
+      }
+      const panel = panelRef.current;
+      panel?.focus({ preventScroll: true });
     }, [open]);
 
     React.useEffect(() => {
       if (!open) {
         return;
       }
-
-      const previouslyFocused =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
-      // A touch-opened drawer does not need DOM focus. On iOS, focusing this
-      // newly interactive subtree can synchronously rebuild style and the
-      // accessibility tree for hundreds of milliseconds. Keyboard and
-      // assistive-technology activation leave the trigger focus-visible, so
-      // keep the modal focus move for those paths.
-      const shouldMoveFocus =
-        previouslyFocused?.matches('[data-sidebar="trigger"]:focus-visible') ??
-        false;
-      if (shouldMoveFocus) {
-        panelRef.current?.focus({ preventScroll: true });
-      }
-
-      // The drawer is modal, but its siblings must NOT be marked `inert`:
-      // toggling `inert` on the content inset forces WebKit (and Blink) to
-      // re-resolve computed style for that entire subtree, which on a long
-      // thread timeline costs hundreds of milliseconds per open/close. The
-      // backdrop already blocks pointer input, `aria-modal` scopes assistive
-      // technology, and this Tab trap owns keyboard focus, so no attribute
-      // flip has to touch the large subtree. The pinned sidebar trigger
-      // stays interactive on purpose: a second press closes the drawer.
       const handleKeyDown = (event: KeyboardEvent) => {
         if (event.defaultPrevented) {
           return;
         }
+        // Escape is owned by ResponsiveDrawerShell's open-only LIFO stack so
+        // nested overlays above the sidebar win. Keep Tab cycling here.
         if (event.key === "Escape") {
-          onDismiss();
           return;
         }
         if (event.key !== "Tab") {
           return;
         }
         const panel = panelRef.current;
-        const shell = panel?.parentElement ?? null;
-        if (panel === null || shell === null) {
+        if (panel === null) {
           return;
         }
         const doc = panel.ownerDocument;
         const active = doc.activeElement;
-        // Portalled surfaces (row context menus under document.body) manage
-        // their own focus; the trap only arbitrates Tab inside the app shell.
-        if (active !== null && active !== doc.body && !shell.contains(active)) {
-          return;
+        if (active !== null && active !== doc.body && !panel.contains(active)) {
+          const triggers = doc.querySelectorAll('[data-sidebar="trigger"]');
+          const inTrigger = Array.from(triggers).some((el) => el.contains(active));
+          if (!inTrigger) {
+            return;
+          }
         }
         const stops = getSidebarMobileTabStops(panel);
         if (stops.length === 0) {
@@ -1193,404 +939,69 @@ const SidebarMobilePanel = React.forwardRef<
         const direction = event.shiftKey ? -1 : 1;
         const activeIndex =
           active instanceof HTMLElement ? stops.indexOf(active) : -1;
-        // Focus can silently fail on a hidden stop; walk until one takes.
         for (let step = 1; step <= stops.length; step += 1) {
           const nextIndex =
             activeIndex === -1
               ? event.shiftKey
-                ? stops.length - step
-                : step - 1
-              : (((activeIndex + direction * step) % stops.length) +
-                  stops.length) %
+                ? stops.length - 1
+                : 0
+              : (activeIndex + direction * step + stops.length * step) %
                 stops.length;
-          const candidate = stops[nextIndex];
-          candidate?.focus({ preventScroll: true });
-          if (doc.activeElement === candidate) {
+          const next = stops[nextIndex];
+          next?.focus({ preventScroll: true });
+          if (doc.activeElement === next) {
             return;
           }
         }
       };
-      window.addEventListener("keydown", handleKeyDown);
-
+      document.addEventListener("keydown", handleKeyDown);
       return () => {
-        window.removeEventListener("keydown", handleKeyDown);
-        const active = document.activeElement;
-        if (
-          active instanceof HTMLElement &&
-          panelRef.current?.contains(active)
-        ) {
-          active.blur();
-          if (shouldMoveFocus) {
-            previouslyFocused?.focus({ preventScroll: true });
-          }
-        }
+        document.removeEventListener("keydown", handleKeyDown);
       };
-    }, [open, onDismiss]);
-
-    React.useEffect(
-      () => () => {
-        clearDragSession();
-        clearSettleTimeout();
-        clearSidebarMobileDragStyles();
-      },
-      [clearDragSession, clearSettleTimeout],
-    );
-
-    // Drag-to-close, replacing vaul's dismissible drag: a horizontal touch
-    // drag toward the closed side follows the pointer; release settles by
-    // distance or fling velocity. Like SidebarInset's swipe-open, it runs a
-    // pointer path AND a native touch path: browsers cancel pointer events
-    // once they claim a pan for scrolling, so the touch path (non-passive,
-    // preventDefault once intent is horizontal) has to carry the gesture.
-    const restoreOpenAfterCancelledDrag = () => {
-      clearSettleTimeout();
-      applySidebarMobileDragStyles({ progress: 1, settling: true });
-      settleTimeoutRef.current = window.setTimeout(() => {
-        settleTimeoutRef.current = null;
-        clearSidebarMobileDragStyles();
-      }, SIDEBAR_MOBILE_DRAG_SETTLE_MS);
-    };
-
-    const continuePanelDrag = (
-      clientX: number,
-      clientY: number,
-      event: PointerEvent | TouchEvent,
-    ) => {
-      const session = dragSessionRef.current;
-      if (session === null) {
-        return;
-      }
-
-      const deltaX = clientX - session.startX;
-      const deltaY = clientY - session.startY;
-      const closeDelta = side === "left" ? -deltaX : deltaX;
-      const absDeltaX = Math.abs(deltaX);
-      const absDeltaY = Math.abs(deltaY);
-
-      if (!session.isDragging) {
-        if (
-          absDeltaY > SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX &&
-          absDeltaY > absDeltaX * 1.15
-        ) {
-          // Vertical intent: this is a list scroll, not a dismissal.
-          clearDragSession();
-          return;
-        }
-        if (
-          closeDelta < SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX ||
-          absDeltaX <= absDeltaY * 1.25
-        ) {
-          return;
-        }
-        if (
-          session.startTarget !== null &&
-          (!session.startTarget.isConnected ||
-            isInsideHorizontalScrollRegion(session.startTarget))
-        ) {
-          clearDragSession();
-          return;
-        }
-        session.isDragging = true;
-        clearSettleTimeout();
-      }
-
-      if (event.cancelable) {
-        event.preventDefault();
-      }
-
-      const nowMs = Date.now();
-      const elapsedMs = nowMs - session.lastTimeMs;
-      if (elapsedMs > 0) {
-        session.velocityX =
-          ((clientX - session.lastClientX) / elapsedMs) * 1000;
-        session.lastClientX = clientX;
-        session.lastTimeMs = nowMs;
-      }
-      const progress = clampSidebarMobileSwipeProgress(
-        1 - closeDelta / session.panelWidth,
-      );
-      session.lastProgress = progress;
-      applySidebarMobileDragStyles({ progress, settling: false });
-    };
-
-    const finishPanelDrag = (event: PointerEvent | TouchEvent) => {
-      const session = dragSessionRef.current;
-      if (session === null) {
-        return;
-      }
-
-      clearDragSession();
-      if (!session.isDragging) {
-        return;
-      }
-      if (event.cancelable) {
-        event.preventDefault();
-      }
-      suppressNextSidebarPanelDragClick();
-
-      const closeVelocity =
-        side === "left" ? -session.velocityX : session.velocityX;
-      const shouldClose =
-        session.lastProgress <= 1 - SIDEBAR_MOBILE_DRAG_CLOSE_RATIO ||
-        (session.lastProgress <=
-          1 - SIDEBAR_MOBILE_SWIPE_OPEN_FLING_MIN_RATIO &&
-          closeVelocity >= SIDEBAR_MOBILE_DRAG_CLOSE_FLING_VELOCITY_PX_PER_SEC);
-
-      clearSettleTimeout();
-      applySidebarMobileDragStyles({
-        progress: shouldClose ? 0 : 1,
-        settling: true,
-      });
-      settleTimeoutRef.current = window.setTimeout(() => {
-        settleTimeoutRef.current = null;
-        if (shouldClose) {
-          // The panel already sits at the closed transform, so flipping the
-          // state transitions from -100% to -100%: no visible snap.
-          onOpenChange(false);
-        } else {
-          clearSidebarMobileDragStyles();
-        }
-      }, SIDEBAR_MOBILE_DRAG_SETTLE_MS);
-    };
-
-    const cancelPanelDrag = () => {
-      const wasDragging = dragSessionRef.current?.isDragging ?? false;
-      clearDragSession();
-      if (wasDragging) {
-        restoreOpenAfterCancelledDrag();
-      }
-    };
-
-    const isIgnoredPanelDragTarget = (target: EventTarget | null) =>
-      target instanceof Element &&
-      target.closest(
-        'input, textarea, select, [contenteditable="true"], [role="slider"], [data-vaul-no-drag], [data-no-sidebar-swipe]',
-      ) !== null;
-
-    const beginPanelDragSession = (
-      kind: "pointer" | "touch",
-      id: number,
-      clientX: number,
-      clientY: number,
-      target: EventTarget | null,
-    ) => {
-      dragSessionRef.current = {
-        kind,
-        id,
-        startX: clientX,
-        startY: clientY,
-        panelWidth: getSidebarMobilePanelWidth(),
-        lastProgress: 1,
-        lastClientX: clientX,
-        lastTimeMs: Date.now(),
-        velocityX: 0,
-        isDragging: false,
-        startTarget: target instanceof Element ? target : null,
-      };
-    };
-
-    const handlePanelPointerDown = (
-      event: React.PointerEvent<HTMLDivElement>,
-    ) => {
-      onPointerDown?.(event);
-      if (
-        !open ||
-        event.defaultPrevented ||
-        event.pointerType !== "touch" ||
-        event.button !== 0 ||
-        dragSessionRef.current !== null ||
-        isIgnoredPanelDragTarget(event.target)
-      ) {
-        return;
-      }
-
-      beginPanelDragSession(
-        "pointer",
-        event.pointerId,
-        event.clientX,
-        event.clientY,
-        event.target,
-      );
-
-      const handleMove = (moveEvent: PointerEvent) => {
-        const session = dragSessionRef.current;
-        if (session?.kind !== "pointer" || moveEvent.pointerId !== session.id) {
-          return;
-        }
-        continuePanelDrag(moveEvent.clientX, moveEvent.clientY, moveEvent);
-      };
-      const handleEnd = (endEvent: PointerEvent) => {
-        const session = dragSessionRef.current;
-        if (session?.kind !== "pointer" || endEvent.pointerId !== session.id) {
-          return;
-        }
-        finishPanelDrag(endEvent);
-      };
-      const handleCancel = (cancelEvent: PointerEvent) => {
-        const session = dragSessionRef.current;
-        if (
-          session?.kind !== "pointer" ||
-          cancelEvent.pointerId !== session.id
-        ) {
-          return;
-        }
-        cancelPanelDrag();
-      };
-
-      const removeListeners = () => {
-        window.removeEventListener("pointermove", handleMove);
-        window.removeEventListener("pointerup", handleEnd);
-        window.removeEventListener("pointercancel", handleCancel);
-      };
-      window.addEventListener("pointermove", handleMove, { passive: false });
-      window.addEventListener("pointerup", handleEnd);
-      window.addEventListener("pointercancel", handleCancel);
-      removeDragListenersRef.current = removeListeners;
-    };
-
-    const handlePanelTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
-      onTouchStart?.(event);
-      if (
-        !open ||
-        event.defaultPrevented ||
-        event.touches.length !== 1 ||
-        isIgnoredPanelDragTarget(event.target)
-      ) {
-        return;
-      }
-      const currentSession = dragSessionRef.current;
-      if (currentSession !== null) {
-        if (currentSession.kind !== "pointer") {
-          return;
-        }
-        // The derived pointer session for this same touch gets cancelled the
-        // moment the browser claims the pan; hand the gesture to the touch
-        // path, which can preventDefault its way through.
-        clearDragSession();
-      }
-      const touch = event.touches.item(0);
-      if (touch === null) {
-        return;
-      }
-
-      beginPanelDragSession(
-        "touch",
-        touch.identifier,
-        touch.clientX,
-        touch.clientY,
-        event.target,
-      );
-
-      const handleTouchMove = (moveEvent: TouchEvent) => {
-        const session = dragSessionRef.current;
-        if (session?.kind !== "touch") {
-          return;
-        }
-        const trackedTouch = getTrackedSwipeTouch(moveEvent, session.id);
-        if (trackedTouch === null) {
-          return;
-        }
-        continuePanelDrag(
-          trackedTouch.clientX,
-          trackedTouch.clientY,
-          moveEvent,
-        );
-      };
-      const handleTouchEnd = (endEvent: TouchEvent) => {
-        const session = dragSessionRef.current;
-        if (
-          session?.kind !== "touch" ||
-          getTrackedSwipeTouch(endEvent, session.id) === null
-        ) {
-          return;
-        }
-        finishPanelDrag(endEvent);
-      };
-      const handleTouchCancel = (cancelEvent: TouchEvent) => {
-        const session = dragSessionRef.current;
-        if (
-          session?.kind !== "touch" ||
-          getTrackedSwipeTouch(cancelEvent, session.id) === null
-        ) {
-          return;
-        }
-        cancelPanelDrag();
-      };
-
-      const removeListeners = () => {
-        window.removeEventListener("touchmove", handleTouchMove);
-        window.removeEventListener("touchend", handleTouchEnd);
-        window.removeEventListener("touchcancel", handleTouchCancel);
-      };
-      window.addEventListener("touchmove", handleTouchMove, {
-        passive: false,
-      });
-      window.addEventListener("touchend", handleTouchEnd);
-      window.addEventListener("touchcancel", handleTouchCancel);
-      removeDragListenersRef.current = removeListeners;
-    };
-
-    const suppressedOpenTransitionStyle =
-      open && suppressOpenAnimation
-        ? ({ transition: "none" } satisfies React.CSSProperties)
-        : undefined;
+    }, [onDismiss, open]);
 
     return (
-      <>
-        <div
-          ref={backdropRef}
-          data-sidebar-mobile-backdrop=""
-          data-testid="sidebar-mobile-backdrop"
-          data-state={open ? "open" : "closed"}
-          className={cn(
-            "fixed inset-0 z-40 bg-black/80 will-change-[opacity]",
-            SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS,
-            "data-[state=closed]:pointer-events-none data-[state=closed]:opacity-0",
-          )}
-          style={{ ...suppressedOpenTransitionStyle, ...backdropStyle }}
-          onClick={onDismiss}
-        />
+      <ResponsiveDrawerShell
+        open={open}
+        onOpenChange={(next) => {
+          if (next) {
+            onOpenChange(true);
+          } else {
+            onDismiss();
+          }
+        }}
+        onContentAnimationEnd={notifyMobileSidebarSettled}
+        contentPlacement={side}
+        srLabel="Sidebar"
+        persistClosed
+        backdropTestId="sidebar-mobile-backdrop"
+        suppressPresentAutoFocus
+        suppressDismissAutoFocus
+        contentClassName={cn(
+          "h-(--bb-shell-height) max-h-(--bb-shell-height) w-(--sidebar-width-mobile) rounded-none border-0 bg-sidebar p-0 text-sidebar-foreground",
+          variant === "floating" || variant === "inset" ? "p-2" : "",
+        )}
+      >
         <div
           ref={setPanelRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Sidebar"
-          tabIndex={-1}
-          inert={!open}
+          role="presentation"
           data-sidebar="panel"
           data-sidebar-state={open ? "expanded" : "collapsed"}
           data-state={open ? "open" : "closed"}
           data-collapsible=""
           data-variant={variant}
           data-side={side}
-          // Kept although vaul is gone: SidebarInset's swipe helpers and the
-          // swipe-target guards select the mobile panel by this attribute.
-          data-vaul-drawer-direction={side}
+          data-bb-sidebar-sheet-panel={side}
           className={cn(
-            // Fixed: a percentage height would resolve against the short
-            // initial containing block, so it reads the shell unit directly.
-            // touch-pan-y hands horizontal touch moves to the drag-to-close
-            // handler while leaving vertical list scrolling native.
-            "group fixed inset-y-0 z-40 flex h-(--bb-shell-height) w-(--sidebar-width-mobile) touch-pan-y flex-col bg-sidebar text-sidebar-foreground outline-none will-change-[translate]",
-            SIDEBAR_MOBILE_PANEL_TRANSITION_CLASS,
-            side === "left"
-              ? "left-0 data-[state=closed]:-translate-x-full"
-              : "right-0 data-[state=closed]:translate-x-full",
-            variant === "floating" || variant === "inset"
-              ? "p-2"
-              : "border-border-seam data-[side=left]:border-r data-[side=right]:border-l",
+            "flex h-full w-full flex-col outline-none",
             className,
           )}
           style={
             {
               ...sidebarMobileWidthStyle,
               ...style,
-              ...suppressedOpenTransitionStyle,
-              ...panelMotionStyle,
             } as SidebarMobileWidthStyle
           }
-          onPointerDown={handlePanelPointerDown}
-          onTouchStart={handlePanelTouchStart}
           {...props}
         >
           <div
@@ -1600,7 +1011,7 @@ const SidebarMobilePanel = React.forwardRef<
             {children}
           </div>
         </div>
-      </>
+      </ResponsiveDrawerShell>
     );
   },
 );
@@ -1642,8 +1053,6 @@ const SidebarInset = React.forwardRef<
     openMobile,
     setOpenMobile,
     openMobileSidebar,
-    setSuppressMobileOpenAnimation,
-    setSuppressMobileCloseAnimation,
   } = useSidebar();
   const swipeSessionRef = React.useRef<SidebarInsetSwipeSession | null>(null);
   const removeSwipeListenersRef = React.useRef<(() => void) | null>(null);
@@ -1709,32 +1118,20 @@ const SidebarInset = React.forwardRef<
   }, []);
 
   const settleMobileSwipe = React.useCallback(
-    (open: boolean) => {
+    (shouldOpen: boolean) => {
       clearMobileDragSettleTimeout();
-      applySidebarMobileDragStyles({
-        progress: open ? 1 : 0,
-        settling: true,
-      });
-      mobileDragSettleTimeoutRef.current = window.setTimeout(() => {
-        mobileDragSettleTimeoutRef.current = null;
-        if (open) {
-          setSuppressMobileOpenAnimation(true);
-          clearSidebarMobileDragStyles();
-        } else {
-          flushSync(() => {
-            setSuppressMobileCloseAnimation(true);
-            setOpenMobile(false);
-          });
-          clearSidebarMobileDragAttributes();
-        }
-      }, SIDEBAR_MOBILE_DRAG_SETTLE_MS);
+      // Commit open only when the release decision wins. Tracking finger
+      // progress through Silk detents is still residual (#12); this avoids a
+      // full-open flash on a cancelled edge swipe without reintroducing
+      // app-authored transforms.
+      if (shouldOpen) {
+        flushSync(() => {
+          setOpenMobile(true);
+        });
+        return;
+      }
     },
-    [
-      clearMobileDragSettleTimeout,
-      setOpenMobile,
-      setSuppressMobileCloseAnimation,
-      setSuppressMobileOpenAnimation,
-    ],
+    [clearMobileDragSettleTimeout, setOpenMobile],
   );
 
   const continueSwipe = React.useCallback(
@@ -1755,7 +1152,6 @@ const SidebarInset = React.forwardRef<
         absDeltaY > SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX &&
         absDeltaY > absDeltaX * 1.15
       ) {
-        clearSidebarMobileDragStyles();
         clearSwipeSession();
         return;
       }
@@ -1780,18 +1176,14 @@ const SidebarInset = React.forwardRef<
           (!session.startTarget.isConnected ||
             isInsideHorizontalScrollRegion(session.startTarget))
         ) {
-          clearSidebarMobileDragStyles();
           clearSwipeSession();
           return;
         }
 
         session.isDragging = true;
         clearMobileDragSettleTimeout();
-        flushSync(() => {
-          setSuppressMobileOpenAnimation(true);
-          setSuppressMobileCloseAnimation(false);
-          setOpenMobile(true);
-        });
+        // Do not open yet — wait for the release decision so a cancelled
+        // swipe cannot flash the fully open sheet.
       }
 
       if (session.canPreventDefault && event.cancelable) {
@@ -1806,15 +1198,8 @@ const SidebarInset = React.forwardRef<
         session.lastTimeMs = nowMs;
       }
       session.lastProgress = progress;
-      applySidebarMobileDragStyles({ progress, settling: false });
     },
-    [
-      clearMobileDragSettleTimeout,
-      clearSwipeSession,
-      setOpenMobile,
-      setSuppressMobileCloseAnimation,
-      setSuppressMobileOpenAnimation,
-    ],
+    [clearMobileDragSettleTimeout, clearSwipeSession, setOpenMobile],
   );
 
   const handleSwipeMove = React.useCallback(
@@ -1842,7 +1227,6 @@ const SidebarInset = React.forwardRef<
 
       clearSwipeSession();
       if (!session.isDragging) {
-        clearSidebarMobileDragStyles();
         return;
       }
 
@@ -2133,7 +1517,6 @@ const SidebarInset = React.forwardRef<
       }
       clearWheelSwipe();
       clearMobileDragSettleTimeout();
-      clearSidebarMobileDragStyles();
     },
     [clearMobileDragSettleTimeout, clearSwipeSession, clearWheelSwipe],
   );
@@ -2141,7 +1524,6 @@ const SidebarInset = React.forwardRef<
   React.useEffect(() => {
     if (!isCompactViewport) {
       clearSwipeSession();
-      clearSidebarMobileDragStyles();
       return;
     }
 

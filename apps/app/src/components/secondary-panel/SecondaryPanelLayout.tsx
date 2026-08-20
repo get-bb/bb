@@ -16,7 +16,7 @@ import {
 } from "react-resizable-panels";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
-  PersistentResponsiveDrawerShell,
+  ResponsiveDrawerShell,
   useResponsiveDrawerRealization,
 } from "@bb/shared-ui/responsive-overlay";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -368,7 +368,7 @@ export function SecondaryPanelLayout({
         </PanelGroup>
       </div>
       {renderAsDrawer ? (
-        <PersistentResponsiveDrawerShell
+        <ResponsiveDrawerShell
           open={open}
           onOpenChange={(nextOpen) => {
             if (!nextOpen) {
@@ -382,7 +382,7 @@ export function SecondaryPanelLayout({
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {isPanelRealized ? drawerPanel : drawerFallback}
           </div>
-        </PersistentResponsiveDrawerShell>
+        </ResponsiveDrawerShell>
       ) : null}
     </>
   );

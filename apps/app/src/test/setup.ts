@@ -61,6 +61,41 @@ if (typeof window !== "undefined" && !window.matchMedia) {
   });
 }
 
+// @silk-hq/components evaluates CSS.supports at module load for feature
+// detection. jsdom does not provide CSS.supports.
+if (
+  typeof window !== "undefined" &&
+  (typeof globalThis.CSS === "undefined" ||
+    typeof globalThis.CSS.supports !== "function")
+) {
+  globalThis.CSS = {
+    supports: Object.assign(() => false, { supports: () => false }),
+    escape: (value: string) => value,
+  } as unknown as typeof CSS;
+}
+
+// Silk reads visualViewport during sheet mount. jsdom omits it.
+if (typeof window !== "undefined" && window.visualViewport == null) {
+  const visualViewport = {
+    width: window.innerWidth || 1024,
+    height: window.innerHeight || 768,
+    offsetLeft: 0,
+    offsetTop: 0,
+    pageLeft: 0,
+    pageTop: 0,
+    scale: 1,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+    onresize: null,
+    onscroll: null,
+  };
+  Object.defineProperty(window, "visualViewport", {
+    configurable: true,
+    value: visualViewport,
+  });
+}
+
 if (typeof window !== "undefined" && !window.ResizeObserver) {
   window.ResizeObserver = class ResizeObserverPolyfill {
     observe() {}
@@ -76,23 +111,79 @@ if (
   Element.prototype.scrollIntoView = function scrollIntoViewPolyfill() {};
 }
 
+// Silk's scroll trap calls element.scrollTo during mount.
 if (
   typeof Element !== "undefined" &&
-  typeof Element.prototype.getClientRects !== "function"
+  typeof Element.prototype.scrollTo !== "function"
 ) {
+  Element.prototype.scrollTo = function scrollToPolyfill() {};
+}
+if (
+  typeof Element !== "undefined" &&
+  typeof Element.prototype.scrollBy !== "function"
+) {
+  Element.prototype.scrollBy = function scrollByPolyfill() {};
+}
+
+if (typeof Element !== "undefined") {
   Object.defineProperty(Element.prototype, "getClientRects", {
     configurable: true,
-    value: () => [],
+    value: function getClientRectsPolyfill(this: Element) {
+      const rect = this.getBoundingClientRect();
+      return {
+        length: 1,
+        0: rect,
+        item: (index: number) => (index === 0 ? rect : null),
+        [Symbol.iterator]: function* () {
+          yield rect;
+        },
+      } as DOMRectList;
+    },
   });
 }
 
-if (
-  typeof Element !== "undefined" &&
-  typeof Element.prototype.getBoundingClientRect !== "function"
-) {
+// Silk spring/travel math allocates from measured geometry. jsdom reports
+// zero-size rects by default, which can throw "Invalid array length". Only
+// invent non-zero boxes for Silk sheet surfaces (or explicit test attrs) so
+// unrelated layout tests keep native jsdom geometry/viewport behavior.
+if (typeof Element !== "undefined") {
+  const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
   Object.defineProperty(Element.prototype, "getBoundingClientRect", {
     configurable: true,
-    value: () => new DOMRect(0, 0, 0, 0),
+    value: function getBoundingClientRectPolyfill(this: Element) {
+      const el = this as HTMLElement;
+      const widthAttr = Number(el.getAttribute?.("data-test-width") ?? NaN);
+      const heightAttr = Number(el.getAttribute?.("data-test-height") ?? NaN);
+      const explicitWidth =
+        Number.isFinite(widthAttr) && widthAttr > 0 ? widthAttr : 0;
+      const explicitHeight =
+        Number.isFinite(heightAttr) && heightAttr > 0 ? heightAttr : 0;
+      if (explicitWidth > 0 || explicitHeight > 0) {
+        return new DOMRect(
+          0,
+          0,
+          explicitWidth || el.clientWidth || el.scrollWidth || 390,
+          explicitHeight || el.clientHeight || el.scrollHeight || 844,
+        );
+      }
+
+      const isSilkSurface =
+        typeof el.closest === "function" &&
+        el.closest(
+          "[data-bb-sheet-root], [data-bb-sheet-view], [data-bb-sheet-content], [data-bb-sheet-backdrop], [data-bb-sheet-retained], [data-bb-sidebar-sheet-panel]",
+        ) !== null;
+
+      if (isSilkSurface) {
+        const width = el.clientWidth || el.scrollWidth || 390;
+        const height = el.clientHeight || el.scrollHeight || 844;
+        return new DOMRect(0, 0, width, height);
+      }
+
+      if (typeof originalGetBoundingClientRect === "function") {
+        return originalGetBoundingClientRect.call(this);
+      }
+      return new DOMRect(0, 0, 0, 0);
+    },
   });
 }
 

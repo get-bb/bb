@@ -154,11 +154,11 @@ describe("installPluginRuntime", () => {
       unknown
     >;
     // The shim slot names `bb plugin build` emits (react ×5 + SDK + the
-    // shared-singleton packages: portal radix families, sonner, vaul,
-    // @pierre/diffs + the host-resident libraries: clsx, tailwind-merge,
-    // class-variance-authority, the shared-ui icon). zod is deliberately
-    // absent: slotting its namespace would stop the boot chunk from
-    // tree-shaking it.
+    // shared-singleton packages: portal radix families, sonner, @silk-hq/components,
+    // @pierre/diffs + the host-resident libraries:
+    // clsx, tailwind-merge, class-variance-authority, the shared-ui icon).
+    // zod is deliberately absent: slotting its namespace would stop the boot
+    // chunk from tree-shaking it.
     expect(Object.keys(runtime).sort()).toEqual([
       "classVarianceAuthority",
       "clsx",
@@ -181,9 +181,9 @@ describe("installPluginRuntime", () => {
       "reactDom",
       "reactDomClient",
       "sharedUiIcon",
+      "silkHq",
       "sonner",
       "tailwindMerge",
-      "vaul",
     ]);
     // Library slots carry the host's own module namespaces: `import clsx
     // from "clsx"` in a plugin must reach the callable default, and the

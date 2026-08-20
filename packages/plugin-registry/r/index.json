@@ -74,10 +74,6 @@
       "type": "registry:ui"
     },
     {
-      "name": "drawer",
-      "type": "registry:ui"
-    },
-    {
       "name": "dropdown-menu",
       "type": "registry:ui"
     },
@@ -171,10 +167,6 @@
     },
     {
       "name": "separator",
-      "type": "registry:ui"
-    },
-    {
-      "name": "sheet",
       "type": "registry:ui"
     },
     {

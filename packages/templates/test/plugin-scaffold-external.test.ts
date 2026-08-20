@@ -49,7 +49,7 @@ const EXTERNAL_DEPENDENCIES = [
   "react",
   "react-dom",
   "tailwind-merge",
-  "vaul",
+  "@silk-hq/components",
   "vitest",
   "zod",
 ] as const;

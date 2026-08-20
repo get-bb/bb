@@ -240,7 +240,7 @@ describe("buildPluginApp", () => {
     }
   });
 
-  it("shims the shared-singleton packages (portal radix, sonner, vaul, @pierre/diffs)", async () => {
+  it("shims the shared-singleton packages (portal radix, sonner, silk, @pierre/diffs)", async () => {
     await writeFile(join(root, "package.json"), FIXTURE_PACKAGE_JSON);
     await writeFile(
       join(root, "app.tsx"),
@@ -248,10 +248,10 @@ describe("buildPluginApp", () => {
         `import * as Dialog from "@radix-ui/react-dialog";`,
         `import * as AlertDialog from "@radix-ui/react-alert-dialog";`,
         `import { toast } from "sonner";`,
-        `import { Drawer } from "vaul";`,
+        `import { Sheet } from "@silk-hq/components";`,
         `import { parsePatchFiles } from "@pierre/diffs";`,
         `import { FileDiff } from "@pierre/diffs/react";`,
-        `export default () => [Dialog, AlertDialog, toast, Drawer, parsePatchFiles, FileDiff];`,
+        `export default () => [Dialog, AlertDialog, toast, Sheet, parsePatchFiles, FileDiff];`,
       ].join("\n"),
     );
     const { jsPath } = await buildPluginApp(
@@ -264,7 +264,7 @@ describe("buildPluginApp", () => {
       "radixDialog",
       "radixAlertDialog",
       "sonner",
-      "vaul",
+      "silkHq",
       "pierreDiffs",
       "pierreDiffsReact",
     ]) {
@@ -273,7 +273,7 @@ describe("buildPluginApp", () => {
     // Never bundled, never left as bare imports — always the runtime shim.
     expect(js).not.toMatch(/from\s*["']@radix-ui/);
     expect(js).not.toMatch(/from\s*["']sonner/);
-    expect(js).not.toMatch(/from\s*["']vaul/);
+    expect(js).not.toMatch(/from\s*["']@silk-hq\/components/);
     expect(js).not.toMatch(/from\s*["']@pierre/);
   });
 

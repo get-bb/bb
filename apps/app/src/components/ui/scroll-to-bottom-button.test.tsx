@@ -58,7 +58,6 @@ describe("surfaces that stay over the timeline do not blur their backdrop", () =
     );
     for (const file of [
       "src/components/ui/dialog.tsx",
-      "src/components/ui/drawer.tsx",
       "src/components/ui/responsive-overlay.tsx",
     ]) {
       const source = readFileSync(join(sharedUiRoot, file), "utf8");

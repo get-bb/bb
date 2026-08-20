@@ -42,7 +42,7 @@ const SHIMMED_SPECIFIERS = new Set([
   "@radix-ui/react-select",
   "@radix-ui/react-tooltip",
   "sonner",
-  "vaul",
+  "@silk-hq/components",
   // Host-resident libraries: shimmed for bundle size, not singleton
   // semantics. zod is not a slot (its namespace would bloat the host's boot
   // chunk), so the scaffold keeps it in dependencies.

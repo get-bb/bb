@@ -1,6 +1,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { Slot } from "@radix-ui/react-slot";
+import { Sheet } from "@silk-hq/components";
 
 import {
   blurActiveKeyboardInputBeforeOverlayOpen,
@@ -24,12 +25,89 @@ export interface ResponsiveOverlayContextValue {
 }
 
 const RESPONSIVE_DRAWER_REALIZE_FALLBACK_MS = 120;
+const SKIP_TRAVEL_ANIMATION = { skip: true } as const;
+const BACKDROP_TRAVEL_ANIMATION = {
+  opacity: ({ progress }: { progress: number }) => progress,
+} as const;
 
-function resetDrawerKeyboardStyles(drawerElement: HTMLElement | null): void {
-  if (drawerElement === null) return;
+type SilkTravelStatus =
+  | "entering"
+  | "idleInside"
+  | "stepping"
+  | "exiting"
+  | "idleOutside";
 
-  drawerElement.style.height = "";
-  drawerElement.style.bottom = "";
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return false;
+  }
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function shouldSkipTravelAnimation(): boolean {
+  if (prefersReducedMotion()) {
+    return true;
+  }
+  // Silk's spring sampler needs real layout geometry. jsdom reports synthetic
+  // boxes that can throw during travel; skip programmatic travel there and in
+  // unit tests. Real browsers keep the default Silk motion presets.
+  if (typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent)) {
+    return true;
+  }
+  return false;
+}
+
+// Open sheets only. persistClosed shells stay presented at detent 0 while
+// closed and must not steal Escape from a visible overlay above them.
+type OpenSheetEscapeEntry = {
+  requestClose: () => void;
+};
+
+type OpenSheetEscapeStack = {
+  entries: OpenSheetEscapeEntry[];
+  handleKeyDown: (event: KeyboardEvent) => void;
+};
+
+const openSheetEscapeStacks = new WeakMap<Document, OpenSheetEscapeStack>();
+
+function registerOpenSheetEscape(
+  ownerDocument: Document,
+  entry: OpenSheetEscapeEntry,
+): () => void {
+  let stack = openSheetEscapeStacks.get(ownerDocument);
+  if (stack === undefined) {
+    const entries: OpenSheetEscapeEntry[] = [];
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.key !== "Escape") {
+        return;
+      }
+      const topEntry = entries[entries.length - 1];
+      if (topEntry === undefined) {
+        return;
+      }
+      event.preventDefault();
+      topEntry.requestClose();
+    };
+    stack = { entries, handleKeyDown };
+    openSheetEscapeStacks.set(ownerDocument, stack);
+    ownerDocument.addEventListener("keydown", handleKeyDown);
+  }
+  stack.entries.push(entry);
+
+  return () => {
+    const currentStack = openSheetEscapeStacks.get(ownerDocument);
+    if (currentStack === undefined) {
+      return;
+    }
+    const index = currentStack.entries.indexOf(entry);
+    if (index >= 0) {
+      currentStack.entries.splice(index, 1);
+    }
+    if (currentStack.entries.length === 0) {
+      ownerDocument.removeEventListener("keydown", currentStack.handleKeyDown);
+      openSheetEscapeStacks.delete(ownerDocument);
+    }
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -195,10 +273,10 @@ export function stripRadixContentProps<T extends Record<string, unknown>>(
 }
 
 // ---------------------------------------------------------------------------
-// ResponsiveDrawerShell: shared scaffold for compact menus, popovers, and
-// dialogs. It uses the persistent shell so opening an overlay never applies
-// modal attributes to the app tree. It also lets the transform start before
-// it mounts the overlay body, then retains that body for later opens.
+// ResponsiveDrawerShell: Silk-backed bottom sheet for compact menus, popovers,
+// dialogs, and secondary panels. Silk owns travel/backdrop/gestures; bb owns
+// realization timing, controlled-state serialization, portal scope markers,
+// and settled-open notifications.
 // ---------------------------------------------------------------------------
 
 interface ResponsiveDrawerShellProps {
@@ -215,8 +293,30 @@ interface ResponsiveDrawerShellProps {
   describedBy?: string;
   /** Class name on the drawer panel. */
   contentClassName?: string;
-  /** Called when the drawer transform completes. */
+  /**
+   * Called once per settled terminal travel state (`idleInside` /
+   * `idleOutside`). Snap-back and intermediate travel do not fire.
+   */
   onContentAnimationEnd?: (open: boolean) => void;
+  /**
+   * When true, Silk will not move focus into the sheet on present. Used by
+   * touch-opened sidebar paths.
+   */
+  suppressPresentAutoFocus?: boolean;
+  /**
+   * When true, Silk will not restore focus on dismiss; the caller restores
+   * the exact trigger only when it moved focus.
+   */
+  suppressDismissAutoFocus?: boolean;
+  /** Horizontal edge placement for sidebar sheets. Defaults to bottom sheet. */
+  contentPlacement?: "bottom" | "left" | "right";
+  /**
+   * When true, mount the Silk shell even before the first open (compact
+   * sidebar boot path). Normal overlays stay unmounted until first open.
+   */
+  persistClosed?: boolean;
+  /** Optional stable test id for the Silk backdrop element. */
+  backdropTestId?: string;
   children: React.ReactNode;
 }
 
@@ -277,447 +377,272 @@ export function ResponsiveDrawerShell({
   describedBy,
   contentClassName,
   onContentAnimationEnd,
+  suppressPresentAutoFocus = false,
+  suppressDismissAutoFocus = false,
+  contentPlacement = "bottom",
+  persistClosed = false,
+  backdropTestId,
   children,
 }: ResponsiveDrawerShellProps) {
-  const { isContentRealized } = useResponsiveDrawerRealization({ open });
-
-  if (!open && !isContentRealized) {
-    return null;
-  }
-
-  return (
-    <PersistentResponsiveDrawerShell
-      open={open}
-      onOpenChange={onOpenChange}
-      srLabel={srLabel}
-      labelledBy={labelledBy}
-      describedBy={describedBy}
-      contentClassName={contentClassName}
-      onContentAnimationEnd={onContentAnimationEnd}
-    >
-      {isContentRealized ? (
-        children
-      ) : (
-        <div
-          aria-hidden="true"
-          className="min-h-32"
-          data-responsive-drawer-placeholder=""
-        />
-      )}
-    </PersistentResponsiveDrawerShell>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// PersistentResponsiveDrawerShell: a bottom drawer for a large, persistent
-// panel. Unlike Radix/Vaul, this shell does not apply modal attributes to the
-// app root. Those attributes make WebKit resolve styles for the full chat tree
-// on each open. The backdrop blocks pointer input, while the key handler keeps
-// keyboard focus inside the drawer.
-// ---------------------------------------------------------------------------
-
-interface PersistentResponsiveDrawerShellProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  srLabel?: string;
-  labelledBy?: string;
-  describedBy?: string;
-  contentClassName?: string;
-  motionDurationMs?: number;
-  onContentAnimationEnd?: (open: boolean) => void;
-  children: React.ReactNode;
-}
-
-const PERSISTENT_DRAWER_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
-const PERSISTENT_DRAWER_CLOSE_RATIO = 0.25;
-const PERSISTENT_DRAWER_CLOSE_VELOCITY_PX_PER_SEC = 450;
-const PERSISTENT_DRAWER_FOCUSABLE_SELECTOR = [
-  "a[href]",
-  "button:not([disabled])",
-  "input:not([disabled])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  '[tabindex]:not([tabindex="-1"])',
-].join(",");
-
-type PersistentDrawerStackEntry = {
-  panel: () => HTMLElement | null;
-  requestClose: () => void;
-};
-
-type PersistentDrawerStack = {
-  entries: PersistentDrawerStackEntry[];
-  handleKeyDown: (event: KeyboardEvent) => void;
-};
-
-const persistentDrawerStacks = new WeakMap<Document, PersistentDrawerStack>();
-
-function getDrawerFocusableElements(panel: HTMLElement): HTMLElement[] {
-  return Array.from(
-    panel.querySelectorAll<HTMLElement>(PERSISTENT_DRAWER_FOCUSABLE_SELECTOR),
-  ).filter(
-    (element) => element.closest('[aria-hidden="true"], [inert]') === null,
-  );
-}
-
-function activeElementIsInAnotherOverlay(
-  activeElement: Element | null,
-  panel: HTMLElement,
-): boolean {
-  const overlay = activeElement?.closest<HTMLElement>(
-    "[data-bb-portaled-overlay]",
-  );
-  return overlay !== null && overlay !== undefined && overlay !== panel;
-}
-
-function handleDrawerTab(event: KeyboardEvent, panel: HTMLElement): void {
-  const activeElement = panel.ownerDocument.activeElement;
-  if (
-    !panel.contains(activeElement) &&
-    activeElementIsInAnotherOverlay(activeElement, panel)
-  ) {
-    return;
-  }
-
-  const focusable = getDrawerFocusableElements(panel);
-  event.preventDefault();
-  if (focusable.length === 0) {
-    panel.focus({ preventScroll: true });
-    return;
-  }
-
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  if (event.shiftKey) {
-    if (
-      !panel.contains(activeElement) ||
-      activeElement === panel ||
-      activeElement === first
-    ) {
-      last?.focus({ preventScroll: true });
-      return;
-    }
-    const index = focusable.indexOf(activeElement as HTMLElement);
-    focusable[Math.max(0, index - 1)]?.focus({ preventScroll: true });
-    return;
-  }
-
-  if (
-    !panel.contains(activeElement) ||
-    activeElement === panel ||
-    activeElement === last
-  ) {
-    first?.focus({ preventScroll: true });
-    return;
-  }
-  const index = focusable.indexOf(activeElement as HTMLElement);
-  focusable[Math.min(focusable.length - 1, index + 1)]?.focus({
-    preventScroll: true,
-  });
-}
-
-function registerOpenDrawer(
-  ownerDocument: Document,
-  entry: PersistentDrawerStackEntry,
-): () => void {
-  let stack = persistentDrawerStacks.get(ownerDocument);
-  if (stack === undefined) {
-    const entries: PersistentDrawerStackEntry[] = [];
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) {
-        return;
-      }
-      const topEntry = entries[entries.length - 1];
-      const panel = topEntry?.panel() ?? null;
-      if (topEntry === undefined || panel === null) {
-        return;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        topEntry.requestClose();
-      } else if (event.key === "Tab") {
-        handleDrawerTab(event, panel);
-      }
-    };
-    stack = { entries, handleKeyDown };
-    persistentDrawerStacks.set(ownerDocument, stack);
-    ownerDocument.addEventListener("keydown", handleKeyDown);
-  }
-  stack.entries.push(entry);
-
-  return () => {
-    const currentStack = persistentDrawerStacks.get(ownerDocument);
-    if (currentStack === undefined) {
-      return;
-    }
-    const index = currentStack.entries.indexOf(entry);
-    if (index >= 0) {
-      currentStack.entries.splice(index, 1);
-    }
-    if (currentStack.entries.length === 0) {
-      ownerDocument.removeEventListener("keydown", currentStack.handleKeyDown);
-      persistentDrawerStacks.delete(ownerDocument);
-    }
-  };
-}
-
-type PersistentDrawerDrag = {
-  pointerId: number;
-  startY: number;
-  lastY: number;
-  lastTimeMs: number;
-  velocityY: number;
-  height: number;
-};
-
-export function PersistentResponsiveDrawerShell({
-  open,
-  onOpenChange,
-  srLabel,
-  labelledBy,
-  describedBy,
-  contentClassName,
-  motionDurationMs = 220,
-  onContentAnimationEnd,
-  children,
-}: PersistentResponsiveDrawerShellProps) {
-  const panelRef = React.useRef<HTMLDivElement>(null);
-  const backdropRef = React.useRef<HTMLDivElement>(null);
-  const dragRef = React.useRef<PersistentDrawerDrag | null>(null);
-  const returnFocusRef = React.useRef<HTMLElement | null>(null);
-  const settledStateRef = React.useRef<boolean | null>(null);
-  const labelId = React.useId();
+  const realization = useResponsiveDrawerRealization({ open });
+  const isContentRealized = persistClosed ? true : realization.isContentRealized;
   const portalScopeProps = usePortalScopeProps();
-  const transition = `transform ${motionDurationMs}ms ${PERSISTENT_DRAWER_EASING}`;
-  const backdropTransition = `opacity ${motionDurationMs}ms ${PERSISTENT_DRAWER_EASING}`;
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
+  const returnFocusRef = React.useRef<HTMLElement | null>(null);
+  const desiredPresentedRef = React.useRef(open);
+  const travelStatusRef = React.useRef<SilkTravelStatus>("idleOutside");
+  const settledStateRef = React.useRef<boolean | null>(null);
   const onOpenChangeRef = React.useRef(onOpenChange);
+  const onContentAnimationEndRef = React.useRef(onContentAnimationEnd);
+  const [hasBeenPresented, setHasBeenPresented] = React.useState(open);
+  const [presented, setPresented] = React.useState(open || persistClosed);
+  const [activeDetent, setActiveDetent] = React.useState(open ? 1 : 0);
+  const skipTravelAnimation = shouldSkipTravelAnimation()
+    ? SKIP_TRAVEL_ANIMATION
+    : undefined;
+  // Silk can remount Content internals when re-presenting. Keep one durable
+  // DOM host + React portal parent so realized children retain identity/state.
+  const retainedMountRef = React.useRef<HTMLDivElement | null>(null);
+  if (retainedMountRef.current === null && typeof document !== "undefined") {
+    const mount = document.createElement("div");
+    mount.setAttribute("data-bb-sheet-retained", "");
+    mount.className = "flex min-h-0 min-w-0 flex-1 flex-col";
+    retainedMountRef.current = mount;
+  }
+  const attachRetainedMount = React.useCallback((slot: HTMLDivElement | null) => {
+    const mount = retainedMountRef.current;
+    if (slot === null || mount === null) {
+      return;
+    }
+    if (mount.parentElement !== slot) {
+      slot.appendChild(mount);
+    }
+  }, []);
+
   React.useLayoutEffect(() => {
     onOpenChangeRef.current = onOpenChange;
   }, [onOpenChange]);
-  const requestClose = React.useCallback(() => {
-    blurActiveKeyboardInputWithin(panelRef.current);
-    resetDrawerKeyboardStyles(panelRef.current);
-    onOpenChangeRef.current(false);
-  }, []);
-
-  const reportSettled = React.useCallback(
-    (settledOpen: boolean) => {
-      if (settledStateRef.current === settledOpen) {
-        return;
-      }
-      settledStateRef.current = settledOpen;
-      onContentAnimationEnd?.(settledOpen);
-    },
-    [onContentAnimationEnd],
-  );
+  React.useLayoutEffect(() => {
+    onContentAnimationEndRef.current = onContentAnimationEnd;
+  }, [onContentAnimationEnd]);
 
   React.useEffect(() => {
-    settledStateRef.current = null;
-    const timeout = window.setTimeout(
-      () => reportSettled(open),
-      motionDurationMs + 50,
-    );
-    return () => window.clearTimeout(timeout);
-  }, [motionDurationMs, open, reportSettled]);
+    if (open || persistClosed) {
+      setHasBeenPresented(true);
+    }
+  }, [open, persistClosed]);
+
+  const reportSettled = React.useCallback((settledOpen: boolean) => {
+    if (settledStateRef.current === settledOpen) {
+      return;
+    }
+    settledStateRef.current = settledOpen;
+    onContentAnimationEndRef.current?.(settledOpen);
+  }, []);
+
+  const applyDesiredPresented = React.useCallback(() => {
+    const desired = desiredPresentedRef.current;
+    if (persistClosed) {
+      // Keep the shell presented; detent 0 is outside, 1 is fully open.
+      setPresented(true);
+      setActiveDetent(desired ? 1 : 0);
+      return;
+    }
+    setPresented((current) => (current === desired ? current : desired));
+  }, [persistClosed]);
+
+  React.useEffect(() => {
+    desiredPresentedRef.current = open;
+    const status = travelStatusRef.current;
+    if (
+      persistClosed ||
+      status === "idleInside" ||
+      status === "idleOutside"
+    ) {
+      applyDesiredPresented();
+    }
+  }, [applyDesiredPresented, open, persistClosed]);
+
+  const handlePresentedChange = React.useCallback((nextPresented: boolean) => {
+    desiredPresentedRef.current = nextPresented;
+    if (!nextPresented) {
+      blurActiveKeyboardInputWithin(contentRef.current);
+    }
+    onOpenChangeRef.current(nextPresented);
+  }, []);
+
+  const handleTravelStatusChange = React.useCallback(
+    (status: SilkTravelStatus) => {
+      travelStatusRef.current = status;
+      if (status === "idleInside") {
+        applyDesiredPresented();
+        reportSettled(true);
+        return;
+      }
+      if (status === "idleOutside") {
+        applyDesiredPresented();
+        reportSettled(false);
+      }
+    },
+    [applyDesiredPresented, reportSettled],
+  );
 
   React.useLayoutEffect(() => {
     if (!open) {
       return;
     }
-    const panel = panelRef.current;
-    if (panel === null) {
+    if (suppressPresentAutoFocus) {
       return;
     }
-    const ownerDocument = panel.ownerDocument;
-    const previousFocus = ownerDocument.activeElement;
-    returnFocusRef.current =
-      previousFocus instanceof HTMLElement ? previousFocus : null;
-    const unregister = registerOpenDrawer(ownerDocument, {
-      panel: () => panelRef.current,
-      requestClose,
-    });
-    panel.focus({ preventScroll: true });
-
-    return () => {
-      unregister();
-    };
-  }, [open, requestClose]);
-
-  const previousOpenRef = React.useRef(open);
-  React.useLayoutEffect(() => {
-    if (previousOpenRef.current && !open) {
-      blurActiveKeyboardInputWithin(panelRef.current);
-      resetDrawerKeyboardStyles(panelRef.current);
-      const returnFocus = returnFocusRef.current;
-      if (
-        returnFocus?.isConnected &&
-        returnFocus.closest('[aria-hidden="true"], [inert]') === null
-      ) {
-        returnFocus.focus({ preventScroll: true });
-      }
-      returnFocusRef.current = null;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) {
+      returnFocusRef.current = active;
     }
-    previousOpenRef.current = open;
-  }, [open]);
+  }, [open, suppressPresentAutoFocus]);
 
-  const setDragPosition = React.useCallback(
-    (offsetY: number, height: number, animate: boolean) => {
-      const panel = panelRef.current;
-      const backdrop = backdropRef.current;
-      if (panel === null || backdrop === null) {
-        return;
-      }
-      panel.style.transition = animate ? transition : "none";
-      panel.style.transform = `translate3d(0, ${offsetY}px, 0)`;
-      backdrop.style.transition = animate ? backdropTransition : "none";
-      backdrop.style.opacity = String(
-        Math.max(0, Math.min(1, 1 - offsetY / height)),
-      );
-    },
-    [backdropTransition, transition],
-  );
+  React.useLayoutEffect(() => {
+    if (open || suppressDismissAutoFocus) {
+      return;
+    }
+    const returnFocus = returnFocusRef.current;
+    returnFocusRef.current = null;
+    if (
+      returnFocus?.isConnected &&
+      returnFocus.closest('[aria-hidden="true"], [inert]') === null
+    ) {
+      returnFocus.focus({ preventScroll: true });
+    }
+  }, [open, suppressDismissAutoFocus]);
 
-  const handleDragStart = React.useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!open || event.button !== 0) {
-        return;
-      }
-      event.currentTarget.setPointerCapture(event.pointerId);
-      const nowMs = Date.now();
-      const height = Math.max(panelRef.current?.clientHeight ?? 0, 1);
-      dragRef.current = {
-        pointerId: event.pointerId,
-        startY: event.clientY,
-        lastY: event.clientY,
-        lastTimeMs: nowMs,
-        velocityY: 0,
-        height,
-      };
-      setDragPosition(0, height, false);
-      event.preventDefault();
-    },
-    [open, setDragPosition],
-  );
+  // With inertOutside={false}, Silk's Escape path is best-effort. Mirror
+  // dismiss through a per-document LIFO stack of *open* sheets only so a
+  // closed persistClosed shell (sidebar at detent 0) cannot steal Escape and
+  // nested sheets close topmost-first.
+  React.useEffect(() => {
+    if (!open) {
+      return;
+    }
+    return registerOpenSheetEscape(document, {
+      requestClose: () => {
+        handlePresentedChange(false);
+      },
+    });
+  }, [handlePresentedChange, open]);
 
-  const handleDragMove = React.useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      const drag = dragRef.current;
-      if (drag === null || drag.pointerId !== event.pointerId) {
-        return;
-      }
-      const nowMs = Date.now();
-      const elapsedMs = nowMs - drag.lastTimeMs;
-      if (elapsedMs > 0) {
-        drag.velocityY = ((event.clientY - drag.lastY) / elapsedMs) * 1000;
-        drag.lastY = event.clientY;
-        drag.lastTimeMs = nowMs;
-      }
-      setDragPosition(
-        Math.max(0, event.clientY - drag.startY),
-        drag.height,
-        false,
-      );
-      event.preventDefault();
-    },
-    [setDragPosition],
-  );
-
-  const finishDrag = React.useCallback(
-    (event: React.PointerEvent<HTMLDivElement>, cancelled: boolean) => {
-      const drag = dragRef.current;
-      if (drag === null || drag.pointerId !== event.pointerId) {
-        return;
-      }
-      dragRef.current = null;
-      const offsetY = Math.max(0, event.clientY - drag.startY);
-      const shouldClose =
-        !cancelled &&
-        (offsetY >= drag.height * PERSISTENT_DRAWER_CLOSE_RATIO ||
-          drag.velocityY >= PERSISTENT_DRAWER_CLOSE_VELOCITY_PX_PER_SEC);
-      if (shouldClose) {
-        setDragPosition(drag.height, drag.height, true);
-        requestClose();
-      } else {
-        setDragPosition(0, drag.height, true);
-      }
-      event.preventDefault();
-    },
-    [requestClose, setDragPosition],
-  );
-
-  const portalTarget = typeof document === "undefined" ? null : document.body;
-  if (portalTarget === null) {
+  // No Silk portal nodes before the first open, unless a surface (sidebar)
+  // needs a lightweight closed shell at boot.
+  if (!persistClosed && !hasBeenPresented && !open && !isContentRealized) {
     return null;
   }
 
-  return createPortal(
-    <>
-      <div
-        ref={backdropRef}
-        {...portalScopeProps}
-        aria-hidden="true"
-        data-persistent-drawer-backdrop=""
-        data-state={open ? "open" : "closed"}
-        className="fixed inset-0 z-50 bg-black/40"
-        style={{
-          opacity: open ? 1 : 0,
-          pointerEvents: open ? "auto" : "none",
-          transition: backdropTransition,
-        }}
-        onClick={requestClose}
-        onTouchMove={(event) => event.preventDefault()}
-      />
-      <div
-        ref={panelRef}
-        {...portalScopeProps}
-        aria-hidden={!open}
-        aria-labelledby={
-          labelledBy ?? (srLabel === undefined ? undefined : labelId)
-        }
-        aria-describedby={describedBy}
-        aria-modal={open || undefined}
-        data-bb-portaled-overlay=""
-        data-persistent-drawer-content=""
-        data-state={open ? "open" : "closed"}
-        inert={!open}
-        role="dialog"
-        tabIndex={-1}
-        className={cn(
-          "fixed inset-x-0 bottom-0 z-50 mt-24 flex max-h-[92dvh] flex-col rounded-t-xl border bg-background outline-none",
-          contentClassName,
-        )}
-        style={{
-          transform: open ? "translate3d(0, 0, 0)" : "translate3d(0, 100%, 0)",
-          transition,
-          willChange: open ? "transform" : undefined,
-        }}
-        onTransitionEnd={(event) => {
-          if (
-            event.currentTarget === event.target &&
-            event.propertyName === "transform"
-          ) {
-            reportSettled(open);
+  return (
+    <Sheet.Root
+      license="non-commercial"
+      sheetRole="dialog"
+      presented={presented}
+      onPresentedChange={handlePresentedChange}
+      {...(persistClosed
+        ? {
+            activeDetent,
+            onActiveDetentChange: (detent: number) => {
+              setActiveDetent(detent);
+              // Only user-driven dismissal from a fully-open detent closes.
+              // Silk may emit intermediate detent callbacks during mount.
+              if (detent <= 0 && desiredPresentedRef.current) {
+                handlePresentedChange(false);
+              }
+            },
           }
-        }}
-      >
-        <div
-          data-persistent-drawer-handle=""
-          className="mx-auto flex h-8 w-16 shrink-0 touch-none cursor-grab items-center justify-center active:cursor-grabbing"
-          onPointerDown={handleDragStart}
-          onPointerMove={handleDragMove}
-          onPointerUp={(event) => finishDrag(event, false)}
-          onPointerCancel={(event) => finishDrag(event, true)}
+        : {})}
+      style={{ display: "contents" }}
+      data-bb-sheet-root=""
+      data-state={open ? "open" : "closed"}
+    >
+      <Sheet.Portal>
+        <Sheet.View
+          {...portalScopeProps}
+          contentPlacement={contentPlacement}
+          tracks={contentPlacement}
+          inertOutside={false}
+          nativeEdgeSwipePrevention={contentPlacement !== "bottom"}
+          swipeDismissal
+          enteringAnimationSettings={skipTravelAnimation}
+          exitingAnimationSettings={skipTravelAnimation}
+          onTravelStatusChange={handleTravelStatusChange}
+          onPresentAutoFocus={{ focus: !suppressPresentAutoFocus }}
+          onDismissAutoFocus={{ focus: false }}
+          onClickOutside={{ dismiss: true, stopOverlayPropagation: true }}
+          onEscapeKeyDown={{ dismiss: true, stopOverlayPropagation: true }}
+          data-bb-sheet-view=""
+          data-bb-portaled-overlay=""
+          data-state={open ? "open" : "closed"}
+          aria-label={labelledBy === undefined ? srLabel : undefined}
+          aria-labelledby={labelledBy}
+          aria-describedby={describedBy}
+          className="z-50"
         >
-          <div className="h-1 w-10 rounded-full bg-muted-foreground/20" />
-        </div>
-        {srLabel === undefined ? null : (
-          <h2 id={labelId} className="sr-only">
-            {srLabel}
-          </h2>
-        )}
-        {children}
-      </div>
-    </>,
-    portalTarget,
+          <Sheet.Backdrop
+            data-bb-sheet-backdrop=""
+            data-state={open ? "open" : "closed"}
+            data-testid={backdropTestId}
+            className="bg-black/40"
+            travelAnimation={BACKDROP_TRAVEL_ANIMATION}
+            // One click path only. Do not also handle pointerup: a primary
+            // activation emits pointerup then click and would double-dismiss.
+            // View onClickOutside remains enabled for non-backdrop outside taps.
+            onClick={(event) => {
+              if (event.button !== 0 && event.button !== undefined) {
+                return;
+              }
+              handlePresentedChange(false);
+            }}
+          />
+          <Sheet.Content
+            ref={contentRef}
+            data-bb-sheet-content=""
+            data-state={open ? "open" : "closed"}
+            className={cn(
+              contentPlacement === "bottom"
+                ? "flex max-h-[92dvh] w-full flex-col rounded-t-xl border bg-background pb-[env(safe-area-inset-bottom)] outline-none"
+                : "flex h-full max-h-full w-[min(100vw,20rem)] flex-col border bg-background outline-none",
+              contentClassName,
+            )}
+          >
+            {contentPlacement === "bottom" ? (
+              <div
+                data-bb-sheet-handle=""
+                className="mx-auto flex h-8 w-16 shrink-0 items-center justify-center"
+                aria-hidden="true"
+              >
+                <div className="h-1 w-10 rounded-full bg-muted-foreground/20" />
+              </div>
+            ) : null}
+            {srLabel === undefined ? null : (
+              <Sheet.Title className="sr-only">{srLabel}</Sheet.Title>
+            )}
+            {describedBy === undefined && srLabel !== undefined ? (
+              <Sheet.Description className="sr-only">
+                {srLabel}
+              </Sheet.Description>
+            ) : null}
+            {isContentRealized ? (
+              <div
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+                ref={attachRetainedMount}
+              />
+            ) : (
+              <div
+                aria-hidden="true"
+                className="min-h-32"
+                data-bb-sheet-placeholder=""
+              />
+            )}
+          </Sheet.Content>
+        </Sheet.View>
+      </Sheet.Portal>
+      {isContentRealized && retainedMountRef.current !== null
+        ? createPortal(children, retainedMountRef.current)
+        : null}
+    </Sheet.Root>
   );
 }

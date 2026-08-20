@@ -94,7 +94,7 @@ vi.mock("@bb/shared-ui/responsive-overlay", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@bb/shared-ui/responsive-overlay")>();
 
-  const PersistentResponsiveDrawerShell = ({
+  const ResponsiveDrawerShell = ({
     children,
     open,
   }: {
@@ -110,7 +110,7 @@ vi.mock("@bb/shared-ui/responsive-overlay", async (importOriginal) => {
       children,
     );
 
-  return { ...actual, PersistentResponsiveDrawerShell };
+  return { ...actual, ResponsiveDrawerShell };
 });
 
 vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async () => {

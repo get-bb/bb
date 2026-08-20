@@ -71,7 +71,7 @@ vi.mock("@bb/shared-ui/responsive-overlay", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@bb/shared-ui/responsive-overlay")>();
 
-  const PersistentResponsiveDrawerShell = ({
+  const ResponsiveDrawerShell = ({
     children,
     onContentAnimationEnd,
     open,
@@ -91,7 +91,7 @@ vi.mock("@bb/shared-ui/responsive-overlay", async (importOriginal) => {
     );
   };
 
-  return { ...actual, PersistentResponsiveDrawerShell };
+  return { ...actual, ResponsiveDrawerShell };
 });
 
 interface QueuedAnimationFrames {

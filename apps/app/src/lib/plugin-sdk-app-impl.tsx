@@ -39,7 +39,7 @@ import { useSidebarThreadSplit } from "./plugin-sidebar-split";
  * Deliberately hooks-only (the 65-component host-provided UI kit was removed
  * 2026-07-03, plugin design §5.5): plugins vendor shadcn-style component
  * source from the BB registry and own it; the shared-singleton packages
- * (portal radix families, sonner, vaul) reach plugins through their own
+ * (portal radix families, sonner, @silk-hq/components) reach plugins through their own
  * runtime shims in plugin-frontend.ts, so `import { toast } from "sonner"`
  * hits the host toaster without an SDK member.
  */

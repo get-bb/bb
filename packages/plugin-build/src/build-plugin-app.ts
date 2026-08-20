@@ -32,7 +32,7 @@ import {
  * - `dist/app.js` — single ESM file, production jsx-runtime forced, minified
  *   unless the caller asks for readable output (`bb plugin dev`). The
  *   shared-runtime modules (react ×5, @get-bb/plugin-sdk/app, the portaling
- *   radix families, sonner, vaul — see RUNTIME_SLOT_BY_SPECIFIER) are never
+ *   radix families, sonner — see RUNTIME_SLOT_BY_SPECIFIER) are never
  *   bundled; an esbuild plugin swaps them for shims that read
  *   `globalThis.__bbPluginRuntime` — the host app provides one React, so a
  *   second copy (and its "Invalid hook call" crashes) is impossible.
@@ -51,7 +51,7 @@ import {
  *
  * 1. Singleton/global behavior — one React, the portaling radix families
  *    (shared dismissable-layer/focus/scroll-lock/aria-hidden world), sonner
- *    (`toast()` must reach the host toaster), vaul (mutates document.body
+ *    (`toast()` must reach the host toaster), silk (overlay runtime
  *    styles), @pierre/diffs (its react FileDiff reads the host's
  *    WorkerPoolContextProvider — context identity requires one module copy —
  *    and sharing keeps shiki's grammars out of every plugin bundle) — plus
@@ -116,7 +116,7 @@ export const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
   "@radix-ui/react-select": "radixSelect",
   "@radix-ui/react-tooltip": "radixTooltip",
   sonner: "sonner",
-  vaul: "vaul",
+  "@silk-hq/components": "silkHq",
   clsx: "clsx",
   "tailwind-merge": "tailwindMerge",
   "class-variance-authority": "classVarianceAuthority",
@@ -215,7 +215,7 @@ async function shimExportsOf(
  * export (clsx's function, React's CJS `module.exports`) carries
  * it under `default`; the shim forwards that so `import clsx from "clsx"`
  * receives the callable, not the namespace. Modules without one (radix,
- * sonner, vaul, tailwind-merge) fall back to the namespace as before.
+ * sonner, tailwind-merge) fall back to the namespace as before.
  */
 async function shimModuleSource(
   specifier: string,
