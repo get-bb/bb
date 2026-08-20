@@ -1,4 +1,7 @@
-import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
+import type {
+  ProviderCliStatus,
+  ProviderCliStatusResponse,
+} from "@bb/host-daemon-contract";
 import type { AppDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
@@ -18,30 +21,54 @@ export async function getProviderInstallations(
   });
   const entries = await mapProviderMaintenanceRequests(
     providers,
-    async (provider) => {
+    async (provider): Promise<[string, ProviderCliStatus] | null> => {
       const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, provider.id);
       if (bridgeLaunch === null) {
-        throw new Error(`Provider bridge unavailable for ${provider.id}`);
+        deps.logger.warn(
+          {
+            failure: "bridge_unavailable",
+            hostId: args.hostId,
+            providerId: provider.id,
+          },
+          "Failed to load provider installation status; omitting provider",
+        );
+        return null;
       }
       const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(
         deps,
         provider.id,
       );
-      const status = await callHostRetryableOnlineRpc(deps, {
-        hostId: args.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "provider.installation.status",
-          providerId: provider.id,
-          bridgeLaunch,
-          ...(acpLaunchSpec === undefined ? {} : { acpLaunchSpec }),
-        },
-      });
-      return [
-        provider.id,
-        { displayName: provider.displayName, ...status },
-      ] as const;
+      try {
+        const status = await callHostRetryableOnlineRpc(deps, {
+          hostId: args.hostId,
+          timeoutMs: COMMAND_TIMEOUT_MS,
+          command: {
+            type: "provider.installation.status",
+            providerId: provider.id,
+            bridgeLaunch,
+            ...(acpLaunchSpec === undefined ? {} : { acpLaunchSpec }),
+          },
+        });
+        return [
+          provider.id,
+          { displayName: provider.displayName, ...status },
+        ];
+      } catch {
+        deps.logger.warn(
+          {
+            failure: "status_request_failed",
+            hostId: args.hostId,
+            providerId: provider.id,
+          },
+          "Failed to load provider installation status; omitting provider",
+        );
+        return null;
+      }
     },
   );
-  return Object.fromEntries(entries);
+  return Object.fromEntries(
+    entries.filter(
+      (entry): entry is [string, ProviderCliStatus] => entry !== null,
+    ),
+  );
 }

@@ -2,7 +2,7 @@ import type {
   HostDaemonOnlineRpcRequestMessage,
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession } from "../helpers/seed.js";
@@ -130,6 +130,53 @@ describe("public provider installation routes", () => {
               : null,
           ),
       ).toEqual(["codex", "claude-code", "acp-cursor"]);
+    });
+  });
+
+  it("preserves healthy providers in registry order when one status request fails", async () => {
+    await withTestHarness(async (harness) => {
+      const warn = vi.fn();
+      harness.deps.logger = { ...harness.deps.logger, warn };
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "provider-installation-partial-status-host",
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (
+            request.command.type === "provider.installation.status" &&
+            request.command.providerId === "claude-code"
+          ) {
+            return {
+              ok: false,
+              errorCode: "provider_status_failed",
+              errorMessage: "provider status failed",
+            };
+          }
+          return handleProviderInstallationRpc(request);
+        },
+      });
+
+      const response = await harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/status`,
+      );
+
+      expect(response.status).toBe(200);
+      const body = (await readJson(response)) as ProviderCliStatusResponse;
+      expect(Object.keys(body)).toEqual(["codex", "acp-cursor"]);
+      expect(Object.values(body).map((status) => status.displayName)).toEqual([
+        "Codex",
+        "Cursor",
+      ]);
+      expect(warn).toHaveBeenCalledWith(
+        {
+          failure: "status_request_failed",
+          hostId: host.id,
+          providerId: "claude-code",
+        },
+        "Failed to load provider installation status; omitting provider",
+      );
     });
   });
 
