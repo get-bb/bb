@@ -160,6 +160,7 @@ export interface NativeThemeTokens {
   surfaceSelected: string;
   surfaceSelectedBorder: string;
   timelineAccent: string;
+  versionUpgrade: string;
   warning: string;
   warningText: string;
 }
@@ -266,6 +267,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       surfaceSelected: "rgba(136, 57, 239, 0.16)",
       surfaceSelectedBorder: "rgba(136, 57, 239, 0.35)",
       timelineAccent: "#1e66f5",
+      versionUpgrade: "#52556e",
       warning: "#df8e1d",
       warningText: "#b8730a",
     },
@@ -364,6 +366,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       surfaceSelected: "rgba(203, 166, 247, 0.12)",
       surfaceSelectedBorder: "rgba(203, 166, 247, 0.35)",
       timelineAccent: "#89b4fa",
+      versionUpgrade: "#c5ceeb",
       warning: "#f9e2af",
       warningText: "#f9e2af",
     },
@@ -464,6 +467,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       surfaceSelected: "rgba(38, 38, 38, 0.16)",
       surfaceSelectedBorder: "rgba(38, 38, 38, 0.35)",
       timelineAccent: "#4075aa",
+      versionUpgrade: "#3a3a3a",
       warning: "#eb7c33",
       warningText: "#b0540e",
     },
@@ -562,6 +566,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       surfaceSelected: "rgba(196, 196, 196, 0.12)",
       surfaceSelectedBorder: "rgba(196, 196, 196, 0.35)",
       timelineAccent: "#79a9db",
+      versionUpgrade: "#b9b9b9",
       warning: "#fc8c45",
       warningText: "#fc8c45",
     },
@@ -662,6 +667,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       surfaceSelected: "rgba(125, 91, 190, 0.16)",
       surfaceSelectedBorder: "rgba(125, 91, 190, 0.35)",
       timelineAccent: "#1f6f8b",
+      versionUpgrade: "#2f313d",
       warning: "#b8762e",
       warningText: "#8f5a22",
     },
@@ -760,6 +766,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       surfaceSelected: "rgba(189, 147, 249, 0.12)",
       surfaceSelectedBorder: "rgba(189, 147, 249, 0.35)",
       timelineAccent: "#8be9fd",
+      versionUpgrade: "#edeef4",
       warning: "#ffb86c",
       warningText: "#ffb86c",
     },
@@ -860,6 +867,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       surfaceSelected: "rgba(7, 102, 120, 0.16)",
       surfaceSelectedBorder: "rgba(7, 102, 120, 0.35)",
       timelineAccent: "#076678",
+      versionUpgrade: "#413f3a",
       warning: "#d65d0e",
       warningText: "#af3a03",
     },
@@ -958,6 +966,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       surfaceSelected: "rgba(131, 165, 152, 0.12)",
       surfaceSelectedBorder: "rgba(131, 165, 152, 0.35)",
       timelineAccent: "#83a598",
+      versionUpgrade: "#e2d3ac",
       warning: "#fe8019",
       warningText: "#fe8019",
     },
@@ -1058,6 +1067,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       surfaceSelected: "rgba(94, 129, 172, 0.16)",
       surfaceSelectedBorder: "rgba(94, 129, 172, 0.35)",
       timelineAccent: "#5e81ac",
+      versionUpgrade: "#343a46",
       warning: "#d08770",
       warningText: "#99543a",
     },
@@ -1156,6 +1166,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       surfaceSelected: "rgba(136, 192, 208, 0.12)",
       surfaceSelectedBorder: "rgba(136, 192, 208, 0.35)",
       timelineAccent: "#88c0d0",
+      versionUpgrade: "#d1d6e2",
       warning: "#d08770",
       warningText: "#e0a48f",
     },
@@ -1256,6 +1267,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       surfaceSelected: "rgba(38, 139, 210, 0.16)",
       surfaceSelectedBorder: "rgba(38, 139, 210, 0.35)",
       timelineAccent: "#268bd2",
+      versionUpgrade: "#103d47",
       warning: "#cb4b16",
       warningText: "#a53c12",
     },
@@ -1354,6 +1366,7 @@ export const nativeThemes: Record<BuiltInThemeId, NativeThemeModes> = {
       surfaceSelected: "rgba(38, 139, 210, 0.12)",
       surfaceSelectedBorder: "rgba(38, 139, 210, 0.35)",
       timelineAccent: "#2aa198",
+      versionUpgrade: "#8d9ba0",
       warning: "#cb4b16",
       warningText: "#e07a4e",
     },
