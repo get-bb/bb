@@ -48,7 +48,7 @@ import {
   type SidebarSplitState,
   type SidebarTabGroup,
 } from "./sidebarSplitLayout";
-import type { SecondaryPanelTabReorderRequest } from "./secondaryPanelFileTab";
+import type { SecondaryPanelTabReorderRequest } from "./secondaryPanelTab";
 
 const PANE_DRAG_ENGAGE_DISTANCE_PX = 7;
 type SidebarSplitResizeCursor = "col-resize" | "row-resize";

@@ -8,8 +8,8 @@ import {
 import { PanelGroup } from "react-resizable-panels";
 import {
   ThreadSecondaryPanel,
-  type SecondaryPanelFileTab,
   type SecondaryPanelFixedTab,
+  type SecondaryPanelRenderableTab,
 } from "./ThreadSecondaryPanel";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { Icon } from "@bb/shared-ui/icon";
@@ -86,14 +86,13 @@ function createStoryFixedTabs(
   ];
 }
 
-function createStoryFileTab(filename: string): HostFilePreviewFixedPanelTab {
+function createStoryFileTab(path: string): HostFilePreviewFixedPanelTab {
   return {
     environmentId: "env_story",
-    hostId: null,
-    id: `host-file-preview:${encodeURIComponent(filename)}:thread%3Athr_story%3Aenvironment%3Aenv_story`,
+    id: `host-file-preview:${encodeURIComponent(path)}:thread%3Athr_story%3Aenvironment%3Aenv_story`,
     kind: "host-file-preview",
     lineRange: null,
-    path: filename,
+    path,
     threadId: "thr_story",
   };
 }
@@ -257,10 +256,11 @@ function ShellRow({
             isOpen
             metadataContent={<RepresentativeInfoContent />}
             fixedTabs={createStoryFixedTabs(setPanel, includeGitDiffTab)}
+            tabs={[]}
             onPanelFocus={noop}
             onCollapse={noop}
             onClose={noop}
-            onFileTabReorder={noop}
+            onTabReorder={noop}
             onOpenNewTab={noop}
             isConversationCollapsed={false}
             onToggleConversationCollapse={noop}
@@ -335,7 +335,6 @@ function FileTabsShellInner({
     activeFilename === null
       ? activeFixedTab
       : createStoryFileTab(activeFilename);
-  const activeTabId = activeTab.id;
 
   const handleCloseFile = useCallback(
     (filename: string) => {
@@ -346,15 +345,13 @@ function FileTabsShellInner({
     [pinnedFilename],
   );
 
-  const fileTabs = useMemo<SecondaryPanelFileTab[]>(
+  const panelTabs = useMemo<SecondaryPanelRenderableTab[]>(
     () =>
       openFiles.map((filename) => {
         const tab = createStoryFileTab(filename);
         const visual = resolveRightPanelFileVisual({ path: filename });
         return {
-          id: tab.id,
-          filename,
-          isActive: tab.id === activeTabId,
+          label: filename,
           isPinned: filename === pinnedFilename,
           leadingVisual: (
             <Icon name={visual.iconName} className="size-3.5" aria-hidden />
@@ -362,9 +359,11 @@ function FileTabsShellInner({
           statusLabel: null,
           onSelect: () => setActiveFilename(filename),
           onClose: () => handleCloseFile(filename),
+          renderContent: () => representativeFileContent,
+          tab,
         };
       }),
-    [openFiles, activeTabId, handleCloseFile, pinnedFilename],
+    [openFiles, handleCloseFile, pinnedFilename],
   );
 
   return (
@@ -376,18 +375,15 @@ function FileTabsShellInner({
         environmentId={undefined}
         isOpen
         metadataContent={<RepresentativeInfoContent />}
-        fileTabs={fileTabs}
+        tabs={panelTabs}
         fixedTabs={createStoryFixedTabs((panel) => {
           setActiveFilename(null);
           setActiveFixedTab(createStoryFixedPanelTab(panel));
         })}
-        renderTabContent={() =>
-          activeFilename ? representativeFileContent : null
-        }
         onPanelFocus={noop}
         onCollapse={noop}
         onClose={noop}
-        onFileTabReorder={noop}
+        onTabReorder={noop}
         onOpenNewTab={noop}
         isConversationCollapsed={false}
         onToggleConversationCollapse={noop}
@@ -434,7 +430,6 @@ function TerminalTabsShellInner({
       : createTerminalFixedPanelTab({
           terminalId: activeTerminal.terminalId,
         });
-  const activeTabId = activeTab.id;
 
   const handleCloseTerminal = useCallback(
     (terminalId: string) => {
@@ -454,25 +449,28 @@ function TerminalTabsShellInner({
     [openTerminals],
   );
 
-  const fileTabs = useMemo<SecondaryPanelFileTab[]>(
+  const panelTabs = useMemo<SecondaryPanelRenderableTab[]>(
     () =>
       openTerminals.map((terminal) => {
         const tab = createTerminalFixedPanelTab({
           terminalId: terminal.terminalId,
         });
         return {
-          id: tab.id,
-          filename: terminal.title,
-          isActive: tab.id === activeTabId,
+          contentFillsRegion: true,
+          label: terminal.title,
           leadingVisual: (
             <Icon name="Terminal" className="size-3.5" aria-hidden />
           ),
           statusLabel: terminal.statusLabel,
           onSelect: () => setActiveTerminalId(terminal.terminalId),
           onClose: () => handleCloseTerminal(terminal.terminalId),
+          renderContent: () => (
+            <RepresentativeTerminalContent title={terminal.title} />
+          ),
+          tab,
         };
       }),
-    [activeTabId, handleCloseTerminal, openTerminals],
+    [handleCloseTerminal, openTerminals],
   );
 
   return (
@@ -484,20 +482,15 @@ function TerminalTabsShellInner({
         environmentId={undefined}
         isOpen
         metadataContent={<RepresentativeInfoContent />}
-        fileTabs={fileTabs}
+        tabs={panelTabs}
         fixedTabs={createStoryFixedTabs((panel) => {
           setActiveTerminalId("");
           setActiveFixedTab(createStoryFixedPanelTab(panel));
         })}
-        renderTabContent={() =>
-          activeTerminal ? (
-            <RepresentativeTerminalContent title={activeTerminal.title} />
-          ) : null
-        }
         onPanelFocus={noop}
         onCollapse={noop}
         onClose={noop}
-        onFileTabReorder={noop}
+        onTabReorder={noop}
         onOpenNewTab={noop}
         isConversationCollapsed={false}
         onToggleConversationCollapse={noop}
@@ -558,13 +551,12 @@ function ProductionSplitPanesStory() {
     return SPLIT_STORY_TERMINAL;
   });
 
-  const fileTabs = useMemo<SecondaryPanelFileTab[]>(
+  const panelTabs = useMemo<SecondaryPanelRenderableTab[]>(
     () =>
       [SPLIT_STORY_FILE, SPLIT_STORY_TERMINAL].map((tab) => ({
-        id: tab.id,
-        filename:
+        contentFillsRegion: tab.kind === "terminal",
+        label:
           tab.kind === "terminal" ? "pnpm dev" : "ThreadSecondaryPanel.tsx",
-        isActive: tab.id === activeTab.id,
         leadingVisual: (
           <Icon
             name={tab.kind === "terminal" ? "Terminal" : "Code"}
@@ -575,8 +567,15 @@ function ProductionSplitPanesStory() {
         statusLabel: null,
         onSelect: () => setActiveTab(tab),
         onClose: noop,
+        renderContent: () =>
+          tab.kind === "terminal" ? (
+            <RepresentativeTerminalContent title="pnpm dev" />
+          ) : (
+            representativeFileContent
+          ),
+        tab,
       })),
-    [activeTab.id],
+    [],
   );
 
   return (
@@ -590,24 +589,15 @@ function ProductionSplitPanesStory() {
             environmentId={undefined}
             isOpen
             metadataContent={<RepresentativeInfoContent />}
-            fileTabs={fileTabs}
+            tabs={panelTabs}
             fixedTabs={createStoryFixedTabs((panel) =>
               setActiveTab(createStoryFixedPanelTab(panel)),
             )}
             splitPanelStateId={SPLIT_STORY_PANEL_STATE_ID}
-            tabModels={SPLIT_STORY_FILE_TABS}
-            renderTabContent={(tab) =>
-              tab.kind === "terminal" ? (
-                <RepresentativeTerminalContent title="pnpm dev" />
-              ) : (
-                representativeFileContent
-              )
-            }
-            tabContentFillsRegion={(tab) => tab.kind === "terminal"}
             onPanelFocus={noop}
             onCollapse={noop}
             onClose={noop}
-            onFileTabReorder={noop}
+            onTabReorder={noop}
             onOpenNewTab={noop}
             isConversationCollapsed={false}
             onToggleConversationCollapse={noop}

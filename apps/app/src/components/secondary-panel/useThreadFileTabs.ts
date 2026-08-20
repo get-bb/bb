@@ -37,7 +37,7 @@ import { useRecordThreadRecentItem } from "./threadRecentItems";
 import type {
   SecondaryPanelTabReorderHandler,
   SecondaryPanelTabReorderRequest,
-} from "./secondaryPanelFileTab";
+} from "./secondaryPanelTab";
 import {
   activateSecondaryPanelTabInState,
   buildOrderedSecondaryPanelFileTabs,
@@ -583,7 +583,7 @@ export function useThreadFileTabs({
     updateFixedPanelTabsState(clearActiveSecondaryFileTabInState);
   }, [updateFixedPanelTabsState]);
 
-  const reorderFileTab = useCallback<SecondaryPanelTabReorderHandler>(
+  const reorderTab = useCallback<SecondaryPanelTabReorderHandler>(
     (request: SecondaryPanelTabReorderRequest) => {
       updateFixedPanelTabsState((state) =>
         reorderSecondaryPanelFileTabInState({ ...request, state }),
@@ -715,7 +715,7 @@ export function useThreadFileTabs({
     openPluginPanel,
     openTab,
     orderedSecondaryFileTabs,
-    reorderFileTab,
+    reorderTab,
     selectFileSearchResult,
     updateBrowserTab,
   };

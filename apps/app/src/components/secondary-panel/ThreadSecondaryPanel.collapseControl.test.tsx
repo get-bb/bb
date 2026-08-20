@@ -10,6 +10,7 @@ import {
   createPluginPageFixedPanelTab,
   createThreadInfoFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
+  type SecondaryFileFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import {
   createSidebarSplitState,
@@ -18,7 +19,10 @@ import {
   sidebarSplitStorageKey,
 } from "./sidebarSplitLayout";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { ThreadSecondaryPanel } from "./ThreadSecondaryPanel";
+import {
+  ThreadSecondaryPanel,
+  type SecondaryPanelRenderableTab,
+} from "./ThreadSecondaryPanel";
 
 afterEach(() => {
   cleanup();
@@ -50,6 +54,21 @@ const infoAndDiffFixedTabs = [
   diffFixedTabDescriptor,
 ] as const;
 
+function createTestRenderableTab(
+  tab: SecondaryFileFixedPanelTab,
+  renderContent: SecondaryPanelRenderableTab["renderContent"] = () => null,
+): SecondaryPanelRenderableTab {
+  return {
+    label: "index.ts",
+    leadingVisual: null,
+    onClose: noop,
+    onSelect: noop,
+    renderContent,
+    statusLabel: null,
+    tab,
+  };
+}
+
 function renderPanel(args: {
   isConversationCollapsed: boolean;
   onToggleConversationCollapse: () => void;
@@ -63,11 +82,12 @@ function renderPanel(args: {
             activeTab={createThreadInfoFixedPanelTab()}
             canUseGitUi={false}
             fixedTabs={infoFixedTabs}
+            tabs={[]}
             isOpen
             metadataContent={null}
             onClose={noop}
             onCollapse={noop}
-            onFileTabReorder={noop}
+            onTabReorder={noop}
             onOpenNewTab={noop}
             onPanelFocus={noop}
             renderAsDrawer={false}
@@ -108,12 +128,13 @@ describe("ThreadSecondaryPanel compact file content", () => {
                 title: "Plugin docs",
               },
             ]}
+            tabs={[]}
             isConversationCollapsed={false}
             isOpen
             metadataContent={null}
             onClose={noop}
             onCollapse={noop}
-            onFileTabReorder={noop}
+            onTabReorder={noop}
             onOpenNewTab={noop}
             onPanelFocus={noop}
             onToggleConversationCollapse={noop}
@@ -193,14 +214,13 @@ describe("ThreadSecondaryPanel compact file content", () => {
                 metadataContent={null}
                 onClose={noop}
                 onCollapse={noop}
-                onFileTabReorder={noop}
+                onTabReorder={noop}
                 onOpenNewTab={noop}
                 onPanelFocus={noop}
                 onToggleConversationCollapse={noop}
                 renderAsDrawer={false}
-                renderTabContent={() => null}
                 splitPanelStateId={panelStateId}
-                tabModels={[]}
+                tabs={[]}
               />
             </PanelGroup>
           </TooltipProvider>
@@ -210,6 +230,91 @@ describe("ThreadSecondaryPanel compact file content", () => {
 
     expect(screen.getByText("Plugin docs body")).toBeTruthy();
     expect(screen.getByText("Plugin activity body")).toBeTruthy();
+    expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(2);
+  });
+
+  it("renders each split pane from the descriptor attached to its tab", () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    const firstTab = createWorkspaceFilePreviewFixedPanelTab({
+      environmentId: "env-test",
+      projectId: "project-test",
+      tab: {
+        lineRange: null,
+        path: "src/first.ts",
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      },
+    });
+    const secondTab = createWorkspaceFilePreviewFixedPanelTab({
+      environmentId: "env-test",
+      projectId: "project-test",
+      tab: {
+        lineRange: null,
+        path: "src/second.ts",
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      },
+    });
+    const panelStateId = "renderable-tab-split";
+    const initial = createSidebarSplitState(
+      [firstTab.id, secondTab.id],
+      secondTab.id,
+    );
+    const split = moveSidebarTab(
+      initial,
+      initial.layout.focusedPaneId,
+      secondTab.id,
+      { paneId: initial.layout.focusedPaneId, zone: "right" },
+      { groupId: "group-second" },
+    );
+    window.localStorage.setItem(
+      sidebarSplitStorageKey(panelStateId),
+      serializeSidebarSplitState(split),
+    );
+
+    render(
+      <Wrapper>
+        <SidebarProvider>
+          <TooltipProvider>
+            <PanelGroup direction="horizontal">
+              <ThreadSecondaryPanel
+                activeTab={secondTab}
+                canUseGitUi={false}
+                fixedTabs={[]}
+                isConversationCollapsed={false}
+                isOpen
+                metadataContent={null}
+                onClose={noop}
+                onCollapse={noop}
+                onOpenNewTab={noop}
+                onPanelFocus={noop}
+                onTabReorder={noop}
+                onToggleConversationCollapse={noop}
+                renderAsDrawer={false}
+                splitPanelStateId={panelStateId}
+                tabs={[
+                  {
+                    ...createTestRenderableTab(firstTab, () => (
+                      <div>First tab body</div>
+                    )),
+                    label: "first.ts",
+                  },
+                  {
+                    ...createTestRenderableTab(secondTab, () => (
+                      <div>Second tab body</div>
+                    )),
+                    label: "second.ts",
+                  },
+                ]}
+              />
+            </PanelGroup>
+          </TooltipProvider>
+        </SidebarProvider>
+      </Wrapper>,
+    );
+
+    expect(screen.getByText("First tab body")).toBeTruthy();
+    expect(screen.getByText("Second tab body")).toBeTruthy();
     expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(2);
   });
 
@@ -232,27 +337,17 @@ describe("ThreadSecondaryPanel compact file content", () => {
             activeTab={activeTab}
             canUseGitUi={false}
             fixedTabs={[]}
-            fileTabs={[
-              {
-                id: activeTab.id,
-                filename: "index.ts",
-                isActive: true,
-                leadingVisual: null,
-                statusLabel: null,
-                onSelect: noop,
-                onClose: noop,
-              },
+            tabs={[
+              createTestRenderableTab(activeTab, () => (
+                <input aria-label="Retained file content" />
+              )),
             ]}
-            tabModels={[activeTab]}
-            renderTabContent={() => (
-              <input aria-label="Retained file content" />
-            )}
             isConversationCollapsed={false}
             isOpen={isOpen}
             metadataContent={null}
             onClose={noop}
             onCollapse={noop}
-            onFileTabReorder={noop}
+            onTabReorder={noop}
             onOpenNewTab={noop}
             onPanelFocus={noop}
             onToggleConversationCollapse={noop}
@@ -298,7 +393,7 @@ describe("ThreadSecondaryPanel compact file content", () => {
     const storedSplit = serializeSidebarSplitState(split);
     const storageKey = sidebarSplitStorageKey(panelStateId);
     window.localStorage.setItem(storageKey, storedSplit);
-    const renderTabContent = vi.fn(() => (
+    const renderContent = vi.fn(() => (
       <input aria-label="Compact active body" />
     ));
 
@@ -310,30 +405,18 @@ describe("ThreadSecondaryPanel compact file content", () => {
               activeTab={activeTab}
               canUseGitUi={false}
               fixedTabs={infoFixedTabs}
-              fileTabs={[
-                {
-                  id: activeTab.id,
-                  filename: "index.ts",
-                  isActive: true,
-                  leadingVisual: null,
-                  statusLabel: null,
-                  onSelect: noop,
-                  onClose: noop,
-                },
-              ]}
+              tabs={[createTestRenderableTab(activeTab, renderContent)]}
               isConversationCollapsed={false}
               isOpen
               metadataContent={null}
               onClose={noop}
               onCollapse={noop}
-              onFileTabReorder={noop}
+              onTabReorder={noop}
               onOpenNewTab={noop}
               onPanelFocus={noop}
               onToggleConversationCollapse={noop}
               renderAsDrawer={renderAsDrawer}
-              renderTabContent={renderTabContent}
               splitPanelStateId={panelStateId}
-              tabModels={[activeTab]}
             />
           </PanelGroup>
         </TooltipProvider>
@@ -342,8 +425,7 @@ describe("ThreadSecondaryPanel compact file content", () => {
     const view = render(renderPanel(true));
 
     expect(screen.getAllByLabelText("Compact active body")).toHaveLength(1);
-    expect(renderTabContent).toHaveBeenCalledWith(
-      activeTab,
+    expect(renderContent).toHaveBeenCalledWith(
       expect.objectContaining({ isFocused: true }),
     );
     expect(window.localStorage.getItem(storageKey)).toBe(storedSplit);
@@ -358,8 +440,7 @@ describe("ThreadSecondaryPanel compact file content", () => {
     expect(restoredTabGroups).toHaveLength(2);
     expect(restoredTabGroups[0]?.textContent).toContain("Info");
     expect(restoredTabGroups[1]?.textContent).toContain("index.ts");
-    expect(renderTabContent).toHaveBeenCalledWith(
-      activeTab,
+    expect(renderContent).toHaveBeenCalledWith(
       expect.objectContaining({ isFocused: expect.any(Boolean) }),
     );
     expect(window.localStorage.getItem(storageKey)).toBe(storedSplit);
@@ -377,12 +458,13 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
               activeTab={createGitDiffFixedPanelTab()}
               canUseGitUi={false}
               fixedTabs={infoFixedTabs}
+              tabs={[]}
               isConversationCollapsed={false}
               isOpen
               metadataContent={<div>Thread metadata</div>}
               onClose={noop}
               onCollapse={noop}
-              onFileTabReorder={noop}
+              onTabReorder={noop}
               onOpenNewTab={noop}
               onPanelFocus={noop}
               onToggleConversationCollapse={noop}
@@ -411,13 +493,14 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
               activeTab={createGitDiffFixedPanelTab()}
               canUseGitUi={false}
               fixedTabs={infoAndDiffFixedTabs}
+              tabs={[]}
               gitDiffTabStatus="loading"
               isConversationCollapsed={false}
               isOpen
               metadataContent={null}
               onClose={noop}
               onCollapse={noop}
-              onFileTabReorder={noop}
+              onTabReorder={noop}
               onOpenNewTab={noop}
               onPanelFocus={noop}
               onToggleConversationCollapse={noop}
@@ -509,30 +592,18 @@ describe("ThreadSecondaryPanel full-screen control", () => {
                 activeTab={fileTab}
                 canUseGitUi={false}
                 fixedTabs={infoFixedTabs}
-                fileTabs={[
-                  {
-                    id: fileTab.id,
-                    filename: "index.ts",
-                    isActive: true,
-                    leadingVisual: null,
-                    statusLabel: null,
-                    onSelect: noop,
-                    onClose: noop,
-                  },
-                ]}
+                tabs={[createTestRenderableTab(fileTab)]}
                 isConversationCollapsed={false}
                 isOpen
                 metadataContent={null}
                 onClose={noop}
                 onCollapse={noop}
-                onFileTabReorder={noop}
+                onTabReorder={noop}
                 onOpenNewTab={onOpenNewTab}
                 onPanelFocus={noop}
                 onToggleConversationCollapse={noop}
                 renderAsDrawer={false}
-                renderTabContent={() => null}
                 splitPanelStateId="thread-position-menu"
-                tabModels={[fileTab]}
               />
             </PanelGroup>
           </TooltipProvider>
@@ -620,30 +691,18 @@ describe("ThreadSecondaryPanel full-screen control", () => {
                 activeTab={fileTab}
                 canUseGitUi={false}
                 fixedTabs={infoFixedTabs}
-                fileTabs={[
-                  {
-                    id: fileTab.id,
-                    filename: "index.ts",
-                    isActive: true,
-                    leadingVisual: null,
-                    statusLabel: null,
-                    onSelect: noop,
-                    onClose: noop,
-                  },
-                ]}
+                tabs={[createTestRenderableTab(fileTab)]}
                 isConversationCollapsed
                 isOpen
                 metadataContent={null}
                 onClose={noop}
                 onCollapse={noop}
-                onFileTabReorder={noop}
+                onTabReorder={noop}
                 onOpenNewTab={noop}
                 onPanelFocus={noop}
                 onToggleConversationCollapse={onToggleConversationCollapse}
                 renderAsDrawer={false}
-                renderTabContent={() => null}
                 splitPanelStateId={panelStateId}
-                tabModels={[fileTab]}
               />
             </PanelGroup>
           </TooltipProvider>

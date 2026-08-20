@@ -11,7 +11,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { BrowserTabDeck } from "./BrowserTabDeck";
 import {
   ThreadSecondaryPanel,
-  type SecondaryPanelFileTab,
+  type SecondaryPanelRenderableTab,
 } from "./ThreadSecondaryPanel";
 
 export default {
@@ -120,15 +120,15 @@ interface BrowserTabStageProps {
 
 function BrowserTabStage({ tab, threadId, width }: BrowserTabStageProps) {
   const label = tab.title ?? "Browser";
-  const fileTabs: SecondaryPanelFileTab[] = [
+  const panelTabs: SecondaryPanelRenderableTab[] = [
     {
-      id: tab.id,
-      filename: label,
-      isActive: true,
+      label: label,
       leadingVisual: <Icon name="Globe" className="size-3.5" aria-hidden />,
       statusLabel: null,
       onSelect: noop,
       onClose: noop,
+      renderContent: () => null,
+      tab,
     },
   ];
 
@@ -139,9 +139,8 @@ function BrowserTabStage({ tab, threadId, width }: BrowserTabStageProps) {
         canUseGitUi={false}
         requestedMergeBaseBranch="main"
         environmentId={undefined}
-        fileTabs={fileTabs}
+        tabs={panelTabs}
         fixedTabs={[]}
-        tabModels={[tab]}
         renderBrowserDeck={(activeBrowserTabId) => (
           <BrowserTabDeck
             browserTabs={[tab]}
@@ -157,7 +156,7 @@ function BrowserTabStage({ tab, threadId, width }: BrowserTabStageProps) {
         metadataContent={null}
         onClose={noop}
         onCollapse={noop}
-        onFileTabReorder={noop}
+        onTabReorder={noop}
         onOpenNewTab={noop}
         onPanelFocus={noop}
         onToggleConversationCollapse={noop}

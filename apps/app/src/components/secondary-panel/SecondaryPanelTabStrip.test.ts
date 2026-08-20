@@ -42,16 +42,17 @@ describe("secondary panel tab-strip edge fades", () => {
 
     const { container } = render(
       createElement(SecondaryPanelTabStrip, {
-        fileTabs: [
+        activeTabId: "browser",
+        tabs: [
           {
-            id: "browser",
-            filename: "Browser",
-            isActive: true,
+            label: "Browser",
             isPinned: false,
             leadingVisual: null,
             statusLabel: null,
             onSelect: vi.fn(),
             onClose: vi.fn(),
+            renderContent: () => null,
+            tab: { id: "browser", kind: "new-tab" },
           },
         ],
         onReorderTab: vi.fn(),

@@ -14,7 +14,7 @@ import {
   threadStoragePathsQueryKey,
 } from "@/hooks/queries/query-keys";
 import { ThreadSecondaryPanel } from "./ThreadSecondaryPanel";
-import type { SecondaryPanelFileTab } from "./ThreadSecondaryPanel";
+import type { SecondaryPanelRenderableTab } from "./ThreadSecondaryPanel";
 import { NewTabPage } from "./NewTabPage";
 import type { FileSearchSelection } from "./useThreadFileTabs";
 import { Icon } from "@bb/shared-ui/icon";
@@ -25,7 +25,7 @@ import {
 import {
   createNewTabFixedPanelTab,
   createTerminalFixedPanelTab,
-  type SecondaryFixedPanelTab,
+  type SecondaryFileFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import {
   getFileNameFromPath,
@@ -75,16 +75,6 @@ const BUILD_SERVER: Host = {
 };
 
 const noop = () => {};
-
-const NEW_TAB: SecondaryPanelFileTab = {
-  id: "new-tab",
-  filename: "New tab",
-  isActive: true,
-  leadingVisual: <Icon name="NewTab" className="size-3.5" aria-hidden />,
-  statusLabel: null,
-  onSelect: noop,
-  onClose: noop,
-};
 
 const WORKSPACE_PATH_RESULTS: WorkspacePathEntry[] = [
   {
@@ -249,7 +239,7 @@ type NewTabStoryOutcome =
 function createStoryActiveTab(
   outcome: NewTabStoryOutcome | null,
   currentThreadId: string,
-): SecondaryFixedPanelTab {
+): SecondaryFileFixedPanelTab {
   if (outcome === null) {
     return createNewTabFixedPanelTab();
   }
@@ -485,62 +475,6 @@ function NewTabPanelStory({
     setOutcome(null);
   }, []);
   const activeTab = createStoryActiveTab(outcome, currentThreadId);
-  const fileTabs = useMemo<SecondaryPanelFileTab[]>(() => {
-    if (outcome === null) {
-      return [NEW_TAB];
-    }
-    if (outcome.kind === "browser") {
-      return [
-        {
-          id: "browser",
-          filename: "Browser",
-          isActive: true,
-          leadingVisual: <Icon name="Globe" className="size-3.5" aria-hidden />,
-          statusLabel: null,
-          onSelect: noop,
-          onClose: () => setOutcome(null),
-        },
-      ];
-    }
-    if (outcome.kind === "terminal") {
-      const terminalTab = createTerminalFixedPanelTab({
-        terminalId: STORY_TERMINAL_ID,
-      });
-      return [
-        {
-          id: terminalTab.id,
-          filename: "Terminal",
-          isActive: true,
-          leadingVisual: (
-            <Icon name="Terminal" className="size-3.5" aria-hidden />
-          ),
-          statusLabel: null,
-          onSelect: noop,
-          onClose: () => setOutcome(null),
-        },
-      ];
-    }
-    const { selection } = outcome;
-    return [
-      {
-        id: `${selection.source}:${selection.path}`,
-        filename: getFileNameFromPath({ path: selection.path }),
-        isActive: true,
-        leadingVisual: (
-          <Icon
-            name={
-              resolveRightPanelFileVisual({ path: selection.path }).iconName
-            }
-            className="size-3.5"
-            aria-hidden
-          />
-        ),
-        statusLabel: null,
-        onSelect: noop,
-        onClose: () => setOutcome(null),
-      },
-    ];
-  }, [outcome]);
   const content =
     outcome === null ? (
       <QueryClientProvider client={queryClient}>
@@ -598,6 +532,39 @@ function NewTabPanelStory({
         </p>
       </div>
     );
+  const panelTab: SecondaryPanelRenderableTab = {
+    contentFillsRegion: outcome?.kind === "terminal",
+    label:
+      outcome === null
+        ? "New tab"
+        : outcome.kind === "browser"
+          ? "Browser"
+          : outcome.kind === "terminal"
+            ? "Terminal"
+            : getFileNameFromPath({ path: outcome.selection.path }),
+    leadingVisual:
+      outcome === null ? (
+        <Icon name="NewTab" className="size-3.5" aria-hidden />
+      ) : outcome.kind === "browser" ? (
+        <Icon name="Globe" className="size-3.5" aria-hidden />
+      ) : outcome.kind === "terminal" ? (
+        <Icon name="Terminal" className="size-3.5" aria-hidden />
+      ) : (
+        <Icon
+          name={
+            resolveRightPanelFileVisual({ path: outcome.selection.path })
+              .iconName
+          }
+          className="size-3.5"
+          aria-hidden
+        />
+      ),
+    onClose: outcome === null ? noop : () => setOutcome(null),
+    onSelect: noop,
+    renderContent: () => content,
+    statusLabel: null,
+    tab: activeTab,
+  };
 
   return (
     <PanelStage presentation={presentation}>
@@ -606,14 +573,13 @@ function NewTabPanelStory({
         canUseGitUi
         requestedMergeBaseBranch="main"
         environmentId={ENVIRONMENT_ID}
-        fileTabs={fileTabs}
+        tabs={[panelTab]}
         fixedTabs={[]}
-        renderTabContent={() => content}
         isOpen
         metadataContent={null}
         onCollapse={noop}
         onClose={noop}
-        onFileTabReorder={noop}
+        onTabReorder={noop}
         onOpenNewTab={handleOpenNewTab}
         onPanelFocus={noop}
         isConversationCollapsed={false}

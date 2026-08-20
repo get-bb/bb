@@ -279,22 +279,24 @@ vi.mock("@/components/secondary-panel/SecondaryPanelLayout", () => ({
 vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
   ThreadSecondaryPanel: ({
     activeTab,
-    fileTabs,
+    tabs,
     fixedTabs,
     onClose,
     onOpenNewTab,
     renderBrowserDeck,
-    renderTabContent,
     splitPanelStateId,
-    tabModels,
     topChromeSurface,
   }: {
     activeTab: { id: string } | null;
-    fileTabs: Array<{
-      id: string;
-      filename: string;
+    tabs: Array<{
+      label: string;
       onClose: () => void;
       onSelect: () => void;
+      renderContent: (pane: {
+        isFocused: boolean;
+        onFocusPane: () => void;
+      }) => ReactNode;
+      tab: { id: string; kind: string };
     }>;
     fixedTabs: Array<{
       tab: { id: string };
@@ -312,39 +314,36 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
       activeBrowserTabId: string | null,
       pane: { isFocused: boolean; onFocusPane: () => void },
     ) => ReactNode;
-    renderTabContent?: (
-      tab: { id: string; kind: string },
-      pane: { isFocused: boolean; onFocusPane: () => void },
-    ) => ReactNode;
     splitPanelStateId?: string;
-    tabModels: Array<{ id: string; kind: string }>;
     topChromeSurface?: "panel" | "page";
   }) => {
     const pane = { isFocused: true, onFocusPane: () => undefined };
     const activeFixedTab = fixedTabs.find(
       (tab) => tab.tab.id === activeTab?.id,
     );
-    const activeTabModel = tabModels.find((tab) => tab.id === activeTab?.id);
+    const activeRenderableTab = tabs.find(
+      (tab) => tab.tab.id === activeTab?.id,
+    );
     secondaryPanelState.fixedTabs = fixedTabs.map((tab) => ({
       contentFillsRegion: tab.contentFillsRegion === true,
       hasRenderer: tab.renderContent !== undefined,
       title: tab.title,
     }));
     secondaryPanelState.splitPanelStateId = splitPanelStateId;
-    secondaryPanelState.tabKinds = tabModels.map((tab) => tab.kind);
+    secondaryPanelState.tabKinds = tabs.map((tab) => tab.tab.kind);
     return (
       <aside
         data-testid="shared-thread-secondary-panel"
         data-top-chrome-surface={topChromeSurface ?? "panel"}
       >
-        {fileTabs.map((tab) => (
-          <div key={tab.id}>
+        {tabs.map((tab) => (
+          <div key={tab.tab.id}>
             <button type="button" onClick={tab.onSelect}>
-              {tab.filename}
+              {tab.label}
             </button>
             <button
               type="button"
-              aria-label={`Close ${tab.filename}`}
+              aria-label={`Close ${tab.label}`}
               onClick={tab.onClose}
             />
           </div>
@@ -359,11 +358,13 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
         </button>
         <button type="button" aria-label="Hide right panel" onClick={onClose} />
         {activeFixedTab?.renderContent?.(pane)}
-        {activeTabModel?.kind === "browser"
+        {activeRenderableTab?.tab.kind === "browser"
           ? null
-          : activeTabModel && renderTabContent?.(activeTabModel, pane)}
+          : activeRenderableTab?.renderContent(pane)}
         {renderBrowserDeck?.(
-          activeTabModel?.kind === "browser" ? activeTabModel.id : null,
+          activeRenderableTab?.tab.kind === "browser"
+            ? activeRenderableTab.tab.id
+            : null,
           pane,
         )}
       </aside>

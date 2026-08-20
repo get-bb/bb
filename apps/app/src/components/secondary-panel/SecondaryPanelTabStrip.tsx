@@ -42,10 +42,10 @@ import {
   MACOS_WINDOW_NO_DRAG_CLASS,
 } from "@/lib/bb-desktop";
 import type {
-  SecondaryPanelFileTab,
+  SecondaryPanelRenderableTab,
   SecondaryPanelTabReorderHandler,
-} from "./secondaryPanelFileTab";
-export type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
+} from "./secondaryPanelTab";
+export type { SecondaryPanelRenderableTab } from "./secondaryPanelTab";
 
 // Roughly one wide tab, so one click reveals the next tab without overshooting.
 const CHEVRON_SCROLL_STEP_PX = 140;
@@ -86,7 +86,8 @@ const INITIAL_OVERFLOW_STATE: TabStripOverflowState = {
 };
 
 export interface SecondaryPanelTabStripProps {
-  fileTabs: SecondaryPanelFileTab[];
+  activeTabId: string | null;
+  tabs: readonly SecondaryPanelRenderableTab[];
   onBeginTabDrag?: (
     tabId: string,
     event: ReactPointerEvent<HTMLElement>,
@@ -103,8 +104,9 @@ export interface SecondaryPanelTabStripProps {
   activeTreatment?: "fill" | "underline";
 }
 
-interface SortableFileTabProps {
+interface SortablePanelTabProps {
   activeTreatment: "fill" | "underline";
+  isActive: boolean;
   activeTabRef: RefObject<HTMLDivElement | null>;
   dragDisabled: boolean;
   noDragClass: string | null;
@@ -112,20 +114,21 @@ interface SortableFileTabProps {
     tabId: string,
     event: ReactPointerEvent<HTMLElement>,
   ) => void;
-  tab: SecondaryPanelFileTab;
+  tab: SecondaryPanelRenderableTab;
 }
 
 /**
  * The middle, horizontally-scrolling region of the secondary panel tab strip.
  *
- * Only the file tabs scroll; the leading Info/Diff controls and trailing
+ * Only the closable tabs scroll; the leading Info/Diff controls and trailing
  * new-tab/panel controls stay anchored outside this component. Edge
  * fades and scroll buttons appear only on a side that has more tabs, and the
  * active tab is auto-scrolled into view on mount and whenever it changes
  * (covering pointer, keyboard, and programmatic selection).
  */
 export function SecondaryPanelTabStrip({
-  fileTabs,
+  activeTabId,
+  tabs,
   onBeginTabDrag,
   onReorderTab,
   usesDesktopChrome,
@@ -155,7 +158,7 @@ export function SecondaryPanelTabStrip({
     clearDragClickSuppressionSoon,
     consumeDragClickSuppression,
   } = useDragClickSuppression();
-  const dragDisabled = fileTabs.length < 2;
+  const dragDisabled = tabs.length < 2;
   const mouseSensor = useSensor(MouseSensor, {
     activationConstraint: { distance: 4 },
   });
@@ -173,11 +176,11 @@ export function SecondaryPanelTabStrip({
     { activationConstraint: { delay: 200, tolerance: 6 } },
   );
   const sensors = useSensors(mouseSensor, touchSensor);
-  const tabIds = useMemo(() => fileTabs.map((tab) => tab.id), [fileTabs]);
+  const tabIds = useMemo(() => tabs.map((tab) => tab.tab.id), [tabs]);
   const draggingTab =
     draggingTabId === null
       ? null
-      : (fileTabs.find((tab) => tab.id === draggingTabId) ?? null);
+      : (tabs.find((tab) => tab.tab.id === draggingTabId) ?? null);
 
   // Cheap: reads only scrollLeft (no layout flush) against the cached capacity.
   const applyEdgeFlags = useCallback(() => {
@@ -267,7 +270,7 @@ export function SecondaryPanelTabStrip({
   // rename), so re-measure capacity whenever the tab list changes.
   useEffect(() => {
     measureCapacity();
-  }, [fileTabs, measureCapacity]);
+  }, [tabs, measureCapacity]);
 
   // A web-font swap changes the tabs' intrinsic width (and so scrollWidth)
   // without resizing the viewport or changing the tab list, which would leave the
@@ -282,7 +285,6 @@ export function SecondaryPanelTabStrip({
   // keeps a tab that was aligned to the old viewport edge from being clipped
   // when the controls reserve space. jsdom doesn't implement scrollIntoView,
   // so guard the call.
-  const activeTabId = fileTabs.find((tab) => tab.isActive)?.id ?? null;
   useLayoutEffect(() => {
     const activeTabElement = activeTabRef.current;
     if (activeTabElement === null) {
@@ -433,12 +435,13 @@ export function SecondaryPanelTabStrip({
           items={tabIds}
           strategy={horizontalListSortingStrategy}
         >
-          {fileTabs.map((tab) => (
-            <SortableFileTab
-              key={tab.id}
+          {tabs.map((tab) => (
+            <SortablePanelTab
+              key={tab.tab.id}
               activeTreatment={activeTreatment}
               activeTabRef={activeTabRef}
               dragDisabled={dragDisabled}
+              isActive={tab.tab.id === activeTabId}
               noDragClass={noDragClass}
               onBeginTabDrag={onBeginTabDrag}
               tab={tab}
@@ -452,7 +455,11 @@ export function SecondaryPanelTabStrip({
         {createPortal(
           <DragOverlay className="cursor-grabbing">
             {draggingTab === null ? null : (
-              <FileTab tab={draggingTab} activeTreatment={activeTreatment} />
+              <PanelTab
+                activeTreatment={activeTreatment}
+                isActive={draggingTab.tab.id === activeTabId}
+                tab={draggingTab}
+              />
             )}
           </DragOverlay>,
           document.body,
@@ -465,11 +472,12 @@ export function SecondaryPanelTabStrip({
       handleDragCancel,
       handleDragEnd,
       tabIds,
-      fileTabs,
+      tabs,
       dragDisabled,
       noDragClass,
       onBeginTabDrag,
       draggingTab,
+      activeTabId,
       activeTreatment,
     ],
   );
@@ -542,17 +550,18 @@ export function SecondaryPanelTabStrip({
   );
 }
 
-function SortableFileTab({
+function SortablePanelTab({
   activeTreatment,
   activeTabRef,
   dragDisabled,
+  isActive,
   noDragClass,
   onBeginTabDrag,
   tab,
-}: SortableFileTabProps) {
+}: SortablePanelTabProps) {
   const { isDragging, listeners, setNodeRef, transform, transition } =
     useSortable({
-      id: tab.id,
+      id: tab.tab.id,
       disabled: dragDisabled,
     });
   const { onPointerDown: sortablePointerDown, ...sortableListeners } =
@@ -560,11 +569,11 @@ function SortableFileTab({
   const setTabRef = useCallback(
     (element: HTMLDivElement | null) => {
       setNodeRef(element);
-      if (tab.isActive) {
+      if (isActive) {
         activeTabRef.current = element;
       }
     },
-    [activeTabRef, setNodeRef, tab.isActive],
+    [activeTabRef, isActive, setNodeRef],
   );
   const style = useMemo<CSSProperties>(
     () => ({
@@ -587,12 +596,16 @@ function SortableFileTab({
         noDragClass,
       )}
       onPointerDown={(event) => {
-        onBeginTabDrag?.(tab.id, event);
+        onBeginTabDrag?.(tab.tab.id, event);
         sortablePointerDown?.(event);
       }}
       {...sortableListeners}
     >
-      <FileTab tab={tab} activeTreatment={activeTreatment} />
+      <PanelTab
+        tab={tab}
+        activeTreatment={activeTreatment}
+        isActive={isActive}
+      />
     </div>
   );
 }
@@ -642,24 +655,24 @@ function TabStripScrollButton({
   );
 }
 
-function FileTab({
+function PanelTab({
   tab,
   activeTreatment,
+  isActive,
 }: {
-  tab: SecondaryPanelFileTab;
+  tab: SecondaryPanelRenderableTab;
   activeTreatment: "fill" | "underline";
+  isActive: boolean;
 }) {
   const title =
-    tab.statusLabel === null
-      ? tab.filename
-      : `${tab.filename} (${tab.statusLabel})`;
+    tab.statusLabel === null ? tab.label : `${tab.label} (${tab.statusLabel})`;
   return (
     <TabPill
-      label={tab.filename}
+      label={tab.label}
       leadingVisual={tab.leadingVisual}
       secondaryLabel={tab.statusLabel === null ? null : `(${tab.statusLabel})`}
       title={title}
-      isActive={tab.isActive}
+      isActive={isActive}
       activeTreatment={activeTreatment}
       onSelect={tab.onSelect}
       labelMaxWidthClass="max-w-[160px]"
@@ -668,7 +681,7 @@ function FileTab({
           ? null
           : {
               onClose: tab.onClose,
-              closeLabel: `Close ${tab.filename}`,
+              closeLabel: `Close ${tab.label}`,
               closeTooltip: "Close tab",
             }
       }

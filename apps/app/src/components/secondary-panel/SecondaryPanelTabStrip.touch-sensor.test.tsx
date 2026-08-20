@@ -7,16 +7,16 @@ import {
   type SecondaryPanelTabStripProps,
 } from "./SecondaryPanelTabStrip";
 
-function makeTabs(count: number): SecondaryPanelTabStripProps["fileTabs"] {
+function makeTabs(count: number): SecondaryPanelTabStripProps["tabs"] {
   return Array.from({ length: count }, (_, index) => ({
-    id: `tab-${index}`,
-    filename: `file-${index}.ts`,
-    isActive: index === 0,
+    label: `file-${index}.ts`,
     isPinned: false,
     leadingVisual: null,
     statusLabel: null,
     onSelect: vi.fn(),
     onClose: vi.fn(),
+    renderContent: () => null,
+    tab: { id: `tab-${index}`, kind: "new-tab" as const },
   }));
 }
 
@@ -36,7 +36,8 @@ describe("SecondaryPanelTabStrip touch sensor scoping", () => {
     const addSpy = vi.spyOn(window, "addEventListener");
     const removeSpy = vi.spyOn(window, "removeEventListener");
     const baseProps: SecondaryPanelTabStripProps = {
-      fileTabs: makeTabs(2),
+      activeTabId: "tab-0",
+      tabs: makeTabs(2),
       onReorderTab: vi.fn(),
       usesDesktopChrome: false,
       isPanelOpen: false,
@@ -61,11 +62,7 @@ describe("SecondaryPanelTabStrip touch sensor scoping", () => {
 
     // A single tab has nothing to reorder even in an open panel.
     rerender(
-      <SecondaryPanelTabStrip
-        {...baseProps}
-        fileTabs={makeTabs(1)}
-        isPanelOpen
-      />,
+      <SecondaryPanelTabStrip {...baseProps} tabs={makeTabs(1)} isPanelOpen />,
     );
     expect(touchMoveCalls(addSpy)).toHaveLength(1);
   });

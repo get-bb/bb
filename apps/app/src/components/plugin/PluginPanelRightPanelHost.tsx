@@ -30,8 +30,10 @@ import {
   LazyThreadTerminalPanel,
   LazyWorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/lazySecondaryPanelComponents";
-import type { SecondaryPanelFixedTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import type { SecondaryPanelFileTab } from "@/components/secondary-panel/secondaryPanelFileTab";
+import type {
+  SecondaryPanelFixedTab,
+  SecondaryPanelRenderableTab,
+} from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useThreadFileTabs } from "@/components/secondary-panel/useThreadFileTabs";
 import { terminalStatusLabel } from "@/components/thread/terminal/useThreadTerminalController";
 import {
@@ -227,7 +229,7 @@ export function PluginPanelRightPanelHost({
     closeTab,
     openTab,
     orderedSecondaryFileTabs,
-    reorderFileTab,
+    reorderTab,
     updateBrowserTab,
   } = useThreadFileTabs({
     panelStateId,
@@ -599,121 +601,6 @@ export function PluginPanelRightPanelHost({
     ],
   );
 
-  const fileTabs = useMemo<SecondaryPanelFileTab[]>(
-    () =>
-      orderedSecondaryFileTabs.flatMap((tab) => {
-        switch (tab.kind) {
-          case "browser": {
-            const label =
-              tab.title ??
-              (tab.url.length > 0 ? getBrowserUrlHost(tab.url) : "");
-            return [
-              {
-                id: tab.id,
-                filename: label || "Browser",
-                isActive: tab.id === activeTab?.id,
-                leadingVisual: <Icon name="Globe" className="size-3.5" />,
-                statusLabel: null,
-                onSelect: () => {
-                  activateTab(tab.id);
-                  revealPanel();
-                },
-                onClose: () => closeTab(tab.id),
-              },
-            ];
-          }
-          case "terminal": {
-            if (tab.target === undefined) return [];
-            const session = terminalsById.get(tab.terminalId);
-            return [
-              {
-                id: tab.id,
-                filename: session?.title ?? "Terminal",
-                isActive: tab.id === activeTab?.id,
-                leadingVisual: <Icon name="Terminal" className="size-3.5" />,
-                statusLabel:
-                  session === undefined || session.status === "running"
-                    ? null
-                    : terminalStatusLabel(session),
-                onSelect: () => {
-                  activateTab(tab.id);
-                  revealPanel();
-                },
-                onClose: () => closeTerminalTab(tab),
-              },
-            ];
-          }
-          case "new-tab":
-            return [
-              {
-                id: tab.id,
-                filename: "New tab",
-                isActive: tab.id === activeTab?.id,
-                leadingVisual: <Icon name="NewTab" className="size-3.5" />,
-                statusLabel: null,
-                onSelect: () => {
-                  activateTab(tab.id);
-                  revealPanel();
-                },
-                onClose: () => closeTab(tab.id),
-              },
-            ];
-          case "workspace-file-preview":
-          case "host-file-preview":
-          case "thread-storage-file-preview":
-            return [
-              {
-                id: tab.id,
-                filename: tab.path.split(/[\\/]/u).at(-1) ?? tab.path,
-                isActive: tab.id === activeTab?.id,
-                leadingVisual: <Icon name="File" className="size-3.5" />,
-                statusLabel:
-                  tab.kind === "workspace-file-preview"
-                    ? tab.statusLabel
-                    : null,
-                onSelect: () => {
-                  activateTab(tab.id);
-                  revealPanel();
-                },
-                onClose: () => closeTab(tab.id),
-              },
-            ];
-          case "plugin-panel":
-            return [
-              {
-                id: tab.id,
-                filename: tab.title,
-                isActive: tab.id === activeTab?.id,
-                leadingVisual: (
-                  <PluginIcon
-                    pluginId={tab.pluginId}
-                    icon={null}
-                    className="size-3.5"
-                  />
-                ),
-                statusLabel: null,
-                onSelect: () => {
-                  activateTab(tab.id);
-                  revealPanel();
-                },
-                onClose: () => closeTab(tab.id),
-              },
-            ];
-          default:
-            return [];
-        }
-      }),
-    [
-      activateTab,
-      activeTab?.id,
-      closeTab,
-      closeTerminalTab,
-      orderedSecondaryFileTabs,
-      revealPanel,
-      terminalsById,
-    ],
-  );
-
   const renderPanelTabContent = useCallback(
     (tab: SecondaryFileFixedPanelTab) => {
       switch (tab.kind) {
@@ -787,6 +674,73 @@ export function PluginPanelRightPanelHost({
       terminalHosts,
     ],
   );
+  const panelTabs = useMemo<readonly SecondaryPanelRenderableTab[]>(
+    () =>
+      orderedSecondaryFileTabs.flatMap((tab): SecondaryPanelRenderableTab[] => {
+        const shared = {
+          onSelect: () => {
+            activateTab(tab.id);
+            revealPanel();
+          },
+          renderContent: () => renderPanelTabContent(tab),
+          tab,
+        };
+        switch (tab.kind) {
+          case "browser": {
+            const label =
+              tab.title ??
+              (tab.url.length > 0 ? getBrowserUrlHost(tab.url) : "");
+            return [
+              {
+                ...shared,
+                label: label || "Browser",
+                leadingVisual: <Icon name="Globe" className="size-3.5" />,
+                statusLabel: null,
+                onClose: () => closeTab(tab.id),
+              },
+            ];
+          }
+          case "terminal": {
+            if (tab.target === undefined) return [];
+            const session = terminalsById.get(tab.terminalId);
+            return [
+              {
+                ...shared,
+                contentFillsRegion: true,
+                label: session?.title ?? "Terminal",
+                leadingVisual: <Icon name="Terminal" className="size-3.5" />,
+                statusLabel:
+                  session === undefined || session.status === "running"
+                    ? null
+                    : terminalStatusLabel(session),
+                onClose: () => closeTerminalTab(tab),
+              },
+            ];
+          }
+          case "new-tab":
+            return [
+              {
+                ...shared,
+                label: "New tab",
+                leadingVisual: <Icon name="NewTab" className="size-3.5" />,
+                statusLabel: null,
+                onClose: () => closeTab(tab.id),
+              },
+            ];
+          default:
+            return [];
+        }
+      }),
+    [
+      activateTab,
+      closeTab,
+      closeTerminalTab,
+      orderedSecondaryFileTabs,
+      renderPanelTabContent,
+      revealPanel,
+      terminalsById,
+    ],
+  );
 
   const renderPanel = useCallback(
     ({
@@ -827,12 +781,9 @@ export function PluginPanelRightPanelHost({
           activeTab={activeTab}
           canUseGitUi={false}
           metadataContent={null}
-          fileTabs={fileTabs}
-          tabModels={orderedSecondaryFileTabs}
-          renderTabContent={renderPanelTabContent}
-          tabContentFillsRegion={(tab) => tab.kind === "terminal"}
+          tabs={panelTabs}
           splitPanelStateId={panelStateId}
-          onFileTabReorder={reorderFileTab}
+          onTabReorder={reorderTab}
           renderBrowserDeck={(activeBrowserTabId, pane) =>
             renderDeck(
               activeBrowserTabId,
@@ -859,16 +810,13 @@ export function PluginPanelRightPanelHost({
       activeBrowserTab,
       activeTab,
       browserTabs,
-      fileTabContentFillsRegion,
-      fileTabs,
       fixedTabs,
       hidePanel,
       isOpen,
       openNewTab,
-      orderedSecondaryFileTabs,
+      panelTabs,
       panelStateId,
-      renderPanelTabContent,
-      reorderFileTab,
+      reorderTab,
       updateBrowserTab,
     ],
   );

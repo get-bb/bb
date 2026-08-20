@@ -43,9 +43,10 @@ import { resolveConversationCollapseControl } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
 import type {
-  SecondaryPanelFileTab,
+  SecondaryPanelPaneRenderContext,
+  SecondaryPanelRenderableTab,
   SecondaryPanelTabReorderHandler,
-} from "./secondaryPanelFileTab";
+} from "./secondaryPanelTab";
 import { useEnvironmentDiffFiles } from "@/hooks/queries/environment-queries";
 import {
   DEFAULT_CODE_OVERFLOW_MODE,
@@ -85,7 +86,6 @@ import { useOptionalIsSidebarShowing } from "@/components/ui/sidebar.js";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import {
   type FixedPanelViewTab,
-  type SecondaryFileFixedPanelTab,
   type SecondaryFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
@@ -103,12 +103,14 @@ import {
 } from "./SidebarSplitContainer";
 import { SIDEBAR_FIXED_INFO_TAB_ID } from "./sidebarSplitLayout";
 import type { GitDiffTabStatus } from "./gitDiffTabEligibility";
-import { isSecondaryFileTab } from "./secondaryPanelTabState";
 export type {
   GitDiffDisplayMode,
   GitDiffSelectionOption,
 } from "./GitDiffToolbar";
-export type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
+export type {
+  SecondaryPanelPaneRenderContext,
+  SecondaryPanelRenderableTab,
+} from "./secondaryPanelTab";
 
 export function isSecondaryPanelLayoutTransition(
   propertyName: string,
@@ -223,11 +225,6 @@ export function resolveSecondaryPanelHideControl() {
   };
 }
 
-export interface SecondaryPanelPaneRenderContext {
-  isFocused: boolean;
-  onFocusPane: () => void;
-}
-
 export interface SecondaryPanelFixedTab {
   ariaLabel: string;
   contentFillsRegion?: boolean;
@@ -247,9 +244,9 @@ export interface ThreadSecondaryPanelProps {
   requestedMergeBaseBranch?: string;
   environmentId?: string;
   metadataContent: ReactNode;
-  fileTabs?: SecondaryPanelFileTab[];
+  tabs: readonly SecondaryPanelRenderableTab[];
   fixedTabs: readonly SecondaryPanelFixedTab[];
-  onFileTabReorder: SecondaryPanelTabReorderHandler;
+  onTabReorder: SecondaryPanelTabReorderHandler;
   /**
    * Builds the browser surface for the active browser tab. The unsplit
    * fallback also calls this with `null` so its retained deck can hide native
@@ -261,13 +258,6 @@ export interface ThreadSecondaryPanelProps {
   ) => ReactNode;
   /** Stable thread/panel id enabling persisted tab tear-out splits. */
   splitPanelStateId?: string;
-  /** The complete closable-tab model, shared by single and split layouts. */
-  tabModels?: readonly SecondaryFileFixedPanelTab[];
-  renderTabContent?: (
-    tab: SecondaryFileFixedPanelTab,
-    pane: SecondaryPanelPaneRenderContext,
-  ) => ReactNode;
-  tabContentFillsRegion?: (tab: SecondaryFileFixedPanelTab) => boolean;
   isOpen: boolean;
   showConversationCollapseControl?: boolean;
   showNewTabButton?: boolean;
@@ -340,14 +330,11 @@ export function ThreadSecondaryPanel({
   requestedMergeBaseBranch,
   environmentId,
   metadataContent,
-  fileTabs,
+  tabs,
   fixedTabs,
-  onFileTabReorder,
+  onTabReorder,
   renderBrowserDeck,
   splitPanelStateId,
-  tabModels,
-  renderTabContent,
-  tabContentFillsRegion,
   isOpen,
   showConversationCollapseControl = true,
   showNewTabButton = true,
@@ -376,12 +363,12 @@ export function ThreadSecondaryPanel({
   const newTabShortcut = useAppCommandShortcut("panel.newTab");
   const togglePanelShortcut = useAppCommandShortcut("panel.toggle");
   const diffShortcut = useAppCommandShortcut("diff.toggle");
-  const activeFileTab = fileTabs?.find((tab) => tab.isActive);
-  const visibleFileTabs = useMemo(
-    () => fileTabs?.filter((tab) => tab.isHidden !== true),
-    [fileTabs],
+  const activeRenderableTab = tabs.find((tab) => tab.tab.id === activeTab?.id);
+  const visibleTabs = useMemo(
+    () => tabs.filter((tab) => tab.isHidden !== true),
+    [tabs],
   );
-  const hasActiveFileTab = activeFileTab !== undefined;
+  const hasActiveRenderableTab = activeRenderableTab !== undefined;
   const hideControl = resolveSecondaryPanelHideControl();
   // The conversation-collapse toggle only exists on a wide viewport; the drawer
   // layout fills the screen and cannot collapse the conversation.
@@ -470,7 +457,7 @@ export function ThreadSecondaryPanel({
     (hostLayout?.isOpen ?? isOpen) && !hostLayout?.isSuppressed;
   const activeFixedTab =
     fixedTabs.find((fixedTab) => fixedTab.tab.id === activeTab?.id) ??
-    (!hasActiveFileTab ? fixedTabs[0] : undefined);
+    (!hasActiveRenderableTab ? fixedTabs[0] : undefined);
   const isDiffPanelActive =
     resolvedGitDiffTabStatus === "eligible" &&
     activeFixedTab?.tab.kind === "git-diff";
@@ -581,9 +568,9 @@ export function ThreadSecondaryPanel({
 
   interface PanelSurfaceArgs {
     activeSurfaceFixedTab: SecondaryPanelFixedTab | undefined;
-    activeSurfaceTab: SecondaryFixedPanelTab | null;
+    activeSurfaceTabId: string | null;
     chromeSurface: "panel" | "page";
-    fileSurfaceTabs: SecondaryPanelFileTab[] | undefined;
+    surfaceTabs: readonly SecondaryPanelRenderableTab[];
     fixedSurfaceTabs: readonly SecondaryPanelFixedTab[];
     isFocused: boolean;
     isSurfaceDiffEligibilityPending: boolean;
@@ -593,7 +580,7 @@ export function ThreadSecondaryPanel({
     ) => void;
     onMoveActiveTabToSide?: (side: SplitSide) => void;
     onFocusPane: () => void;
-    onSurfaceFileTabReorder: SecondaryPanelTabReorderHandler;
+    onSurfaceTabReorder: SecondaryPanelTabReorderHandler;
     paneId: string | null;
     reserveLeadingChrome: boolean;
     showNewTabControl: boolean;
@@ -604,13 +591,14 @@ export function ThreadSecondaryPanel({
 
   interface PanelTabGroupArgs {
     activeSurfaceFixedTab: SecondaryPanelFixedTab | undefined;
-    fileSurfaceTabs: SecondaryPanelFileTab[] | undefined;
+    activeSurfaceTabId: string | null;
+    surfaceTabs: readonly SecondaryPanelRenderableTab[];
     fixedSurfaceTabs: readonly SecondaryPanelFixedTab[];
     onBeginTabDrag?: (
       tabId: string,
       event: ReactPointerEvent<HTMLElement>,
     ) => void;
-    onSurfaceFileTabReorder: SecondaryPanelTabReorderHandler;
+    onSurfaceTabReorder: SecondaryPanelTabReorderHandler;
     showNewTabButton: boolean;
   }
 
@@ -688,17 +676,20 @@ export function ThreadSecondaryPanel({
 
   const renderPanelTabGroup = ({
     activeSurfaceFixedTab,
-    fileSurfaceTabs,
+    activeSurfaceTabId,
+    surfaceTabs,
     fixedSurfaceTabs,
     onBeginTabDrag,
-    onSurfaceFileTabReorder,
+    onSurfaceTabReorder,
     showNewTabButton: showGroupNewTabButton,
   }: PanelTabGroupArgs) => {
-    const activeSurfaceFileTab = fileSurfaceTabs?.find((tab) => tab.isActive);
-    const visibleSurfaceFileTabs = fileSurfaceTabs?.filter(
+    const activeSurfaceTab = surfaceTabs.find(
+      (tab) => tab.tab.id === activeSurfaceTabId,
+    );
+    const visibleSurfaceTabs = surfaceTabs.filter(
       (tab) => tab.isHidden !== true,
     );
-    const hasActiveSurfaceFileTab = activeSurfaceFileTab !== undefined;
+    const hasActiveSurfaceTab = activeSurfaceTab !== undefined;
 
     return (
       <>
@@ -716,7 +707,7 @@ export function ThreadSecondaryPanel({
               ariaKeyshortcuts={shortcut?.ariaKeyshortcuts}
               isActive={
                 activeSurfaceFixedTab?.tab.id === fixedTab.tab.id &&
-                !hasActiveSurfaceFileTab
+                !hasActiveSurfaceTab
               }
               label={fixedTab.label}
               leadingVisual={fixedTab.leadingVisual}
@@ -732,11 +723,12 @@ export function ThreadSecondaryPanel({
             />
           );
         })}
-        {visibleSurfaceFileTabs && visibleSurfaceFileTabs.length > 0 ? (
+        {visibleSurfaceTabs.length > 0 ? (
           <SecondaryPanelTabStrip
-            fileTabs={visibleSurfaceFileTabs}
+            activeTabId={activeSurfaceTabId}
+            tabs={visibleSurfaceTabs}
             onBeginTabDrag={onBeginTabDrag}
-            onReorderTab={onSurfaceFileTabReorder}
+            onReorderTab={onSurfaceTabReorder}
             usesDesktopChrome={usesDesktopChrome}
             isPanelOpen={isOpen}
             activeTreatment="fill"
@@ -755,16 +747,16 @@ export function ThreadSecondaryPanel({
 
   const renderPanelSurface = ({
     activeSurfaceFixedTab,
-    activeSurfaceTab,
+    activeSurfaceTabId,
     chromeSurface,
-    fileSurfaceTabs,
+    surfaceTabs,
     fixedSurfaceTabs,
     isFocused,
     isSurfaceDiffEligibilityPending,
     onBeginTabDrag,
     onFocusPane,
     onMoveActiveTabToSide,
-    onSurfaceFileTabReorder,
+    onSurfaceTabReorder,
     paneId,
     reserveLeadingChrome,
     showNewTabControl,
@@ -772,30 +764,26 @@ export function ThreadSecondaryPanel({
     usesPaneArrangementControl,
     usesWindowChrome,
   }: PanelSurfaceArgs) => {
-    const activeSurfaceFileTab = fileSurfaceTabs?.find((tab) => tab.isActive);
-    const hasActiveSurfaceFileTab = activeSurfaceFileTab !== undefined;
-    const activeSurfaceFileModel =
-      activeSurfaceTab !== null && isSecondaryFileTab(activeSurfaceTab)
-        ? (tabModels?.find((tab) => tab.id === activeSurfaceTab.id) ??
-          activeSurfaceTab)
-        : null;
+    const activeSurfaceTab =
+      surfaceTabs.find((tab) => tab.tab.id === activeSurfaceTabId) ?? null;
+    const activeSurfaceModel = activeSurfaceTab?.tab ?? null;
+    const hasActiveSurfaceTab = activeSurfaceTab !== null;
     const paneRenderContext = { isFocused, onFocusPane };
-    const isBrowserSurfaceActive = activeSurfaceFileModel?.kind === "browser";
+    const isBrowserSurfaceActive = activeSurfaceModel?.kind === "browser";
     const browserSurface =
       renderBrowserDeck === undefined ||
       (paneId !== null && !isBrowserSurfaceActive)
         ? null
         : renderBrowserDeck(
-            isBrowserSurfaceActive ? activeSurfaceFileModel.id : null,
+            isBrowserSurfaceActive ? activeSurfaceModel.id : null,
             paneRenderContext,
           );
-    const fileSurfaceContent =
-      activeSurfaceFileModel === null || isBrowserSurfaceActive
+    const surfaceContent =
+      activeSurfaceTab === null || isBrowserSurfaceActive
         ? null
-        : renderTabContent?.(activeSurfaceFileModel, paneRenderContext);
-    const fileSurfaceContentFillsRegion =
-      activeSurfaceFileModel !== null &&
-      tabContentFillsRegion?.(activeSurfaceFileModel) === true;
+        : activeSurfaceTab.renderContent(paneRenderContext);
+    const surfaceContentFillsRegion =
+      activeSurfaceTab?.contentFillsRegion === true;
     const fixedSurfaceContent =
       activeSurfaceFixedTab?.renderContent?.(paneRenderContext);
     const fixedSurfaceContentFillsRegion =
@@ -803,10 +791,9 @@ export function ThreadSecondaryPanel({
     const isSurfaceDiffActive =
       activeSurfaceFixedTab?.tab.kind === "git-diff" &&
       resolvedGitDiffTabStatus === "eligible";
-    const showsSurfaceDiffToolbar =
-      isSurfaceDiffActive && !hasActiveSurfaceFileTab;
+    const showsSurfaceDiffToolbar = isSurfaceDiffActive && !hasActiveSurfaceTab;
     const isSurfaceTerminalActive =
-      activeSurfaceTab?.kind === "terminal" && hasActiveSurfaceFileTab;
+      activeSurfaceModel?.kind === "terminal" && hasActiveSurfaceTab;
 
     return (
       <>
@@ -840,10 +827,11 @@ export function ThreadSecondaryPanel({
             >
               {renderPanelTabGroup({
                 activeSurfaceFixedTab,
-                fileSurfaceTabs,
+                activeSurfaceTabId,
+                surfaceTabs,
                 fixedSurfaceTabs,
                 onBeginTabDrag,
-                onSurfaceFileTabReorder,
+                onSurfaceTabReorder,
                 showNewTabButton: showNewTabControl,
               })}
             </div>
@@ -891,20 +879,20 @@ export function ThreadSecondaryPanel({
         </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-sidebar">
           {browserSurface}
-          {isBrowserSurfaceActive ? null : hasActiveSurfaceFileTab ? (
+          {isBrowserSurfaceActive ? null : hasActiveSurfaceTab ? (
             <div
               className={
-                isSurfaceTerminalActive || fileSurfaceContentFillsRegion
+                isSurfaceTerminalActive || surfaceContentFillsRegion
                   ? "min-h-0 flex-1 overflow-hidden"
                   : cn(PANEL_SCROLL_SLOT_CLASS, "pb-3")
               }
               data-file-preview-scroll-container={
-                isSurfaceTerminalActive || fileSurfaceContentFillsRegion
+                isSurfaceTerminalActive || surfaceContentFillsRegion
                   ? undefined
                   : ""
               }
             >
-              {fileSurfaceContent ?? (
+              {surfaceContent ?? (
                 <EmptyStatePanel className="mx-4 rounded-lg">
                   No file preview content provided.
                 </EmptyStatePanel>
@@ -970,35 +958,31 @@ export function ThreadSecondaryPanel({
   };
 
   const shouldEnableSidebarSplits =
-    !renderAsDrawer &&
-    splitPanelStateId !== undefined &&
-    tabModels !== undefined &&
-    renderTabContent !== undefined;
+    !renderAsDrawer && splitPanelStateId !== undefined;
   const splitTabs = shouldEnableSidebarSplits
     ? ([
         ...fixedTabs.map((fixedTab) => ({
           id: fixedTab.tab.id,
           label: fixedTab.label,
         })),
-        ...(visibleFileTabs ?? []).map((tab) => ({
-          id: tab.id,
-          label: tab.filename,
+        ...visibleTabs.map((tab) => ({
+          id: tab.tab.id,
+          label: tab.label,
         })),
       ] satisfies SidebarSplitTabDescriptor[])
     : [];
   const globalActiveTabId =
-    activeFileTab?.id ??
+    activeRenderableTab?.tab.id ??
     activeFixedTab?.tab.id ??
     fixedTabs[0]?.tab.id ??
     SIDEBAR_FIXED_INFO_TAB_ID;
-  const resolveSplitPaneFileTabs = (pane: SidebarSplitPaneRenderArgs) =>
+  const resolveSplitPaneTabs = (pane: SidebarSplitPaneRenderArgs) =>
     pane.group.tabIds
-      .map((tabId) => fileTabs?.find((tab) => tab.id === tabId))
-      .filter((tab): tab is SecondaryPanelFileTab => tab !== undefined)
+      .map((tabId) => tabs.find((tab) => tab.tab.id === tabId))
+      .filter((tab): tab is SecondaryPanelRenderableTab => tab !== undefined)
       .map((tab) => ({
         ...tab,
-        isActive: tab.id === pane.group.activeTabId,
-        onSelect: () => pane.onSelectTab(tab.id),
+        onSelect: () => pane.onSelectTab(tab.tab.id),
       }));
   const panelSurface = shouldEnableSidebarSplits ? (
     <SidebarSplitContainer
@@ -1009,14 +993,14 @@ export function ThreadSecondaryPanel({
           (candidate) => candidate.tab.id === tabId,
         );
         if (fixedTab !== undefined) fixedTab.onSelect();
-        else fileTabs?.find((tab) => tab.id === tabId)?.onSelect();
+        else tabs.find((tab) => tab.tab.id === tabId)?.onSelect();
       }}
-      onGlobalTabReorder={onFileTabReorder}
+      onGlobalTabReorder={onTabReorder}
       panelStateId={splitPanelStateId}
       tabs={splitTabs}
       renderPane={(pane: SidebarSplitPaneRenderArgs) => {
         const activePaneTabId = pane.group.activeTabId;
-        const paneFileTabs = resolveSplitPaneFileTabs(pane);
+        const paneTabs = resolveSplitPaneTabs(pane);
         const paneFixedTabs = fixedTabs
           .filter((fixedTab) => pane.group.tabIds.includes(fixedTab.tab.id))
           .map((fixedTab) => ({
@@ -1026,14 +1010,11 @@ export function ThreadSecondaryPanel({
         const activePaneFixedTab = paneFixedTabs.find(
           (fixedTab) => fixedTab.tab.id === activePaneTabId,
         );
-        const paneFileModel =
-          tabModels.find((tab) => tab.id === activePaneTabId) ?? null;
-        const paneModel = activePaneFixedTab?.tab ?? paneFileModel;
         return renderPanelSurface({
           activeSurfaceFixedTab: activePaneFixedTab,
-          activeSurfaceTab: paneModel,
+          activeSurfaceTabId: activePaneTabId,
           chromeSurface: "panel",
-          fileSurfaceTabs: paneFileTabs,
+          surfaceTabs: paneTabs,
           fixedSurfaceTabs: paneFixedTabs,
           isFocused: pane.isFocused,
           isSurfaceDiffEligibilityPending:
@@ -1043,7 +1024,7 @@ export function ThreadSecondaryPanel({
           onBeginTabDrag: pane.onBeginTabDrag,
           onFocusPane: pane.onFocusPane,
           onMoveActiveTabToSide: pane.onMoveActiveTabToSide,
-          onSurfaceFileTabReorder: pane.onReorderTab,
+          onSurfaceTabReorder: pane.onReorderTab,
           paneId: pane.paneId,
           reserveLeadingChrome: pane.isTopRow && pane.isLeftEdge,
           showNewTabControl: pane.showOuterControls && showNewTabButton,
@@ -1056,14 +1037,14 @@ export function ThreadSecondaryPanel({
   ) : (
     renderPanelSurface({
       activeSurfaceFixedTab: activeFixedTab,
-      activeSurfaceTab: activeTab,
+      activeSurfaceTabId: activeTab?.id ?? null,
       chromeSurface: topChromeSurface,
-      fileSurfaceTabs: fileTabs,
+      surfaceTabs: tabs,
       fixedSurfaceTabs: fixedTabs,
       isFocused: true,
       isSurfaceDiffEligibilityPending: isDiffEligibilityPending,
       onFocusPane: onPanelFocus,
-      onSurfaceFileTabReorder: onFileTabReorder,
+      onSurfaceTabReorder: onTabReorder,
       paneId: null,
       reserveLeadingChrome: true,
       showNewTabControl: showNewTabButton,

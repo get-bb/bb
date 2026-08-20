@@ -39,8 +39,8 @@ import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type {
-  SecondaryPanelFileTab,
   SecondaryPanelPaneRenderContext,
+  SecondaryPanelRenderableTab,
 } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { LazyBrowserTabDeck } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
@@ -291,37 +291,6 @@ export function resolveRootComposePanelTogglePlacement(args: {
 
 interface RightPanelFileTabIconProps {
   path: string;
-}
-
-interface BuildRootComposeNewTabFileTabArgs {
-  activeTabId: string | null;
-  onClose: () => void;
-  onSelect: () => void;
-  tabId: string;
-}
-
-/** The root launcher uses the same visible tab-pill model as thread panels. */
-export function buildRootComposeNewTabFileTab({
-  activeTabId,
-  onClose,
-  onSelect,
-  tabId,
-}: BuildRootComposeNewTabFileTabArgs): SecondaryPanelFileTab {
-  return {
-    id: tabId,
-    filename: "New tab",
-    isActive: tabId === activeTabId,
-    leadingVisual: (
-      <Icon
-        name="NewTab"
-        className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-        aria-hidden
-      />
-    ),
-    statusLabel: null,
-    onSelect,
-    onClose,
-  };
 }
 
 function RightPanelFileTabIcon({ path }: RightPanelFileTabIconProps) {
@@ -1120,7 +1089,7 @@ function RootComposeSurface({
     openPluginPanel,
     openTab,
     orderedSecondaryFileTabs,
-    reorderFileTab,
+    reorderTab,
     selectFileSearchResult,
     updateBrowserTab,
   } = useThreadFileTabs({
@@ -1614,127 +1583,6 @@ function RootComposeSurface({
     handleCloseTerminalTab,
     isSecondaryPanelOpen,
   ]);
-  const fileTabs = useMemo(() => {
-    const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
-    const tabs = syncedOrderedSecondaryFileTabs.map(
-      (tab): SecondaryPanelFileTab => {
-        switch (tab.kind) {
-          case "browser": {
-            const browserLabel =
-              tab.title ??
-              (tab.url.length > 0 ? getBrowserUrlHost(tab.url) : "");
-            return {
-              id: tab.id,
-              filename: browserLabel.length > 0 ? browserLabel : "Browser",
-              isActive: tab.id === activeFixedSecondaryTabId,
-              leadingVisual: (
-                <Icon
-                  name="Globe"
-                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                  aria-hidden
-                />
-              ),
-              statusLabel: null,
-              onSelect: () => handleActivateFileTab(tab.id),
-              onClose: () => closeTab(tab.id),
-            };
-          }
-          case "terminal": {
-            const session = terminalsById.get(tab.terminalId);
-            return {
-              id: tab.id,
-              filename: session?.title ?? "Terminal",
-              isActive: tab.id === activeFixedSecondaryTabId,
-              leadingVisual: (
-                <Icon
-                  name="Terminal"
-                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                  aria-hidden
-                />
-              ),
-              statusLabel:
-                session === undefined || session.status === "running"
-                  ? null
-                  : terminalStatusLabel(session),
-              onSelect: () => handleActivateTerminalTab(tab.terminalId),
-              onClose: () => handleCloseTerminalTab(tab.terminalId),
-            };
-          }
-          case "workspace-file-preview":
-            return {
-              id: tab.id,
-              filename: filenameOf(tab.path),
-              isActive: tab.id === activeFixedSecondaryTabId,
-              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-              statusLabel: tab.statusLabel,
-              onSelect: () => handleActivateFileTab(tab.id),
-              onClose: () => closeTab(tab.id),
-            };
-          case "host-file-preview":
-            return {
-              id: tab.id,
-              filename: filenameOf(tab.path),
-              isActive: tab.id === activeFixedSecondaryTabId,
-              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-              statusLabel: null,
-              onSelect: () => handleActivateFileTab(tab.id),
-              onClose: () => closeTab(tab.id),
-            };
-          case "thread-storage-file-preview":
-            return {
-              id: tab.id,
-              filename: filenameOf(tab.path),
-              isActive: tab.id === activeFixedSecondaryTabId,
-              isPinned: tab.isPinned,
-              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-              statusLabel: null,
-              onSelect: () => handleActivateFileTab(tab.id),
-              onClose: () => closeTab(tab.id),
-            };
-          case "new-tab":
-            return buildRootComposeNewTabFileTab({
-              activeTabId: activeFixedSecondaryTabId,
-              onClose: () => closeTab(tab.id),
-              onSelect: () => handleActivateFileTab(tab.id),
-              tabId: tab.id,
-            });
-          case "plugin-panel": {
-            const actionIcon =
-              rootPanelNewThreadPanelActions.find(
-                (action) =>
-                  action.pluginId === tab.pluginId &&
-                  action.id === tab.actionId,
-              )?.icon ?? null;
-            return {
-              id: tab.id,
-              filename: tab.title,
-              isActive: tab.id === activeFixedSecondaryTabId,
-              leadingVisual: (
-                <PluginIcon
-                  pluginId={tab.pluginId}
-                  icon={actionIcon}
-                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                />
-              ),
-              statusLabel: null,
-              onSelect: () => handleActivateFileTab(tab.id),
-              onClose: () => closeTab(tab.id),
-            };
-          }
-        }
-      },
-    );
-    return tabs.length > 0 ? tabs : undefined;
-  }, [
-    activeFixedSecondaryTabId,
-    closeTab,
-    handleActivateFileTab,
-    handleActivateTerminalTab,
-    handleCloseTerminalTab,
-    rootPanelNewThreadPanelActions,
-    syncedOrderedSecondaryFileTabs,
-    terminalsById,
-  ]);
   const [openLinksInAppBrowser] = useOpenLinksInAppBrowserPreference();
   const desktopBrowserAvailable = isDesktopBrowserAvailable();
   const handleOpenPanelLink = useCallback<MarkdownPreviewLinkHandler>(
@@ -1818,6 +1666,134 @@ function RootComposeSurface({
       shouldAutoFocusTerminal,
     ],
   );
+  const panelTabs = useMemo<readonly SecondaryPanelRenderableTab[]>(() => {
+    const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
+    const tabs = syncedOrderedSecondaryFileTabs.map(
+      (tab): SecondaryPanelRenderableTab => {
+        const pluginAction =
+          tab.kind === "plugin-panel"
+            ? rootPanelNewThreadPanelActions.find(
+                (action) =>
+                  action.pluginId === tab.pluginId &&
+                  action.id === tab.actionId,
+              )
+            : undefined;
+        const shared = {
+          contentFillsRegion:
+            tab.kind === "plugin-panel" &&
+            (tab.fileOpenerOwner !== undefined ||
+              pluginAction?.layout === "flush"),
+          onClose: () => closeTab(tab.id),
+          renderContent: (pane: SecondaryPanelPaneRenderContext) =>
+            renderRootPanelTabContent(tab, pane),
+          tab,
+        };
+        switch (tab.kind) {
+          case "browser": {
+            const browserLabel =
+              tab.title ??
+              (tab.url.length > 0 ? getBrowserUrlHost(tab.url) : "");
+            return {
+              ...shared,
+              label: browserLabel.length > 0 ? browserLabel : "Browser",
+              leadingVisual: (
+                <Icon
+                  name="Globe"
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                  aria-hidden
+                />
+              ),
+              statusLabel: null,
+              onSelect: () => handleActivateFileTab(tab.id),
+            };
+          }
+          case "terminal": {
+            const session = terminalsById.get(tab.terminalId);
+            return {
+              ...shared,
+              label: session?.title ?? "Terminal",
+              leadingVisual: (
+                <Icon
+                  name="Terminal"
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                  aria-hidden
+                />
+              ),
+              statusLabel:
+                session === undefined || session.status === "running"
+                  ? null
+                  : terminalStatusLabel(session),
+              onSelect: () => handleActivateTerminalTab(tab.terminalId),
+              onClose: () => handleCloseTerminalTab(tab.terminalId),
+            };
+          }
+          case "workspace-file-preview":
+            return {
+              ...shared,
+              label: filenameOf(tab.path),
+              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+              statusLabel: tab.statusLabel,
+              onSelect: () => handleActivateFileTab(tab.id),
+            };
+          case "host-file-preview":
+            return {
+              ...shared,
+              label: filenameOf(tab.path),
+              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+              statusLabel: null,
+              onSelect: () => handleActivateFileTab(tab.id),
+            };
+          case "thread-storage-file-preview":
+            return {
+              ...shared,
+              label: filenameOf(tab.path),
+              isPinned: tab.isPinned,
+              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+              statusLabel: null,
+              onSelect: () => handleActivateFileTab(tab.id),
+            };
+          case "new-tab":
+            return {
+              ...shared,
+              label: "New tab",
+              leadingVisual: (
+                <Icon
+                  name="NewTab"
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                  aria-hidden
+                />
+              ),
+              statusLabel: null,
+              onSelect: () => handleActivateFileTab(tab.id),
+            };
+          case "plugin-panel":
+            return {
+              ...shared,
+              label: tab.title,
+              leadingVisual: (
+                <PluginIcon
+                  pluginId={tab.pluginId}
+                  icon={pluginAction?.icon ?? null}
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                />
+              ),
+              statusLabel: null,
+              onSelect: () => handleActivateFileTab(tab.id),
+            };
+        }
+      },
+    );
+    return tabs;
+  }, [
+    closeTab,
+    handleActivateFileTab,
+    handleActivateTerminalTab,
+    handleCloseTerminalTab,
+    renderRootPanelTabContent,
+    rootPanelNewThreadPanelActions,
+    syncedOrderedSecondaryFileTabs,
+    terminalsById,
+  ]);
   const rootPanelMetadataContent = useMemo(
     () => (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pt-1">
@@ -2071,18 +2047,8 @@ function RootComposeSurface({
               (rootPanelTerminalTarget?.kind === "host_path"
                 ? (rootPanelTerminalTarget.cwd ?? undefined)
                 : undefined),
-            fileTabs,
+            tabs: panelTabs,
             splitPanelStateId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
-            tabModels: syncedOrderedSecondaryFileTabs,
-            renderTabContent: renderRootPanelTabContent,
-            tabContentFillsRegion: (tab) =>
-              tab.kind === "plugin-panel" &&
-              (tab.fileOpenerOwner !== undefined ||
-                rootPanelNewThreadPanelActions.find(
-                  (candidate) =>
-                    candidate.pluginId === tab.pluginId &&
-                    candidate.id === tab.actionId,
-                )?.layout === "flush"),
             renderBrowserDeck,
             isOpen: isSecondaryPanelOpen,
             fixedTabs: [],
@@ -2093,7 +2059,7 @@ function RootComposeSurface({
             inlinePanelToggle: panelTogglePlacement.inlinePanelToggle,
             onClose: closeSecondaryPanel,
             onCollapse: closeSecondaryPanel,
-            onFileTabReorder: reorderFileTab,
+            onTabReorder: reorderTab,
             onOpenNewTab: handleOpenNewTab,
             onOpenFilePreview: handleOpenFilePreview,
             onSelectionAddToChat: handleRootPanelSelectionAddToChat,
