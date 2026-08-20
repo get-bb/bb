@@ -1,3 +1,8 @@
+// Version 147 makes idle release standard for every restorable provider and
+// removes the server-owned runtime-policy endpoint. Older daemons still request
+// that endpoint before each maintenance sweep and skip non-Codex release when
+// it is unavailable, so enrolled machines must update for the new policy.
+//
 // Version 146 adds the lightweight `host.list_branch_options` RPC so branch
 // pickers can read cached refs while the daemon refreshes remotes in the
 // background. Older daemons cannot parse or serve that command.
@@ -110,7 +115,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 146 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 147 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

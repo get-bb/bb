@@ -8,7 +8,6 @@ const experiments = http.put(`${SERVER_URL}/api/v1/settings/experiments`, {
     editMessages: true,
     mobileApp: false,
     newOnboarding: false,
-    providerSessionReaping: false,
   }),
 });
 if (!experiments.ok) {

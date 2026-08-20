@@ -27,12 +27,6 @@ const EXPERIMENT_ROWS: readonly ExperimentRow[] = [
     description:
       "Pair the bb mobile app over bb connect: shows Add mobile device under Remote access (web and desktop) and enables bb connect machine-code.",
   },
-  {
-    key: "providerSessionReaping",
-    label: "Idle provider session release",
-    description:
-      "Release restorable provider sessions after 30 idle minutes. A change can take up to five minutes.",
-  },
 ];
 
 /** `/settings/experiments`: the server-persisted opt-in toggles (`PUT /settings/experiments`). */

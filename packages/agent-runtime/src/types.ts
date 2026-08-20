@@ -308,7 +308,6 @@ export interface WaitForActiveTurnArgs {
 export interface ReapIdleProviderSessionsArgs {
   idleForMs: number;
   nowMs: number;
-  providerSessionReapingEnabled: boolean;
   runThreadExclusive?: (
     threadId: string,
     work: () => Promise<ReapedIdleProviderSession | null>,

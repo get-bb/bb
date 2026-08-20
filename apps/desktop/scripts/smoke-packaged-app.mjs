@@ -145,7 +145,6 @@ async function startSmokeServer({
         dataDir,
         experiments: {
           mobileApp: false,
-          providerSessionReaping: false,
         },
         featureFlags: {
           placeholder: false,

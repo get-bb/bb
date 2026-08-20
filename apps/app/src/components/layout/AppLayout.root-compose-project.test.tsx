@@ -31,7 +31,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
         changelogPreview: false,
         editMessages: false,
         mobileApp: false,
-        providerSessionReaping: false,
         timelineWindowing: false,
       },
     },

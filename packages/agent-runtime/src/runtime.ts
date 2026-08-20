@@ -134,7 +134,6 @@ interface ReapIdleProviderSessionCandidate {
 interface FindReapableIdleProviderSessionArgs {
   idleForMs: number;
   nowMs: number;
-  providerSessionReapingEnabled: boolean;
   threadId: string;
 }
 
@@ -422,7 +421,7 @@ export function createAgentRuntimeWithAdapters(
    * Codex runs one provider process per thread. The codex bridge now owns a
    * per-thread `codex app-server` child internally, so this outer scoping is
    * redundant for isolation — but it is still load-bearing: the account
-   * restart below and the pre-experiment idle reap both key off
+   * restart below and the legacy Codex idle-reap fallback both key off
    * `isThreadScopedCodexProcess`. Collapsing it means routing those through
    * `thread/stop {release}` + resume, which is a refactor, not a deletion.
    */
@@ -758,12 +757,8 @@ export function createAgentRuntimeWithAdapters(
     const runtimeConfig = threadRuntimeConfigs.get(args.threadId);
     if (
       !runtimeConfig ||
-      // The experiment extends release to every restorable provider. It does
-      // not gate release: Codex idle sessions are released without it, which
-      // is the behavior BB shipped before the experiment.
-      (args.providerSessionReapingEnabled
-        ? !runtimeConfig.sessionRestorable
-        : runtimeConfig.providerId !== CODEX_PROVIDER_ID)
+      (runtimeConfig.providerId !== CODEX_PROVIDER_ID &&
+        !runtimeConfig.sessionRestorable)
     ) {
       return null;
     }
@@ -2430,19 +2425,13 @@ export function createAgentRuntimeWithAdapters(
       return threadIdentityRegistry.getProviderSession(threadId);
     },
 
-    async reapIdleProviderSessions({
-      idleForMs,
-      nowMs,
-      providerSessionReapingEnabled,
-      runThreadExclusive,
-    }) {
+    async reapIdleProviderSessions({ idleForMs, nowMs, runThreadExclusive }) {
       const reapedSessions: ReapedIdleProviderSession[] = [];
       for (const threadId of [...threadRuntimeConfigs.keys()]) {
         const release = async (): Promise<ReapedIdleProviderSession | null> => {
           const candidate = findReapableIdleProviderSession({
             idleForMs,
             nowMs,
-            providerSessionReapingEnabled,
             threadId,
           });
           if (!candidate) {
@@ -2458,15 +2447,17 @@ export function createAgentRuntimeWithAdapters(
           } catch {
             return null;
           }
+          const usesCodexRestoreFallback =
+            candidate.runtimeConfig.providerId === CODEX_PROVIDER_ID &&
+            !candidate.runtimeConfig.sessionRestorable;
           if (
-            providerSessionReapingEnabled
-              ? backgroundWorkState.hasOpenThreadWork(candidate.threadId) ||
-                (proc.adapter.hasOpenThreadWork?.({
-                  providerThreadId: candidate.providerThreadId,
-                  threadId: candidate.threadId,
-                }) ??
-                  false)
-              : !isThreadScopedCodexProcess(proc)
+            backgroundWorkState.hasOpenThreadWork(candidate.threadId) ||
+            (proc.adapter.hasOpenThreadWork?.({
+              providerThreadId: candidate.providerThreadId,
+              threadId: candidate.threadId,
+            }) ??
+              false) ||
+            (usesCodexRestoreFallback && !isThreadScopedCodexProcess(proc))
           ) {
             return null;
           }

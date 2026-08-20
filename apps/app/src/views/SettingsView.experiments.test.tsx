@@ -8,7 +8,6 @@ afterEach(cleanup);
 function renderSection(overrides?: {
   onChangelogPreviewEnabledChange?: (enabled: boolean) => void;
   onMobileAppEnabledChange?: (enabled: boolean) => void;
-  onProviderSessionReapingEnabledChange?: (enabled: boolean) => void;
   onTimelineWindowingEnabledChange?: (enabled: boolean) => void;
 }) {
   return render(
@@ -17,16 +16,12 @@ function renderSection(overrides?: {
       disabled={false}
       editMessagesEnabled={false}
       mobileAppEnabled={false}
-      providerSessionReapingEnabled={false}
       timelineWindowingEnabled={false}
       onChangelogPreviewEnabledChange={
         overrides?.onChangelogPreviewEnabledChange ?? vi.fn()
       }
       onEditMessagesEnabledChange={vi.fn()}
       onMobileAppEnabledChange={overrides?.onMobileAppEnabledChange ?? vi.fn()}
-      onProviderSessionReapingEnabledChange={
-        overrides?.onProviderSessionReapingEnabledChange ?? vi.fn()
-      }
       onTimelineWindowingEnabledChange={
         overrides?.onTimelineWindowingEnabledChange ?? vi.fn()
       }
@@ -46,13 +41,6 @@ describe("ExperimentsSettingsSection", () => {
     const onChange = vi.fn();
     renderSection({ onMobileAppEnabledChange: onChange });
     fireEvent.click(screen.getByLabelText("Mobile app"));
-    expect(onChange).toHaveBeenCalledWith(true);
-  });
-
-  it("reports idle provider session release changes", () => {
-    const onChange = vi.fn();
-    renderSection({ onProviderSessionReapingEnabledChange: onChange });
-    fireEvent.click(screen.getByLabelText("Idle provider session release"));
     expect(onChange).toHaveBeenCalledWith(true);
   });
 

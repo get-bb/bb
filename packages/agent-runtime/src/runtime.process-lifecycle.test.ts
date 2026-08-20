@@ -1506,7 +1506,6 @@ rl.on("line", (line) => {
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now(),
-        providerSessionReapingEnabled: false,
       });
 
       expect(result.reapedSessions).toEqual([
@@ -1586,7 +1585,6 @@ rl.on("line", (line) => {
       const belowThresholdResult = await runtime.reapIdleProviderSessions({
         idleForMs: 30 * 60 * 1000,
         nowMs: Date.now() + 29 * 60 * 1000,
-        providerSessionReapingEnabled: false,
       });
       expect(belowThresholdResult.reapedSessions).toEqual([]);
       expect(runtime.hasThread("t1")).toBe(true);
@@ -1597,7 +1595,6 @@ rl.on("line", (line) => {
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 30 * 60 * 1000,
         nowMs: Date.now() + 31 * 60 * 1000,
-        providerSessionReapingEnabled: false,
       });
       const reapedSession = result.reapedSessions[0];
       if (!reapedSession) {
@@ -1712,12 +1709,10 @@ rl.on("line", (line) => {
       const firstResult = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now() + 60 * 60 * 1000,
-        providerSessionReapingEnabled: false,
       });
       const secondResult = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now() + 60 * 60 * 1000,
-        providerSessionReapingEnabled: false,
       });
 
       expect(firstResult.reapedSessions).toEqual([]);
@@ -1737,7 +1732,7 @@ rl.on("line", (line) => {
   // sessions reapable is the `sessionRestorable` its bridge reports on
   // thread/start. If that wire field stopped being read, idle release would
   // silently stop for every graduated provider.
-  it("reaps a restorable non-Codex session only when the experiment is on", async () => {
+  it("reaps a restorable non-Codex session", async () => {
     const providerScript = join(tmpDir, "claude-idle-reaper-provider.cjs");
     writeThreadScopedProviderScript({
       logPath: join(tmpDir, "claude-idle-reaper-provider.log"),
@@ -1766,19 +1761,9 @@ rl.on("line", (line) => {
         options: fullRuntimeOptions,
       });
 
-      await expect(
-        runtime.reapIdleProviderSessions({
-          idleForMs: 0,
-          nowMs: Date.now(),
-          providerSessionReapingEnabled: false,
-        }),
-      ).resolves.toEqual({ reapedSessions: [] });
-      expect(runtime.hasThread("t1")).toBe(true);
-
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now(),
-        providerSessionReapingEnabled: true,
       });
       expect(result.reapedSessions).toEqual([
         expect.objectContaining({
@@ -1827,7 +1812,6 @@ rl.on("line", (line) => {
       const result = await runtime.reapIdleProviderSessions({
         idleForMs: 0,
         nowMs: Date.now(),
-        providerSessionReapingEnabled: true,
       });
 
       expect(result.reapedSessions).toEqual([

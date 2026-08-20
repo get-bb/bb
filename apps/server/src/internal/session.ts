@@ -1,6 +1,5 @@
 import {
   getLatestSessionForHost,
-  getExperiments,
   listRetiredLoadedEnvironmentIdsOnHost,
   openSession,
   upsertHost,
@@ -35,13 +34,6 @@ export function registerInternalSessionRoutes(
 ): void {
   const { get, post } = typedRoutes<HostDaemonInternalSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
-  });
-
-  get("/runtime-policy", (context) => {
-    getAuthenticatedDaemon(context);
-    return context.json({
-      providerSessionReaping: getExperiments(deps.db).providerSessionReaping,
-    });
   });
 
   post(

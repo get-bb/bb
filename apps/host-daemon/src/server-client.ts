@@ -4,7 +4,6 @@ import {
   hostDaemonEventBatchResponseSchema,
   hostDaemonInteractiveInterruptResponseSchema,
   hostDaemonInteractiveRequestResponseSchema,
-  hostDaemonRuntimePolicySchema,
   hostDaemonSessionOpenResponseSchema,
   hostDaemonSkillTreeSchema,
   hostDaemonToolCallResponseSchema,
@@ -17,7 +16,6 @@ import {
   type HostDaemonInteractiveInterruptRequest,
   type HostDaemonInteractiveRequest,
   type HostDaemonLoadedEnvironment,
-  type HostDaemonRuntimePolicy,
   type HostDaemonProjectAttachmentContentQuery,
   type HostDaemonSessionOpenRequest,
   type HostDaemonSessionOpenResponse,
@@ -182,7 +180,6 @@ interface OpenSessionArgs {
 }
 
 export interface ServerClient {
-  getRuntimePolicy(): Promise<HostDaemonRuntimePolicy>;
   openSession(args: OpenSessionArgs): Promise<HostDaemonSessionOpenResponse>;
   fetchProjectAttachment(
     args: FetchProjectAttachmentArgs,
@@ -449,17 +446,6 @@ export function createServerClient(
   }
 
   return {
-    async getRuntimePolicy(): Promise<HostDaemonRuntimePolicy> {
-      const response = await fetchFn(buildInternalUrl("/runtime-policy"), {
-        method: "GET",
-        headers: headers(),
-      });
-      if (!response.ok) {
-        throw await createResponseError("get runtime policy", response);
-      }
-      return hostDaemonRuntimePolicySchema.parse(await response.json());
-    },
-
     async openSession(
       args: OpenSessionArgs,
     ): Promise<HostDaemonSessionOpenResponse> {
