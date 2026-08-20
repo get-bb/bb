@@ -130,6 +130,18 @@ Then open `https://<machine>.<tailnet>.ts.net`. Source dev binds both the Vite
 app and main server to loopback by default; Vite continues to proxy API and
 WebSocket traffic.
 
+For direct access at `http://<tailscale-ip>:<app-port>` instead, run:
+
+```bash
+pnpm dev:remote
+```
+
+This binds the Vite app and main server to all IPv4 interfaces. The remote
+browser must be able to reach both the printed app and server ports for realtime
+updates. The server API is unauthenticated and permits command execution and
+file reads, so use this only behind a trusted network boundary and restrict the
+ports to Tailscale traffic with the host firewall when the LAN is not trusted.
+
 To use the component storybook from another machine, run:
 
 ```bash
