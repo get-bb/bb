@@ -228,7 +228,10 @@ import {
 import { isSecondaryFileTab } from "@/components/secondary-panel/secondaryPanelTabState";
 import { useThreadOpenFileSignal } from "@/components/secondary-panel/useThreadOpenFileSignal";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
-import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import type {
+  SecondaryPanelFileTab,
+  SecondaryPanelFixedTab,
+} from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/useEnvironmentMergeBase";
 import { useThreadGitActions } from "./useThreadGitActions";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
@@ -1549,6 +1552,29 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       openSecondaryPanel(panel);
     },
     [clearActiveFileTabs, openSecondaryPanel],
+  );
+  const secondaryPanelFixedTabs = useMemo<readonly SecondaryPanelFixedTab[]>(
+    () =>
+      threadFixedViewTabs.map((tab) =>
+        tab.kind === "thread-info"
+          ? {
+              ariaLabel: "Show thread info panel",
+              label: "Info",
+              leadingVisual: <Icon name="Info" />,
+              onSelect: () => handleSecondaryPanelChange("thread-info"),
+              tab,
+              title: "Thread info",
+            }
+          : {
+              ariaLabel: "Show diff panel",
+              label: "Diff",
+              leadingVisual: <Icon name="FileDiff" />,
+              onSelect: () => handleSecondaryPanelChange("git-diff"),
+              tab,
+              title: "Diff",
+            },
+      ),
+    [handleSecondaryPanelChange, threadFixedViewTabs],
   );
   const handleSecondaryPanelFocus = useCallback(() => {
     touchFixedPanelTabsState();
@@ -3015,6 +3041,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             environmentId: thread.environmentId ?? undefined,
             workspaceRootPath: environment?.path,
             fileTabs,
+            fixedTabs: secondaryPanelFixedTabs,
             splitPanelStateId: thread.id,
             tabModels: syncedOrderedSecondaryFileTabs,
             renderTabContent: renderSecondaryTabContent,
@@ -3043,7 +3070,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             pendingGitDiffScrollPath,
             requestedMergeBaseBranch,
             onPanelFocus: handleSecondaryPanelFocus,
-            onPanelChange: handleSecondaryPanelChange,
           }}
           timeline={{
             activeThinking,

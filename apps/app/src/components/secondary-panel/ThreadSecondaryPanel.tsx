@@ -84,13 +84,10 @@ import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import { useOptionalIsSidebarShowing } from "@/components/ui/sidebar.js";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import {
-  createGitDiffFixedPanelTab,
-  createThreadInfoFixedPanelTab,
   type FixedPanelViewTab,
   type SecondaryFileFixedPanelTab,
   type SecondaryFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
-import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
@@ -251,7 +248,7 @@ export interface ThreadSecondaryPanelProps {
   environmentId?: string;
   metadataContent: ReactNode;
   fileTabs?: SecondaryPanelFileTab[];
-  fixedTabs?: readonly SecondaryPanelFixedTab[];
+  fixedTabs: readonly SecondaryPanelFixedTab[];
   onFileTabReorder: SecondaryPanelTabReorderHandler;
   /**
    * Builds the browser surface for the active browser tab. The unsplit
@@ -273,9 +270,6 @@ export interface ThreadSecondaryPanelProps {
   tabContentFillsRegion?: (tab: SecondaryFileFixedPanelTab) => boolean;
   isOpen: boolean;
   showConversationCollapseControl?: boolean;
-  /** Legacy thread-surface inputs normalized into `fixedTabs`. */
-  showGitDiffTab?: boolean;
-  showInfoTab?: boolean;
   showNewTabButton?: boolean;
   /**
    * Use the app page-header surface when this panel's top row is a direct
@@ -308,8 +302,6 @@ export interface ThreadSecondaryPanelProps {
   onPanelFocus: () => void;
   /** Reports the panel's live percentage while it resizes. */
   onPanelResize?: (sizePercent: number) => void;
-  /** Legacy thread-surface selector normalized into `fixedTabs`. */
-  onPanelChange?: (panel: ThreadSecondaryPanelTab) => void;
   onCollapse: () => void;
   onClose: () => void;
   onClearPendingGitDiffIntent?: () => void;
@@ -358,15 +350,12 @@ export function ThreadSecondaryPanel({
   tabContentFillsRegion,
   isOpen,
   showConversationCollapseControl = true,
-  showGitDiffTab = true,
-  showInfoTab = true,
   showNewTabButton = true,
   topChromeSurface = "panel",
   inlinePanelToggle = "button",
   resizablePanelId = "thread-detail-secondary-panel",
   onPanelFocus,
   onPanelResize,
-  onPanelChange,
   onCollapse,
   onClose,
   onClearPendingGitDiffIntent,
@@ -394,42 +383,6 @@ export function ThreadSecondaryPanel({
   );
   const hasActiveFileTab = activeFileTab !== undefined;
   const hideControl = resolveSecondaryPanelHideControl();
-  const resolvedFixedTabs = useMemo<readonly SecondaryPanelFixedTab[]>(() => {
-    if (fixedTabs !== undefined) return fixedTabs;
-    const selectThreadPanel = onPanelChange ?? (() => undefined);
-    return [
-      ...(showInfoTab
-        ? [
-            {
-              ariaLabel: "Show thread info panel",
-              label: "Info",
-              leadingVisual: <Icon name="Info" />,
-              onSelect: () => selectThreadPanel("thread-info"),
-              tab: createThreadInfoFixedPanelTab(),
-              title: "Thread info",
-            },
-          ]
-        : []),
-      ...(resolvedGitDiffTabStatus !== "ineligible" && showGitDiffTab
-        ? [
-            {
-              ariaLabel: "Show diff panel",
-              label: "Diff",
-              leadingVisual: <Icon name="FileDiff" />,
-              onSelect: () => selectThreadPanel("git-diff"),
-              tab: createGitDiffFixedPanelTab(),
-              title: "Diff",
-            },
-          ]
-        : []),
-    ];
-  }, [
-    fixedTabs,
-    onPanelChange,
-    resolvedGitDiffTabStatus,
-    showGitDiffTab,
-    showInfoTab,
-  ]);
   // The conversation-collapse toggle only exists on a wide viewport; the drawer
   // layout fills the screen and cannot collapse the conversation.
   const conversationCollapseControl =
@@ -516,8 +469,8 @@ export function ThreadSecondaryPanel({
   const isLayoutOpen =
     (hostLayout?.isOpen ?? isOpen) && !hostLayout?.isSuppressed;
   const activeFixedTab =
-    resolvedFixedTabs.find((fixedTab) => fixedTab.tab.id === activeTab?.id) ??
-    (!hasActiveFileTab ? resolvedFixedTabs[0] : undefined);
+    fixedTabs.find((fixedTab) => fixedTab.tab.id === activeTab?.id) ??
+    (!hasActiveFileTab ? fixedTabs[0] : undefined);
   const isDiffPanelActive =
     resolvedGitDiffTabStatus === "eligible" &&
     activeFixedTab?.tab.kind === "git-diff";
@@ -1023,7 +976,7 @@ export function ThreadSecondaryPanel({
     renderTabContent !== undefined;
   const splitTabs = shouldEnableSidebarSplits
     ? ([
-        ...resolvedFixedTabs.map((fixedTab) => ({
+        ...fixedTabs.map((fixedTab) => ({
           id: fixedTab.tab.id,
           label: fixedTab.label,
         })),
@@ -1036,7 +989,7 @@ export function ThreadSecondaryPanel({
   const globalActiveTabId =
     activeFileTab?.id ??
     activeFixedTab?.tab.id ??
-    resolvedFixedTabs[0]?.tab.id ??
+    fixedTabs[0]?.tab.id ??
     SIDEBAR_FIXED_INFO_TAB_ID;
   const resolveSplitPaneFileTabs = (pane: SidebarSplitPaneRenderArgs) =>
     pane.group.tabIds
@@ -1052,7 +1005,7 @@ export function ThreadSecondaryPanel({
       key={splitPanelStateId}
       activeTabId={globalActiveTabId}
       onActivateTab={(tabId) => {
-        const fixedTab = resolvedFixedTabs.find(
+        const fixedTab = fixedTabs.find(
           (candidate) => candidate.tab.id === tabId,
         );
         if (fixedTab !== undefined) fixedTab.onSelect();
@@ -1064,7 +1017,7 @@ export function ThreadSecondaryPanel({
       renderPane={(pane: SidebarSplitPaneRenderArgs) => {
         const activePaneTabId = pane.group.activeTabId;
         const paneFileTabs = resolveSplitPaneFileTabs(pane);
-        const paneFixedTabs = resolvedFixedTabs
+        const paneFixedTabs = fixedTabs
           .filter((fixedTab) => pane.group.tabIds.includes(fixedTab.tab.id))
           .map((fixedTab) => ({
             ...fixedTab,
@@ -1106,7 +1059,7 @@ export function ThreadSecondaryPanel({
       activeSurfaceTab: activeTab,
       chromeSurface: topChromeSurface,
       fileSurfaceTabs: fileTabs,
-      fixedSurfaceTabs: resolvedFixedTabs,
+      fixedSurfaceTabs: fixedTabs,
       isFocused: true,
       isSurfaceDiffEligibilityPending: isDiffEligibilityPending,
       onFocusPane: onPanelFocus,

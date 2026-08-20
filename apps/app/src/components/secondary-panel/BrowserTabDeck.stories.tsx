@@ -140,6 +140,7 @@ function BrowserTabStage({ tab, threadId, width }: BrowserTabStageProps) {
         requestedMergeBaseBranch="main"
         environmentId={undefined}
         fileTabs={fileTabs}
+        fixedTabs={[]}
         tabModels={[tab]}
         renderBrowserDeck={(activeBrowserTabId) => (
           <BrowserTabDeck
@@ -158,11 +159,9 @@ function BrowserTabStage({ tab, threadId, width }: BrowserTabStageProps) {
         onCollapse={noop}
         onFileTabReorder={noop}
         onOpenNewTab={noop}
-        onPanelChange={noop}
         onPanelFocus={noop}
         onToggleConversationCollapse={noop}
         renderAsDrawer
-        showGitDiffTab={false}
       />
     </PanelStage>
   );

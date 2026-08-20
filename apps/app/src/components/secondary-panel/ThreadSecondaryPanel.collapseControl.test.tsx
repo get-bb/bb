@@ -26,6 +26,29 @@ afterEach(() => {
 });
 
 const noop = () => {};
+const infoFixedTab = createThreadInfoFixedPanelTab();
+const diffFixedTab = createGitDiffFixedPanelTab();
+const infoFixedTabDescriptor = {
+  ariaLabel: "Show thread info panel",
+  label: "Info",
+  leadingVisual: null,
+  onSelect: noop,
+  tab: infoFixedTab,
+  title: "Thread info",
+};
+const diffFixedTabDescriptor = {
+  ariaLabel: "Show diff panel",
+  label: "Diff",
+  leadingVisual: null,
+  onSelect: noop,
+  tab: diffFixedTab,
+  title: "Diff",
+};
+const infoFixedTabs = [infoFixedTabDescriptor] as const;
+const infoAndDiffFixedTabs = [
+  infoFixedTabDescriptor,
+  diffFixedTabDescriptor,
+] as const;
 
 function renderPanel(args: {
   isConversationCollapsed: boolean;
@@ -39,13 +62,13 @@ function renderPanel(args: {
           <ThreadSecondaryPanel
             activeTab={createThreadInfoFixedPanelTab()}
             canUseGitUi={false}
+            fixedTabs={infoFixedTabs}
             isOpen
             metadataContent={null}
             onClose={noop}
             onCollapse={noop}
             onFileTabReorder={noop}
             onOpenNewTab={noop}
-            onPanelChange={noop}
             onPanelFocus={noop}
             renderAsDrawer={false}
             {...args}
@@ -208,6 +231,7 @@ describe("ThreadSecondaryPanel compact file content", () => {
           <ThreadSecondaryPanel
             activeTab={activeTab}
             canUseGitUi={false}
+            fixedTabs={[]}
             fileTabs={[
               {
                 id: activeTab.id,
@@ -230,7 +254,6 @@ describe("ThreadSecondaryPanel compact file content", () => {
             onCollapse={noop}
             onFileTabReorder={noop}
             onOpenNewTab={noop}
-            onPanelChange={noop}
             onPanelFocus={noop}
             onToggleConversationCollapse={noop}
             renderAsDrawer
@@ -286,6 +309,7 @@ describe("ThreadSecondaryPanel compact file content", () => {
             <ThreadSecondaryPanel
               activeTab={activeTab}
               canUseGitUi={false}
+              fixedTabs={infoFixedTabs}
               fileTabs={[
                 {
                   id: activeTab.id,
@@ -304,7 +328,6 @@ describe("ThreadSecondaryPanel compact file content", () => {
               onCollapse={noop}
               onFileTabReorder={noop}
               onOpenNewTab={noop}
-              onPanelChange={noop}
               onPanelFocus={noop}
               onToggleConversationCollapse={noop}
               renderAsDrawer={renderAsDrawer}
@@ -353,6 +376,7 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
             <ThreadSecondaryPanel
               activeTab={createGitDiffFixedPanelTab()}
               canUseGitUi={false}
+              fixedTabs={infoFixedTabs}
               isConversationCollapsed={false}
               isOpen
               metadataContent={<div>Thread metadata</div>}
@@ -360,7 +384,6 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
               onCollapse={noop}
               onFileTabReorder={noop}
               onOpenNewTab={noop}
-              onPanelChange={noop}
               onPanelFocus={noop}
               onToggleConversationCollapse={noop}
               renderAsDrawer={false}
@@ -387,6 +410,7 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
             <ThreadSecondaryPanel
               activeTab={createGitDiffFixedPanelTab()}
               canUseGitUi={false}
+              fixedTabs={infoAndDiffFixedTabs}
               gitDiffTabStatus="loading"
               isConversationCollapsed={false}
               isOpen
@@ -395,7 +419,6 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
               onCollapse={noop}
               onFileTabReorder={noop}
               onOpenNewTab={noop}
-              onPanelChange={noop}
               onPanelFocus={noop}
               onToggleConversationCollapse={noop}
               renderAsDrawer={false}
@@ -485,6 +508,7 @@ describe("ThreadSecondaryPanel full-screen control", () => {
               <ThreadSecondaryPanel
                 activeTab={fileTab}
                 canUseGitUi={false}
+                fixedTabs={infoFixedTabs}
                 fileTabs={[
                   {
                     id: fileTab.id,
@@ -503,7 +527,6 @@ describe("ThreadSecondaryPanel full-screen control", () => {
                 onCollapse={noop}
                 onFileTabReorder={noop}
                 onOpenNewTab={onOpenNewTab}
-                onPanelChange={noop}
                 onPanelFocus={noop}
                 onToggleConversationCollapse={noop}
                 renderAsDrawer={false}
@@ -596,6 +619,7 @@ describe("ThreadSecondaryPanel full-screen control", () => {
               <ThreadSecondaryPanel
                 activeTab={fileTab}
                 canUseGitUi={false}
+                fixedTabs={infoFixedTabs}
                 fileTabs={[
                   {
                     id: fileTab.id,
@@ -614,7 +638,6 @@ describe("ThreadSecondaryPanel full-screen control", () => {
                 onCollapse={noop}
                 onFileTabReorder={noop}
                 onOpenNewTab={noop}
-                onPanelChange={noop}
                 onPanelFocus={noop}
                 onToggleConversationCollapse={onToggleConversationCollapse}
                 renderAsDrawer={false}

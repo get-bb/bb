@@ -9,6 +9,7 @@ import { PanelGroup } from "react-resizable-panels";
 import {
   ThreadSecondaryPanel,
   type SecondaryPanelFileTab,
+  type SecondaryPanelFixedTab,
 } from "./ThreadSecondaryPanel";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { Icon } from "@bb/shared-ui/icon";
@@ -55,6 +56,34 @@ function createStoryFixedPanelTab(
   return panel === "git-diff"
     ? createGitDiffFixedPanelTab()
     : createThreadInfoFixedPanelTab();
+}
+
+function createStoryFixedTabs(
+  onSelectPanel: (panel: ThreadSecondaryPanelTab) => void,
+  includeGitDiffTab = true,
+): readonly SecondaryPanelFixedTab[] {
+  return [
+    {
+      ariaLabel: "Show thread info panel",
+      label: "Info",
+      leadingVisual: <Icon name="Info" />,
+      onSelect: () => onSelectPanel("thread-info"),
+      tab: createThreadInfoFixedPanelTab(),
+      title: "Thread info",
+    },
+    ...(includeGitDiffTab
+      ? [
+          {
+            ariaLabel: "Show diff panel",
+            label: "Diff",
+            leadingVisual: <Icon name="FileDiff" />,
+            onSelect: () => onSelectPanel("git-diff"),
+            tab: createGitDiffFixedPanelTab(),
+            title: "Diff",
+          },
+        ]
+      : []),
+  ];
 }
 
 function createStoryFileTab(filename: string): HostFilePreviewFixedPanelTab {
@@ -207,13 +236,13 @@ function RepresentativeInfoContent() {
 
 interface ShellArgs {
   initialPanel: ThreadSecondaryPanelTab;
-  showGitDiffTab?: boolean;
+  includeGitDiffTab?: boolean;
   canUseGitUi?: boolean;
 }
 
 function ShellRow({
   initialPanel,
-  showGitDiffTab = true,
+  includeGitDiffTab = true,
   canUseGitUi = true,
 }: ShellArgs) {
   return (
@@ -227,9 +256,8 @@ function ShellRow({
             environmentId={undefined}
             isOpen
             metadataContent={<RepresentativeInfoContent />}
-            showGitDiffTab={showGitDiffTab}
+            fixedTabs={createStoryFixedTabs(setPanel, includeGitDiffTab)}
             onPanelFocus={noop}
-            onPanelChange={setPanel}
             onCollapse={noop}
             onClose={noop}
             onFileTabReorder={noop}
@@ -349,15 +377,14 @@ function FileTabsShellInner({
         isOpen
         metadataContent={<RepresentativeInfoContent />}
         fileTabs={fileTabs}
+        fixedTabs={createStoryFixedTabs((panel) => {
+          setActiveFilename(null);
+          setActiveFixedTab(createStoryFixedPanelTab(panel));
+        })}
         renderTabContent={() =>
           activeFilename ? representativeFileContent : null
         }
-        showGitDiffTab
         onPanelFocus={noop}
-        onPanelChange={(panel) => {
-          setActiveFilename(null);
-          setActiveFixedTab(createStoryFixedPanelTab(panel));
-        }}
         onCollapse={noop}
         onClose={noop}
         onFileTabReorder={noop}
@@ -458,17 +485,16 @@ function TerminalTabsShellInner({
         isOpen
         metadataContent={<RepresentativeInfoContent />}
         fileTabs={fileTabs}
+        fixedTabs={createStoryFixedTabs((panel) => {
+          setActiveTerminalId("");
+          setActiveFixedTab(createStoryFixedPanelTab(panel));
+        })}
         renderTabContent={() =>
           activeTerminal ? (
             <RepresentativeTerminalContent title={activeTerminal.title} />
           ) : null
         }
-        showGitDiffTab
         onPanelFocus={noop}
-        onPanelChange={(panel) => {
-          setActiveTerminalId("");
-          setActiveFixedTab(createStoryFixedPanelTab(panel));
-        }}
         onCollapse={noop}
         onClose={noop}
         onFileTabReorder={noop}
@@ -565,6 +591,9 @@ function ProductionSplitPanesStory() {
             isOpen
             metadataContent={<RepresentativeInfoContent />}
             fileTabs={fileTabs}
+            fixedTabs={createStoryFixedTabs((panel) =>
+              setActiveTab(createStoryFixedPanelTab(panel)),
+            )}
             splitPanelStateId={SPLIT_STORY_PANEL_STATE_ID}
             tabModels={SPLIT_STORY_FILE_TABS}
             renderTabContent={(tab) =>
@@ -575,11 +604,7 @@ function ProductionSplitPanesStory() {
               )
             }
             tabContentFillsRegion={(tab) => tab.kind === "terminal"}
-            showGitDiffTab
             onPanelFocus={noop}
-            onPanelChange={(panel) =>
-              setActiveTab(createStoryFixedPanelTab(panel))
-            }
             onCollapse={noop}
             onClose={noop}
             onFileTabReorder={noop}
@@ -622,7 +647,7 @@ export function Overview() {
         label="parent thread, info tab"
         hint="no Diff for this parent thread; workspace tree is rendered inside the info tab body"
       >
-        <ShellRow initialPanel="thread-info" showGitDiffTab={false} />
+        <ShellRow initialPanel="thread-info" includeGitDiffTab={false} />
       </StoryRow>
       <StoryRow
         label="git UI disabled"

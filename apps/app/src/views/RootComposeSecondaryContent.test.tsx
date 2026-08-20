@@ -157,16 +157,14 @@ function createSecondaryPanel(
     activeTab: null,
     canUseGitUi: false,
     fileTabs: [],
+    fixedTabs: [],
     isOpen,
     metadataContent: null,
     onCollapse: noop,
     onClose: noop,
     onFileTabReorder: noop,
     onOpenNewTab: noop,
-    onPanelChange: noop,
     onPanelFocus: noop,
-    showGitDiffTab: false,
-    showInfoTab: false,
   };
 }
 

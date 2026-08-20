@@ -607,6 +607,7 @@ function NewTabPanelStory({
         requestedMergeBaseBranch="main"
         environmentId={ENVIRONMENT_ID}
         fileTabs={fileTabs}
+        fixedTabs={[]}
         renderTabContent={() => content}
         isOpen
         metadataContent={null}
@@ -614,12 +615,10 @@ function NewTabPanelStory({
         onClose={noop}
         onFileTabReorder={noop}
         onOpenNewTab={handleOpenNewTab}
-        onPanelChange={noop}
         onPanelFocus={noop}
         isConversationCollapsed={false}
         onToggleConversationCollapse={noop}
         renderAsDrawer
-        showGitDiffTab
       />
     </PanelStage>
   );
