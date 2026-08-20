@@ -141,9 +141,7 @@ describe("theme.css neutral ramp", () => {
     expect(rule).toContain(
       "linear-gradient(var(--state-active), var(--state-active))",
     );
-    expect(rule).toContain(
-      "linear-gradient(var(--sidebar), var(--sidebar))",
-    );
+    expect(rule).toContain("linear-gradient(var(--sidebar), var(--sidebar))");
   });
 
   it("resolves the open-in-split thread tint to an opaque sidebar color", () => {
@@ -320,6 +318,21 @@ describe("theme.css desktop portal hit testing", () => {
     expect(rule).toBeDefined();
     expect(rule).toMatch(/(?:^|\s)app-region:\s*no-drag;/);
     expect(rule).toMatch(/-webkit-app-region:\s*no-drag;/);
+  });
+});
+
+// The sidebar resize drag rewrites --sidebar-width every frame. Registered
+// non-inherited, the change restyles only the elements it is set on; inherited,
+// it restyles their whole subtrees (AppLayout.sidebar-resize.test.tsx covers
+// where it is set).
+describe("theme.css sidebar width registration", () => {
+  it("registers --sidebar-width as a non-inherited length", () => {
+    const rule = css.match(/@property --sidebar-width\s*\{([^}]*)\}/)?.[1];
+
+    expect(rule).toBeDefined();
+    expect(rule).toMatch(/syntax:\s*"<length>";/);
+    expect(rule).toMatch(/inherits:\s*false;/);
+    expect(rule).toMatch(/initial-value:\s*\d+px;/);
   });
 });
 

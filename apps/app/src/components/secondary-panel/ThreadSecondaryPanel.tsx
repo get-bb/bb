@@ -1257,7 +1257,6 @@ export function ThreadSecondaryPanel({
         ],
       )}
     >
-      <IframeDragGuardOverlay active={isSecondaryPanelResizing} />
       {shouldEnableSidebarSplits ? (
         panelSurface
       ) : (
@@ -1515,6 +1514,10 @@ export function ThreadSecondaryPanel({
           </div>
         </>
       )}
+      <IframeDragGuardOverlay
+        active={isSecondaryPanelResizing}
+        cursor="col-resize"
+      />
     </aside>
   );
 

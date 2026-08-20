@@ -914,6 +914,22 @@
   }
 }
 
+/*
+ * Non-inherited on purpose. The sidebar resize drag rewrites this length on
+ * every animation frame; an inherited custom property change makes the
+ * engine restyle every descendant of the element it is set on (measured at
+ * ~20-45 µs per element, so a long thread cost 50-400 ms per frame).
+ * `Sidebar` therefore sets it directly on the two elements that read it (the
+ * desktop gap and panel), and a change touches only those. The initial value
+ * mirrors the 16rem default in sidebar.tsx (`@property` requires an absolute
+ * length here).
+ */
+@property --sidebar-width {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 256px;
+}
+
 body.sidebar-resizing [data-sidebar="gap"],
 body.sidebar-resizing [data-sidebar="panel"] {
   transition-duration: 0ms !important;

@@ -1,11 +1,11 @@
 import {
-  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type Ref,
   type ReactNode,
 } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAtom, useStore } from "jotai";
+import { flushSync } from "react-dom";
+import { atom, useAtom, useAtomValue, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Link, matchPath, useLocation, useNavigate } from "react-router-dom";
 import type { ProjectResponse } from "@bb/server-contract";
@@ -40,7 +40,6 @@ import {
 } from "@/hooks/queries/thread-queries";
 import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { applyResizeCursor, clearResizeCursor } from "@/lib/resizeCursor";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { ProjectActionsMenu } from "@/components/project/ProjectActionsMenu";
@@ -130,6 +129,13 @@ const sidebarWidthAtom = atomWithStorage<number>(
   sidebarWidthStorage,
   { getOnInit: true },
 );
+// The in-flight width while the resize handle is dragged, or null at rest.
+// Written from the drag's animation-frame callback and read only by the
+// bridge below, so a frame of dragging re-renders the bridge and the
+// `Sidebar` element (which writes `--sidebar-width` on the two elements that
+// use it) and nothing else: not AppLayout, not the route subtree, and no
+// ancestor of the thread timeline changes style.
+const sidebarLiveWidthAtom = atom<number | null>(null);
 
 // Held in jotai (rather than as `useState` inside AppLayout) so that toggling
 // the sidebar does not re-render AppLayout — only the small bridge below
@@ -154,24 +160,20 @@ const sidebarOpenAtom = atomWithStorage<boolean>(
 interface SidebarStateBridgeProps {
   className?: string;
   providerRef: Ref<HTMLDivElement>;
-  style: CSSProperties;
   children: ReactNode;
 }
 
 type SidebarResizeMouseEvent = ReactMouseEvent<HTMLDivElement>;
 type SidebarOpenChangeHandler = (open: boolean) => void;
 
-type SidebarProviderStyle = CSSProperties & {
-  "--sidebar-width": string;
-};
-
 function SidebarStateBridge({
   className,
   providerRef,
-  style,
   children,
 }: SidebarStateBridgeProps) {
   const [open, setOpen] = useAtom(sidebarOpenAtom);
+  const sidebarWidth = useAtomValue(sidebarWidthAtom);
+  const sidebarLiveWidth = useAtomValue(sidebarLiveWidthAtom);
   const handleOpenChange = useCallback<SidebarOpenChangeHandler>(
     (nextOpen) => {
       setOpen(nextOpen);
@@ -186,7 +188,7 @@ function SidebarStateBridge({
   return (
     <SidebarProvider
       ref={providerRef}
-      style={style}
+      width={`${sidebarLiveWidth ?? sidebarWidth}px`}
       className={className}
       data-testid="app-layout-root"
       open={open}
@@ -199,8 +201,6 @@ function SidebarStateBridge({
 
 function resetSidebarResizeDocumentState(): void {
   document.body.classList.remove("sidebar-resizing");
-  clearResizeCursor();
-  document.body.style.userSelect = "";
 }
 
 interface SidebarTriggerOverlayProps {
@@ -564,11 +564,12 @@ export function AppLayout({ children }: AppLayoutProps) {
   });
   const hasThreadDetailBootstrapSettled =
     threadDetailBootstrapQuery.isSuccess || threadDetailBootstrapQuery.isError;
-  const [sidebarWidth, setSidebarWidth] = useAtom(sidebarWidthAtom);
+  // The committed width is read and written through the store, not
+  // subscribed to: AppLayout must not re-render when a resize commits.
   const [isSidebarResizing, setIsSidebarResizing] = useState(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
-  const liveWidthRef = useRef(sidebarWidth);
+  const liveWidthRef = useRef(0);
   const animationFrameRef = useRef<number | null>(null);
   // Plugin pages own the same page header + secondary-panel frame whether they
   // render alone or in a split. Avoid drawing the global header above it.
@@ -580,10 +581,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     desktopInfo,
     windowState: desktopWindowState,
   });
-  const sidebarProviderStyle: SidebarProviderStyle = {
-    "--sidebar-width": `${sidebarWidth}px`,
-  };
-
   const project = projectId
     ? projects?.find((candidate) => candidate.id === projectId)
     : undefined;
@@ -738,17 +735,22 @@ export function AppLayout({ children }: AppLayoutProps) {
     : "none";
   useFaviconBadge(faviconBadge);
 
+  // Drag-time document state is deliberately minimal. `preventDefault` on the
+  // mousedown stops a text selection from starting, and the drag-guard overlay
+  // (the pointer target for the whole drag) carries the resize cursor. Setting
+  // `user-select` or `cursor` on `body` instead would change an inherited
+  // property on the document root and restyle every element on mousedown and
+  // again on mouseup.
   const handleResizeMouseDown = useCallback(
     (event: SidebarResizeMouseEvent) => {
       event.preventDefault();
       setIsSidebarResizing(true);
       startXRef.current = event.clientX;
-      startWidthRef.current = liveWidthRef.current;
+      startWidthRef.current = store.get(sidebarWidthAtom);
+      liveWidthRef.current = startWidthRef.current;
       document.body.classList.add("sidebar-resizing");
-      applyResizeCursor("horizontal");
-      document.body.style.userSelect = "none";
     },
-    [],
+    [store],
   );
 
   const finishSidebarResize = useCallback(() => {
@@ -756,25 +758,27 @@ export function AppLayout({ children }: AppLayoutProps) {
       window.cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
-    providerRef.current?.style.setProperty(
-      "--sidebar-width",
-      `${liveWidthRef.current}px`,
-    );
+    // flushSync so the sidebar is at its final width in the DOM before the
+    // bounds sync below measures it.
+    flushSync(() => {
+      store.set(sidebarWidthAtom, liveWidthRef.current);
+      store.set(sidebarLiveWidthAtom, null);
+    });
     dispatchBrowserViewBoundsSync();
-    setSidebarWidth(liveWidthRef.current);
     setIsSidebarResizing(false);
     resetSidebarResizeDocumentState();
-  }, [setSidebarWidth]);
+  }, [store]);
 
   useEffect(() => {
     if (!isSidebarResizing) return;
 
     const applyLiveWidth = () => {
       animationFrameRef.current = null;
-      providerRef.current?.style.setProperty(
-        "--sidebar-width",
-        `${liveWidthRef.current}px`,
-      );
+      // flushSync commits the new width to the DOM inside this frame, so the
+      // bounds sync measures the moved content rect rather than last frame's.
+      flushSync(() => {
+        store.set(sidebarLiveWidthAtom, liveWidthRef.current);
+      });
       dispatchBrowserViewBoundsSync();
     };
 
@@ -808,11 +812,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       }
       resetSidebarResizeDocumentState();
     };
-  }, [finishSidebarResize, isSidebarResizing]);
-
-  useEffect(() => {
-    liveWidthRef.current = sidebarWidth;
-  }, [sidebarWidth]);
+  }, [finishSidebarResize, isSidebarResizing, store]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -823,11 +823,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     <ProjectActionsProvider>
       <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
         <ThreadActionsProvider>
-          <IframeDragGuardOverlay active={isSidebarResizing} />
-          <SidebarStateBridge
-            providerRef={providerRef}
-            style={sidebarProviderStyle}
-          >
+          <SidebarStateBridge providerRef={providerRef}>
             <AppLayoutSidebar
               mode={
                 isGlobalSettingsView
@@ -874,6 +870,10 @@ export function AppLayout({ children }: AppLayoutProps) {
               usesDesktopChrome={usesDesktopChrome}
             />
           </SidebarStateBridge>
+          <IframeDragGuardOverlay
+            active={isSidebarResizing}
+            cursor="col-resize"
+          />
           <ProjectPathDialog
             target={quickCreateProject.projectPathDialog.target}
             pending={quickCreateProject.isCreating}

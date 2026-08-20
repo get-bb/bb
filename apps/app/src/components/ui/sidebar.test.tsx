@@ -331,6 +331,30 @@ describe("mobile sidebar deferred realization", () => {
     expect(getMobilePanel()?.textContent).toContain("Sidebar content");
   });
 
+  // The width is an inherited custom property unless registered otherwise
+  // (theme.css registers it non-inherited). Either way it must be written on
+  // the elements that read it and never on the provider wrapper: the wrapper
+  // is the app root, and a per-frame change there restyles the whole app.
+  it("writes the desktop width on the gap and panel, not on the provider wrapper", () => {
+    render(
+      <CompactViewportOverrideProvider isCompactViewport={false}>
+        <SidebarProvider width="333px" data-testid="wrapper">
+          <Sidebar>Sidebar content</Sidebar>
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    const wrapper = screen.getByTestId("wrapper");
+    const gap = document.querySelector('[data-sidebar="gap"]');
+    const panel = document.querySelector('[data-sidebar="panel"]');
+    if (!(gap instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
+      throw new Error("Expected desktop gap and panel");
+    }
+    expect(gap.style.getPropertyValue("--sidebar-width")).toBe("333px");
+    expect(panel.style.getPropertyValue("--sidebar-width")).toBe("333px");
+    expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("");
+  });
+
   it("renders the desktop sidebar subtree synchronously", () => {
     const markup = renderToString(
       <CompactViewportOverrideProvider isCompactViewport={false}>

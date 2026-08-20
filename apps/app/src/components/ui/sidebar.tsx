@@ -471,6 +471,17 @@ type SidebarContext = {
 const SidebarContext = React.createContext<SidebarContext | null>(null);
 
 /**
+ * The desktop sidebar width, as a CSS length. Its own context (not a field of
+ * {@link SidebarContext}) because a resize drag updates it on every animation
+ * frame, and only {@link Sidebar} needs to re-render for that. `Sidebar` writes
+ * it as `--sidebar-width` directly on the two elements that consume it, never
+ * on an ancestor: `--sidebar-width` is registered as non-inherited in
+ * theme.css, so a per-frame change restyles those two elements instead of the
+ * whole app subtree.
+ */
+const SidebarWidthContext = React.createContext<string>(SIDEBAR_WIDTH);
+
+/**
  * "Is the sidebar visible" as its own boolean context. The full
  * {@link SidebarContext} value changes on every provider commit (the mobile
  * close flips the closing flag, then four states), and its readers include
@@ -536,6 +547,8 @@ const SidebarProvider = React.forwardRef<
     defaultOpen?: boolean;
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
+    /** Desktop sidebar width as a CSS length. Defaults to 16rem. */
+    width?: string;
   }
 >(
   (
@@ -543,6 +556,7 @@ const SidebarProvider = React.forwardRef<
       defaultOpen = true,
       open: openProp,
       onOpenChange: setOpenProp,
+      width = SIDEBAR_WIDTH,
       className,
       style,
       children,
@@ -753,33 +767,34 @@ const SidebarProvider = React.forwardRef<
     return (
       <SidebarContext.Provider value={contextValue}>
         <SidebarShowingContext.Provider value={isSidebarShowing}>
-          {/* Match the agent message action bar's tooltip timing (300ms open
+          <SidebarWidthContext.Provider value={width}>
+            {/* Match the agent message action bar's tooltip timing (300ms open
             delay + Radix's default skip window) so sidebar icon tooltips feel
             the same instead of flashing instantly on hover. disableHoverableContent
             dismisses the tooltip the moment the pointer leaves the trigger, so it
             never lingers/floats while the mouse moves on. */}
-          <TooltipProvider delayDuration={300} disableHoverableContent>
-            <div
-              style={
-                {
-                  "--sidebar-width": SIDEBAR_WIDTH,
-                  "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
-                  ...style,
-                } as React.CSSProperties
-              }
-              className={cn(
-                // Fill the app root instead of re-measuring the viewport here.
-                // app.css owns the browser-mode-specific root height, while fixed
-                // sidebar panels read the shared --bb-shell-height override.
-                "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar",
-                className,
-              )}
-              ref={ref}
-              {...props}
-            >
-              {children}
-            </div>
-          </TooltipProvider>
+            <TooltipProvider delayDuration={300} disableHoverableContent>
+              <div
+                style={
+                  {
+                    "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+                    ...style,
+                  } as React.CSSProperties
+                }
+                className={cn(
+                  // Fill the app root instead of re-measuring the viewport here.
+                  // app.css owns the browser-mode-specific root height, while fixed
+                  // sidebar panels read the shared --bb-shell-height override.
+                  "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar",
+                  className,
+                )}
+                ref={ref}
+                {...props}
+              >
+                {children}
+              </div>
+            </TooltipProvider>
+          </SidebarWidthContext.Provider>
         </SidebarShowingContext.Provider>
       </SidebarContext.Provider>
     );
@@ -819,6 +834,12 @@ const Sidebar = React.forwardRef<
       suppressMobileCloseAnimation,
       setSuppressMobileCloseAnimation,
     } = useSidebar();
+    const width = React.useContext(SidebarWidthContext);
+    // Written on the consuming elements themselves (see SidebarWidthContext).
+    const widthStyle = React.useMemo<React.CSSProperties>(
+      () => ({ "--sidebar-width": width }) as React.CSSProperties,
+      [width],
+    );
     const handleOpenMobileChange = React.useCallback(
       (nextOpen: boolean) => {
         if (nextOpen) {
@@ -870,7 +891,7 @@ const Sidebar = React.forwardRef<
             className,
           )}
           ref={ref}
-          style={style}
+          style={{ ...widthStyle, ...style }}
           {...props}
         >
           {children}
@@ -918,6 +939,7 @@ const Sidebar = React.forwardRef<
         {/* This is what handles the sidebar gap on desktop */}
         <div
           data-sidebar="gap"
+          style={widthStyle}
           className={cn(
             "relative hidden h-full w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear md:block",
             "group-data-[collapsible=offcanvas]:w-0",
@@ -946,7 +968,7 @@ const Sidebar = React.forwardRef<
               : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) border-border-seam group-data-[side=left]:border-r group-data-[side=right]:border-l",
             className,
           )}
-          style={style}
+          style={{ ...widthStyle, ...style }}
           {...props}
         >
           <div
