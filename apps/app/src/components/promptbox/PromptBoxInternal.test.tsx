@@ -501,8 +501,13 @@ function mockIPadOSWebKit(): () => void {
   });
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // TipTap's React hook defers editor destruction by 1 ms so a Strict Mode
+  // remount can reuse the instance. Let that teardown finish while this
+  // test's jsdom window is still alive instead of leaking it into the next
+  // test (or the environment shutdown after the final test).
+  await new Promise<void>((resolve) => setTimeout(resolve, 2));
   resetPluginLogoStoreForTest();
   resetPluginSlotStoreForTest();
   resetAllCrashedPluginSlotsForTest();
