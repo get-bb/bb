@@ -186,6 +186,7 @@ import {
   PluginPanelTabContent,
   usePluginPanelActions,
 } from "@/components/plugin/PluginPanelActions";
+import { pluginPanelTabFillsRegion } from "@/components/plugin/plugin-panel-tab-layout";
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -3020,25 +3021,16 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               workspaceRootPath: environment?.path,
               fileTabs,
               fileTabContent,
-              fileTabContentFillsRegion:
-                activePluginPanelTab !== null &&
-                (activePluginPanelTab.fileOpenerOwner !== undefined ||
-                  pluginThreadPanelActions.find(
-                    (candidate) =>
-                      candidate.pluginId === activePluginPanelTab.pluginId &&
-                      candidate.id === activePluginPanelTab.actionId,
-                  )?.layout === "flush"),
+              fileTabContentFillsRegion: pluginPanelTabFillsRegion(
+                activePluginPanelTab,
+                pluginThreadPanelActions,
+              ),
               splitPanelStateId: thread.id,
               splitTabModels: syncedOrderedSecondaryFileTabs,
               renderSplitTabContent,
               splitTabContentFillsRegion: (tab) =>
                 tab.kind === "plugin-panel" &&
-                (tab.fileOpenerOwner !== undefined ||
-                  pluginThreadPanelActions.find(
-                    (candidate) =>
-                      candidate.pluginId === tab.pluginId &&
-                      candidate.id === tab.actionId,
-                  )?.layout === "flush"),
+                pluginPanelTabFillsRegion(tab, pluginThreadPanelActions),
               renderBrowserDeck,
               isBrowserTabActive,
               isOpen: isSecondaryPanelOpen,

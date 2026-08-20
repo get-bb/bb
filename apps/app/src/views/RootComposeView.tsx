@@ -71,6 +71,7 @@ import {
   PluginPanelTabContent,
   usePluginNewThreadPanelActions,
 } from "@/components/plugin/PluginPanelActions";
+import { pluginPanelTabFillsRegion } from "@/components/plugin/plugin-panel-tab-layout";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import {
@@ -2460,14 +2461,10 @@ function RootComposeSurface({
                     : undefined),
                 fileTabs,
                 fileTabContent,
-                fileTabContentFillsRegion:
-                  activePluginPanelTab !== null &&
-                  (activePluginPanelTab.fileOpenerOwner !== undefined ||
-                    rootPanelNewThreadPanelActions.find(
-                      (candidate) =>
-                        candidate.pluginId === activePluginPanelTab.pluginId &&
-                        candidate.id === activePluginPanelTab.actionId,
-                    )?.layout === "flush"),
+                fileTabContentFillsRegion: pluginPanelTabFillsRegion(
+                  activePluginPanelTab,
+                  rootPanelNewThreadPanelActions,
+                ),
                 renderBrowserDeck,
                 isBrowserTabActive,
                 isOpen: isSecondaryPanelOpen,
