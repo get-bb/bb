@@ -13,20 +13,20 @@ import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
  * (detail view + side-chat tabs), debounced realtime invalidations that fire
  * after the tail already settled, and re-opening a thread.
  *
- * Keying on the thread high-water `maxSeq` makes invalidation implicit: any
- * appended event bumps `maxSeq`, producing a new key and a cold rebuild. The
- * key MUST also include every other input the projection depends on:
+ * Keying each revision on the thread high-water `maxSeq` makes invalidation
+ * implicit: any appended event bumps `maxSeq`, producing a cold rebuild. The
+ * cache keeps only the newest revision for each request shape; otherwise an
+ * active thread with compact projected rows can pin one full response per
+ * event until the global LRU fills. The request shape MUST include every other
+ * input the projection depends on:
  * `thread.status` (interrupt flips earlier rows), `environmentId` (workspace
  * root relativizes file paths), provider display name (labels dynamic-provider
  * diagnostic rows), and the row-shape request flags. Event pruning
  * (`pruneResolvedItemDeltas`, background-task progress) is output-preserving
  * and never lowers `maxSeq`, so it cannot stale a cached entry.
  *
- * Entries with many rows are not cached: an expanded active turn (the streaming
- * case) produces hundreds of rows AND a `maxSeq` that changes on every event,
- * so caching it only thrashes the LRU and pins large objects for no reuse. Idle
- * windows collapse completed turns to a handful of rows regardless of thread
- * size, so the cap excludes exactly the entries that would never be reused.
+ * Entries with many rows are not cached: an expanded active turn produces
+ * hundreds of rows, so caching it would pin a large object for little reuse.
  */
 
 const DEFAULT_MAX_ENTRIES = 128;
@@ -40,7 +40,7 @@ export interface ThreadTimelineCacheOptions {
 
 export interface ThreadTimelineCache {
   getOrBuild(
-    key: string,
+    keys: { paramsKey: string; revisionKey: string },
     build: () => ThreadTimelineResponse,
   ): ThreadTimelineResponse;
   /** Number of currently cached entries (for tests/metrics). */
@@ -53,21 +53,28 @@ export function createThreadTimelineCache(
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
   const maxCacheableRows =
     options.maxCacheableRows ?? DEFAULT_MAX_CACHEABLE_ROWS;
-  const entries = new Map<string, ThreadTimelineResponse>();
+  const entries = new Map<
+    string,
+    { revisionKey: string; value: ThreadTimelineResponse }
+  >();
 
   return {
-    getOrBuild(key, build) {
-      const cached = entries.get(key);
-      if (cached !== undefined) {
+    getOrBuild({ paramsKey, revisionKey }, build) {
+      const cached = entries.get(paramsKey);
+      if (cached?.revisionKey === revisionKey) {
         // Re-insert to mark most-recently-used.
-        entries.delete(key);
-        entries.set(key, cached);
-        return cached;
+        entries.delete(paramsKey);
+        entries.set(paramsKey, cached);
+        return cached.value;
       }
 
       const value = build();
+      // A newer revision supersedes the old response even when the new value
+      // is too large to cache. Keeping the stale value cannot produce a hit
+      // and needlessly retains its rows.
+      entries.delete(paramsKey);
       if (value.rows.length <= maxCacheableRows) {
-        entries.set(key, value);
+        entries.set(paramsKey, { revisionKey, value });
         while (entries.size > maxEntries) {
           const oldest = entries.keys().next().value;
           if (oldest === undefined) {

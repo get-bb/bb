@@ -358,8 +358,12 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       summaryOnly,
       includeProviderUnhandledOperations,
     };
+    const paramsKey = buildThreadTimelineParamsKey(keyArgs);
     const full = timelineCache.getOrBuild(
-      buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
+      {
+        paramsKey,
+        revisionKey: buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
+      },
       () => {
         const { profile, response } = buildThreadTimelineWithProfile(
           deps.db,
@@ -402,7 +406,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       query.afterSequence,
       "afterSequence",
     );
-    const paramsKey = buildThreadTimelineParamsKey(keyArgs);
     const previous =
       afterSequence === undefined
         ? undefined
