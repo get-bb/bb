@@ -55,13 +55,18 @@ env:
     visible:
       id: "compose-top-controls"
     timeout: 15000
-# Project picker → the seeded project.
+# Project picker → the seeded project. Match the option by id as well as text:
+# the same project name is visible in the sidebar behind the sheet.
 - tapOn:
     id: "project-picker"
 - extendedWaitUntil:
-    visible: "(?i)mobile e2e project"
+    visible:
+      id: "project-picker-option-.*"
+      text: "(?i)mobile e2e project"
     timeout: 15000
-- tapOn: "(?i)mobile e2e project"
+- tapOn:
+    id: "project-picker-option-.*"
+    text: "(?i)mobile e2e project"
 - extendedWaitUntil:
     visible:
       id: "project-picker"
