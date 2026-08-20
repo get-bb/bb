@@ -118,7 +118,18 @@ describe("GET /api/v1/system/usage-limits", () => {
 
       expect(response.status).toBe(200);
       expect(await readJson(response)).toEqual(USAGE_RESPONSE);
-      expect(responder.requests).toHaveLength(5);
+      expect(
+        responder.requests.map((request) =>
+          request.command.type === "provider.usage"
+            ? request.command.providerId
+            : request.command.type,
+        ),
+      ).toEqual([
+        "known_acp_agents.status",
+        "codex",
+        "claude-code",
+        "acp-cursor",
+      ]);
     });
   });
 
@@ -142,15 +153,18 @@ describe("GET /api/v1/system/usage-limits", () => {
 
       expect(response.status).toBe(200);
       expect(await readJson(response)).toEqual(USAGE_RESPONSE);
-      expect(responder.requests.map((request) => request.command.type)).toEqual(
-        [
-          "known_acp_agents.status",
-          "provider.usage",
-          "provider.usage",
-          "provider.usage",
-          "provider.usage",
-        ],
-      );
+      expect(
+        responder.requests.map((request) =>
+          request.command.type === "provider.usage"
+            ? request.command.providerId
+            : request.command.type,
+        ),
+      ).toEqual([
+        "known_acp_agents.status",
+        "codex",
+        "claude-code",
+        "acp-cursor",
+      ]);
     });
   });
 });
