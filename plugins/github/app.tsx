@@ -21,14 +21,10 @@ import {
   experimental_Diff as Diff,
   experimental_FileLink as FileLink,
   experimental_UrlLink as UrlLink,
-  experimental_useAppPanel,
-  experimental_useFixedTabTarget,
   useBbNavigate,
   useRealtime,
   useRpc,
-  type ExperimentalPluginFixedTabRegistration,
   type PluginNavPanelProps,
-  type JsonValue,
   type PluginThreadPanelProps,
 } from "@get-bb/plugin-sdk/app";
 import {
@@ -70,36 +66,6 @@ import { Textarea } from "@bb/shared-ui/textarea";
 import { EmptyState } from "@/components/empty-state";
 import { Markdown } from "@/components/markdown-lite";
 import { PageBody } from "@/components/page-body";
-
-type GithubDetailsFixedTabTarget = {
-  kind: "item";
-  itemKind: "issue" | "pr";
-  repo: string;
-  number: number;
-};
-
-function isGithubDetailsFixedTabTarget(
-  value: JsonValue,
-): value is GithubDetailsFixedTabTarget {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const keys = Object.keys(value);
-  return (
-    keys.length === 4 &&
-    keys.includes("kind") &&
-    keys.includes("itemKind") &&
-    keys.includes("repo") &&
-    keys.includes("number") &&
-    value.kind === "item" &&
-    (value.itemKind === "issue" || value.itemKind === "pr") &&
-    typeof value.repo === "string" &&
-    value.repo.length > 0 &&
-    typeof value.number === "number" &&
-    Number.isSafeInteger(value.number) &&
-    value.number > 0
-  );
-}
 
 interface IssueComment {
   author: string;
@@ -2116,43 +2082,6 @@ function GithubPanel({ subPath }: PluginNavPanelProps) {
   );
 }
 
-function GithubDetailsFixedTab() {
-  const targetState = experimental_useFixedTabTarget(githubDetailsFixedTab);
-  if (targetState === null) {
-    return (
-      <EmptyState message="Select an issue or pull request from the GitHub list." />
-    );
-  }
-  const selection = targetState.target;
-  return selection.itemKind === "issue" ? (
-    <IssueDetailView
-      key={targetState.sequence}
-      repo={selection.repo}
-      number={selection.number}
-      onBack={targetState.clear}
-    />
-  ) : (
-    <PullDetailView
-      key={targetState.sequence}
-      repo={selection.repo}
-      number={selection.number}
-      onBack={targetState.clear}
-    />
-  );
-}
-
-const githubDetailsFixedTab: ExperimentalPluginFixedTabRegistration<
-  GithubDetailsFixedTabTarget
-> = {
-  panelId: "github",
-  id: "details",
-  title: "Details",
-  icon: "Info",
-  component: GithubDetailsFixedTab,
-  layout: "padded",
-  experimental_target: { validate: isGithubDetailsFixedTabTarget },
-};
-
 function ListView({
   kind,
   query,
@@ -2200,23 +2129,15 @@ function GithubPanelBody({
   query: string;
   setQuery: (query: string) => void;
 }) {
-  const appPanel = experimental_useAppPanel();
   const openItem = useCallback(
     (itemKind: "issue" | "pr", repo: string, number: number) => {
-      const accepted = appPanel.openFixedTab({
-        surface: { kind: "current" },
-        tab: githubDetailsFixedTab,
-        target: { kind: "item", itemKind, repo, number },
-      });
-      if (!accepted) {
-        navigate(
-          itemKind === "pr"
-            ? { view: "pull", repo, number }
-            : { view: "issue", repo, number },
-        );
-      }
+      navigate(
+        itemKind === "pr"
+          ? { view: "pull", repo, number }
+          : { view: "issue", repo, number },
+      );
     },
-    [appPanel, navigate],
+    [navigate],
   );
   if (status !== null && status.ghState === "unavailable") {
     return (
@@ -2312,7 +2233,6 @@ export default definePluginApp((app) => {
     path: "github",
     component: GithubPanel,
     headerContent: PanelHeader,
-    experimental_fixedTabs: [githubDetailsFixedTab],
   });
   app.slots.threadPanelAction({
     id: "pull",
