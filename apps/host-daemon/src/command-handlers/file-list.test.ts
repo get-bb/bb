@@ -236,6 +236,42 @@ describe("listPathsRecursively", () => {
     }
   });
 
+  it("includes project dot paths without traversing Git internals or dependencies", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-file-list-"));
+    try {
+      await fs.mkdir(path.join(root, ".github", "workflows"), {
+        recursive: true,
+      });
+      await fs.writeFile(path.join(root, ".github", "workflows", "ci.yml"), "");
+      await fs.writeFile(path.join(root, ".env"), "");
+      await fs.mkdir(path.join(root, ".git"));
+      await fs.writeFile(path.join(root, ".git", "config"), "");
+      await fs.mkdir(path.join(root, "node_modules", "dependency"), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(root, "node_modules", "dependency", "index.js"),
+        "",
+      );
+
+      const result = await listPathsRecursively({
+        dir: root,
+        root,
+        includeFiles: true,
+        includeDirectories: true,
+      });
+
+      expect(result.map((entry) => entry.path).sort()).toEqual([
+        ".env",
+        ".github",
+        ".github/workflows",
+        ".github/workflows/ci.yml",
+      ]);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("does not return symlinked files as regular path entries", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-file-list-"));
     try {

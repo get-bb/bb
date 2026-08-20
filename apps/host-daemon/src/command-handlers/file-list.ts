@@ -49,6 +49,8 @@ export interface ListPathsRecursivelyArgs extends PathListInclusion {
   root: string;
 }
 
+const RECURSIVE_PATH_SKIP_NAMES = new Set([".git", "node_modules"]);
+
 function shouldIncludePath(
   pathKind: HostPathEntryKind,
   inclusion: PathListInclusion,
@@ -140,8 +142,7 @@ export async function listPathsRecursively(
   const entries = await fs.readdir(args.dir, { withFileTypes: true });
   const results: ListedPath[] = [];
   for (const entry of entries) {
-    if (entry.name.startsWith(".")) continue;
-    if (entry.name === "node_modules") continue;
+    if (RECURSIVE_PATH_SKIP_NAMES.has(entry.name)) continue;
     if (entry.isSymbolicLink()) continue;
 
     const fullPath = path.join(args.dir, entry.name);
