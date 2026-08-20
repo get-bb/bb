@@ -1,3 +1,8 @@
+// Version 143 lets daemons from before session-open's `localApiPort` field
+// reach the protocol-version check by defaulting that field at the server
+// boundary. Without it, those daemons receive `invalid_request` instead of
+// `protocol_version_mismatch`, so their protocol self-updater never runs.
+//
 // Version 142 ships Pi context-window usage after every SDK turn ends, once
 // its assistant response and tool results are both reflected in the session.
 // Older bundled bridges report only after the full agent run ends, leaving the
@@ -85,7 +90,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 142 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 143 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

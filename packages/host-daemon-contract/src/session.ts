@@ -114,15 +114,21 @@ export const hostDaemonSessionOpenRequestSchema = z.object({
   hasMachineCredential: z.boolean(),
   platform: hostPlatformSchema,
   dataDir: z.string().min(1),
-  /** Loopback editor-helper port, or null when this daemon exposes no full local API. */
-  localApiPort: z.number().int().min(1).max(65_535).nullable(),
+  /**
+   * Loopback editor-helper port, or null when this daemon exposes no full
+   * local API. The default preserves the protocol-mismatch response for
+   * daemons from before this field existed, so they can reach self-update.
+   */
+  localApiPort: z.number().int().min(1).max(65_535).nullable().default(null),
   // Accept any version at the schema boundary so the server can return an
   // actionable protocol mismatch instead of an opaque validation failure.
   protocolVersion: z.number().int().positive(),
   activeThreads: z.array(hostDaemonActiveThreadSchema),
   loadedEnvironments: z.array(hostDaemonLoadedEnvironmentSchema).default([]),
 });
-export type HostDaemonSessionOpenRequest = z.input<
+// Current daemon code must send every server-defaulted field explicitly. The
+// schema's wider input remains a compatibility boundary for older daemons.
+export type HostDaemonSessionOpenRequest = z.output<
   typeof hostDaemonSessionOpenRequestSchema
 >;
 

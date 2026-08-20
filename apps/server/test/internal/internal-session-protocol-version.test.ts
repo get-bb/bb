@@ -21,6 +21,47 @@ describe("internal session protocol version", () => {
       });
       const daemonClient = createHostDaemonClient(server.baseUrl, hostKey);
       const staleProtocolVersion = HOST_DAEMON_PROTOCOL_VERSION - 1;
+
+      // Keep this request shaped like a daemon from before protocol 140 added
+      // localApiPort. It must reach the version check instead of failing full
+      // payload validation, because only protocol_version_mismatch activates
+      // the daemon's self-updater.
+      const preLocalApiPortProtocolVersion = 139;
+      const oldDaemonResponse = await fetch(
+        `${server.baseUrl}/internal/session/open`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${hostKey}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            hostId: "host-protocol",
+            instanceId: "instance-pre-local-api-port",
+            hostName: "Protocol Host",
+            hostType: "persistent",
+            hasMachineCredential: false,
+            platform: "darwin",
+            dataDir: "/tmp/host-protocol-data",
+            protocolVersion: preLocalApiPortProtocolVersion,
+            activeThreads: [],
+            loadedEnvironments: [],
+          }),
+        },
+      );
+      expect(oldDaemonResponse.status).toBe(400);
+      expect(await oldDaemonResponse.json()).toMatchObject({
+        code: "protocol_version_mismatch",
+        details: {
+          retryUpdate: false,
+          serverProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+        },
+        message: `Daemon protocol version ${preLocalApiPortProtocolVersion} does not match server protocol version ${HOST_DAEMON_PROTOCOL_VERSION}`,
+      });
+      expect(
+        getHost(server.db, "host-protocol")?.lastRejectedProtocolVersion,
+      ).toBe(preLocalApiPortProtocolVersion);
+
       const response = await daemonClient.session.open.$post({
         json: {
           hostId: "host-protocol",
@@ -33,6 +74,7 @@ describe("internal session protocol version", () => {
           localApiPort: 38_888,
           protocolVersion: staleProtocolVersion,
           activeThreads: [],
+          loadedEnvironments: [],
         },
       });
 
@@ -69,6 +111,7 @@ describe("internal session protocol version", () => {
           localApiPort: 38_888,
           protocolVersion: staleProtocolVersion,
           activeThreads: [],
+          loadedEnvironments: [],
         },
       });
       expect(await forcedRetry.json()).toMatchObject({
@@ -87,6 +130,7 @@ describe("internal session protocol version", () => {
           localApiPort: 38_888,
           protocolVersion: staleProtocolVersion,
           activeThreads: [],
+          loadedEnvironments: [],
         },
       });
       expect(await consumedRetry.json()).toMatchObject({
@@ -105,6 +149,7 @@ describe("internal session protocol version", () => {
           localApiPort: 38_888,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          loadedEnvironments: [],
         },
       });
       expect(accepted.status).toBe(201);
