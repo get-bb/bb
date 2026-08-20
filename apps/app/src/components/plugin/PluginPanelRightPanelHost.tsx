@@ -85,6 +85,7 @@ import {
 } from "@/components/secondary-panel/TerminalHostSelector";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 import { PluginPanelTabContent } from "./PluginPanelActions";
+import { pluginPanelTabFillsRegion } from "./plugin-panel-tab-layout";
 
 const TERMINAL_COLS = 100;
 const TERMINAL_ROWS = 30;
@@ -135,7 +136,7 @@ export function PluginPanelRightPanelHost({
   flushPageInsets?: boolean;
   paneId?: string;
 }) {
-  const { navPanels } = usePluginSlots();
+  const { navPanels, newThreadPanelActions } = usePluginSlots();
   const panel =
     navPanels.find(
       (candidate) =>
@@ -838,6 +839,9 @@ export function PluginPanelRightPanelHost({
     startSelectedTerminal,
     terminalHosts,
   ]);
+  const fileTabContentFillsRegion =
+    activeTerminalTab !== null ||
+    pluginPanelTabFillsRegion(activePluginPanelTab, newThreadPanelActions);
 
   const renderPanel = useCallback(
     ({
@@ -870,7 +874,7 @@ export function PluginPanelRightPanelHost({
           metadataContent={null}
           fileTabs={fileTabs}
           fileTabContent={activeContent}
-          fileTabContentFillsRegion={activeTerminalTab !== null}
+          fileTabContentFillsRegion={fileTabContentFillsRegion}
           onFileTabReorder={reorderFileTab}
           browserDeck={deck}
           isBrowserTabActive={activeBrowserTab !== null}
@@ -898,8 +902,8 @@ export function PluginPanelRightPanelHost({
       activeContent,
       activeFixedTabRegistration?.layout,
       activeTab,
-      activeTerminalTab,
       browserTabs,
+      fileTabContentFillsRegion,
       fileTabs,
       fixedTabContent,
       fixedTabs,

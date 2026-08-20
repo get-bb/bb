@@ -15,6 +15,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
   createEmptyFixedPanelTabsState,
+  createPluginPanelFixedPanelTab,
   createTerminalFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
   serializeFixedPanelTabsState,
@@ -37,6 +38,27 @@ interface TestFixedTabRegistration {
     validate(value: import("@get-bb/plugin-sdk").JsonValue): boolean;
   };
   layout?: "padded" | "flush";
+}
+
+interface TestFileOpenerRegistration {
+  id: string;
+  title: string;
+  extensions: string[];
+  component: () => ReactNode;
+  pluginId: string;
+  generation: number;
+}
+
+interface TestNewThreadPanelActionRegistration {
+  id: string;
+  title: string;
+  component: (props: {
+    projectId: string | null;
+    params: import("@get-bb/plugin-sdk").JsonValue | null;
+  }) => ReactNode;
+  layout?: "padded" | "flush";
+  pluginId: string;
+  generation: number;
 }
 
 const browserState = vi.hoisted(() => ({ available: false }));
@@ -84,6 +106,8 @@ const terminalQueryState = vi.hoisted(() => ({
 const fixedTabState = vi.hoisted(() => ({
   panelRegistered: true,
   registrations: [] as TestFixedTabRegistration[],
+  fileOpeners: [] as TestFileOpenerRegistration[],
+  newThreadPanelActions: [] as TestNewThreadPanelActionRegistration[],
 }));
 const hostState = vi.hoisted(() => ({
   hosts: [
@@ -118,7 +142,8 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
 
 vi.mock("@/lib/plugin-slots", () => ({
   usePluginSlots: () => ({
-    fileOpeners: [],
+    fileOpeners: fixedTabState.fileOpeners,
+    newThreadPanelActions: fixedTabState.newThreadPanelActions,
     navPanels: fixedTabState.panelRegistered
       ? [
           {
@@ -247,6 +272,7 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
     browserDeck,
     fileTabs,
     fileTabContent,
+    fileTabContentFillsRegion,
     fixedTabs,
     fixedTabContent,
     onClose,
@@ -261,6 +287,7 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
       onSelect: () => void;
     }>;
     fileTabContent: ReactNode;
+    fileTabContentFillsRegion?: boolean;
     fixedTabs: Array<{
       tab: { id: string };
       title: string;
@@ -273,6 +300,9 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
   }) => (
     <aside
       data-testid="shared-thread-secondary-panel"
+      data-file-tab-content-fills-region={
+        fileTabContentFillsRegion === true ? "true" : "false"
+      }
       data-top-chrome-surface={topChromeSurface ?? "panel"}
     >
       {fileTabs.map((tab) => (
@@ -520,6 +550,8 @@ describe("PluginPanelRightPanelHost", () => {
     threadTabsApi.update.mockResolvedValue({ revision: 5, tabs: [] });
     fixedTabState.panelRegistered = true;
     fixedTabState.registrations = [];
+    fixedTabState.fileOpeners = [];
+    fixedTabState.newThreadPanelActions = [];
     localStorage.clear();
     // Clearing storage is not enough on its own: the per-thread atoms cache
     // whatever storage held when they were first created.
@@ -726,6 +758,74 @@ describe("PluginPanelRightPanelHost", () => {
     expect(
       await screen.findByText("storage:thr-explicit:reports/result.md"),
     ).toBeTruthy();
+  });
+
+  it("gives plugin-page file openers the full content region", async () => {
+    fixedTabState.fileOpeners = [
+      {
+        id: "editor",
+        title: "Demo editor",
+        extensions: ["ts"],
+        component: () => <div>Plugin file editor</div>,
+        pluginId: "demo",
+        generation: 1,
+      },
+    ];
+    renderHost();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open workspace file" }),
+    );
+
+    expect(await screen.findByText("Plugin file editor")).toBeTruthy();
+    expect(
+      screen.getByTestId("shared-thread-secondary-panel").dataset
+        .fileTabContentFillsRegion,
+    ).toBe("true");
+  });
+
+  it("gives restored flush action tabs the full content region", async () => {
+    fixedTabState.newThreadPanelActions = [
+      {
+        id: "canvas",
+        title: "Canvas",
+        component: () => <div>Plugin canvas</div>,
+        layout: "flush",
+        pluginId: "demo",
+        generation: 1,
+      },
+    ];
+    const panelStateId = getPluginPagePanelStateId({
+      panelPath: "board",
+      pluginId: "demo",
+    });
+    const actionTab = createPluginPanelFixedPanelTab({
+      actionId: "canvas",
+      paramsJson: null,
+      pluginId: "demo",
+      title: "Canvas",
+    });
+    localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId: panelStateId }),
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({
+          lastUsedAt: Date.now(),
+          secondary: {
+            activeTabId: actionTab.id,
+            isOpen: true,
+            tabs: [actionTab],
+          },
+        }),
+      }),
+    );
+
+    renderHost();
+
+    expect(await screen.findByText("Plugin canvas")).toBeTruthy();
+    expect(
+      screen.getByTestId("shared-thread-secondary-panel").dataset
+        .fileTabContentFillsRegion,
+    ).toBe("true");
   });
 
   it("does not reopen fixed tabs after navigating away and back", async () => {
