@@ -27,8 +27,8 @@ export function SettingsSection({
     <section className="space-y-3">
       <div
         className={cn(
-          "flex justify-between gap-4",
-          description ? "items-start" : "items-center",
+          "flex flex-col gap-3 sm:flex-row sm:justify-between sm:gap-4",
+          description ? "sm:items-start" : "sm:items-center",
         )}
       >
         <div className="min-w-0">
@@ -44,7 +44,7 @@ export function SettingsSection({
             </p>
           ) : null}
         </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
+        {action ? <div className="shrink-0 self-start">{action}</div> : null}
       </div>
       <div
         className={cn(

@@ -152,7 +152,7 @@ afterEach(() => {
 });
 
 describe("MachinesSettingsSection", () => {
-  it("renders machine status, project, and permission metadata as accessible icons", async () => {
+  it("renders machine status, project, and permission metadata as visible text", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
     stubSidebarBootstrapFetch();
@@ -163,27 +163,17 @@ describe("MachinesSettingsSection", () => {
     expect(screen.getByText("dev-vm")).toBeDefined();
     expect(screen.getByText("this machine")).toBeDefined();
     expect(screen.getByText("primary")).toBeDefined();
-    await waitFor(() => {
-      expect(screen.getByRole("img", { name: "Online" })).toBeDefined();
-    });
-    expect(
-      screen
-        .getByRole("img", { name: "Online" })
-        .querySelector('[data-icon="Cloud"]'),
-    ).not.toBeNull();
-    expect(
-      screen
-        .getByRole("img", { name: "Offline" })
-        .querySelector('[data-icon="CloudOff"]'),
-    ).not.toBeNull();
-    const primaryProjects = screen.getByRole("img", { name: "2 projects" });
-    expect(
-      primaryProjects.querySelector('[data-icon="FolderGit"]'),
-    ).not.toBeNull();
-    expect(screen.getByRole("img", { name: "1 project" })).toBeDefined();
-    expect(screen.getAllByRole("img", { name: "Full Access" })).toHaveLength(2);
+    expect(screen.getByText("Online")).toBeDefined();
+    expect(screen.getByText(/^Offline · last seen/u)).toBeDefined();
+    expect(screen.getByText("2 projects")).toBeDefined();
+    expect(screen.getByText("1 project")).toBeDefined();
+    expect(screen.getAllByText("Full Access")).toHaveLength(2);
     expect(screen.getByText("macOS")).toBeDefined();
-    expect(screen.queryByText(/Online ·/u)).toBeNull();
+    expect(
+      screen
+        .getByRole("link", { name: "Open MacBook Pro" })
+        .querySelector("[data-icon]"),
+    ).toBeNull();
   });
 
   it("distinguishes the client-local daemon from the primary machine", async () => {
@@ -255,11 +245,11 @@ describe("MachinesSettingsSection", () => {
 
     renderSection();
 
-    expect(
-      await screen.findByRole("img", {
-        name: `Needs update · daemon protocol ${HOST_DAEMON_PROTOCOL_VERSION - 1} · server protocol ${HOST_DAEMON_PROTOCOL_VERSION}`,
-      }),
-    ).toBeDefined();
+    const updateStatus = await screen.findByText(
+      `Needs update · daemon protocol ${HOST_DAEMON_PROTOCOL_VERSION - 1} · server protocol ${HOST_DAEMON_PROTOCOL_VERSION}`,
+    );
+    expect(updateStatus.className).toContain("min-w-0");
+    expect(updateStatus.className).not.toContain("shrink-0");
     // The action lives in the row menu so the rows keep one shape.
     await openHostMenu("dev-vm");
     const renameItem = await screen.findByRole("menuitem", { name: "Rename" });
@@ -309,7 +299,7 @@ describe("MachinesSettingsSection", () => {
     });
   });
 
-  it("uses a compact accessible Add machine action", async () => {
+  it("uses a labeled Add a machine action", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
     stubSidebarBootstrapFetch();
@@ -317,15 +307,14 @@ describe("MachinesSettingsSection", () => {
     renderSection();
 
     const addMachine = await screen.findByRole("button", {
-      name: "Add machine",
+      name: "Add a machine",
     });
-    expect(addMachine.textContent).toBe("");
-    expect(addMachine.className).toContain("size-7");
+    expect(addMachine.textContent).toBe("Add a machine");
     expect(addMachine.querySelector('[data-icon="Plus"]')).not.toBeNull();
-    fireEvent.pointerMove(addMachine);
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Add machine",
-    );
+    const action = addMachine.parentElement;
+    expect(action?.className).toContain("self-start");
+    expect(action?.parentElement?.className).toContain("flex-col");
+    expect(action?.parentElement?.className).toContain("sm:flex-row");
     fireEvent.click(addMachine);
     expect(
       await screen.findByRole("heading", { name: "Add a machine" }),
@@ -359,7 +348,7 @@ describe("MachinesSettingsSection", () => {
     });
   });
 
-  it("keeps permission metadata left-aligned and reserves a hover caret", async () => {
+  it("shows permission metadata as text and reserves a hover caret", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([
       primaryHost,
@@ -369,14 +358,8 @@ describe("MachinesSettingsSection", () => {
 
     renderSection();
 
-    expect(
-      await screen.findByRole("img", {
-        name: "Accept Edits",
-      }),
-    ).toBeDefined();
-    expect(screen.getByRole("img", { name: "Full Access" })).toBeDefined();
-    expect(screen.queryByText("Accept Edits")).toBeNull();
-    expect(screen.queryByText("Full Access")).toBeNull();
+    expect(await screen.findByText("Accept Edits")).toBeDefined();
+    expect(screen.getByText("Full Access")).toBeDefined();
     // The control itself lives on the machine page.
     expect(
       screen.queryByRole("button", { name: /Permission limit for/ }),
@@ -390,12 +373,6 @@ describe("MachinesSettingsSection", () => {
     expect(row?.className).toContain("focus-within:bg-state-hover");
     expect(row?.className).toContain("px-2");
     expect(row?.className).toContain("py-2");
-    const permission = screen.getByRole("img", { name: "Accept Edits" });
-    expect(permission.querySelector('[data-icon="FolderEdit"]')).not.toBeNull();
-    fireEvent.pointerMove(permission);
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Accept Edits",
-    );
     const caret = row?.querySelector('[data-icon="ChevronRight"]');
     expect(caret?.classList.contains("opacity-0")).toBe(true);
     expect(caret?.classList.contains("size-3.5")).toBe(true);
