@@ -57,6 +57,14 @@ export interface DiffImageSizeStat {
 
 export type GitDiffCardSvgDisplayMode = "preview" | "raw";
 
+/**
+ * Unchanged lines revealed per expand-up / expand-down click; the library
+ * default of 100 is too aggressive for our compact cards. Only sent for a
+ * card that can actually fetch full file contents — see
+ * {@link BbDiffProps.expansionLineCount}.
+ */
+const DIFF_EXPANSION_LINE_COUNT = 30;
+
 const GIT_DIFF_CARD_BODY_STYLE: CSSProperties = {
   contain: "layout paint style",
   contentVisibility: "auto",
@@ -768,6 +776,7 @@ interface GitDiffCardSvgBodyProps {
   fileDiffLabel: string;
   patchText: string | undefined;
   presentation: DiffPresentation;
+  expansionLineCount: number | undefined;
   onSelectionAddToChat?: (text: string) => void;
 }
 
@@ -778,6 +787,7 @@ function GitDiffCardSvgBody({
   fileDiffLabel,
   patchText,
   presentation,
+  expansionLineCount,
   onSelectionAddToChat,
 }: GitDiffCardSvgBodyProps) {
   return displayMode === "preview" ? (
@@ -791,6 +801,7 @@ function GitDiffCardSvgBody({
       file={fileDiff}
       patchText={patchText}
       {...presentation}
+      expansionLineCount={expansionLineCount}
       onSelectionAddToChat={onSelectionAddToChat}
     />
   );
@@ -839,6 +850,13 @@ export function GitDiffCardBody({
     contextExpansion,
     patchText,
   } = state;
+  // pierre renders an empty diff when it gets an expansion budget for a
+  // hunk-only patch, so only a card that can fetch full contents sends one.
+  // The timeline never can; the diff panel can, through its fetcher.
+  const expansionLineCount =
+    contextExpansion.status === "unavailable"
+      ? undefined
+      : DIFF_EXPANSION_LINE_COUNT;
 
   return (
     <div
@@ -879,6 +897,7 @@ export function GitDiffCardBody({
           fileDiffLabel={fileDiffLabel}
           patchText={patchText}
           presentation={presentation}
+          expansionLineCount={expansionLineCount}
           onSelectionAddToChat={onSelectionAddToChat}
         />
       ) : (
@@ -887,6 +906,7 @@ export function GitDiffCardBody({
             file={enrichedFileDiff}
             patchText={patchText}
             {...presentation}
+            expansionLineCount={expansionLineCount}
             fallback={<GitDiffCardBodySkeleton />}
             onSelectionAddToChat={onSelectionAddToChat}
           />

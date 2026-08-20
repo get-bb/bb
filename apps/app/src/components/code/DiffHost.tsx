@@ -28,6 +28,12 @@ export interface DiffHostProps extends Partial<DiffPresentation> {
    */
   patchText?: string;
   className?: string;
+  /**
+   * Forwarded to BB's renderer; see {@link BbDiffProps.expansionLineCount}.
+   * Never reaches a plugin replacement — context expansion is a BB renderer
+   * capability, not part of the semantic contract.
+   */
+  expansionLineCount?: number;
   /** Rendered while BB's renderer chunk loads. */
   fallback?: ReactNode;
   onSelectionAddToChat?: (text: string) => void;
@@ -51,6 +57,7 @@ export function DiffHost({
   overflow = DEFAULT_CODE_OVERFLOW,
   showLineNumbers = true,
   className,
+  expansionLineCount,
   fallback = null,
   onSelectionAddToChat,
 }: DiffHostProps) {
@@ -72,6 +79,7 @@ export function DiffHost({
         overflow={overflow}
         showLineNumbers={showLineNumbers}
         className={className}
+        expansionLineCount={expansionLineCount}
         onSelectionAddToChat={onSelectionAddToChat}
       />
     </Suspense>

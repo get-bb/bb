@@ -19,14 +19,6 @@ const DIFF_VIEW_STYLE = {
   "--diffs-line-height": "18px",
 } as CSSProperties;
 
-/**
- * Reveal 30 unchanged lines per expand-up / expand-down click. The library
- * default is 100 — too aggressive for our compact diff cards. The controls
- * only appear once a caller has attached full file contents to the parsed
- * file, so surfaces without a content fetcher never show them.
- */
-const EXPANSION_LINE_COUNT = 30;
-
 function BbDiffSkeleton() {
   return (
     <div className="space-y-1.5 px-3 py-3">
@@ -52,6 +44,7 @@ export function BbDiff({
   overflow,
   showLineNumbers,
   className,
+  expansionLineCount,
   onSelectionAddToChat,
 }: BbDiffProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -89,7 +82,10 @@ export function BbDiff({
       disableLineNumbers: !showLineNumbers,
       // The card's own header owns the file name, path actions, and stats.
       disableFileHeader: true,
-      expansionLineCount: EXPANSION_LINE_COUNT,
+      // Only set when the caller can actually supply full file contents:
+      // pierre renders an empty diff when it is handed an expansion budget
+      // for a hunk-only patch, which is what the timeline supplies.
+      ...(expansionLineCount === undefined ? {} : { expansionLineCount }),
       themeType,
       theme: codeTheme,
       enableGutterUtility: onSelectionAddToChat !== undefined,
@@ -106,6 +102,7 @@ export function BbDiff({
     }),
     [
       codeTheme,
+      expansionLineCount,
       lineSelectionActions.onGutterUtilityClick,
       lineSelectionActions.onLineSelectionChange,
       lineSelectionActions.onLineSelectionEnd,

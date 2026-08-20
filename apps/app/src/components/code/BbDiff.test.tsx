@@ -13,6 +13,7 @@ interface RenderedOptions {
   overflow: string;
   disableLineNumbers: boolean;
   disableFileHeader: boolean;
+  expansionLineCount?: number;
 }
 
 const pierre = vi.hoisted(() => ({
@@ -81,6 +82,40 @@ describe("BbDiff", () => {
       dark: "custom-dark",
       light: "custom-light",
     });
+  });
+
+  it("omits the expansion budget unless the caller can supply file contents", async () => {
+    // pierre renders an EMPTY diff when it is handed an expansion budget for a
+    // hunk-only patch — which is exactly what timeline file-change rows carry,
+    // since they have no way to fetch the full file. Sending the option
+    // unconditionally blanked every timeline diff.
+    render(
+      <BbDiff
+        file={fixture()}
+        view="unified"
+        overflow="scroll"
+        showLineNumbers
+      />,
+    );
+    await screen.findByTestId("pierre-file-diff");
+
+    expect(pierre.lastOptions).not.toBeNull();
+    expect("expansionLineCount" in (pierre.lastOptions ?? {})).toBe(false);
+  });
+
+  it("passes the expansion budget through when the caller supplies one", async () => {
+    render(
+      <BbDiff
+        file={fixture()}
+        view="unified"
+        overflow="scroll"
+        showLineNumbers
+        expansionLineCount={30}
+      />,
+    );
+    await screen.findByTestId("pierre-file-diff");
+
+    expect(pierre.lastOptions?.expansionLineCount).toBe(30);
   });
 
   it("maps semantic presentation onto the renderer's options", async () => {
