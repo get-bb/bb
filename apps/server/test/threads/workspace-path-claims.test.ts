@@ -1,3 +1,4 @@
+import { archiveThread } from "@bb/db";
 import { describe, expect, it } from "vitest";
 import { unmanagedAttachRefusal } from "../../src/services/threads/workspace-path-claims.js";
 import {
@@ -139,6 +140,41 @@ describe("unmanagedAttachRefusal", () => {
           checksOutBranch: true,
         }),
       ).toMatchObject({ reason: "live-thread" });
+    });
+  });
+
+  it("allows branch checkout after every thread at the path is archived", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-claims-archived",
+      });
+      const sharedPath = "/tmp/archived-shared";
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Archived",
+        path: sharedPath,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: sharedPath,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      });
+      archiveThread(harness.deps.db, harness.deps.hub, thread.id);
+
+      expect(
+        unmanagedAttachRefusal(harness.deps.db, {
+          checksOutBranch: true,
+          dataDir: HOST_DATA_DIR,
+          hostId: host.id,
+          path: sharedPath,
+          projectId: project.id,
+        }),
+      ).toBeNull();
     });
   });
 });
