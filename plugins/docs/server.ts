@@ -545,6 +545,19 @@ function requireOptionalDirectory(value: unknown): string {
   return requireVaultPath(value);
 }
 
+function requireThreadStoragePath(value: unknown): string {
+  const raw = requireString(value, "path").replace(/\\/g, "/");
+  if (
+    path.posix.isAbsolute(raw) ||
+    path.win32.isAbsolute(raw) ||
+    raw.includes("\0") ||
+    raw.split("/").includes("..")
+  ) {
+    throw new Error(`Invalid thread-storage path: ${raw}`);
+  }
+  return path.posix.normalize(raw);
+}
+
 function absolutePath(vault: Vault, relativePath: string): string {
   const parts = relativePath.split("/");
   return /^[a-zA-Z]:[\\/]/.test(vault.rootPath) ||
@@ -1015,7 +1028,44 @@ export default async function plugin(
         hostId: environment.hostId,
       };
     }
-    throw new Error("Docs can open workspace and host files only");
+    if (source.kind === "thread-storage") {
+      if (!source.threadId) {
+        throw new Error("Thread-storage files require a thread ID");
+      }
+      const relativePath = requireThreadStoragePath(filePath);
+      const [thread, storage] = await Promise.all([
+        bb.sdk.threads.get({
+          threadId: source.threadId,
+          include: "environment",
+        }),
+        // The bounded listing is the SDK surface that also resolves the
+        // thread's absolute storage root on its owning host.
+        bb.sdk.threads.storageFiles({
+          threadId: source.threadId,
+          limit: "1",
+        }),
+      ]);
+      const environment =
+        "environment" in thread ? thread.environment : undefined;
+      if (!environment) {
+        throw new Error("This thread has no environment");
+      }
+      if (!isAbsoluteHostPath(storage.storageRootPath)) {
+        throw new Error("This thread has no absolute storage path");
+      }
+      const rootPath = normalizeHostRoot(storage.storageRootPath);
+      return {
+        path: hostPathApi(rootPath).join(
+          rootPath,
+          ...relativePath.split("/"),
+        ),
+        rootPath,
+        hostId: environment.hostId,
+      };
+    }
+    throw new Error(
+      "Docs can open workspace, host, and thread-storage files only",
+    );
   }
 
   async function createNote(

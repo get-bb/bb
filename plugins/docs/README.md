@@ -25,8 +25,9 @@ provider, and directive are all Docs.
   to polling.
 - **Default Markdown editor:** Docs registers for `.md`, `.mdx`, and
   `.markdown` files, so it can be selected under Settings → File openers or
-  chosen from a file link's Open with menu. Workspace and absolute host files
-  retain compare-and-swap saves even when they are outside a Docs vault.
+  chosen from a file link's Open with menu. Workspace, absolute host, and
+  thread-storage files retain compare-and-swap saves even when they are outside
+  a Docs vault.
 - **YAML frontmatter:** an opening fenced block that parses as a YAML mapping
   supplies the document title when it has a string `title`, stays out of the
   rendered body and search preview, and is preserved byte-for-byte when the
