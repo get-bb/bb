@@ -52,7 +52,6 @@ export type FilePreviewState =
   | { kind: "not-found" }
   | { kind: "error"; message?: string }
   | { kind: "image"; url: string }
-  | { kind: "pdf"; url: string }
   | { kind: "video"; url: string }
   | ({ kind: "iframe" } & IframeFilePreviewTarget)
   | {
@@ -143,11 +142,6 @@ interface FilePreviewImageProps {
 }
 
 interface FilePreviewVideoProps {
-  url: string;
-  title: string;
-}
-
-interface FilePreviewPdfProps {
   url: string;
   title: string;
 }
@@ -473,14 +467,8 @@ export function FilePreview({
   // The code view owns its own scroller too: pierre's virtualizer needs the
   // scroll container to be the code viewport so it can render only the rows
   // near it, which the outer panel scroller (shared with the header) cannot be.
-  // Chromium's PDF viewer sizes itself to its frame and scrolls internally, so
-  // it needs the panel height rather than the content-height column.
-  const usesPdfPreviewLayout = state.kind === "pdf";
   const usesFullHeightLayout =
-    usesIframeLayout ||
-    usesCsvPreviewLayout ||
-    usesCodeLayout ||
-    usesPdfPreviewLayout;
+    usesIframeLayout || usesCsvPreviewLayout || usesCodeLayout;
   const usesContentHeightLayout = usesMarkdownPreviewLayout;
 
   // Establish a `@container/page` scope so MarkdownPreview's `100cqw`-based
@@ -552,9 +540,6 @@ function FilePreviewBody({
   }
   if (state.kind === "image") {
     return <FilePreviewImage url={state.url} alt={path} />;
-  }
-  if (state.kind === "pdf") {
-    return <FilePreviewPdf url={state.url} title={path} />;
   }
   if (state.kind === "video") {
     return <FilePreviewVideo url={state.url} title={path} />;
@@ -1027,22 +1012,6 @@ function FilePreviewVideo({ url, title }: FilePreviewVideoProps) {
         controls
         preload="metadata"
       />
-    </div>
-  );
-}
-
-// Chromium renders PDFs with its own viewer when a frame navigates to a
-// response typed `application/pdf`, so this is an iframe over the URL the
-// preview already carries — no PDF library, no new dependency. It takes no
-// `sandbox`, unlike the HTML preview: the viewer is a privileged internal
-// resource whose scripts a sandboxed frame blocks, and the load fails with
-// ERR_BLOCKED_BY_CLIENT. That is not the same exposure the HTML preview
-// guards against — Chromium hands these bytes to the viewer rather than
-// parsing them as a document, so the file never executes in this origin.
-function FilePreviewPdf({ url, title }: FilePreviewPdfProps) {
-  return (
-    <div className="min-h-0 flex-1 overflow-hidden pt-4">
-      <iframe src={url} title={title} className="h-full w-full border-0" />
     </div>
   );
 }

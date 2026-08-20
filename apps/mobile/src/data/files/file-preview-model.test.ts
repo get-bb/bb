@@ -172,22 +172,6 @@ describe("resolveFilePreviewContent", () => {
       }),
     ).toEqual({ kind: "unsupported", mimeType: "application/octet-stream" });
   });
-
-  it("maps pdf previews to the unsupported content state", () => {
-    const pdf: FilePreview = {
-      kind: "pdf",
-      path: "handbook.pdf",
-      url: "data:application/pdf;base64,AA",
-      mimeType: "application/pdf",
-    };
-    expect(
-      resolveFilePreviewContent({
-        ...base,
-        activePath: "handbook.pdf",
-        preview: pdf,
-      }),
-    ).toEqual({ kind: "unsupported", mimeType: "application/pdf" });
-  });
 });
 
 describe("truncateFilePreviewCode", () => {

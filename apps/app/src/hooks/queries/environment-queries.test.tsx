@@ -231,23 +231,4 @@ describe("buildEnvironmentFilePreview", () => {
     expect(preview.kind).toBe("image");
     expect(preview.url).toBe(`data:image/png;base64,${pngBase64}`);
   });
-
-  it("builds a data URL for pdf previews", () => {
-    const pdfBase64 =
-      "JVBERi0xLjQKJeLjz9MKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyA+PgplbmRvYmoKJSVFT0Y=";
-    const preview = buildEnvironmentFilePreview({
-      contentUrl: CONTENT_URL,
-      path: "docs/handbook.pdf",
-      response: {
-        path: "docs/handbook.pdf",
-        content: pdfBase64,
-        contentEncoding: "base64",
-        mimeType: "application/pdf",
-        sizeBytes: 64,
-      },
-    });
-
-    expect(preview.kind).toBe("pdf");
-    expect(preview.url).toBe(`data:application/pdf;base64,${pdfBase64}`);
-  });
 });

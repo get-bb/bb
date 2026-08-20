@@ -13,7 +13,6 @@ export {
 export type {
   FilePreviewTarget,
   ImageFilePreview,
-  PdfFilePreview,
   VideoFilePreview,
   TextFilePreview,
   UnsupportedFilePreview,

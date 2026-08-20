@@ -740,25 +740,6 @@ describe("FilePreview", () => {
     });
   });
 
-  it("frames a pdf preview without a sandbox so Chromium's viewer loads", () => {
-    const path = "docs/handbook.pdf";
-    const url = "/api/v1/threads/thread-1/host-files/content?path=" + path;
-    render(
-      <SecondaryPanelFilePreview
-        activePath={path}
-        filePreview={{ kind: "pdf", mimeType: "application/pdf", path, url }}
-        isLoading={false}
-      />,
-    );
-
-    const frame = screen.getByTitle(path);
-    expect(frame.getAttribute("src")).toBe(url);
-    // A sandboxed frame blocks the viewer's own scripts and the load fails
-    // with ERR_BLOCKED_BY_CLIENT, so the absence of the attribute is the
-    // behavior under test, not an oversight.
-    expect(frame.hasAttribute("sandbox")).toBe(false);
-  });
-
   it("reloads an HTML iframe only when the fetched source changes", () => {
     const path = "reports/preview.html";
     const htmlPreviewUrl =

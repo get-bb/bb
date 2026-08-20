@@ -72,6 +72,12 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
     category: "Interface",
   },
+  {
+    name: "pdf-preview",
+    pluginId: "pdf-preview",
+    defaultEnabled: true,
+    category: "Interface",
+  },
   // First-party agent provider plugins: each declares one of the providers
   // the core catalog used to seed. With the seed deleted these declarations
   // are the only source, so disabling one removes its provider.

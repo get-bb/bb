@@ -1206,6 +1206,7 @@ function RootComposeSurface({
     environmentId: rootPanelEnvironmentId,
     fileOwnerThreadId: rootPanelThreadId,
     preserveWorkspaceTabsAcrossContexts: true,
+    projectHostId: rootProjectHostId,
     projectId: isProjectless ? null : projectId,
     retainedTerminalId,
     storageFiles: rootThreadStorageFiles?.files,

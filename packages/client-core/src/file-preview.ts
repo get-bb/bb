@@ -23,7 +23,6 @@ const MARKDOWN_MIME_TYPES = new Set(["text/markdown", "text/x-markdown"]);
 const CSV_FILE_EXTENSIONS = [".csv"];
 const CSV_MIME_TYPES = new Set(["application/csv", "text/csv"]);
 const HTML_FILE_EXTENSION = ".html";
-const PDF_MIME_TYPE = "application/pdf";
 const NULL_CHARACTER = "\u0000";
 
 export interface FilePreviewTarget {
@@ -33,16 +32,12 @@ export interface FilePreviewTarget {
 }
 
 interface FilePreviewBase extends FilePreviewTarget {
-  kind: "image" | "pdf" | "text" | "unsupported" | "video";
+  kind: "image" | "text" | "unsupported" | "video";
   mimeType: string;
 }
 
 export interface ImageFilePreview extends FilePreviewBase {
   kind: "image";
-}
-
-export interface PdfFilePreview extends FilePreviewBase {
-  kind: "pdf";
 }
 
 export interface VideoFilePreview extends FilePreviewBase {
@@ -60,7 +55,6 @@ export interface UnsupportedFilePreview extends FilePreviewBase {
 
 export type FilePreview =
   | ImageFilePreview
-  | PdfFilePreview
   | VideoFilePreview
   | TextFilePreview
   | UnsupportedFilePreview;
@@ -250,15 +244,6 @@ export function buildFilePreview(args: BuildFilePreviewArgs): FilePreview {
   if (args.mimeType.startsWith("image/")) {
     return {
       kind: "image",
-      ...base,
-    };
-  }
-
-  // Before the UTF-8 fallback: a PDF with no compressed streams is all
-  // printable ASCII, and the fallback would render its markers as source.
-  if (args.mimeType === PDF_MIME_TYPE) {
-    return {
-      kind: "pdf",
       ...base,
     };
   }

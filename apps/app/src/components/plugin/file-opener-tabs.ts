@@ -65,12 +65,14 @@ export function parseFileOpenerParams(
   const { path, source } = parsed as { path?: unknown; source?: unknown };
   if (typeof path !== "string" || path.length === 0) return null;
   if (typeof source !== "object" || source === null) return null;
-  const { kind, threadId, environmentId, projectId } = source as {
-    kind?: unknown;
-    threadId?: unknown;
-    environmentId?: unknown;
-    projectId?: unknown;
-  };
+  const { kind, threadId, environmentId, projectId, experimental_hostId } =
+    source as {
+      kind?: unknown;
+      threadId?: unknown;
+      environmentId?: unknown;
+      projectId?: unknown;
+      experimental_hostId?: unknown;
+    };
   if (kind !== "workspace" && kind !== "host" && kind !== "thread-storage") {
     return null;
   }
@@ -81,6 +83,9 @@ export function parseFileOpenerParams(
       threadId: typeof threadId === "string" ? threadId : null,
       environmentId: typeof environmentId === "string" ? environmentId : null,
       projectId: typeof projectId === "string" ? projectId : null,
+      ...(typeof experimental_hostId === "string"
+        ? { experimental_hostId }
+        : {}),
     },
   };
 }
@@ -95,6 +100,7 @@ export type FileTabViewerOverride = FileOpenerOverride;
 export interface CreateFileOpenerTabForRequestArgs {
   fileOpeners: readonly PluginFileOpenerSlot[];
   preference: FileOpenerPreferenceMap;
+  projectHostId?: string | null;
   projectId: string | null;
   request: OpenSecondaryPanelTabRequest;
   resolvedEnvironmentId: string | null | undefined;
@@ -111,6 +117,7 @@ export interface CreateFileOpenerTabForRequestArgs {
 export function createFileOpenerTabForRequest({
   fileOpeners,
   preference,
+  projectHostId,
   projectId,
   request,
   resolvedEnvironmentId,
@@ -125,14 +132,27 @@ export function createFileOpenerTabForRequest({
   });
   if (owner === null) return null;
   const file = fileForOwnerRequest(owner);
+  const routedFile: PluginFileOpenerFile =
+    file.source.kind === "workspace" &&
+    file.source.environmentId === null &&
+    file.source.projectId !== null &&
+    projectHostId
+      ? {
+          ...file,
+          source: {
+            ...file.source,
+            experimental_hostId: projectHostId,
+          },
+        }
+      : file;
   const resolved = resolveFileOpenerReplacement({
     registrations: fileOpeners,
     preference,
-    path: file.path,
+    path: routedFile.path,
     ...(viewer !== undefined ? { override: viewer } : {}),
   });
   return resolved.kind === "plugin"
-    ? buildFileOpenerPanelTab(resolved.registration, file, owner)
+    ? buildFileOpenerPanelTab(resolved.registration, routedFile, owner)
     : null;
 }
 

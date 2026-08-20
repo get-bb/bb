@@ -168,6 +168,13 @@ export interface PluginFileOpenerSource {
   threadId: string | null;
   environmentId: string | null;
   projectId: string | null;
+  /**
+   * Explicit host selected for a project-backed workspace file. Omitted when
+   * the source is resolved by its environment/thread or the primary host.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  experimental_hostId?: string;
 }
 
 /** Props passed to a `fileOpener` component (rendered as a panel file tab). */
@@ -1029,9 +1036,7 @@ export interface PluginAppSlots {
    * {@link PluginDiffRendererRegistration}). Experimental: see
    * docs/api_to_audit.md.
    */
-  experimental_diffRenderer(
-    registration: PluginDiffRendererRegistration,
-  ): void;
+  experimental_diffRenderer(registration: PluginDiffRendererRegistration): void;
   messageDirective(registration: PluginMessageDirectiveRegistration): void;
   messageAction(registration: PluginMessageActionRegistration): void;
   /**

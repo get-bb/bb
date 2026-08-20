@@ -33,6 +33,7 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
   "custom-instructions",
   "inline-vis",
   "keep-awake",
+  "pdf-preview",
   "provider-retry",
   "secrets",
 ];

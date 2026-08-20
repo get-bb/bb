@@ -111,8 +111,6 @@ export function resolveFilePreviewContent({
       return { kind: "image", url: preview.url, mimeType: preview.mimeType };
     case "video":
       return { kind: "video", url: preview.url, mimeType: preview.mimeType };
-    case "pdf":
-      return { kind: "unsupported", mimeType: preview.mimeType };
     case "unsupported":
       return { kind: "unsupported", mimeType: preview.mimeType };
   }

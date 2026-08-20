@@ -451,10 +451,9 @@ function buildEnvironmentFilePreviewQuery(
 }
 
 /**
- * Build the preview for a `/diff/file` read. Only image, PDF, and video
- * previews need a browser-loadable `url` (the `<img>` / `<iframe>` / `<video>`
- * src), so only those pay for a base64 `data:` URL. Text previews carry their
- * content inline and
+ * Build the preview for a `/diff/file` read. Only image and video previews
+ * need a browser-loadable `url` (the `<img>` / `<video>` src), so only those
+ * pay for a base64 `data:` URL. Text previews carry their content inline and
  * point `url` at the JSON route the bytes came from; building a `data:` URL
  * for them would re-encode the whole file to base64 (a second copy of a
  * multi-megabyte source file on a phone) and then bloat every cache key that
@@ -481,11 +480,7 @@ export function buildEnvironmentFilePreview({
     path,
     url: contentUrl,
   });
-  if (
-    preview.kind !== "image" &&
-    preview.kind !== "pdf" &&
-    preview.kind !== "video"
-  ) {
+  if (preview.kind !== "image" && preview.kind !== "video") {
     return preview;
   }
   const base64Content =

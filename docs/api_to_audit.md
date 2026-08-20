@@ -610,6 +610,25 @@ the same plugin again.
 4. Verify the owner renderer remains independent of provider precedence and
    cannot recurse through file-opener resolution.
 
+## `PluginFileOpenerSource.experimental_hostId` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Identifies the explicit host selected for a project-backed
+workspace file when a file opener cannot resolve that source through a thread
+or environment. It is omitted for environment-backed workspace files, host
+files, thread-storage files, and project files that use the primary host.
+
+**Audit before stabilizing.**
+
+1. Confirm an explicit host id is the minimum missing project-routing context,
+   rather than exposing the whole project workspace routing union.
+2. Verify project-compose file tabs retain the selected host across reloads,
+   host changes, plugin fallback, and per-open viewer overrides.
+3. Decide whether host identity should be present for every source kind or
+   remain project-specific once more file opener plugins exercise the API.
+4. Confirm omission should continue to mean primary-host resolution and that
+   this remains compatible with persisted opener tabs created before the field
+   existed.
+
 ## `experimental_SourceCode` / `experimental_Diff` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Two host-owned renderers for supplied code content.

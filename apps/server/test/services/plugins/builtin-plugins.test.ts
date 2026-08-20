@@ -214,6 +214,7 @@ describe("builtin plugin reconciliation", () => {
       ["custom-instructions", "EditFile"],
       ["inline-vis", "AppWindow"],
       ["keep-awake", "Coffee"],
+      ["pdf-preview", "FileText"],
       ["provider-acp", "./icons/acp.svg"],
       ["provider-claude-code", "./icons/claude-code.svg"],
       ["provider-codex", "./icons/codex.svg"],

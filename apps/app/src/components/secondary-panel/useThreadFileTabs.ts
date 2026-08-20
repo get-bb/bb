@@ -62,6 +62,7 @@ interface UseThreadFileTabsParams {
   environmentId: string | null | undefined;
   fileOwnerThreadId?: string | null;
   preserveWorkspaceTabsAcrossContexts?: boolean;
+  projectHostId?: string | null;
   projectId?: string | null;
   retainedTerminalId?: string | null;
   storageFiles: readonly ThreadStorageFileListItem[] | undefined;
@@ -235,6 +236,7 @@ export function useThreadFileTabs({
   environmentId,
   fileOwnerThreadId,
   preserveWorkspaceTabsAcrossContexts = false,
+  projectHostId = null,
   projectId = null,
   retainedTerminalId = null,
   storageFiles,
@@ -420,6 +422,7 @@ export function useThreadFileTabs({
       const openerTab = createFileOpenerTabForRequest({
         fileOpeners,
         preference: fileOpenerPreference,
+        projectHostId,
         projectId,
         request,
         resolvedEnvironmentId,
@@ -457,6 +460,7 @@ export function useThreadFileTabs({
     [
       fileOpenerPreference,
       fileOpeners,
+      projectHostId,
       recordRecentItem,
       projectId,
       resolvedEnvironmentId,
@@ -524,6 +528,7 @@ export function useThreadFileTabs({
       const openerTab = createFileOpenerTabForRequest({
         fileOpeners,
         preference: fileOpenerPreference,
+        projectHostId,
         projectId,
         request:
           selection.source === "workspace"
@@ -566,6 +571,7 @@ export function useThreadFileTabs({
     [
       fileOpenerPreference,
       fileOpeners,
+      projectHostId,
       projectId,
       recordRecentItem,
       resolvedEnvironmentId,

@@ -119,24 +119,7 @@ const BUTTON_PATH = "apps/app/src/components/ui/button.tsx";
 const DELETED_BUTTON_PATH = "apps/app/src/components/ui/legacy-button.tsx";
 const METRICS_PATH = "reports/customers.csv";
 const SCREENSHOT_PATH = "docs/screenshots/right-panel.svg";
-const HANDBOOK_PATH = "docs/handbook.pdf";
 const STORY_WORKSPACE_ROOT = "/Users/alex/Code/bb";
-
-// A one-page PDF built inline so the story stays self-contained; Chromium
-// renders it with the same viewer a real preview gets.
-const SAMPLE_PDF_URL =
-  "data:application/pdf;base64," +
-  "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2Jq" +
-  "CjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2Jq" +
-  "CjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAyMDAg" +
-  "MjAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4g" +
-  "Pj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA0NCA+PgpzdHJlYW0KQlQgL0YxIDI0IFRm" +
-  "IDIwIDEwMCBUZCAoQkIgUERGKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5" +
-  "cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4" +
-  "cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1" +
-  "OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyNDEgMDAwMDAgbiAKMDAwMDAw" +
-  "MDMyOCAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVm" +
-  "CjM5OAolJUVPRgo=";
 
 function copyPathFor(path: string) {
   return `${STORY_WORKSPACE_ROOT}/${path}`;
@@ -358,19 +341,6 @@ export function Overview() {
             copyPath={copyPathFor(SCREENSHOT_PATH)}
             onOpenInEditor={noopOpenInEditor}
             state={{ kind: "image", url: SAMPLE_IMAGE_URL }}
-          />
-        </PreviewStage>
-      </StoryRow>
-      <StoryRow
-        label="pdf file"
-        hint="Framed in Chromium's PDF viewer, which fills the panel and scrolls itself"
-      >
-        <PreviewStage>
-          <FilePreview
-            path={HANDBOOK_PATH}
-            copyPath={copyPathFor(HANDBOOK_PATH)}
-            onOpenInEditor={noopOpenInEditor}
-            state={{ kind: "pdf", url: SAMPLE_PDF_URL }}
           />
         </PreviewStage>
       </StoryRow>

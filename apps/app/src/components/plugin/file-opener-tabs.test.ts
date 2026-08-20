@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { threadTabsSchema } from "@bb/server-contract";
 import type { PluginFileOpenerSlot } from "@/lib/plugin-slots";
 import type { OpenSecondaryPanelTabRequest } from "@/components/secondary-panel/useThreadFileTabs";
-import { createFileOpenerTabForRequest } from "./file-opener-tabs";
+import {
+  createFileOpenerTabForRequest,
+  parseFileOpenerParams,
+} from "./file-opener-tabs";
 
 const MARKDOWN_OPENER = {
   component: () => null,
@@ -91,6 +94,34 @@ describe("createFileOpenerTabForRequest thread-tabs contract", () => {
       kind: "workspace-file-preview",
       projectId: null,
       threadId: null,
+    });
+    expect(() => threadTabsSchema.parse([tab])).not.toThrow();
+  });
+
+  it("preserves the selected host for a project-backed opener", () => {
+    const tab = createFileOpenerTabForRequest({
+      fileOpeners: [MARKDOWN_OPENER],
+      preference: {},
+      projectHostId: "host_remote",
+      projectId: "proj_1",
+      request: {
+        kind: "workspace-file-preview",
+        tab: {
+          lineRange: null,
+          path: "docs/readme.md",
+          source: { kind: "working-tree" },
+          statusLabel: null,
+        },
+      },
+      resolvedEnvironmentId: null,
+      threadId: null,
+    });
+
+    const params = parseFileOpenerParams(tab?.paramsJson ?? null);
+    expect(params?.source).toMatchObject({
+      kind: "workspace",
+      projectId: "proj_1",
+      experimental_hostId: "host_remote",
     });
     expect(() => threadTabsSchema.parse([tab])).not.toThrow();
   });
