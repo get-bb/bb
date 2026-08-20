@@ -33,19 +33,22 @@ const WORKSPACE_STATUS_WATCH_MAX_SETUP_RETRY_ATTEMPTS = 10;
 // Plain entries are paths relative to the watch root: `.git` only excludes
 // `<root>/.git`, the workspace's own repository.
 const WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS = [".git"];
-// Glob entries are matched against the root-relative path of every directory
-// parcel crawls, and a match skips the whole subtree. The Git-derived ignore
-// list below only covers the root's own top-level ignored directories; an
-// "umbrella" root with untracked nested checkouts, or a root that is not a
-// repository, otherwise gets one inotify watch per nested directory and can
-// OOM the host (get-bb/bb#1779). `*/**/.git` skips nested repositories but
-// keeps `<root>/.git` watchable so a plain directory can still be promoted
-// after `git init`.
+// Glob entries are matched against the root-relative path. On Linux parcel
+// tests every directory during its crawl and a match skips the whole subtree,
+// so no inotify watch is created below it. On macOS and Windows parcel tests
+// each event path instead, so the trailing `/**` is required: picomatch lets
+// it match zero segments, so `**/node_modules/**` matches both the directory
+// and everything inside it. The Git-derived ignore list below only covers the
+// root's own top-level ignored directories; an "umbrella" root with untracked
+// nested checkouts, or a root that is not a repository, otherwise gets one
+// inotify watch per nested directory and can OOM the host (get-bb/bb#1779).
+// `*/**/.git/**` skips nested repositories but keeps `<root>/.git` watchable
+// so a plain directory can still be promoted after `git init`.
 const WORKSPACE_ROOT_ALWAYS_IGNORED_GLOBS = [
-  "*/**/.git",
-  "**/node_modules",
-  "**/.cache",
-  "**/__pycache__",
+  "*/**/.git/**",
+  "**/node_modules/**",
+  "**/.cache/**",
+  "**/__pycache__/**",
 ];
 const WORKSPACE_ROOT_IGNORE_STATUS_TIMEOUT_MS = 5_000;
 const WORKSPACE_ROOT_IGNORE_STATUS_MAX_BUFFER_BYTES = 10 * 1024 * 1024;

@@ -1,10 +1,13 @@
-// Regression test for get-bb/bb#1779: the workspace-root watch of an
+// Regression tests for get-bb/bb#1779: the workspace-root watch of an
 // "umbrella" root (a directory with untracked nested checkouts that contain
 // node_modules and .git) must not register an inotify watch on every nested
-// directory. The Git-derived ignore list only covers the root's own top-level
-// ignored directories, so the watcher has to add recursive glob ignores.
+// directory, and must not report changes inside those trees. The Git-derived
+// ignore list only covers the root's own top-level ignored directories, so the
+// watcher has to add recursive glob ignores.
 //
-// Linux only: it reads the real inotify watch count from /proc/self/fdinfo.
+// The inotify tests are Linux only: they read the real watch count from
+// /proc/self/fdinfo. The event test runs on every platform because parcel
+// applies the globs during the crawl on Linux but per event on macOS/Windows.
 import { execFile } from "node:child_process";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
@@ -14,12 +17,14 @@ import { promisify } from "node:util";
 import parcelWatcher from "@parcel/watcher";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { watchWorkspaceStatus } from "../src/watch-status.js";
+import type { WorkspaceStatusChangeEvent } from "../src/watch-status-types.js";
 
 const execFileAsync = promisify(execFile);
 const tempDirs: string[] = [];
 
 const NESTED_REPOS = 4;
 const PACKAGES_PER_NESTED_REPO = 300;
+const EVENT_TIMEOUT_MS = 5_000;
 // Root, apps/, apps/child-N and the root's own git-dir metadata watches.
 const MAX_EXPECTED_WATCHES = 20;
 
@@ -37,7 +42,11 @@ async function initRepo(dir: string): Promise<void> {
   await git(dir, "commit", "-q", "-m", "init");
 }
 
-async function buildUmbrellaRoot(args: { gitRoot: boolean }): Promise<{
+async function buildUmbrellaRoot(args: {
+  gitRoot: boolean;
+  nestedRepos?: number;
+  packagesPerNestedRepo?: number;
+}): Promise<{
   root: string;
   nestedDirCount: number;
 }> {
@@ -46,15 +55,18 @@ async function buildUmbrellaRoot(args: { gitRoot: boolean }): Promise<{
   if (args.gitRoot) {
     await initRepo(root);
   }
+  const nestedRepos = args.nestedRepos ?? NESTED_REPOS;
+  const packagesPerNestedRepo =
+    args.packagesPerNestedRepo ?? PACKAGES_PER_NESTED_REPO;
   let nestedDirCount = 0;
-  for (let i = 0; i < NESTED_REPOS; i += 1) {
+  for (let i = 0; i < nestedRepos; i += 1) {
     const child = path.join(root, "apps", `child-${i}`);
     await initRepo(child);
     // The nested repo ignores its own node_modules, like every real project.
     await fs.writeFile(path.join(child, ".gitignore"), "node_modules/\n");
     await git(child, "add", ".gitignore");
     await git(child, "commit", "-q", "-m", "ignore node_modules");
-    for (let p = 0; p < PACKAGES_PER_NESTED_REPO; p += 1) {
+    for (let p = 0; p < packagesPerNestedRepo; p += 1) {
       const pkgLib = path.join(child, "node_modules", `pkg-${p}`, "lib");
       await fs.mkdir(pkgLib, { recursive: true });
       await fs.writeFile(path.join(pkgLib, "index.js"), "module.exports={}\n");
@@ -119,6 +131,19 @@ async function measureWorkspaceRootWatch(root: string): Promise<{
   }
 }
 
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) {
+      throw new Error("Timed out waiting for workspace change events");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
 afterEach(async () => {
   vi.restoreAllMocks();
   for (const dir of tempDirs.splice(0)) {
@@ -136,7 +161,7 @@ describe.skipIf(process.platform !== "linux")(
       const { ignore, watches } = await measureWorkspaceRootWatch(root);
       expect(nestedDirCount).toBeGreaterThan(MAX_EXPECTED_WATCHES);
       expect(ignore).toContain(".git");
-      expect(ignore).toContain("**/node_modules");
+      expect(ignore).toContain("**/node_modules/**");
       expect(watches).toBeLessThan(MAX_EXPECTED_WATCHES);
     });
 
@@ -148,8 +173,80 @@ describe.skipIf(process.platform !== "linux")(
       expect(nestedDirCount).toBeGreaterThan(MAX_EXPECTED_WATCHES);
       // `<root>/.git` must stay watchable so `git init` promotion still fires.
       expect(ignore).not.toContain(".git");
-      expect(ignore).toContain("**/node_modules");
+      expect(ignore).toContain("**/node_modules/**");
       expect(watches).toBeLessThan(MAX_EXPECTED_WATCHES);
     });
   },
 );
+
+describe("workspace root watch events inside nested heavy directories (#1779)", () => {
+  it("does not report changes inside nested node_modules or nested .git", async () => {
+    const { root } = await buildUmbrellaRoot({
+      gitRoot: true,
+      nestedRepos: 1,
+      packagesPerNestedRepo: 1,
+    });
+    const realRoot = fsSync.realpathSync(root);
+    const nestedPackageFile = path.join(
+      realRoot,
+      "apps",
+      "child-0",
+      "node_modules",
+      "pkg-0",
+      "lib",
+      "index.js",
+    );
+    const nestedGitFile = path.join(
+      realRoot,
+      "apps",
+      "child-0",
+      ".git",
+      "bb-marker",
+    );
+    const visibleFile = path.join(realRoot, "apps", "child-0", "visible.txt");
+    const events: WorkspaceStatusChangeEvent[] = [];
+    let ready!: () => void;
+    const readyPromise = new Promise<void>((resolve) => {
+      ready = resolve;
+    });
+    const stop = watchWorkspaceStatus(root, {
+      onChange: (event) => {
+        events.push(event);
+      },
+      onReady: () => ready(),
+      onWatchError: () => undefined,
+    });
+    try {
+      await readyPromise;
+      // Let the initial crawl and the FSEvents stream settle.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      await fs.writeFile(nestedPackageFile, "module.exports={changed:true}\n");
+      await fs.writeFile(nestedGitFile, "marker\n");
+      // The visible write is the control: it proves the watch is live and
+      // delivers events, so the absence of the nested paths is meaningful.
+      await fs.writeFile(visibleFile, "visible\n");
+      await waitFor(
+        () =>
+          events.some((event) => event.changedPaths.includes(visibleFile)),
+        EVENT_TIMEOUT_MS,
+      );
+      // Give any straggling nested events a chance to arrive.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const changedPaths = events.flatMap((event) => event.changedPaths);
+      expect(changedPaths).toContain(visibleFile);
+      expect(changedPaths).not.toContain(nestedPackageFile);
+      expect(changedPaths).not.toContain(nestedGitFile);
+      expect(
+        changedPaths.filter(
+          (changedPath) =>
+            changedPath.includes(`${path.sep}node_modules${path.sep}`) ||
+            changedPath.includes(`${path.sep}.git${path.sep}`),
+        ),
+      ).toEqual([]);
+    } finally {
+      await stop();
+    }
+  });
+});

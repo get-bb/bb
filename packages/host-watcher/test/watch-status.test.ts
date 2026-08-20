@@ -421,7 +421,7 @@ describe.sequential("watchWorkspaceStatus", () => {
     try {
       await ready.promise;
       expect(workspaceRootOptions[0]?.ignore).not.toContain(".git");
-      expect(workspaceRootOptions[0]?.ignore).toContain("*/**/.git");
+      expect(workspaceRootOptions[0]?.ignore).toContain("*/**/.git/**");
 
       await runGit({ args: ["init", "-b", "main"], cwd: workspacePath });
       const canonicalWorkspacePath = await fs.realpath(workspacePath);
@@ -733,10 +733,10 @@ describe.sequential("watchWorkspaceStatus", () => {
       await ready;
       expect(getWorkspaceRootSubscribeOptions()?.ignore).toEqual([
         ".git",
-        "*/**/.git",
-        "**/node_modules",
-        "**/.cache",
-        "**/__pycache__",
+        "*/**/.git/**",
+        "**/node_modules/**",
+        "**/.cache/**",
+        "**/__pycache__/**",
         ".turbo",
         "coverage",
       ]);
@@ -792,10 +792,10 @@ describe.sequential("watchWorkspaceStatus", () => {
       expect(subscribedRoots).toEqual([normalizeWatchPath(repoPath)]);
       expect(subscribedOptions[0]?.ignore).toEqual([
         ".git",
-        "*/**/.git",
-        "**/node_modules",
-        "**/.cache",
-        "**/__pycache__",
+        "*/**/.git/**",
+        "**/node_modules/**",
+        "**/.cache/**",
+        "**/__pycache__/**",
       ]);
     } finally {
       await stopWatching();
