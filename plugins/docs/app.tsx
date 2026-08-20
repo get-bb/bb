@@ -1153,7 +1153,7 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
               path: filePath,
             };
       case "host":
-        return source.experimental_hostId === null
+        return source.experimental_hostId === undefined
           ? null
           : {
               kind: source.kind,

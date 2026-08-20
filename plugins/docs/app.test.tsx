@@ -1282,7 +1282,6 @@ describe("Docs nav panel", () => {
           kind: "workspace",
           threadId: "thr_1",
           environmentId: "env_1",
-          experimental_hostId: null,
           projectId: "project_1",
         },
         experimental_Original: () => null,

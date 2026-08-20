@@ -229,7 +229,6 @@ function fileForOwnerRequest(
         path: owner.tab.path,
         source: buildSource("workspace", {
           environmentId: owner.environmentId,
-          experimental_hostId: null,
           projectId: owner.projectId,
           threadId: owner.threadId,
         }),
@@ -239,7 +238,9 @@ function fileForOwnerRequest(
         path: owner.tab.path,
         source: buildSource("host", {
           environmentId: owner.environmentId,
-          experimental_hostId: owner.hostId,
+          ...(owner.hostId === null
+            ? {}
+            : { experimental_hostId: owner.hostId }),
           projectId: null,
           threadId: owner.threadId,
         }),
@@ -249,7 +250,6 @@ function fileForOwnerRequest(
         path: owner.tab.path,
         source: buildSource("thread-storage", {
           environmentId: owner.environmentId,
-          experimental_hostId: null,
           projectId: null,
           threadId: owner.threadId,
         }),
@@ -259,12 +259,7 @@ function fileForOwnerRequest(
 
 function buildSource(
   kind: PluginFileOpenerSource["kind"],
-  fields: {
-    environmentId: string | null;
-    experimental_hostId: string | null;
-    projectId: string | null;
-    threadId: string | null;
-  },
+  fields: Omit<PluginFileOpenerSource, "kind">,
 ): PluginFileOpenerSource {
   return { kind, ...fields };
 }
