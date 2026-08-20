@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createSentMessageEditOperationId } from "./sent-message-edit-operation-id";
 import { useCachedProviderInfo } from "@/hooks/queries/system-queries";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
@@ -1055,7 +1056,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       setSentMessageEditHostElement(null);
       setSentMessageEditSession({
         draft: editDraft,
-        operationId: crypto.randomUUID(),
+        operationId: createSentMessageEditOperationId(),
         target,
         threadId: current.thread.id,
       });
