@@ -50,6 +50,13 @@ export interface DefaultBranchRefs {
   originDefaultBranch: string | undefined;
 }
 
+export interface BranchRefsWithDefaults {
+  branches: string[];
+  defaultBranch: string | undefined;
+  originDefaultBranch: string | undefined;
+  remoteBranches: string[];
+}
+
 export interface RunShellPipelineOptions extends GitTimeoutOptions {
   cwd: string;
   allowFailure?: boolean;
@@ -1463,6 +1470,34 @@ export async function listRemoteBranches(cwd: string): Promise<string[]> {
     })
     .filter((ref) => ref.branch.length > 0 && ref.symref.length === 0)
     .map((ref) => ref.branch);
+}
+
+export async function listBranchRefsWithDefaults(
+  cwd: string,
+): Promise<BranchRefsWithDefaults> {
+  const [branches, remoteBranches, originHeadBranch] = await Promise.all([
+    listBranches(cwd),
+    listRemoteBranches(cwd),
+    readOriginHeadBranchName(cwd),
+  ]);
+  const defaultBranch = resolvePreferredLocalDefaultBranch(
+    branches,
+    originHeadBranch,
+  );
+  const originDefaultBranch = [
+    originHeadBranch ? `origin/${originHeadBranch}` : undefined,
+    defaultBranch ? `origin/${defaultBranch}` : undefined,
+  ].find(
+    (branch): branch is string =>
+      branch !== undefined && remoteBranches.includes(branch),
+  );
+
+  return {
+    branches,
+    defaultBranch,
+    originDefaultBranch,
+    remoteBranches,
+  };
 }
 
 export async function hasUncommittedChanges(cwd: string): Promise<boolean> {

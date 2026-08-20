@@ -329,6 +329,36 @@ describe("host.list_branches dispatch", () => {
 });
 
 describe("host.list_branch_options dispatch", () => {
+  it("pins local and remote defaults before applying the page limit", async () => {
+    const repoPath = await initBranchRepo();
+    const remotePath = await makeTempDir("bb-host-branch-options-origin-");
+    await runGitCommand(["init", "--bare"], { cwd: remotePath });
+    await runGitCommand(["remote", "add", "origin", remotePath], {
+      cwd: repoPath,
+    });
+    await runGitCommand(["branch", "bb/aardvark"], { cwd: repoPath });
+    await runGitCommand(["push", "origin", "bb/aardvark", "main"], {
+      cwd: repoPath,
+    });
+    await runGitCommand(["fetch", "origin"], { cwd: repoPath });
+    const harness = createHarness();
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        type: "host.list_branch_options",
+        path: repoPath,
+        limit: 1,
+        remoteRefresh: "none",
+      },
+      harness.dispatchOptions(),
+    );
+
+    expect(result.branches).toEqual(["main"]);
+    expect(result.branchesTruncated).toBe(true);
+    expect(result.remoteBranches).toEqual(["origin/main"]);
+    expect(result.remoteBranchesTruncated).toBe(true);
+  });
+
   it("returns cached refs while a remote refresh continues in the background", async () => {
     const repoPath = await initBranchRepo();
     const remotePath = await makeTempDir("bb-host-branch-options-remote-");
@@ -426,7 +456,7 @@ describe("host.list_branch_options dispatch", () => {
     );
 
     expect(result).toEqual({
-      branches: ["develop"],
+      branches: ["main"],
       branchesTruncated: true,
       remoteBranches: [],
       remoteBranchesTruncated: false,

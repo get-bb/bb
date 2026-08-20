@@ -7,6 +7,7 @@ import {
   getGitCommonDir,
   getWorkspaceGitOperation,
   hasUncommittedChanges,
+  listBranchRefsWithDefaults,
   listBranches,
   listRemoteBranches,
   readDefaultBranchRefs,
@@ -145,13 +146,18 @@ async function readBranchOptions({
 }: ReadBranchOptionsArgs): Promise<
   HostDaemonOnlineRpcResult<"host.list_branch_options">
 > {
-  const [branches, remoteBranches] = await Promise.all([
-    listBranches(cwd),
-    listRemoteBranches(cwd),
-  ]);
-  const limitedBranches = limitBranchList({ branches, limit, query });
+  const { branches, defaultBranch, originDefaultBranch, remoteBranches } =
+    await listBranchRefsWithDefaults(cwd);
+  const limitedBranches = limitBranchList({
+    branches: pinBranch({ branches, branch: defaultBranch }),
+    limit,
+    query,
+  });
   const limitedRemoteBranches = limitBranchList({
-    branches: remoteBranches,
+    branches: pinBranch({
+      branches: remoteBranches,
+      branch: originDefaultBranch,
+    }),
     limit,
     query,
   });
