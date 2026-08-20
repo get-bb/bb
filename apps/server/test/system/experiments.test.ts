@@ -17,7 +17,6 @@ describe("experiments settings", () => {
         changelogPreview: false,
         editMessages: true,
         mobileApp: false,
-        newOnboarding: false,
         providerSessionReaping: false,
       });
     });
@@ -32,7 +31,6 @@ describe("experiments settings", () => {
           changelogPreview: true,
           editMessages: true,
           mobileApp: true,
-          newOnboarding: true,
           providerSessionReaping: true,
         }),
       });
@@ -41,14 +39,12 @@ describe("experiments settings", () => {
         changelogPreview: true,
         editMessages: true,
         mobileApp: true,
-        newOnboarding: true,
         providerSessionReaping: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         changelogPreview: true,
         editMessages: true,
         mobileApp: true,
-        newOnboarding: true,
         providerSessionReaping: true,
       });
 
@@ -59,7 +55,6 @@ describe("experiments settings", () => {
         changelogPreview: true,
         editMessages: true,
         mobileApp: true,
-        newOnboarding: true,
         providerSessionReaping: true,
       });
     });
@@ -86,7 +81,6 @@ describe("experiments settings", () => {
           changelogPreview: false,
           editMessages: true,
           mobileApp: false,
-          newOnboarding: false,
           providerSessionReaping: true,
         }),
       });
@@ -111,7 +105,6 @@ describe("experiments settings", () => {
           changelogPreview: false,
           editMessages: false,
           mobileApp: false,
-          newOnboarding: false,
           providerSessionReaping: false,
         }),
       });

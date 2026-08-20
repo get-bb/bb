@@ -28,12 +28,6 @@ const EXPERIMENT_ROWS: readonly ExperimentRow[] = [
       "Pair the bb mobile app over bb connect: shows Add mobile device under Remote access (web and desktop) and enables bb connect machine-code.",
   },
   {
-    key: "newOnboarding",
-    label: "New onboarding",
-    description:
-      "Enable the new first-run guide for agent setup and project selection (web and desktop).",
-  },
-  {
     key: "providerSessionReaping",
     label: "Idle provider session release",
     description:

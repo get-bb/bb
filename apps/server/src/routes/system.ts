@@ -38,11 +38,7 @@ import {
   listSystemProviderInfos,
   resolveSystemExecutionOptions,
 } from "../services/system/execution-options.js";
-import {
-  getOnboardingAgentOverview,
-  getOnboardingRepos,
-  recordOnboardingEvent,
-} from "../services/system/onboarding.js";
+import { getOnboardingAgentOverview } from "../services/system/onboarding.js";
 import { getProviderUsageLimits } from "../services/system/usage-limits.js";
 import {
   listCustomThemeNames,
@@ -334,17 +330,8 @@ export function registerSystemRoutes(
     });
   });
 
-  post(routes.onboardingEvent, async (context, body) => {
-    recordOnboardingEvent(deps, body);
-    return context.json({ ok: true } as const);
-  });
-
   get(routes.onboardingAgents, async (context, query) =>
     context.json(await getOnboardingAgentOverview(deps, query)),
-  );
-
-  get(routes.onboardingRepos, async (context, query) =>
-    context.json(await getOnboardingRepos(deps, query)),
   );
 
   get(routes.usageLimits, async (context, query) =>

@@ -34,39 +34,15 @@ describe("bb settings commands", () => {
     });
   });
 
-  // Keys and value shapes come from `appSettingsSchema`, so non-boolean and
-  // nullable preferences are settable without a per-key branch in the command.
-  it("sets a nullable setting and rejects an unknown key", async () => {
-    const put = vi.fn(async ({ json }) => json);
+  // Keys come from `appSettingsSchema`, so an unknown one is rejected by the
+  // command rather than sent to the server.
+  it("rejects an unknown general setting key", async () => {
     stubServerApi({
       "v1.system.config.$get": vi.fn(async () => ({
-        generalSettings: {
-          ...defaultAppSettings,
-          onboardingCompletedAt: "2026-08-06T00:00:00.000Z",
-        },
+        generalSettings: defaultAppSettings,
         experiments: defaultExperiments,
       })),
-      "v1.settings.general.$put": put,
-    });
-
-    await runCommand(
-      ["settings", "general", "onboardingCompletedAt", "null"],
-      register,
-    );
-
-    expect(put).toHaveBeenCalledWith({
-      json: { ...defaultAppSettings, onboardingCompletedAt: null },
-    });
-
-    // "2026" reads as JSON, but this setting takes a string, so the raw text
-    // has to win: the setting's own schema decides which reading applies.
-    await runCommand(
-      ["settings", "general", "onboardingCompletedAt", "2026"],
-      register,
-    );
-
-    expect(put).toHaveBeenLastCalledWith({
-      json: { ...defaultAppSettings, onboardingCompletedAt: "2026" },
+      "v1.settings.general.$put": vi.fn(async ({ json }) => json),
     });
 
     await expect(
@@ -132,61 +108,6 @@ describe("bb settings commands", () => {
     expect(put).toHaveBeenCalledWith({
       json: { ...defaultExperiments, changelogPreview: true },
     });
-  });
-
-  it("enables new onboarding before replaying the setup guide", async () => {
-    const updateExperiments = vi.fn(async ({ json }) => json);
-    const updateGeneralSettings = vi.fn(async ({ json }) => json);
-    stubServerApi({
-      "v1.system.config.$get": vi.fn(async () => ({
-        generalSettings: {
-          ...defaultAppSettings,
-          onboardingCompletedAt: "2026-08-06T00:00:00.000Z",
-        },
-        experiments: defaultExperiments,
-      })),
-      "v1.settings.experiments.$put": updateExperiments,
-      "v1.settings.general.$put": updateGeneralSettings,
-    });
-
-    await runCommand(["settings", "replay-onboarding"], register);
-
-    expect(updateExperiments).toHaveBeenCalledWith({
-      json: { ...defaultExperiments, newOnboarding: true },
-    });
-    expect(updateGeneralSettings).toHaveBeenCalledWith({
-      json: { ...defaultAppSettings, onboardingCompletedAt: null },
-    });
-    expect(console.log).toHaveBeenCalledWith(
-      "New onboarding is enabled; onboarding will show again",
-    );
-  });
-
-  it("reports both replay side effects as JSON", async () => {
-    stubServerApi({
-      "v1.system.config.$get": vi.fn(async () => ({
-        generalSettings: defaultAppSettings,
-        experiments: defaultExperiments,
-      })),
-      "v1.settings.experiments.$put": vi.fn(async ({ json }) => json),
-      "v1.settings.general.$put": vi.fn(async ({ json }) => json),
-    });
-
-    await runCommand(["settings", "replay-onboarding", "--json"], register);
-
-    expect(console.log).toHaveBeenCalledWith(
-      JSON.stringify(
-        {
-          experiments: { ...defaultExperiments, newOnboarding: true },
-          generalSettings: {
-            ...defaultAppSettings,
-            onboardingCompletedAt: null,
-          },
-        },
-        null,
-        2,
-      ),
-    );
   });
 
   it("reads usage from a selected machine", async () => {

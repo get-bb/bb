@@ -1586,49 +1586,6 @@ const providerUsageCommandSchema = z
   .object({ type: z.literal("provider.usage") })
   .strict();
 
-/**
- * One candidate project found on the host. `agentSeenAt` is set when a
- * supported coding agent has been run here (or in another checkout of the same
- * repo); it is a ranking hint only, never the reason a repo is listed.
- */
-export const discoveredRepoSchema = z
-  .object({
-    path: z.string().min(1),
-    name: z.string().min(1),
-    /** Last local activity, from `.git/HEAD` mtime. */
-    lastActivityAt: z.string(),
-    /** Remote URL when the repo has one; used to collapse worktrees. */
-    originUrl: z.string().nullable(),
-    /** True when a supported agent has been run here (or in a sibling checkout). */
-    agentSeen: z.boolean(),
-    /**
-     * When that last agent session was, if the source reported a time. Claude
-     * Code's history carries no timestamp, so `agentSeen` can be true while
-     * this stays null.
-     */
-    agentSeenAt: z.string().nullable(),
-  })
-  .strict();
-export type DiscoveredRepo = z.infer<typeof discoveredRepoSchema>;
-
-export const discoverReposResultSchema = z
-  .object({
-    repos: z.array(discoveredRepoSchema),
-    /** True when the walk hit its time budget and results may be partial. */
-    truncated: z.boolean(),
-  })
-  .strict();
-export type DiscoverReposResult = z.infer<typeof discoverReposResultSchema>;
-
-const discoverReposCommandSchema = z
-  .object({
-    type: z.literal("workspace.discover_repos"),
-    maxDepth: z.number().int().min(1).max(8),
-    sinceDays: z.number().int().min(1).max(3650),
-    limit: z.number().int().min(1).max(200),
-  })
-  .strict();
-
 const providerCliStatusCommandSchema = z
   .object({ type: z.literal("provider_cli.status") })
   .strict();
@@ -2126,15 +2083,6 @@ export const hostDaemonCommandRegistry = {
     type: "provider.usage",
     schema: providerUsageCommandSchema,
     resultSchema: providerUsageResponseSchema,
-    transport: "onlineRpc",
-    retryable: true,
-    flushEventsBeforeResult: false,
-    envLane: null,
-  }),
-  "workspace.discover_repos": defineHostDaemonCommandDescriptor({
-    type: "workspace.discover_repos",
-    schema: discoverReposCommandSchema,
-    resultSchema: discoverReposResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

@@ -63,7 +63,6 @@ export const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
 export const HOST_PROVIDER_CLI_STATUS_QUERY_KEY = "hostProviderCliStatus";
 export const SYSTEM_USAGE_LIMITS_QUERY_KEY = "systemUsageLimits";
 export const ONBOARDING_AGENTS_QUERY_KEY = "onboardingAgents";
-export const ONBOARDING_REPOS_QUERY_KEY = "onboardingRepos";
 export const HOST_PATH_EXISTENCE_QUERY_KEY = "hostPathExistence";
 export const PROJECT_SKILLS_QUERY_KEY = "projectSkills";
 export const SKILL_CONTENT_QUERY_KEY = "skillContent";
@@ -457,9 +456,6 @@ export type OnboardingAgentsQueryKey = readonly [
   typeof ONBOARDING_AGENTS_QUERY_KEY,
   string | null,
   string | null,
-];
-export type OnboardingReposQueryKey = readonly [
-  typeof ONBOARDING_REPOS_QUERY_KEY,
 ];
 export type SystemExecutionOptionsQueryKey = readonly [
   typeof SYSTEM_EXECUTION_OPTIONS_QUERY_KEY,
@@ -1085,10 +1081,6 @@ export function onboardingAgentsQueryKey(
   args: Pick<SystemExecutionOptionsQueryKeyArgs, "environmentId" | "hostId">,
 ): OnboardingAgentsQueryKey {
   return [ONBOARDING_AGENTS_QUERY_KEY, args.environmentId, args.hostId];
-}
-
-export function onboardingReposQueryKey(): OnboardingReposQueryKey {
-  return [ONBOARDING_REPOS_QUERY_KEY];
 }
 
 export interface SystemExecutionOptionsQueryKeyArgs {

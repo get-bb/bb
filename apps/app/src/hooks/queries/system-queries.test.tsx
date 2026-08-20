@@ -545,8 +545,8 @@ describe("useOnboardingAgents", () => {
 
     const { result } = renderHook(
       () => [
-        useOnboardingAgents({ hostId: "host-a", poll: false }),
-        useOnboardingAgents({ hostId: "host-b", poll: false }),
+        useOnboardingAgents({ hostId: "host-a" }),
+        useOnboardingAgents({ hostId: "host-b" }),
       ],
       { wrapper },
     );
@@ -577,10 +577,9 @@ describe("useOnboardingAgents", () => {
     );
     const { wrapper } = createQueryClientTestHarness();
 
-    renderHook(
-      () => useOnboardingAgents({ environmentId: "env-remote", poll: false }),
-      { wrapper },
-    );
+    renderHook(() => useOnboardingAgents({ environmentId: "env-remote" }), {
+      wrapper,
+    });
 
     await waitFor(() => {
       expect(sdk.system.onboardingAgents).toHaveBeenCalledWith({

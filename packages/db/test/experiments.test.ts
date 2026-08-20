@@ -17,7 +17,7 @@ describe("experiments", () => {
 
       const experiments = {
         ...defaultExperiments,
-        newOnboarding: true,
+        mobileApp: true,
       };
       setExperiments(db, experiments);
       db.$client
@@ -39,7 +39,6 @@ describe("experiments", () => {
         "editMessages",
         "futureExperiment",
         "mobileApp",
-        "newOnboarding",
         "providerSessionReaping",
       ]);
     } finally {

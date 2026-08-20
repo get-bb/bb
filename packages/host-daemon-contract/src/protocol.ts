@@ -1,3 +1,8 @@
+// Version 138 removes the `workspace.discover_repos` command. It existed only
+// for the first-run onboarding flow's project step, which is deleted; no server
+// sends it any more. A newer daemon no longer answers it, so an older server
+// paired with a new daemon would fail that command instead of returning repos.
+//
 // Version 137 removes the `claudeCodeMockCliTraffic` runtime option and the
 // Claude Code mock CLI traffic experiment behind it. Current servers no longer
 // send the field, and current bridges no longer accept it.
@@ -55,7 +60,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 137 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 138 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

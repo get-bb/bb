@@ -21,10 +21,9 @@ import type {
   SystemVersionResponse,
 } from "@bb/server-contract";
 import type {
-  DiscoverReposResult,
   ProviderCliStatusResponse,
+  ProviderUsageResponse,
 } from "@bb/host-daemon-contract";
-import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import {
   modelCatalogCacheKey,
@@ -41,7 +40,6 @@ import {
   hostProviderCliStatusQueryKey,
   systemCliSkillsQueryKey,
   onboardingAgentsQueryKey,
-  onboardingReposQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
   systemProvidersQueryKey,
@@ -65,7 +63,6 @@ export interface UseSystemExecutionOptionsArgs {
 export interface UseOnboardingAgentsOptions extends QueryOptions {
   environmentId?: string;
   hostId?: string;
-  poll?: boolean;
 }
 
 interface QueryOptions {
@@ -535,8 +532,8 @@ export function useHostProviderCliStatus({
 }
 
 /**
- * Live agent state for onboarding. Polled while the step is open so installing
- * or signing in from a terminal updates the list without a manual refresh.
+ * Install, auth, and plan state per agent provider. The root composer reads it
+ * to default an unset provider selection to one the machine is signed in to.
  */
 export function useOnboardingAgents(options: UseOnboardingAgentsOptions = {}) {
   const environmentId = options.environmentId ?? null;
@@ -551,22 +548,9 @@ export function useOnboardingAgents(options: UseOnboardingAgentsOptions = {}) {
       }),
     enabled: options.enabled ?? true,
     // Each read runs CLI health checks, known-agent checks, and up to three
-    // provider usage requests, so this polls slowly and only while the agents
-    // step is actually on screen. An explicit re-check covers the impatient
-    // case. Other readers (the composer's provider default) want one answer.
-    ...(options.poll === false
-      ? { staleTime: 60_000 }
-      : { refetchInterval: 15_000 }),
-  });
-}
-
-/** Candidate projects on the host. Runs once when the projects step opens. */
-export function useOnboardingRepos(options: QueryOptions = {}) {
-  return useQuery<DiscoverReposResult>({
-    queryKey: onboardingReposQueryKey(),
-    queryFn: ({ signal }) => sdk.system.onboardingRepos({ signal }),
-    enabled: options.enabled ?? true,
-    staleTime: Infinity,
+    // provider usage requests on the host, so one answer is cached rather than
+    // polled: the composer only needs a default at open time.
+    staleTime: 60_000,
   });
 }
 

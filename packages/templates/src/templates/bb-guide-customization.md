@@ -91,7 +91,6 @@ Magic Keyboard.
 
   bb settings show
   bb settings general <key> <value>
-  bb settings replay-onboarding
   bb settings experiment <key> <value>
   bb settings usage [--machine <id-or-name>]
   bb settings version [--force]
@@ -101,13 +100,6 @@ Magic Keyboard.
 `bb settings show`. Boolean preferences take `true`, `false`, `on`, or `off`,
 and `null` clears a preference that can be unset.
 
-`bb settings replay-onboarding` enables the `newOnboarding` experiment and
-clears `onboardingCompletedAt`. The first-run setup guide then shows again on
-the next app load. The same button lives in Settings → General → Setup guide
-while the experiment is on.
-
-The `newOnboarding` experiment exposes the first-run agent and project setup
-guide.
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
 The default-on `editMessages` experiment enables editing eligible, accepted

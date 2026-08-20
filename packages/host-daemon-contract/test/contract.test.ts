@@ -442,19 +442,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
   },
-  "workspace.discover_repos": {
-    repos: [
-      {
-        path: "/home/user/projects/bb",
-        name: "bb",
-        lastActivityAt: "2026-08-05T00:00:00.000Z",
-        originUrl: "https://github.com/example/bb",
-        agentSeen: true,
-        agentSeenAt: "2026-08-04T00:00:00.000Z",
-      },
-    ],
-    truncated: false,
-  },
   "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diff": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diffFiles": WORKSPACE_UNAVAILABLE_RESULT,
@@ -1147,7 +1134,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(137);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(138);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

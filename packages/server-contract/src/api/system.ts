@@ -152,48 +152,6 @@ export type OnboardingAgentOverview = z.infer<
   typeof onboardingAgentOverviewSchema
 >;
 
-/** Omission reads the primary machine, matching the usage-limits route. */
-export const systemOnboardingReposQuerySchema = z.object({
-  hostId: z.string().min(1).optional(),
-});
-export type SystemOnboardingReposQuery = z.infer<
-  typeof systemOnboardingReposQuerySchema
->;
-
-/**
- * Onboarding funnel events, reported by the app and forwarded to the server's
- * anonymous telemetry. Categorical or counts only — never paths, project names,
- * or account emails.
- */
-export const onboardingTelemetryEventSchema = z.discriminatedUnion("name", [
-  z.object({
-    name: z.literal("onboarding_started"),
-    agentState: z.enum(["connected", "signed_out", "none"]),
-    detectedAgentCount: z.number().int().min(0),
-  }),
-  z.object({
-    name: z.literal("onboarding_step_completed"),
-    step: z.enum(["agents", "projects"]),
-  }),
-  z.object({
-    name: z.literal("onboarding_step_skipped"),
-    step: z.enum(["agents", "projects"]),
-  }),
-  z.object({
-    name: z.literal("onboarding_completed"),
-    agentState: z.enum(["connected", "signed_out", "none"]),
-    projectsAdded: z.number().int().min(0),
-    durationMs: z.number().int().min(0),
-  }),
-  z.object({
-    name: z.literal("onboarding_dismissed"),
-    step: z.enum(["agents", "projects"]),
-  }),
-]);
-export type OnboardingTelemetryEvent = z.infer<
-  typeof onboardingTelemetryEventSchema
->;
-
 export const systemConfigResponseSchema = z.object({
   /** App-wide Settings → General preferences, persisted server-side. */
   generalSettings: appSettingsSchema,

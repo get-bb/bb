@@ -154,30 +154,6 @@ export function registerSettingsCommands(
     );
 
   settings
-    .command("replay-onboarding")
-    .description("Show the first-run setup guide again on the next app load")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: JsonOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const config = await sdk.system.config();
-        let experiments = config.experiments;
-        if (!config.experiments.newOnboarding) {
-          experiments = await sdk.system.updateExperiments({
-            ...config.experiments,
-            newOnboarding: true,
-          });
-        }
-        const generalSettings = await sdk.system.updateGeneralSettings({
-          ...config.generalSettings,
-          onboardingCompletedAt: null,
-        });
-        if (outputJson(opts, { experiments, generalSettings })) return;
-        console.log("New onboarding is enabled; onboarding will show again");
-      }),
-    );
-
-  settings
     .command("experiment <key> <value>")
     .description("Set an experiment value")
     .option("--json", "Print machine-readable JSON output")

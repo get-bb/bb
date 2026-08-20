@@ -176,7 +176,6 @@ export interface AppearanceSettingsSectionProps {
 }
 
 export interface GeneralSettingsSectionProps {
-  onReplayOnboarding: () => void;
   desktopBrowserAvailable: boolean;
   navigateToThreadAfterCreate: boolean;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
@@ -187,7 +186,6 @@ export interface GeneralSettingsSectionProps {
   openLinksInAppBrowser: boolean;
   rewriteLocalhostLinks: boolean;
   richTextEditing: boolean;
-  replayOnboardingAvailable: boolean;
   steerActiveThreadOnEnter: boolean;
   steerActiveThreadOnEnterDisabled: boolean;
 }
@@ -213,12 +211,10 @@ export interface ExperimentsSettingsSectionProps {
   changelogPreviewEnabled: boolean;
   editMessagesEnabled: boolean;
   mobileAppEnabled: boolean;
-  newOnboardingEnabled: boolean;
   providerSessionReapingEnabled: boolean;
   onChangelogPreviewEnabledChange: (enabled: boolean) => void;
   onEditMessagesEnabledChange: (enabled: boolean) => void;
   onMobileAppEnabledChange: (enabled: boolean) => void;
-  onNewOnboardingEnabledChange: (enabled: boolean) => void;
   onProviderSessionReapingEnabledChange: (enabled: boolean) => void;
 }
 
@@ -836,10 +832,8 @@ export function GeneralSettingsSection({
   openLinksInAppBrowser,
   rewriteLocalhostLinks,
   richTextEditing,
-  replayOnboardingAvailable,
   steerActiveThreadOnEnter,
   steerActiveThreadOnEnterDisabled,
-  onReplayOnboarding,
 }: GeneralSettingsSectionProps) {
   return (
     <SettingsSection title="General">
@@ -873,36 +867,8 @@ export function GeneralSettingsSection({
           enabled={rewriteLocalhostLinks}
           onEnabledChange={onRewriteLocalhostLinksChange}
         />
-
-        {replayOnboardingAvailable ? (
-          <ReplayOnboardingSettingsControl onReplay={onReplayOnboarding} />
-        ) : null}
       </div>
     </SettingsSection>
-  );
-}
-
-/**
- * The parent only shows this control when the new-onboarding experiment is on.
- * Clearing `onboardingCompletedAt` then reopens the flow on the spot.
- */
-function ReplayOnboardingSettingsControl({
-  onReplay,
-}: {
-  onReplay: () => void;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <div className="min-w-0">
-        <div className="text-sm">Setup guide</div>
-        <p className="mt-0.5 text-xs text-subtle-foreground">
-          Walk through agent detection and adding projects again.
-        </p>
-      </div>
-      <Button variant="outline" size="sm" onClick={onReplay}>
-        Show again
-      </Button>
-    </div>
   );
 }
 
@@ -999,7 +965,6 @@ export function ProviderSettingsSection({
 const CHANGELOG_PREVIEW_EXPERIMENT_LABEL = "Changelog preview";
 const EDIT_MESSAGES_EXPERIMENT_LABEL = "Edit messages";
 const MOBILE_APP_EXPERIMENT_LABEL = "Mobile app";
-const NEW_ONBOARDING_EXPERIMENT_LABEL = "New onboarding";
 const PROVIDER_SESSION_REAPING_EXPERIMENT_LABEL =
   "Idle provider session release";
 export function ExperimentsSettingsSection({
@@ -1007,12 +972,10 @@ export function ExperimentsSettingsSection({
   disabled,
   editMessagesEnabled,
   mobileAppEnabled,
-  newOnboardingEnabled,
   providerSessionReapingEnabled,
   onChangelogPreviewEnabledChange,
   onEditMessagesEnabledChange,
   onMobileAppEnabledChange,
-  onNewOnboardingEnabledChange,
   onProviderSessionReapingEnabledChange,
 }: ExperimentsSettingsSectionProps) {
   return (
@@ -1054,18 +1017,6 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onMobileAppEnabledChange}
             aria-label={MOBILE_APP_EXPERIMENT_LABEL}
-          />
-        </SettingsWithControl>
-
-        <SettingsWithControl
-          label={NEW_ONBOARDING_EXPERIMENT_LABEL}
-          description="Enable the new first-run guide for agent setup and project selection."
-        >
-          <Switch
-            checked={newOnboardingEnabled}
-            disabled={disabled}
-            onCheckedChange={onNewOnboardingEnabledChange}
-            aria-label={NEW_ONBOARDING_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1259,13 +1210,6 @@ export function SettingsView() {
             mobileApp: enabled,
           })
         }
-        newOnboardingEnabled={experiments.newOnboarding}
-        onNewOnboardingEnabledChange={(enabled) =>
-          updateExperimentsMutation.mutate({
-            ...experiments,
-            newOnboarding: enabled,
-          })
-        }
         providerSessionReapingEnabled={experiments.providerSessionReaping}
         onProviderSessionReapingEnabledChange={(enabled) =>
           updateExperimentsMutation.mutate({
@@ -1290,7 +1234,6 @@ export function SettingsView() {
           openLinksInAppBrowser={openLinksInAppBrowser}
           rewriteLocalhostLinks={rewriteLocalhostLinks}
           richTextEditing={richTextEditing}
-          replayOnboardingAvailable={experiments.newOnboarding}
           steerActiveThreadOnEnter={generalSettings.steerActiveThreadOnEnter}
           steerActiveThreadOnEnterDisabled={
             systemConfigQuery.data === undefined ||
@@ -1298,12 +1241,6 @@ export function SettingsView() {
           }
           onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
-          onReplayOnboarding={() =>
-            updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
-              onboardingCompletedAt: null,
-            })
-          }
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
           onRichTextEditingChange={setRichTextEditing}
           onSteerActiveThreadOnEnterChange={(enabled) =>

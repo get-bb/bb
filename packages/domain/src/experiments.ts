@@ -14,7 +14,6 @@ export const experimentKeys = [
   "changelogPreview",
   "editMessages",
   "mobileApp",
-  "newOnboarding",
   "providerSessionReaping",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
@@ -31,6 +30,5 @@ export const defaultExperiments: Experiments = {
   changelogPreview: false,
   editMessages: true,
   mobileApp: false,
-  newOnboarding: false,
   providerSessionReaping: false,
 };

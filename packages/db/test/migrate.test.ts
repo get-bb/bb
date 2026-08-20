@@ -620,9 +620,6 @@ function dropSteerActiveThreadOnEnterColumn(db: DbConnection): void {
   }
 }
 
-// Journal `when` for 0085, used to rewind exactly that migration.
-const onboardingMigrationWhen = 1785947206119;
-
 // Migration 0085 adds the onboarding completion timestamp. Rewind scenarios
 // that clear its migration row must drop the column before replay, for the same
 // reason as the preference column above: ALTER TABLE ADD is not re-appliable.
@@ -1588,7 +1585,6 @@ describe("migrate", () => {
         codexSubagentsDisabled: true,
         claudeCodeSubagentsDisabled: false,
         claudeCodeWorkflowsDisabled: true,
-        onboardingCompletedAt: "2026-08-01T00:00:00.000Z",
       });
       expect(getAppKeybindingOverrides(db)).toEqual([
         { command: "thread.new", shortcut: null },
@@ -1683,72 +1679,6 @@ describe("migrate", () => {
   // Side chats used to be their own origin kind. 0084 hands every existing one
   // to the builtin side-chat plugin, so old side chats keep opening in the
   // plugin's panel instead of stranding on a removed origin kind.
-  it("stamps existing installs as onboarded so upgrades skip the first-run flow", () => {
-    const db = createConnection(":memory:");
-    migrate(db);
-
-    // Rewind 0085 so it replays against an install that already has a project —
-    // exactly what an upgrading user's database looks like.
-    restoreWideExperimentsTable(db);
-    dropOnboardingCompletedAtColumn(db);
-    dropAppSettingsValuesTable(db);
-    dropNewOnboardingExperimentColumn(db);
-    dropEnvironmentRetireRequestedAtColumn(db);
-    dropPluginArtifactGitCheckoutRootColumn(db);
-    dropMarketplaceCatalogSchema(db);
-    dropEventParentToolCallIdColumn(db);
-    // Delete by the journal timestamp, not a hash substring: migration hashes
-    // are hex and can contain "0085" by coincidence.
-    db.$client
-      .prepare<
-        [number]
-      >("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
-      .run(onboardingMigrationWhen);
-    db.$client
-      .prepare(
-        "INSERT INTO projects (id, name, created_at, updated_at, sort_key, kind) VALUES ('proj_a','app',1,1,'V','standard')",
-      )
-      .run();
-    // Deliberately no app_settings row: it is created on first save, so an
-    // existing user can have projects without one.
-    db.$client.prepare("DELETE FROM app_settings").run();
-
-    restoreLegacyThreadOriginColumn(db);
-    migrate(db);
-
-    const row = db.$client
-      .prepare<
-        [],
-        { onboarding_completed_at: string | null }
-      >("SELECT onboarding_completed_at FROM app_settings WHERE id = 'current'")
-      .get();
-    // Non-null means the flow will not open for this install.
-    expect(row?.onboarding_completed_at).toBeTruthy();
-
-    closeConnection(db);
-  });
-
-  it("leaves a fresh install unstamped so onboarding opens", () => {
-    const db = createConnection(":memory:");
-    migrate(db);
-
-    db.$client
-      .prepare(
-        "INSERT OR REPLACE INTO app_settings (id, updated_at) VALUES ('current', 1)",
-      )
-      .run();
-
-    const row = db.$client
-      .prepare<
-        [],
-        { onboarding_completed_at: string | null }
-      >("SELECT onboarding_completed_at FROM app_settings WHERE id = 'current'")
-      .get();
-    expect(row?.onboarding_completed_at).toBeNull();
-
-    closeConnection(db);
-  });
-
   it("adopts legacy side chats as the side-chat plugin's hidden forks", () => {
     const db = createConnection(":memory:");
 

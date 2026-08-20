@@ -317,7 +317,6 @@ export function useThreadCreationOptions(
   const connectedAgentsQuery = useOnboardingAgents({
     enabled: shouldResolveConnectedProvider,
     ...executionOptionsRouting,
-    poll: false,
   });
   const connectedProviderId = shouldResolveConnectedProvider
     ? connectedAgentsQuery.data?.agents.find(

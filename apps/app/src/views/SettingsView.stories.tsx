@@ -275,14 +275,12 @@ function GeneralSettingsStory({
           state.setNavigateToThreadAfterCreate
         }
         onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
-        onReplayOnboarding={() => {}}
         onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
         onRichTextEditingChange={state.setRichTextEditing}
         onSteerActiveThreadOnEnterChange={state.setSteerActiveThreadOnEnter}
         openLinksInAppBrowser={state.openLinksInAppBrowser}
         rewriteLocalhostLinks={state.rewriteLocalhostLinks}
         richTextEditing={state.richTextEditing}
-        replayOnboardingAvailable={state.experiments.newOnboarding}
         steerActiveThreadOnEnter={state.steerActiveThreadOnEnter}
         steerActiveThreadOnEnterDisabled={false}
       />
@@ -352,7 +350,6 @@ function ExperimentsStory() {
       disabled={false}
       editMessagesEnabled={state.experiments.editMessages}
       mobileAppEnabled={state.experiments.mobileApp}
-      newOnboardingEnabled={state.experiments.newOnboarding}
       providerSessionReapingEnabled={state.experiments.providerSessionReaping}
       onChangelogPreviewEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
@@ -370,12 +367,6 @@ function ExperimentsStory() {
         state.setExperiments((current) => ({
           ...current,
           mobileApp: enabled,
-        }))
-      }
-      onNewOnboardingEnabledChange={(enabled) =>
-        state.setExperiments((current) => ({
-          ...current,
-          newOnboarding: enabled,
         }))
       }
       onProviderSessionReapingEnabledChange={(enabled) =>

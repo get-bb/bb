@@ -107,10 +107,6 @@ message agents, or inspect projects, providers, and environments.
   specific connected machine instead of the primary machine.
 - Extensions provides the unified Skills and Plugins management UI, while
   Automations stays in the Plugins section beside threads.
-- The default-off `newOnboarding` experiment exposes the first-run agent and
-  project setup guide. Change it with
-  `bb settings experiment newOnboarding <true|false>`. Use
-  `bb settings replay-onboarding` to enable it and show the guide again.
 - The default-off `changelogPreview` experiment shows the latest release notes
   on Settings → Updates. Change it with
   `bb settings experiment changelogPreview <true|false>`.

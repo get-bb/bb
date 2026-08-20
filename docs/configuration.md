@@ -635,8 +635,7 @@ plugin enabled; with the experiment off the panel hides the section and
 
 Experimental surfaces are changed in Settings → Experiments or with
 `bb settings experiment <key> <true|false>`. Most start off; `editMessages`
-starts on and its toggle is the opt-out. The `newOnboarding` experiment exposes
-the first-run agent and project setup guide.
+starts on and its toggle is the opt-out.
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
 The `editMessages` experiment is on by default and enables replacing an

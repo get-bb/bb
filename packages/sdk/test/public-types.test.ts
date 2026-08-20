@@ -342,8 +342,6 @@ type ExpectedSystemKey =
   | "updateGeneralSettings"
   | "updateKeyboardSettings"
   | "onboardingAgents"
-  | "onboardingEvent"
-  | "onboardingRepos"
   | "usageLimits"
   | "version";
 
