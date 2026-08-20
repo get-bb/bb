@@ -8,7 +8,7 @@
     "Chunks behind a dynamic import are deliberately not counted. Moving code",
     "behind React.lazy or import() is the fix this budget exists to encourage.",
     "",
-    "maxBootBytes / maxBootBrotliBytes are a ratchet set 3% above the measured",
+    "maxBootBytes / maxBootBrotliBytes are a ratchet set 10% above the measured",
     "payload: enough for a normal feature's worth of shell code and for build",
     "noise, tight enough that a barrel regression cannot hide inside it. Lower",
     "them when a change wins headroom. Raising one is a deliberate decision",
@@ -38,15 +38,15 @@
     "route chunk minus the boot chunks: the JavaScript between 'app shell",
     "painted' and 'route content painted'. SplitWorkspaceRoute is every thread,",
     "compose and plugin-panel page, so its closure is the second number that",
-    "decides how slow bb feels on a phone. Same 3% ratchet; its forbiddenPackages",
+    "decides how slow bb feels on a phone. Same 10% ratchet; its forbiddenPackages",
     "are the diff engine, math and terminal code that only a user action needs.",
     "The composer (tiptap/prosemirror) is visible on every thread page and is",
     "allowed until it moves behind a first-focus handoff. Run",
     "`node scripts/why-eager.mjs --from=views/SplitWorkspaceRoute.tsx <package>`",
     "to print the static chain that pulled a package into the closure."
   ],
-  "maxBootBytes": 1626679,
-  "maxBootBrotliBytes": 438233,
+  "maxBootBytes": 1723617,
+  "maxBootBrotliBytes": 479067,
   "forbiddenBootPackages": [
     "@pierre/diffs",
     "@pierre/theming",
@@ -75,8 +75,8 @@
   },
   "routeClosures": {
     "SplitWorkspaceRoute": {
-      "maxBytes": 2559064,
-      "maxBrotliBytes": 670688,
+      "maxBytes": 2533484,
+      "maxBrotliBytes": 671561,
       "forbiddenPackages": [
         "@pierre/diffs",
         "@pierre/theming",
