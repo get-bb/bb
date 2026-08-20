@@ -358,6 +358,33 @@ describe("connect settings section", () => {
     await slot.findByText(/this bb is not connected to getbb.app/);
   });
 
+  it("hides mobile pairing unless the mobileApp experiment is on", async () => {
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          status: () => connected(),
+          mobilePairing: () => ({ enabled: false }),
+        },
+      },
+    );
+
+    await slot.findByText("Connected");
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "mobilePairing",
+        input: null,
+      }),
+    );
+    expect(slot.queryByText("Mobile app")).toBeNull();
+    expect(
+      slot.queryByRole("button", { name: "Add mobile device" }),
+    ).toBeNull();
+    // The rest of the paired card is unaffected.
+    slot.getByRole("button", { name: "Show QR for phone" });
+  });
+
   it("add mobile device mints a machine code and shows the QR payload, the code, and a countdown", async () => {
     const expiresAt = Date.now() + 600_000;
     const slot = renderSlot(
@@ -366,6 +393,7 @@ describe("connect settings section", () => {
       {
         rpc: {
           status: () => connected(),
+          mobilePairing: () => ({ enabled: true }),
           createMachineCode: () => ({
             code: "K7QP-2M4X",
             expiresAt,
@@ -405,6 +433,7 @@ describe("connect settings section", () => {
       {
         rpc: {
           status: () => connected(),
+          mobilePairing: () => ({ enabled: true }),
           createMachineCode: () => {
             minted += 1;
             return {
@@ -440,6 +469,7 @@ describe("connect settings section", () => {
       {
         rpc: {
           status: () => connected(),
+          mobilePairing: () => ({ enabled: true }),
           createMachineCode: () => {
             throw new Error("machine_limit");
           },

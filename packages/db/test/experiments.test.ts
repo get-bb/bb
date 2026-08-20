@@ -38,6 +38,7 @@ describe("experiments", () => {
         "claudeCodeMockCliTraffic",
         "editMessages",
         "futureExperiment",
+        "mobileApp",
         "newOnboarding",
         "providerSessionReaping",
       ]);

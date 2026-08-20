@@ -145,6 +145,7 @@ async function startSmokeServer({
         dataDir,
         experiments: {
           claudeCodeMockCliTraffic: false,
+          mobileApp: false,
           newOnboarding: false,
           providerSessionReaping: false,
         },

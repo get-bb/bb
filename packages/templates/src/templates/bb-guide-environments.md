@@ -156,6 +156,7 @@ Remote access (bb connect):
   bb connect shares [--host <name-or-id>]           List that host's shares
   bb connect servers                      List every bb on this account (handle, url, live)
   bb connect machine-code                 Mint a one-time code that pairs the bb mobile app
+                                          (needs the mobileApp experiment)
 
   Port sharing works from threads on any enrolled host. In a thread,
   `bb connect expose <port>` resolves the thread environment's host; outside a
@@ -170,8 +171,10 @@ Remote access (bb connect):
   `bb connect status` shows all shares with host + URL. `shares --json` returns
   the resolved `host` and rows with `hostId`, `hostName`, `port`, and `url`.
 
-  The bb mobile app pairs with a paired bb through bb connect. Settings →
-  Remote access → Add mobile device shows a QR code plus the code as text;
+  The bb mobile app pairs with a paired bb through bb connect. Turn on the
+  `mobileApp` experiment first (`bb settings experiment mobileApp true`, or
+  Settings → Experiments → Mobile app); the surfaces below stay hidden without
+  it. Settings → Remote access → Add mobile device shows a QR code plus the code as text;
   `bb connect machine-code` prints the same code, server URL, apex, and expiry
   (`--json` for `{code, serverUrl, apex, expiresAt}`). The phone scans or
   types the code and enrolls as a connect machine on the account with its own

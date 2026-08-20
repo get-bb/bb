@@ -225,7 +225,8 @@ isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   `selfHandle` for deduping this server. When you start a local server the user
   should open remotely, expose the port and give them the share URL.
   `bb connect machine-code` mints a one-time code (10 minutes, single use)
-  that pairs the bb mobile app with this bb: it prints the code, server URL,
+  that pairs the bb mobile app with this bb (it needs the `mobileApp`
+  experiment: `bb settings experiment mobileApp true`): it prints the code, server URL,
   connect apex, and expiry; `--json` returns `{code, serverUrl, apex,
   expiresAt}`. The phone enrolls as a connect machine with its own revocable
   credential (visible in the getbb.app dashboard). Settings → Remote access →

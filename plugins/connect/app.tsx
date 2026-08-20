@@ -525,11 +525,21 @@ function PairForm({
 // shown as copyable text for manual entry. Mirrors `bb connect machine-code`.
 // ---------------------------------------------------------------------------
 
-type MachineCodeErrorCode = "machine_limit" | "network" | "not_paired";
+type MachineCodeErrorCode =
+  | "experiment_off"
+  | "machine_limit"
+  | "network"
+  | "not_paired";
 
 function toMachineCodeErrorCode(error: unknown): MachineCodeErrorCode {
   const message = errorText(error);
-  if (message === "machine_limit" || message === "not_paired") return message;
+  if (
+    message === "experiment_off" ||
+    message === "machine_limit" ||
+    message === "not_paired"
+  ) {
+    return message;
+  }
   // Unknown failures read as transient; the user can retry.
   return "network";
 }
@@ -631,7 +641,44 @@ function MobilePairingCard({
   );
 }
 
+/**
+ * Mobile pairing ships behind the `mobileApp` experiment (Settings →
+ * Experiments) until the app is generally available. The backend owns the
+ * gate (it also refuses `createMachineCode`); this hook only decides whether
+ * to render the section. False while the answer is unknown or on error, so
+ * the panel never flashes the section for an install that has it off.
+ */
+function useMobilePairingEnabled(): boolean {
+  const rpc = useRpc<typeof connectRpcContract>();
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    rpc.call("mobilePairing").then(
+      (result) => {
+        if (!cancelled) setEnabled(result.enabled);
+      },
+      () => {
+        if (!cancelled) setEnabled(false);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [rpc]);
+  return enabled;
+}
+
 function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
+  const enabled = useMobilePairingEnabled();
+  if (!enabled) return null;
+  return <AddMobileDeviceSectionContent dashboardUrl={dashboardUrl} />;
+}
+
+function AddMobileDeviceSectionContent({
+  dashboardUrl,
+}: {
+  dashboardUrl: string;
+}) {
   const rpc = useRpc<typeof connectRpcContract>();
   const [payload, setPayload] = useState<MobilePairingPayload | null>(null);
   const [minting, setMinting] = useState(false);
@@ -726,7 +773,9 @@ function AddMobileDeviceSection({ dashboardUrl }: { dashboardUrl: string }) {
         <p className="text-xs text-destructive-text">
           {errorCode === "not_paired"
             ? "This bb is no longer paired — re-pair, then try again."
-            : "Couldn't reach the Connect service to create a code — check your connection, then try again."}
+            : errorCode === "experiment_off"
+              ? "Mobile pairing was turned off in Settings → Experiments."
+              : "Couldn't reach the Connect service to create a code — check your connection, then try again."}
         </p>
       ) : null}
     </div>

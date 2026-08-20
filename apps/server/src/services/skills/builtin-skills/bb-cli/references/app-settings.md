@@ -57,3 +57,11 @@ every window and client sees the same value.
 - Enable it with `bb settings experiment newOnboarding true`.
 - Use `bb settings replay-onboarding` to enable the experiment and show the
   agent and project setup guide again.
+
+## Mobile app
+
+- The `mobileApp` experiment defaults to false while the bb mobile app is in
+  early access.
+- Enable it with `bb settings experiment mobileApp true`. It shows the
+  **Add mobile device** card under Settings → Remote access and enables
+  `bb connect machine-code`.

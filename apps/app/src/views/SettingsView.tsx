@@ -212,10 +212,12 @@ export interface ExperimentsSettingsSectionProps {
   disabled: boolean;
   claudeCodeMockCliTrafficEnabled: boolean;
   editMessagesEnabled: boolean;
+  mobileAppEnabled: boolean;
   newOnboardingEnabled: boolean;
   providerSessionReapingEnabled: boolean;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
   onEditMessagesEnabledChange: (enabled: boolean) => void;
+  onMobileAppEnabledChange: (enabled: boolean) => void;
   onNewOnboardingEnabledChange: (enabled: boolean) => void;
   onProviderSessionReapingEnabledChange: (enabled: boolean) => void;
 }
@@ -996,6 +998,7 @@ export function ProviderSettingsSection({
 
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
 const EDIT_MESSAGES_EXPERIMENT_LABEL = "Edit messages";
+const MOBILE_APP_EXPERIMENT_LABEL = "Mobile app";
 const NEW_ONBOARDING_EXPERIMENT_LABEL = "New onboarding";
 const PROVIDER_SESSION_REAPING_EXPERIMENT_LABEL =
   "Idle provider session release";
@@ -1003,10 +1006,12 @@ export function ExperimentsSettingsSection({
   claudeCodeMockCliTrafficEnabled,
   disabled,
   editMessagesEnabled,
+  mobileAppEnabled,
   newOnboardingEnabled,
   providerSessionReapingEnabled,
   onClaudeCodeMockCliTrafficEnabledChange,
   onEditMessagesEnabledChange,
+  onMobileAppEnabledChange,
   onNewOnboardingEnabledChange,
   onProviderSessionReapingEnabledChange,
 }: ExperimentsSettingsSectionProps) {
@@ -1038,6 +1043,18 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onEditMessagesEnabledChange}
             aria-label={EDIT_MESSAGES_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={MOBILE_APP_EXPERIMENT_LABEL}
+          description="Pair the bb mobile app over bb connect: shows Add mobile device under Remote access and enables bb connect machine-code."
+        >
+          <Switch
+            checked={mobileAppEnabled}
+            disabled={disabled}
+            onCheckedChange={onMobileAppEnabledChange}
+            aria-label={MOBILE_APP_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1230,6 +1247,13 @@ export function SettingsView() {
           updateExperimentsMutation.mutate({
             ...experiments,
             editMessages: enabled,
+          })
+        }
+        mobileAppEnabled={experiments.mobileApp}
+        onMobileAppEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            mobileApp: enabled,
           })
         }
         newOnboardingEnabled={experiments.newOnboarding}

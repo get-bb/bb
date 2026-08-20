@@ -23,6 +23,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
   experiments: {
     claudeCodeMockCliTraffic: false,
     editMessages: false,
+    mobileApp: false,
     newOnboarding: false,
     providerSessionReaping: false,
   },

@@ -39,12 +39,18 @@ const REMOTE_HOST_NAME = "Sawyer Air";
 
 function createConnectFakeHost(options?: {
   remoteIdentity?: { label: string; baseDomain: string };
+  /** The `mobileApp` experiment (defaults on so pairing paths are exercised). */
+  mobileApp?: boolean;
 }): FakePluginHost {
   return createFakePluginHost({
     pluginId: "connect",
     sdk: {
       system: {
-        config: async () => ({ primaryHostId: SERVER_HOST_ID }) as never,
+        config: async () =>
+          ({
+            primaryHostId: SERVER_HOST_ID,
+            experiments: { mobileApp: options?.mobileApp ?? true },
+          }) as never,
       },
       hosts: {
         get: async ({ hostId }: { hostId: string }) => {
@@ -2389,8 +2395,10 @@ describe("connect CLI", () => {
     vi.unstubAllGlobals();
   });
 
-  async function loadCli(): Promise<FakePluginHost> {
-    host = createConnectFakeHost();
+  async function loadCli(options?: {
+    mobileApp?: boolean;
+  }): Promise<FakePluginHost> {
+    host = createConnectFakeHost(options);
     await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
     return host;
   }
@@ -2532,6 +2540,17 @@ describe("connect CLI", () => {
     expect(parsed.servers[1]?.url).toBe(
       "http://sawyer-desktop.localhost:59342",
     );
+  });
+
+  it("machine-code is off until the mobileApp experiment is on", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadCli({ mobileApp: false });
+    const result = await harness.runCli(["machine-code"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('"Mobile app" experiment');
+    expect(result.stderr).toContain("bb settings experiment mobileApp true");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("machine-code when unpaired errors clearly", async () => {

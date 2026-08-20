@@ -1,7 +1,11 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerConnectCli } from "./cli.js";
 import { createKvCredentialStore } from "./credential.js";
-import { connectRpcContract, createRpcHandlers } from "./rpc.js";
+import {
+  connectRpcContract,
+  createRpcHandlers,
+  type MobilePairingGate,
+} from "./rpc.js";
 import { ShareRegistry } from "./shares.js";
 import { ConnectTunnel } from "./tunnel.js";
 import { ShareHostResolver } from "./hosts.js";
@@ -45,8 +49,17 @@ export default async function plugin(bb: BbPluginApi) {
       bb.realtime.publish(CONNECT_REALTIME_CHANNEL, status),
   });
 
-  bb.rpc.register(connectRpcContract, createRpcHandlers(tunnel, hostResolver));
-  registerConnectCli({ bb, tunnel, hostResolver });
+  // Experiments are server-owned settings; the plugin reads them through its
+  // loopback SDK binding rather than through a dedicated plugin API.
+  const mobilePairing: MobilePairingGate = {
+    enabled: async () => (await bb.sdk.system.config()).experiments.mobileApp,
+  };
+
+  bb.rpc.register(
+    connectRpcContract,
+    createRpcHandlers(tunnel, hostResolver, mobilePairing),
+  );
+  registerConnectCli({ bb, tunnel, hostResolver, mobilePairing });
 
   bb.agents.contributeInstructions(() => {
     const status = tunnel.status();

@@ -5,6 +5,7 @@ import {
 } from "@bb/connect-client";
 import type { ShareHostResolver } from "./hosts.js";
 import { MachineCodeError } from "./machine-code.js";
+import type { MobilePairingGate } from "./rpc.js";
 import { parseSharePort } from "./shares.js";
 import type { ConnectTunnel } from "./tunnel.js";
 import type { ConnectStatus } from "./types.js";
@@ -83,7 +84,8 @@ function helpText(): string {
     "  bb connect shares [--host <name-or-id>]           List shares for the thread's host",
     "  bb connect servers             List every bb on this account (from getbb.app)",
     "  bb connect machine-code        Mint a one-time code that enrolls the bb mobile app (or another",
-    "                                 device) as a connect machine for this bb",
+    "                                 device) as a connect machine for this bb (needs the",
+    '                                 "Mobile app" experiment in Settings → Experiments)',
     "",
     "The server holds the tunnel; it stays up while bb is running.",
   ].join("\n");
@@ -135,6 +137,10 @@ function machineCodeErrorText(
   }
 }
 
+function mobilePairingDisabledError(): string {
+  return 'mobile pairing is off — turn on the "Mobile app" experiment in Settings → Experiments (or `bb settings experiment mobileApp true`), then run this again';
+}
+
 function formatMachineCode(payload: MobilePairingPayload): string {
   const minutes = Math.max(
     0,
@@ -157,8 +163,9 @@ export function registerConnectCli(args: {
   bb: Pick<BbPluginApi, "cli">;
   tunnel: ConnectTunnel;
   hostResolver: ShareHostResolver;
+  mobilePairing: MobilePairingGate;
 }): void {
-  const { bb, tunnel, hostResolver } = args;
+  const { bb, tunnel, hostResolver, mobilePairing } = args;
   bb.cli.register({
     name: "connect",
     summary:
@@ -197,7 +204,7 @@ export function registerConnectCli(args: {
       {
         name: "machine-code",
         summary:
-          "Mint a one-time code that enrolls the bb mobile app as a connect machine",
+          'Mint a one-time code that enrolls the bb mobile app as a connect machine (needs the "Mobile app" experiment)',
         usage: "bb connect machine-code [--json]",
       },
     ],
@@ -348,6 +355,12 @@ export function registerConnectCli(args: {
         if (first === "machine-code") {
           const parsed = parseFlags(argv.slice(1));
           validateFlags(parsed, { boolean: ["json"] });
+          if (!(await mobilePairing.enabled())) {
+            return {
+              exitCode: 1,
+              stderr: `${mobilePairingDisabledError()}\n`,
+            };
+          }
           let payload: MobilePairingPayload;
           try {
             payload = mobilePairingPayload(await tunnel.createMachineCode());

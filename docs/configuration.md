@@ -610,7 +610,11 @@ ports).
 The bb mobile app reaches a paired bb through the same connect route. It
 enrolls as a connect **machine** — its own credential on the getbb.app account,
 separate from the server's pairing secret and individually revocable — so
-pairing starts from the bb, not from the phone:
+pairing starts from the bb, not from the phone. Both pairing surfaces sit
+behind the `mobileApp` experiment (Settings → Experiments → **Mobile app**, or
+`bb settings experiment mobileApp true`) until the app is generally available;
+the connect plugin reads the experiment from `/system/config` on every call,
+so a toggle applies without a plugin reload:
 
 - Settings → Remote access → **Add mobile device** mints a one-time code and
   shows it as a QR code plus copyable text with a countdown.
@@ -623,7 +627,9 @@ once. The phone then appears in the getbb.app dashboard machine list, where you
 can revoke it; every enrollment takes one of the account's machine slots
 (desktop apps, remote execution machines, and phones all count), so a
 machine-limit error asks you to revoke an unused device first. Both surfaces
-need the bb to be paired (`bb connect --code …`) and the connect plugin enabled.
+need the experiment on, the bb paired (`bb connect --code …`), and the connect
+plugin enabled; with the experiment off the panel hides the section and
+`bb connect machine-code` exits 1 with a pointer to the toggle.
 
 ## Experiments
 
@@ -638,6 +644,11 @@ multi-message requests are not yet editable. Opening the editor does not change
 history; if the thread is running, submission stops the current turn and waits
 for it to settle before atomically replacing that message and every later turn
 while keeping workspace changes.
+
+The `mobileApp` experiment turns on pairing for the bb mobile app: the
+**Add mobile device** card under Settings → Remote access and the
+`bb connect machine-code` command (see "Pairing the bb mobile app" above). It
+is off by default while the app is in early access.
 
 The `providerSessionReaping` experiment extends idle session release to every
 restorable provider. BB releases those sessions after 30 idle minutes. The

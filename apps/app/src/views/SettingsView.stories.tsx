@@ -335,6 +335,7 @@ function ExperimentsStory() {
       }
       disabled={false}
       editMessagesEnabled={state.experiments.editMessages}
+      mobileAppEnabled={state.experiments.mobileApp}
       newOnboardingEnabled={state.experiments.newOnboarding}
       providerSessionReapingEnabled={state.experiments.providerSessionReaping}
       onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
@@ -347,6 +348,12 @@ function ExperimentsStory() {
         state.setExperiments((current) => ({
           ...current,
           editMessages: enabled,
+        }))
+      }
+      onMobileAppEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          mobileApp: enabled,
         }))
       }
       onNewOnboardingEnabledChange={(enabled) =>

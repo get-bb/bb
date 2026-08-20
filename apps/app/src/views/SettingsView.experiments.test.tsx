@@ -6,6 +6,7 @@ import { ExperimentsSettingsSection } from "./SettingsView";
 afterEach(cleanup);
 
 function renderSection(overrides?: {
+  onMobileAppEnabledChange?: (enabled: boolean) => void;
   onNewOnboardingEnabledChange?: (enabled: boolean) => void;
   onProviderSessionReapingEnabledChange?: (enabled: boolean) => void;
 }) {
@@ -14,10 +15,12 @@ function renderSection(overrides?: {
       claudeCodeMockCliTrafficEnabled={false}
       disabled={false}
       editMessagesEnabled={false}
+      mobileAppEnabled={false}
       newOnboardingEnabled={false}
       providerSessionReapingEnabled={false}
       onClaudeCodeMockCliTrafficEnabledChange={vi.fn()}
       onEditMessagesEnabledChange={vi.fn()}
+      onMobileAppEnabledChange={overrides?.onMobileAppEnabledChange ?? vi.fn()}
       onNewOnboardingEnabledChange={
         overrides?.onNewOnboardingEnabledChange ?? vi.fn()
       }
@@ -33,6 +36,13 @@ describe("ExperimentsSettingsSection", () => {
     const onChange = vi.fn();
     renderSection({ onNewOnboardingEnabledChange: onChange });
     fireEvent.click(screen.getByLabelText("New onboarding"));
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  it("reports mobile app changes", () => {
+    const onChange = vi.fn();
+    renderSection({ onMobileAppEnabledChange: onChange });
+    fireEvent.click(screen.getByLabelText("Mobile app"));
     expect(onChange).toHaveBeenCalledWith(true);
   });
 

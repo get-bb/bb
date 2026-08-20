@@ -16,6 +16,7 @@ describe("experiments settings", () => {
       expect(body.experiments).toEqual({
         claudeCodeMockCliTraffic: false,
         editMessages: true,
+        mobileApp: false,
         newOnboarding: false,
         providerSessionReaping: false,
       });
@@ -30,20 +31,23 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           claudeCodeMockCliTraffic: true,
           editMessages: true,
+          mobileApp: true,
           newOnboarding: true,
-            providerSessionReaping: true,
+          providerSessionReaping: true,
         }),
       });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         claudeCodeMockCliTraffic: true,
         editMessages: true,
+        mobileApp: true,
         newOnboarding: true,
         providerSessionReaping: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         claudeCodeMockCliTraffic: true,
         editMessages: true,
+        mobileApp: true,
         newOnboarding: true,
         providerSessionReaping: true,
       });
@@ -54,6 +58,7 @@ describe("experiments settings", () => {
       ).toEqual({
         claudeCodeMockCliTraffic: true,
         editMessages: true,
+        mobileApp: true,
         newOnboarding: true,
         providerSessionReaping: true,
       });
@@ -80,8 +85,9 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           claudeCodeMockCliTraffic: false,
           editMessages: true,
+          mobileApp: false,
           newOnboarding: false,
-            providerSessionReaping: true,
+          providerSessionReaping: true,
         }),
       });
       const updated = await harness.app.request("/internal/runtime-policy", {
@@ -104,6 +110,7 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           claudeCodeMockCliTraffic: false,
           editMessages: false,
+          mobileApp: false,
           newOnboarding: false,
           providerSessionReaping: false,
         }),

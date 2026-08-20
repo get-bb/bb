@@ -34,6 +34,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
       experiments: {
         claudeCodeMockCliTraffic: false,
         editMessages: false,
+        mobileApp: false,
         newOnboarding: false,
         providerSessionReaping: false,
       },
