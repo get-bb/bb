@@ -5,7 +5,6 @@ const headers = { "Content-Type": "application/json" };
 const experiments = http.put(`${SERVER_URL}/api/v1/settings/experiments`, {
   headers,
   body: JSON.stringify({
-    claudeCodeMockCliTraffic: false,
     editMessages: true,
     mobileApp: false,
     newOnboarding: false,
