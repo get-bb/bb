@@ -121,8 +121,6 @@ function SearchBody() {
     organize: preferences.organize,
     sort: preferences.sort,
   });
-  // Age labels read from one timestamp per mount; the screen is short-lived.
-  const [now] = useState(() => Date.now());
 
   const rows = useMemo(
     () =>
@@ -166,15 +164,13 @@ function SearchBody() {
           row={item.row}
           selected={false}
           subtitle={subtitle}
-          timestamp={item.row.thread.latestAttentionAt}
-          now={now}
           onPress={onPress}
           onLongPress={onLongPress}
           onToggleCollapsed={noop}
         />
       );
     },
-    [noop, now, onLongPress, onPress, projectNamesById],
+    [noop, onLongPress, onPress, projectNamesById],
   );
 
   const trimmed = query.trim();
@@ -237,7 +233,7 @@ function SearchBody() {
         keyExtractor={keyExtractor}
         getItemType={getItemType}
         renderItem={renderItem}
-        extraData={{ now, projectNamesById }}
+        extraData={{ projectNamesById }}
         maintainVisibleContentPosition={DISABLE_MAINTAIN_POSITION}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"

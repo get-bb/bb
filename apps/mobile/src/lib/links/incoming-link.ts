@@ -127,6 +127,23 @@ function withQuery(path: string, search: string): string {
 }
 
 /**
+ * The new-thread composer is the home screen's bottom dock: `/compose`
+ * links (web or `bb://`) land on home with the `newThread` flag, which opens
+ * the dock even without other params, plus the link's own query.
+ */
+function newThreadPath(search: string): string {
+  return `/?newThread=1${search.length > 1 ? `&${search.slice(1)}` : ""}`;
+}
+
+const SCHEME_COMPOSE_PATH = /^\/compose\/?(\?.*)?$/u;
+
+/** Scheme paths pass through as-is, except the retired `/compose` route. */
+export function mapSchemePathToMobilePath(path: string): string {
+  const match = SCHEME_COMPOSE_PATH.exec(path);
+  return match ? newThreadPath(match[1] ?? "") : path;
+}
+
+/**
  * Map a web-app path (what `<handle>.getbb.app` serves) onto the mobile
  * route that shows the same thing. Unsupported web surfaces (extensions,
  * plugin panels, per-provider settings, …) land on home.
@@ -148,7 +165,7 @@ export function mapWebPathToMobilePath(
     case "projects":
       if (!second) return "/";
       if (parts.length === 2) {
-        return `/compose?projectId=${encodeURIComponent(second)}`;
+        return `/?projectId=${encodeURIComponent(second)}`;
       }
       if (third === "threads" && fourth && parts.length === 4) {
         return withQuery(`/threads/${fourth}`, search);
@@ -176,7 +193,7 @@ export function mapWebPathToMobilePath(
       // mobile settings root; the specific section has no native screen.
       return "/settings";
     case "compose":
-      return withQuery("/compose", search);
+      return newThreadPath(search);
     default:
       return "/";
   }
@@ -256,7 +273,7 @@ export function resolveIncomingLink(
         path:
           !context.developerRoutesEnabled && isDeveloperRoutePath(link.path)
             ? "/"
-            : link.path,
+            : mapSchemePathToMobilePath(link.path),
         profileId: null,
       };
     case "web": {

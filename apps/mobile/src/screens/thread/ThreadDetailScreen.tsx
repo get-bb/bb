@@ -49,19 +49,18 @@ import {
   useMessageActionHandlers,
   useThreadActionsSheet,
   useThreadGitActions,
+  type ThreadMenuAction,
 } from "./actions";
 import { MergeBasePickerSheet, useThreadContextBanner } from "./banner";
 import { ThreadPromptArea, useFollowUpComposer } from "./prompt-area";
-import { ThreadDetailHeader } from "./ThreadDetailHeader";
+import { ThreadHeaderActions, ThreadHeaderTitle } from "./ThreadDetailHeader";
 import {
   describeThreadEnvironment,
   describeThreadStatusPill,
   isThreadRuntimeBusy,
 } from "./thread-detail-header-model";
-import { ThreadTableOfContentsSheet } from "./ThreadTableOfContentsSheet";
 import {
   buildTimelineListEntries,
-  buildTimelineTableOfContents,
   renderTurnChildrenLoaders,
   TimelineList,
   TimelineRowHostProvider,
@@ -69,7 +68,6 @@ import {
   useTurnChildrenMap,
   WorkingIndicatorRow,
   type TimelineListHandle,
-  type TimelineTableOfContentsEntry,
 } from "./timeline";
 import { useThreadUnreadDividerState } from "./use-thread-unread-divider-state";
 
@@ -193,24 +191,13 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
     () => buildTimelineListEntries(items, unreadDivider.placement),
     [items, unreadDivider.placement],
   );
-  const tableOfContents = useMemo(
-    () => buildTimelineTableOfContents(items),
-    [items],
-  );
 
   const listRef = useRef<TimelineListHandle>(null);
-  const tocSheet = useSheet();
   // The workspace panel (Info / Diff / Files / Terminal + synced file tabs):
   // the header button presents it.
   const panel = usePanel();
   const openPanel = panel.open;
   const onOpenPanel = useCallback(() => openPanel(), [openPanel]);
-  const handleSelectTocEntry = useCallback(
-    (entry: TimelineTableOfContentsEntry) => {
-      listRef.current?.scrollToRow(entry.rowId);
-    },
-    [],
-  );
 
   // Context banner (git / PR / parent / children / archived) + the workspace
   // facts the header git sheet shares with it.
@@ -295,6 +282,48 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
     host: bootstrap.data?.host ?? null,
     projectName: projectName ?? null,
   });
+  // The "…" menu's first rows: what the old second header row carried.
+  const menuLeadingActions: ThreadMenuAction[] = [
+    {
+      key: "workspace",
+      label: "Workspace",
+      icon: "PanelBottom",
+      onPress: () => {
+        threadActions.dismiss();
+        onOpenPanel();
+      },
+      testID: "thread-panel-menu-button",
+    },
+    ...(gitActions.primaryLabel !== null
+      ? [
+          {
+            key: "git",
+            label: gitActions.primaryLabel,
+            icon: "GitBranch" as const,
+            pending: gitActions.pending,
+            onPress: () => {
+              threadActions.dismiss();
+              gitSheet.present();
+            },
+            testID: "thread-git-button",
+          },
+        ]
+      : []),
+  ];
+  const menuDetail = [
+    ...(childSummary.count > 0
+      ? [
+          `${childSummary.count} child thread${childSummary.count === 1 ? "" : "s"}${
+            childSummary.activity.pending
+              ? " · needs input"
+              : childSummary.activity.working
+                ? " · working"
+                : ""
+          }`,
+        ]
+      : []),
+    ...environmentParts,
+  ].join(" · ");
   const childPillLabel =
     thread?.parentThreadId == null
       ? null
@@ -373,30 +402,27 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
       threadOriginKind={thread?.originKind ?? null}
       messageActions={messageActions}
     >
-      <Stack.Screen options={{ title }} />
-      {turnLoaders}
-      <ThreadDetailHeader
-        title={title}
-        statusPill={statusPill}
-        environmentParts={environmentParts}
-        childSummary={childSummary}
-        childPillLabel={childPillLabel}
-        onOpenTableOfContents={tocSheet.present}
-        tableOfContentsEnabled={tableOfContents.length > 0}
-        onPressTitle={threadReady ? openRename : null}
-        onOpenActions={threadReady ? openThreadMenu : null}
-        onOpenPanel={threadReady ? onOpenPanel : null}
-        panelActive={panel.visible}
-        gitAction={
-          gitActions.primaryLabel !== null
-            ? {
-                label: gitActions.primaryLabel,
-                onPress: gitSheet.present,
-                pending: gitActions.pending,
-              }
-            : null
-        }
+      <Stack.Screen
+        options={{
+          title,
+          headerTitle: () => (
+            <ThreadHeaderTitle
+              title={title}
+              statusPill={statusPill}
+              childPillLabel={childPillLabel}
+              onPressTitle={threadReady ? openRename : null}
+            />
+          ),
+          headerRight: () => (
+            <ThreadHeaderActions
+              onOpenActions={threadReady ? openThreadMenu : null}
+              onOpenPanel={threadReady ? onOpenPanel : null}
+              panelActive={panel.visible}
+            />
+          ),
+        }}
       />
+      {turnLoaders}
       <KeyboardPaddingView style={{ flex: 1 }}>
         {(timelineLoading && entries.length === 0) || !threadReady ? (
           <View className="flex-1">
@@ -462,11 +488,6 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
           onHandoffToNewThread={contextBanner.handoffToNewThread}
         />
       </KeyboardPaddingView>
-      <ThreadTableOfContentsSheet
-        controller={tocSheet}
-        entries={tableOfContents}
-        onSelect={handleSelectTocEntry}
-      />
       {thread ? (
         <ThreadActionsSheet
           controller={threadActions}
@@ -474,6 +495,8 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
           onDeleted={handleDeleted}
           onHandoffToNewThread={contextBanner.handoffToNewThread}
           onNewThreadInWorktree={contextBanner.newThreadInWorktree}
+          leadingActions={menuLeadingActions}
+          headerDetail={menuDetail.length > 0 ? menuDetail : null}
         />
       ) : null}
       <ThreadGitActionSheet

@@ -30,13 +30,13 @@ export function PanelToggleButton({
       disabled={disabled}
       hitSlop={6}
       className={cn(
-        "h-8 w-8 items-center justify-center rounded-md active:bg-state-hover",
+        "h-9 w-9 items-center justify-center rounded-full active:bg-state-hover",
         active && "bg-surface-selected",
         disabled && "opacity-40",
       )}
       testID={testID}
     >
-      <Icon name="PanelBottom" size={18} color={tokens.foreground} />
+      <Icon name="PanelBottom" size={20} color={tokens.foreground} />
     </Pressable>
   );
 }

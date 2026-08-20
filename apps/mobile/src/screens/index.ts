@@ -1,4 +1,3 @@
-export { ComposeScreen } from "./compose/ComposeScreen";
 export { ConnectEnrollScreen } from "./connect/ConnectEnrollScreen";
 export { HomeScreen } from "./home/HomeScreen";
 export { ServerInfoCard } from "./home/ServerInfoCard";

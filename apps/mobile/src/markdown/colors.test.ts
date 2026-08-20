@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { withAlpha } from "./colors";
+import { blendOver, withAlpha } from "./colors";
 
 describe("withAlpha", () => {
   it("handles every token format the generated theme emits", () => {
@@ -11,5 +11,19 @@ describe("withAlpha", () => {
     );
     expect(withAlpha("rgb(1, 2, 3)", 0.25)).toBe("rgba(1, 2, 3, 0.25)");
     expect(withAlpha("transparent", 0.5)).toBe("transparent");
+  });
+});
+
+describe("blendOver", () => {
+  it("composites the overlay at its alpha onto the base", () => {
+    expect(blendOver("#ffffff", "#000000", 0.5)).toBe("rgb(128, 128, 128)");
+    expect(blendOver("#000", "rgba(255, 255, 255, 0.5)", 0.5)).toBe(
+      "rgb(64, 64, 64)",
+    );
+    expect(blendOver("#ffffff", "#000000", 0)).toBe("rgb(255, 255, 255)");
+  });
+
+  it("returns the base when a color cannot be parsed", () => {
+    expect(blendOver("#ffffff", "oklch(0 0 0)", 0.5)).toBe("#ffffff");
   });
 });

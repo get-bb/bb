@@ -19,6 +19,11 @@ export interface PickerTriggerProps {
   tone?: "default" | "warning" | "destructive";
   /** Hide the trailing chevron (read-only display). */
   chevron?: boolean;
+  /**
+   * `ghost` (default): borderless, for the composer's pill rows. `outline`:
+   * the bordered pill for pickers that stand alone on a settings screen.
+   */
+  variant?: "ghost" | "outline";
   className?: string;
   testID?: string;
   /** The control's name; the spoken label becomes "<name>: <label>". */
@@ -28,7 +33,8 @@ export interface PickerTriggerProps {
 /**
  * The composer's control pill: a compact pressable that opens a picker
  * sheet. Mirrors the web prompt-box option triggers (icon · label · chevron)
- * at touch size (36px).
+ * at touch size (36px). Ghost by default so a row of them reads as one
+ * quiet line under the prompt.
  */
 export function PickerTrigger({
   label,
@@ -40,6 +46,7 @@ export function PickerTrigger({
   loading = false,
   tone = "default",
   chevron = true,
+  variant = "ghost",
   className,
   testID,
   accessibilityLabel,
@@ -63,7 +70,8 @@ export function PickerTrigger({
       onPress={onPress}
       testID={testID}
       className={cn(
-        "h-9 max-w-[220px] flex-row items-center gap-1.5 rounded-md border border-pill-surface-border bg-secondary px-2.5",
+        "h-9 max-w-[220px] flex-row items-center gap-1.5 rounded-full px-2.5",
+        variant === "outline" && "border border-pill-surface-border bg-secondary",
         interactive && "active:bg-state-hover",
         disabled && "opacity-50",
         className,

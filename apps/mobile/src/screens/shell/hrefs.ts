@@ -70,18 +70,23 @@ export function serverStatusHref(): Href {
   return untypedHref("/settings/server");
 }
 
-export interface ComposeHrefParams extends ComposeSeedParams {
+export interface NewThreadHrefParams extends ComposeSeedParams {
   sectionId?: string;
   initialPrompt?: string;
 }
 
 /**
- * New thread composer (owned by the compose screens). Besides a project /
- * section / initial prompt it accepts the thread seeds from
- * `@/data/compose` `compose-seed-params` (fork, handoff, reuse worktree).
+ * New thread: home with its bottom composer opened on these params (the
+ * home screen reads them from the route). Besides a project / section /
+ * initial prompt it accepts the thread seeds from `@/data/compose`
+ * `compose-seed-params` (fork, handoff, reuse worktree). Navigate with
+ * `router.navigate` so an existing home entry is reused with new params
+ * instead of a second one being pushed.
  */
-export function composeHref(params: ComposeHrefParams = {}): Href {
-  return untypedHref("/compose", {
+export function newThreadHref(params: NewThreadHrefParams = {}): Href {
+  return untypedHref("/", {
+    // Opens the dock even with no other params (see HomeScreen).
+    newThread: "1",
     projectId: params.projectId,
     sectionId: params.sectionId,
     initialPrompt: params.initialPrompt,

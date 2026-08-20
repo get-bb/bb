@@ -164,10 +164,10 @@ export function followUpPlaceholder({
     case "host-reconnecting":
       return "Reconnecting…";
     case "error":
-      return "Send a follow-up";
+      return "Follow up…";
     case "idle":
     case "active":
-      return "Ask a follow-up";
+      return "Follow up…";
   }
 }
 

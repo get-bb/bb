@@ -23,22 +23,20 @@ env:
       id: "thread-detail-title"
       text: "${THREAD_TITLE}"
     timeout: 30000
-# Environment line: project · host · workspace.
-- assertVisible:
-    id: "thread-detail-environment"
-- assertVisible: "Mobile E2E Project.*"
 - extendedWaitUntil:
     visible:
       id: "thread-composer-input"
     timeout: 30000
 - takeScreenshot: phase4b-actions-thread
-# Rename through the "…" sheet.
+# Rename through the "…" sheet; its header carries the environment line
+# (project · host · workspace).
 - tapOn:
     id: "thread-actions-button"
 - extendedWaitUntil:
     visible:
       id: "thread-action-rename"
     timeout: 10000
+- assertVisible: "Mobile E2E Project.*"
 - tapOn:
     id: "thread-action-rename"
 - extendedWaitUntil:

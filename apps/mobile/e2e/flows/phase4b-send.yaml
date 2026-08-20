@@ -28,14 +28,15 @@ env:
     visible:
       id: "thread-composer-input"
     timeout: 30000
-# Execution pills render once the thread defaults resolve.
+- takeScreenshot: phase4b-send-idle
+# The composer is a one-line pill until focused; the execution pills render
+# in the expanded card once the thread defaults resolve.
+- tapOn:
+    id: "thread-composer-input"
 - extendedWaitUntil:
     visible:
       id: "thread-execution-controls"
     timeout: 30000
-- takeScreenshot: phase4b-send-idle
-- tapOn:
-    id: "thread-composer-input"
 - inputText: "hello"
 - takeScreenshot: phase4b-send-typed
 - tapOn:
@@ -50,4 +51,4 @@ env:
 - takeScreenshot: phase4b-send-response
 # The draft was cleared: the input reads its placeholder again (the input's
 # accessibility label "Prompt" + the placeholder).
-- assertVisible: "Prompt Ask a follow-up"
+- assertVisible: "Prompt Follow up…"

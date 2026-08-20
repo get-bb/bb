@@ -6,6 +6,7 @@ import type {
 } from "@bb/host-daemon-contract/local";
 import { useEffect } from "react";
 import { ScrollView, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   hasProviderCliAction,
   PROVIDER_CLI_MANAGED_PROVIDERS,
@@ -235,6 +236,7 @@ export function ProviderCliInstallLogSheet({
   record,
 }: ProviderCliInstallLogSheetProps) {
   const verb = record?.actionKind === "update" ? "update" : "install";
+  const insets = useSafeAreaInsets();
   return (
     <Sheet
       controller={controller}
@@ -242,7 +244,11 @@ export function ProviderCliInstallLogSheet({
       snapPoints={["85%"]}
       layout="custom"
     >
-      <View className="flex-1 gap-2 px-4 pb-6 pt-2">
+      {/* `custom` layout: the body owns the home-indicator inset. */}
+      <View
+        className="flex-1 gap-2 px-4 pt-2"
+        style={{ paddingBottom: Math.max(insets.bottom, 12) + 12 }}
+      >
         {record?.message ? (
           <Text
             variant="caption"

@@ -1,6 +1,5 @@
 export {
   buildTimelineListItems,
-  buildTimelineTableOfContents,
   createTimelineTitleCache,
   timelineRowKind,
   timelineRowTitleOptions,
@@ -10,7 +9,6 @@ export {
   type TimelineListItemOfKind,
   type TimelineRowByKind,
   type TimelineRowKind,
-  type TimelineTableOfContentsEntry,
   type TimelineTitleCache,
   type TimelineTurnChildrenState,
   type TimelineWorkRowKind,
@@ -45,7 +43,6 @@ export {
 } from "./TimelineList";
 export {
   buildTimelineListEntries,
-  findTimelineEntryIndexByRowId,
   UNREAD_DIVIDER_ENTRY_KEY,
   type TimelineListEntries,
   type TimelineListEntry,

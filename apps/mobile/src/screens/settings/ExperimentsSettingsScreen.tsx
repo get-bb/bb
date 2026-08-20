@@ -16,12 +16,6 @@ interface ExperimentRow {
 /** Same copy as the web Experiments section (SettingsView.tsx). */
 const EXPERIMENT_ROWS: readonly ExperimentRow[] = [
   {
-    key: "claudeCodeMockCliTraffic",
-    label: "Mock CLI Traffic",
-    badge: "dev-only",
-    description: "Route Claude Code through CLI-style traffic.",
-  },
-  {
     key: "editMessages",
     label: "Edit messages",
     description:

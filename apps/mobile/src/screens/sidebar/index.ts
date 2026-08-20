@@ -13,7 +13,6 @@ export {
   type SidebarThreadRowViewProps,
 } from "./SidebarRows";
 export { ThreadStatusGlyph } from "./ThreadStatusGlyph";
-export { formatRelativeTime } from "./relative-time";
 export {
   buildSidebarListRows,
   getThreadIndicatorState,

@@ -127,7 +127,6 @@ export function RootNavigator() {
         options={{ title: "Connect spike" }}
       />
       <Stack.Screen name="e2e/reset" options={{ headerShown: false }} />
-      <Stack.Screen name="compose/index" options={{ title: "New thread" }} />
       <Stack.Screen name="projects/new" options={{ title: "New project" }} />
       <Stack.Screen
         name="projects/[id]/settings"

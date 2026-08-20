@@ -1,9 +1,5 @@
-export { ComposeScreen } from "./ComposeScreen";
-export {
-  composeExecutionControls,
-  EnvironmentControlsRow,
-  type EnvironmentControlsRowProps,
-} from "./ExecutionControlsRow";
+export { ComposeDock, type ComposeDockProps } from "./ComposeDock";
+export { composeExecutionControls } from "./ExecutionControlsRow";
 export {
   useComposeController,
   type ComposeBranchState,

@@ -13,7 +13,7 @@ thread list (drawer + home, long-press menus, organize/sort, search, archived),
 thread creation on the shared composer (mentions, attachments, voice, fork /
 handoff seeds), the thread detail screen (`/threads/[id]`: the virtualized
 timeline with every row kind, markdown, inline diffs, terminal output, images +
-lightbox, sticky-bottom, older pages, unread divider, table of contents; the
+lightbox, sticky-bottom, older pages, unread divider; the
 prompt area with pending-interaction banners, prompt-stack cards, the context
 banner, the queued-message list and the follow-up composer; header / message /
 git action sheets), deep links, and the workspace panel
@@ -61,7 +61,9 @@ app/                     Expo Router routes (thin: each file re-exports a screen
                          registry skill + install)
   connect/index.tsx      bb connect enrollment (QR / code) — also the re-pair
                          target (`?profileId=`) and the `bb://connect?code=…` link
-  compose/index.tsx      /compose?projectId=&sectionId=&initialPrompt=&reuseEnvironmentId=
+                         (the new-thread composer is the home screen's bottom
+                         dock: `/?projectId=&sectionId=&initialPrompt=&reuseEnvironmentId=`
+                         + the fork / handoff seed params open it)
   projects/              new (create project), [id]/settings (rename, sources, delete),
                          [id]/threads/[threadId] (web deep-link alias → threads/[id])
   dev/                   ui (gallery), diff (diff + terminal showcase), markdown
@@ -89,8 +91,9 @@ src/
   notifications/         push notifications arrive in a later PR (RN glue:
                          expo-notifications behind the data-layer contract,
                          registration sync, taps → thread, badge, Settings rows)
-  screens/               screen components (home/, settings/, shell/, compose/,
-                         connect/ — bb connect enrollment: ConnectEnrollScreen,
+  screens/               screen components (home/ — thread list + the
+                         new-thread ComposeDock; compose/ — ComposeDock,
+                         useComposeController; settings/, shell/, connect/ — bb connect enrollment: ConnectEnrollScreen,
                          ConnectScanner (expo-camera QR), AccountServersList;
                          projects/, pickers/ — reusable picker sheets: project,
                          provider, model+reasoning, permission mode, environment,
@@ -99,10 +102,11 @@ src/
                          glyph, long-press action sheets, display options;
                          threads/ — search, archived;
                          thread/ — thread detail: ThreadDetailScreen (list +
-                         prompt area inside KeyboardPaddingView), header,
+                         prompt area inside KeyboardPaddingView), the native
+                         header pieces (title + status subtitle, panel + "…"),
                          cards/ (workflow, background commands, plan + Exit,
                          goal + Clear, to-dos, model fallback, context-window
-                         readout), table-of-contents sheet, prompt-area/
+                         ring), prompt-area/
                          (ThreadPromptArea: banner-or-stack + the follow-up
                          Composer; useFollowUpComposer: draft, submit mode,
                          send / queue / steer / stop, edit modes, quoting;
@@ -131,7 +135,7 @@ src/
                          actions/ — MessageActionSheet + message-actions-model
                          (copy / quote paragraph / add to chat / edit / fork /
                          send to main), useMessageActionHandlers (fork →
-                         /compose seed, side-chat send-to-main),
+                         home dock seed, side-chat send-to-main),
                          ThreadActionsSheet (header "…" menu: handoff, new
                          thread in worktree, rename, pin, read state, move,
                          copy link, open in web, archive, delete),
@@ -328,13 +332,13 @@ cd apps/mobile && pnpm e2e:ios
 drawer → Settings → Server status shows realtime connected); `smoke.yaml`
 opens the Phase 0 diagnostics screen; `phase3-threads.yaml` exercises the
 thread list (rename, pin, archive, Settings → Archived → unarchive, search);
-`phase3-compose.yaml` creates a thread from `/compose`
-(pickers, model, environment) and exercises the New-project machine/folder
+`phase3-compose.yaml` creates a thread from the home dock (`bb://compose`
+→ home; pickers, model, environment) and exercises the New-project machine/folder
 pickers (pass `-e REPO_PARENT_DIR=<dir>` to also browse into the harness repo);
 `phase4a-timeline.yaml` opens the seeded "Rich thread" (the seed leaves it
 unread; after a run, `POST /api/v1/threads/<id>/unread` restores that), lands
-on the unread divider, scrolls to the long message, and jumps back through the
-table of contents. `phase4a-conversation-rows.yaml` opens
+on the unread divider and scrolls to the long message.
+`phase4a-conversation-rows.yaml` opens
 the seeded "Rows thread" (started on behalf of "Idle thread": the generated
 "Forked from" row, its preview/body, long-press → Copy text, and the
 source-thread chip) and the "Rich thread" (bubble, assistant prose, "Worked
@@ -356,7 +360,7 @@ it first: a managed-worktree thread through the API with a file written into
 its worktree, so the context banner's changed-files row and the header git
 button appear), expands the banner, opens the git sheet, renames through the
 title, walks the "…" menu (Copy link toast), long-presses an assistant message
-and forks into `/compose`.
+and forks into the home dock.
 The Phase 4b thread-screen flows each open a thread by a fixed title that
 must exist on the backend (create it through the API first; Maestro ignores
 `-e` overrides for keys a flow's `env:` block defines): `phase4b-send.yaml`
@@ -368,7 +372,7 @@ banner replaces the composer → answer → composer back, turn completes),
 queue": `delay:30000 first` → Stop + queue affordances → queue "second" →
 Send now → steered into the turn), `phase4b-actions.yaml` ("P4b actions":
 environment line, "…" → Rename, long-press → Copy text, Add to chat quotes
-into the composer). `phase4b-composer.yaml` drives the compose screen's
+into the composer). `phase4b-composer.yaml` drives the composer showcase's
 typeahead, pills, "+" menu and attachment chip. `phase5-links.yaml` takes
 `-e THREAD_ID=<threads.completed> -e PROJECT_ID=<projectId>` from the
 backend's startup JSON and drives the deep links while the app is warm:

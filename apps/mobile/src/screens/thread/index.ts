@@ -1,8 +1,10 @@
 export { ThreadDetailScreen } from "./ThreadDetailScreen";
 export {
-  ThreadDetailHeader,
-  type ThreadDetailHeaderGitAction,
-  type ThreadDetailHeaderProps,
+  headerSubtitle,
+  ThreadHeaderActions,
+  ThreadHeaderTitle,
+  type ThreadHeaderActionsProps,
+  type ThreadHeaderTitleProps,
 } from "./ThreadDetailHeader";
 export * from "./actions";
 export * from "./banner";

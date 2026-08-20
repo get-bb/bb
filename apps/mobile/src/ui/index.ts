@@ -45,6 +45,7 @@ export { Separator, type SeparatorProps } from "./Separator";
 export {
   Sheet,
   SheetFlatList,
+  SheetPresenceContext,
   SheetProvider,
   SheetScrollView,
   SheetTextInput,

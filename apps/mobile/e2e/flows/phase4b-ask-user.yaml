@@ -25,6 +25,9 @@ env:
     visible:
       id: "thread-composer-input"
     timeout: 30000
+# The composer is a pill until focused; the pills render in the expanded card.
+- tapOn:
+    id: "thread-composer-input"
 - extendedWaitUntil:
     visible:
       id: "thread-execution-controls"

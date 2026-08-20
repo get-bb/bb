@@ -9,7 +9,7 @@ what each tab _shows_ is registered by the feature that owns it.
 ```
 WorkspacePanelProvider          state + controller + <WorkspacePanelSheet/>
   ThreadWorkspacePanelProvider  thread scope (ThreadDetailScreen)
-  ProjectWorkspacePanelProvider project scope / root compose (ComposeScreen)
+  ProjectWorkspacePanelProvider project scope / root compose (home ComposeDock)
 usePanel()                      PanelController (open / close / openFile / …)
 registerPanelTabContent(kind, Component)          tab kinds
 registerPanelLauncherContent("files"|"terminal")  the two launcher pages
@@ -142,10 +142,10 @@ launcher does the same with `filesParams`.
 
 ## Entry points
 
-- `ThreadDetailHeader` → `PanelToggleButton` (`thread-panel-button`, icon
-  `PanelBottom`) → `panel.open()`.
-- `ComposeScreen` → "Workspace" (`compose-workspace-button`) under the
-  composer.
+- The thread screen's native header → `PanelToggleButton`
+  (`thread-panel-button`, icon `PanelBottom`) → `panel.open()`; also the
+  "Workspace" row of the "…" menu.
+- Home `ComposeDock` → "Workspace" in the composer's "+" menu.
 - Info tab: changed files → `openDiff(path)`, storage row →
   `openFiles({ section: "storage" })`, parent / forks → thread route.
 

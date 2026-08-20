@@ -179,6 +179,7 @@ function ConnectedUsageLimitsScreen() {
               <PickerTrigger
                 icon="Laptop"
                 label={selectedHost?.name ?? "Machine"}
+                variant="outline"
                 onPress={pickerSheet.present}
                 tone={hostReady ? "default" : "warning"}
                 testID="usage-machine-picker"

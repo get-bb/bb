@@ -8,7 +8,7 @@ import { useSystemProviders } from "@/data/system";
 import { getThreadDisplayTitle } from "@/data/threads";
 import { SIDE_CHAT_PLUGIN_ID } from "@/data/thread-detail";
 import { toast } from "@/ui";
-import { composeHref } from "../../shell/hrefs";
+import { newThreadHref } from "../../shell/hrefs";
 import type { TimelineMessageActionHandlers } from "./message-actions-model";
 import { useSendMessageToMainThread } from "./use-send-to-main-thread";
 
@@ -30,7 +30,7 @@ export interface UseMessageActionHandlersArgs {
  *
  * Forking mirrors the web `useForkThreadFromMessage`: the source thread's
  * resolved execution options become the compose picks (same preference
- * store the compose controller reads), and `/compose` opens seeded with the
+ * store the compose controller reads), and home opens its dock seeded with the
  * fork source + reuse environment; the compose controller builds the fork
  * request on submit.
  */
@@ -78,8 +78,8 @@ export function useMessageActionHandlers({
         prefStore.setPermissionMode(executionOptions.permissionMode);
         prefStore.setServiceTier(executionOptions.serviceTier);
         prefStore.setLastProjectId(thread.projectId);
-        router.push(
-          composeHref(
+        router.navigate(
+          newThreadHref(
             buildForkComposeParams({
               environmentId: thread.environmentId,
               projectId: thread.projectId,

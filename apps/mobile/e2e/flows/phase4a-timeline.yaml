@@ -64,21 +64,7 @@ env:
     speed: 40
     visibilityPercentage: 10
 - takeScreenshot: phase4a-timeline-long-message
-# Table of contents → first message → the top of the thread again.
-- tapOn:
-    id: "thread-toc-button"
-- extendedWaitUntil:
-    visible:
-      id: "thread-toc-entry-0"
-    timeout: 10000
-- assertVisible: "(?s).*Hello rich thread, first message.*"
-- takeScreenshot: phase4a-toc
-- tapOn:
-    id: "thread-toc-entry-0"
-- extendedWaitUntil:
-    visible: "Hello rich thread, first message"
-    timeout: 15000
 # The Rich thread ends on a pending question, so the banner holds the bottom.
 - assertVisible:
     id: "thread-prompt-area"
-- takeScreenshot: phase4a-timeline-after-toc
+- takeScreenshot: phase4a-timeline-bottom

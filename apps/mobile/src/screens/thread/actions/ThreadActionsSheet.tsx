@@ -25,6 +25,7 @@ import {
   ListRow,
   Separator,
   Sheet,
+  Spinner,
   Text,
   toast,
   useSheet,
@@ -79,14 +80,19 @@ export function useThreadActionsSheet(): ThreadActionsSheetController {
   );
 }
 
-interface MenuAction {
+export interface ThreadMenuAction {
   key: string;
   label: string;
   icon: IconName;
   destructive?: boolean;
   disabled?: boolean;
+  /** Replaces the icon with a spinner (action in flight). */
+  pending?: boolean;
   onPress: () => void;
+  testID?: string;
 }
+
+type MenuAction = ThreadMenuAction;
 
 function SheetHeader({
   title,
@@ -117,18 +123,24 @@ function MenuRows({ actions }: { actions: readonly MenuAction[] }) {
           key={action.key}
           title={action.label}
           leading={
-            <Icon
-              name={action.icon}
-              size={20}
-              color={
-                action.destructive ? tokens.destructiveText : tokens.foreground
-              }
-            />
+            action.pending ? (
+              <Spinner size="small" color={tokens.mutedForeground} />
+            ) : (
+              <Icon
+                name={action.icon}
+                size={20}
+                color={
+                  action.destructive
+                    ? tokens.destructiveText
+                    : tokens.foreground
+                }
+              />
+            )
           }
           destructive={action.destructive}
-          disabled={action.disabled}
+          disabled={action.disabled || action.pending}
           onPress={action.onPress}
-          testID={`thread-action-${action.key}`}
+          testID={action.testID ?? `thread-action-${action.key}`}
         />
       ))}
     </>
@@ -201,7 +213,16 @@ export interface ThreadActionsSheetProps {
   onHandoffToNewThread: () => void;
   /** "New thread in this worktree"; null when the thread has no reusable worktree. */
   onNewThreadInWorktree: (() => void) | null;
+  /**
+   * Screen-owned rows listed first (workspace panel, the
+   * git action): the thread screen has no second header, so these live here.
+   */
+  leadingActions?: readonly ThreadMenuAction[];
+  /** One-line detail under the title ("project · host · worktree · branch"). */
+  headerDetail?: string | null;
 }
+
+const EMPTY_LEADING_ACTIONS: readonly ThreadMenuAction[] = [];
 
 export function ThreadActionsSheet({
   controller,
@@ -209,6 +230,8 @@ export function ThreadActionsSheet({
   onDeleted,
   onHandoffToNewThread,
   onNewThreadInWorktree,
+  leadingActions = EMPTY_LEADING_ACTIONS,
+  headerDetail = null,
 }: ThreadActionsSheetProps) {
   const { tokens } = useTheme();
   const { serverUrl } = useProfileClient();
@@ -414,7 +437,13 @@ export function ThreadActionsSheet({
         ];
         return (
           <>
-            <SheetHeader title={title} />
+            <SheetHeader title={title} message={headerDetail} />
+            {leadingActions.length > 0 ? (
+              <>
+                <MenuRows actions={leadingActions} />
+                <Separator />
+              </>
+            ) : null}
             <MenuRows actions={menu} />
           </>
         );

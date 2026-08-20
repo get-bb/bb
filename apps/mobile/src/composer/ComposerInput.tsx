@@ -48,6 +48,12 @@ export interface ComposerInputProps {
   /** Grow up to this many lines, then scroll. */
   maxLines?: number;
   minHeight?: number;
+  /**
+   * One-line pill mode: nudge the text up so its x-height centre lines up
+   * with the 40px buttons beside it (iOS sits the glyphs low inside an
+   * explicit lineHeight box).
+   */
+  pill?: boolean;
   testID?: string;
 }
 
@@ -55,6 +61,7 @@ const FONT_SIZE = nativeTypography.base.fontSize;
 const LINE_HEIGHT = nativeTypography.base.lineHeight;
 const VERTICAL_PADDING = 10;
 const HORIZONTAL_PADDING = 12;
+const PILL_BASELINE_NUDGE = Platform.OS === "ios" ? 3 : 0;
 
 /**
  * The composer's text field: a multiline `TextInput` whose content is
@@ -84,6 +91,7 @@ export const ComposerInput = forwardRef<
     autoFocus = false,
     maxLines = 8,
     minHeight,
+    pill = false,
     testID = "composer-input",
   },
   ref,
@@ -219,8 +227,8 @@ export const ComposerInput = forwardRef<
         fontSize: FONT_SIZE,
         lineHeight: LINE_HEIGHT,
         color: tokens.foreground,
-        paddingTop: VERTICAL_PADDING,
-        paddingBottom: VERTICAL_PADDING,
+        paddingTop: VERTICAL_PADDING - (pill ? PILL_BASELINE_NUDGE : 0),
+        paddingBottom: VERTICAL_PADDING + (pill ? PILL_BASELINE_NUDGE : 0),
         paddingHorizontal: HORIZONTAL_PADDING,
         minHeight: effectiveMinHeight,
         maxHeight,

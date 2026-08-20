@@ -147,9 +147,9 @@ export function ThreadPromptArea({
     (!composer.hidden && queuedMessages.length > 0);
   return (
     <View
-      className="border-t border-border-hairline bg-background px-3 pt-2"
+      className="bg-background px-3 pt-1"
       style={{
-        paddingBottom: Math.max(insets.bottom, 12),
+        paddingBottom: Math.max(insets.bottom, 8),
         maxHeight: windowHeight * MAX_PROMPT_AREA_WINDOW_FRACTION,
       }}
       testID={testID}
@@ -245,6 +245,7 @@ export function ThreadPromptArea({
                 <ThreadContextWindowIndicator usage={contextWindowUsage} />
               }
               typeaheadPlacement="above"
+              collapsible
               testID="thread-composer"
             />
           )}

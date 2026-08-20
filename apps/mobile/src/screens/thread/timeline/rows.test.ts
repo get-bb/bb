@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { buildTimelineListEntries } from "./list-entries";
 import {
   buildTimelineListItems,
-  buildTimelineTableOfContents,
   createTimelineListItemCache,
   createTimelineTitleCache,
   type TimelineTurnChildrenState,
@@ -286,43 +285,6 @@ describe("buildTimelineListItems", () => {
     ).toBe("ok, done");
     // Items that left the list are not retained.
     expect(itemCache.current.size).toBe(third.length);
-  });
-});
-
-describe("buildTimelineTableOfContents", () => {
-  beforeEach(() => {
-    resetFixtureSequence();
-  });
-
-  it("lists top-level user messages with normalized previews", () => {
-    const items = buildTimelineListItems({
-      rows: [
-        userRow("u1", "  first\n\nquestion  "),
-        assistantRow("a1", "answer"),
-        delegationRow("d1", [userRow("d1u", "nested prompt")], {
-          status: "completed",
-        }),
-        userRow("u2", "x".repeat(200)),
-        userRow("u3", "", {
-          attachments: {
-            webImages: 1,
-            localImages: 1,
-            localFiles: 0,
-            imageUrls: [],
-            localImagePaths: [],
-            localFilePaths: [],
-          },
-        }),
-      ],
-      scopeActive: false,
-      isExpanded: (rowId) => rowId === "d1",
-    });
-    const toc = buildTimelineTableOfContents(items);
-    expect(toc.map((entry) => entry.rowId)).toEqual(["u1", "u2", "u3"]);
-    expect(toc[0]?.preview).toBe("first question");
-    expect(toc[1]?.preview.length).toBe(120);
-    expect(toc[1]?.preview.endsWith("…")).toBe(true);
-    expect(toc[2]?.preview).toBe("2 images");
   });
 });
 

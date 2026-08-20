@@ -1,5 +1,5 @@
 # Phase 3 compose: first run → add the harness server → deep link to
-# /compose → pick the seeded project → open the environment picker (screenshot)
+# bb://compose (home opens its dock) → pick the seeded project → open the environment picker (screenshot)
 # → type a prompt → Create → lands on the thread placeholder with the title →
 # deep link to /projects/new → the machine picker lists the harness host and
 # the remote path browser lists that machine's folders.
@@ -38,7 +38,8 @@ env:
 - extendedWaitUntil:
     notVisible: "Connect to a bb server"
     timeout: 30000
-# Compose via deep link.
+# Compose via deep link: home opens its bottom dock (expanded: the top
+# pill row with the project picker is visible).
 - openLink: "bb://compose"
 # A fresh simulator confirms the first custom-scheme link.
 - runFlow:
@@ -48,11 +49,11 @@ env:
       - tapOn: "Open"
 - extendedWaitUntil:
     visible:
-      id: "compose-screen"
+      id: "home-compose-dock"
     timeout: 30000
 - extendedWaitUntil:
     visible:
-      id: "compose-input"
+      id: "compose-top-controls"
     timeout: 15000
 # Project picker → the seeded project.
 - tapOn:

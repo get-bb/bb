@@ -1,12 +1,6 @@
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactElement,
-} from "react";
+import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { View, type StyleProp, type ViewStyle } from "react-native";
 import { useHosts } from "@/data/hosts";
 import {
@@ -16,7 +10,6 @@ import {
   useSidebarPreferences,
 } from "@/data/sidebar";
 import { Button, EmptyStatePanel, Skeleton, Text } from "@/ui";
-import { getRelativeTimeRefreshIntervalMs } from "./relative-time";
 import { useSidebarActions } from "./SidebarActionsProvider";
 import {
   SidebarEmptyRowView,
@@ -31,19 +24,6 @@ import {
   type SidebarListRow,
   type SidebarThreadRow,
 } from "./sidebar-list-rows";
-
-/** Ticks once a minute so relative-time labels stay fresh without per-row timers. */
-function useNow(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(
-      () => setNow(Date.now()),
-      getRelativeTimeRefreshIntervalMs(),
-    );
-    return () => clearInterval(timer);
-  }, []);
-  return now;
-}
 
 /**
  * FlashList keeps the first visible row anchored when rows are inserted above
@@ -100,7 +80,6 @@ export function SidebarThreadList({
   const bootstrap = useSidebarBootstrap();
   const hosts = useHosts();
   const actions = useSidebarActions();
-  const now = useNow();
   const [refreshing, setRefreshing] = useState(false);
 
   const rows = useMemo(
@@ -172,7 +151,6 @@ export function SidebarThreadList({
   );
 
   const organize = preferences.organize;
-  const sort = preferences.sort;
   const projectNamesById = model.projectNamesById;
 
   const renderItem = useCallback(
@@ -206,10 +184,6 @@ export function SidebarThreadList({
                   ? (projectNamesById.get(thread.projectId) ?? null)
                   : null
               }
-              timestamp={
-                sort === "created" ? thread.createdAt : thread.latestAttentionAt
-              }
-              now={now}
               onPress={onThreadPress}
               onLongPress={onThreadLongPress}
               onToggleCollapsed={onToggleThread}
@@ -228,7 +202,6 @@ export function SidebarThreadList({
       }
     },
     [
-      now,
       onHeaderCreateThread,
       onHeaderLongPress,
       onThreadLongPress,
@@ -239,7 +212,6 @@ export function SidebarThreadList({
       organize,
       projectNamesById,
       selectedThreadId,
-      sort,
     ],
   );
 
@@ -285,7 +257,7 @@ export function SidebarThreadList({
       keyExtractor={keyExtractor}
       getItemType={getItemType}
       renderItem={renderItem}
-      extraData={{ selectedThreadId, now, organize, sort }}
+      extraData={{ selectedThreadId, organize }}
       maintainVisibleContentPosition={DISABLE_MAINTAIN_POSITION}
       refreshing={refreshing}
       onRefresh={onRefresh}

@@ -23,6 +23,7 @@ import {
   ActionSheet,
   Button,
   Icon,
+  SheetPresenceContext,
   Spinner,
   useSheet,
   type ActionSheetAction,
@@ -87,12 +88,26 @@ export interface ComposerProps {
   executionControls?: ExecutionControlsProps | null;
   /** Rendered inside the card above the attachments (context banners). */
   header?: ReactNode;
+  /**
+   * Pill row rendered above the input while expanded (the home dock's
+   * project / environment pickers). Hidden in the collapsed pill.
+   */
+  topControls?: ReactNode;
   /** Small trailing element in the footer (context-window readout). */
   footerAccessory?: ReactNode;
   /**
+   * Collapse to a one-line pill ("+ · placeholder · mic") while unfocused
+   * and empty; focus expands the card (top controls, the footer pills, the
+   * submit button) and blur folds it again. A picker sheet opened from the
+   * card keeps it expanded and refocuses the input when it closes.
+   */
+  collapsible?: boolean;
+  /** Reports pill ↔ card transitions (the home screen drives its scrim). */
+  onExpandedChange?: (expanded: boolean) => void;
+  /**
    * Where the suggestion list opens. `above` floats over whatever sits above
    * the card (thread screen, composer at the bottom); `below` renders inline
-   * under the input (compose screen, composer near the top of a scroll view).
+   * under the input (the dev showcase, composer near the top of a scroll view).
    */
   typeaheadPlacement?: "above" | "below";
   autoFocus?: boolean;
@@ -101,6 +116,9 @@ export interface ComposerProps {
 }
 
 const EMPTY_ACTIONS: readonly ComposerAction[] = [];
+
+/** A blur this close before a sheet opens is the sheet's keyboard dismissal. */
+const BLUR_FOR_SHEET_MS = 600;
 
 /**
  * The shared native composer (root compose + follow-up): mention pills in a
@@ -126,7 +144,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
       actions = EMPTY_ACTIONS,
       executionControls,
       header,
+      topControls,
       footerAccessory,
+      collapsible = false,
+      onExpandedChange,
       typeaheadPlacement = "above",
       autoFocus = false,
       minInputHeight,
@@ -146,6 +167,37 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
       end: 0,
     });
     const [focused, setFocused] = useState(false);
+    // Sheets presented from inside the card (pickers, the "+" menu). They
+    // dismiss the keyboard, which must not fold the card; when the last
+    // one closes the input takes focus back.
+    const [openSheetCount, setOpenSheetCount] = useState(0);
+    const sheetOpen = openSheetCount > 0;
+    const refocusAfterSheetRef = useRef(false);
+    const lastBlurAtRef = useRef(0);
+    const onSheetPresenceChange = useCallback((open: boolean) => {
+      setOpenSheetCount((count) => Math.max(0, count + (open ? 1 : -1)));
+      // The keyboard dismissal a sheet triggers reaches the input either
+      // before or after the sheet reports itself open; either order arms
+      // the refocus.
+      if (open && Date.now() - lastBlurAtRef.current < BLUR_FOR_SHEET_MS) {
+        refocusAfterSheetRef.current = true;
+      }
+    }, []);
+    const sheetPresence = useMemo(
+      () => ({ onPresenceChange: onSheetPresenceChange }),
+      [onSheetPresenceChange],
+    );
+    const handleFocus = useCallback(() => setFocused(true), []);
+    const handleBlur = useCallback(() => {
+      setFocused(false);
+      lastBlurAtRef.current = Date.now();
+      if (sheetOpen) refocusAfterSheetRef.current = true;
+    }, [sheetOpen]);
+    useEffect(() => {
+      if (sheetOpen || !refocusAfterSheetRef.current) return;
+      refocusAfterSheetRef.current = false;
+      inputRef.current?.focus();
+    }, [sheetOpen]);
     const systemConfig = useSystemConfig();
     const providers = useSystemProviders();
     const provider = useMemo(
@@ -356,6 +408,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
     );
     const showVoicePrimary =
       voice.enabled && !hasInput && !isSubmitting && !disabled;
+    // Focus, text, attachments, an edit header, a voice session, or a sheet
+    // opened from the card keep the full card; otherwise the pill folds.
+    const collapsed =
+      collapsible &&
+      !focused &&
+      !sheetOpen &&
+      !hasInput &&
+      attachments.length === 0 &&
+      header == null &&
+      !voiceBusy;
+    const expanded = !collapsed;
+    const lastExpandedRef = useRef<boolean | null>(null);
+    useEffect(() => {
+      if (lastExpandedRef.current === expanded) return;
+      lastExpandedRef.current = expanded;
+      onExpandedChange?.(expanded);
+    }, [expanded, onExpandedChange]);
 
     const menuNode = menu ? (
       <TypeaheadMenu
@@ -367,86 +436,91 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
     ) : null;
 
     return (
-      <View style={{ position: "relative", zIndex: 10 }} testID={testID}>
-        {menuNode && typeaheadPlacement === "above" ? (
-          <View
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: "100%",
-              marginBottom: 6,
-              zIndex: 20,
-            }}
-          >
-            {menuNode}
-          </View>
-        ) : null}
-        <View
-          style={{
-            borderRadius: 16,
-            borderWidth: 1,
-            borderColor: focused ? tokens.ring : tokens.input,
-            backgroundColor: tokens.card,
-          }}
-        >
-          {header}
-          <AttachmentChips
-            attachments={attachments}
-            pending={attachmentsController.pending}
-            previewUriByPath={attachmentsController.previewUriByPath}
-            resolveImageUrl={resolveImageUrl}
-            onRemove={attachmentsController.remove}
-            disabled={disabled || isSubmitting}
-            testID={`${testID}-attachments`}
-          />
-          <ComposerInput
-            ref={inputRef}
-            value={value}
-            onChange={commit}
-            onSelectionChange={setSelection}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            placeholder={placeholder}
-            editable={!disabled && !voiceBusy}
-            autoFocus={autoFocus}
-            minHeight={minInputHeight}
-            testID={`${testID}-input`}
-          />
-          {menuNode && typeaheadPlacement === "below" ? (
-            <View style={{ paddingHorizontal: 8, paddingBottom: 8 }}>
+      <SheetPresenceContext.Provider value={sheetPresence}>
+        <View style={{ position: "relative", zIndex: 10 }} testID={testID}>
+          {menuNode && typeaheadPlacement === "above" ? (
+            <View
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: "100%",
+                marginBottom: 6,
+                zIndex: 20,
+              }}
+            >
               {menuNode}
             </View>
           ) : null}
-          {voiceBusy ? (
-            <VoiceBar voice={voice} />
-          ) : (
-            <View
-              className="flex-row items-center gap-2 px-2 pb-2"
-              testID={`${testID}-footer`}
-            >
-              <Button
-                variant="ghost"
-                size="icon"
-                icon="Plus"
-                accessibilityLabel="Prompt actions"
-                disabled={disabled || isSubmitting}
-                loading={attachmentsController.isUploading}
-                onPress={actionsSheet.present}
-                testID={`${testID}-actions`}
-              />
-              <View style={{ flex: 1, minWidth: 0, flexDirection: "row" }}>
-                {executionControls ? (
-                  <ExecutionControls
-                    {...executionControls}
-                    disabled={
-                      executionControls.disabled || disabled || isSubmitting
-                    }
-                  />
-                ) : null}
+          <View
+            style={{
+              borderRadius: collapsed ? 26 : 22,
+              borderWidth: 1,
+              borderColor: focused && !collapsed ? tokens.ring : tokens.input,
+              backgroundColor: tokens.card,
+              paddingHorizontal: collapsed ? 6 : 0,
+            }}
+            testID={`${testID}-card`}
+            accessibilityState={
+              collapsible ? { expanded: !collapsed } : undefined
+            }
+          >
+            {header}
+            {!collapsed && topControls ? (
+              <View
+                className="flex-row items-center px-2 pt-2"
+                testID={`${testID}-top-controls`}
+              >
+                {topControls}
               </View>
-              {footerAccessory}
-              {affordance.stop ? (
+            ) : null}
+            <AttachmentChips
+              attachments={attachments}
+              pending={attachmentsController.pending}
+              previewUriByPath={attachmentsController.previewUriByPath}
+              resolveImageUrl={resolveImageUrl}
+              onRemove={attachmentsController.remove}
+              disabled={disabled || isSubmitting}
+              testID={`${testID}-attachments`}
+            />
+            {/* The input keeps its tree position in both layouts so the pill
+              → card transition never remounts it (that would drop focus). */}
+            <View className="flex-row items-center">
+              {collapsed ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  icon="Plus"
+                  accessibilityLabel="Prompt actions"
+                  disabled={disabled || isSubmitting}
+                  loading={attachmentsController.isUploading}
+                  onPress={actionsSheet.present}
+                  testID={`${testID}-actions`}
+                />
+              ) : null}
+              <View className="min-w-0 flex-1">
+                <ComposerInput
+                  ref={inputRef}
+                  value={value}
+                  onChange={commit}
+                  onSelectionChange={setSelection}
+                  onFocus={handleFocus}
+                  onBlur={handleBlur}
+                  placeholder={placeholder}
+                  editable={!disabled && !voiceBusy}
+                  autoFocus={autoFocus}
+                  minHeight={
+                    collapsed
+                      ? undefined
+                      : (minInputHeight ?? (collapsible ? 64 : undefined))
+                  }
+                  pill={collapsed}
+                  testID={`${testID}-input`}
+                />
+              </View>
+              {/* Collapsed right slot: Stop while a turn runs (it must stay
+                  reachable without expanding), else the mic, else a spacer. */}
+              {collapsed && affordance.stop ? (
                 <Button
                   variant="secondary"
                   size="icon"
@@ -456,9 +530,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
                   onPress={affordance.stop}
                   testID={`${testID}-stop`}
                 />
-              ) : null}
-              {showVoicePrimary ? (
+              ) : collapsed && showVoicePrimary ? (
                 <Button
+                  variant="ghost"
                   size="icon"
                   icon="Mic"
                   accessibilityLabel="Voice input"
@@ -466,64 +540,123 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
                   onPress={() => void voice.start()}
                   testID={`${testID}-voice`}
                 />
-              ) : affordance.kind !== null || !affordance.stop ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={affordance.label}
-                  accessibilityState={{ disabled: affordance.disabled }}
-                  disabled={affordance.disabled || affordance.kind === null}
-                  onPress={() => {
-                    if (affordance.kind) submit(affordance.kind);
-                  }}
-                  onLongPress={
-                    affordance.longPressSteer
-                      ? () => submit("steer")
-                      : undefined
-                  }
-                  delayLongPress={350}
-                  testID={`${testID}-submit`}
-                  style={({ pressed }) => ({
-                    width: 40,
-                    height: 40,
-                    borderRadius: 20,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: affordance.disabled
-                      ? tokens.muted
-                      : tokens.foreground,
-                    opacity: pressed ? 0.85 : 1,
-                  })}
-                >
-                  {affordance.icon === "Spinner" ? (
-                    <Spinner
-                      color={
-                        affordance.disabled
-                          ? tokens.mutedForeground
-                          : tokens.background
-                      }
-                    />
-                  ) : (
-                    <Icon
-                      name={affordance.icon}
-                      size={20}
-                      color={
-                        affordance.disabled
-                          ? tokens.mutedForeground
-                          : tokens.background
-                      }
-                    />
-                  )}
-                </Pressable>
+              ) : collapsed ? (
+                <View style={{ width: 10 }} />
               ) : null}
             </View>
-          )}
+            {menuNode && typeaheadPlacement === "below" ? (
+              <View style={{ paddingHorizontal: 8, paddingBottom: 8 }}>
+                {menuNode}
+              </View>
+            ) : null}
+            {collapsed ? null : voiceBusy ? (
+              <VoiceBar voice={voice} />
+            ) : (
+              <View
+                className="flex-row items-center gap-1 px-2 pb-2"
+                testID={`${testID}-footer`}
+              >
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  icon="Plus"
+                  accessibilityLabel="Prompt actions"
+                  disabled={disabled || isSubmitting}
+                  loading={attachmentsController.isUploading}
+                  onPress={actionsSheet.present}
+                  testID={`${testID}-actions`}
+                />
+                <View style={{ flex: 1, minWidth: 0, flexDirection: "row" }}>
+                  {executionControls ? (
+                    <ExecutionControls
+                      {...executionControls}
+                      disabled={
+                        executionControls.disabled || disabled || isSubmitting
+                      }
+                    />
+                  ) : null}
+                </View>
+                {footerAccessory}
+                {affordance.stop ? (
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    icon="Square"
+                    accessibilityLabel="Stop"
+                    haptic
+                    onPress={affordance.stop}
+                    testID={`${testID}-stop`}
+                  />
+                ) : null}
+                {showVoicePrimary ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    icon="Mic"
+                    accessibilityLabel="Voice input"
+                    haptic
+                    onPress={() => void voice.start()}
+                    testID={`${testID}-voice`}
+                  />
+                ) : affordance.kind !== null || !affordance.stop ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={affordance.label}
+                    accessibilityState={{ disabled: affordance.disabled }}
+                    disabled={affordance.disabled || affordance.kind === null}
+                    onPress={() => {
+                      if (affordance.kind) submit(affordance.kind);
+                    }}
+                    onLongPress={
+                      affordance.longPressSteer
+                        ? () => submit("steer")
+                        : undefined
+                    }
+                    delayLongPress={350}
+                    testID={`${testID}-submit`}
+                    style={({ pressed }) => ({
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: affordance.disabled
+                        ? tokens.muted
+                        : tokens.foreground,
+                      opacity: pressed ? 0.85 : 1,
+                    })}
+                  >
+                    {affordance.icon === "Spinner" ? (
+                      <Spinner
+                        color={
+                          affordance.disabled
+                            ? tokens.mutedForeground
+                            : tokens.background
+                        }
+                      />
+                    ) : (
+                      <Icon
+                        name={affordance.icon}
+                        size={18}
+                        color={
+                          affordance.disabled
+                            ? tokens.mutedForeground
+                            : tokens.background
+                        }
+                      />
+                    )}
+                  </Pressable>
+                ) : null}
+              </View>
+            )}
+          </View>
+          <ActionSheet
+            controller={actionsSheet}
+            title="Add to prompt"
+            actions={sheetActions}
+          />
         </View>
-        <ActionSheet
-          controller={actionsSheet}
-          title="Add to prompt"
-          actions={sheetActions}
-        />
-      </View>
+      </SheetPresenceContext.Provider>
     );
   },
 );

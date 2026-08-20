@@ -1,11 +1,37 @@
-import { Redirect, useNavigation, useRouter } from "expo-router";
-import { useLayoutEffect } from "react";
-import { Pressable, View } from "react-native";
+import {
+  Redirect,
+  useLocalSearchParams,
+  useNavigation,
+  useRouter,
+} from "expo-router";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Animated, Keyboard, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useProfiles } from "@/app-shell";
+import type { ComposerHandle } from "@/composer";
+import { blendOver, withAlpha } from "@/markdown/colors";
 import { useTheme } from "@/theme";
-import { Button, EmptyStatePanel, Icon, Spinner, Text } from "@/ui";
-import { threadSearchHref } from "../shell/hrefs";
+import {
+  Button,
+  EmptyStatePanel,
+  Icon,
+  KeyboardPaddingView,
+  Spinner,
+  Text,
+} from "@/ui";
+import {
+  ComposeDock,
+  useComposeController,
+  type ComposeParams,
+} from "../compose";
+import { threadHref, threadSearchHref } from "../shell/hrefs";
 import { Screen } from "../shell/Screen";
 import {
   SidebarActionsProvider,
@@ -13,85 +39,271 @@ import {
   useSidebarActions,
 } from "../sidebar";
 
-/** Search + display-options buttons in the drawer header (set from inside the provider). */
-function HomeHeaderActions() {
+const SCRIM_DURATION_MS = 180;
+/** Opacity of the ink scrim over the list while the dock is expanded. */
+const SCRIM_ALPHA = 0.35;
+
+/**
+ * Search + display-options buttons in the drawer header (set from inside
+ * the provider). While the dock is expanded the header is painted the same
+ * gray as the scrim (it is navigator chrome above the screen, so the scrim
+ * view cannot cover it) and its controls are muted.
+ */
+function HomeHeaderActions({ dimmed }: { dimmed: boolean }) {
   const navigation = useNavigation();
   const router = useRouter();
-  const { tokens } = useTheme();
+  const { tokens, fonts } = useTheme();
   const actions = useSidebarActions();
+  const background = dimmed
+    ? blendOver(tokens.background, tokens.ink, SCRIM_ALPHA)
+    : tokens.background;
+  const foreground = dimmed
+    ? blendOver(tokens.foreground, tokens.ink, SCRIM_ALPHA)
+    : tokens.foreground;
   useLayoutEffect(() => {
     navigation.setOptions({
+      headerStyle: { backgroundColor: background },
+      headerTintColor: foreground,
+      headerTitleStyle: {
+        fontFamily: fonts.sans.semibold,
+        fontWeight: "600",
+        color: foreground,
+      },
       headerRight: () => (
         <View className="flex-row items-center gap-1 pr-2">
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Search threads"
             hitSlop={8}
+            disabled={dimmed}
             onPress={() => router.push(threadSearchHref())}
-            className="h-10 w-10 items-center justify-center rounded-md active:bg-state-hover"
+            className="h-10 w-10 items-center justify-center rounded-full active:bg-state-hover"
             testID="home-search"
           >
-            <Icon name="Search" size={20} color={tokens.foreground} />
+            <Icon name="Search" size={20} color={foreground} />
           </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Sidebar display options"
             hitSlop={8}
+            disabled={dimmed}
             onPress={actions.openDisplayOptions}
-            className="h-10 w-10 items-center justify-center rounded-md active:bg-state-hover"
+            className="h-10 w-10 items-center justify-center rounded-full active:bg-state-hover"
             testID="home-display-options"
           >
-            <Icon
-              name="SlidersHorizontal"
-              size={20}
-              color={tokens.foreground}
-            />
+            <Icon name="SlidersHorizontal" size={20} color={foreground} />
           </Pressable>
         </View>
       ),
     });
-  }, [actions, navigation, router, tokens.foreground]);
+  }, [actions, background, dimmed, fonts, foreground, navigation, router]);
   return null;
 }
 
-function NewThreadFab() {
+/** `/?newThread=1`: open the dock without other params (`bb://compose`). */
+const NEW_THREAD_FLAG = "newThread";
+
+type NewThreadRouteParams = Record<
+  keyof ComposeParams | typeof NEW_THREAD_FLAG,
+  string | string[]
+>;
+
+const NEW_THREAD_PARAM_KEYS = [
+  "projectId",
+  "sectionId",
+  "initialPrompt",
+  "reuseEnvironmentId",
+  "forkSourceThreadId",
+  "forkSourceSeqEnd",
+  "forkSourceThreadTitle",
+  "handoffSourceThreadId",
+  "handoffSourceThreadTitle",
+] as const satisfies readonly (keyof ComposeParams)[];
+
+function firstParam(value: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const trimmed = raw?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+/**
+ * `/?projectId=&sectionId=&initialPrompt=&reuseEnvironmentId=…` (see
+ * `newThreadHref`): a project's "+", a deep link, or a fork / handoff seed
+ * land on home with the dock open on these params.
+ */
+function useNewThreadRouteParams(): {
+  params: ComposeParams;
+  /** Changes whenever a new request arrives (the dock opens on it). */
+  requestKey: string | null;
+  clear: () => void;
+} {
+  const router = useRouter();
+  const raw = useLocalSearchParams<Partial<NewThreadRouteParams>>();
+  const params = useMemo((): ComposeParams => {
+    const next: ComposeParams = {};
+    for (const key of NEW_THREAD_PARAM_KEYS) {
+      const value = firstParam(raw[key]);
+      if (value !== undefined) next[key] = value;
+    }
+    return next;
+  }, [raw]);
+  const flagged = firstParam(raw[NEW_THREAD_FLAG]) !== undefined;
+  const requestKey = useMemo(() => {
+    const entries = NEW_THREAD_PARAM_KEYS.filter(
+      (key) => params[key] !== undefined,
+    ).map((key) => `${key}=${params[key] ?? ""}`);
+    if (flagged) entries.unshift(NEW_THREAD_FLAG);
+    return entries.length > 0 ? entries.join("&") : null;
+  }, [flagged, params]);
+  const clear = useCallback(() => {
+    if (requestKey === null) return;
+    router.setParams(
+      Object.fromEntries(
+        [...NEW_THREAD_PARAM_KEYS, NEW_THREAD_FLAG].map((key) => [
+          key,
+          undefined,
+        ]),
+      ),
+    );
+  }, [requestKey, router]);
+  return { params, requestKey, clear };
+}
+
+/**
+ * The home body: the thread list with the new-thread dock pinned under it.
+ * The dock is the collapsed "Plan, ask, build…" pill; focusing it (or a
+ * project's "+", or a routed new-thread request) expands it in place over a
+ * scrim that dims the list, with the where-it-runs pickers on top and the
+ * agent pickers below the prompt. Creating a thread collapses the dock and
+ * opens the thread.
+ */
+function HomeBody() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { tokens } = useTheme();
-  const actions = useSidebarActions();
+  const route = useNewThreadRouteParams();
+  const controller = useComposeController(route.params);
+  const composerRef = useRef<ComposerHandle | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [scrim] = useState(() => new Animated.Value(0));
+  const [scrimMounted, setScrimMounted] = useState(false);
+
+  const animateScrim = useCallback(
+    (open: boolean) => {
+      if (open) setScrimMounted(true);
+      Animated.timing(scrim, {
+        toValue: open ? 1 : 0,
+        duration: SCRIM_DURATION_MS,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished && !open) setScrimMounted(false);
+      });
+    },
+    [scrim],
+  );
+  const setDockExpanded = useCallback(
+    (next: boolean) => {
+      setExpanded((current) => {
+        if (current !== next) animateScrim(next);
+        return next;
+      });
+    },
+    [animateScrim],
+  );
+  // A routed request (a project's "+" from the drawer, a deep link, a fork /
+  // handoff seed) opens the dock; the params stay on the route until the
+  // thread is created — or the dock is dismissed, which drops the request
+  // (a fork hint would otherwise pin the card open).
+  const clearRoute = route.clear;
+  const collapse = useCallback(() => {
+    Keyboard.dismiss();
+    composerRef.current?.blur();
+    clearRoute();
+  }, [clearRoute]);
+
+  const requestKey = route.requestKey;
+  useEffect(() => {
+    if (requestKey === null) return;
+    composerRef.current?.focus();
+  }, [requestKey]);
+
+  const createThreadInDock = useCallback(
+    (target: { projectId?: string; sectionId?: string } | undefined) => {
+      // Same as a routed request, without leaving the screen.
+      router.setParams({
+        [NEW_THREAD_FLAG]: "1",
+        projectId: target?.projectId,
+        sectionId: target?.sectionId,
+      });
+      composerRef.current?.focus();
+      return true;
+    },
+    [router],
+  );
+
   return (
-    <View
-      pointerEvents="box-none"
-      className="absolute right-4"
-      style={{ bottom: insets.bottom + 16 }}
-    >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="New thread"
-        onPress={() => actions.createThread()}
-        className="h-14 w-14 items-center justify-center rounded-full bg-foreground active:bg-foreground/90"
-        style={{
-          shadowColor: tokens.ink,
-          shadowOpacity: 0.25,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 4 },
-          elevation: 4,
-        }}
-        testID="home-new-thread"
-      >
-        <Icon name="MessageSquarePlus" size={24} color={tokens.background} />
-      </Pressable>
-    </View>
+    <SidebarActionsProvider onCreateThread={createThreadInDock}>
+      <HomeHeaderActions dimmed={expanded} />
+      <KeyboardPaddingView style={{ flex: 1 }}>
+        <View className="flex-1">
+          <SidebarThreadList
+            contentContainerStyle={{ paddingBottom: 16 }}
+            testID="home-thread-list"
+          />
+        </View>
+        {/* The scrim dims everything under the card — the list and the
+            dock's own margins — so the expanded card floats over it. */}
+        {scrimMounted ? (
+          <Animated.View
+            pointerEvents={expanded ? "auto" : "none"}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              opacity: scrim,
+              backgroundColor: withAlpha(tokens.ink, SCRIM_ALPHA),
+            }}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close composer"
+              onPress={collapse}
+              style={{ flex: 1 }}
+              testID="home-compose-scrim"
+            />
+          </Animated.View>
+        ) : null}
+        <View
+          className="px-3 pt-1"
+          style={{ paddingBottom: Math.max(insets.bottom, 8) }}
+          testID="home-compose-dock"
+        >
+          <ComposeDock
+            controller={controller}
+            onExpandedChange={setDockExpanded}
+            composerRef={composerRef}
+            onCreated={(thread) => {
+              collapse();
+              if (controller.navigateAfterCreate) {
+                router.push(threadHref(thread.id));
+              }
+            }}
+          />
+        </View>
+      </KeyboardPaddingView>
+    </SidebarActionsProvider>
   );
 }
 
 /**
  * Home: the thread list for the active server (the same grouped list the
- * drawer shows, full width), pull-to-refresh, a New-thread FAB, and search /
- * display options in the header. With no saved server it hands off to the
- * add-server flow (first run).
+ * drawer shows, full width), pull-to-refresh, the new-thread dock at the
+ * bottom, and search / display options in the header. With no saved server
+ * it hands off to the add-server flow (first run).
  */
 export function HomeScreen() {
-  const insets = useSafeAreaInsets();
   const { status, profiles, activeProfile, connection } = useProfiles();
   const router = useRouter();
 
@@ -136,14 +348,7 @@ export function HomeScreen() {
 
   return (
     <Screen scroll={false} testID="home-screen">
-      <SidebarActionsProvider>
-        <HomeHeaderActions />
-        <SidebarThreadList
-          contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}
-          testID="home-thread-list"
-        />
-        <NewThreadFab />
-      </SidebarActionsProvider>
+      <HomeBody key={activeProfile.id} />
     </Screen>
   );
 }

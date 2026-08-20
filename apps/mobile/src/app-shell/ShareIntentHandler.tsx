@@ -5,14 +5,14 @@ import {
   loadShareIntentModule,
   type ShareIntentModule,
 } from "@/lib/share";
-import { composeHref } from "@/screens/shell/hrefs";
+import { newThreadHref } from "@/screens/shell/hrefs";
 import { toast } from "@/ui";
 import { useProfiles } from "./ProfilesProvider";
 
 /**
  * Inbound "Send to bb": when the binary bundles `expo-share-intent`, a share
  * from another app (text / URL) opens the composer seeded with it
- * (`/compose?initialPrompt=`). Without the native module (the current dev
+ * (home, `/?initialPrompt=`). Without the native module (the current dev
  * client; see apps/mobile/README.md "Share sheet") this renders nothing, so
  * the JS side ships ahead of the native rebuild. Render once inside the
  * ProfilesProvider.
@@ -50,7 +50,7 @@ function ShareIntentHandlerWithModule({
       toast.info("Only text and links can be sent to bb for now.");
       return;
     }
-    router.push(composeHref({ initialPrompt: seed.initialPrompt }));
+    router.navigate(newThreadHref({ initialPrompt: seed.initialPrompt }));
   }, [activeProfile, hasShareIntent, resetShareIntent, router, shareIntent]);
   return null;
 }

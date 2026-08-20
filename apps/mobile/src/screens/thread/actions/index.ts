@@ -29,6 +29,7 @@ export {
   type ThreadActionsSheetController,
   type ThreadActionsSheetProps,
   type ThreadActionsSheetState,
+  type ThreadMenuAction,
   type ThreadActionsView,
 } from "./ThreadActionsSheet";
 export {

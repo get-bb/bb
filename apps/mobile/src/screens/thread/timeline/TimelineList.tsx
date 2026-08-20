@@ -24,7 +24,6 @@ import {
 import { useTheme } from "@/theme";
 import { Button, Icon, Spinner, Text } from "@/ui";
 import {
-  findTimelineEntryIndexByRowId,
   type TimelineListEntry,
 } from "./list-entries";
 import { getTimelineRowRenderer } from "./renderers";
@@ -42,8 +41,6 @@ import {
 } from "./sticky-bottom";
 
 export interface TimelineListHandle {
-  /** Scroll a top-level row into view (table of contents). */
-  scrollToRow(rowId: string): void;
   scrollToEnd(): void;
 }
 
@@ -309,22 +306,8 @@ export const TimelineList = forwardRef<TimelineListHandle, TimelineListProps>(
 
     useImperativeHandle(
       ref,
-      () => ({
-        scrollToRow: (rowId) => {
-          const index = findTimelineEntryIndexByRowId(entries, rowId);
-          if (index < 0) return;
-          stickyRef.current = reduceStickyBottom(stickyRef.current, {
-            type: "detach",
-          });
-          void listRef.current?.scrollToIndex({
-            index,
-            animated: true,
-            viewPosition: 0,
-          });
-        },
-        scrollToEnd: jumpToLatest,
-      }),
-      [entries, jumpToLatest],
+      () => ({ scrollToEnd: jumpToLatest }),
+      [jumpToLatest],
     );
 
     const renderItem = useCallback(

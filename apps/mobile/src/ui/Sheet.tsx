@@ -10,7 +10,9 @@ import {
   type BottomSheetModalProps,
 } from "@gorhom/bottom-sheet";
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -58,6 +60,15 @@ export function useSheet(): SheetController {
 
 /** Wrap the app root (inside `GestureHandlerRootView`) once. */
 export const SheetProvider = BottomSheetModalProvider;
+
+/**
+ * Lets an ancestor (the composer) learn when a sheet mounted in its subtree
+ * presents or dismisses: presenting dismisses the keyboard, and the composer
+ * wants to stay expanded through a picker and refocus afterwards.
+ */
+export const SheetPresenceContext = createContext<{
+  onPresenceChange: (open: boolean) => void;
+} | null>(null);
 
 export interface SheetProps extends Pick<
   BottomSheetModalProps,
@@ -112,6 +123,16 @@ export function Sheet({
   const insets = useSafeAreaInsets();
   const [presented, setPresented] = useState(false);
   const realized = useDeferredRealization(presented);
+  const presence = useContext(SheetPresenceContext);
+  const onPresenceChange = presence?.onPresenceChange;
+  useEffect(() => {
+    if (!onPresenceChange) return;
+    onPresenceChange(presented);
+    return () => {
+      // Unmounting while presented counts as dismissed.
+      if (presented) onPresenceChange(false);
+    };
+  }, [onPresenceChange, presented]);
 
   useEffect(() => {
     controller.attach({
@@ -157,7 +178,10 @@ export function Sheet({
   );
 
   const header = title ? (
-    <View className="border-b border-border-hairline px-4 pb-3 pt-1">
+    <View
+      className="border-b border-border-hairline px-4 pb-3 pt-1"
+      style={{ backgroundColor: tokens.popover }}
+    >
       <Text variant="heading" numberOfLines={1}>
         {title}
       </Text>
@@ -199,17 +223,20 @@ export function Sheet({
           {body}
         </>
       ) : layout === "scroll" ? (
-        <>
+        // The header rides inside the scroll view (pinned) so dynamic sizing
+        // measures it: outside, the sheet came up short by the header height
+        // and the last row plus the bottom inset slid under the home
+        // indicator.
+        <BottomSheetScrollView
+          contentContainerStyle={bottomPad}
+          stickyHeaderIndices={header ? [0] : undefined}
+          // Let a tap on a row/button land while the keyboard is up
+          // (otherwise the first tap only dismisses the keyboard).
+          keyboardShouldPersistTaps="handled"
+        >
           {header}
-          <BottomSheetScrollView
-            contentContainerStyle={bottomPad}
-            // Let a tap on a row/button land while the keyboard is up
-            // (otherwise the first tap only dismisses the keyboard).
-            keyboardShouldPersistTaps="handled"
-          >
-            {body}
-          </BottomSheetScrollView>
-        </>
+          {body}
+        </BottomSheetScrollView>
       ) : (
         <BottomSheetView style={bottomPad}>
           {header}

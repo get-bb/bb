@@ -15,7 +15,7 @@ import {
 
 /**
  * Controller-shaped props for the execution pills under the prompt: the
- * compose screen maps `useComposeController` onto them; the thread screen
+ * home dock maps `useComposeController` onto them; the thread screen
  * maps its thread execution options. Pure presentation over the Phase 3
  * picker sheets; `null` sections are not rendered.
  */
@@ -47,8 +47,6 @@ export interface ExecutionControlsProps {
     onChange: (mode: PermissionMode) => void;
   } | null;
   disabled?: boolean;
-  /** Pills rendered before the provider (the compose screen's project). */
-  leading?: ReactNode;
   trailing?: ReactNode;
   testID?: string;
 }
@@ -60,7 +58,6 @@ export function ExecutionControls({
   fastMode,
   permission,
   disabled = false,
-  leading,
   trailing,
   testID = "composer-execution-controls",
 }: ExecutionControlsProps) {
@@ -73,7 +70,6 @@ export function ExecutionControls({
       style={{ flexGrow: 1, flexShrink: 1 }}
       testID={testID}
     >
-      {leading}
       {provider && (provider.options.length > 1 || provider.value) ? (
         <ProviderPicker
           options={provider.options}

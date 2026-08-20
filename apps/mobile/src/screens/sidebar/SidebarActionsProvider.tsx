@@ -49,7 +49,7 @@ import {
   type IconName,
 } from "@/ui";
 import {
-  composeHref,
+  newThreadHref,
   newProjectHref,
   projectSettingsHref,
   threadHref,
@@ -290,11 +290,19 @@ export interface SidebarActionsProviderProps {
   children: ReactNode;
   /** Runs before every navigation (the drawer closes itself here). */
   onBeforeNavigate?: () => void;
+  /**
+   * Handles "new thread" in place of navigating home with params (the home
+   * screen opens its own dock directly). Return `false` to navigate.
+   */
+  onCreateThread?: (
+    target: { projectId?: string; sectionId?: string } | undefined,
+  ) => boolean;
 }
 
 export function SidebarActionsProvider({
   children,
   onBeforeNavigate,
+  onCreateThread,
 }: SidebarActionsProviderProps) {
   const router = useRouter();
   const { tokens } = useTheme();
@@ -346,10 +354,16 @@ export function SidebarActionsProvider({
       openCreateSection: () =>
         present({ kind: "section-create", moveThread: null }),
       openThread: (thread) => navigate(threadHref(thread.id)),
-      createThread: (target) => navigate(composeHref(target)),
+      createThread: (target) => {
+        if (onCreateThread?.(target)) return;
+        // Home already sits at the bottom of the stack: navigate (not push)
+        // returns to it with the new params.
+        onBeforeNavigate?.();
+        router.navigate(newThreadHref(target));
+      },
       createProject: () => navigate(newProjectHref()),
     }),
-    [navigate, present],
+    [navigate, onBeforeNavigate, onCreateThread, present, router],
   );
 
   const unarchiveMany = useCallback(

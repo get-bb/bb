@@ -57,7 +57,6 @@ function toThreadRow(thread: ThreadListEntry): SidebarThreadRow {
 function ArchivedRow({
   row,
   subtitle,
-  now,
   onPress,
   onLongPress,
   onUnarchive,
@@ -65,7 +64,6 @@ function ArchivedRow({
 }: {
   row: SidebarThreadRow;
   subtitle: string | null;
-  now: number;
   onPress: (row: SidebarThreadRow) => void;
   onLongPress: (row: SidebarThreadRow) => void;
   onUnarchive: (thread: ThreadListEntry) => void;
@@ -80,8 +78,6 @@ function ArchivedRow({
           row={row}
           selected={false}
           subtitle={subtitle}
-          timestamp={row.thread.archivedAt ?? row.thread.latestAttentionAt}
-          now={now}
           onPress={onPress}
           onLongPress={onLongPress}
           onToggleCollapsed={noop}
@@ -116,7 +112,6 @@ function ArchivedBody({
   const archived = useArchivedThreads(projectId ? { projectId } : {});
   const unarchive = useUnarchiveThread();
   const filterSheet = useSheet();
-  const [now] = useState(() => Date.now());
 
   const bootstrapData = bootstrap.data;
   const projects = useMemo(
@@ -171,7 +166,6 @@ function ArchivedBody({
             ? (projectNamesById.get(item.thread.projectId) ?? null)
             : null
         }
-        now={now}
         onPress={onPress}
         onLongPress={onLongPress}
         onUnarchive={onUnarchive}
@@ -179,7 +173,6 @@ function ArchivedBody({
       />
     ),
     [
-      now,
       onLongPress,
       onPress,
       onUnarchive,
@@ -272,7 +265,6 @@ function ArchivedBody({
           keyExtractor={keyExtractor}
           renderItem={renderItem}
           extraData={{
-            now,
             projectId,
             pendingIds,
             isPending: unarchive.isPending,

@@ -32,7 +32,7 @@ import {
   useUnarchiveThread,
 } from "@/data/threads";
 import { toast, useSheet, type SheetController } from "@/ui";
-import { composeHref, threadHref } from "../../shell/hrefs";
+import { newThreadHref, threadHref } from "../../shell/hrefs";
 import {
   buildChildThreadsSection,
   buildParentThreadSection,
@@ -236,8 +236,8 @@ export function useThreadContextBanner({
 
   const handoffToNewThread = useCallback(() => {
     if (!thread) return;
-    router.push(
-      composeHref(
+    router.navigate(
+      newThreadHref(
         buildHandoffComposeParams({
           environmentId: thread.environmentId,
           projectId: thread.projectId,
@@ -253,8 +253,8 @@ export function useThreadContextBanner({
     isProvisionedWorktree(environment);
   const newThreadInWorktree = useCallback(() => {
     if (!thread || thread.environmentId === null) return;
-    router.push(
-      composeHref(
+    router.navigate(
+      newThreadHref(
         buildNewThreadInWorktreeComposeParams({
           projectId: thread.projectId,
           environmentId: thread.environmentId,

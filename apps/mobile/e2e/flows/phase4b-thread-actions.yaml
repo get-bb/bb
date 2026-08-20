@@ -42,9 +42,13 @@ env:
 - assertVisible:
     id: "thread-banner-merge-base"
 - takeScreenshot: phase4b-banner
-# Git sheet from the header button.
-- assertVisible:
-    id: "thread-git-button"
+# Git sheet from the "…" menu (the header has no second row).
+- tapOn:
+    id: "thread-actions-button"
+- extendedWaitUntil:
+    visible:
+      id: "thread-git-button"
+    timeout: 10000
 - tapOn:
     id: "thread-git-button"
 - extendedWaitUntil:
@@ -62,7 +66,7 @@ env:
     timeout: 10000
 # Rename through the title.
 - tapOn:
-    id: "thread-detail-title-button"
+    id: "thread-detail-title"
 - extendedWaitUntil:
     visible:
       id: "thread-rename-input"

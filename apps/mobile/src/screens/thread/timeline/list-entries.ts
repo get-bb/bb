@@ -56,16 +56,3 @@ export function buildTimelineListEntries(
   });
   return { entries, unreadDividerIndex };
 }
-
-/** Index of the top-level entry for `rowId`, or -1. */
-export function findTimelineEntryIndexByRowId(
-  entries: readonly TimelineListEntry[],
-  rowId: string,
-): number {
-  return entries.findIndex(
-    (entry) =>
-      entry.type === "row" &&
-      entry.item.depth === 0 &&
-      entry.item.viewRow.id === rowId,
-  );
-}

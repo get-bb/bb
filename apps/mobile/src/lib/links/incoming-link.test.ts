@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addServerPathForLink,
   isDeveloperRoutePath,
+  mapSchemePathToMobilePath,
   mapWebPathToMobilePath,
   matchProfileForWebLink,
   parseIncomingLink,
@@ -58,7 +59,8 @@ describe("mapWebPathToMobilePath", () => {
     ["/projects/prj_1/threads/thr_2", "/threads/thr_2"],
     ["/projects/prj_1/settings", "/projects/prj_1/settings"],
     ["/projects/prj_1/archived", "/settings/archived?projectId=prj_1"],
-    ["/projects/prj_1", "/compose?projectId=prj_1"],
+    ["/projects/prj_1", "/?projectId=prj_1"],
+    ["/compose", "/?newThread=1"],
     ["/archived", "/settings/archived"],
     ["/settings", "/settings"],
     ["/settings/servers", "/settings/servers"],
@@ -69,6 +71,18 @@ describe("mapWebPathToMobilePath", () => {
     ["/threads", "/"],
   ])("%s → %s", (input, expected) => {
     expect(mapWebPathToMobilePath(input)).toBe(expected);
+  });
+
+  it("opens the home dock for compose links and keeps their params", () => {
+    expect(mapWebPathToMobilePath("/compose", "?projectId=prj_1")).toBe(
+      "/?newThread=1&projectId=prj_1",
+    );
+    expect(mapSchemePathToMobilePath("/compose")).toBe("/?newThread=1");
+    expect(mapSchemePathToMobilePath("/compose?projectId=prj_1")).toBe(
+      "/?newThread=1&projectId=prj_1",
+    );
+    expect(mapSchemePathToMobilePath("/composer")).toBe("/composer");
+    expect(mapSchemePathToMobilePath("/threads/thr_1")).toBe("/threads/thr_1");
   });
 
   it("keeps the query string on thread and settings links", () => {

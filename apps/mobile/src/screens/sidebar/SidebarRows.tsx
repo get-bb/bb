@@ -4,7 +4,6 @@ import { Pressable, View } from "react-native";
 import { getThreadDisplayTitle } from "@/data/threads";
 import { useTheme } from "@/theme";
 import { Icon, Text, cn } from "@/ui";
-import { formatRelativeTime } from "./relative-time";
 import {
   getCollapsedActivityIndicatorState,
   type SidebarEmptyRow,
@@ -54,9 +53,6 @@ export interface SidebarThreadRowViewProps {
   selected: boolean;
   /** Second line: the project name outside project mode, or nothing. */
   subtitle: string | null;
-  /** Timestamp the age label reads from (`latestAttentionAt` or `createdAt`). */
-  timestamp: number;
-  now: number;
   onPress: (row: SidebarThreadRow) => void;
   onLongPress: (row: SidebarThreadRow) => void;
   onToggleCollapsed: (threadId: string) => void;
@@ -66,8 +62,6 @@ export const SidebarThreadRowView = memo(function SidebarThreadRowView({
   row,
   selected,
   subtitle,
-  timestamp,
-  now,
   onPress,
   onLongPress,
   onToggleCollapsed,
@@ -123,9 +117,6 @@ export const SidebarThreadRowView = memo(function SidebarThreadRowView({
           </Text>
         ) : null}
       </View>
-      <Text variant="chrome" className="text-subtle-foreground">
-        {formatRelativeTime(timestamp, now)}
-      </Text>
       <View className="w-5 items-center justify-center">
         <ThreadStatusGlyph kind={row.indicator} />
       </View>

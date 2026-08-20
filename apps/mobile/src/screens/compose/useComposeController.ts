@@ -78,7 +78,8 @@ import { useSystemConfig, useSystemExecutionOptions } from "@/data/system";
 import { useCreateThread } from "@/data/threads";
 
 /**
- * State and derived options for the root compose screen. Mirrors the web's
+ * State and derived options for the new-thread composer (the home dock).
+ * Mirrors the web's
  * NewThreadComposer + useThreadCreationOptions (new-thread scope) on top of
  * the mobile data layer: stored preferences win over the project defaults,
  * every selection is resolved against the live catalog, and the environment
@@ -114,8 +115,6 @@ export interface ComposeController {
   setAttachments: (attachments: PromptDraftAttachment[]) => void;
   /** `PromptInput[]` the request will carry (text + mentions, attachments). */
   promptInput: PromptInput[];
-  title: string;
-  setTitle: (title: string) => void;
   sectionId: string | null;
   /** Set when the screen was opened by "Fork from here" (see compose-seed-params). */
   forkSeed: ComposeForkSeed | null;
@@ -273,24 +272,36 @@ export function useComposeController(params: ComposeParams): ComposeController {
   // --- Prompt -------------------------------------------------------------
   // The shared composer's draft (restored from the web-compatible
   // new-thread key). A routed `initialPrompt` or a handoff seed replaces
-  // whatever was stored, once per screen instance.
+  // whatever was stored, once per distinct seed: the home dock keeps one
+  // controller alive across many "new thread" requests, so the seed is keyed
+  // on its params rather than on the component instance.
   const draft = useComposerDraft(NEW_THREAD_DRAFT_SCOPE);
-  const seededRef = useRef(false);
+  const seedKey = params.initialPrompt
+    ? `prompt:${params.initialPrompt}`
+    : handoffDraft
+      ? `handoff:${params.handoffSourceThreadId ?? ""}`
+      : null;
+  const appliedSeedKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    if (seededRef.current) return;
-    seededRef.current = true;
+    if (seedKey === null || appliedSeedKeyRef.current === seedKey) return;
+    appliedSeedKeyRef.current = seedKey;
     if (params.initialPrompt) {
       draft.replace(createComposerValue(params.initialPrompt), []);
     } else if (handoffDraft) {
       const seeded = composerValueFromDraftState(handoffDraft);
       draft.replace(seeded.value, seeded.attachments);
     }
-  }, [draft, handoffDraft, params.initialPrompt]);
+  }, [
+    draft,
+    handoffDraft,
+    params.handoffSourceThreadId,
+    params.initialPrompt,
+    seedKey,
+  ]);
   const promptInput = useMemo(
     () => composerValueToPromptInput(draft.value, draft.attachments),
     [draft.attachments, draft.value],
   );
-  const [title, setTitle] = useState("");
   const sectionId = params.sectionId?.trim() ? params.sectionId.trim() : null;
 
   // --- Project ------------------------------------------------------------
@@ -316,6 +327,12 @@ export function useComposeController(params: ComposeParams): ComposeController {
     [bootstrap.data],
   );
   const [pickedProjectId, setPickedProjectId] = useState<string | null>(null);
+  // A routed project (a project's "+", a deep link, a fork / handoff seed)
+  // wins over an earlier pick, also when it arrives on a live controller.
+  const routedProjectId = params.projectId;
+  useEffect(() => {
+    if (routedProjectId) setPickedProjectId(routedProjectId);
+  }, [routedProjectId]);
   const projectId = resolveComposeProjectId({
     requestedProjectId: pickedProjectId ?? params.projectId,
     storedProjectId: prefs.lastProjectId,
@@ -759,7 +776,6 @@ export function useComposeController(params: ComposeParams): ComposeController {
     const result = buildCreateThreadRequest({
       projectId,
       input: promptInput,
-      title,
       providerId: providerId || null,
       model: modelSelection.selectedModel || null,
       reasoningLevel: reasoningOptions.length > 0 ? reasoningLevel : null,
@@ -798,7 +814,6 @@ export function useComposeController(params: ComposeParams): ComposeController {
     }
     const thread = await createThread.mutateAsync(request);
     draft.clear();
-    setTitle("");
     return thread;
   }, [
     branchesQuery.data?.defaultBranch,
@@ -824,7 +839,6 @@ export function useComposeController(params: ComposeParams): ComposeController {
     storedProviderSelection.reasoningLevel,
     promptInput,
     supportsServiceTier,
-    title,
   ]);
 
   return {
@@ -833,8 +847,6 @@ export function useComposeController(params: ComposeParams): ComposeController {
     attachments: draft.attachments,
     setAttachments: draft.setAttachments,
     promptInput,
-    title,
-    setTitle,
     sectionId,
     forkSeed,
     handoffSeed,

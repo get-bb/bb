@@ -49,6 +49,7 @@ export interface ComposerAction {
     | "MessageSquarePlus"
     | "GitBranch"
     | "FolderOpen"
+    | "PanelBottom"
     | "Sent";
   destructive?: boolean;
   disabled?: boolean;

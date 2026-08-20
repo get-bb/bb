@@ -14,6 +14,7 @@ import type {
 import { durationToCompactString } from "@bb/thread-view";
 import { useEffect, useState, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
+import Svg, { Circle } from "react-native-svg";
 import { useTheme } from "@/theme";
 import { cn, Icon, Spinner, Text, type IconName } from "@/ui";
 import {
@@ -454,7 +455,18 @@ export function ThreadModelFallbackCard({
   );
 }
 
-/** Compact "used / window" readout for the bottom bar. */
+/**
+ * Threshold (percent of the window) above which the composer shows the
+ * context ring. Below it the readout stays out of the way; the full numbers
+ * are in the accessibility label and in the thread menu's workspace info.
+ */
+export const CONTEXT_WINDOW_RING_THRESHOLD_PERCENT = 60;
+
+/**
+ * Small ring in the composer footer: appears only when the context window is
+ * filling up (≥ CONTEXT_WINDOW_RING_THRESHOLD_PERCENT), tinted by the usage
+ * tone. The full "used / window" readout lives in the accessibility label.
+ */
 export function ThreadContextWindowIndicator({
   usage,
 }: {
@@ -463,6 +475,7 @@ export function ThreadContextWindowIndicator({
   const { tokens } = useTheme();
   if (!usage) return null;
   const percent = calculateContextWindowUsagePercent(usage);
+  if (percent < CONTEXT_WINDOW_RING_THRESHOLD_PERCENT) return null;
   const tone = contextWindowTone(percent);
   const color =
     tone === "destructive"
@@ -470,24 +483,57 @@ export function ThreadContextWindowIndicator({
       : tone === "warning"
         ? tokens.warningText
         : tokens.mutedForeground;
+  const readout = `${formatCompactTokenCount(usage.usedTokens)} / ${formatCompactTokenCount(usage.modelContextWindow)}${usage.estimated ? " est." : ""}`;
   return (
     <View
-      className="flex-row items-center gap-1.5"
-      accessibilityLabel={`Context window ${percent}% used`}
+      className="h-10 items-center justify-center px-1"
+      accessible
+      accessibilityLabel={`Context window ${percent}% used, ${readout}`}
       testID="thread-context-window"
     >
-      <View
-        className="h-1.5 w-12 overflow-hidden rounded-full bg-border-hairline"
-        accessible={false}
-      >
-        <View
-          style={{ width: `${percent}%`, backgroundColor: color }}
-          className="h-full rounded-full"
-        />
-      </View>
-      <Text variant="chrome" style={{ color }}>
-        {`${formatCompactTokenCount(usage.usedTokens)} / ${formatCompactTokenCount(usage.modelContextWindow)}${usage.estimated ? " est." : ""}`}
-      </Text>
+      <ContextRing percent={percent} color={color} track={tokens.border} />
     </View>
+  );
+}
+
+const RING_SIZE = 18;
+const RING_STROKE = 2.5;
+
+function ContextRing({
+  percent,
+  color,
+  track,
+}: {
+  percent: number;
+  color: string;
+  track: string;
+}) {
+  const radius = (RING_SIZE - RING_STROKE) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.max(0, Math.min(100, percent));
+  return (
+    <Svg width={RING_SIZE} height={RING_SIZE}>
+      <Circle
+        cx={RING_SIZE / 2}
+        cy={RING_SIZE / 2}
+        r={radius}
+        stroke={track}
+        strokeWidth={RING_STROKE}
+        fill="none"
+      />
+      <Circle
+        cx={RING_SIZE / 2}
+        cy={RING_SIZE / 2}
+        r={radius}
+        stroke={color}
+        strokeWidth={RING_STROKE}
+        fill="none"
+        strokeDasharray={`${circumference} ${circumference}`}
+        strokeDashoffset={circumference * (1 - clamped / 100)}
+        strokeLinecap="round"
+        rotation={-90}
+        origin={`${RING_SIZE / 2}, ${RING_SIZE / 2}`}
+      />
+    </Svg>
   );
 }

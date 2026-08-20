@@ -13,7 +13,7 @@ import { useCreateProject } from "@/data/projects";
 import { useTheme } from "@/theme";
 import { Button, Icon, Input, ListRow, Text, toast, useSheet } from "@/ui";
 import { HostPicker, HostStatusDot, RemotePathBrowserSheet } from "../pickers";
-import { composeHref } from "../shell/hrefs";
+import { newThreadHref } from "../shell/hrefs";
 import { Screen } from "../shell/Screen";
 
 /**
@@ -91,7 +91,7 @@ function ConnectedNewProjectScreen() {
         source: { type: "local_path", hostId: host.id, path: normalizedPath },
       });
       toast.success(`Added ${project.name}`);
-      router.replace(composeHref({ projectId: project.id }));
+      router.navigate(newThreadHref({ projectId: project.id }));
     } catch {
       // The profile QueryClient's mutation error toast already reported it.
     }
