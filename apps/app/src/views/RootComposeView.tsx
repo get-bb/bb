@@ -2303,7 +2303,9 @@ function RootComposeSurface({
     ),
     banner: promptBanner,
     header: promptHeader,
-    externallyBlocked: isCodexCliVersionBlocked,
+    blockedReason: isCodexCliVersionBlocked
+      ? "Update the Codex CLI before starting a thread."
+      : undefined,
     resolveMentionLink,
     pluginComposerHost,
     textEffects: promptTextEffects,

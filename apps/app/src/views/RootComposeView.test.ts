@@ -17,7 +17,9 @@ import {
   hasPromptOptionValueChanged,
   mergeMissingPromptDraftAttachments,
   resolveNewThreadProjectDefaultsState,
+  resolveNewThreadSubmitDisabledReason,
   restorePromptDraftAfterOptionChange,
+  type ResolveNewThreadSubmitDisabledReasonArgs,
 } from "@/components/promptbox/NewThreadComposer";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { getProjectStoredPromptAttachmentPaths } from "@/lib/prompt-draft";
@@ -140,6 +142,109 @@ describe("resolveNewThreadProjectDefaultsState", () => {
         queryIsSuccess: true,
       }),
     ).toEqual({ status: "pending" });
+  });
+});
+
+describe("resolveNewThreadSubmitDisabledReason", () => {
+  const readyState = {
+    branchMutationBlockerTitle: null,
+    isCopyingAttachments: false,
+    isLoadingModels: false,
+    isResolvingInitialProvider: false,
+    isSubmitting: false,
+    isUploading: false,
+    managedWorktreeAvailabilityPending: false,
+    managedWorktreeUnavailableReason: null,
+    modelLoadError: null,
+    projectDefaultsStatus: "resolved",
+    projectDefaultsUnavailable: false,
+    promptInputEmpty: false,
+    providerDisplayName: "Codex",
+    selectedProviderId: "codex",
+    selectedThreadModel: "gpt-5.6-sol",
+    submissionEnvironmentUnavailable: false,
+  } satisfies ResolveNewThreadSubmitDisabledReasonArgs;
+
+  it.each<
+    [
+      label: string,
+      change: Partial<ResolveNewThreadSubmitDisabledReasonArgs>,
+      reason: string,
+    ]
+  >([
+    [
+      "provider resolution after a machine switch",
+      { isResolvingInitialProvider: true },
+      "Selecting a provider for the selected machine...",
+    ],
+    [
+      "model loading after a machine switch",
+      { isLoadingModels: true },
+      "Loading models from the selected machine...",
+    ],
+    [
+      "worktree validation after a machine switch",
+      { managedWorktreeAvailabilityPending: true },
+      "Checking worktree availability on the selected machine...",
+    ],
+    [
+      "provider setup failure",
+      {
+        modelLoadError: {
+          providerId: "codex",
+          code: "auth_required",
+        },
+      },
+      "Could not load models for Codex. Authentication is required.",
+    ],
+    [
+      "project-default failure",
+      {
+        projectDefaultsStatus: "error",
+        projectDefaultsUnavailable: true,
+      },
+      "Could not load the project's execution defaults.",
+    ],
+    [
+      "an incomplete environment selection",
+      { submissionEnvironmentUnavailable: true },
+      "Select an environment.",
+    ],
+    [
+      "an unavailable worktree",
+      {
+        managedWorktreeUnavailableReason:
+          "Project source has no commits. Create an initial commit before creating a worktree",
+      },
+      "Project source has no commits. Create an initial commit before creating a worktree",
+    ],
+    [
+      "a blocked branch checkout",
+      { branchMutationBlockerTitle: "Checkout blocked by uncommitted changes" },
+      "Checkout blocked by uncommitted changes",
+    ],
+    [
+      "an empty prompt",
+      { promptInputEmpty: true },
+      "Enter a prompt or attach a file.",
+    ],
+  ])("reports %s", (_label, change, reason) => {
+    expect(
+      resolveNewThreadSubmitDisabledReason({ ...readyState, ...change }),
+    ).toBe(reason);
+  });
+
+  it("returns no reason when every submission requirement is ready", () => {
+    expect(resolveNewThreadSubmitDisabledReason(readyState)).toBeNull();
+  });
+
+  it("allows a selected fallback model after a transient model-list failure", () => {
+    expect(
+      resolveNewThreadSubmitDisabledReason({
+        ...readyState,
+        modelLoadError: { providerId: "claude-code", code: "timeout" },
+      }),
+    ).toBeNull();
   });
 });
 

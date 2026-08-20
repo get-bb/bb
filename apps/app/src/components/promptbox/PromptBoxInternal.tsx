@@ -44,6 +44,12 @@ import { findActiveTrigger } from "@/components/promptbox/mentions/find-active-t
 import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { ComposerActionsSlot } from "@/components/plugin/PluginComposerActions";
 import { useResolvedComposerEditor } from "@/components/plugin/composer-slot-hooks";
 import {
@@ -211,10 +217,76 @@ function shouldFinishVoiceCompletionTransitionImmediately(): boolean {
 export interface PromptBoxSubmissionConfig {
   isSubmitting?: boolean;
   disabled?: boolean;
+  /** Explains why submission is disabled. Shown on hover and used as the action's accessible label. */
+  disabledReason?: string;
   title?: string;
   isRunning?: boolean;
   onStop?: () => void;
   onModifierSubmit?: () => void;
+}
+
+interface PromptSubmitButtonProps {
+  canSubmit: boolean;
+  className: string;
+  disabledReason: string | undefined;
+  isCompact: boolean;
+  isSubmitting: boolean;
+  isZenMode: boolean;
+  onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+  onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  title: string;
+}
+
+function PromptSubmitButton({
+  canSubmit,
+  className,
+  disabledReason,
+  isCompact,
+  isSubmitting,
+  isZenMode,
+  onClick,
+  onPointerDown,
+  title,
+}: PromptSubmitButtonProps) {
+  const button = (
+    <Button
+      data-promptbox-submit-action=""
+      type="submit"
+      size={isCompact ? "icon" : "sm"}
+      variant="default"
+      aria-label={title}
+      disabled={!canSubmit}
+      onPointerDown={onPointerDown}
+      onClick={onClick}
+      className={className}
+    >
+      {isSubmitting ? (
+        <Icon name="Spinner" className="size-4 animate-spin" />
+      ) : isZenMode ? (
+        <Icon name="ArrowUp" className="size-4" />
+      ) : (
+        <Icon name="CornerDownLeft" className="size-4" />
+      )}
+    </Button>
+  );
+
+  if (!disabledReason) return button;
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            data-promptbox-submit-disabled-reason=""
+            className="inline-flex shrink-0"
+          >
+            {button}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top">{disabledReason}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 /**
@@ -1175,6 +1247,7 @@ export function PromptBoxInternal({
   const {
     isSubmitting = false,
     disabled: submitDisabled = false,
+    disabledReason: submitDisabledReason,
     title: submitTitle = "Submit (Enter)",
     isRunning = false,
     onStop,
@@ -2679,9 +2752,13 @@ export function PromptBoxInternal({
     setVoiceActionTransition("exiting");
     voice?.cancel();
   }, [voice]);
-  const effectiveSubmitTitle = isZenMode
+  const actionSubmitTitle = isZenMode
     ? submitTitle.replace(/^Submit\s+/, "")
     : submitTitle;
+  const effectiveSubmitTitle =
+    !canSubmit && submitDisabledReason
+      ? submitDisabledReason
+      : actionSubmitTitle;
 
   const emitAttachmentFiles = useCallback(
     (files: File[]) => {
@@ -3493,15 +3570,8 @@ export function PromptBoxInternal({
                         <Icon name="Mic" className="size-4" />
                       </Button>
                     ) : (
-                      <Button
-                        data-promptbox-submit-action=""
-                        type="submit"
-                        size={showCompactLayout ? "icon" : "sm"}
-                        variant="default"
-                        aria-label={effectiveSubmitTitle}
-                        disabled={!canSubmit}
-                        onPointerDown={handleSubmitPointerDown}
-                        onClick={handleSubmitClick}
+                      <PromptSubmitButton
+                        canSubmit={canSubmit}
                         className={cn(
                           showCompactLayout
                             ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
@@ -3515,18 +3585,16 @@ export function PromptBoxInternal({
                           // stays pinned while the prompt height animates.
                           "transition-colors",
                         )}
-                      >
-                        {isSubmitting ? (
-                          <Icon
-                            name="Spinner"
-                            className="size-4 animate-spin"
-                          />
-                        ) : isZenMode ? (
-                          <Icon name="ArrowUp" className="size-4" />
-                        ) : (
-                          <Icon name="CornerDownLeft" className="size-4" />
-                        )}
-                      </Button>
+                        disabledReason={
+                          !canSubmit ? submitDisabledReason : undefined
+                        }
+                        isCompact={showCompactLayout}
+                        isSubmitting={isSubmitting}
+                        isZenMode={isZenMode}
+                        onPointerDown={handleSubmitPointerDown}
+                        onClick={handleSubmitClick}
+                        title={effectiveSubmitTitle}
+                      />
                     )}
                   </div>
                 </ComposerActionsSlot>

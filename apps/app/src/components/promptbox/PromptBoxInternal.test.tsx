@@ -1190,6 +1190,31 @@ describe("PromptBoxInternal controlled value sync", () => {
 });
 
 describe("PromptBoxInternal submit shortcuts", () => {
+  it("exposes the disabled submit reason as its label and hover tooltip", async () => {
+    const reason = "Loading models from the selected machine...";
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value: "Investigate this",
+          submission: { disabled: true, disabledReason: reason },
+        })}
+      />,
+    );
+
+    const submit = screen.getByRole("button", { name: reason });
+    expect(submit.hasAttribute("disabled")).toBe(true);
+
+    const tooltipTrigger = submit.closest(
+      "[data-promptbox-submit-disabled-reason]",
+    );
+    expect(tooltipTrigger).not.toBeNull();
+    fireEvent.pointerMove(tooltipTrigger!, { pointerType: "mouse" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("tooltip").textContent).toBe(reason);
+    });
+  });
+
   it("continues to submit unmodified Enter on a fine-pointer device", () => {
     const restoreMatchMedia = mockPointerCoarse(false);
     try {
