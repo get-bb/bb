@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
@@ -101,6 +101,7 @@ describe("task detail pull request pills", () => {
       app.navPanels[0]!,
       { subPath: "task/TSK-5" },
       {
+        openUrl: () => true,
         rpc: detailRpc({
           listTaskPullRequests: () => ({
             pullRequests: [
@@ -127,6 +128,11 @@ describe("task detail pull request pills", () => {
     expect(link.target).toBe("_blank");
     expect(link.rel).toContain("noopener");
     expect(link.textContent).toContain("#12");
+    fireEvent.click(link);
+    expect(slot.navigateCalls).toContainEqual({
+      method: "experimental_openUrl",
+      url: "https://github.com/acme/bb/pull/12",
+    });
   });
 
   it("marks threads whose PR lookup failed and stays quiet otherwise", async () => {

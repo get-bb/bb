@@ -63,13 +63,21 @@ describe("connect settings section", () => {
     const slot = renderSlot(
       app.settingsSections[0]!,
       {},
-      { rpc: { status: () => status({ dashboardUrl }) } },
+      {
+        openUrl: () => true,
+        rpc: { status: () => status({ dashboardUrl }) },
+      },
     );
 
     const link = (await slot.findByRole("link", {
       name: "Get a connect code",
     })) as HTMLAnchorElement;
     expect(link.href).toBe(dashboardUrl);
+    fireEvent.click(link);
+    expect(slot.navigateCalls).toContainEqual({
+      method: "experimental_openUrl",
+      url: dashboardUrl,
+    });
     slot.getByText("you.bb.localhost:42745");
     slot.getByText(/your bb\.localhost:42745 dashboard/);
   });

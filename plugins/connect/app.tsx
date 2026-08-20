@@ -8,7 +8,12 @@
 // (amber wash + dimmed body). Disconnect confirms in a dialog, then lands on
 // the unpaired card with a transient receipt.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { definePluginApp, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
+import {
+  definePluginApp,
+  experimental_UrlLink as UrlLink,
+  useRealtime,
+  useRpc,
+} from "@get-bb/plugin-sdk/app";
 import {
   encodeMobilePairingPayload,
   mobilePairingPayload,
@@ -300,7 +305,7 @@ function UrlHero({ url, showOpen }: { url: string; showOpen: boolean }) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "manual">(
     "idle",
   );
-  const urlRef = useRef<HTMLAnchorElement>(null);
+  const urlRef = useRef<HTMLSpanElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -337,15 +342,14 @@ function UrlHero({ url, showOpen }: { url: string; showOpen: boolean }) {
 
   return (
     <div className="flex max-w-xl items-center gap-1 rounded-lg border border-border bg-surface-recessed py-1 pl-3.5 pr-1">
-      <a
-        ref={urlRef}
+      <UrlLink
         href={url}
         target="_blank"
         rel="noreferrer"
         className="min-w-0 flex-1 truncate font-mono text-sm font-medium text-foreground no-underline hover:underline"
       >
-        {url}
-      </a>
+        <span ref={urlRef}>{url}</span>
+      </UrlLink>
       <Button
         type="button"
         variant="outline"
@@ -365,9 +369,9 @@ function UrlHero({ url, showOpen }: { url: string; showOpen: boolean }) {
       </Button>
       {showOpen ? (
         <Button type="button" variant="outline" size="sm" asChild>
-          <a href={url} target="_blank" rel="noreferrer">
+          <UrlLink href={url} target="_blank" rel="noreferrer">
             Open
-          </a>
+          </UrlLink>
         </Button>
       ) : null}
     </div>
@@ -501,14 +505,14 @@ function PairForm({
       {copy !== null ? (
         <div className="max-w-md rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive-text">
           {copy.lead}{" "}
-          <a
+          <UrlLink
             href={dashboardUrl}
             target="_blank"
             rel="noreferrer"
             className="font-semibold underline underline-offset-2"
           >
             {copy.linkLabel}
-          </a>
+          </UrlLink>
           {copy.tail}
         </div>
       ) : null}
@@ -751,14 +755,14 @@ function AddMobileDeviceSectionContent({
       {errorCode === "machine_limit" ? (
         <div className="max-w-md rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive-text">
           Your {dashboardHost} account has reached its machine limit.{" "}
-          <a
+          <UrlLink
             href={dashboardUrl}
             target="_blank"
             rel="noreferrer"
             className="font-semibold underline underline-offset-2"
           >
             Revoke a device you no longer use
-          </a>{" "}
+          </UrlLink>{" "}
           in the dashboard, then try again.
         </div>
       ) : errorCode !== null ? (
@@ -916,14 +920,14 @@ function SharedPortsSection({
                       </span>
                       {share.url ? (
                         <>
-                          <a
+                          <UrlLink
                             href={share.url}
                             target="_blank"
                             rel="noreferrer"
                             className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground underline-offset-2 hover:underline"
                           >
                             {hostOf(share.url)}
-                          </a>
+                          </UrlLink>
                           <QuietCopyButton
                             text={share.url}
                             label={`Copy share URL for port ${share.port}`}
@@ -1098,10 +1102,10 @@ function NotPairedContent({
             Get a one-time connect code from your {dashboardHost} dashboard.
           </p>
           <Button type="button" asChild>
-            <a href={dashboardUrl} target="_blank" rel="noreferrer">
+            <UrlLink href={dashboardUrl} target="_blank" rel="noreferrer">
               Get a connect code
               <Icon name="ExternalLink" className="size-3.5" />
-            </a>
+            </UrlLink>
           </Button>
         </div>
       </div>

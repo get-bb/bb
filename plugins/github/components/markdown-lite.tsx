@@ -5,6 +5,7 @@
 // markdown). Everything is built as React elements — img attributes are
 // extracted and whitelisted, so no HTML is ever injected.
 import { cn } from "@bb/shared-ui/lib/utils";
+import { experimental_UrlLink as UrlLink } from "@get-bb/plugin-sdk/app";
 
 const INLINE_PATTERN =
   // Image forms first: `![…](…)` must win over the link pattern (which
@@ -91,7 +92,7 @@ function renderInline(text: string): React.ReactNode[] {
       const label = token.slice(1, closeBracket);
       const href = token.slice(closeBracket + 2, -1);
       nodes.push(
-        <a
+        <UrlLink
           key={key++}
           href={href}
           target="_blank"
@@ -99,7 +100,7 @@ function renderInline(text: string): React.ReactNode[] {
           className="text-primary underline underline-offset-2"
         >
           {renderInline(label)}
-        </a>,
+        </UrlLink>,
       );
     }
     last = index + token.length;

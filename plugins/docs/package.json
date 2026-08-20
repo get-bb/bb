@@ -23,7 +23,7 @@
   ],
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.8"
+    "bbPluginSdk": ">=0.4.10"
   },
   "bb": {
     "name": "Docs",
