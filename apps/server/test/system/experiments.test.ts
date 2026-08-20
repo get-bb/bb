@@ -70,38 +70,6 @@ describe("experiments settings", () => {
     });
   });
 
-  it("preserves changelogPreview when an older client omits it", async () => {
-    await withTestHarness(async (harness) => {
-      const current = getExperiments(harness.db);
-      const enable = await harness.app.request("/api/v1/settings/experiments", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...current, changelogPreview: true }),
-      });
-      expect(enable.status).toBe(200);
-
-      const legacyPut = await harness.app.request(
-        "/api/v1/settings/experiments",
-        {
-          method: "PUT",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            claudeCodeMockCliTraffic: true,
-            editMessages: true,
-            newOnboarding: false,
-            providerSessionReaping: false,
-          }),
-        },
-      );
-      expect(legacyPut.status).toBe(200);
-      expect(experimentsSchema.parse(await readJson(legacyPut))).toEqual({
-        ...current,
-        changelogPreview: true,
-        claudeCodeMockCliTraffic: true,
-      });
-    });
-  });
-
   it("serves the current provider session policy to the daemon", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -120,6 +88,7 @@ describe("experiments settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          changelogPreview: false,
           claudeCodeMockCliTraffic: false,
           editMessages: true,
           mobileApp: false,
@@ -145,6 +114,7 @@ describe("experiments settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          changelogPreview: false,
           claudeCodeMockCliTraffic: false,
           editMessages: false,
           mobileApp: false,

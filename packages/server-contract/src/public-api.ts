@@ -7,7 +7,6 @@ import type {
   AppKeybindingOverrides,
   Environment,
   Experiments,
-  ExperimentsUpdate,
   Host,
   PendingInteraction,
   ProjectExecutionDefaults,
@@ -20,7 +19,7 @@ import {
   appSettingsSchema,
   appKeybindingOverridesSchema,
   appThemeSelectionSchema,
-  experimentsUpdateSchema,
+  experimentsSchema,
 } from "@bb/domain";
 import type {
   DiscoverReposResult,
@@ -1346,9 +1345,7 @@ export const publicApiRoutes = {
     experiments: defineRoute({
       path: "/settings/experiments",
       method: "put",
-      request: jsonRequest<EmptyInput, ExperimentsUpdate>(
-        experimentsUpdateSchema,
-      ),
+      request: jsonRequest<EmptyInput, Experiments>(experimentsSchema),
       response: jsonResponse<Experiments>(),
     }),
     appearance: defineRoute({
