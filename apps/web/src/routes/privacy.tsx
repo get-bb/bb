@@ -22,7 +22,7 @@ const PAGE_DESCRIPTION =
   "What bb collects, what stays on your own machines, and what bb connect can see.";
 
 const LAST_UPDATED = "August 20, 2026";
-const CONTACT_EMAIL = "privacy@getbb.app";
+const CONTACT_EMAIL = "sawyer@terragonlabs.com";
 
 export const Route = createFileRoute("/privacy")({
   head: () => ({
