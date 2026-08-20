@@ -2,6 +2,7 @@ import { Type, type TSchema } from "@earendil-works/pi-ai";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import {
   buildBridgeToolCallContent,
+  type BridgeToolCallContent,
   type BridgeToolCallImage,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 
@@ -16,6 +17,7 @@ export type ToolCallForwarder = (
   args: Record<string, unknown>,
 ) => Promise<{
   content: string;
+  contentBlocks?: BridgeToolCallContent[];
   images?: BridgeToolCallImage[];
   isError?: boolean;
 }>;
@@ -41,10 +43,14 @@ export function buildDynamicTools(
         _signal: AbortSignal | undefined,
       ) {
         const result = await forwardToolCall(def.name, params);
+        if (result.isError) {
+          // Pi marks a tool result as failed only when execute throws; an
+          // extra isError property on AgentToolResult is ignored.
+          throw new Error(result.content || "Tool call failed");
+        }
         return {
           content: buildBridgeToolCallContent(result),
           details: {},
-          ...(result.isError ? { isError: true } : {}),
         };
       },
     } as ToolDefinition;

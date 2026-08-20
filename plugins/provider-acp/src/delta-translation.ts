@@ -77,6 +77,8 @@ export interface AcpDeltaTranslationContext {
 
 const ASSISTANT_STREAM_KEY = "assistant";
 const THOUGHT_STREAM_KEY = "thought";
+const INLINE_IMAGE_DATA_URL_PATTERN =
+  /data:image\/[a-z0-9.+-]+(?:;[^,]*)?;base64,[a-z0-9+/_=-]+/giu;
 
 const ACP_PLAN_STEP_STATUS_BY_ENTRY_STATUS = {
   pending: "pending",
@@ -107,7 +109,12 @@ function extractAcpToolCallOutputText(
   if (event.rawOutput === undefined) {
     return undefined;
   }
-  const rawOutputText = extractResultText(event.rawOutput).trim();
+  // Some ACP agents echo MCP image results as data-URL attachments in
+  // rawOutput. Keep the useful envelope, but do not persist or render the
+  // potentially multi-megabyte payload in the thread timeline.
+  const rawOutputText = extractResultText(event.rawOutput)
+    .replace(INLINE_IMAGE_DATA_URL_PATTERN, "[image]")
+    .trim();
   return rawOutputText.length > 0 ? rawOutputText : undefined;
 }
 

@@ -112,7 +112,7 @@ export type {
 export {
   bashArgsSchema,
   bridgeRequestEnvelopeSchema,
-  buildBridgeToolCallContent,
+  buildBridgeToolCallContent as experimental_buildBridgeToolCallContent,
   buildShellEnvOverrides,
   createBridgeIo,
   createBridgeLineHandler,
@@ -144,8 +144,6 @@ export {
 } from "@bb/provider-bridge-protocol/bridge-kit";
 export type {
   BridgeJsonRpcResponse,
-  BridgeToolCallContent,
-  BridgeToolCallImage,
   BridgeToolCallRequest,
   BuildInteractiveResponseArgs,
   DecodedInteractiveRequest,

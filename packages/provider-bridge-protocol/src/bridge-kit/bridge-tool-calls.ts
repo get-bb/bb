@@ -132,7 +132,7 @@ export type BridgeToolCallContent =
   | { type: "text"; text: string }
   | { type: "image"; data: string; mimeType: string };
 
-const IMAGE_DATA_URL = /^data:([^;,]+);base64,(.*)$/s;
+const IMAGE_DATA_URL = /^data:(.+);base64,(.+)$/s;
 
 /**
  * Splits `data:<mime>;base64,<data>` into the parts a tool result carries.
@@ -154,36 +154,60 @@ function decodeImageDataUrl(imageUrl: string): BridgeToolCallImage | null {
 
 export function decodeToolCallResponsePayload(result: unknown): {
   content: string;
+  contentBlocks: BridgeToolCallContent[];
   images: BridgeToolCallImage[];
   isError: boolean;
 } {
   const parsed = providerToolCallResponseSchema.safeParse(result);
   if (!parsed.success) {
-    return { content: "OK", images: [], isError: false };
+    return {
+      content: "Invalid tool call response",
+      contentBlocks: [{ type: "text", text: "Invalid tool call response" }],
+      images: [],
+      isError: true,
+    };
   }
 
   const texts: string[] = [];
+  const contentBlocks: BridgeToolCallContent[] = [];
   const images: BridgeToolCallImage[] = [];
   for (const item of parsed.data.contentItems) {
     if (item.type === "inputText") {
       texts.push(item.text);
+      if (item.text !== "") {
+        contentBlocks.push({ type: "text", text: item.text });
+      }
       continue;
     }
     const image = decodeImageDataUrl(item.imageUrl);
     if (image === null) {
       texts.push(item.imageUrl);
+      contentBlocks.push({ type: "text", text: item.imageUrl });
       continue;
     }
     images.push(image);
+    contentBlocks.push({ type: "image", ...image });
   }
 
   const text = texts.join("\n");
+  const isError = !parsed.data.success;
+  if (contentBlocks.length === 0) {
+    const fallback = isError ? "Tool call failed" : "OK";
+    return {
+      content: fallback,
+      contentBlocks: [{ type: "text", text: fallback }],
+      images,
+      isError,
+    };
+  }
   return {
-    // "OK" stands in for an empty result, not for a dropped one: an image-only
-    // result says what happened through `images` and must not be relabelled.
-    content: text === "" && images.length === 0 ? "OK" : text,
+    // Keep the legacy aggregate fields for provider bridges that already use
+    // this published helper. New consumers use contentBlocks so interleaved
+    // text and images retain the plugin result's order.
+    content: text,
+    contentBlocks,
     images,
-    isError: !parsed.data.success,
+    isError,
   };
 }
 
@@ -193,8 +217,12 @@ export function decodeToolCallResponsePayload(result: unknown): {
  */
 export function buildBridgeToolCallContent(result: {
   content: string;
+  contentBlocks?: BridgeToolCallContent[];
   images?: BridgeToolCallImage[];
 }): BridgeToolCallContent[] {
+  if (result.contentBlocks !== undefined) {
+    return result.contentBlocks;
+  }
   const blocks: BridgeToolCallContent[] = [];
   if (result.content !== "") {
     blocks.push({ type: "text", text: result.content });

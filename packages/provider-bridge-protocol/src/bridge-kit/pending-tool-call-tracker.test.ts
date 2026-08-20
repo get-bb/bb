@@ -69,6 +69,7 @@ describe("createPendingToolCallTracker", () => {
     ).toBe(true);
     await expect(result).resolves.toEqual({
       content: "hello",
+      contentBlocks: [{ type: "text", text: "hello" }],
       images: [],
       isError: false,
     });
@@ -157,6 +158,7 @@ describe("createPendingToolCallTracker", () => {
     ).toBe(true);
     await expect(resultB).resolves.toEqual({
       content: "b",
+      contentBlocks: [{ type: "text", text: "b" }],
       images: [],
       isError: false,
     });

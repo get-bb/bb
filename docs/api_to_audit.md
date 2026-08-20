@@ -5,6 +5,18 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## `experimental_buildBridgeToolCallContent`
+
+**What it does.** Converts a decoded bb tool-call response into the ordered
+text and inline-image content blocks accepted by MCP and Pi tool result
+contracts. It preserves a legacy aggregate text/images input while first-party
+bridges migrate to ordered `contentBlocks`.
+
+**Audit before stabilizing.** Confirm that MCP and Pi continue sharing this
+content-block vocabulary; decide whether legacy aggregate fields still need to
+be accepted; and define any image MIME validation, decoding, or payload-size
+policy at the server boundary before making the helper stable.
+
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 
 **What it does.** Lets one plugin package declare a singular `bb.host` Node

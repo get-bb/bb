@@ -100,8 +100,10 @@ function notifications(method: string): BridgeJsonRpcOutputMessage[] {
  * assembler per call over the full ordered capture keeps ids deterministic.
  */
 function threadEvents(): Record<string, unknown>[] {
-  return assembleCapturedThreadEvents(output.messages, "acp") as unknown as
-    Record<string, unknown>[];
+  return assembleCapturedThreadEvents(
+    output.messages,
+    "acp",
+  ) as unknown as Record<string, unknown>[];
 }
 
 /** The delta kinds the bridge put on the wire, in emission order. */
@@ -1351,9 +1353,7 @@ describe("acp bridge", () => {
       projectSlug,
       "mcp-approvals.json",
     );
-    const approvals = JSON.parse(
-      readFileSync(approvalPath, "utf8"),
-    ) as unknown;
+    const approvals = JSON.parse(readFileSync(approvalPath, "utf8")) as unknown;
     expect(approvals).toEqual([
       expect.stringMatching(`^${ACP_BRIDGE_MCP_SERVER_NAME}-[a-f0-9]{16}$`),
     ]);
@@ -1450,6 +1450,7 @@ describe("acp bridge", () => {
 
     await expect(bridgeCall).resolves.toEqual({
       content: "environment directory updated",
+      contentBlocks: [{ type: "text", text: "environment directory updated" }],
       images: [],
       isError: false,
       ok: true,
@@ -2231,8 +2232,7 @@ describe("acp bridge", () => {
         return params.threadId === threadId &&
           Array.isArray(params.deltas) &&
           params.deltas.some(
-            (delta) =>
-              (delta as { kind?: unknown }).kind === "session.reset",
+            (delta) => (delta as { kind?: unknown }).kind === "session.reset",
           )
           ? [index]
           : [];

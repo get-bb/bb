@@ -151,14 +151,17 @@ describe("bb-bridge MCP server keeps long tool calls alive", () => {
     expect(fakeBridge.requests).toHaveLength(1);
   }, 20_000);
 
-  // The response above carries no `images` key, so it also pins that an older
-  // packaged bridge still decodes. This one carries an image-only result.
+  // The response above carries neither image field, pinning compatibility with
+  // the text-only socket shape. This one carries an image-only result.
   it("relays an image-only result as an MCP image block", async () => {
     const fakeBridge = await listenFakeBridge({
       responseDelayMs: 0,
       response: {
         ok: true,
         content: "",
+        contentBlocks: [
+          { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
+        ],
         images: [{ data: "iVBORw0KGgo=", mimeType: "image/png" }],
       },
     });

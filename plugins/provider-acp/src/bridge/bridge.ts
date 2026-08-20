@@ -29,7 +29,6 @@ import {
   runBridgeRequest,
   withoutBridgeRuntimeEnv,
   type BridgeJsonRpcResponse,
-  type BridgeToolCallImage,
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
@@ -45,6 +44,10 @@ import { createServer, type Server, type Socket } from "node:net";
 import { dirname, isAbsolute, basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+
+type DecodedToolCallResponse = ReturnType<typeof decodeToolCallResponsePayload>;
+type BridgeToolCallContent = DecodedToolCallResponse["contentBlocks"][number];
+type BridgeToolCallImage = DecodedToolCallResponse["images"][number];
 import {
   ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE,
   ACP_COMPACTION_COMPLETED_METHOD,
@@ -363,6 +366,7 @@ async function forwardDynamicToolCall(args: {
   | {
       ok: true;
       content: string;
+      contentBlocks: BridgeToolCallContent[];
       images: BridgeToolCallImage[];
       isError?: boolean;
     }

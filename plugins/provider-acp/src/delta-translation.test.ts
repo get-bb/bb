@@ -163,9 +163,11 @@ describe("acp delta translation (bridge-shared invariants)", () => {
     const startedItemId =
       startedEvents.find((event) => event.type === "item/started")?.type ===
       "item/started"
-        ? (startedEvents.find(
-            (event) => event.type === "item/started",
-          ) as Extract<ThreadEvent, { type: "item/started" }>).item.id
+        ? (
+            startedEvents.find(
+              (event) => event.type === "item/started",
+            ) as Extract<ThreadEvent, { type: "item/started" }>
+          ).item.id
         : "";
 
     const terminalEvents = harness.translate(
@@ -547,6 +549,38 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
         },
       },
     ]);
+  });
+
+  it("summarizes inline image attachments from raw tool output", () => {
+    const events = startedHarness().translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-image",
+        title: "Inspect image",
+        kind: "other",
+        status: "completed",
+        rawOutput: {
+          output: "",
+          attachments: [
+            {
+              url: "data:image/svg+xml;charset=utf-8;base64,PHN2Zy8+",
+              contentType: "image/svg+xml",
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "item/completed",
+      item: {
+        type: "toolCall",
+        result:
+          '{"output":"","attachments":[{"url":"[image]","contentType":"image/svg+xml"}]}',
+      },
+    });
+    expect(JSON.stringify(events)).not.toContain("PHN2Zy8+");
   });
 
   it("translates diff tool calls into file changes", () => {

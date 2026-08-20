@@ -16,7 +16,15 @@ describe("decodeToolCallResponsePayload", () => {
           { type: "inputText", text: "second" },
         ],
       }),
-    ).toEqual({ content: "first\nsecond", images: [], isError: false });
+    ).toEqual({
+      content: "first\nsecond",
+      contentBlocks: [
+        { type: "text", text: "first" },
+        { type: "text", text: "second" },
+      ],
+      images: [],
+      isError: false,
+    });
   });
 
   // The bug: an image-only result decoded to the literal "OK" with the image
@@ -31,6 +39,7 @@ describe("decodeToolCallResponsePayload", () => {
       }),
     ).toEqual({
       content: "",
+      contentBlocks: [{ type: "image", data: PNG, mimeType: "image/png" }],
       images: [{ data: PNG, mimeType: "image/png" }],
       isError: false,
     });
@@ -47,9 +56,30 @@ describe("decodeToolCallResponsePayload", () => {
       }),
     ).toEqual({
       content: "captured",
+      contentBlocks: [
+        { type: "text", text: "captured" },
+        { type: "image", data: PNG, mimeType: "image/jpeg" },
+      ],
       images: [{ data: PNG, mimeType: "image/jpeg" }],
       isError: false,
     });
+  });
+
+  it("preserves interleaved text and image order", () => {
+    const decoded = decodeToolCallResponsePayload({
+      success: true,
+      contentItems: [
+        { type: "inputImage", imageUrl: `data:image/png;base64,${PNG}` },
+        { type: "inputText", text: "between" },
+        { type: "inputImage", imageUrl: `data:image/jpeg;base64,${PNG}` },
+      ],
+    });
+
+    expect(buildBridgeToolCallContent(decoded)).toEqual([
+      { type: "image", data: PNG, mimeType: "image/png" },
+      { type: "text", text: "between" },
+      { type: "image", data: PNG, mimeType: "image/jpeg" },
+    ]);
   });
 
   it("reports an image result that failed as an error", () => {
@@ -75,6 +105,7 @@ describe("decodeToolCallResponsePayload", () => {
       }),
     ).toEqual({
       content: "https://example.com/a.png",
+      contentBlocks: [{ type: "text", text: "https://example.com/a.png" }],
       images: [],
       isError: false,
     });
@@ -90,6 +121,7 @@ describe("decodeToolCallResponsePayload", () => {
       }),
     ).toEqual({
       content: "data:image/png;base64,",
+      contentBlocks: [{ type: "text", text: "data:image/png;base64," }],
       images: [],
       isError: false,
     });
@@ -98,12 +130,43 @@ describe("decodeToolCallResponsePayload", () => {
   it("falls back to OK only when there is neither text nor image", () => {
     expect(
       decodeToolCallResponsePayload({ success: true, contentItems: [] }),
-    ).toEqual({ content: "OK", images: [], isError: false });
-    expect(decodeToolCallResponsePayload({ nope: true })).toEqual({
+    ).toEqual({
       content: "OK",
+      contentBlocks: [{ type: "text", text: "OK" }],
       images: [],
       isError: false,
     });
+  });
+
+  it("surfaces empty failures and malformed payloads as errors", () => {
+    expect(
+      decodeToolCallResponsePayload({ success: false, contentItems: [] }),
+    ).toEqual({
+      content: "Tool call failed",
+      contentBlocks: [{ type: "text", text: "Tool call failed" }],
+      images: [],
+      isError: true,
+    });
+    expect(decodeToolCallResponsePayload({ nope: true })).toEqual({
+      content: "Invalid tool call response",
+      contentBlocks: [{ type: "text", text: "Invalid tool call response" }],
+      images: [],
+      isError: true,
+    });
+  });
+
+  it("accepts MIME parameters in an inline image data URL", () => {
+    expect(
+      decodeToolCallResponsePayload({
+        success: true,
+        contentItems: [
+          {
+            type: "inputImage",
+            imageUrl: `data:image/svg+xml;charset=utf-8;base64,${PNG}`,
+          },
+        ],
+      }).images,
+    ).toEqual([{ data: PNG, mimeType: "image/svg+xml;charset=utf-8" }]);
   });
 });
 
@@ -126,6 +189,22 @@ describe("buildBridgeToolCallContent", () => {
     ).toEqual([
       { type: "text", text: "captured" },
       { type: "image", data: PNG, mimeType: "image/png" },
+    ]);
+  });
+
+  it("prefers ordered content blocks when present", () => {
+    expect(
+      buildBridgeToolCallContent({
+        content: "legacy text",
+        contentBlocks: [
+          { type: "image", data: PNG, mimeType: "image/png" },
+          { type: "text", text: "after" },
+        ],
+        images: [{ data: PNG, mimeType: "image/png" }],
+      }),
+    ).toEqual([
+      { type: "image", data: PNG, mimeType: "image/png" },
+      { type: "text", text: "after" },
     ]);
   });
 

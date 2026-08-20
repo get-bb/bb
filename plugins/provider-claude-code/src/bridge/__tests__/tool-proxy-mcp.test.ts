@@ -122,6 +122,13 @@ describe("buildBridgeMcpServer", () => {
       ],
       async () => ({
         content: "",
+        contentBlocks: [
+          {
+            type: "image" as const,
+            data: "iVBORw0KGgo=",
+            mimeType: "image/png",
+          },
+        ],
         images: [{ data: "iVBORw0KGgo=", mimeType: "image/png" }],
       }),
     );
