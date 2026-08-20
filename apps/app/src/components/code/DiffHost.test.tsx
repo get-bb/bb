@@ -3,7 +3,10 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PluginDiffRendererProps } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalDiffFullFileContents,
+  PluginDiffRendererProps,
+} from "@get-bb/plugin-sdk";
 import { defaultResolvedCodeTheme } from "@bb/domain";
 import { applyResolvedCodeTheme } from "@/lib/code-theme";
 import {
@@ -58,6 +61,29 @@ const PATCH = [
   "",
 ].join("\n");
 
+const FULL_FILE_CONTENTS = {
+  old: {
+    path: "src/app.ts",
+    content: [
+      "const a = 1;",
+      "const b = 2;",
+      "const c = 4;",
+      "const oldTail = true;",
+      "",
+    ].join("\n"),
+  },
+  new: {
+    path: "src/app.ts",
+    content: [
+      "const a = 1;",
+      "const b = 3;",
+      "const c = 4;",
+      "const newTail = true;",
+      "",
+    ].join("\n"),
+  },
+} satisfies ExperimentalDiffFullFileContents;
+
 function parseFixture() {
   const file = parseGitDiffFiles(PATCH)[0];
   if (file === undefined) throw new Error("fixture patch did not parse");
@@ -77,9 +103,7 @@ function registerDiffRenderer(
     sidebarFooterActions: [],
     fileOpeners: [],
     messageDirectives: [],
-    diffRenderers: [
-      { id: "diffs", title: "Demo diffs", component },
-    ],
+    diffRenderers: [{ id: "diffs", title: "Demo diffs", component }],
   });
 }
 
@@ -106,7 +130,12 @@ describe("DiffHost", () => {
     });
 
     render(
-      <DiffHost file={parseFixture()} patchText={PATCH} view="split" />,
+      <DiffHost
+        file={parseFixture()}
+        patchText={PATCH}
+        fullFileContents={null}
+        view="split"
+      />,
     );
 
     expect(await screen.findByTestId("plugin-diff")).toBeDefined();
@@ -128,6 +157,7 @@ describe("DiffHost", () => {
       <DiffHost
         file={parseFixture()}
         patchText={PATCH}
+        fullFileContents={FULL_FILE_CONTENTS}
         view="split"
         overflow="wrap"
         showLineNumbers={false}
@@ -142,6 +172,7 @@ describe("DiffHost", () => {
     expect(props?.view).toBe("split");
     expect(props?.overflow).toBe("wrap");
     expect(props?.showLineNumbers).toBe(false);
+    expect(props?.experimental_fullFileContents).toBe(FULL_FILE_CONTENTS);
     expect(Object.keys(props ?? {})).not.toContain("onSelectionAddToChat");
     expect(Object.keys(props ?? {})).not.toContain("file");
   });
@@ -152,7 +183,7 @@ describe("DiffHost", () => {
       return <div data-testid="plugin-diff">plugin diff</div>;
     });
 
-    render(<DiffHost file={parseFixture()} />);
+    render(<DiffHost file={parseFixture()} fullFileContents={null} />);
 
     await screen.findByTestId("plugin-diff");
     const patch = receivedProps.at(-1)?.patch ?? "";
@@ -173,7 +204,13 @@ describe("DiffHost", () => {
       path.endsWith(".ts") ? <Original /> : <div>plugin diff</div>,
     );
 
-    render(<DiffHost file={parseFixture()} patchText={PATCH} />);
+    render(
+      <DiffHost
+        file={parseFixture()}
+        patchText={PATCH}
+        fullFileContents={null}
+      />,
+    );
 
     expect(await screen.findByTestId("bb-diff")).toBeDefined();
     expect(bbDiff.loaded).toBe(true);
@@ -191,7 +228,11 @@ describe("DiffHost", () => {
 
     render(
       <JotaiProvider store={store}>
-        <DiffHost file={parseFixture()} patchText={PATCH} />
+        <DiffHost
+          file={parseFixture()}
+          patchText={PATCH}
+          fullFileContents={null}
+        />
       </JotaiProvider>,
     );
 
@@ -230,7 +271,11 @@ describe("DiffHost", () => {
 
     render(
       <JotaiProvider store={store}>
-        <DiffHost file={parseFixture()} patchText={PATCH} />
+        <DiffHost
+          file={parseFixture()}
+          patchText={PATCH}
+          fullFileContents={null}
+        />
       </JotaiProvider>,
     );
 
@@ -245,13 +290,19 @@ describe("DiffHost", () => {
       throw new Error("replacement exploded");
     });
 
-    render(<DiffHost file={parseFixture()} patchText={PATCH} />);
+    render(
+      <DiffHost
+        file={parseFixture()}
+        patchText={PATCH}
+        fullFileContents={null}
+      />,
+    );
 
     expect(await screen.findByTestId("bb-diff")).toBeDefined();
   });
 
   it("uses BB's renderer with resolved presentation defaults when nothing is registered", async () => {
-    render(<DiffHost file={parseFixture()} />);
+    render(<DiffHost file={parseFixture()} fullFileContents={null} />);
 
     await screen.findByTestId("bb-diff");
     expect(bbDiff.lastProps?.view).toBe("unified");
@@ -271,6 +322,7 @@ describe("experimental_Diff", () => {
 
     await screen.findByTestId("plugin-diff");
     expect(receivedProps.at(-1)?.path).toBe("src/app.ts");
+    expect(receivedProps.at(-1)?.experimental_fullFileContents).toBeNull();
     expect(bbDiff.loaded).toBe(false);
   });
 
@@ -294,6 +346,24 @@ describe("experimental_Diff", () => {
       true,
     );
     expect(patch).not.toContain("\r");
+  });
+
+  it("enriches BB's renderer with complete file contents for context expansion", async () => {
+    render(
+      <PluginDiff
+        patch={PATCH}
+        path="src/app.ts"
+        experimental_fullFileContents={FULL_FILE_CONTENTS}
+      />,
+    );
+
+    await screen.findByTestId("bb-diff");
+    const file = bbDiff.lastProps?.file as ReturnType<
+      typeof parseFixture
+    > | null;
+    expect(file?.isPartial).toBe(false);
+    expect(file?.additionLines).toContain("const newTail = true;\n");
+    expect(bbDiff.lastProps?.expansionLineCount).toBe(30);
   });
 
   it("degrades to plain text instead of an empty diff when the patch will not parse", () => {

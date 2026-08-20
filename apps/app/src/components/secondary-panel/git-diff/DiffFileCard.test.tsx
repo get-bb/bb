@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { PluginDiffRendererProps } from "@get-bb/plugin-sdk";
 import type { DiffFileEntry } from "@bb/server-contract";
 import type {
   DiffFileContentsResult,
@@ -186,6 +193,63 @@ describe("DiffFileCard", () => {
     expect(seen.at(-1)?.patch).toBe(TEXT_PATCH);
     expect(seen.at(-1)?.path).toBe("src/file.ts");
     expect(seen.at(-1)?.view).toBe("unified");
+  });
+
+  it("forwards lazily resolved text sides to a replacement renderer", async () => {
+    const seen: PluginDiffRendererProps["experimental_fullFileContents"][] = [];
+    setPluginSlotRegistrations("demo", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [],
+      threadPanelActions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+      diffRenderers: [
+        {
+          id: "diffs",
+          title: "Demo diffs",
+          component: ({ experimental_fullFileContents }) => {
+            seen.push(experimental_fullFileContents);
+            return <div data-testid="plugin-diff-body">plugin diff</div>;
+          },
+        },
+      ],
+    });
+    const onRequestFileContents = vi.fn<RequestDiffFileContents>(
+      async (path, side) => ({
+        kind: "text",
+        file: {
+          name: path,
+          contents:
+            side === "old"
+              ? "const b = 2;\nconst tail = true;\n"
+              : "const b = 3;\nconst tail = true;\n",
+        },
+      }),
+    );
+
+    renderCard({
+      entry: buildEntry(),
+      patchState: { status: "loaded", patch: TEXT_PATCH },
+      onRequestFileContents,
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Expand context" }),
+    );
+    await waitFor(() => {
+      expect(seen.at(-1)).toEqual({
+        old: {
+          path: "src/file.ts",
+          content: "const b = 2;\nconst tail = true;\n",
+        },
+        new: {
+          path: "src/file.ts",
+          content: "const b = 3;\nconst tail = true;\n",
+        },
+      });
+    });
   });
 
   it("falls back to the load gate when an image-looking path is not previewable", async () => {

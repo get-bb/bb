@@ -535,6 +535,7 @@ function TestDiff({
   view = "unified",
   overflow = "scroll",
   showLineNumbers = true,
+  experimental_fullFileContents,
   className,
 }: DiffProps) {
   return (
@@ -544,6 +545,9 @@ function TestDiff({
       data-view={view}
       data-overflow={overflow}
       data-show-line-numbers={showLineNumbers ? "true" : "false"}
+      data-has-full-file-contents={
+        experimental_fullFileContents === undefined ? "false" : "true"
+      }
       className={className}
     >
       {patch}

@@ -208,6 +208,20 @@ export interface SourceCodeLineRange {
   end: number;
 }
 
+/** One complete text side of a diff, resolved by the caller. */
+export interface ExperimentalDiffFileContent {
+  /** File path for this side. May differ between `old` and `new` for a rename. */
+  path: string;
+  /** Complete UTF-8 file contents, including unchanged lines outside the patch. */
+  content: string;
+}
+
+/** Complete text contents for both sides of a diff. */
+export interface ExperimentalDiffFullFileContents {
+  old: ExperimentalDiffFileContent;
+  new: ExperimentalDiffFileContent;
+}
+
 /**
  * Props of the host-owned `experimental_SourceCode` component — BB's source
  * viewer. The host owns syntax highlighting, gutters, wrapping, line-selection
@@ -234,8 +248,9 @@ export interface SourceCodeProps {
  * Props of the host-owned `experimental_Diff` component — BB's diff viewer.
  * The host owns patch normalization (a patch without a `diff --git` header is
  * completed from `path`), syntax highlighting, unified/split presentation,
- * gutters, line-selection presentation, and the live BB code theme. Content
- * that cannot be parsed as a patch degrades to plain monospace text.
+ * gutters, line-selection presentation, optional full-file context expansion,
+ * and the live BB code theme. Content that cannot be parsed as a patch
+ * degrades to plain monospace text.
  */
 export interface DiffProps {
   /** Unified patch text for exactly ONE file. */
@@ -252,6 +267,12 @@ export interface DiffProps {
   overflow?: CodeOverflowMode;
   /** Whether the gutter shows line numbers. Defaults to `true`. */
   showLineNumbers?: boolean;
+  /**
+   * Complete text for both file sides. When present and consistent with the
+   * patch, BB enables expand-context controls between hunks. The caller owns
+   * loading these contents; omit the field to render from the patch alone.
+   */
+  experimental_fullFileContents?: ExperimentalDiffFullFileContents;
   /** Applied to the renderer's root element. */
   className?: string;
 }
@@ -276,7 +297,8 @@ export interface PluginSourceCodeRendererProps {
 
 /**
  * Props passed to an `experimental_diffRenderer` component. `patch` is always
- * a complete single-file unified patch, whatever shape the caller supplied.
+ * a complete single-file unified patch, whatever shape the caller supplied,
+ * and optional full-file context is resolved to an object or `null`.
  */
 export interface PluginDiffRendererProps {
   patch: string;
@@ -284,6 +306,11 @@ export interface PluginDiffRendererProps {
   view: DiffViewMode;
   overflow: CodeOverflowMode;
   showLineNumbers: boolean;
+  /**
+   * Complete resolved text for both sides, or `null` when the caller supplied
+   * only the patch. A replacement can use this to implement context expansion.
+   */
+  experimental_fullFileContents: ExperimentalDiffFullFileContents | null;
   /**
    * BB's diff renderer, bound to this request. Render it to delegate
    * conditionally without re-entering plugin replacement resolution.
@@ -1852,8 +1879,9 @@ export interface PluginSdkApp {
   experimental_SourceCode: ComponentType<SourceCodeProps>;
   /**
    * The host-owned diff viewer (see {@link DiffProps}). Renders supplied patch
-   * content with BB's normalization, syntax highlighting, unified/split
-   * presentation, and live code theme, and honours an active
+   * content with BB's normalization, optional full-file context expansion,
+   * syntax highlighting, unified/split presentation, and live code theme, and
+   * honours an active
    * `experimental_diffRenderer` replacement. Experimental: see
    * docs/api_to_audit.md.
    */

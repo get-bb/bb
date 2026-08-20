@@ -579,7 +579,10 @@ class-variance-authority libraries are runtime-shimmed (never bundled) —
 though source and diffs should go through the host's own
 experimental_SourceCode / experimental_Diff components rather than
 @pierre/diffs directly, so bb owns patch normalization, syntax
-highlighting, and the live code theme.
+highlighting, and the live code theme. A Diff caller that has loaded complete
+old/new UTF-8 file contents can pass them through
+`experimental_fullFileContents` to enable
+expand-context controls without exposing Pierre types.
 Everything else (zod included) bundles from the plugin's node_modules (`npm install` for authors; BB installs
 release packages with their declared production dependencies). A crashing slot collapses to a
 "plugin <id> crashed" chip without

@@ -1802,7 +1802,10 @@ projectId }` (nullable fields) and `path` follows the source (workspace:
   belongs in the component. Source props:
   `{ content, path, overflow, highlightedLines, experimental_Original }`;
   diff props:
-  `{ patch, path, view, overflow, showLineNumbers, experimental_Original }`.
+  `{ patch, path, view, overflow, showLineNumbers, experimental_fullFileContents,
+experimental_Original }`. `experimental_fullFileContents` is either
+  `{ old: { path, content }, new: { path, content } }` or `null`; a replacement
+  can use those complete UTF-8 sides to implement context expansion.
   Every value is already resolved. Render `experimental_Original` (bb's
   renderer, bound to this call) to delegate without re-entering resolution —
   behind a plugin setting, by language, over a size threshold:
@@ -1918,12 +1921,17 @@ className?, leadingContent?, messageActions? }` —
   and `highlightedLines` is a 1-based inclusive `{ start, end }` (default
   null). bb owns syntax highlighting, gutters, and the live code theme.
 - `experimental_Diff` — bb's diff viewer. Props:
-  `{ patch, path, view?, overflow?, showLineNumbers?, className? }` —
+  `{ patch, path, view?, overflow?, showLineNumbers?, experimental_fullFileContents?,
+className? }` —
   `patch` is a unified patch for exactly ONE file and `view` is `"unified"`
   (default) or `"split"`. bb normalizes the patch, so a GitHub REST patch or
   a bare `@@` hunk works without synthesizing a `diff --git` header
-  yourself; unparseable content degrades to plain monospace text. Reference:
-  `plugins/github/app.tsx`.
+  yourself; unparseable content degrades to plain monospace text.
+  `experimental_fullFileContents` is
+  `{ old: { path, content }, new: { path, content } }`; when supplied and
+  consistent with the patch, bb enables expand-context controls between
+  hunks. The caller owns loading those complete UTF-8 sides and omits the prop
+  while it has only the patch. Reference: `plugins/github/app.tsx`.
 
   Alias both on import — JSX reads a lowercase-initial name as an intrinsic
   element:

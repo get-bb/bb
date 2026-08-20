@@ -65,9 +65,9 @@ export interface BbDiffProps extends DiffPresentation {
   className?: string;
   /**
    * How many unchanged lines each expand-context click reveals. Set ONLY by a
-   * caller that can attach full file contents to `file`: pierre renders an
-   * empty diff when it is given an expansion budget for a hunk-only patch,
-   * which is what the timeline supplies.
+   * host that received complete file contents and a successfully enriched
+   * `file`: pierre renders an empty diff when it is given an expansion budget
+   * for a hunk-only patch, which is what the timeline supplies.
    */
   expansionLineCount?: number;
   onSelectionAddToChat?: (text: string) => void;

@@ -924,11 +924,14 @@ files, thread-storage files, and project files that use the primary host.
 **What it does.** Two host-owned renderers for supplied code content.
 `experimental_SourceCode` takes source text plus a path and owns syntax
 highlighting, gutters, wrapping, highlighted-line presentation, and the live BB
-code theme. `experimental_Diff` takes a single-file patch plus a path and owns
-patch normalization (a patch without a `diff --git` header is completed from
-`path`, which is what makes GitHub's REST patches and bare `@@` hunks render),
+code theme. `experimental_Diff` takes a single-file patch plus a path and
+optional `experimental_fullFileContents` for both text sides, and owns patch normalization
+(a patch without a `diff --git` header is completed from `path`, which is what
+makes GitHub's REST patches and bare `@@` hunks render), context enrichment,
 syntax highlighting, unified/split presentation, gutters, and the same live
-theme. Patch content that will not parse degrades to plain monospace text.
+theme. Patch content that will not parse degrades to plain monospace text. The
+caller still owns loading file contents; omission means a patch-only render
+without context expansion.
 
 These are the same components BB's own file preview, timeline file diffs, and
 environment diff panel render through, so an active
@@ -939,8 +942,9 @@ behavior deliberately stay with the caller.
 
 **Audit before stabilizing.**
 
-1. **Prop surface.** Confirm content + path + presentation is the right minimal
-   contract, and decide whether `className` belongs in it at all — a
+1. **Prop surface.** Confirm content + path + presentation plus optional full
+   diff sides is the right minimal contract, and decide whether `className`
+   belongs in it at all — a
    replacement never receives it today, so a `className` that only styles BB's
    renderer is a quiet inconsistency.
 2. **Diff input shape.** Confirm single-file patch text is the right currency.
@@ -959,6 +963,12 @@ behavior deliberately stay with the caller.
    that through `useComposer()` rather than a renderer prop.
 6. **Size and virtualization.** Neither component caps input size or
    virtualizes. Audit against a plugin that renders a very large file or patch.
+7. **Resolved (Aug 2026): context expansion takes resolved semantic data, not
+   a loader callback.** `experimental_fullFileContents` carries required `old` and `new`
+   `{ path, content }` objects. This keeps lazy loading, retries, and viewport
+   policy with the caller while letting BB's renderer and a replacement consume
+   complete UTF-8 sides without exposing Pierre's `FileContents` type. A
+   replacement always receives the resolved field as an object or `null`.
 
 ## `app.slots.experimental_sourceCodeRenderer` / `app.slots.experimental_diffRenderer` (`@get-bb/plugin-sdk/app`)
 
@@ -1005,10 +1015,11 @@ is temporarily unavailable renders BB's renderer without erasing the pin.
    its users out. No first-party-only or own-surfaces-only scope. Audit this as
    precedent rather than as a fact about these two slots: no other slot lets a
    plugin reach into another plugin's rendered output.
-4. **Capability parity.** A replacement cannot implement context expansion,
-   selection-to-chat, or the deleted-file gate, because those inputs are
-   host-only. Confirm that asymmetry is acceptable, or promote the ones that
-   should be part of the contract.
+4. **Capability parity. Resolved for context expansion (Aug 2026):** a
+   replacement receives `experimental_fullFileContents` as an object or `null`, matching the
+   public host component and first-party diff cards. Selection-to-chat and the
+   deleted-file gate remain host-only; confirm that remaining asymmetry is
+   acceptable, or promote either capability before stabilization.
 5. **Two slots or one.** Confirm source and diff should stay separately
    replaceable rather than one "code renderer" registration.
 

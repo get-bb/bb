@@ -1,4 +1,5 @@
 import { Suspense, lazy, useMemo, type ReactNode } from "react";
+import type { ExperimentalDiffFullFileContents } from "@get-bb/plugin-sdk";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
 import type { ParsedGitDiffFile } from "@/components/git-diff/git-diff-parsing";
 import { buildFileDiffPatchText } from "@/components/git-diff/git-diff-patch-text";
@@ -14,11 +15,14 @@ const DIFF_RENDERER_SLOT_KIND = "diffRenderer";
 
 const BbDiff = lazy(() => import("./BbDiff"));
 
+/** Unchanged lines revealed by one built-in expand-context action. */
+const DEFAULT_DIFF_EXPANSION_LINE_COUNT = 30;
+
 interface DiffHostProps extends Partial<DiffPresentation> {
   /**
    * The parsed diff to render. Callers parse it anyway for their own header,
-   * and the diff panel additionally enriches it with full file contents so the
-   * renderer can expand context between hunks.
+   * and callers with full file contents additionally enrich it so the renderer
+   * can expand context between hunks.
    */
   file: ParsedGitDiffFile;
   /**
@@ -27,13 +31,9 @@ interface DiffHostProps extends Partial<DiffPresentation> {
    * reconstructs an equivalent single-file patch from `file`.
    */
   patchText?: string;
+  /** Resolved semantic context forwarded to renderer replacements. */
+  fullFileContents: ExperimentalDiffFullFileContents | null;
   className?: string;
-  /**
-   * Forwarded to BB's renderer; see {@link BbDiffProps.expansionLineCount}.
-   * Never reaches a plugin replacement — context expansion is a BB renderer
-   * capability, not part of the semantic contract.
-   */
-  expansionLineCount?: number;
   /** Rendered while BB's renderer chunk loads. */
   fallback?: ReactNode;
   onSelectionAddToChat?: (text: string) => void;
@@ -45,6 +45,8 @@ interface DiffHostProps extends Partial<DiffPresentation> {
  * the environment diff panel's file bodies — and every plugin that calls
  * `experimental_Diff` renders through here, so one
  * `experimental_diffRenderer` registration replaces them all at once.
+ * Resolved full-file text is semantic input: the built-in renderer uses the
+ * enriched parsed file, while a replacement receives the plain text sides.
  *
  * BB's own renderer sits behind `lazy()`. A plugin replacement that never
  * delegates therefore never downloads it, and `experimental_Original` costs
@@ -53,11 +55,11 @@ interface DiffHostProps extends Partial<DiffPresentation> {
 export function DiffHost({
   file,
   patchText,
+  fullFileContents,
   view = DEFAULT_DIFF_VIEW,
   overflow = DEFAULT_CODE_OVERFLOW,
   showLineNumbers = true,
   className,
-  expansionLineCount,
   fallback = null,
   onSelectionAddToChat,
 }: DiffHostProps) {
@@ -66,8 +68,7 @@ export function DiffHost({
   // Only reconstructed when a replacement will actually read it: the walk is
   // proportional to the rendered hunks, and BB's own renderer never needs it.
   const semanticPatch = useMemo(
-    () =>
-      isReplaced ? (patchText ?? buildFileDiffPatchText(file)) : "",
+    () => (isReplaced ? (patchText ?? buildFileDiffPatchText(file)) : ""),
     [file, isReplaced, patchText],
   );
 
@@ -79,7 +80,11 @@ export function DiffHost({
         overflow={overflow}
         showLineNumbers={showLineNumbers}
         className={className}
-        expansionLineCount={expansionLineCount}
+        expansionLineCount={
+          fullFileContents !== null && file.isPartial === false
+            ? DEFAULT_DIFF_EXPANSION_LINE_COUNT
+            : undefined
+        }
         onSelectionAddToChat={onSelectionAddToChat}
       />
     </Suspense>
@@ -99,6 +104,7 @@ export function DiffHost({
             view={view}
             overflow={overflow}
             showLineNumbers={showLineNumbers}
+            experimental_fullFileContents={fullFileContents}
             experimental_Original={BoundOriginal}
           />
         </div>
