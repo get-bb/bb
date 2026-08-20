@@ -252,15 +252,22 @@ jobs:
         run: |
           set -x
           mkdir -p e2e-artifacts
-          pnpm exec turbo run e2e:mobile-backend --filter=@bb/integration-tests --output-logs=full > e2e-artifacts/backend.log 2>&1 &
+          # `--log-order=stream` because turbo groups task output in CI and
+          # only flushes it when the task ends — a persistent task would keep
+          # its readiness line buffered forever.
+          pnpm exec turbo run e2e:mobile-backend --filter=@bb/integration-tests --output-logs=full --log-order=stream > e2e-artifacts/backend.log 2>&1 &
           echo $! > e2e-artifacts/backend.pid
+          # The server listens (and answers /health) before it finishes seeding
+          # the project and threads the flows look for; the details JSON line is
+          # printed once seeding is done, so that is the readiness signal.
+          #
           # `$!` is the `pnpm exec` wrapper, which exits on macOS while turbo
           # and the backend keep running, so its death alone does not mean the
           # backend died — only give up when the backend process is gone too.
-          healthy=0
+          ready=0
           for _ in $(seq 1 240); do
-            if curl -fsS "http://127.0.0.1:$BB_MOBILE_E2E_PORT/health" >/dev/null 2>&1; then
-              healthy=1
+            if grep -q '"serverUrl"' e2e-artifacts/backend.log 2>/dev/null; then
+              ready=1
               break
             fi
             if ! kill -0 "$(cat e2e-artifacts/backend.pid)" 2>/dev/null &&
@@ -269,13 +276,13 @@ jobs:
             fi
             sleep 2
           done
-          if [ "$healthy" != "1" ]; then
-            echo "backend did not answer /health in time"
+          if [ "$ready" != "1" ]; then
+            echo "backend did not finish seeding in time"
             cat e2e-artifacts/backend.log
             exit 1
           fi
+          grep -m1 '"serverUrl"' e2e-artifacts/backend.log
           curl -fsS "http://127.0.0.1:$BB_MOBILE_E2E_PORT/health"
-          grep -m1 '"serverUrl"' e2e-artifacts/backend.log || (cat e2e-artifacts/backend.log; exit 1)
 
       - name: Run Maestro flows
         env:
