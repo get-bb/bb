@@ -11,6 +11,7 @@ import {
 // render the same form. Re-exported here so the plugin's own modules keep one
 // import path; the tool input/result shapes below stay plugin-private.
 export {
+  ASK_USER_QUESTION_RENDERER_ID,
   MAX_FREE_TEXT_LENGTH,
   MAX_OPTION_PREVIEW_LENGTH,
   MAX_OPTIONS,

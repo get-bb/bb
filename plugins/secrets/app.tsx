@@ -13,6 +13,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
+  SECRET_REQUEST_RENDERER_ID,
   secretRequestPayloadSchema,
   secretRequestResponseSchema,
 } from "./src/contracts.js";
@@ -216,7 +217,7 @@ function SecretRequestInteraction({
 
 export default definePluginApp((app) => {
   app.slots.pendingInteraction({
-    id: "secret-request",
+    id: SECRET_REQUEST_RENDERER_ID,
     component: SecretRequestInteraction,
   });
 });

@@ -3,6 +3,7 @@
 // React DOM bundle (the native app) can render the same secure form.
 // Re-exported here so the plugin's own modules keep one import path.
 export {
+  SECRET_REQUEST_RENDERER_ID,
   secretNameSchema,
   secretRequestPayloadSchema,
   secretRequestResponseSchema,

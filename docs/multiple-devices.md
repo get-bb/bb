@@ -101,7 +101,7 @@ the account's machine slots, so a machine-limit error means an unused device
 should be revoked first. On a trusted network the app can also use a direct
 server URL (Tailscale Serve or `--server-bind-host 0.0.0.0`) with the same
 caveats as a browser. Platforms (iOS first) and what the phone cannot do are
-listed in [platform-support.md](platform-support.md#mobile-app).
+listed in [platform-support.md](platform-support.md).
 
 ## Point the desktop app at another bb
 

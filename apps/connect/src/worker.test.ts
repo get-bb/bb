@@ -717,24 +717,9 @@ describe("bb mobile app-link association files", () => {
     },
   );
 
-  it("serves the AASA on share hosts and labels that do not resolve (Apple fetches anonymously)", async () => {
+  it("serves the AASA on bare labels that do not resolve yet (Apple fetches anonymously before a claim)", async () => {
     mockResolveLabel.mockResolvedValue(null);
     const { env, ctx, captured } = makeEnv(() => new Response("origin"));
-    const share = await worker.fetch(
-      visitorRequest(
-        "sawyer--8000.getbb.app",
-        "/.well-known/apple-app-site-association",
-      ),
-      env as never,
-      ctx,
-    );
-    expect(share.status).toBe(200);
-    const body = (await share.json()) as {
-      applinks: { details: { appIDs: string[] }[] };
-    };
-    expect(body.applinks.details[0]?.appIDs).toEqual([
-      "9QCU24SXK5.app.getbb.mobile",
-    ]);
     const unknown = await worker.fetch(
       visitorRequest(
         "nobody-here.getbb.app",
@@ -744,8 +729,34 @@ describe("bb mobile app-link association files", () => {
       ctx,
     );
     expect(unknown.status).toBe(200);
+    const body = (await unknown.json()) as {
+      applinks: { details: { appIDs: string[] }[] };
+    };
+    expect(body.applinks.details[0]?.appIDs).toEqual([
+      "9QCU24SXK5.app.getbb.mobile",
+    ]);
     expect(captured).toHaveLength(0);
   });
+
+  it.each([
+    "/.well-known/apple-app-site-association",
+    "/.well-known/assetlinks.json",
+  ])(
+    "does not claim %s on share hosts — they front arbitrary local apps, so the file falls through to the session gate",
+    async (path) => {
+      const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+      const share = await worker.fetch(
+        visitorRequest("sawyer--8000.getbb.app", path),
+        env as never,
+        ctx,
+      );
+      // Anonymous (Apple CDN / Android) fetch → 401 sign-in page, i.e. no
+      // association for `<label>--<port>` hosts; never proxied without a session.
+      expect(share.status).toBe(401);
+      expect(share.headers.get("content-type")).not.toBe("application/json");
+      expect(captured).toHaveLength(0);
+    },
+  );
 
   it("reads Android fingerprints from the env and serves an empty list otherwise", async () => {
     const { env, ctx } = makeEnv(() => new Response("origin"));

@@ -17,6 +17,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
+  ASK_USER_QUESTION_RENDERER_ID,
   interactionPayloadSchema,
   type InteractionOption,
   type InteractionQuestion,
@@ -560,7 +561,7 @@ function AskUserQuestionInteraction({
 
 export default definePluginApp((app) => {
   app.slots.pendingInteraction({
-    id: "ask-user-question",
+    id: ASK_USER_QUESTION_RENDERER_ID,
     component: AskUserQuestionInteraction,
   });
 });

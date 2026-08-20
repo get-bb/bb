@@ -11,6 +11,13 @@
 //
 // The iOS Simulator shares the Mac loopback, so the app can use
 // http://127.0.0.1:<port> directly. The Android emulator uses 10.0.2.2.
+//
+// SECURITY: BB_MOBILE_E2E_BIND_HOST=0.0.0.0 exposes the unauthenticated
+// harness server and a real host daemon (terminal sessions and file reads as
+// your user) to everyone on the network, the same exposure as
+// `bb --server-bind-host 0.0.0.0`. Use it only on a trusted network and stop
+// the backend when you are done.
+import { networkInterfaces } from "node:os";
 import { createFakeAdapter } from "@bb/agent-runtime/test";
 import type { PendingInteraction } from "@bb/domain";
 import { createIntegrationHarness } from "../helpers/harness.js";
@@ -43,6 +50,34 @@ function readBindHost(): "127.0.0.1" | "0.0.0.0" {
   if (raw === undefined || raw === "127.0.0.1") return "127.0.0.1";
   if (raw === "0.0.0.0") return "0.0.0.0";
   throw new Error(`Invalid BB_MOBILE_E2E_BIND_HOST: ${raw}`);
+}
+
+/** Non-internal IPv4 addresses a phone on the same network could reach. */
+function listLanIpv4Addresses(): string[] {
+  return Object.values(networkInterfaces())
+    .flatMap((entries) => entries ?? [])
+    .filter((entry) => entry.family === "IPv4" && !entry.internal)
+    .map((entry) => entry.address);
+}
+
+/** Mirrors the server's wildcard-bind warning (apps/server start-server). */
+function warnWildcardBind(port: number): void {
+  const lanUrls = listLanIpv4Addresses().map(
+    (address) => `http://${address}:${port}`,
+  );
+  process.stderr.write(
+    [
+      "mobile-e2e backend: SECURITY WARNING: binding on 0.0.0.0. The harness",
+      "server is unauthenticated and runs a real host daemon that permits",
+      "command execution (terminal sessions) and file reads as your user.",
+      "Use BB_MOBILE_E2E_BIND_HOST=0.0.0.0 only behind a trusted network",
+      "boundary and stop the backend when you are done.",
+    ].join(" ") +
+      "\n" +
+      (lanUrls.length > 0
+        ? `mobile-e2e backend: point the phone at ${lanUrls.join(" or ")}\n`
+        : ""),
+  );
 }
 
 const TURN_TIMEOUT_MS = 15_000;
@@ -156,11 +191,14 @@ const LONG_MARKDOWN_MESSAGE = [
 ].join("\n");
 
 async function main(): Promise<void> {
+  const bindHost = readBindHost();
+  const serverPort = readPort();
+  if (bindHost === "0.0.0.0") warnWildcardBind(serverPort);
   const harness = await createIntegrationHarness({
     adapterFactory: () =>
       createFakeAdapter({ supportsNativeUserQuestion: true }),
-    bindHost: readBindHost(),
-    serverPort: readPort(),
+    bindHost,
+    serverPort,
   });
 
   const shutdown = async (signal: string) => {

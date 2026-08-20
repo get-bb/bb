@@ -295,19 +295,24 @@ export default {
     if (url.pathname === "/api/connect/machine-label") {
       return handleAssignMachineLabel(request, env);
     }
-    // bb mobile universal / app links: Apple's CDN and Android fetch the
-    // association files anonymously from `https://<label>.getbb.app`, so
-    // they are answered here for every host — before label resolution and
-    // the session gate, never proxied to the tunnel, never redirected.
-    const appLinks = handleAppLinkAssociationRequest(
-      { method: request.method, url: url.toString() },
-      env,
-    );
-    if (appLinks) return appLinks;
-
     const host = resolveConnectRequestHost(request.headers, runtime);
     const parsed = parseVisitorHost(host, env.BASE_DOMAIN);
     if (!parsed) return text("bb connect: unknown host\n", 404);
+    // bb mobile universal / app links: Apple's CDN and Android fetch the
+    // association files anonymously from `https://<label>.getbb.app`, so
+    // bare labels answer here — before label resolution (Apple may fetch
+    // before the label is claimed) and the session gate, never proxied to
+    // the tunnel, never redirected. Share hosts (`<label>--<port>`) front
+    // arbitrary local apps, not a bb server, so they must not claim
+    // `/threads/*` & co for the app: they fall through to the normal gate
+    // like any other path (401 for Apple's anonymous fetch → no association).
+    if (parsed.target === null) {
+      const appLinks = handleAppLinkAssociationRequest(
+        { method: request.method, url: url.toString() },
+        env,
+      );
+      if (appLinks) return appLinks;
+    }
     // The base label is now ANY server's subdomain (the account handle names the
     // primary bb; additional bbs claim their own labels), not just a profile
     // handle. `target` (a port) rides along for share hosts, nested per-bb.

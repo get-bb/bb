@@ -20,17 +20,23 @@ describe("app link association files", () => {
     expect(response?.status).toBe(200);
     expect(response?.headers.get("content-type")).toBe("application/json");
     const body = (await response?.json()) as {
-      applinks: {
-        details: { appIDs: string[]; paths: string[]; components: unknown[] }[];
+      applinks: Record<string, unknown> & {
+        details: Record<string, unknown>[];
       };
     };
-    expect(body.applinks.details[0]?.appIDs).toEqual([BB_MOBILE_IOS_APP_ID]);
-    expect(body.applinks.details[0]?.paths).toEqual([
-      "/threads/*",
-      "/projects/*",
-      "/settings/*",
+    // Modern form only: Apple TN3155 warns against mixing `appIDs`/`components`
+    // with the legacy `appID`/`paths` keys.
+    expect(body.applinks.details).toEqual([
+      {
+        appIDs: [BB_MOBILE_IOS_APP_ID],
+        components: [
+          { "/": "/threads/*" },
+          { "/": "/projects/*" },
+          { "/": "/settings/*" },
+        ],
+      },
     ]);
-    expect(body.applinks.details[0]?.components).toHaveLength(3);
+    expect(Object.keys(body.applinks)).toEqual(["details"]);
   });
 
   it("serves assetlinks.json with the fingerprints from the env (empty when unset)", async () => {

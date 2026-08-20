@@ -1,8 +1,10 @@
 // bb mobile app-link association files (iOS universal links, Android app
-// links). Served unauthenticated from every `<label>.getbb.app` by the connect
-// gate (before the session check) and from the apex by bb-web, so a
+// links). Served unauthenticated from every bare `<label>.getbb.app` by the
+// connect gate (before the session check) and from the apex by bb-web, so a
 // `https://<handle>.getbb.app/threads/<id>` link opens the app when it is
-// installed. Single source of truth for the app ids and the path allowlist.
+// installed. Share hosts (`<label>--<port>.getbb.app`) front arbitrary local
+// apps, not a bb server, so the gate does not answer there. Single source of
+// truth for the app ids and the path allowlist.
 
 /** Apple team id + iOS bundle id of the bb mobile app. */
 export const BB_MOBILE_IOS_APP_ID = "9QCU24SXK5.app.getbb.mobile";
@@ -26,18 +28,17 @@ export const ANDROID_ASSET_LINKS_PATH = "/.well-known/assetlinks.json";
 
 /**
  * `https://developer.apple.com/documentation/xcode/supporting-associated-domains`
- * — the modern `components` form plus the legacy `paths` array for older
- * iOS versions. Served as `application/json` with no redirects.
+ * — the modern `appIDs` + `components` form only. Apple TN3155 says not to
+ * mix it with the legacy `appID` + `paths` keys (unexpected universal-link
+ * behaviour), and the app's minimum iOS is well past 13.5 where the legacy
+ * keys mattered. Served as `application/json` with no redirects.
  */
 export function buildAppleAppSiteAssociation(): Record<string, unknown> {
   return {
     applinks: {
-      apps: [],
       details: [
         {
           appIDs: [BB_MOBILE_IOS_APP_ID],
-          appID: BB_MOBILE_IOS_APP_ID,
-          paths: [...BB_MOBILE_APP_LINK_PATHS],
           components: BB_MOBILE_APP_LINK_PATHS.map((path) => ({
             "/": path,
           })),

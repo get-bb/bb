@@ -1,5 +1,9 @@
 import type { BbPluginApi, PluginAgentToolResult } from "@get-bb/plugin-sdk";
-import { interactionResponseSchema, toolInputSchema } from "./contracts.js";
+import {
+  ASK_USER_QUESTION_RENDERER_ID,
+  interactionResponseSchema,
+  toolInputSchema,
+} from "./contracts.js";
 import {
   TOOL_DESCRIPTION,
   TOOL_INPUT_JSON_SCHEMA,
@@ -14,8 +18,7 @@ import {
 } from "./translate.js";
 
 export const TOOL_NAME = "AskUserQuestion";
-export const RENDERER_ID = "ask-user-question";
-
+export const RENDERER_ID = ASK_USER_QUESTION_RENDERER_ID;
 
 function errorResult(message: string): PluginAgentToolResult {
   return { content: [{ type: "text", text: message }], isError: true };
