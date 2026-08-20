@@ -802,6 +802,55 @@ push key); nobody needs a local Xcode signing setup to ship.
 - `eas update` (JS-only fixes over the air) is deferred: `expo-updates` is
   not installed, so the profiles define no update channels.
 
+## TestFlight testers
+
+**Internal testers** need no Apple review. A build reaches the group as soon as
+App Store Connect finishes processing it, usually within 30 minutes. The group
+`bb team` exists and the nightly feeds it.
+
+**External testers** need a Beta App Review on the first build, and Apple
+usually auto-approves later builds. Before a build can go to an external group,
+App Store Connect needs all of this:
+
+- **Test Information** (`betaAppLocalizations`): a feedback email, a beta
+  description, and the privacy policy URL <https://getbb.app/privacy>. Per
+  build, a "What to test" note.
+- **Beta App Review Details** (`betaAppReviewDetail`): contact first name, last
+  name, phone, and email. Apple uses these, testers never see them.
+- **A way for the reviewer to use the app.** This is the part that fails. bb
+  opens on "Add server", and a reviewer has no bb server, so without help they
+  cannot get past the first screen and will reject the build. Give them a bb
+  server reachable over the internet through connect, and a pairing code that
+  is still valid, and step-by-step notes. Codes expire, so re-issue the code if
+  a review takes longer than expected.
+
+Review notes template — keep it literal, and assume the reviewer knows nothing
+about coding agents:
+
+```text
+bb is a client for a bb server that a developer runs on their own computer.
+The app has no accounts of its own, so we have prepared a server for you.
+
+1. Open the app. It shows "Add server".
+2. Select "Pair with a code".
+3. Enter this code: <CODE>
+4. The app connects and shows a list of conversations.
+5. Open any conversation to read it. Type a message and send it to see a
+   reply from the coding agent.
+
+The code is valid until <DATE>. Write to <EMAIL> if it stops working and we
+will send a new one within a few hours.
+```
+
+Rehearse it before submitting: hand a colleague a phone that has never run bb,
+give them only these notes, and check that they reach a thread.
+
+The marketing version climbs on every nightly, because the EAS job writes the
+npm version into `app.json`. A new version string is more likely to trigger a
+fresh Beta App Review than another build of the same version. If external
+testers become the main audience, pin the TestFlight marketing version and let
+the EAS build number tell nightlies apart.
+
 ## Local state
 
 - Server profiles: `expo-secure-store`, one key per profile

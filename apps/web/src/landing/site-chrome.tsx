@@ -42,6 +42,8 @@ export function SiteFooter() {
         {" · "}
         <a href="/changelog">Changelog</a>
         {" · "}
+        <a href="/privacy">Privacy</a>
+        {" · "}
         <GitHubLink placement="footer">GitHub</GitHubLink>
         {" · "}
         <XLink placement="footer">X</XLink>

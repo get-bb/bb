@@ -166,6 +166,25 @@
   background: color-mix(in oklab, var(--ink) 26%, var(--bg));
 }
 
+/* Ordered lists carry their own number, so suppress the square marker that
+   `.post-body li::before` draws for bulleted lists. Without this a numbered
+   item shows both. */
+.post-body ol {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-left: 22px;
+}
+
+.post-body ol li {
+  padding-left: 2px;
+}
+
+.post-body ol li::before {
+  content: none;
+}
+
 .post-body .release-link {
   color: var(--ink);
   text-decoration: underline;

@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ChangelogRouteImport } from './routes/changelog'
 import { Route as BlogRouteImport } from './routes/blog'
@@ -25,6 +26,11 @@ import { Route as ApiConnectRedeemRouteImport } from './routes/api.connect.redee
 import { Route as ApiConnectMachineCodeRouteImport } from './routes/api.connect.machine-code'
 import { Route as ApiAuthSplatRouteImport } from './routes/api.auth.$'
 
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/blog': typeof BlogRoute
   '/changelog': typeof ChangelogRoute
   '/dashboard': typeof DashboardRoute
+  '/privacy': typeof PrivacyRoute
   '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/api/subscribe': typeof ApiSubscribeRoute
@@ -125,6 +132,7 @@ export interface FileRoutesByTo {
   '/blog': typeof BlogRoute
   '/changelog': typeof ChangelogRoute
   '/dashboard': typeof DashboardRoute
+  '/privacy': typeof PrivacyRoute
   '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/api/subscribe': typeof ApiSubscribeRoute
@@ -143,6 +151,7 @@ export interface FileRoutesById {
   '/blog': typeof BlogRoute
   '/changelog': typeof ChangelogRoute
   '/dashboard': typeof DashboardRoute
+  '/privacy': typeof PrivacyRoute
   '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/api/subscribe': typeof ApiSubscribeRoute
@@ -162,6 +171,7 @@ export interface FileRouteTypes {
     | '/blog'
     | '/changelog'
     | '/dashboard'
+    | '/privacy'
     | '/.well-known/apple-app-site-association'
     | '/.well-known/assetlinks.json'
     | '/api/subscribe'
@@ -179,6 +189,7 @@ export interface FileRouteTypes {
     | '/blog'
     | '/changelog'
     | '/dashboard'
+    | '/privacy'
     | '/.well-known/apple-app-site-association'
     | '/.well-known/assetlinks.json'
     | '/api/subscribe'
@@ -196,6 +207,7 @@ export interface FileRouteTypes {
     | '/blog'
     | '/changelog'
     | '/dashboard'
+    | '/privacy'
     | '/.well-known/apple-app-site-association'
     | '/.well-known/assetlinks.json'
     | '/api/subscribe'
@@ -214,6 +226,7 @@ export interface RootRouteChildren {
   BlogRoute: typeof BlogRoute
   ChangelogRoute: typeof ChangelogRoute
   DashboardRoute: typeof DashboardRoute
+  PrivacyRoute: typeof PrivacyRoute
   DotwellKnownAppleAppSiteAssociationRoute: typeof DotwellKnownAppleAppSiteAssociationRoute
   DotwellKnownAssetlinksDotjsonRoute: typeof DotwellKnownAssetlinksDotjsonRoute
   ApiSubscribeRoute: typeof ApiSubscribeRoute
@@ -229,6 +242,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
@@ -342,6 +362,7 @@ const rootRouteChildren: RootRouteChildren = {
   BlogRoute: BlogRoute,
   ChangelogRoute: ChangelogRoute,
   DashboardRoute: DashboardRoute,
+  PrivacyRoute: PrivacyRoute,
   DotwellKnownAppleAppSiteAssociationRoute:
     DotwellKnownAppleAppSiteAssociationRoute,
   DotwellKnownAssetlinksDotjsonRoute: DotwellKnownAssetlinksDotjsonRoute,
