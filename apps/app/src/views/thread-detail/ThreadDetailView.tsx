@@ -186,7 +186,6 @@ import {
   PluginPanelTabContent,
   usePluginPanelActions,
 } from "@/components/plugin/PluginPanelActions";
-import { pluginPanelTabFillsRegion } from "@/components/plugin/plugin-panel-tab-layout";
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -2977,109 +2976,47 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               <MarkdownLocalFileContextMenuContext.Provider
                 value={getLocalFileContextMenuItems}
               >
-                {panel}
-              </UrlOpenRoutingProvider>
-            </MarkdownLocalFileContextMenuContext.Provider>
-          )}
-          metadata={{
-            thread,
-            projectId,
-            parentThreadProjectId: parentThread?.projectId ?? null,
-            parentThreadDisplayName: parentThreadDisplayName ?? null,
-            parentThreads,
-            canAssignToParent,
-            canTakeOverThread,
-            isLoadingParentThreads: parentThreadSubsetQuery.isLoading,
-            isParentThreadsError: parentThreadSubsetQuery.isError,
-            environment: environment ?? null,
-            environmentDisplayHost: environmentDisplayHostContext,
-            workspaceStatus,
-            workspaceStatusError: workspaceStatusError ?? null,
-            workspaceUnavailable,
-            pullRequest,
-            selectedMergeBaseBranch,
-            mergeBaseBranchRef: selectedMergeBaseBranchRef,
-            mergeBaseBranchOptions,
-            mergeBaseRemoteBranchOptions,
-            isLoadingMergeBaseBranchOptions,
-            updateThreadPending:
-              updateThread.isPending || updateEnvironment.isPending,
-            storage: metadataStorage,
-            onAssignParent: handleAssignParent,
-            onParentSelectorOpenChange: handleParentSelectorOpenChange,
-            onRetryParentThreads: handleRetryParentThreads,
-            onMergeBaseBranchChange: handleMergeBaseBranchChange,
-            onMergeBasePickerOpenChange: handleMergeBasePickerOpenChange,
-            onMergeBaseBranchSearchQueryChange: setMergeBaseBranchSearchQuery,
-            onChangedFileClick: canUseGitUi
-              ? handleChangedFileClick
-              : undefined,
-            onCommitClick: canUseGitUi ? handleCommitClick : undefined,
-          }}
-          secondaryPanel={{
-            activeTab: activeFixedSecondaryTab,
-            canUseGitUi,
-            gitDiffTabStatus,
-            environmentId: thread.environmentId ?? undefined,
-            workspaceRootPath: environment?.path,
-            tabs: panelTabs,
-            fixedTabs: secondaryPanelFixedTabs,
-            splitPanelStateId: thread.id,
-            renderBrowserDeck,
-            isOpen: isSecondaryPanelOpen,
-            onClose: closeSecondaryPanel,
-            onCollapse: closeSecondaryPanel,
-            onClearPendingGitDiffIntent: clearPendingGitDiffIntent,
-            onOpenFileInEditor: handleOpenFileInEditor,
-            onTabReorder: reorderTab,
-            onOpenNewTab: handleOpenNewTab,
-            onRetryGitDiffEligibility: () => {
-              void environmentQuery.refetch();
-            },
-            onOpenFilePreview: handleOpenFilePreview,
-            onSelectionAddToChat: handleSelectionAddToChat,
-            pendingGitDiffCommitSha,
-            pendingGitDiffScrollPath,
-            requestedMergeBaseBranch,
-            onPanelFocus: handleSecondaryPanelFocus,
-          }}
-          timeline={{
-            activeThinking,
-            canSpawnChild: thread.canSpawnChild,
-            threadOriginKind,
-            hasOlderTimelineRows,
-            hostConnectionNotice,
-            isLoadingOlderTimelineRows,
-            isThreadTimelinePending,
-            timelineError: Boolean(timelineError),
-            onForkMessage: isForkAvailable ? handleForkMessage : undefined,
-            onEditMessage: canEditSentMessages
-              ? handleEditSentMessage
-              : undefined,
-            inlineMessageEditor,
-            onMessageAddToChat: handleSelectionAddToChat,
-            onSendToMainMessage: handleSendToMainMessage,
-            onSelectionAddToChat: handleSelectionAddToChat,
-            onLoadOlderRows: loadOlderTimelineRows,
-            onOpenLink: handleOpenTimelineLink,
-            onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-            onOpenPluginPanel: handleOpenTimelinePluginPanel,
-            onTitleAction: handleTimelineTitleAction,
-            projectId,
-            resolveMentionLink,
-            showOngoingIndicator:
-              thread.status !== "stopping" &&
-              // A pending interaction (question or approval) already renders its
-              // own inline shimmer row, so the bottom indicator would just
-              // duplicate it.
-              !hasPendingInteraction &&
-              isRunningThreadRuntimeDisplayStatus(
-                thread.runtime.displayStatus,
-              ) &&
-              !isThreadTimelinePending,
-            ongoingIndicatorLabel:
-              thread.runtime.displayStatus === "host-reconnecting"
-                ? "Waiting for reconnection"
+                <UrlOpenRoutingProvider
+                  openInAppBrowser={
+                    canOpenUrlsInAppBrowser ? openBrowserTabAndReveal : null
+                  }
+                >
+                  {panel}
+                </UrlOpenRoutingProvider>
+              </MarkdownLocalFileContextMenuContext.Provider>
+            )}
+            metadata={{
+              thread,
+              projectId,
+              parentThreadProjectId: parentThread?.projectId ?? null,
+              parentThreadDisplayName: parentThreadDisplayName ?? null,
+              parentThreads,
+              canAssignToParent,
+              canTakeOverThread,
+              isLoadingParentThreads: parentThreadSubsetQuery.isLoading,
+              isParentThreadsError: parentThreadSubsetQuery.isError,
+              environment: environment ?? null,
+              environmentDisplayHost: environmentDisplayHostContext,
+              workspaceStatus,
+              workspaceStatusError: workspaceStatusError ?? null,
+              workspaceUnavailable,
+              pullRequest,
+              selectedMergeBaseBranch,
+              mergeBaseBranchRef: selectedMergeBaseBranchRef,
+              mergeBaseBranchOptions,
+              mergeBaseRemoteBranchOptions,
+              isLoadingMergeBaseBranchOptions,
+              updateThreadPending:
+                updateThread.isPending || updateEnvironment.isPending,
+              storage: metadataStorage,
+              onAssignParent: handleAssignParent,
+              onParentSelectorOpenChange: handleParentSelectorOpenChange,
+              onRetryParentThreads: handleRetryParentThreads,
+              onMergeBaseBranchChange: handleMergeBaseBranchChange,
+              onMergeBasePickerOpenChange: handleMergeBasePickerOpenChange,
+              onMergeBaseBranchSearchQueryChange: setMergeBaseBranchSearchQuery,
+              onChangedFileClick: canUseGitUi
+                ? handleChangedFileClick
                 : undefined,
               onCommitClick: canUseGitUi ? handleCommitClick : undefined,
             }}
@@ -3089,24 +3026,16 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               gitDiffTabStatus,
               environmentId: thread.environmentId ?? undefined,
               workspaceRootPath: environment?.path,
-              fileTabs,
-              fileTabContent,
-              fileTabContentFillsRegion:
-                pluginPanelTabFillsRegion(activePluginPanelTab),
+              tabs: panelTabs,
+              fixedTabs: secondaryPanelFixedTabs,
               splitPanelStateId: thread.id,
-              splitTabModels: syncedOrderedSecondaryFileTabs,
-              renderSplitTabContent,
-              splitTabContentFillsRegion: (tab) =>
-                tab.kind === "plugin-panel" &&
-                pluginPanelTabFillsRegion(tab),
               renderBrowserDeck,
-              isBrowserTabActive,
               isOpen: isSecondaryPanelOpen,
               onClose: closeSecondaryPanel,
               onCollapse: closeSecondaryPanel,
               onClearPendingGitDiffIntent: clearPendingGitDiffIntent,
               onOpenFileInEditor: handleOpenFileInEditor,
-              onFileTabReorder: reorderFileTab,
+              onTabReorder: reorderTab,
               onOpenNewTab: handleOpenNewTab,
               onRetryGitDiffEligibility: () => {
                 void environmentQuery.refetch();
@@ -3117,7 +3046,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               pendingGitDiffScrollPath,
               requestedMergeBaseBranch,
               onPanelFocus: handleSecondaryPanelFocus,
-              onPanelChange: handleSecondaryPanelChange,
             }}
             timeline={{
               activeThinking,

@@ -11,6 +11,7 @@ import { atom, useAtom, useAtomValue, useStore } from "jotai";
 import { atomFamily } from "jotai-family";
 import type { Host, JsonValue } from "@bb/domain";
 import { jsonValueSchema } from "@bb/domain";
+import type { ExperimentalPluginFixedTabDeclaration } from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -46,6 +47,7 @@ import {
   createPluginPageFixedPanelTab,
   createTerminalFixedPanelTab,
   type PluginPageFixedPanelTab,
+  type PluginPanelFixedPanelTab,
   type SecondaryFileFixedPanelTab,
   type TerminalFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
@@ -104,6 +106,101 @@ interface FixedTabSessionTarget {
 const fixedTabTargetAtomFamily = atomFamily((_targetId: string) =>
   atom<FixedTabSessionTarget | null>(null),
 );
+
+function PluginFixedTabContent({
+  fixedTabOwnerId,
+  isOpen,
+  panelGeneration,
+  panelId,
+  panelStateId,
+  pluginId,
+  registration,
+  subPath,
+}: {
+  fixedTabOwnerId: string;
+  isOpen: boolean;
+  panelGeneration: number;
+  panelId: string;
+  panelStateId: string;
+  pluginId: string;
+  registration: ExperimentalPluginFixedTabDeclaration;
+  subPath: string;
+}) {
+  const targetStore = useStore();
+  const targetAtom = fixedTabTargetAtomFamily(
+    `${panelStateId}\0${registration.id}`,
+  );
+  const targetSnapshot = useAtomValue(targetAtom);
+  const targetState = useMemo<AppFixedTabTargetState | null>(() => {
+    if (targetSnapshot === null) return null;
+    const { sequence } = targetSnapshot;
+    return {
+      ...targetSnapshot,
+      ownerId: fixedTabOwnerId,
+      tabId: registration.id,
+      clear: () => {
+        targetStore.set(targetAtom, (current) =>
+          current?.sequence === sequence ? null : current,
+        );
+      },
+    };
+  }, [
+    fixedTabOwnerId,
+    registration.id,
+    targetAtom,
+    targetSnapshot,
+    targetStore,
+  ]);
+  if (!isOpen) return null;
+  const FixedTabComponent = registration.component;
+  return (
+    <PluginSlotMount
+      key={`${pluginId}/${panelId}/${registration.id}/${panelGeneration}`}
+      pluginId={pluginId}
+      slotKind="navPanelFixedTab"
+      slotId={registration.id}
+      instanceId={panelId}
+    >
+      <AppFixedTabTargetProvider state={targetState}>
+        <FixedTabComponent subPath={subPath} />
+      </AppFixedTabTargetProvider>
+    </PluginSlotMount>
+  );
+}
+
+function fileOpenerOriginalTab(
+  tab: PluginPanelFixedPanelTab,
+): SecondaryFileFixedPanelTab | null {
+  const owner = tab.fileOpenerOwner;
+  if (owner === undefined) return null;
+  if (owner.kind === "workspace-file-preview") {
+    return {
+      ...owner.tab,
+      environmentId: owner.environmentId,
+      id: `${tab.id}:file-opener-original`,
+      kind: "workspace-file-preview",
+      projectId: owner.projectId,
+    };
+  }
+  if (owner.kind === "host-file-preview") {
+    return {
+      ...owner.tab,
+      environmentId: owner.environmentId,
+      hostId: owner.hostId,
+      id: `${tab.id}:file-opener-original`,
+      kind: "host-file-preview",
+      threadId: owner.threadId,
+    };
+  }
+  return {
+    ...owner.tab,
+    environmentId: owner.environmentId,
+    id: `${tab.id}:file-opener-original`,
+    isPinned: false,
+    kind: "thread-storage-file-preview",
+    threadId: owner.threadId,
+  };
+}
 
 function findPluginRightPanelTogglePortal(
   panelStateId: string,
@@ -212,19 +309,6 @@ export function PluginPanelRightPanelHost({
   const {
     activateTab,
     activeBrowserTab,
-    activeFileOpenerOwner,
-    activeHostFileHostId,
-    activeHostFileLineRange,
-    activeHostFilePath,
-    activePluginPanelTab,
-    activeStorageFileLineRange,
-    activeStorageFilePath,
-    activeStorageFileThreadId,
-    activeWorkspaceFileEnvironmentId,
-    activeWorkspaceFileLineRange,
-    activeWorkspaceFilePath,
-    activeWorkspaceFileSource,
-    activeWorkspaceFileStatusLabel,
     browserTabs,
     closeTab,
     openTab,
@@ -565,26 +649,27 @@ export function PluginPanelRightPanelHost({
               />
             ),
             onSelect: () => {
-              updatePanelState((state) =>
-                activateSecondaryPanelTabInState(state, tab.id),
-              );
-              revealPanel();
+              openFixedTab({
+                surface: { kind: "current" },
+                tab: {
+                  ownerId: fixedTabOwnerId,
+                  tabId: registration.id,
+                },
+              });
             },
-            renderContent: () => {
-              if (panel === null || !isOpen) return null;
-              const FixedTabComponent = registration.component;
-              return (
-                <PluginSlotMount
-                  key={`${pluginId}/${panel.id}/${registration.id}/${panel.generation}`}
+            renderContent: () =>
+              panel === null ? null : (
+                <PluginFixedTabContent
+                  fixedTabOwnerId={fixedTabOwnerId}
+                  isOpen={isOpen}
+                  panelGeneration={panel.generation}
+                  panelId={panel.id}
+                  panelStateId={panelStateId}
                   pluginId={pluginId}
-                  slotKind="navPanelFixedTab"
-                  slotId={registration.id}
-                  instanceId={panel.id}
-                >
-                  <FixedTabComponent subPath={subPath} />
-                </PluginSlotMount>
-              );
-            },
+                  registration={registration}
+                  subPath={subPath}
+                />
+              ),
             tab,
             title: registration.title,
           },
@@ -592,17 +677,18 @@ export function PluginPanelRightPanelHost({
       }),
     [
       fixedViewTabs,
+      fixedTabOwnerId,
       isOpen,
+      openFixedTab,
       panel,
+      panelStateId,
       pluginId,
-      revealPanel,
       subPath,
-      updatePanelState,
     ],
   );
 
   const renderPanelTabContent = useCallback(
-    (tab: SecondaryFileFixedPanelTab) => {
+    function renderTabContent(tab: SecondaryFileFixedPanelTab): ReactNode {
       switch (tab.kind) {
         case "browser":
           return null;
@@ -657,8 +743,46 @@ export function PluginPanelRightPanelHost({
               }
             />
           );
-        default:
-          return null;
+        case "workspace-file-preview":
+          return tab.environmentId === null ? null : (
+            <LazyWorkspaceFilePreviewTabContent
+              activePath={tab.path}
+              environmentId={tab.environmentId}
+              isPanelOpen={isOpen}
+              lineRange={tab.lineRange}
+              source={tab.source}
+              statusLabel={tab.statusLabel}
+            />
+          );
+        case "host-file-preview":
+          return tab.hostId === null ? null : (
+            <LazyHostScopedFilePreviewTabContent
+              activePath={tab.path}
+              hostId={tab.hostId}
+              lineRange={tab.lineRange}
+            />
+          );
+        case "thread-storage-file-preview":
+          return tab.threadId === null ? null : (
+            <LazyThreadStorageFilePreviewTabContent
+              activePath={tab.path}
+              isPanelOpen={isOpen}
+              lineRange={tab.lineRange}
+              threadId={tab.threadId}
+            />
+          );
+        case "plugin-panel": {
+          const originalTab = fileOpenerOriginalTab(tab);
+          return (
+            <PluginPanelTabContent
+              tab={tab}
+              context={{ kind: "new-thread", projectId: null }}
+              fileOpenerOriginal={
+                originalTab === null ? undefined : renderTabContent(originalTab)
+              }
+            />
+          );
+        }
       }
     },
     [
@@ -727,8 +851,40 @@ export function PluginPanelRightPanelHost({
                 onClose: () => closeTab(tab.id),
               },
             ];
-          default:
-            return [];
+          case "workspace-file-preview":
+          case "host-file-preview":
+          case "thread-storage-file-preview":
+            return [
+              {
+                ...shared,
+                isPinned:
+                  tab.kind === "thread-storage-file-preview" && tab.isPinned,
+                label: tab.path.split(/[\\/]/u).at(-1) ?? tab.path,
+                leadingVisual: <Icon name="File" className="size-3.5" />,
+                statusLabel:
+                  tab.kind === "workspace-file-preview"
+                    ? tab.statusLabel
+                    : null,
+                onClose: () => closeTab(tab.id),
+              },
+            ];
+          case "plugin-panel":
+            return [
+              {
+                ...shared,
+                contentFillsRegion: pluginPanelTabFillsRegion(tab),
+                label: tab.title,
+                leadingVisual: (
+                  <PluginIcon
+                    pluginId={tab.pluginId}
+                    icon={null}
+                    className="size-3.5"
+                  />
+                ),
+                statusLabel: null,
+                onClose: () => closeTab(tab.id),
+              },
+            ];
         }
       }),
     [

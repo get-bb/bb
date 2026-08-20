@@ -126,6 +126,7 @@ function fileOpenerOriginalTab(
     return {
       ...owner.tab,
       environmentId: owner.environmentId,
+      hostId: owner.hostId,
       id: `${tab.id}:file-opener-original`,
       kind: "host-file-preview",
       threadId: owner.threadId,

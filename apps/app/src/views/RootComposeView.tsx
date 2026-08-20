@@ -53,6 +53,7 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
+import type { FileTabViewerOverride } from "@/components/plugin/file-opener-tabs";
 import { usePluginNewThreadPanelActions } from "@/components/plugin/PluginPanelActions";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
@@ -2034,37 +2035,6 @@ function RootComposeSurface({
               ? openBrowserTabAndReveal
               : null
           }
-          isSecondaryPanelOpen={isSecondaryPanelOpen}
-          onToggleSecondaryPanel={handleToggleSecondaryPanel}
-          panelTogglePositionClassName={panelTogglePositionClassName}
-          secondaryPanel={{
-            activeTab: activeFixedSecondaryTab,
-            canUseGitUi: false,
-            environmentId: rootPanelEnvironmentId ?? undefined,
-            metadataContent: rootPanelMetadataContent,
-            workspaceRootPath:
-              rootPanelEnvironment?.path ??
-              (rootPanelTerminalTarget?.kind === "host_path"
-                ? (rootPanelTerminalTarget.cwd ?? undefined)
-                : undefined),
-            tabs: panelTabs,
-            splitPanelStateId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
-            renderBrowserDeck,
-            isOpen: isSecondaryPanelOpen,
-            fixedTabs: [],
-            // The shell, tab strip, launcher, resize, and drawer behavior are
-            // shared with threads. Info, Diff, and conversation full-screen
-            // stay thread-only because no thread exists on this surface yet.
-            showConversationCollapseControl: false,
-            inlinePanelToggle: panelTogglePlacement.inlinePanelToggle,
-            onClose: closeSecondaryPanel,
-            onCollapse: closeSecondaryPanel,
-            onTabReorder: reorderTab,
-            onOpenNewTab: handleOpenNewTab,
-            onOpenFilePreview: handleOpenFilePreview,
-            onSelectionAddToChat: handleRootPanelSelectionAddToChat,
-            onPanelFocus: handleSecondaryPanelFocus,
-          }}
         >
           <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
             <RootComposeSecondaryContent
@@ -2086,12 +2056,9 @@ function RootComposeSurface({
                   (rootPanelTerminalTarget?.kind === "host_path"
                     ? (rootPanelTerminalTarget.cwd ?? undefined)
                     : undefined),
-                fileTabs,
-                fileTabContent,
-                fileTabContentFillsRegion:
-                  pluginPanelTabFillsRegion(activePluginPanelTab),
+                tabs: panelTabs,
+                splitPanelStateId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
                 renderBrowserDeck,
-                isBrowserTabActive,
                 isOpen: isSecondaryPanelOpen,
                 fixedTabs: [],
                 // The shell, tab strip, launcher, resize, and drawer behavior are
@@ -2101,8 +2068,7 @@ function RootComposeSurface({
                 inlinePanelToggle: panelTogglePlacement.inlinePanelToggle,
                 onClose: closeSecondaryPanel,
                 onCollapse: closeSecondaryPanel,
-                onOpenFileInEditor: handleOpenWorkspaceFileInEditor,
-                onFileTabReorder: reorderFileTab,
+                onTabReorder: reorderTab,
                 onOpenNewTab: handleOpenNewTab,
                 onOpenFilePreview: handleOpenFilePreview,
                 onSelectionAddToChat: handleRootPanelSelectionAddToChat,

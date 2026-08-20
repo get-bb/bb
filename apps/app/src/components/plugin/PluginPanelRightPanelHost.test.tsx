@@ -289,6 +289,7 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
   }: {
     activeTab: { id: string } | null;
     tabs: Array<{
+      contentFillsRegion?: boolean;
       label: string;
       onClose: () => void;
       onSelect: () => void;
@@ -334,6 +335,9 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
     return (
       <aside
         data-testid="shared-thread-secondary-panel"
+        data-file-tab-content-fills-region={
+          activeRenderableTab?.contentFillsRegion === true ? "true" : "false"
+        }
         data-top-chrome-surface={topChromeSurface ?? "panel"}
       >
         {tabs.map((tab) => (
@@ -596,6 +600,8 @@ describe("PluginPanelRightPanelHost", () => {
     threadTabsApi.update.mockResolvedValue({ revision: 5, tabs: [] });
     fixedTabState.panelRegistered = true;
     fixedTabState.registrations = [];
+    fixedTabState.fileOpeners = [];
+    fixedTabState.newThreadPanelActions = [];
     secondaryPanelState.fixedTabs = [];
     secondaryPanelState.splitPanelStateId = undefined;
     secondaryPanelState.tabKinds = [];
