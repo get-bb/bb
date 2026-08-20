@@ -413,8 +413,18 @@ describe("plugin app runtime shim", () => {
       'export const ownUnimported = "leading-tight";\n',
     );
 
+    // Build through another symlink too. On platforms where the temp root is
+    // not itself an alias, this still proves the metafile and Tailwind scan
+    // compare canonical paths rather than two spellings of the same file.
+    const aliasContainer = await mkdtemp(
+      join(tmpdir(), "bb-plugin-scan-alias-"),
+    );
+    tempDirs.push(aliasContainer);
+    const aliasedRoot = join(aliasContainer, "fixture");
+    await symlink(dir, aliasedRoot);
+
     const result = await buildPluginApp(
-      pluginDir,
+      join(aliasedRoot, "plugin"),
       "0.9.0-test",
       await testToolchain(),
     );
