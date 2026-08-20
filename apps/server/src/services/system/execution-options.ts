@@ -85,10 +85,15 @@ type AppendCustomModelsResult = Pick<
   "models" | "selectedOnlyModels"
 >;
 
-type ListSystemProviderInfosRequest = SystemProvidersQuery;
-type ProviderCapabilityFilter = NonNullable<
-  ListSystemProviderInfosRequest["capability"]
->;
+type ProviderCapabilityFilter =
+  | NonNullable<SystemProvidersQuery["capability"]>
+  | "installation";
+type ListSystemProviderInfosRequest = Omit<
+  SystemProvidersQuery,
+  "capability"
+> & {
+  capability?: ProviderCapabilityFilter;
+};
 
 interface ListSystemProviderInfosResult {
   hostId: string | null;
@@ -120,6 +125,8 @@ function providerMatchesCapability(
   capability: ProviderCapabilityFilter | undefined,
 ): boolean {
   switch (capability) {
+    case "installation":
+      return provider.experimental_providerInstallation;
     case "usage":
       return provider.experimental_providerUsage;
     case undefined:

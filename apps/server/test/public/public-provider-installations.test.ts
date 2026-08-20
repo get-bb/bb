@@ -111,6 +111,15 @@ describe("public provider installation routes", () => {
       ]);
       expect(
         responder.requests
+          .filter((request) => request.command.type === "provider.health")
+          .map((request) =>
+            request.command.type === "provider.health"
+              ? request.command.providerId
+              : null,
+          ),
+      ).toEqual([]);
+      expect(
+        responder.requests
           .filter(
             (request) =>
               request.command.type === "provider.installation.status",

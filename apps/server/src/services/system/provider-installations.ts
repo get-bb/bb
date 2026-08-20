@@ -12,11 +12,10 @@ export async function getProviderInstallations(
   deps: AppDeps,
   args: { hostId: string },
 ): Promise<ProviderCliStatusResponse> {
-  const providers = (
-    await listSystemProviderInfos(deps, {
-      hostId: args.hostId,
-    })
-  ).filter((provider) => provider.experimental_providerInstallation);
+  const providers = await listSystemProviderInfos(deps, {
+    hostId: args.hostId,
+    capability: "installation",
+  });
   const entries = await mapProviderMaintenanceRequests(
     providers,
     async (provider) => {
