@@ -346,7 +346,7 @@ describe("plugin app runtime shim", () => {
     expect(readableCss.length).toBeGreaterThan(minifiedCss.length);
   });
 
-  it("scans only the bundled files of a dependency that opts into Tailwind content", async () => {
+  it("scans bundled Tailwind content from a symlinked workspace dependency by filesystem identity", async () => {
     const dir = await mkdtemp(join(tmpdir(), "bb-plugin-scan-"));
     tempDirs.push(dir);
     // The dependency lives outside node_modules behind a symlink, the way a
@@ -354,6 +354,7 @@ describe("plugin app runtime shim", () => {
     // reports the real path, so the scan must match on real paths too.
     const uiPackageDir = join(dir, "packages", "fixture-ui");
     await mkdir(join(uiPackageDir, "src", "excluded"), { recursive: true });
+    await mkdir(join(uiPackageDir, "actual-src"), { recursive: true });
     await writeFile(
       join(uiPackageDir, "package.json"),
       JSON.stringify({
@@ -364,8 +365,15 @@ describe("plugin app runtime shim", () => {
       }),
     );
     await writeFile(
-      join(uiPackageDir, "src", "used.ts"),
+      join(uiPackageDir, "actual-src", "used.ts"),
       'export const usedClass = "tracking-widest";\n',
+    );
+    // A workspace package may itself expose generated/shared source through a
+    // symlink. Tailwind reports the matched link while esbuild reports its
+    // target, so both sides must be compared by filesystem identity.
+    await symlink(
+      "../actual-src/used.ts",
+      join(uiPackageDir, "src", "used.ts"),
     );
     await writeFile(
       join(uiPackageDir, "src", "unused.ts"),

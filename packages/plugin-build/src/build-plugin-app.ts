@@ -545,10 +545,19 @@ async function buildTailwindCss(
   const dependencySources = await readDependencyTailwindSources(rootDir);
   if (dependencySources.length > 0) {
     // `files` resolves the globs without reading anything; only the bundled
-    // subset is read and scanned.
-    const bundledDependencyFiles = new Scanner({
-      sources: dependencySources,
-    }).files.filter((file) => bundledInputs.has(file));
+    // subset is read and scanned. Compare by filesystem identity: a workspace
+    // package can itself expose source through a symlink, in which case the
+    // scanner reports the link while esbuild reports its target.
+    const dependencyFileIdentities = await Promise.all(
+      new Scanner({ sources: dependencySources }).files.map((file) =>
+        realpath(file),
+      ),
+    );
+    const bundledDependencyFiles = [
+      ...new Set(
+        dependencyFileIdentities.filter((file) => bundledInputs.has(file)),
+      ),
+    ];
     const contents = await Promise.all(
       bundledDependencyFiles.map(async (file) => ({
         content: await readFile(file, "utf8"),
