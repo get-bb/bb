@@ -623,17 +623,26 @@ is temporarily unavailable renders BB's renderer without erasing the pin.
 **Audit before stabilizing.**
 
 1. **Arbitration.** Confirm automatic/pinned/built-in is the right long-term
-   selection model here as it is for the thread list, and that a per-client
-   choice is the right scope for something as visible as every diff in the app.
-   The two renderers pin independently; confirm users do not instead expect one
-   "code rendering" choice.
-2. **Crash signal.** The thread list toasts when a crash swaps the sidebar
-   back. These slots fall back silently, because a diff card is not a whole
-   sidebar. Confirm silence is right, especially when many cards crash at once.
-3. **Scope.** One registration replaces BB's own surfaces and other plugins'
-   surfaces alike. Confirm a plugin should be able to change how *another*
-   plugin's `experimental_Diff` renders, and whether a first-party-only or
-   own-surfaces-only scope is ever needed.
+   selection model here as it is for the thread list. **Resolved (Aug 2026):
+   the pin stays per client.** A device-local override matches the sidebar
+   thread list, even though the key/value app settings added in #1875 would
+   now make an account-level pin cheap to add. Still open: the two renderers
+   pin independently; confirm users do not instead expect one "code rendering"
+   choice.
+2. **Resolved (Aug 2026): a crash swaps back to BB's renderer silently.**
+   A diff card is not a whole sidebar — the reader still sees a correct diff,
+   where a blank thread list strands them — so neither host passes `onCrash`.
+   Authors are not left without a signal: `PluginSlotBoundary` still
+   `console.warn`s the plugin id, slot key, and component stack. The hosts pass
+   no `instanceId`, so the first crash disables the slot for the session rather
+   than letting cards crash one at a time.
+3. **Resolved (Aug 2026): the replacement is global, other plugins'
+   surfaces included.** "Install this and every diff looks like X" is the
+   point; covering BB's surfaces but not the GitHub plugin's would be a
+   half-measure, and a plugin calling `experimental_Diff` would silently opt
+   its users out. No first-party-only or own-surfaces-only scope. Audit this as
+   precedent rather than as a fact about these two slots: no other slot lets a
+   plugin reach into another plugin's rendered output.
 4. **Capability parity.** A replacement cannot implement context expansion,
    selection-to-chat, or the deleted-file gate, because those inputs are
    host-only. Confirm that asymmetry is acceptable, or promote the ones that
