@@ -24,6 +24,7 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
+    "@bb/plugin-interaction-contracts": "workspace:*",
     "@bb/shared-ui": "workspace:*",
     "zod": "^4.3.6"
   },

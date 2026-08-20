@@ -10,6 +10,9 @@
 // Secret: wrangler secret put BETTER_AUTH_SECRET [--env staging]
 //         (must equal bb-web's BETTER_AUTH_SECRET — the gate verifies the
 //         session cookie's HMAC with it)
+// Optional var: ASSETLINKS_SHA256_FINGERPRINTS — comma-separated Android
+//         signing-cert fingerprints for /.well-known/assetlinks.json (bb
+//         mobile app links). Unset until the Android app is signed.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "bb-connect",

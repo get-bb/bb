@@ -573,6 +573,25 @@
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
+    "@bb/integration-tests#e2e:mobile-backend": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "*"
+      ],
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ]
+    },
+    "@bb/integration-tests#e2e:mobile-connect-stub": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "*"
+      ]
+    },
     "@bb/integration-tests#test:smoke": {
       "dependsOn": [
         "//#ensure-native-modules",

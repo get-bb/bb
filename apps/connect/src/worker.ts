@@ -1,5 +1,10 @@
 import { drizzle } from "drizzle-orm/d1";
-import { RESERVED_HANDLES, parseVisitorHost, schema } from "@bb/connect-db";
+import {
+  RESERVED_HANDLES,
+  handleAppLinkAssociationRequest,
+  parseVisitorHost,
+  schema,
+} from "@bb/connect-db";
 import { TUNNEL_OFFLINE_HEADER, TunnelDO, type Env } from "./tunnel-do.js";
 import {
   parseCookie,
@@ -290,6 +295,15 @@ export default {
     if (url.pathname === "/api/connect/machine-label") {
       return handleAssignMachineLabel(request, env);
     }
+    // bb mobile universal / app links: Apple's CDN and Android fetch the
+    // association files anonymously from `https://<label>.getbb.app`, so
+    // they are answered here for every host — before label resolution and
+    // the session gate, never proxied to the tunnel, never redirected.
+    const appLinks = handleAppLinkAssociationRequest(
+      { method: request.method, url: url.toString() },
+      env,
+    );
+    if (appLinks) return appLinks;
 
     const host = resolveConnectRequestHost(request.headers, runtime);
     const parsed = parseVisitorHost(host, env.BASE_DOMAIN);

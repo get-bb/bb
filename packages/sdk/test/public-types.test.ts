@@ -301,11 +301,7 @@ type ExpectedPluginsKey =
   | "token"
   | "updateSettings";
 
-type ExpectedPluginCatalogKey =
-  | "install"
-  | "installPlan"
-  | "search"
-  | "status";
+type ExpectedPluginCatalogKey = "install" | "installPlan" | "search" | "status";
 
 type ExpectedPluginMarketplacesKey = "add" | "list" | "refresh" | "remove";
 
@@ -323,6 +319,7 @@ type ExpectedProjectsKey =
   | "paths"
   | "promptHistory"
   | "reorder"
+  | "sidebarBootstrap"
   | "sources"
   | "update";
 

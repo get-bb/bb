@@ -1,8 +1,9 @@
 import { getConnInfo } from "@hono/node-server/conninfo";
 import {
   APP_SURFACE_HEADER_NAME,
-  parseAppSurface,
+  parseRequestAppSurface,
   type AppSurface,
+  type RequestAppSurface,
 } from "@bb/config/app-surface";
 import type { Context } from "hono";
 
@@ -57,8 +58,9 @@ export function getGateMachineId(context: GateAuthHeaderReader): string | null {
 export function resolveRequestAppSurface(
   context: Context,
   fallback: AppSurface,
-): AppSurface {
+): RequestAppSurface {
   return (
-    parseAppSurface(context.req.header(APP_SURFACE_HEADER_NAME)) ?? fallback
+    parseRequestAppSurface(context.req.header(APP_SURFACE_HEADER_NAME)) ??
+    fallback
   );
 }

@@ -1,9 +1,6 @@
 import { z } from "zod";
-import {
-  deriveConnectBaseUrl,
-  serverUrlForHandle,
-  type ConnectCredential,
-} from "./credential.js";
+import type { ConnectCredential } from "./credential.js";
+import { deriveConnectBaseUrl, serverUrlForHandle } from "./urls.js";
 import { ConnectListError } from "./errors.js";
 
 /** One server row from `GET /api/connect/servers` (worker boundary). */

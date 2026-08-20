@@ -7,7 +7,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "test:smoke": "vitest run --config vitest.config.ts fake/smoke",
-    "test:integration": "vitest run --config vitest.real-provider.config.ts"
+    "test:integration": "vitest run --config vitest.real-provider.config.ts",
+    "e2e:mobile-backend": "cross-env NODE_ENV=test node --conditions=source --import tsx mobile-e2e/backend.ts",
+    "e2e:mobile-connect-stub": "node --import tsx mobile-e2e/connect-stub.ts"
   },
   "dependencies": {
     "@bb/agent-runtime": "workspace:*",

@@ -358,6 +358,108 @@ describe("connect settings section", () => {
     await slot.findByText(/this bb is not connected to getbb.app/);
   });
 
+  it("add mobile device mints a machine code and shows the QR payload, the code, and a countdown", async () => {
+    const expiresAt = Date.now() + 600_000;
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          status: () => connected(),
+          createMachineCode: () => ({
+            code: "K7QP-2M4X",
+            expiresAt,
+            serverUrl: "https://workstation.getbb.app",
+          }),
+        },
+      },
+    );
+
+    await slot.findByText("Connected");
+    expect(slot.queryByText("K7QP-2M4X")).toBeNull();
+    fireEvent.click(slot.getByRole("button", { name: "Add mobile device" }));
+
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "createMachineCode",
+        input: null,
+      }),
+    );
+    // The code is shown as copyable text…
+    await slot.findByText("K7QP-2M4X");
+    slot.getByRole("button", { name: "Copy pairing code" });
+    slot.getByText(/Code expires in 9:5\d/);
+    // …and the QR carries the full pairing payload (code + server + apex).
+    const qr = (await slot.findByRole("img", {
+      name: "QR code to pair the bb mobile app",
+    })) as HTMLImageElement;
+    expect(qr.src.startsWith("data:image/png")).toBe(true);
+    slot.getByText(/bb connect machine-code/);
+  });
+
+  it("an expired mobile pairing code offers a fresh one", async () => {
+    let minted = 0;
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          status: () => connected(),
+          createMachineCode: () => {
+            minted += 1;
+            return {
+              code: minted === 1 ? "AAAA-1111" : "BBBB-2222",
+              // The first code dies almost immediately; the renewal lasts.
+              expiresAt: Date.now() + (minted === 1 ? 1_200 : 600_000),
+              serverUrl: "https://workstation.getbb.app",
+            };
+          },
+        },
+      },
+    );
+
+    await slot.findByText("Connected");
+    fireEvent.click(slot.getByRole("button", { name: "Add mobile device" }));
+    await slot.findByText("AAAA-1111");
+
+    await slot.findByText("Code expired", undefined, { timeout: 4_000 });
+    expect(
+      slot.queryByRole("button", { name: "Copy pairing code" }),
+    ).toBeNull();
+    fireEvent.click(slot.getByRole("button", { name: "Generate a new code" }));
+
+    await slot.findByText("BBBB-2222");
+    expect(slot.queryByText("AAAA-1111")).toBeNull();
+    slot.getByText(/Code expires in/);
+  });
+
+  it("explains the account machine limit with a dashboard link", async () => {
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: {
+          status: () => connected(),
+          createMachineCode: () => {
+            throw new Error("machine_limit");
+          },
+        },
+      },
+    );
+
+    await slot.findByText("Connected");
+    fireEvent.click(slot.getByRole("button", { name: "Add mobile device" }));
+
+    await slot.findByText(/reached its machine limit/);
+    const link = slot.getByRole("link", {
+      name: "Revoke a device you no longer use",
+    }) as HTMLAnchorElement;
+    expect(link.href).toBe("https://getbb.app/dashboard");
+    // No wire text, no stale code card; the action is available to retry.
+    expect(slot.queryByText("machine_limit")).toBeNull();
+    slot.getByRole("button", { name: "Add mobile device" });
+  });
+
   it("disconnect confirms, then lands on the unpaired card with a receipt", async () => {
     let currentStatus = connected();
     const slot = renderSlot(

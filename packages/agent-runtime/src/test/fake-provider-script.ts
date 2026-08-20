@@ -19,6 +19,14 @@ interface PendingUserQuestion {
   threadId: string;
 }
 
+type ApprovalKind = "command" | "file_change" | "permission_grant" | "plan";
+
+interface PendingApproval {
+  delayMs: number;
+  responseText: string;
+  threadId: string;
+}
+
 type ToolTurnIdMode = "active" | "unresolved";
 
 interface ThreadState {
@@ -29,6 +37,7 @@ interface ThreadState {
 }
 
 interface TurnPlan {
+  approvalKind: ApprovalKind | null;
   delayMs: number;
   questionRequested: boolean;
   responseText: string;
@@ -41,11 +50,20 @@ const rl = createInterface({ input: process.stdin });
 const threads = new Map<string, ThreadState>();
 const pendingToolCalls = new Map<JsonRpcId, PendingToolCall>();
 const pendingUserQuestions = new Map<JsonRpcId, PendingUserQuestion>();
+const pendingApprovals = new Map<JsonRpcId, PendingApproval>();
 
 let nextProviderThreadId = 1;
 let nextToolCallId = 1;
 let nextUserQuestionId = 10_000;
+let nextApprovalId = 20_000;
 const USER_QUESTION_METHOD = "interaction/user_question";
+const APPROVAL_METHOD = "interaction/approval";
+const APPROVAL_KINDS: readonly ApprovalKind[] = [
+  "command",
+  "file_change",
+  "permission_grant",
+  "plan",
+];
 const defaultModelList = {
   models: [
     {
@@ -186,9 +204,14 @@ function parseUserContent(input: unknown): JsonRecord[] {
   return content;
 }
 
+function parseApprovalKind(value: string | undefined): ApprovalKind | null {
+  return APPROVAL_KINDS.find((kind) => kind === value) ?? null;
+}
+
 function parseTurnPlan(inputText: string): TurnPlan {
   const delayMatch = /(?:^|\s)delay:(\d+)(?:\s|$)/.exec(inputText);
   const userQuestionMatch = /(?:^|\s)ask_user(?:\s|$)/.exec(inputText);
+  const approvalMatch = /(?:^|\s)approve:([^\s]+)(?:\s|$)/.exec(inputText);
   const unresolvedToolMatch =
     /(?:^|\s)call_tool_unresolved:([^\s]+)(?:\s|$)/.exec(inputText);
   const toolMatch =
@@ -204,6 +227,7 @@ function parseTurnPlan(inputText: string): TurnPlan {
   }
 
   return {
+    approvalKind: parseApprovalKind(approvalMatch?.[1]),
     delayMs,
     questionRequested: Boolean(userQuestionMatch),
     responseText: inputText ? `Response to: ${inputText}` : "Response complete",
@@ -369,6 +393,54 @@ function requestUserQuestion(
   });
 }
 
+// Kind-specific fixture fields the fake adapter maps onto the approval
+// subject. Deterministic so UI e2e flows can assert on them.
+function buildApprovalParams(kind: ApprovalKind): JsonRecord {
+  switch (kind) {
+    case "command":
+      return { command: "echo hi", cwd: null };
+    case "file_change":
+      return { path: "src/example.ts" };
+    case "permission_grant":
+      return { toolName: "Edit", path: "src/example.ts" };
+    case "plan":
+      return { plan: "# Fake plan\n\n1. Say hi\n2. Report back" };
+  }
+}
+
+function requestApproval(
+  threadId: string,
+  turnId: string,
+  kind: ApprovalKind,
+  responseText: string,
+  delayMs: number,
+): void {
+  const thread = getThreadState(threadId);
+  if (!thread || !thread.activeTurn) {
+    return;
+  }
+
+  const requestId = nextApprovalId++;
+  pendingApprovals.set(requestId, {
+    delayMs,
+    responseText,
+    threadId,
+  });
+  send({
+    jsonrpc: "2.0",
+    id: requestId,
+    method: APPROVAL_METHOD,
+    params: {
+      threadId,
+      turnId,
+      providerThreadId: thread.providerThreadId,
+      itemId: `approval-${requestId}`,
+      approvalKind: kind,
+      ...buildApprovalParams(kind),
+    },
+  });
+}
+
 function beginTurn(threadId: string, input: unknown): void {
   const thread = getThreadState(threadId);
   if (!thread) {
@@ -397,6 +469,17 @@ function beginTurn(threadId: string, input: unknown): void {
     },
   });
   emitUserMessage(threadId, turnId, input);
+
+  if (plan.approvalKind) {
+    requestApproval(
+      threadId,
+      turnId,
+      plan.approvalKind,
+      plan.responseText,
+      plan.delayMs,
+    );
+    return;
+  }
 
   if (plan.questionRequested) {
     requestUserQuestion(threadId, turnId, plan.delayMs);
@@ -552,11 +635,44 @@ function handleUserQuestionResult(message: JsonRecord): boolean {
   return true;
 }
 
+function isAllowedApprovalResult(result: unknown): boolean {
+  return (
+    isJsonRecord(result) &&
+    (result.decision === "allow_once" ||
+      result.decision === "allow_for_session")
+  );
+}
+
+function handleApprovalResult(message: JsonRecord): boolean {
+  const messageId = getJsonRpcId(message.id);
+  if (messageId === undefined || typeof message.method === "string") {
+    return false;
+  }
+
+  const pendingApproval = pendingApprovals.get(messageId);
+  if (!pendingApproval) {
+    return false;
+  }
+
+  pendingApprovals.delete(messageId);
+  scheduleTurnCompletion(
+    pendingApproval.threadId,
+    isAllowedApprovalResult(message.result)
+      ? pendingApproval.responseText
+      : "Denied",
+    pendingApproval.delayMs,
+  );
+  return true;
+}
+
 function handleMessage(message: JsonRecord): void {
   if (handleToolResult(message)) {
     return;
   }
   if (handleUserQuestionResult(message)) {
+    return;
+  }
+  if (handleApprovalResult(message)) {
     return;
   }
 

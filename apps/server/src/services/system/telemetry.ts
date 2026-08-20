@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { DEFAULTS } from "@bb/config/defaults";
 import { readOrCreateSecretFile } from "@bb/secret-storage";
-import type { AppSurface } from "@bb/config/app-surface";
+import type { AppSurface, RequestAppSurface } from "@bb/config/app-surface";
 import type { ServerLogger } from "../../types.js";
 
 /**
@@ -28,7 +28,7 @@ import type { ServerLogger } from "../../types.js";
 const POSTHOG_INGESTION_URL = "https://us.i.posthog.com/capture/";
 const TELEMETRY_ID_FILE_NAME = "telemetry-id";
 
-const telemetryAppSurfaceStorage = new AsyncLocalStorage<AppSurface>();
+const telemetryAppSurfaceStorage = new AsyncLocalStorage<RequestAppSurface>();
 
 /**
  * Which coding agents the machine had when onboarding opened. Answers "how many
@@ -125,7 +125,7 @@ export function createNoopTelemetryService(): TelemetryService {
 }
 
 export function runWithTelemetryAppSurface<T>(
-  appSurface: AppSurface,
+  appSurface: RequestAppSurface,
   callback: () => T,
 ): T {
   return telemetryAppSurfaceStorage.run(appSurface, callback);

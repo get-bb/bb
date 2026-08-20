@@ -155,6 +155,7 @@ Remote access (bb connect):
   bb connect unexpose <port> [--host <name-or-id>]  Stop sharing on that host
   bb connect shares [--host <name-or-id>]           List that host's shares
   bb connect servers                      List every bb on this account (handle, url, live)
+  bb connect machine-code                 Mint a one-time code that pairs the bb mobile app
 
   Port sharing works from threads on any enrolled host. In a thread,
   `bb connect expose <port>` resolves the thread environment's host; outside a
@@ -169,7 +170,16 @@ Remote access (bb connect):
   `bb connect status` shows all shares with host + URL. `shares --json` returns
   the resolved `host` and rows with `hostId`, `hostName`, `port`, and `url`.
 
+  The bb mobile app pairs with a paired bb through bb connect. Settings →
+  Remote access → Add mobile device shows a QR code plus the code as text;
+  `bb connect machine-code` prints the same code, server URL, apex, and expiry
+  (`--json` for `{code, serverUrl, apex, expiresAt}`). The phone scans or
+  types the code and enrolls as a connect machine on the account with its own
+  revocable credential (it appears in the getbb.app dashboard machine list).
+  Codes last 10 minutes and work once; an account-machine-limit failure says
+  so and points at the dashboard to revoke an unused device.
+
   Remote access is owned by the builtin "connect" plugin (Plugins → connect
-  shows the URL, QR code, and shared ports). Disabling the plugin
-  (`bb plugin disable connect`) cuts off all remote access; re-enable with
-  `bb plugin enable connect`.
+  shows the URL, QR code, mobile pairing, and shared ports). Disabling the
+  plugin (`bb plugin disable connect`) cuts off all remote access; re-enable
+  with `bb plugin enable connect`.

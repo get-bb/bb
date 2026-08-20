@@ -1,8 +1,7 @@
 {
-  "name": "@bb/connect-client",
+  "name": "@bb/plugin-interaction-contracts",
   "version": "0.0.1",
   "type": "module",
-  "sideEffects": false,
   "exports": {
     ".": {
       "source": "./src/index.ts",
@@ -12,7 +11,7 @@
   },
   "types": "./src/index.ts",
   "scripts": {
-    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },

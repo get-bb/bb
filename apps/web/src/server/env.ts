@@ -24,6 +24,11 @@ export interface Env {
    * answers 404 until it exists.
    */
   MARKETPLACE?: R2Bucket;
+  /**
+   * Android signing-cert SHA-256 fingerprints for `/.well-known/assetlinks.json`
+   * (bb mobile app links; comma-separated). Unset → empty list.
+   */
+  ASSETLINKS_SHA256_FINGERPRINTS?: string;
 }
 
 export function getEnv(): Env {

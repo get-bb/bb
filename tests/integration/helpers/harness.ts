@@ -107,6 +107,17 @@ export interface IntegrationHarness {
 
 export interface CreateHarnessOptions {
   adapterFactory?: ProviderAdapterFactory;
+  /**
+   * Bind the server to a fixed port instead of an ephemeral one. Long-lived
+   * harness backends (mobile e2e) need a stable URL for the app under test.
+   */
+  serverPort?: number;
+  /**
+   * Bind host. Defaults to loopback. `0.0.0.0` lets a physical phone on the
+   * same network reach the harness server; the client base URL stays on
+   * 127.0.0.1 either way.
+   */
+  bindHost?: "127.0.0.1" | "0.0.0.0";
 }
 
 export type WithHarnessCallback<T> = (
@@ -344,8 +355,8 @@ async function startIntegrationServer(
       // 127.0.0.1 too. If we leave the host unspecified, this server can end
       // up on ::1 while another local process owns 127.0.0.1 on the same
       // port, and the client will hit that other process instead.
-      hostname: TEST_SERVER_HOST,
-      port: 0,
+      hostname: options.bindHost ?? TEST_SERVER_HOST,
+      port: options.serverPort ?? 0,
       fetch: app.fetch,
     },
     (info) => {

@@ -75,6 +75,31 @@ If Settings reports that it cannot connect to the helper:
 
 Phones and tablets need no helper; editor-launch actions are simply unavailable.
 
+## Use the bb mobile app
+
+The bb mobile app is a client for a bb server; it runs nothing itself. Over
+bb connect it pairs the same way the desktop app does: the phone enrolls as a
+connect machine with its own credential, which the getbb.app dashboard lists
+and can revoke.
+
+1. Pair the bb server with bb connect first (Settings → Remote access, or
+   `bb connect --code … --server …`).
+2. Mint a pairing code for the phone: Settings → Remote access → **Add mobile
+   device** (QR code plus the code as text, with a countdown), or run
+   `bb connect machine-code` (`--json` prints
+   `{code, serverUrl, apex, expiresAt}`).
+3. In the mobile app, add a server over bb connect and scan the QR code or type
+   the code. Codes last 10 minutes and work once.
+
+The phone keeps its credential in the device keychain and mints short-lived
+sessions from it; it never holds the server's pairing secret. To cut a phone
+off, revoke it in the getbb.app dashboard machine list. Every phone takes one of
+the account's machine slots, so a machine-limit error means an unused device
+should be revoked first. On a trusted network the app can also use a direct
+server URL (Tailscale Serve or `--server-bind-host 0.0.0.0`) with the same
+caveats as a browser. Platforms (iOS first) and what the phone cannot do are
+listed in [platform-support.md](platform-support.md#mobile-app).
+
 ## Point the desktop app at another bb
 
 The desktop app's Server menu lists "This Mac", every bb connect server on the

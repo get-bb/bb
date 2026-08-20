@@ -605,6 +605,26 @@ The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
 the plugin, and Settings → Connect drives the plugin's rpc (including shared
 ports).
 
+### Pairing the bb mobile app
+
+The bb mobile app reaches a paired bb through the same connect route. It
+enrolls as a connect **machine** — its own credential on the getbb.app account,
+separate from the server's pairing secret and individually revocable — so
+pairing starts from the bb, not from the phone:
+
+- Settings → Remote access → **Add mobile device** mints a one-time code and
+  shows it as a QR code plus copyable text with a countdown.
+- `bb connect machine-code` prints the same code, server URL, connect apex,
+  and expiry; `bb connect machine-code --json` returns
+  `{code, serverUrl, apex, expiresAt}` (the QR encodes that JSON).
+
+Scan or type the code in the mobile app. The code lasts 10 minutes and works
+once. The phone then appears in the getbb.app dashboard machine list, where you
+can revoke it; every enrollment takes one of the account's machine slots
+(desktop apps, remote execution machines, and phones all count), so a
+machine-limit error asks you to revoke an unused device first. Both surfaces
+need the bb to be paired (`bb connect --code …`) and the connect plugin enabled.
+
 ## Experiments
 
 Experimental surfaces are changed in Settings → Experiments or with

@@ -1,11 +1,13 @@
 export {
   connectCredentialSchema,
+  type ConnectCredential,
+} from "./credential.js";
+export {
   connectPublicProtocol,
   deriveConnectBaseUrl,
   serverUrlForHandle,
-  type ConnectCredential,
   type ConnectPublicProtocol,
-} from "./credential.js";
+} from "./urls.js";
 export {
   ConnectListError,
   isRevokedCredentialError,
@@ -27,3 +29,9 @@ export {
   redeemMachineCredential,
   type ConnectMachineRedeemErrorCode,
 } from "./redeem-machine.js";
+export {
+  encodeMobilePairingPayload,
+  mobilePairingPayload,
+  parseMobilePairingPayload,
+  type MobilePairingPayload,
+} from "./mobile-pairing.js";
