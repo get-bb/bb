@@ -17,6 +17,21 @@ export type ExperimentalProviderMaintenanceParams = z.infer<
   typeof experimental_providerMaintenanceParamsSchema
 >;
 
+export const experimental_providerInstallationRequirementSchema = z.enum([
+  "thread_rewind",
+]);
+export type ExperimentalProviderInstallationRequirement = z.infer<
+  typeof experimental_providerInstallationRequirementSchema
+>;
+
+export const experimental_providerInstallationStatusParamsSchema =
+  experimental_providerMaintenanceParamsSchema.extend({
+    requirement: experimental_providerInstallationRequirementSchema.optional(),
+  });
+export type ExperimentalProviderInstallationStatusParams = z.infer<
+  typeof experimental_providerInstallationStatusParamsSchema
+>;
+
 /**
  * Cheap, host-local readiness reported by a provider implementation. Network
  * usage and update checks deliberately live outside this result so choosing a

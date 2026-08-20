@@ -10,6 +10,8 @@ function declaration(
     id: "my-remote-agent",
     displayName: "My Remote Agent",
     icon: "./icons/agent.svg",
+    experimental_bridgeOptions: { launch: { command: "my-agent" } },
+    experimental_visibility: "installed",
     capabilities: {
       experimental_providerHealth: true,
       experimental_providerUsage: false,
@@ -76,6 +78,10 @@ describe("buildPluginProviderRegistration", () => {
       supportsManualCompaction:
         normalized.capabilities.supportsManualCompaction,
     });
+    expect(registration.bridgeOptions).toStrictEqual({
+      launch: { command: "my-agent" },
+    });
+    expect(registration.visibility).toBe("installed");
   });
 
   it("projects each fork ladder rung onto the two client booleans", () => {

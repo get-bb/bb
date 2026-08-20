@@ -100,5 +100,10 @@ export function buildPluginProviderRegistration(args: {
     supportsManualCompaction: capabilities.supportsManualCompaction,
   };
 
-  return { info, serverCapabilities };
+  return {
+    info,
+    serverCapabilities,
+    bridgeOptions: declaration.experimental_bridgeOptions ?? {},
+    visibility: declaration.experimental_visibility ?? "always",
+  };
 }

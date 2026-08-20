@@ -17,6 +17,7 @@ import {
   isAcpProviderId,
 } from "./acp-provider-tier.js";
 import type {
+  JsonValue,
   PermissionMode,
   ProviderFork,
   ProviderInfo,
@@ -113,6 +114,9 @@ export function reservedProviderIdProblem(args: {
 export interface ProviderRegistration {
   info: ProviderInfo;
   serverCapabilities: ProviderServerCapabilities;
+  /** Opaque provider-owned statics forwarded to this registration's bridge. */
+  bridgeOptions: Readonly<Record<string, JsonValue>>;
+  visibility: "always" | "installed";
   source: ProviderRegistrationSource;
   /**
    * Immutable byte snapshot of the declared provider icon, read from the
@@ -169,7 +173,14 @@ export interface ProviderRegistryService {
    * plugin leaves no entry behind.
    */
   register(
-    registration: Omit<ProviderRegistration, "source"> & { pluginId: string },
+    registration: Omit<
+      ProviderRegistration,
+      "bridgeOptions" | "source" | "visibility"
+    > & {
+      bridgeOptions?: ProviderRegistration["bridgeOptions"];
+      pluginId: string;
+      visibility?: ProviderRegistration["visibility"];
+    },
   ): { dispose(): void };
   /**
    * Resolves as soon as the requested provider's plugin has registered, or
@@ -385,6 +396,8 @@ export function createProviderRegistryService(
       const entry: ProviderRegistration = {
         info: registration.info,
         serverCapabilities: registration.serverCapabilities,
+        bridgeOptions: registration.bridgeOptions ?? {},
+        visibility: registration.visibility ?? "always",
         source: { kind: "plugin", pluginId: registration.pluginId },
         ...(registration.icon === undefined ? {} : { icon: registration.icon }),
       };

@@ -375,7 +375,9 @@ describe("thread command dispatch", () => {
     const bridgeBytes = Buffer.from("export const bridge = true;\n");
     const sha256 = createHash("sha256").update(bridgeBytes).digest("hex");
     const harness = createHarness({ workspacePath: "/tmp/env-bridge-start" });
-    const fetchPluginHostArtifact = vi.fn(async () => new Uint8Array(bridgeBytes));
+    const fetchPluginHostArtifact = vi.fn(
+      async () => new Uint8Array(bridgeBytes),
+    );
 
     await dispatchCommand(
       {
@@ -390,12 +392,14 @@ describe("thread command dispatch", () => {
         providerId: "echo-agent",
         bridgeLaunch: {
           pluginId: "provider-echo",
+          providerOptions: {},
           source: {
             kind: "artifact",
             digest: sha256,
             byteLength: bridgeBytes.byteLength,
           },
           capabilities: {
+            experimental_providerInstallation: false,
             supportsServiceTier: false,
             permissionModes: ["full"] as const,
             supportsThreadArchive: false,
@@ -436,8 +440,10 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.startedBridgeLaunch).toEqual({
       pluginId: "provider-echo",
       dataDir: path.join(dataDir, "plugins", "provider-echo", "bridge-data"),
+      providerOptions: {},
       source: { kind: "artifact", digest: sha256, artifactPath },
       capabilities: {
+        experimental_providerInstallation: false,
         supportsServiceTier: false,
         permissionModes: ["full"],
         supportsThreadArchive: false,
@@ -454,15 +460,19 @@ describe("thread command dispatch", () => {
     const bridgeBytes = Buffer.from("export const archiveBridge = true;\n");
     const sha256 = createHash("sha256").update(bridgeBytes).digest("hex");
     const harness = createHarness({ workspacePath: "/tmp/env-bridge-archive" });
-    const fetchPluginHostArtifact = vi.fn(async () => new Uint8Array(bridgeBytes));
+    const fetchPluginHostArtifact = vi.fn(
+      async () => new Uint8Array(bridgeBytes),
+    );
     const bridgeLaunch: HostDaemonBridgeLaunch = {
       pluginId: "provider-echo",
+      providerOptions: {},
       source: {
         kind: "artifact",
         digest: sha256,
         byteLength: bridgeBytes.byteLength,
       },
       capabilities: {
+        experimental_providerInstallation: false,
         supportsServiceTier: false,
         permissionModes: ["full"],
         supportsThreadArchive: true,
@@ -477,14 +487,16 @@ describe("thread command dispatch", () => {
         kind: "artifact" as const,
         digest: sha256,
         artifactPath: path.join(
-      dataDir,
-      "plugin-host-artifacts",
-      "provider-echo",
-      sha256,
-      "host.mjs",
-    ),
+          dataDir,
+          "plugin-host-artifacts",
+          "provider-echo",
+          sha256,
+          "host.mjs",
+        ),
       },
+      providerOptions: {},
       capabilities: {
+        experimental_providerInstallation: false,
         supportsServiceTier: false,
         permissionModes: ["full"],
         supportsThreadArchive: true,
@@ -534,7 +546,9 @@ describe("thread command dispatch", () => {
     const bridgeBytes = Buffer.from("export const resumeBridge = true;\n");
     const sha256 = createHash("sha256").update(bridgeBytes).digest("hex");
     const harness = createHarness({ workspacePath: "/tmp/env-bridge-resume" });
-    const fetchPluginHostArtifact = vi.fn(async () => new Uint8Array(bridgeBytes));
+    const fetchPluginHostArtifact = vi.fn(
+      async () => new Uint8Array(bridgeBytes),
+    );
 
     await dispatchCommand(
       {
@@ -564,12 +578,14 @@ describe("thread command dispatch", () => {
           providerThreadId: "provider-bridge-resume",
           bridgeLaunch: {
             pluginId: "provider-echo",
+            providerOptions: {},
             source: {
               kind: "artifact",
               digest: sha256,
               byteLength: bridgeBytes.byteLength,
             },
             capabilities: {
+              experimental_providerInstallation: false,
               supportsServiceTier: false,
               permissionModes: ["full"] as const,
               supportsThreadArchive: false,
@@ -597,14 +613,16 @@ describe("thread command dispatch", () => {
         kind: "artifact" as const,
         digest: sha256,
         artifactPath: path.join(
-      dataDir,
-      "plugin-host-artifacts",
-      "provider-echo",
-      sha256,
-      "host.mjs",
-    ),
+          dataDir,
+          "plugin-host-artifacts",
+          "provider-echo",
+          sha256,
+          "host.mjs",
+        ),
       },
+      providerOptions: {},
       capabilities: {
+        experimental_providerInstallation: false,
         supportsServiceTier: false,
         permissionModes: ["full"],
         supportsThreadArchive: false,

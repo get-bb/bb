@@ -28,15 +28,22 @@ function handleUsageRequest(
     Parameters<typeof registerHostRpcResponder>[1]["handle"]
   >[0],
 ) {
-  if (request.command.type === "known_acp_agents.status") {
+  if (request.command.type === "provider.health") {
     return {
       ok: true as const,
       result: {
-        agents: request.command.agents.map((agent) => ({
-          ...agent,
-          installed: false,
-          executablePath: null,
-        })),
+        supported: true as const,
+        health: {
+          status: "not_installed" as const,
+          statusMessage: null,
+          accountEmail: null,
+          planLabel: null,
+          installedVersion: null,
+          minimumSupportedVersion: null,
+          canInstall: false,
+          canUpdate: false,
+          loginCommand: null,
+        },
       },
     };
   }
@@ -120,17 +127,12 @@ describe("GET /api/v1/system/usage-limits", () => {
       expect(response.status).toBe(200);
       expect(await readJson(response)).toEqual(USAGE_RESPONSE);
       expect(
-        responder.requests.map((request) =>
+        responder.requests.flatMap((request) =>
           request.command.type === "provider.usage"
-            ? request.command.providerId
-            : request.command.type,
+            ? [request.command.providerId]
+            : [],
         ),
-      ).toEqual([
-        "known_acp_agents.status",
-        "codex",
-        "claude-code",
-        "acp-cursor",
-      ]);
+      ).toEqual(["codex", "claude-code", "acp-cursor"]);
     });
   });
 
@@ -155,17 +157,12 @@ describe("GET /api/v1/system/usage-limits", () => {
       expect(response.status).toBe(200);
       expect(await readJson(response)).toEqual(USAGE_RESPONSE);
       expect(
-        responder.requests.map((request) =>
+        responder.requests.flatMap((request) =>
           request.command.type === "provider.usage"
-            ? request.command.providerId
-            : request.command.type,
+            ? [request.command.providerId]
+            : [],
         ),
-      ).toEqual([
-        "known_acp_agents.status",
-        "codex",
-        "claude-code",
-        "acp-cursor",
-      ]);
+      ).toEqual(["codex", "claude-code", "acp-cursor"]);
     });
   });
 });

@@ -595,7 +595,9 @@ export async function cleanupTempDirs(): Promise<void> {
 export const DISPATCH_TEST_BRIDGE_LAUNCH: HostDaemonBridgeLaunch = {
   pluginId: "provider-pi",
   source: { kind: "daemon-bundled", id: "pi" },
+  providerOptions: {},
   capabilities: {
+    experimental_providerInstallation: false,
     supportsServiceTier: true,
     permissionModes: ["accept-edits", "auto", "full"],
     supportsThreadArchive: true,
@@ -617,4 +619,5 @@ export const DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
   dataDir: "/tmp/bb-test-data/plugins/provider-pi/bridge-data",
   source: { kind: "daemon-bundled", id: "pi" },
   capabilities: DISPATCH_TEST_BRIDGE_LAUNCH.capabilities,
+  providerOptions: {},
 };

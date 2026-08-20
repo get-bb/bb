@@ -2426,6 +2426,7 @@ function createAgentRuntimeInternal(
       acpLaunchSpec,
       bridgeLaunch,
       cwd,
+      requirement,
     }) {
       await runtime.ensureProvider({
         providerId,
@@ -2445,6 +2446,7 @@ function createAgentRuntimeInternal(
         plan: proc.adapter.buildCommandPlan({
           type: "provider/installation/status",
           ...(cwd !== undefined ? { cwd } : {}),
+          ...(requirement !== undefined ? { requirement } : {}),
         }),
         providerId,
       });

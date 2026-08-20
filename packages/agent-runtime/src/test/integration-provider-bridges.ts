@@ -13,7 +13,11 @@ import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import { permissionModeSchema, providerForkSchema } from "@bb/domain";
+import {
+  jsonObjectSchema,
+  permissionModeSchema,
+  providerForkSchema,
+} from "@bb/domain";
 import { isAcpProviderId } from "../provider-catalog.js";
 import type { AgentRuntimeBridgeLaunch } from "../types.js";
 
@@ -33,7 +37,9 @@ const bridgeLaunchSchema = z.object({
     }),
     z.object({ kind: z.literal("daemon-bundled"), id: z.string() }),
   ]),
+  providerOptions: jsonObjectSchema.default({}),
   capabilities: z.object({
+    experimental_providerInstallation: z.boolean().default(false),
     supportsServiceTier: z.boolean(),
     permissionModes: z.array(permissionModeSchema),
     supportsThreadArchive: z.boolean(),

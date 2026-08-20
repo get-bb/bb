@@ -15,6 +15,7 @@ import { z } from "zod";
 
 const execFileAsync = promisify(execFile);
 const CODEX_MINIMUM_SUPPORTED_VERSION = "0.136.0";
+const CODEX_REWIND_MINIMUM_SUPPORTED_VERSION = "0.143.0";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CHATGPT_AUTH_CLAIM_PATH = "https://api.openai.com/auth";
 const COMMAND_TIMEOUT_MS = 5_000;
@@ -303,7 +304,19 @@ function pathIsInside(child: string, parent: string): boolean {
   );
 }
 
-export async function getCodexProviderInstallationStatus(): Promise<ExperimentalProviderInstallationStatus> {
+function minimumSupportedVersionForRequirement(
+  requirement?: "thread_rewind",
+): string {
+  return requirement === "thread_rewind"
+    ? CODEX_REWIND_MINIMUM_SUPPORTED_VERSION
+    : CODEX_MINIMUM_SUPPORTED_VERSION;
+}
+
+export async function getCodexProviderInstallationStatus(
+  requirement?: "thread_rewind",
+): Promise<ExperimentalProviderInstallationStatus> {
+  const minimumSupportedVersion =
+    minimumSupportedVersionForRequirement(requirement);
   const npm = npmCommand();
   const [
     resolvedExecutable,
@@ -348,8 +361,9 @@ export async function getCodexProviderInstallationStatus(): Promise<Experimental
     compareVersions(latestVersion, currentVersion) > 0;
   const versionUnsupported =
     installed &&
-    currentVersion !== null &&
-    compareVersions(currentVersion, CODEX_MINIMUM_SUPPORTED_VERSION) < 0;
+    (currentVersion === null
+      ? requirement === "thread_rewind"
+      : compareVersions(currentVersion, minimumSupportedVersion) < 0);
   const actionKind = !installed
     ? "install"
     : needsUpdate || versionUnsupported
@@ -368,7 +382,7 @@ export async function getCodexProviderInstallationStatus(): Promise<Experimental
     installSource,
     currentVersion,
     latestVersion,
-    minimumSupportedVersion: CODEX_MINIMUM_SUPPORTED_VERSION,
+    minimumSupportedVersion,
     npmPackageName: CODEX_NPM_PACKAGE,
     npmGlobalPackageVersion: npmGlobalPackageVersion(listOutput),
     installAction:
@@ -648,6 +662,7 @@ export async function getCodexProviderUsage(): Promise<ExperimentalProviderUsage
 export const __testing = {
   buildProviderInstallationRun: buildCodexProviderInstallationRun,
   compareVersions,
+  minimumSupportedVersionForRequirement,
   normalizeUsage,
   planLabel,
 };

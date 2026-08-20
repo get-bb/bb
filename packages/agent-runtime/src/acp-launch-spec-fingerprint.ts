@@ -66,5 +66,6 @@ export function bridgeLaunchProcessKey(
       : `bundled:${bridgeLaunch.source.id}`;
   return `${source}.${fingerprintStableJson({
     capabilities: bridgeLaunch.capabilities,
+    providerOptions: bridgeLaunch.providerOptions,
   })}`;
 }

@@ -1,16 +1,13 @@
 /**
  * The dynamic ACP tier.
  *
- * Every other provider is a plugin declaration in the registry. ACP ids are
- * different: known agents (`acp-opencode`, `acp-omp`, …) and user-configured
- * custom agents (`acp-<slug>`) are resolved from launch specs at request time
- * and are never declared, so they need a shared capability answer. This module
- * is that answer — the registry's accessors fall back to it, and the listing
- * composers build their `ProviderInfo`s from it.
+ * Built-in ACP providers are ordinary plugin declarations in the registry.
+ * User-configured custom agents (`acp-<slug>`) remain dynamic: they are
+ * resolved from config at request time and therefore need a shared capability
+ * fallback. This module owns that fallback and the custom-provider info shape.
  *
- * Capabilities that vary per ACP agent rather than across the whole tier (for
- * example manual compaction, which OpenCode supports and Cursor does not) are
- * declared on the agent record itself and resolved by
+ * Capabilities that vary for a user-configured ACP agent are declared on its
+ * config record and resolved by
  * `system/acp-launch-spec.ts::resolveAcpAgentCapabilitiesForProviderId`.
  *
  * The external agent owns model selection, tool execution, and session naming,
@@ -58,10 +55,8 @@ const ACP_COMPOSER_ACTIONS: readonly ProviderComposerAction[] = [
   { kind: "skills", trigger: "/" },
 ];
 
-// ACP agents manage reasoning effort internally. Cursor encodes it in its
-// model ids (`gpt-5.3-codex-high`) and the bridge resolves (model, level) to
-// the exact variant at session launch, so this coarse ladder is only the
-// fallback when per-model efforts from `model/list` are unavailable.
+// Custom ACP agents manage reasoning effort internally, so this coarse ladder
+// is only the fallback when per-model efforts are unavailable.
 const ACP_REASONING_LEVELS: readonly ReasoningLevel[] = [
   "low",
   "medium",
@@ -74,9 +69,7 @@ const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   reasoningLevels: ACP_REASONING_LEVELS,
   fork: ACP_FORK,
-  // Compaction varies per ACP agent (OpenCode supports it, Cursor does not),
-  // so the tier declares none and the registry answers dynamic ids from the
-  // resolved agent record instead.
+  // The registry answers dynamic ids from the resolved config record instead.
   supportsManualCompaction: false,
 };
 
@@ -105,8 +98,7 @@ export function buildAcpProviderInfo(
     // The shared ACP bridge accepts health and usage requests for every ACP
     // id. An individual provider may still return `supported: false` for
     // usage or a successful result with no windows. Installation is enabled
-    // only by a registered ACP provider (currently Cursor), not the dynamic
-    // tier as a whole.
+    // only by a registered ACP provider, not the dynamic tier as a whole.
     experimental_providerHealth: true,
     experimental_providerUsage: true,
     experimental_providerInstallation: false,

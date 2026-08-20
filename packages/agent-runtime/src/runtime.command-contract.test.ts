@@ -48,7 +48,9 @@ const bridgeLaunch: AgentRuntimeBridgeLaunch = {
     digest: "b".repeat(64),
     artifactPath: "/tmp/graduated-provider-bridge.mjs",
   },
+  providerOptions: {},
   capabilities: {
+    experimental_providerInstallation: false,
     supportsServiceTier: false,
     permissionModes: ["full"],
     supportsThreadArchive: true,
@@ -726,6 +728,7 @@ rl.on("line", (line) => {
       }),
       adapterFactory: () => ({
         ...baseAdapter,
+        providerOptions: {},
         capabilities: {
           ...baseAdapter.capabilities,
           supportsThreadRename: false,

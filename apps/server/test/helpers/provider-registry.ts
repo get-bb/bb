@@ -51,9 +51,9 @@ function pluginRootDir(pluginId: string): string {
   );
 }
 
-async function loadDeclaration(
+async function loadDeclarations(
   pluginId: string,
-): Promise<PluginProviderDeclaration> {
+): Promise<PluginProviderDeclaration[]> {
   const moduleUrl = new URL(
     `../../../../plugins/${pluginId}/server.ts`,
     import.meta.url,
@@ -63,26 +63,26 @@ async function loadDeclaration(
   if (typeof entry !== "function") {
     throw new Error(`${pluginId} has no default plugin export`);
   }
-  let captured: PluginProviderDeclaration | undefined;
+  const captured: PluginProviderDeclaration[] = [];
   const bb = {
     agents: {
       experimental_registerProvider(declaration: PluginProviderDeclaration) {
-        captured = declaration;
+        captured.push(declaration);
       },
     },
   } as unknown as BbPluginApi;
   (entry as (bb: BbPluginApi) => void)(bb);
-  if (captured === undefined) {
+  if (captured.length === 0) {
     throw new Error(`${pluginId} registered no provider declaration`);
   }
   // Same narrowing the plugin runtime does: a plugin module is an unknowable
-  // boundary, so the declaration is validated before it is trusted.
-  return validatePluginProviderDeclaration(captured);
+  // boundary, so every declaration is validated before it is trusted.
+  return captured.map(validatePluginProviderDeclaration);
 }
 
 /**
- * Registers the four first-party providers into an existing registry, exactly
- * as their plugins would. `excludePluginIds` models a plugin the user disabled
+ * Registers the first-party providers into an existing registry, exactly as
+ * their four plugins would. `excludePluginIds` models a plugin the user disabled
  * (or that failed to load), whose provider is then absent from the registry.
  *
  * Pass `artifacts` to also record a STUB bridge artifact per bridge-shipping
@@ -107,15 +107,17 @@ export async function registerFirstPartyProviders(
     if (excluded.has(pluginId)) {
       continue;
     }
-    const declaration = await loadDeclaration(pluginId);
-    registry.register({
-      ...buildPluginProviderRegistration({
-        available: !unavailable.has(pluginId),
+    const declarations = await loadDeclarations(pluginId);
+    for (const declaration of declarations) {
+      registry.register({
+        ...buildPluginProviderRegistration({
+          available: !unavailable.has(pluginId),
+          pluginId,
+          declaration,
+        }),
         pluginId,
-        declaration,
-      }),
-      pluginId,
-    });
+      });
+    }
     if (
       options.artifacts !== undefined &&
       !unavailable.has(pluginId) &&
@@ -202,7 +204,9 @@ export async function createTestProviderRegistry(): Promise<ProviderRegistryServ
 export const TRANSPORT_TEST_BRIDGE_LAUNCH: HostDaemonBridgeLaunch = {
   pluginId: "provider-pi",
   source: { kind: "daemon-bundled", id: "pi" },
+  providerOptions: {},
   capabilities: {
+    experimental_providerInstallation: false,
     supportsServiceTier: false,
     permissionModes: ["full"],
     supportsThreadArchive: false,

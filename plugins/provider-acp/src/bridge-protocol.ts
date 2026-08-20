@@ -21,6 +21,7 @@ import {
   skillsConfigureParamsSchema,
   experimental_providerMaintenanceParamsSchema,
   experimental_providerInstallationRunParamsSchema,
+  experimental_providerInstallationStatusParamsSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import { acpSessionUpdateSchema, acpStopReasonSchema } from "./wire.js";
@@ -87,7 +88,7 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   }),
   z.object({
     method: z.literal("provider/installation/status"),
-    params: experimental_providerMaintenanceParamsSchema,
+    params: experimental_providerInstallationStatusParamsSchema,
   }),
   z.object({
     method: z.literal("provider/installation/run"),

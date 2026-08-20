@@ -89,6 +89,7 @@ export interface CommandDispatchOptions {
     acpLaunchSpec?: HostDaemonAcpLaunchSpec;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
+    requirement?: "thread_rewind";
   }) => Promise<ExperimentalProviderInstallationStatus>;
   providerInstallationRun?: (args: {
     providerId: string;
@@ -169,6 +170,7 @@ export async function resolveRuntimeBridgeLaunch(
     ...bridgeLaunch.capabilities,
     permissionModes: [...bridgeLaunch.capabilities.permissionModes],
   };
+  const providerOptions = { ...bridgeLaunch.providerOptions };
   // Every bridge, artifact or bundled, is scoped to the plugin that ships it:
   // it gets that plugin's own persistent directory, the same one the plugin's
   // host worker would get, under its own `bridge-data` kind.
@@ -183,6 +185,7 @@ export async function resolveRuntimeBridgeLaunch(
       dataDir,
       source: { ...bridgeLaunch.source },
       capabilities,
+      providerOptions,
     };
   }
   if (options.fetchPluginHostArtifact === undefined) {
@@ -208,6 +211,7 @@ export async function resolveRuntimeBridgeLaunch(
       artifactPath,
     },
     capabilities,
+    providerOptions,
   };
 }
 
@@ -307,6 +311,7 @@ export async function defaultProviderInstallationStatus(
     acpLaunchSpec?: HostDaemonAcpLaunchSpec;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
+    requirement?: "thread_rewind";
   },
   options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
 ): Promise<ExperimentalProviderInstallationStatus> {

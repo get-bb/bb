@@ -337,9 +337,10 @@ Example:
 `id` is a slug matching `^[a-z0-9][a-z0-9-]*$`. bb derives the provider id by
 prefixing it with `acp-`, so the example appears as `acp-my-agent` in
 `bb provider list`, `bb provider models acp-my-agent`, and provider pickers.
-The derived id must not collide with a built-in provider such as `acp-cursor` or
-with another custom ACP agent. It may match a known ACP agent provider id, in
-which case the custom config wins.
+The derived id must not collide with an always-visible built-in provider such
+as `acp-cursor` or with another custom ACP agent. It may match an
+installed-only ACP plugin provider such as `acp-opencode`, in which case the
+custom config wins.
 
 `command` is the executable name or path. bb runs it directly with the `args`
 array; it is not a shell command line. `env` adds environment variables for the
@@ -349,7 +350,7 @@ agent process. `cwd` is optional; omit it to use the thread workspace directory.
 resolve from the bb data directory (for example,
 `~/.bb/agent-logos/my-agent.svg`); absolute paths are also supported. bb serves
 the file to app clients and uses it in provider and model pickers. Omit `logo`
-to use the built-in brand icon for a known ACP agent or the generic ACP icon.
+to use a vendored brand icon for a recognized ACP id or the generic ACP icon.
 
 `modelCli` is optional. When present, `listArgs` are used to ask the agent for
 models, `selectFlag` is the flag bb passes when launching with a selected model,
@@ -423,8 +424,8 @@ or restart bb. `bb-app config list` prints the entries.
 ```
 
 `providerId` accepts a built-in provider id (`codex`, `claude-code`, `pi`,
-`acp-cursor`) or any `acp-*` provider id: a known ACP agent such as
-`acp-opencode`, or a custom ACP agent's derived `acp-<id>`. `displayName` is
+`acp-cursor`) or any `acp-*` provider id: an installed-only plugin provider
+such as `acp-opencode`, or a custom ACP agent's derived `acp-<id>`. `displayName` is
 optional; bb derives the label from the model id when it is omitted. bb skips
 an invalid entry with a warning and keeps the rest of the config.
 

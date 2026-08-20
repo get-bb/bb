@@ -112,8 +112,8 @@ run bb-app config refresh; there is no set/unset CLI surface.
 Custom ACP agents are configured in the app data-dir config.json under
 customAcpAgents. bb derives provider id acp-<id> from each slug id. Edit the JSON
 and run bb-app config refresh; there is no set/unset CLI surface for this list.
-Custom config wins if it uses the same provider id as a known ACP agent; for
-example, override acp-opencode with id opencode. Use modelCli for CLI model
+Custom config wins if it uses the same provider id as an installed-only ACP
+plugin provider; for example, override acp-opencode with id opencode. Use modelCli for CLI model
 listing/selection, reasoningCli for launch-time reasoning flags, and
 nativeReasoning for ACP session/set_config_option reasoning. Optional logo
 accepts an SVG, PNG, or WebP path; relative paths resolve from the bb data dir.

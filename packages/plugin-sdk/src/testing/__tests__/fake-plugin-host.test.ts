@@ -1088,6 +1088,27 @@ describe("agents.experimental_registerProvider", () => {
     expect(() =>
       register(agentDeclaration({ composerActions: ["plan", "plan"] })),
     ).toThrow(/composerActions entry "plan" is duplicated/);
+    expect(() =>
+      register(agentDeclaration({ experimental_visibility: "sometimes" })),
+    ).toThrow(/experimental_visibility must be "always" or "installed"/);
+    expect(() =>
+      register(
+        agentDeclaration({
+          experimental_visibility: "installed",
+          capabilities: {
+            ...agentDeclaration().capabilities,
+            experimental_providerHealth: false,
+          },
+        }),
+      ),
+    ).toThrow(/"installed" requires experimental_providerHealth/);
+    expect(() =>
+      register(
+        agentDeclaration({
+          experimental_bridgeOptions: { timeout: Number.POSITIVE_INFINITY },
+        }),
+      ),
+    ).toThrow(/experimental_bridgeOptions\.timeout must be finite JSON/);
     // A bare glyph name is the other half of the grammar and is accepted; this
     // one commits, so it goes last.
     expect(() => register(agentDeclaration({ icon: "Zap" }))).not.toThrow();
@@ -1105,6 +1126,7 @@ describe("agents.experimental_registerProvider", () => {
     expect(registered.displayName).toBe("My Agent");
     expect(Object.isFrozen(registered)).toBe(true);
     expect(Object.isFrozen(registered.capabilities)).toBe(true);
+    expect(registered.experimental_visibility).toBe("always");
 
     // Live ids are collision-rejected until disposed.
     expect(() =>
@@ -1124,6 +1146,28 @@ describe("agents.experimental_registerProvider", () => {
         (declaration) => declaration.displayName,
       ),
     ).toEqual(["Second Declaration"]);
+  });
+
+  it("normalizes and deeply freezes opaque provider bridge options", () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.agents.experimental_registerProvider(
+      agentDeclaration({
+        experimental_visibility: "installed",
+        experimental_bridgeOptions: {
+          launch: { command: "example-agent", args: ["serve"] },
+        },
+      }),
+    );
+
+    const registered = harness.registrations.providerRegistrations[0]!;
+    expect(registered.experimental_visibility).toBe("installed");
+    expect(registered.experimental_bridgeOptions).toEqual({
+      launch: { command: "example-agent", args: ["serve"] },
+    });
+    expect(Object.isFrozen(registered.experimental_bridgeOptions)).toBe(true);
+    expect(Object.isFrozen(registered.experimental_bridgeOptions?.launch)).toBe(
+      true,
+    );
   });
 
   it("defaults maintenance support omitted by older plugins to false", () => {

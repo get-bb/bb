@@ -316,6 +316,9 @@ export function createBridgeProtocolAdapter(
               BRIDGE_REQUEST_METHODS.experimentalProviderInstallationStatus,
             params: {
               providerId: options.id,
+              ...(command.requirement !== undefined
+                ? { requirement: command.requirement }
+                : {}),
               ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
               ...(options.staticProviderOptions !== undefined
                 ? { providerOptions: options.staticProviderOptions }

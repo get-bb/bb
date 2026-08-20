@@ -26,7 +26,7 @@ import {
   NewThreadComposer,
   type NewThreadComposerState,
 } from "@/components/promptbox/NewThreadComposer";
-import { CodexCliVersionBanner } from "@/components/promptbox/banner/CodexCliVersionBanner";
+import { ProviderCliVersionBanner } from "@/components/promptbox/banner/ProviderCliVersionBanner";
 import {
   buildProviderCliIssue,
   hasProviderCliAction,
@@ -954,22 +954,28 @@ function RootComposeSurface({
   });
   const { queuedJobKeys, runningJobKey, startInstall } =
     useProviderCliInstallRunner();
-  const codexCliStatus = providerCliStatus.data?.codex ?? null;
-  const isCodexCliVersionBlocked =
-    selectedProviderId === "codex" &&
-    codexCliStatus?.versionUnsupported === true;
-  const codexCliIssue = useMemo(() => {
-    if (!isCodexCliVersionBlocked || codexCliStatus === null) return null;
+  const selectedProviderCliStatus =
+    providerCliStatus.data?.[selectedProviderId] ?? null;
+  const isProviderCliVersionBlocked =
+    selectedProviderCliStatus?.versionUnsupported === true;
+  const selectedProviderCliIssue = useMemo(() => {
+    if (!isProviderCliVersionBlocked || selectedProviderCliStatus === null) {
+      return null;
+    }
     const issue = buildProviderCliIssue({
-      provider: "codex",
-      status: codexCliStatus,
+      provider: selectedProviderId,
+      status: selectedProviderCliStatus,
     });
     return issue && hasProviderCliAction(issue) ? issue : null;
-  }, [codexCliStatus, isCodexCliVersionBlocked]);
-  const handleUpdateCodexCli = useCallback(() => {
-    if (codexCliIssue === null || composeHostId === null) return;
-    startInstall({ hostId: composeHostId, issue: codexCliIssue });
-  }, [codexCliIssue, composeHostId, startInstall]);
+  }, [
+    isProviderCliVersionBlocked,
+    selectedProviderCliStatus,
+    selectedProviderId,
+  ]);
+  const handleUpdateProviderCli = useCallback(() => {
+    if (selectedProviderCliIssue === null || composeHostId === null) return;
+    startInstall({ hostId: composeHostId, issue: selectedProviderCliIssue });
+  }, [selectedProviderCliIssue, composeHostId, startInstall]);
 
   useFixedPanelTabsStorageMaintenance();
   const fixedPanelTabsState = useFixedPanelTabsState(
@@ -2168,14 +2174,14 @@ function RootComposeSurface({
   // Focus the composer once it mounts in place of the welcome screen.
   useEffect(() => {
     if (!startedComposing) return;
-    if (isCodexCliVersionBlocked) return;
+    if (isProviderCliVersionBlocked) return;
     if (isPointerCoarse) return;
     const handle = window.requestAnimationFrame(() => {
       promptBoxRef.current?.focusEnd();
     });
     return () => window.cancelAnimationFrame(handle);
   }, [
-    isCodexCliVersionBlocked,
+    isProviderCliVersionBlocked,
     isPointerCoarse,
     promptBoxRef,
     startedComposing,
@@ -2244,30 +2250,37 @@ function RootComposeSurface({
   }, [forkSeed, handleCancelForkDraft]);
 
   const promptBanner = useMemo(() => {
-    if (!isCodexCliVersionBlocked || codexCliStatus === null) {
+    if (!isProviderCliVersionBlocked || selectedProviderCliStatus === null) {
       return null;
     }
     return (
-      <CodexCliVersionBanner
-        currentVersion={codexCliStatus.currentVersion}
-        minimumSupportedVersion={codexCliStatus.minimumSupportedVersion}
-        canUpdate={codexCliIssue !== null}
+      <ProviderCliVersionBanner
+        displayName={selectedProviderCliStatus.displayName}
+        currentVersion={selectedProviderCliStatus.currentVersion}
+        minimumSupportedVersion={
+          selectedProviderCliStatus.minimumSupportedVersion
+        }
+        canUpdate={selectedProviderCliIssue !== null}
         updating={
           composeHostId !== null &&
-          (runningJobKey === providerCliJobKey(composeHostId, "codex") ||
-            queuedJobKeys.has(providerCliJobKey(composeHostId, "codex")))
+          (runningJobKey ===
+            providerCliJobKey(composeHostId, selectedProviderId) ||
+            queuedJobKeys.has(
+              providerCliJobKey(composeHostId, selectedProviderId),
+            ))
         }
-        onUpdate={handleUpdateCodexCli}
+        onUpdate={handleUpdateProviderCli}
       />
     );
   }, [
-    codexCliIssue,
-    codexCliStatus,
     composeHostId,
-    handleUpdateCodexCli,
-    isCodexCliVersionBlocked,
+    handleUpdateProviderCli,
+    isProviderCliVersionBlocked,
     queuedJobKeys,
     runningJobKey,
+    selectedProviderCliIssue,
+    selectedProviderCliStatus,
+    selectedProviderId,
   ]);
 
   // The composer renders immediately with loading pickers; only a failed
@@ -2296,15 +2309,15 @@ function RootComposeSurface({
 
   const promptBox = renderPromptBox({
     id: "root-compose-prompt",
-    autoFocus: !isCodexCliVersionBlocked,
+    autoFocus: !isProviderCliVersionBlocked,
     zenModeStorageKey: getProjectScopedStorageKey(
       ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY,
       projectId,
     ),
     banner: promptBanner,
     header: promptHeader,
-    blockedReason: isCodexCliVersionBlocked
-      ? "Update the Codex CLI before starting a thread."
+    blockedReason: isProviderCliVersionBlocked
+      ? `Update ${selectedProviderCliStatus?.displayName ?? selectedProviderId} before starting a thread.`
       : undefined,
     resolveMentionLink,
     pluginComposerHost,

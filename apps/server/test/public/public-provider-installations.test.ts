@@ -41,8 +41,24 @@ function handleProviderInstallationRpc(
   request: HostDaemonOnlineRpcRequestMessage,
 ) {
   const { command } = request;
-  if (command.type === "known_acp_agents.status") {
-    return { ok: true as const, result: { agents: [] } };
+  if (command.type === "provider.health") {
+    return {
+      ok: true as const,
+      result: {
+        supported: true as const,
+        health: {
+          status: "not_installed" as const,
+          statusMessage: null,
+          accountEmail: null,
+          planLabel: null,
+          installedVersion: null,
+          minimumSupportedVersion: null,
+          canInstall: false,
+          canUpdate: false,
+          loginCommand: null,
+        },
+      },
+    };
   }
   if (command.type === "provider.installation.status") {
     return {

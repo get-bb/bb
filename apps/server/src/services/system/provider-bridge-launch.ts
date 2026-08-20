@@ -51,11 +51,15 @@ export function resolveBridgeLaunchForProviderId(
   return {
     pluginId,
     source,
+    providerOptions: { ...registration.bridgeOptions },
     // The daemon has no registry: transport the validated declaration's
     // execution capabilities so its adapter accepts the same permission
     // modes and service tier the server already offered to clients. The wire
     // shares the declaration's nouns, so these carry over by name.
     capabilities: {
+      experimental_providerInstallation: isOwnRegistration
+        ? registration.info.experimental_providerInstallation
+        : false,
       supportsServiceTier,
       supportsThreadArchive,
       supportsThreadRename,
@@ -112,13 +116,10 @@ function resolveBridgeSource(
 }
 
 /**
- * Whether the ACP tier has a plugin behind it. Dynamic ACP ids — the known
- * agents (`acp-opencode`, …) and every `customAcpAgents` entry — are never
- * registered: they run on the bridge of whichever plugin declares the ACP
- * tier. With that plugin disabled or unloaded there is no ACP bridge anywhere,
- * so those agents cannot run and must not be offered — the daemon has no
- * bundled ACP adapter left and would reject the turn as an unsupported
- * provider.
+ * Whether the ACP tier has a plugin behind it. User-configured ACP ids are
+ * dynamic and run on the bridge of whichever plugin declares the ACP tier.
+ * With that plugin disabled or unloaded there is no ACP bridge anywhere, so
+ * those agents cannot run and must not be offered.
  */
 export function isAcpProviderTierRegistered(
   deps: Pick<AppDeps, "providerRegistry">,
@@ -129,12 +130,10 @@ export function isAcpProviderTierRegistered(
 /**
  * The plugin whose bridge artifact runs this provider id.
  *
- * Normally that is the provider's own registration. ACP is the exception: only
- * the ids bb declares itself (`acp-cursor`) are registered, while known agents
- * and every `customAcpAgents` entry are resolved from launch specs at request
- * time and never registered at all. They all run the same ACP bridge, so a
- * dynamic `acp-*` id borrows the artifact of whichever plugin declares the ACP
- * tier — without which those agents would have no bridge to launch.
+ * Normally that is the provider's own registration. User-configured ACP ids
+ * are the exception: they are resolved from config at request time and borrow
+ * the artifact of whichever plugin declares the ACP tier. Built-in ACP ids
+ * have their own registrations and static bridge options.
  */
 function resolveBridgeRegistration(
   deps: Pick<AppDeps, "providerRegistry">,

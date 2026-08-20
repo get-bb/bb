@@ -290,22 +290,15 @@ next starts; commits structured so a later PR split stays mechanical:
      `@bb/agent-runtime` re-export is gone, so nothing outside the pi
      bridge directory reads from it and pi is not gated on the deferred
      skills/scanRoots method.
-   - **acp — DONE (2026-08-15).** The blocker was routing, not bundling.
-     `resolveBridgeLaunchForProviderId` now resolves the ACP tier
-     explicitly: an unregistered `acp-*` id borrows the artifact of
-     whichever plugin declares ACP and takes its capabilities from the
-     shared tier — the same fallback every other ACP policy accessor on
-     the registry already uses — so known agents and `customAcpAgents`
-     entries keep launching. The launch spec rides exactly as before (the
-     `acpLaunchSpec` command field, then the provider-scoped statics), and
-     `acp-cursor`, whose spec has no server-side entry, still reads the
-     runtime's built-in table, now `acp-launch-specs.ts` beside its
-     fingerprint. `dist/provider-bridge.mjs` is 919 KB and self-contained;
-     no hono reaches it through the `@bb/host-daemon-contract` dependency
-     the bridge needs to parse the launch spec (the one core-package
-     dependency a first-party bridge still has, and the reason the
-     acp-cursor table has not moved server-side yet). 143 tests run as
-     `bb-plugin-provider-acp#test`.
+   - **acp — DONE (2026-08-20).** Built-in ACP providers are individual
+     declarations owned by `provider-acp`; their launch profiles ride opaque
+     declaration bridge options and installed-only providers ask their own
+     bridge to discover the executable. Only `customAcpAgents` ids remain
+     dynamic: they borrow the ACP artifact and carry a command-level launch
+     spec so user config can override a built-in id. The old runtime launch
+     table and daemon executable catalog are deleted. The bridge artifact stays
+     self-contained and parses its static options through the published
+     provider-bridge SDK facade.
      Two test-side consequences worth keeping: the integration harness
      builds and records the first-party bridge artifacts the way the
      plugin runtime does — without a `bridgeLaunch` a graduated provider
@@ -851,10 +844,10 @@ The provider "contract" today is six scattered surfaces:
    switches in `packages/thread-view`, Claude-only fields on the shared
    `ProviderExecutionContext` (`claudeCodePermissionMode`).
 
-**ACP** is the only extension point: a pure-data launch spec
-(`hostDaemonAcpLaunchSpecSchema`) resolved per command — from `config.json`
-for custom agents, from the in-repo `KNOWN_ACP_AGENTS` table (a code change)
-for known ones — and run by the generic ACP bridge. It works, but the path
+**ACP** remains the data-driven extension point: built-in launch specs are
+plugin declaration bridge options, while custom agents resolve a pure-data
+`hostDaemonAcpLaunchSpecSchema` from `config.json` per command. Both run on
+the generic ACP bridge. It works, but the custom path
 is deliberately least-common-denominator: no `auto` permission mode
 (ACP threads default to `full`), no token usage, no plan/goal composer
 modes, no command-shaped scan roots (native _skill_ typeahead does work),
@@ -939,11 +932,12 @@ exists, not an invention:
   and feeds the provider-retry plugin unchanged), compaction, host AI
   services (voice transcription / structured inference — today's codex-only
   daemon commands), fork, archive, CLI lifecycle.
-- **CLI lifecycle lives in the bridge, not the declaration**: optional
+- **CLI lifecycle lives in the bridge, not core**: declaration capabilities
+  gate the optional
   `provider/health` (installed?, version, auth state, login command),
-  `provider/install`, and `provider/update` methods replace the daemon's
-  per-provider CLI tables (`provider-cli-health.ts`,
-  `known_acp_agents.status`). No chicken-and-egg: the bridge is bb-authored
+  `provider/installation/status`, and `provider/installation/run` methods that
+  replace the daemon's per-provider CLI tables and executable catalog. No
+  chicken-and-egg: the bridge is bb-authored
   code that runs whether or not the provider CLI is installed, so the daemon
   can spawn it one-shot for probes and cache the result (invalidated on
   install/update — the #945 lesson). Probing from inside the bridge means
@@ -1355,20 +1349,16 @@ their level, never to flatten them toward a common denominator.
   providers the server queries for skills) stays a server-side list — it
   becomes registry-driven with the `skills/scanRoots` item below, which is
   what actually teaches the daemon a new provider's roots.
-- Daemon per-provider CLI tables (`provider-cli-health.ts`,
-  `known_acp_agents.status`) → the optional `provider/health` /
-  `provider/install` / `provider/update` bridge methods. The existing daemon
-  tables keep working untouched through phases 1–5 and are deleted here.
+- **DONE (2026-08-20):** daemon per-provider CLI tables and ACP executable
+  discovery moved to optional `provider/health` and
+  `provider/installation/{status,run}` bridge methods. Provider-specific
+  version requirements, including Codex thread rewind, now live in the bridge;
+  the daemon remains the generic executor and policy boundary.
 
-  **DEFERRED from wave 4.** Same shape as `skills/scanRoots` and should ride
-  with it: both are sessionless daemon→bridge reads over the maintenance
-  runtime, both are currently daemon-local tables with no bridge involvement,
-  and doing them in one pass means introducing the sessionless
-  provider-query surface once instead of twice. Health/install/update is the
-  more delicate half — install and update _mutate the host_ (`npm i -g`,
-  `claude doctor`), and v118 already tightened update results to reject
-  unverifiable successes, so moving that into plugin-supplied bridge code is
-  a trust-boundary change, not just code motion.
+  This was originally deferred from wave 4 because install and update mutate
+  the host. The completed design keeps provider-specific planning in the
+  trusted plugin bridge while the daemon executes only a typed plan, controls
+  environment/cwd/concurrency/output, and verifies fresh provider status.
 
 - `PROVIDER_SKILL_SPECS` + `resolveProviderExtraRoots` → the optional
   `skills/scanRoots` bridge method with daemon-side caching. (The injection

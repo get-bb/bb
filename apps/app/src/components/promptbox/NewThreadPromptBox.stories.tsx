@@ -17,7 +17,7 @@ import {
   AUTOMATION_PROMPT_ACTION,
   CREATE_PLUGIN_PROMPT_ACTION,
 } from "@/components/promptbox/PromptBoxActionsMenu";
-import { CodexCliVersionBanner } from "@/components/promptbox/banner/CodexCliVersionBanner";
+import { ProviderCliVersionBanner } from "@/components/promptbox/banner/ProviderCliVersionBanner";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
@@ -302,7 +302,8 @@ function UnsupportedCodexCliRow() {
         modeConfig={{
           ...baseModeConfig,
           banner: (
-            <CodexCliVersionBanner
+            <ProviderCliVersionBanner
+              displayName="Codex"
               currentVersion="0.135.0"
               minimumSupportedVersion="0.136.0"
               canUpdate

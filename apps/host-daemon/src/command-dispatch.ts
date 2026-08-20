@@ -56,7 +56,6 @@ import {
   completeCodexInference,
   transcribeCodexVoice,
 } from "./codex-chatgpt-client.js";
-import { getKnownAcpAgentsStatus } from "./known-acp-agent-status.js";
 import {
   ProviderInstallationInProgressError,
   streamProviderInstallation,
@@ -643,11 +642,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       bridgeLaunch,
     });
   },
-  "known_acp_agents.status": async (command, options) =>
-    getKnownAcpAgentsStatus({
-      agents: command.agents,
-      env: providerCliEnvFromShellEnv(options.runtimeManager.getShellEnv()),
-    }),
   "provider.usage": async (command, options) => {
     const bridgeLaunch = await resolveRuntimeBridgeLaunch(
       command.bridgeLaunch,
@@ -674,6 +668,9 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
       ...(command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
+        : {}),
+      ...(command.requirement !== undefined
+        ? { requirement: command.requirement }
         : {}),
       bridgeLaunch,
     });

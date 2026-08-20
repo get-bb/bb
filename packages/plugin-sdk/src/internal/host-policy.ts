@@ -15,6 +15,7 @@ import type {
   PluginSettingDescriptor,
   PluginSettingDescriptors,
 } from "../backend-contract.js";
+import type { JsonValue } from "../json-value.js";
 import type {
   PluginRpcMethodContract,
   StandardSchemaV1,
@@ -79,6 +80,7 @@ export const MENTION_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 // Agent provider ids are stable public identifiers: thread rows persist them
 // and routes/pickers reference them. 2-64 chars, lowercase.
 export const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,63}$/;
+export const PLUGIN_PROVIDER_BRIDGE_OPTIONS_MAX_BYTES = 64 * 1024;
 
 // Settings keys become file names (secrets) and CLI arguments.
 export const SETTING_KEY_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -341,6 +343,86 @@ function validateProviderLiteralArray<T extends string>(args: {
   return Object.freeze(normalized);
 }
 
+function normalizeProviderBridgeOptions(
+  providerId: string,
+  value: Readonly<Record<string, JsonValue>>,
+): Readonly<Record<string, JsonValue>> {
+  const active = new Set<object>();
+  function visit(current: unknown, path: string): JsonValue {
+    if (
+      current === null ||
+      typeof current === "string" ||
+      typeof current === "boolean"
+    ) {
+      return current;
+    }
+    if (typeof current === "number") {
+      if (!Number.isFinite(current)) {
+        throw new Error(
+          `provider "${providerId}" experimental_bridgeOptions${path} must be finite JSON`,
+        );
+      }
+      return current;
+    }
+    if (typeof current !== "object") {
+      throw new Error(
+        `provider "${providerId}" experimental_bridgeOptions${path} must be JSON`,
+      );
+    }
+    if (active.has(current)) {
+      throw new Error(
+        `provider "${providerId}" experimental_bridgeOptions must not contain cycles`,
+      );
+    }
+    active.add(current);
+    try {
+      if (Array.isArray(current)) {
+        const normalized = current.map((entry, index) =>
+          visit(entry, `${path}[${index}]`),
+        );
+        Object.freeze(normalized);
+        return normalized;
+      }
+      const prototype = Object.getPrototypeOf(current);
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new Error(
+          `provider "${providerId}" experimental_bridgeOptions${path} must contain only plain JSON objects`,
+        );
+      }
+      const normalized: Record<string, JsonValue> = Object.fromEntries(
+        Object.entries(current).map(([key, entry]) => [
+          key,
+          visit(entry, `${path}.${key}`),
+        ]),
+      );
+      Object.freeze(normalized);
+      return normalized;
+    } finally {
+      active.delete(current);
+    }
+  }
+
+  const normalized = visit(value, "");
+  if (
+    normalized === null ||
+    Array.isArray(normalized) ||
+    typeof normalized !== "object"
+  ) {
+    throw new Error(
+      `provider "${providerId}" experimental_bridgeOptions must be an object`,
+    );
+  }
+  if (
+    Buffer.byteLength(JSON.stringify(normalized), "utf8") >
+    PLUGIN_PROVIDER_BRIDGE_OPTIONS_MAX_BYTES
+  ) {
+    throw new Error(
+      `provider "${providerId}" experimental_bridgeOptions exceeds ${PLUGIN_PROVIDER_BRIDGE_OPTIONS_MAX_BYTES} bytes`,
+    );
+  }
+  return normalized;
+}
+
 /**
  * Validate one `bb.agents.experimental_registerProvider` declaration. Plugin
  * sources are untyped at runtime, so every field is checked; the production
@@ -479,10 +561,35 @@ export function validatePluginProviderDeclaration(
     allowed: PLUGIN_PROVIDER_COMPOSER_ACTION_VALUES,
     requireNonEmpty: false,
   });
+  const bridgeOptions =
+    declaration.experimental_bridgeOptions === undefined
+      ? undefined
+      : normalizeProviderBridgeOptions(
+          id,
+          declaration.experimental_bridgeOptions,
+        );
+  const visibility = declaration.experimental_visibility ?? "always";
+  if (visibility !== "always" && visibility !== "installed") {
+    throw new Error(
+      `provider "${id}" experimental_visibility must be "always" or "installed"`,
+    );
+  }
+  if (
+    visibility === "installed" &&
+    !normalizedCapabilities.experimental_providerHealth
+  ) {
+    throw new Error(
+      `provider "${id}" experimental_visibility "installed" requires experimental_providerHealth`,
+    );
+  }
   return Object.freeze({
     id,
     displayName,
     ...(icon === undefined ? {} : { icon }),
+    ...(bridgeOptions === undefined
+      ? {}
+      : { experimental_bridgeOptions: bridgeOptions }),
+    experimental_visibility: visibility,
     capabilities: normalizedCapabilities,
     composerActions,
   });

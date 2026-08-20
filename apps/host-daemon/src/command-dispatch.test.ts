@@ -1064,14 +1064,20 @@ describe("dispatchCommand", () => {
     expect(runtime.renameThread).not.toHaveBeenCalled();
   });
 
-  it("blocks codex thread.start when the CLI is below the minimum version", async () => {
+  it("blocks any installation-managed provider whose bridge reports an unsupported version", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
     const command: CommandOf<"thread.start"> = {
-      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+      bridgeLaunch: {
+        ...DISPATCH_TEST_BRIDGE_LAUNCH,
+        capabilities: {
+          ...DISPATCH_TEST_BRIDGE_LAUNCH.capabilities,
+          experimental_providerInstallation: true,
+        },
+      },
       type: "thread.start",
       environmentId: "env-1",
       threadId: "thread-1",
@@ -1080,8 +1086,8 @@ describe("dispatchCommand", () => {
         workspaceProvisionType: "unmanaged",
       },
       projectId: "proj_1",
-      providerId: "codex",
-      requestId: "creq_unsupported_codex",
+      providerId: "example-agent",
+      requestId: "creq_unsupported_provider",
       input: [{ type: "text", text: "hello", mentions: [] }],
       options: {
         model: "gpt-5",
@@ -1100,20 +1106,20 @@ describe("dispatchCommand", () => {
     };
 
     const unsupportedCodexStatus: ProviderCliStatus = {
-      displayName: "Codex",
-      executableName: "codex",
-      executablePath: "/usr/local/bin/codex",
+      displayName: "Example Agent",
+      executableName: "example-agent",
+      executablePath: "/usr/local/bin/example-agent",
       installed: true,
       installSource: "npmGlobal",
       currentVersion: "0.135.0",
       latestVersion: null,
       minimumSupportedVersion: "0.136.0",
-      npmPackageName: "@openai/codex",
+      npmPackageName: "example-agent",
       npmGlobalPackageVersion: "0.135.0",
       installAction: {
         kind: "update",
         label: "Update",
-        command: "codex update",
+        command: "example-agent update",
       },
       needsUpdate: false,
       versionUnsupported: true,
@@ -1141,7 +1147,7 @@ describe("dispatchCommand", () => {
     expect(runtime.startThread).not.toHaveBeenCalled();
   });
 
-  it("does not check Codex CLI status for non-Codex thread.start", async () => {
+  it("skips version checks when the provider declaration does not support installation", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
       createRuntime: () => runtime,
@@ -1157,8 +1163,8 @@ describe("dispatchCommand", () => {
         workspaceProvisionType: "unmanaged",
       },
       projectId: "proj_1",
-      providerId: "claude-code",
-      requestId: "creq_non_codex",
+      providerId: "codex",
+      requestId: "creq_unmanaged_provider",
       input: [{ type: "text", text: "hello", mentions: [] }],
       options: {
         model: "claude-sonnet-4-6",
@@ -1176,7 +1182,7 @@ describe("dispatchCommand", () => {
       instructionMode: "append",
     };
     const providerInstallationStatus = vi.fn(async () => {
-      throw new Error("Codex CLI status should not be checked");
+      throw new Error("Provider installation status should not be checked");
     });
 
     const result = await dispatchCommand(command, {
@@ -1206,7 +1212,13 @@ describe("dispatchCommand", () => {
       provisionWorkspace: async () => createWorkspace(),
     });
     const command: CommandOf<"thread.rewind.prepare"> = {
-      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+      bridgeLaunch: {
+        ...DISPATCH_TEST_BRIDGE_LAUNCH,
+        capabilities: {
+          ...DISPATCH_TEST_BRIDGE_LAUNCH.capabilities,
+          experimental_providerInstallation: true,
+        },
+      },
       type: "thread.rewind.prepare",
       environmentId: "env-1",
       threadId: "thread-1",
@@ -1250,6 +1262,7 @@ describe("dispatchCommand", () => {
       versionUnsupported: false,
     };
 
+    const providerInstallationStatus = vi.fn(async () => supportedCodexStatus);
     await expect(
       dispatchCommand(command, {
         dataDir: "/tmp/bb-data",
@@ -1261,11 +1274,14 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
-        providerInstallationStatus: async () => supportedCodexStatus,
+        providerInstallationStatus,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       }),
     ).resolves.toEqual({ providerThreadId: "provider-thread-rewind-1" });
+    expect(providerInstallationStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ requirement: "thread_rewind" }),
+    );
     expect(runtime.prepareThreadRewind).toHaveBeenCalledWith(
       expect.objectContaining({
         leaseId: "lease-1",
@@ -1290,7 +1306,9 @@ describe("dispatchCommand", () => {
           providerInstallationStatus: async () => ({
             ...supportedCodexStatus,
             currentVersion: "0.140.0",
+            minimumSupportedVersion: "0.143.0",
             npmGlobalPackageVersion: "0.140.0",
+            versionUnsupported: true,
           }),
           runtimeManager: manager,
           threadStorageRootPath: "/tmp/bb-thread-storage",
@@ -1814,57 +1832,6 @@ describe("dispatchCommand", () => {
     expect(fixture.manager.get("env-1")?.skillCatalogHash).toBe(
       fixture.originalCatalogHash,
     );
-  });
-
-  it("detects known ACP agents on the resolved user shell PATH, not the daemon's process PATH", async () => {
-    // Regression: known_acp_agents.status must query `which` with the user's
-    // resolved login-shell PATH (like provider.installation.status), otherwise ACP CLIs
-    // installed only on the login PATH — e.g. Hermes' `hermes` under
-    // ~/.local/bin — are invisible to a daemon launched by launchd/systemd with
-    // a stripped PATH.
-    const binDir = await makeTempDir("bb-acp-shell-path-");
-    const executableName = `bb-acp-probe-${process.pid}`;
-    const executablePath = path.join(binDir, executableName);
-    await fs.writeFile(executablePath, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
-
-    const runtime = createRuntime();
-    const manager = new RuntimeManager({
-      createRuntime: () => runtime,
-      provisionWorkspace: async () => createWorkspace(),
-    });
-    // The probe executable exists ONLY on the shell PATH the manager reports,
-    // never on process.env.PATH, so a detection that ignores the shell env
-    // fails to find it. System bin dirs stay on PATH so `which` itself resolves;
-    // only binDir (the stand-in for ~/.local/bin) is exclusive to the shell env.
-    manager.replaceManagedShellEnv({ PATH: `${binDir}:/usr/bin:/bin` });
-
-    const result = await dispatchOnlineRpcCommand(
-      {
-        type: "known_acp_agents.status",
-        agents: [{ id: "acp-probe", executableName }],
-      },
-      {
-        dataDir: "/tmp/bb-data",
-        logger: silentLogger,
-        eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
-        fetchProjectAttachment: async () => {
-          throw new Error("Unexpected project attachment fetch");
-        },
-        runtimeManager: manager,
-        threadStorageRootPath: "/tmp/bb-thread-storage",
-      },
-    );
-
-    expect(result).toEqual({
-      agents: [
-        {
-          id: "acp-probe",
-          executableName,
-          installed: true,
-          executablePath,
-        },
-      ],
-    });
   });
 
   it("routes provider health and usage to the targeted bridge runtime", async () => {

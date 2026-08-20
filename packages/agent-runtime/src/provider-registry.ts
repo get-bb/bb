@@ -5,16 +5,12 @@
  * bridge routing every provider now uses. No legacy adapter factories remain.
  */
 
-import {
-  DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS,
-  type HostDaemonAcpLaunchSpec,
-} from "@bb/host-daemon-contract";
+import { DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS } from "@bb/host-daemon-contract";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import {
   resolveBridgeWorkerProcessArgs,
   resolveBundledBridgeModulePath,
 } from "./shared/bridge-path.js";
-import { BUILT_IN_ACP_LAUNCH_SPECS } from "./acp-launch-specs.js";
 import type {
   ProviderAdapter,
   ProviderAdapterFactoryOptions,
@@ -141,8 +137,9 @@ function buildPluginStaticProviderOptions(
 ): { staticProviderOptions?: Record<string, unknown> } {
   const additionalWorkspaceWriteRoots =
     options.additionalWorkspaceWriteRoots ?? [];
-  const acpLaunchSpec = resolveAcpLaunchSpec(providerId, options);
+  const acpLaunchSpec = options.acpLaunchSpec;
   const staticProviderOptions = {
+    ...options.bridgeLaunch?.providerOptions,
     ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
     ...(additionalWorkspaceWriteRoots.length > 0
       ? { additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots] }
@@ -151,18 +148,6 @@ function buildPluginStaticProviderOptions(
   return Object.keys(staticProviderOptions).length > 0
     ? { staticProviderOptions }
     : {};
-}
-
-/**
- * The launch spec the ACP bridge constructs the agent from. Configured and
- * known agents arrive with one on the command; bb's own bundled ACP providers
- * have no server-side entry, so their spec comes from the built-in table.
- */
-function resolveAcpLaunchSpec(
-  providerId: string,
-  options: ProviderAdapterFactoryOptions,
-): HostDaemonAcpLaunchSpec | undefined {
-  return options.acpLaunchSpec ?? BUILT_IN_ACP_LAUNCH_SPECS[providerId];
 }
 
 export function createProviderForId(
@@ -184,4 +169,3 @@ export function createProviderForId(
     `Unsupported provider "${providerId}": no provider bridge launch was supplied.`,
   );
 }
-

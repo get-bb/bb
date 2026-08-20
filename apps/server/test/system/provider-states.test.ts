@@ -23,6 +23,23 @@ function readyHealth(providerId: string): ProviderHealth {
   };
 }
 
+const INSTALLED_ONLY_PROVIDER_IDS = new Set([
+  "acp-opencode",
+  "acp-omp",
+  "acp-grok",
+  "acp-hermes-agent",
+]);
+
+function healthForInstalledOnlyProvider(
+  providerId: string,
+  installedIds: ReadonlySet<string>,
+): ProviderHealth {
+  return INSTALLED_ONLY_PROVIDER_IDS.has(providerId) &&
+    !installedIds.has(providerId)
+    ? { ...readyHealth(providerId), status: "not_installed" }
+    : readyHealth(providerId);
+}
+
 describe("getProviderStates", () => {
   it("asks each provider bridge and preserves model-picker order", async () => {
     await withTestHarness(async (harness) => {
@@ -31,27 +48,15 @@ describe("getProviderStates", () => {
         hostId: host.id,
         sessionId: session.id,
         handle: (request) => {
-          if (request.command.type === "known_acp_agents.status") {
-            return {
-              ok: true,
-              result: {
-                agents: request.command.agents.map((agent) => ({
-                  ...agent,
-                  installed: agent.id === "acp-opencode",
-                  executablePath:
-                    agent.id === "acp-opencode"
-                      ? "/usr/local/bin/opencode"
-                      : null,
-                })),
-              },
-            };
-          }
           if (request.command.type === "provider.health") {
             return {
               ok: true,
               result: {
                 supported: true,
-                health: readyHealth(request.command.providerId),
+                health: healthForInstalledOnlyProvider(
+                  request.command.providerId,
+                  new Set(["acp-opencode"]),
+                ),
               },
             };
           }
@@ -112,24 +117,15 @@ describe("getProviderStates", () => {
         hostId: host.id,
         sessionId: session.id,
         handle: (request) => {
-          if (request.command.type === "known_acp_agents.status") {
-            return {
-              ok: true,
-              result: {
-                agents: request.command.agents.map((agent) => ({
-                  ...agent,
-                  installed: false,
-                  executablePath: null,
-                })),
-              },
-            };
-          }
           if (request.command.type === "provider.health") {
             return {
               ok: true,
               result: {
                 supported: true,
-                health: readyHealth(request.command.providerId),
+                health: healthForInstalledOnlyProvider(
+                  request.command.providerId,
+                  new Set(),
+                ),
               },
             };
           }
@@ -191,25 +187,16 @@ describe("getProviderStates", () => {
         hostId: remote.host.id,
         sessionId: remote.session.id,
         handle: (request) => {
-          if (request.command.type === "known_acp_agents.status") {
-            return {
-              ok: true,
-              result: {
-                agents: request.command.agents.map((agent) => ({
-                  ...agent,
-                  installed: false,
-                  executablePath: null,
-                })),
-              },
-            };
-          }
           if (request.command.type === "provider.health") {
             healthCwds.push(request.command.cwd);
             return {
               ok: true,
               result: {
                 supported: true,
-                health: readyHealth(request.command.providerId),
+                health: healthForInstalledOnlyProvider(
+                  request.command.providerId,
+                  new Set(),
+                ),
               },
             };
           }
@@ -223,7 +210,12 @@ describe("getProviderStates", () => {
 
       expect(result.providers[0]?.providerId).toBe("codex");
       expect(primaryCalls).toBe(0);
-      expect(healthCwds).toEqual(Array(4).fill(environment.path));
+      // Installed-only discovery is host-scoped; provider readiness is
+      // workspace-scoped and receives the environment path.
+      expect(healthCwds.filter((cwd) => cwd === undefined)).toHaveLength(4);
+      expect(healthCwds.filter((cwd) => cwd !== undefined)).toEqual(
+        Array(4).fill(environment.path),
+      );
     });
   });
 });

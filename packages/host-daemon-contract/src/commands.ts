@@ -262,6 +262,7 @@ export const hostDaemonBridgeLaunchSchema = z
     // work the server already accepted.
     capabilities: z
       .object({
+        experimental_providerInstallation: z.boolean(),
         supportsServiceTier: z.boolean(),
         permissionModes: z.array(permissionModeSchema).min(1),
         supportsThreadArchive: z.boolean(),
@@ -269,6 +270,7 @@ export const hostDaemonBridgeLaunchSchema = z
         fork: providerForkSchema,
       })
       .strict(),
+    providerOptions: jsonObjectSchema,
   })
   .strict();
 export type HostDaemonBridgeLaunch = z.infer<
@@ -1031,6 +1033,7 @@ const providerInstallationStatusCommandSchema = z
     acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     cwd: z.string().min(1).optional(),
+    requirement: z.literal("thread_rewind").optional(),
   })
   .strict();
 
@@ -1051,20 +1054,6 @@ export type ProviderHealth = z.infer<typeof providerHealthSchema>;
 export type ProviderHealthResult = z.infer<
   typeof experimental_providerHealthResultSchema
 >;
-
-const knownAcpAgentExecutableQuerySchema = z
-  .object({
-    id: z.string().min(1),
-    executableName: z.string().min(1),
-  })
-  .strict();
-
-const knownAcpAgentsStatusCommandSchema = z
-  .object({
-    type: z.literal("known_acp_agents.status"),
-    agents: z.array(knownAcpAgentExecutableQuerySchema),
-  })
-  .strict();
 
 const provisionInitiatorSchema = z
   .object({
@@ -1498,21 +1487,6 @@ const providerListModelsResultSchema = z.object({
   models: z.array(availableModelSchema),
   selectedOnlyModels: z.array(availableModelSchema),
 });
-
-const knownAcpAgentExecutableStatusSchema = z
-  .object({
-    id: z.string().min(1),
-    executableName: z.string().min(1),
-    installed: z.boolean(),
-    executablePath: z.string().min(1).nullable(),
-  })
-  .strict();
-
-const knownAcpAgentsStatusResultSchema = z
-  .object({
-    agents: z.array(knownAcpAgentExecutableStatusSchema),
-  })
-  .strict();
 
 const threadStartResultSchema = z.object({
   providerThreadId: z.string().min(1),
@@ -2103,15 +2077,6 @@ export const hostDaemonCommandRegistry = {
     resultSchema: providerCliInstallResultSchema,
     transport: "onlineRpc",
     retryable: false,
-    flushEventsBeforeResult: false,
-    envLane: null,
-  }),
-  "known_acp_agents.status": defineHostDaemonCommandDescriptor({
-    type: "known_acp_agents.status",
-    schema: knownAcpAgentsStatusCommandSchema,
-    resultSchema: knownAcpAgentsStatusResultSchema,
-    transport: "onlineRpc",
-    retryable: true,
     flushEventsBeforeResult: false,
     envLane: null,
   }),

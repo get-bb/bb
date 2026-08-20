@@ -62,9 +62,9 @@ export const bbAppManagedConfigValuesSchema = z
   .strict();
 
 /**
- * ACP provider ids are dynamic: known agents (acp-opencode, acp-omp, …) and
- * custom agents (acp-<slug>) both live outside the bundled provider list, so
- * customModels accepts any well-formed acp-* id alongside it.
+ * ACP provider ids share one namespace across plugin-declared built-ins and
+ * custom agents (`acp-<slug>`), so customModels accepts any well-formed acp-*
+ * id even though config is parsed before the live plugin registry exists.
  *
  * DEBT: config is parsed before plugins load, so it cannot consult the live
  * registry; the bundled ids are restated here. A third-party plugin provider

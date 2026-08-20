@@ -2,17 +2,18 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CodexCliVersionBanner } from "./CodexCliVersionBanner";
+import { ProviderCliVersionBanner } from "./ProviderCliVersionBanner";
 
 afterEach(() => {
   cleanup();
 });
 
-describe("CodexCliVersionBanner", () => {
-  it("presents the blocking update as an attention alert with a direct action", () => {
+describe("ProviderCliVersionBanner", () => {
+  it("uses the selected provider's identity and update requirement", () => {
     const onUpdate = vi.fn();
     render(
-      <CodexCliVersionBanner
+      <ProviderCliVersionBanner
+        displayName="Example Agent"
         currentVersion="0.135.0"
         minimumSupportedVersion="0.136.0"
         canUpdate
@@ -22,19 +23,22 @@ describe("CodexCliVersionBanner", () => {
     );
 
     expect(
-      screen.getByRole("region", { name: "Codex update required" }),
+      screen.getByRole("region", { name: "Example Agent update required" }),
     ).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain(
-      "Update Codex before starting a thread. Installed 0.135.0; version 0.136.0 or newer is required.",
+      "Update Example Agent before starting a thread. Installed 0.135.0; version 0.136.0 or newer is required.",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Update Codex" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Update Example Agent" }),
+    );
     expect(onUpdate).toHaveBeenCalledOnce();
   });
 
   it("shows update progress without repeating an ambiguous version fallback", () => {
     render(
-      <CodexCliVersionBanner
+      <ProviderCliVersionBanner
+        displayName="Codex"
         currentVersion="0.135.0"
         minimumSupportedVersion={null}
         canUpdate

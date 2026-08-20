@@ -95,7 +95,10 @@ likewise contain an empty `windows` array.
 Installation has a deliberately split execution boundary. The bridge owns
 provider-specific discovery, version/source comparison, and the install/update
 decision. `provider/installation/status` returns that state plus a display-only
-command. When the user acts, `provider/installation/run` rechecks the state and
+command. A status request may include a typed operation requirement such as
+`thread_rewind`; the bridge owns the minimum provider version needed for that
+operation and reports it through the ordinary installation status. When the
+user acts, `provider/installation/run` rechecks the state and
 returns either `available: false` or a typed executable/argument plan with a
 post-run verification rule. The host daemon—not the bridge, server, or browser—
 chooses the environment and working directory, serializes installations,

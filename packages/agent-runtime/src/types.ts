@@ -179,12 +179,15 @@ export interface AgentRuntimeBridgeLaunch {
     | { kind: "daemon-bundled"; id: string };
   /** Server-validated capabilities from the provider declaration. */
   capabilities: {
+    experimental_providerInstallation: boolean;
     supportsServiceTier: boolean;
     permissionModes: PermissionMode[];
     supportsThreadArchive: boolean;
     supportsThreadRename: boolean;
     fork: ProviderFork;
   };
+  /** Provider-owned statics; interpreted only by the provider bridge. */
+  providerOptions: JsonObject;
 }
 
 export interface EnsureProviderArgs {
@@ -379,6 +382,10 @@ export interface ProviderMaintenanceArgs {
   cwd?: string;
 }
 
+export interface ProviderInstallationStatusArgs extends ProviderMaintenanceArgs {
+  requirement?: "thread_rewind";
+}
+
 export interface AgentRuntime {
   ensureProvider(args: EnsureProviderArgs): Promise<void>;
 
@@ -426,7 +433,7 @@ export interface AgentRuntime {
   ): Promise<ExperimentalProviderUsageResult>;
 
   providerInstallationStatus(
-    args: ProviderMaintenanceArgs,
+    args: ProviderInstallationStatusArgs,
   ): Promise<ExperimentalProviderInstallationStatus>;
 
   providerInstallationRun(

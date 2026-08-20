@@ -2,7 +2,8 @@ import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 
-interface CodexCliVersionBannerProps {
+interface ProviderCliVersionBannerProps {
+  displayName: string;
   currentVersion: string | null;
   minimumSupportedVersion: string | null;
   canUpdate: boolean;
@@ -26,21 +27,18 @@ function versionRequirementCopy(
   return "A newer version is required.";
 }
 
-/**
- * Blocking update state for the new-thread composer. This is intentionally
- * more prominent than passive prompt context: the composer cannot submit until
- * the user resolves it.
- */
-export function CodexCliVersionBanner({
+/** Blocking update state for the selected provider in the new-thread composer. */
+export function ProviderCliVersionBanner({
+  displayName,
   currentVersion,
   minimumSupportedVersion,
   canUpdate,
   updating,
   onUpdate,
-}: CodexCliVersionBannerProps) {
+}: ProviderCliVersionBannerProps) {
   return (
     <PromptStackCard
-      ariaLabel="Codex update required"
+      ariaLabel={`${displayName} update required`}
       className="overflow-hidden border-attention/50 bg-surface-attention shadow-sm"
     >
       <div
@@ -55,10 +53,10 @@ export function CodexCliVersionBanner({
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-foreground">
-            Codex update required
+            {displayName} update required
           </p>
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-            Update Codex before starting a thread.{" "}
+            Update {displayName} before starting a thread.{" "}
             {versionRequirementCopy(currentVersion, minimumSupportedVersion)}
           </p>
         </div>
@@ -76,7 +74,7 @@ export function CodexCliVersionBanner({
                 Updating…
               </>
             ) : (
-              "Update Codex"
+              `Update ${displayName}`
             )}
           </Button>
         ) : null}

@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import semver from "semver";
 import type { PromptInput } from "@bb/domain";
 import type { HostDaemonCommandResult } from "@bb/host-daemon-contract";
 import { resolveContainedPath } from "@bb/process-utils";
@@ -50,8 +49,6 @@ interface RequireSupportedProviderCliArgs {
   options: CommandDispatchOptions;
 }
 
-const CODEX_REWIND_MINIMUM_SUPPORTED_VERSION = "0.143.0";
-
 function requireConfinedPath(rootPath: string, candidatePath: string): string {
   const resolved = resolveContainedPath({
     rootPath,
@@ -96,7 +93,7 @@ async function requireSupportedProviderCliForThreadStart({
   command,
   options,
 }: RequireSupportedProviderCliArgs): Promise<void> {
-  if (command.providerId !== "codex") {
+  if (!command.bridgeLaunch.capabilities.experimental_providerInstallation) {
     return;
   }
 
@@ -112,30 +109,21 @@ async function requireSupportedProviderCliForThreadStart({
     ...(command.acpLaunchSpec === undefined
       ? {}
       : { acpLaunchSpec: command.acpLaunchSpec }),
+    ...(command.type === "thread.rewind.prepare"
+      ? { requirement: "thread_rewind" as const }
+      : {}),
   });
-  const minimumVersion =
-    command.type === "thread.rewind.prepare"
-      ? CODEX_REWIND_MINIMUM_SUPPORTED_VERSION
-      : status.minimumSupportedVersion;
-  const versionUnsupported =
-    command.type === "thread.rewind.prepare"
-      ? status.currentVersion === null ||
-        !semver.gte(
-          status.currentVersion,
-          CODEX_REWIND_MINIMUM_SUPPORTED_VERSION,
-        )
-      : status.versionUnsupported;
-  if (!versionUnsupported) {
+  if (!status.versionUnsupported) {
     return;
   }
 
   const currentVersion = status.currentVersion
     ? ` ${status.currentVersion}`
     : "";
-  const requiredVersion = minimumVersion ?? "a newer version";
+  const requiredVersion = status.minimumSupportedVersion ?? "a newer version";
   throw new ExpectedCommandDispatchError(
     "provider_cli_unsupported_version",
-    `Codex${currentVersion} is too old for this operation. Update Codex to ${requiredVersion} or newer.`,
+    `Provider "${command.providerId}"${currentVersion} is too old for this operation. Update it to ${requiredVersion} or newer.`,
   );
 }
 

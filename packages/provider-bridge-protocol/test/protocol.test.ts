@@ -8,6 +8,7 @@ import {
   bridgeCapabilitiesSchema,
   initializeResultSchema,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  experimental_providerInstallationStatusParamsSchema,
   threadStopParamsSchema,
   ThreadEventGrammar,
   toolCallRequestParamsSchema,
@@ -37,6 +38,23 @@ describe("handshake", () => {
     expect((parsed as Record<string, unknown>).futureCapability).toStrictEqual({
       anything: true,
     });
+  });
+});
+
+describe("provider installation status", () => {
+  it("accepts the typed thread rewind requirement and rejects arbitrary operations", () => {
+    expect(
+      experimental_providerInstallationStatusParamsSchema.parse({
+        providerId: "codex",
+        requirement: "thread_rewind",
+      }).requirement,
+    ).toBe("thread_rewind");
+    expect(
+      experimental_providerInstallationStatusParamsSchema.safeParse({
+        providerId: "codex",
+        requirement: "anything",
+      }).success,
+    ).toBe(false);
   });
 });
 

@@ -22,10 +22,7 @@ import {
   waitForThreadAgentMessageText,
 } from "./test/runtime-test-harness.js";
 import { promptTextInput } from "./test/prompt-input.js";
-import type {
-  AgentRuntimeBridgeLaunch,
-  AgentRuntimeOptions,
-} from "./types.js";
+import type { AgentRuntimeBridgeLaunch, AgentRuntimeOptions } from "./types.js";
 import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
 
 interface CreateProviderProcessManagerArgs {
@@ -1272,7 +1269,9 @@ rl.on("line", (line) => {
         digest: "c".repeat(64),
         artifactPath: join(tmpDir, "codex-provider-bridge.mjs"),
       },
+      providerOptions: {},
       capabilities: {
+        experimental_providerInstallation: false,
         supportsServiceTier: true,
         permissionModes: ["full"],
         supportsThreadArchive: true,
@@ -1363,7 +1362,9 @@ rl.on("line", (line) => {
         digest: "d".repeat(64),
         artifactPath: join(tmpDir, "declaration-provider-bridge.mjs"),
       },
+      providerOptions: {},
       capabilities: {
+        experimental_providerInstallation: false,
         supportsServiceTier: true,
         permissionModes: ["full"],
         supportsThreadArchive: false,
@@ -1406,7 +1407,11 @@ rl.on("line", (line) => {
 
       const updatedDeclaration: AgentRuntimeBridgeLaunch = {
         ...bridgeLaunch,
-        capabilities: { ...bridgeLaunch.capabilities, supportsThreadArchive: true },
+        providerOptions: {},
+        capabilities: {
+          ...bridgeLaunch.capabilities,
+          supportsThreadArchive: true,
+        },
       };
       await runtime.startThread({
         bridgeLaunch: updatedDeclaration,
@@ -1423,6 +1428,7 @@ rl.on("line", (line) => {
 
       const rewound: AgentRuntimeBridgeLaunch = {
         ...updatedDeclaration,
+        providerOptions: {},
         capabilities: { ...updatedDeclaration.capabilities, fork: "tip" },
       };
       await runtime.startThread({

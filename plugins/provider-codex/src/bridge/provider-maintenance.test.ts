@@ -66,6 +66,13 @@ describe("Codex provider maintenance", () => {
     expect(__testing.compareVersions("1.0.0", "0.136.0")).toBeGreaterThan(0);
   });
 
+  it("owns the stricter CLI requirement for thread rewind", () => {
+    expect(__testing.minimumSupportedVersionForRequirement()).toBe("0.136.0");
+    expect(
+      __testing.minimumSupportedVersionForRequirement("thread_rewind"),
+    ).toBe("0.143.0");
+  });
+
   it("resolves a fresh typed update plan and rejects a stale action", () => {
     expect(
       __testing.buildProviderInstallationRun(installationStatus(), "update"),

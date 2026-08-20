@@ -34,9 +34,11 @@ function registerProvider(
   pluginId: string,
 ): { dispose(): void } {
   return registry.register({
+    bridgeOptions: {},
     info: { ...CURSOR_LIKE_INFO, id },
     serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
     pluginId,
+    visibility: "always",
   });
 }
 
@@ -44,6 +46,7 @@ describe("provider registry policy accessors", () => {
   it("answers from the registration, not a core seed", () => {
     const registry = createProviderRegistryService();
     registry.register({
+      bridgeOptions: {},
       info: {
         ...CURSOR_LIKE_INFO,
         id: "codex",
@@ -56,6 +59,7 @@ describe("provider registry policy accessors", () => {
       },
       serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
       pluginId: "provider-codex",
+      visibility: "always",
     });
     expect(registry.getServerCapabilities("codex")).toStrictEqual(
       MINIMAL_SERVER_CAPABILITIES,
@@ -111,12 +115,14 @@ describe("provider registry policy accessors", () => {
   it("stops claiming capabilities for a provider whose plugin is gone", () => {
     const registry = createProviderRegistryService();
     const handle = registry.register({
+      bridgeOptions: {},
       info: { ...CURSOR_LIKE_INFO, id: "codex" },
       serverCapabilities: {
         ...MINIMAL_SERVER_CAPABILITIES,
         supportsManualCompaction: true,
       },
       pluginId: "provider-codex",
+      visibility: "always",
     });
     expect(registry.supportsManualCompaction("codex")).toBe(true);
 
@@ -218,9 +224,11 @@ describe("provider registry", () => {
   it("adds and disposes plugin registrations", () => {
     const registry = createProviderRegistryService();
     const handle = registry.register({
+      bridgeOptions: {},
       info: CURSOR_LIKE_INFO,
       serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
       pluginId: "some-plugin",
+      visibility: "always",
     });
     expect(registry.get("plugin-provider")).toMatchObject({
       source: { kind: "plugin", pluginId: "some-plugin" },
@@ -234,9 +242,11 @@ describe("provider registry", () => {
     // Disposing twice, or after a re-registration, must not remove a newer
     // registration for the same id.
     const second = registry.register({
+      bridgeOptions: {},
       info: CURSOR_LIKE_INFO,
       serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
       pluginId: "other-plugin",
+      visibility: "always",
     });
     handle.dispose();
     expect(registry.get("plugin-provider")).toMatchObject({

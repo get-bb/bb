@@ -11,7 +11,7 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { BUILT_IN_ACP_LAUNCH_SPECS } from "../../../../packages/agent-runtime/src/acp-launch-specs.js";
+import { CURSOR_PRIMARY_MODELS } from "../../server.js";
 import {
   buildAgentModelCatalog,
   parseAgentModelLines,
@@ -25,8 +25,7 @@ const CURSOR_LIST_MODELS = readFileSync(
 );
 
 describe("issue #1688: Cursor Grok 4.6 primary placement", () => {
-  const primaryModels =
-    BUILT_IN_ACP_LAUNCH_SPECS["acp-cursor"].modelCli!.primaryModels;
+  const primaryModels = CURSOR_PRIMARY_MODELS;
   const catalog = buildAgentModelCatalog(
     parseAgentModelLines(CURSOR_LIST_MODELS),
   )!;
