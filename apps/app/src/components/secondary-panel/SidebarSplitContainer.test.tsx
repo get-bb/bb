@@ -128,6 +128,7 @@ describe("SidebarSplitContainer", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    document.body.style.cursor = "";
     document.body.style.userSelect = "";
   });
 
@@ -687,12 +688,16 @@ describe("SidebarSplitContainer", () => {
     });
 
     fireEvent.pointerDown(hitTarget, { clientX: 400, pointerId: 3 });
+    expect(
+      screen.getByTestId("iframe-drag-guard-overlay").className,
+    ).toContain("cursor-col-resize");
     fireEvent.pointerMove(hitTarget, { clientX: 520, pointerId: 3 });
     expect(headerPrevious.style.flex).toBe(bodyPrevious.style.flex);
     expect(headerNext.style.flex).toBe(bodyNext.style.flex);
     expect(Number.parseFloat(headerPrevious.style.flex)).toBeCloseTo(0.649, 3);
 
     fireEvent.pointerUp(hitTarget, { clientX: 600, pointerId: 3 });
+    expect(screen.queryByTestId("iframe-drag-guard-overlay")).toBeNull();
     expect(headerPrevious.style.flex).toBe(bodyPrevious.style.flex);
     expect(headerNext.style.flex).toBe(bodyNext.style.flex);
     expect(Number.parseFloat(bodyPrevious.style.flex)).toBeCloseTo(0.749, 3);
@@ -705,6 +710,7 @@ describe("SidebarSplitContainer", () => {
     expect(headerPrevious.style.flex).not.toBe(committedPreviousFlex);
     expect(bodyPrevious.style.flex).toBe(headerPrevious.style.flex);
     fireEvent.pointerCancel(hitTarget, { clientX: 320, pointerId: 4 });
+    expect(screen.queryByTestId("iframe-drag-guard-overlay")).toBeNull();
     expect(headerPrevious.style.flex).toBe(committedPreviousFlex);
     expect(headerNext.style.flex).toBe(committedNextFlex);
     expect(bodyPrevious.style.flex).toBe(committedPreviousFlex);
@@ -752,6 +758,131 @@ describe("SidebarSplitContainer", () => {
     expect(previous.style.flex).toBe(previousFlex);
     expect(next.style.flex).toBe(nextFlex);
     expect(document.body.style.userSelect).toBe("");
+  });
+
+  it("keeps divider drag cursor and selection state off the document root", () => {
+    persistState(createTwoPaneState());
+    renderContainer({
+      renderPane: ({ paneId }) => <div>{paneId}</div>,
+    });
+
+    const separator = screen.getByRole("separator");
+    const hitTarget = separator.firstElementChild;
+    const previous = separator.previousElementSibling;
+    const next = separator.nextElementSibling;
+    if (
+      !(hitTarget instanceof HTMLElement) ||
+      !(previous instanceof HTMLElement) ||
+      !(next instanceof HTMLElement)
+    ) {
+      throw new Error("Expected a split divider and adjacent panes");
+    }
+    Object.defineProperty(hitTarget, "setPointerCapture", { value: vi.fn() });
+    Object.defineProperty(previous, "getBoundingClientRect", {
+      value: () => ({ left: 0, right: 400, top: 0, bottom: 600 }),
+    });
+    Object.defineProperty(next, "getBoundingClientRect", {
+      value: () => ({ left: 401, right: 800, top: 0, bottom: 600 }),
+    });
+    const bodyStyleBefore = document.body.getAttribute("style");
+    const rootStyleBefore = document.documentElement.getAttribute("style");
+
+    expect(
+      fireEvent.pointerDown(hitTarget, { clientX: 400, pointerId: 7 }),
+    ).toBe(false);
+    expect(document.body.getAttribute("style")).toBe(bodyStyleBefore);
+    expect(document.documentElement.getAttribute("style")).toBe(
+      rootStyleBefore,
+    );
+    const overlay = screen.getByTestId("iframe-drag-guard-overlay");
+    expect(overlay.className).toContain("cursor-col-resize");
+    expect(separator.closest("[data-sidebar-split-container]")?.lastChild).toBe(
+      overlay,
+    );
+
+    fireEvent.pointerCancel(hitTarget, { clientX: 400, pointerId: 7 });
+    expect(screen.queryByTestId("iframe-drag-guard-overlay")).toBeNull();
+    expect(document.body.getAttribute("style")).toBe(bodyStyleBefore);
+    expect(document.documentElement.getAttribute("style")).toBe(
+      rootStyleBefore,
+    );
+  });
+
+  it("uses a row-resize drag guard for stacked panes", () => {
+    persistState(createStackedPaneState());
+    renderContainer({
+      renderPane: ({ paneId }) => <div>{paneId}</div>,
+    });
+
+    const separator = screen.getByRole("separator", {
+      name: "Resize stacked right panel panes",
+    });
+    const hitTarget = separator.firstElementChild;
+    const previous = separator.previousElementSibling;
+    const next = separator.nextElementSibling;
+    if (
+      !(hitTarget instanceof HTMLElement) ||
+      !(previous instanceof HTMLElement) ||
+      !(next instanceof HTMLElement)
+    ) {
+      throw new Error("Expected a stacked split divider and adjacent panes");
+    }
+    Object.defineProperty(hitTarget, "setPointerCapture", { value: vi.fn() });
+    Object.defineProperty(previous, "getBoundingClientRect", {
+      value: () => ({ left: 0, right: 800, top: 0, bottom: 400 }),
+    });
+    Object.defineProperty(next, "getBoundingClientRect", {
+      value: () => ({ left: 0, right: 800, top: 401, bottom: 800 }),
+    });
+
+    fireEvent.pointerDown(hitTarget, { clientY: 400, pointerId: 9 });
+    expect(
+      screen.getByTestId("iframe-drag-guard-overlay").className,
+    ).toContain("cursor-row-resize");
+
+    fireEvent.pointerCancel(hitTarget, { clientY: 400, pointerId: 9 });
+    expect(screen.queryByTestId("iframe-drag-guard-overlay")).toBeNull();
+  });
+
+  it("cancels an in-flight divider resize when the split tree unmounts", () => {
+    persistState(createTwoPaneState());
+    const view = renderContainer({
+      renderPane: ({ paneId }) => <div>{paneId}</div>,
+    });
+
+    const separator = screen.getByRole("separator");
+    const hitTarget = separator.firstElementChild;
+    const previous = separator.previousElementSibling;
+    const next = separator.nextElementSibling;
+    if (
+      !(hitTarget instanceof HTMLElement) ||
+      !(previous instanceof HTMLElement) ||
+      !(next instanceof HTMLElement)
+    ) {
+      throw new Error("Expected a split divider and adjacent panes");
+    }
+    Object.defineProperty(hitTarget, "setPointerCapture", { value: vi.fn() });
+    Object.defineProperty(previous, "getBoundingClientRect", {
+      value: () => ({ left: 0, right: 400, top: 0, bottom: 600 }),
+    });
+    Object.defineProperty(next, "getBoundingClientRect", {
+      value: () => ({ left: 401, right: 800, top: 0, bottom: 600 }),
+    });
+    const previousFlex = previous.style.flex;
+    const nextFlex = next.style.flex;
+
+    fireEvent.pointerDown(hitTarget, { clientX: 400, pointerId: 8 });
+    fireEvent.pointerMove(hitTarget, { clientX: 560, pointerId: 8 });
+    expect(previous.style.flex).not.toBe(previousFlex);
+    expect(next.style.flex).not.toBe(nextFlex);
+
+    view.unmount();
+    expect(separator.dataset.dragging).toBeUndefined();
+    expect(previous.style.flex).toBe(previousFlex);
+    expect(next.style.flex).toBe(nextFlex);
+    fireEvent.pointerMove(hitTarget, { clientX: 700, pointerId: 8 });
+    expect(previous.style.flex).toBe(previousFlex);
+    expect(next.style.flex).toBe(nextFlex);
   });
 
   it("does not write a canonical layout or rewrite a focused-pane no-op", () => {

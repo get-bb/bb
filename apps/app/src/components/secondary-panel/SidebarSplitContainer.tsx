@@ -22,7 +22,7 @@ import {
   type SplitSide,
 } from "@/lib/split-layout";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
-import { applyResizeCursor, clearResizeCursor } from "@/lib/resizeCursor";
+import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import {
   PaneContext,
@@ -50,6 +50,7 @@ import {
 import type { SecondaryPanelTabReorderRequest } from "./secondaryPanelFileTab";
 
 const PANE_DRAG_ENGAGE_DISTANCE_PX = 7;
+type SidebarSplitResizeCursor = "col-resize" | "row-resize";
 
 export interface SidebarSplitTabDescriptor {
   id: string;
@@ -123,6 +124,8 @@ export function SidebarSplitContainer({
   });
   const previousActiveTabId = useRef(activeTabId);
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
+  const [resizeCursor, setResizeCursor] =
+    useState<SidebarSplitResizeCursor | null>(null);
   const paneCount = countPanes(state.layout.root);
   const hasMultiplePanes = paneCount > 1;
 
@@ -439,6 +442,7 @@ export function SidebarSplitContainer({
       <SidebarSplitHeaderTree
         node={state.layout.root}
         onResize={resize}
+        onResizeDragChange={setResizeCursor}
         paneRenderArgsById={splitPaneRenderArgsById}
         path={[]}
         renderGroup={renderGroup}
@@ -468,9 +472,14 @@ export function SidebarSplitContainer({
           onMoveActiveTabToSide={activeTabPositionHandler}
           onReorderTab={reorderTab}
           onResize={resize}
+          onResizeDragChange={setResizeCursor}
           onSelectTab={selectTab}
         />
       </div>
+      <IframeDragGuardOverlay
+        active={resizeCursor !== null}
+        cursor={resizeCursor ?? "col-resize"}
+      />
     </div>
   );
 }
@@ -494,6 +503,7 @@ interface SidebarSplitTreeProps {
     request: SecondaryPanelTabReorderRequest,
   ) => void;
   onResize: (path: SplitPath, childIndex: number, fraction: number) => void;
+  onResizeDragChange: (cursor: SidebarSplitResizeCursor | null) => void;
   onSelectTab: (paneId: string, tabId: string) => void;
   path: number[];
   renderPane: (args: SidebarSplitPaneRenderArgs) => ReactNode;
@@ -503,6 +513,7 @@ interface SidebarSplitTreeProps {
 interface SidebarSplitHeaderTreeProps {
   node: LayoutNode;
   onResize: (path: SplitPath, childIndex: number, fraction: number) => void;
+  onResizeDragChange: (cursor: SidebarSplitResizeCursor | null) => void;
   paneRenderArgsById: ReadonlyMap<string, SidebarSplitPaneRenderArgs>;
   path: SplitPath;
   renderGroup: (pane: SidebarSplitPaneRenderArgs) => ReactNode;
@@ -541,6 +552,7 @@ function SidebarSplitHeaderTree(props: SidebarSplitHeaderTreeProps) {
               onResize={(fraction) =>
                 props.onResize(props.path, index - 1, fraction)
               }
+              onResizeDragChange={props.onResizeDragChange}
             />
           ) : null}
           <div
@@ -587,6 +599,7 @@ function SidebarSplitTree(props: SidebarSplitTreeProps) {
               onResize={(fraction) =>
                 props.onResize(props.path, index - 1, fraction)
               }
+              onResizeDragChange={props.onResizeDragChange}
             />
           ) : null}
           <div
@@ -682,6 +695,7 @@ function SidebarSplitDivider({
   dir,
   hidden,
   onResize,
+  onResizeDragChange,
   path,
   surface,
 }: {
@@ -690,13 +704,22 @@ function SidebarSplitDivider({
   dir: "row" | "col";
   hidden: boolean;
   onResize: (fraction: number) => void;
+  onResizeDragChange: (cursor: SidebarSplitResizeCursor | null) => void;
   path: SplitPath;
   surface: "body" | "header";
 }) {
   const horizontal = dir === "row";
+  const finishResizeRef = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      finishResizeRef.current?.();
+    },
+    [],
+  );
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       event.preventDefault();
+      finishResizeRef.current?.();
       const hitTarget = event.currentTarget;
       const divider = hitTarget.parentElement;
       const previous = divider?.previousElementSibling;
@@ -727,8 +750,6 @@ function SidebarSplitDivider({
       ].filter((pair): pair is SidebarSplitResizePair => pair !== null);
       hitTarget.setPointerCapture(pointerId);
       divider.dataset.dragging = "true";
-      applyResizeCursor(horizontal ? "horizontal" : "vertical");
-      document.body.style.userSelect = "none";
       let pendingFraction: number | null = null;
       let receivedPointerMove = false;
       let finished = false;
@@ -749,12 +770,15 @@ function SidebarSplitDivider({
       const finish = (commit: boolean) => {
         if (finished) return;
         finished = true;
+        finishResizeRef.current = null;
         delete divider.dataset.dragging;
         hitTarget.removeEventListener("pointermove", move);
         hitTarget.removeEventListener("pointerup", onUp);
         hitTarget.removeEventListener("pointercancel", cancel);
-        clearResizeCursor();
-        document.body.style.userSelect = "";
+        if (hitTarget.hasPointerCapture?.(pointerId)) {
+          hitTarget.releasePointerCapture(pointerId);
+        }
+        onResizeDragChange(null);
         if (commit && pendingFraction !== null) {
           onResize(pendingFraction);
           return;
@@ -783,8 +807,10 @@ function SidebarSplitDivider({
       hitTarget.addEventListener("pointermove", move);
       hitTarget.addEventListener("pointerup", onUp);
       hitTarget.addEventListener("pointercancel", cancel);
+      finishResizeRef.current = () => finish(false);
+      onResizeDragChange(horizontal ? "col-resize" : "row-resize");
     },
-    [childIndex, horizontal, onResize, path, surface],
+    [childIndex, horizontal, onResize, onResizeDragChange, path, surface],
   );
   return (
     <div
