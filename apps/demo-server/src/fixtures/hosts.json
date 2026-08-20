@@ -1,0 +1,13 @@
+[
+  {
+    "id": "host_demo0000001",
+    "name": "demo",
+    "type": "persistent",
+    "status": "connected",
+    "maxPermissionMode": "full",
+    "lastSeenAt": 1787266877131,
+    "lastRejectedProtocolVersion": null,
+    "createdAt": 1784415215437,
+    "updatedAt": 1787266877131
+  }
+]

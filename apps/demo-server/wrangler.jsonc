@@ -1,0 +1,19 @@
+// bb demo server — the mock bb server an App Store reviewer connects to.
+//
+// Deploy: pnpm --filter @bb/demo-server exec wrangler deploy
+//
+// No D1, no secrets, no bindings beyond the Durable Object: the demo holds
+// fixed fixtures and per-session state only. Nothing here can reach a real bb
+// server, a machine, or a user's data.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bb-demo-server",
+  "main": "./src/worker.ts",
+  "compatibility_date": "2026-06-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DemoStateDO"] }],
+  "durable_objects": {
+    "bindings": [{ "name": "DEMO_STATE", "class_name": "DemoStateDO" }],
+  },
+}

@@ -1,0 +1,73 @@
+# Demo server end-to-end: first run → add the bb demo server by Direct URL →
+# thread list → open a thread → send a message → the scripted reply arrives.
+#
+# This is the exact path an App Store reviewer follows from the review notes,
+# so it must pass before the demo server is deployed.
+#
+# Requires: the demo worker on 8799 (pnpm --filter @bb/demo-server dev) and
+# Metro on 8082 started with EXPO_PUBLIC_BB_E2E=1.
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:8799"
+---
+# The dev-client deep link is refused by this simulator (LSApplicationWorkspace
+# error 115), so cold-start through the launcher's "Recently opened" row for
+# Metro instead. A Release/TestFlight build needs neither.
+- stopApp
+- launchApp
+# The launcher remembers the last bundle, so the Metro row is only present on
+# a cold launcher. Tap it when it is there, otherwise the app is already up.
+- runFlow:
+    when:
+      visible: "${METRO_URL}"
+    commands:
+      - tapOn: "${METRO_URL}"
+- extendedWaitUntil:
+    visible: "Connect to a bb server"
+    timeout: 30000
+- tapOn:
+    id: "server-url-input"
+- inputText: "${SERVER_URL}"
+- tapOn:
+    id: "server-label-input"
+- inputText: "bb demo"
+- tapOn: "Server URL"
+- tapOn:
+    id: "add-server-submit"
+# The probe (/health + /system/config) must pass against the mock.
+- extendedWaitUntil:
+    visible:
+      id: "home-thread-list"
+    timeout: 30000
+- assertVisible: "bb demo"
+- takeScreenshot: demo-home
+# The seeded threads come from the sidebar-bootstrap fixture.
+- assertVisible: "Add a dark mode toggle"
+- assertVisible: "Fix the flaky checkout test"
+- tapOn: "Add a dark mode toggle"
+# Timeline rows: the seeded user prompt, a command row, and the assistant reply.
+- extendedWaitUntil:
+    visible: "Add a dark mode toggle to the settings screen."
+    timeout: 30000
+- takeScreenshot: demo-thread
+# Sending: the demo server records the message and replays a scripted reply,
+# then announces the change over the socket so the app refetches.
+# The composer is a pill until focused, so tap the input twice: once to
+# expand the card, once to focus the field inside it.
+- tapOn:
+    id: "thread-composer-input"
+- tapOn:
+    id: "thread-composer-input"
+- inputText: "Yes, go ahead."
+- tapOn:
+    id: "thread-composer-submit"
+- extendedWaitUntil:
+    visible: "Yes, go ahead."
+    timeout: 30000
+# The reply is a markdown paragraph, so match a fragment rather than the whole
+# text node, and scroll: the new turn lands below the fold.
+- extendedWaitUntil:
+    visible: ".*replaying a scripted answer.*"
+    timeout: 30000
+- takeScreenshot: demo-reply

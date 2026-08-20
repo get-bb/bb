@@ -1,0 +1,157 @@
+{
+  "sections": [],
+  "projects": [
+    {
+      "id": "proj_demo00000001",
+      "kind": "standard",
+      "name": "demo-app",
+      "gitRemoteUrl": null,
+      "createdAt": 1787183600000,
+      "updatedAt": 1787270000000,
+      "sources": [],
+      "threads": [
+        {
+          "id": "thr_demo00000001",
+          "projectId": "proj_demo00000001",
+          "environmentId": null,
+          "providerId": "codex",
+          "title": "Add a dark mode toggle",
+          "titleFallback": "Add a dark mode toggle",
+          "sectionId": null,
+          "status": "idle",
+          "parentThreadId": null,
+          "sourceThreadId": null,
+          "originKind": null,
+          "originPluginId": null,
+          "visibility": "visible",
+          "archivedAt": null,
+          "pinnedAt": null,
+          "deletedAt": null,
+          "lastReadAt": 1787269280000,
+          "latestAttentionAt": 1787269280000,
+          "createdAt": 1787267480000,
+          "updatedAt": 1787269280000,
+          "activity": {
+            "activeBackgroundAgentCount": 0,
+            "activeBackgroundCommandCount": 0,
+            "activeGoalCount": 0,
+            "activePlanModeCount": 0,
+            "activeWorkflowCount": 0
+          },
+          "pinSortKey": null,
+          "environmentBranchName": "main",
+          "environmentHostId": "host_demo0000001",
+          "environmentName": null,
+          "environmentWorkspaceDisplayKind": "other",
+          "hasPendingInteraction": false,
+          "runtime": {
+            "displayStatus": "idle",
+            "hostReconnectGraceExpiresAt": null
+          }
+        },
+        {
+          "id": "thr_demo00000002",
+          "projectId": "proj_demo00000001",
+          "environmentId": null,
+          "providerId": "codex",
+          "title": "Fix the flaky checkout test",
+          "titleFallback": "Fix the flaky checkout test",
+          "sectionId": null,
+          "status": "idle",
+          "parentThreadId": null,
+          "sourceThreadId": null,
+          "originKind": null,
+          "originPluginId": null,
+          "visibility": "visible",
+          "archivedAt": null,
+          "pinnedAt": null,
+          "deletedAt": null,
+          "lastReadAt": 1787264600000,
+          "latestAttentionAt": 1787264600000,
+          "createdAt": 1787262800000,
+          "updatedAt": 1787264600000,
+          "activity": {
+            "activeBackgroundAgentCount": 0,
+            "activeBackgroundCommandCount": 0,
+            "activeGoalCount": 0,
+            "activePlanModeCount": 0,
+            "activeWorkflowCount": 0
+          },
+          "pinSortKey": null,
+          "environmentBranchName": "main",
+          "environmentHostId": "host_demo0000001",
+          "environmentName": null,
+          "environmentWorkspaceDisplayKind": "other",
+          "hasPendingInteraction": false,
+          "runtime": {
+            "displayStatus": "idle",
+            "hostReconnectGraceExpiresAt": null
+          }
+        },
+        {
+          "id": "thr_demo00000003",
+          "projectId": "proj_demo00000001",
+          "environmentId": null,
+          "providerId": "codex",
+          "title": "Speed up the search index",
+          "titleFallback": "Speed up the search index",
+          "sectionId": null,
+          "status": "idle",
+          "parentThreadId": null,
+          "sourceThreadId": null,
+          "originKind": null,
+          "originPluginId": null,
+          "visibility": "visible",
+          "archivedAt": null,
+          "pinnedAt": null,
+          "deletedAt": null,
+          "lastReadAt": 1787255600000,
+          "latestAttentionAt": 1787255600000,
+          "createdAt": 1787253800000,
+          "updatedAt": 1787255600000,
+          "activity": {
+            "activeBackgroundAgentCount": 0,
+            "activeBackgroundCommandCount": 0,
+            "activeGoalCount": 0,
+            "activePlanModeCount": 0,
+            "activeWorkflowCount": 0
+          },
+          "pinSortKey": null,
+          "environmentBranchName": "main",
+          "environmentHostId": "host_demo0000001",
+          "environmentName": null,
+          "environmentWorkspaceDisplayKind": "other",
+          "hasPendingInteraction": false,
+          "runtime": {
+            "displayStatus": "idle",
+            "hostReconnectGraceExpiresAt": null
+          }
+        }
+      ],
+      "defaultExecutionOptions": {
+        "providerId": "claude-code",
+        "model": "claude-opus-5[1m]",
+        "reasoningLevel": "medium",
+        "permissionMode": "full",
+        "serviceTier": "default"
+      }
+    }
+  ],
+  "personalProject": {
+    "id": "proj_personal",
+    "kind": "standard",
+    "name": "Personal",
+    "gitRemoteUrl": null,
+    "createdAt": 1787183600000,
+    "updatedAt": 1787270000000,
+    "sources": [],
+    "threads": [],
+    "defaultExecutionOptions": {
+      "providerId": "claude-code",
+      "model": "claude-opus-5[1m]",
+      "reasoningLevel": "medium",
+      "permissionMode": "full",
+      "serviceTier": "default"
+    }
+  }
+}
