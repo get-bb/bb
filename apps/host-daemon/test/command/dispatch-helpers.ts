@@ -478,6 +478,12 @@ export function createFakeRuntime() {
     async providerUsage() {
       return { supported: false as const };
     },
+    async providerInstallationStatus() {
+      throw new Error("Unexpected provider installation status call");
+    },
+    async providerInstallationRun() {
+      throw new Error("Unexpected provider installation run call");
+    },
     async shutdown() {
       state.shutdownCount += 1;
     },

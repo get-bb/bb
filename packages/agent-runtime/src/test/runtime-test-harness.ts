@@ -253,6 +253,8 @@ export function createWarningEventAdapter(scriptPath: string): ProviderAdapter {
         case "thread/fork":
         case "provider/health":
         case "provider/usage":
+        case "provider/installation/status":
+        case "provider/installation/run":
         case "skills/configure":
         case "turn/steer":
         case "thread/stop":
@@ -363,6 +365,8 @@ export function createStartedEventAdapter(scriptPath: string): ProviderAdapter {
         case "thread/fork":
         case "provider/health":
         case "provider/usage":
+        case "provider/installation/status":
+        case "provider/installation/run":
         case "skills/configure":
         case "turn/start":
         case "turn/steer":

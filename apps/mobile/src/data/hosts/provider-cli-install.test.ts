@@ -41,7 +41,6 @@ function status(overrides: Partial<ProviderCliStatus> = {}): ProviderCliStatus {
 const UPDATE_ACTION = {
   kind: "update" as const,
   label: "Update" as const,
-  commandKind: "exec" as const,
   command: "npm i -g @openai/codex@latest",
 };
 
@@ -75,7 +74,7 @@ describe("buildProviderCliIssue", () => {
 
   it("ranks unsupported above outdated and labels manual updates", () => {
     const unsupported = buildProviderCliIssue({
-      provider: "claudeCode",
+      provider: "claude-code",
       status: status({
         displayName: "Claude Code",
         currentVersion: "0.5.0",
@@ -107,10 +106,10 @@ describe("buildProviderCliIssue", () => {
     });
   });
 
-  it("only reports the managed providers, in order, and summarises installs", () => {
+  it("reports every provider in host order and summarises installs", () => {
     const response: ProviderCliStatusResponse = {
-      cursor: status({ displayName: "Cursor", installed: false }),
-      claudeCode: status({
+      "acp-cursor": status({ displayName: "Cursor", installed: false }),
+      "claude-code": status({
         displayName: "Claude Code",
         needsUpdate: true,
         latestVersion: "2.0.0",
@@ -119,7 +118,8 @@ describe("buildProviderCliIssue", () => {
       codex: status({ currentVersion: null }),
     };
     expect(providerCliIssues(response).map((issue) => issue.provider)).toEqual([
-      "claudeCode",
+      "acp-cursor",
+      "claude-code",
     ]);
     expect(summarizeInstalledProviderClis(response)).toBe(
       "Claude Code 1.0.0 · Codex",
@@ -142,7 +142,7 @@ describe("install accumulator", () => {
     });
     acc.push({
       type: "output",
-      provider: "claudeCode",
+      provider: "claude-code",
       stream: "stdout",
       text: "ignored",
     });
@@ -230,7 +230,7 @@ describe("install accumulator", () => {
 
 describe("install store", () => {
   function job(
-    provider: "codex" | "claudeCode",
+    provider: "codex" | "claude-code",
     hostId = "h1",
   ): ProviderCliInstallJob {
     return {
@@ -268,12 +268,12 @@ describe("install store", () => {
       now: () => 42,
     });
     store.start(job("codex"));
-    store.start(job("claudeCode"));
+    store.start(job("claude-code"));
     store.start(job("codex")); // duplicate while running: ignored
     const key = providerCliInstallJobKey("p1", "h1", "codex");
     expect(store.getSnapshot().runningJobKey).toBe(key);
     expect(store.recordFor("p1", "h1", "codex")?.status).toBe("running");
-    expect(store.recordFor("p1", "h1", "claudeCode")?.status).toBe("queued");
+    expect(store.recordFor("p1", "h1", "claude-code")?.status).toBe("queued");
     expect(resolvers).toHaveLength(1);
 
     resolvers[0]?.({ success: true });
@@ -283,24 +283,24 @@ describe("install store", () => {
     expect(store.recordFor("p1", "h1", "codex")?.status).toBe("succeeded");
     expect(store.recordFor("p1", "h1", "codex")?.finishedAt).toBe(42);
     expect(store.getSnapshot().runningJobKey).toBe(
-      providerCliInstallJobKey("p1", "h1", "claudeCode"),
+      providerCliInstallJobKey("p1", "h1", "claude-code"),
     );
     expect(resolvers).toHaveLength(2);
     resolvers[1]?.({ success: false });
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
-    const failed = store.recordFor("p1", "h1", "claudeCode");
+    const failed = store.recordFor("p1", "h1", "claude-code");
     expect(failed?.status).toBe("failed");
     expect(failed?.message).toBe("failed");
     expect(store.getSnapshot().runningJobKey).toBeNull();
     expect(finished).toEqual([
       `${key}:succeeded`,
-      `${providerCliInstallJobKey("p1", "h1", "claudeCode")}:failed`,
+      `${providerCliInstallJobKey("p1", "h1", "claude-code")}:failed`,
     ]);
     // A finished slot can be started again (Retry).
-    store.start(job("claudeCode"));
-    expect(store.recordFor("p1", "h1", "claudeCode")?.status).toBe("running");
+    store.start(job("claude-code"));
+    expect(store.recordFor("p1", "h1", "claude-code")?.status).toBe("running");
   });
 
   it("records a thrown runner error as a failure and sequences log requests", async () => {

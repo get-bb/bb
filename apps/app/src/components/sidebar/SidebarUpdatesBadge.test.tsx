@@ -154,7 +154,7 @@ describe("SidebarUpdatesBadge", () => {
   it("shows only the provider chip when bb itself is current", () => {
     renderBadge({
       machines: [
-        machine({ issues: [providerIssue("claudeCode", "Claude Code")] }),
+        machine({ issues: [providerIssue("claude-code", "Claude Code")] }),
       ],
     });
 
@@ -170,7 +170,7 @@ describe("SidebarUpdatesBadge", () => {
     renderBadge({
       machines: [
         machine({
-          issues: [missingInstallIssue("claudeCode", "Claude Code")],
+          issues: [missingInstallIssue("claude-code", "Claude Code")],
         }),
       ],
     });
@@ -199,12 +199,12 @@ describe("SidebarUpdatesBadge", () => {
       machines: [
         machine({
           host: host("host-1"),
-          issues: [providerIssue("claudeCode", "Claude Code")],
+          issues: [providerIssue("claude-code", "Claude Code")],
         }),
         machine({
           host: host("host-2"),
           issues: [
-            providerIssue("claudeCode", "Claude Code"),
+            providerIssue("claude-code", "Claude Code"),
             providerIssue("codex", "Codex"),
           ],
         }),
@@ -212,9 +212,10 @@ describe("SidebarUpdatesBadge", () => {
     });
 
     const providerChip = screen.getByTestId("sidebar-updates-badge-providers");
-    // Codex leads regardless of which machine surfaced the issue first.
+    // The first host-reported provider order is retained while duplicates
+    // from later machines collapse into one mark.
     expect(providerChip.getAttribute("aria-label")).toBe(
-      "Codex and Claude Code updates available",
+      "Claude Code and Codex updates available",
     );
     expect(providerChip.querySelectorAll("svg[viewBox]").length).toBe(3);
     expect(screen.getByTestId("sidebar-updates-badge-bb")).toBeTruthy();

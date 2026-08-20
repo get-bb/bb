@@ -229,6 +229,12 @@ function createFakeRuntime(): AgentRuntime {
     listModels: vi.fn(async () => ({ models: [], selectedOnlyModels: [] })),
     providerHealth: vi.fn(async () => ({ supported: false as const })),
     providerUsage: vi.fn(async () => ({ supported: false as const })),
+    providerInstallationStatus: vi.fn(async () => {
+      throw new Error("Unexpected provider installation status call");
+    }),
+    providerInstallationRun: vi.fn(async () => {
+      throw new Error("Unexpected provider installation run call");
+    }),
     listRunningProviders: vi.fn(() => []),
     getActiveTurnId: vi.fn(() => null),
     waitForActiveTurn: vi.fn(async () => null),

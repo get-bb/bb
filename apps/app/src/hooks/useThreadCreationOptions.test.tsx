@@ -55,6 +55,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         available: true,
         experimental_providerHealth: true,
         experimental_providerUsage: true,
+        experimental_providerInstallation: false,
         composerActions: [
           { kind: "skills", trigger: "/" },
           {
@@ -79,6 +80,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         available: true,
         experimental_providerHealth: true,
         experimental_providerUsage: true,
+        experimental_providerInstallation: false,
         composerActions: [{ kind: "skills", trigger: "/" }],
         capabilities: {
           supportsThreadArchive: true,
@@ -171,6 +173,7 @@ function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
         available: true,
         experimental_providerHealth: true,
         experimental_providerUsage: true,
+        experimental_providerInstallation: false,
         composerActions: [],
         capabilities: {
           supportsThreadArchive: true,

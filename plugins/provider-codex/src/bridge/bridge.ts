@@ -44,6 +44,7 @@ import {
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_NOTIFICATION_METHOD,
   modelListParamsSchema,
+  experimental_providerInstallationRunParamsSchema,
   experimental_providerMaintenanceParamsSchema,
   skillsConfigureParamsSchema,
   threadArchiveParamsSchema,
@@ -102,6 +103,8 @@ import {
 } from "./app-server-connection.js";
 import {
   getCodexProviderHealth,
+  getCodexProviderInstallationRun,
+  getCodexProviderInstallationStatus,
   getCodexProviderUsage,
 } from "./provider-maintenance.js";
 
@@ -127,6 +130,14 @@ const codexBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("provider/usage"),
     params: experimental_providerMaintenanceParamsSchema,
+  }),
+  z.object({
+    method: z.literal("provider/installation/status"),
+    params: experimental_providerMaintenanceParamsSchema,
+  }),
+  z.object({
+    method: z.literal("provider/installation/run"),
+    params: experimental_providerInstallationRunParamsSchema,
   }),
   z.object({
     method: z.literal("thread/start"),
@@ -1683,6 +1694,15 @@ async function handleRequest(
       break;
     case "provider/usage":
       sendResult(request.id, await getCodexProviderUsage());
+      break;
+    case "provider/installation/status":
+      sendResult(request.id, await getCodexProviderInstallationStatus());
+      break;
+    case "provider/installation/run":
+      sendResult(
+        request.id,
+        await getCodexProviderInstallationRun(request.params.action),
+      );
       break;
     case "thread/start":
       await handleThreadConstruction(request.id, request.params, {

@@ -96,11 +96,12 @@ function providerCliStatus(
   provider: ProviderCliKey,
   currentVersion: string,
 ): ProviderCliStatus {
-  const identity = {
-    codex: { displayName: "Codex", executableName: "codex" },
-    claudeCode: { displayName: "Claude Code", executableName: "claude" },
-    cursor: { displayName: "Cursor", executableName: "agent" },
-  }[provider];
+  const identity =
+    provider === "codex"
+      ? { displayName: "Codex", executableName: "codex" }
+      : provider === "claude-code"
+        ? { displayName: "Claude Code", executableName: "claude" }
+        : { displayName: "Cursor", executableName: "agent" };
   return {
     ...identity,
     executablePath: `/usr/local/bin/${identity.executableName}`,
@@ -120,8 +121,8 @@ function providerCliStatus(
 function providerCliStatusResponse(): ProviderCliStatusResponse {
   return {
     codex: providerCliStatus("codex", "0.148.0"),
-    claudeCode: providerCliStatus("claudeCode", "2.1.235"),
-    cursor: providerCliStatus("cursor", "1.4.6"),
+    "claude-code": providerCliStatus("claude-code", "2.1.235"),
+    "acp-cursor": providerCliStatus("acp-cursor", "1.4.6"),
   };
 }
 
@@ -286,7 +287,6 @@ describe("MachineSettingsView", () => {
         installAction: {
           kind: "update",
           label: "Update",
-          commandKind: "exec",
           command: "codex update",
         },
       },

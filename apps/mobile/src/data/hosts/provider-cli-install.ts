@@ -31,21 +31,13 @@ export interface ProviderCliActionableIssue extends ProviderCliIssue {
   action: ProviderCliInstallAction;
 }
 
-/** The providers bb manages installs for (Cursor is reported but never installed). */
-export const PROVIDER_CLI_MANAGED_PROVIDERS = [
-  "codex",
-  "claudeCode",
-] as const satisfies readonly ProviderCliKey[];
-
 export function providerCliEntries(
   status: ProviderCliStatusResponse,
 ): ProviderCliStatusEntry[] {
-  const entries: ProviderCliStatusEntry[] = [];
-  for (const provider of PROVIDER_CLI_MANAGED_PROVIDERS) {
-    const entry = status[provider];
-    if (entry !== undefined) entries.push({ provider, status: entry });
-  }
-  return entries;
+  return Object.entries(status).map(([provider, entry]) => ({
+    provider,
+    status: entry,
+  }));
 }
 
 export function buildProviderCliIssue(

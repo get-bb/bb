@@ -17,6 +17,8 @@ import type {
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type {
   ExperimentalProviderHealthResult,
+  ExperimentalProviderInstallationRunResult,
+  ExperimentalProviderInstallationStatus,
   ExperimentalProviderUsageResult,
 } from "@bb/provider-bridge-protocol";
 
@@ -422,6 +424,14 @@ export interface AgentRuntime {
   providerUsage(
     args: ProviderMaintenanceArgs,
   ): Promise<ExperimentalProviderUsageResult>;
+
+  providerInstallationStatus(
+    args: ProviderMaintenanceArgs,
+  ): Promise<ExperimentalProviderInstallationStatus>;
+
+  providerInstallationRun(
+    args: ProviderMaintenanceArgs & { action: "install" | "update" },
+  ): Promise<ExperimentalProviderInstallationRunResult>;
 
   listRunningProviders(): string[];
 

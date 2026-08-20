@@ -18,15 +18,11 @@ interface MachineProviderInstallOptions extends MachineListCommandOptions {
   action?: "install" | "update";
 }
 
-function parseProviderCliKey(value: string): "claudeCode" | "codex" | "cursor" {
-  switch (value) {
-    case "claudeCode":
-    case "codex":
-    case "cursor":
-      return value;
-    default:
-      throw new Error("provider must be claudeCode, codex, or cursor.");
-  }
+function parseProviderCliKey(value: string): string {
+  const providerId = value.trim();
+  if (providerId.length === 0)
+    throw new Error("provider ID must not be empty.");
+  return providerId;
 }
 
 function describeMachines(hosts: readonly Host[]): string {
@@ -230,7 +226,7 @@ export function registerMachineCommands(
     .description("Inspect and install provider CLIs on a machine");
   providerCli
     .command("status <id-or-name>")
-    .description("Show provider CLI health")
+    .description("Show registered provider CLI installation/update status")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (target: string, opts: MachineListCommandOptions) => {
@@ -243,7 +239,7 @@ export function registerMachineCommands(
     );
   providerCli
     .command("install <id-or-name> <provider>")
-    .description("Install or update a provider CLI")
+    .description("Install or update a registered provider CLI by provider ID")
     .option("--action <action>", "Action: install or update", "install")
     .option("--json", "Print machine-readable JSON output")
     .action(

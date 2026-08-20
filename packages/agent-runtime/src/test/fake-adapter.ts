@@ -214,6 +214,8 @@ function buildCommandPlan(command: AdapterCommand): ProviderCommandPlan {
       };
     case "provider/health":
     case "provider/usage":
+    case "provider/installation/status":
+    case "provider/installation/run":
       return { kind: "noop", reason: `${command.type} unsupported` };
     default: {
       const _exhaustive: never = command;

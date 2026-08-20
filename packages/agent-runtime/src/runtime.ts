@@ -23,6 +23,8 @@ import type {
 import {
   BRIDGE_JSON_RPC_ERRORS,
   experimental_providerHealthResultSchema,
+  experimental_providerInstallationRunResultSchema,
+  experimental_providerInstallationStatusSchema,
   experimental_providerUsageResultSchema,
   ThreadEventGrammar,
 } from "@bb/provider-bridge-protocol";
@@ -2416,6 +2418,76 @@ function createAgentRuntimeInternal(
         proc,
         message: plan,
         resultSchema: experimental_providerUsageResultSchema,
+      });
+    },
+
+    async providerInstallationStatus({
+      providerId,
+      acpLaunchSpec,
+      bridgeLaunch,
+      cwd,
+    }) {
+      await runtime.ensureProvider({
+        providerId,
+        ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+        ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+      });
+      const proc = requireProviderProcess({
+        processKey: resolveProviderProcessKey({
+          ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+          ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+          providerId,
+        }),
+        providerId,
+      });
+      const plan = requireProviderRequestPlan({
+        commandType: "provider/installation/status",
+        plan: proc.adapter.buildCommandPlan({
+          type: "provider/installation/status",
+          ...(cwd !== undefined ? { cwd } : {}),
+        }),
+        providerId,
+      });
+      return await sendCommand({
+        proc,
+        message: plan,
+        resultSchema: experimental_providerInstallationStatusSchema,
+      });
+    },
+
+    async providerInstallationRun({
+      providerId,
+      acpLaunchSpec,
+      bridgeLaunch,
+      cwd,
+      action,
+    }) {
+      await runtime.ensureProvider({
+        providerId,
+        ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+        ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+      });
+      const proc = requireProviderProcess({
+        processKey: resolveProviderProcessKey({
+          ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+          ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+          providerId,
+        }),
+        providerId,
+      });
+      const plan = requireProviderRequestPlan({
+        commandType: "provider/installation/run",
+        plan: proc.adapter.buildCommandPlan({
+          type: "provider/installation/run",
+          action,
+          ...(cwd !== undefined ? { cwd } : {}),
+        }),
+        providerId,
+      });
+      return await sendCommand({
+        proc,
+        message: plan,
+        resultSchema: experimental_providerInstallationRunResultSchema,
       });
     },
 

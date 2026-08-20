@@ -111,6 +111,8 @@ export interface CommandRouterOptions {
   listModels?: CommandDispatchOptions["listModels"];
   providerHealth?: CommandDispatchOptions["providerHealth"];
   providerUsage?: CommandDispatchOptions["providerUsage"];
+  providerInstallationStatus?: CommandDispatchOptions["providerInstallationStatus"];
+  providerInstallationRun?: CommandDispatchOptions["providerInstallationRun"];
   resolveInteractiveRequest?: CommandDispatchOptions["resolveInteractiveRequest"];
   pluginHostManager?: PluginHostManager;
   ensureConnectTunnelIdentity?: CommandDispatchOptions["ensureConnectTunnelIdentity"];
@@ -346,6 +348,8 @@ export class CommandRouter {
       listModels: this.options.listModels,
       providerHealth: this.options.providerHealth,
       providerUsage: this.options.providerUsage,
+      providerInstallationStatus: this.options.providerInstallationStatus,
+      providerInstallationRun: this.options.providerInstallationRun,
       resolveInteractiveRequest: this.options.resolveInteractiveRequest,
       ensureConnectTunnelIdentity: this.options.ensureConnectTunnelIdentity,
       threadStorageRootPath: this.options.threadStorageRootPath,

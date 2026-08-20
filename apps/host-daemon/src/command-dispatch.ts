@@ -1,7 +1,6 @@
 import {
   providerCliInstallEventSchema,
   type ProviderCliInstallEvent,
-  type ProviderCliStatus,
   HostDaemonCommand,
   HostDaemonCommandResult,
   HostDaemonOnlineRpcCommand,
@@ -13,6 +12,8 @@ import semver from "semver";
 import {
   defaultListModels,
   defaultProviderHealth,
+  defaultProviderInstallationRun,
+  defaultProviderInstallationStatus,
   defaultProviderUsage,
   ExpectedCommandDispatchError,
   resolveRuntimeBridgeLaunch,
@@ -55,13 +56,15 @@ import {
   completeCodexInference,
   transcribeCodexVoice,
 } from "./codex-chatgpt-client.js";
+import { getKnownAcpAgentsStatus } from "./known-acp-agent-status.js";
 import {
-  getKnownAcpAgentsStatus,
-  getProviderCliStatus,
-  getProviderCliStatusForProvider as inspectProviderCliStatusForProvider,
-  ProviderCliInstallInProgressError,
-  streamProviderCliInstall,
-} from "./provider-cli-health.js";
+  ProviderInstallationInProgressError,
+  streamProviderInstallation,
+} from "./provider-installation.js";
+import type {
+  ExperimentalProviderInstallationStatus,
+  ExperimentalProviderInstallationVerification,
+} from "@bb/provider-bridge-protocol";
 import {
   discardThreadRewind,
   ensureThreadRuntime,
@@ -163,162 +166,133 @@ async function readProviderCliInstallEvents(
   return events;
 }
 
-async function tryGetProviderCliStatusForProvider(
-  provider: CommandOf<"provider_cli.install">["provider"],
-  options: CommandDispatchOptions,
-  env: NodeJS.ProcessEnv,
-): Promise<ProviderCliStatus | null> {
-  try {
-    if (options.getProviderCliStatusForProvider !== undefined) {
-      return await options.getProviderCliStatusForProvider(provider);
-    }
-    return await inspectProviderCliStatusForProvider(provider, { env });
-  } catch {
-    return null;
-  }
-}
-
-function verifyClaudeCodeUpdateEvents(args: {
-  before: ProviderCliStatus | null;
-  after: ProviderCliStatus | null;
-  events: ProviderCliInstallEvent[];
-}): ProviderCliInstallEvent[] {
-  const completedIndex = args.events.findIndex(
-    (event) => event.type === "completed" && event.success,
-  );
-  if (completedIndex === -1) {
-    return args.events;
-  }
-  const executable =
-    args.after?.executablePath ??
-    args.before?.executablePath ??
-    args.before?.executableName ??
-    "claude";
-  if (args.before === null) {
-    return failClaudeCodeUpdateVerification({
-      ...args,
-      completedIndex,
-      message: `Claude Code's update command exited successfully, but bb could not read ${executable}'s version before the update. bb cannot confirm that the active executable changed. Run \`claude --version\` and \`claude doctor\` on this machine, then use the command output to update the installation they report.`,
-    });
-  }
-
-  const expectedVersion = args.before.latestVersion;
-  const previousVersion = args.before.currentVersion;
-  const actualVersion = args.after?.currentVersion ?? null;
-
-  const validExpectedVersion =
-    expectedVersion === null ? null : semver.valid(expectedVersion);
-  const validPreviousVersion =
-    previousVersion === null ? null : semver.valid(previousVersion);
-  const validActualVersion =
-    actualVersion === null ? null : semver.valid(actualVersion);
-  const hasKnownTarget = validExpectedVersion !== null;
-  const canVerifyAdvancement =
-    expectedVersion === null && validPreviousVersion !== null;
-  if (!hasKnownTarget && !canVerifyAdvancement) {
-    return failClaudeCodeUpdateVerification({
-      ...args,
-      completedIndex,
-      message: `Claude Code's update command exited successfully, but bb could not compare ${executable}'s version before and after the update. Run \`claude --version\` and \`claude doctor\` on this machine, then use the command output to update the installation they report.`,
-    });
-  }
-  const updateVerified =
-    validActualVersion !== null &&
-    (validExpectedVersion !== null
-      ? semver.gte(validActualVersion, validExpectedVersion)
-      : validPreviousVersion !== null &&
-        semver.gt(validActualVersion, validPreviousVersion));
-  if (updateVerified) {
-    return args.events;
-  }
-
-  const expectation = hasKnownTarget
-    ? `expected ${validExpectedVersion}`
-    : `expected a version newer than ${validPreviousVersion}`;
-  const message = `Claude Code's update command exited successfully, but ${executable} still reports ${actualVersion ?? "an unknown version"} (${expectation}). The executable may be pinned by PATH or managed by another installer. Run \`claude doctor\` on this machine and update the installation it reports.`;
-  return failClaudeCodeUpdateVerification({
-    ...args,
-    completedIndex,
-    message,
-  });
-}
-
-function failClaudeCodeUpdateVerification(args: {
-  completedIndex: number;
+function failProviderInstallationVerification(args: {
+  providerId: string;
   events: ProviderCliInstallEvent[];
   message: string;
 }): ProviderCliInstallEvent[] {
   const verifiedEvents = [...args.events];
-  const completedEvent = verifiedEvents[args.completedIndex];
+  const completedIndex = verifiedEvents.findIndex(
+    (event) => event.type === "completed" && event.success,
+  );
+  const completedEvent = verifiedEvents[completedIndex];
   if (completedEvent?.type !== "completed") {
     return args.events;
   }
-  verifiedEvents[args.completedIndex] = { ...completedEvent, success: false };
-  verifiedEvents.splice(args.completedIndex, 0, {
+  verifiedEvents[completedIndex] = { ...completedEvent, success: false };
+  verifiedEvents.splice(completedIndex, 0, {
     type: "error",
-    provider: "claudeCode",
+    provider: args.providerId,
     message: args.message,
   });
   return verifiedEvents;
 }
 
-async function installProviderCliOnHost(
-  command: CommandOf<"provider_cli.install">,
+function installationVerificationPassed(
+  verification: ExperimentalProviderInstallationVerification,
+  status: ExperimentalProviderInstallationStatus,
+): boolean {
+  switch (verification.kind) {
+    case "installed":
+      return status.installed;
+    case "version_at_least": {
+      const actual =
+        status.currentVersion === null
+          ? null
+          : semver.valid(status.currentVersion);
+      const expected = semver.valid(verification.version);
+      return (
+        actual !== null && expected !== null && semver.gte(actual, expected)
+      );
+    }
+    case "version_changed": {
+      const actual = status.currentVersion;
+      if (actual === null) return false;
+      const parsedActual = semver.valid(actual);
+      const parsedPrevious = semver.valid(verification.previousVersion);
+      return parsedActual !== null && parsedPrevious !== null
+        ? semver.gt(parsedActual, parsedPrevious)
+        : actual !== verification.previousVersion;
+    }
+  }
+  return false;
+}
+
+async function runProviderInstallationOnHost(
+  command: CommandOf<"provider.installation.run">,
   options: CommandDispatchOptions,
-): Promise<HostDaemonOnlineRpcResult<"provider_cli.install">> {
+): Promise<HostDaemonOnlineRpcResult<"provider.installation.run">> {
   try {
     const env = providerCliEnvFromShellEnv(
       options.runtimeManager.getShellEnv(),
     );
-    const claudeCodeStatusBefore =
-      command.provider === "claudeCode" && command.actionKind === "update"
-        ? await tryGetProviderCliStatusForProvider(
-            command.provider,
-            options,
-            env,
-          )
-        : null;
-    const streamInstall =
-      options.streamProviderCliInstall ?? streamProviderCliInstall;
-    let events = await readProviderCliInstallEvents(
-      streamInstall({
-        provider: command.provider,
-        actionKind: command.actionKind,
-        env,
-      }),
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
     );
-    if (
-      command.provider === "claudeCode" &&
-      command.actionKind === "update" &&
-      events.some((event) => event.type === "completed" && event.success)
-    ) {
-      const claudeCodeStatusAfter = await tryGetProviderCliStatusForProvider(
-        command.provider,
-        options,
-        env,
-      );
-      events = verifyClaudeCodeUpdateEvents({
-        before: claudeCodeStatusBefore,
-        after: claudeCodeStatusAfter,
-        events,
-      });
-    }
-    if (
-      shouldInvalidateProviderMaintenanceRuntimeAfterProviderCliInstall({
-        command,
-        events,
-      })
-    ) {
-      await options.runtimeManager.invalidateProviderMaintenanceRuntime();
-    }
-    return { events };
-  } catch (error) {
-    if (error instanceof ProviderCliInstallInProgressError) {
+    const maintenanceArgs = {
+      providerId: command.providerId,
+      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+      ...(command.acpLaunchSpec !== undefined
+        ? { acpLaunchSpec: command.acpLaunchSpec }
+        : {}),
+      bridgeLaunch,
+    };
+    const run = await (
+      options.providerInstallationRun ?? defaultProviderInstallationRun
+    )({ ...maintenanceArgs, action: command.action });
+    if (!run.available) {
       return {
         events: [
           {
             type: "error",
-            provider: command.provider,
+            provider: command.providerId,
+            message: run.message,
+          },
+        ],
+      };
+    }
+    const stream =
+      options.streamProviderInstallation ?? streamProviderInstallation;
+    let events = await readProviderCliInstallEvents(
+      stream({
+        providerId: command.providerId,
+        plan: run.command,
+        env,
+      }),
+    );
+    if (events.some((event) => event.type === "completed" && event.success)) {
+      try {
+        const status = await (
+          options.providerInstallationStatus ??
+          defaultProviderInstallationStatus
+        )(maintenanceArgs);
+        if (!installationVerificationPassed(run.verification, status)) {
+          events = failProviderInstallationVerification({
+            providerId: command.providerId,
+            events,
+            message: `${command.providerId} ${command.action} exited successfully, but the provider could not verify the installed result.`,
+          });
+        }
+      } catch {
+        events = failProviderInstallationVerification({
+          providerId: command.providerId,
+          events,
+          message: `${command.providerId} ${command.action} exited successfully, but its installation status could not be verified.`,
+        });
+      }
+    }
+    if (events.some((event) => event.type === "completed" && event.success)) {
+      await options.runtimeManager.invalidateProviderMaintenanceRuntime();
+    }
+    return { events };
+  } catch (error) {
+    if (error instanceof ProviderInstallationInProgressError) {
+      return {
+        events: [
+          {
+            type: "error",
+            provider: command.providerId,
             message: error.message,
           },
         ],
@@ -326,23 +300,6 @@ async function installProviderCliOnHost(
     }
     throw error;
   }
-}
-
-function shouldInvalidateProviderMaintenanceRuntimeAfterProviderCliInstall(args: {
-  command: CommandOf<"provider_cli.install">;
-  events: readonly ProviderCliInstallEvent[];
-}): boolean {
-  return (
-    // Codex model listing goes through the resident provider-maintenance
-    // app-server, so a Codex CLI update can leave a stale model catalog alive.
-    args.command.provider === "codex" &&
-    args.events.some(
-      (event) =>
-        event.type === "completed" &&
-        event.provider === args.command.provider &&
-        event.success,
-    )
-  );
 }
 
 const commandHandlers: CommandHandlerMap = {
@@ -705,11 +662,23 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       bridgeLaunch,
     });
   },
-  "provider_cli.status": async (_command, options) =>
-    getProviderCliStatus({
-      env: providerCliEnvFromShellEnv(options.runtimeManager.getShellEnv()),
-    }),
-  "provider_cli.install": installProviderCliOnHost,
+  "provider.installation.status": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return (
+      options.providerInstallationStatus ?? defaultProviderInstallationStatus
+    )({
+      providerId: command.providerId,
+      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+      ...(command.acpLaunchSpec !== undefined
+        ? { acpLaunchSpec: command.acpLaunchSpec }
+        : {}),
+      bridgeLaunch,
+    });
+  },
+  "provider.installation.run": runProviderInstallationOnHost,
   "workspace.status": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
       dataDir: options.dataDir,

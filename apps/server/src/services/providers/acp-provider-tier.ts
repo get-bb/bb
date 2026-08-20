@@ -102,11 +102,14 @@ export function buildAcpProviderInfo(
   requireAcpProviderId(args.id);
   return {
     available: true,
-    // The shared ACP bridge accepts both maintenance requests for every ACP
+    // The shared ACP bridge accepts health and usage requests for every ACP
     // id. An individual provider may still return `supported: false` for
-    // usage or a successful result with no windows.
+    // usage or a successful result with no windows. Installation is enabled
+    // only by a registered ACP provider (currently Cursor), not the dynamic
+    // tier as a whole.
     experimental_providerHealth: true,
     experimental_providerUsage: true,
+    experimental_providerInstallation: false,
     capabilities: {
       ...ACP_TIER_CAPABILITIES,
       permissionModes: [...ACP_TIER_CAPABILITIES.permissionModes],

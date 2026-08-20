@@ -37,6 +37,7 @@ function provider(
     available: true,
     experimental_providerHealth: true,
     experimental_providerUsage: supportsUsage,
+    experimental_providerInstallation: false,
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,
@@ -188,9 +189,7 @@ describe("UsageLimitsSettingsSectionContent", () => {
     });
 
     expect(screen.getByRole("heading", { name: "Codex" })).toBeDefined();
-    expect(
-      screen.queryByRole("heading", { name: "Echo Agent" }),
-    ).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Echo Agent" })).toBeNull();
     expect(screen.getByText("Loading usage…")).toBeDefined();
     expect(screen.queryByText("Usage not provided.")).toBeNull();
   });

@@ -374,7 +374,10 @@ export function validatePluginProviderDeclaration(
   }
   let icon: string | undefined;
   if (declaration.icon !== undefined) {
-    if (typeof declaration.icon !== "string" || declaration.icon.trim() === "") {
+    if (
+      typeof declaration.icon !== "string" ||
+      declaration.icon.trim() === ""
+    ) {
       throw new Error(
         `provider "${id}" icon must be a non-blank string — a named host glyph ("Zap") or a plugin-relative path ("./icons/agent.svg")`,
       );
@@ -404,6 +407,8 @@ export function validatePluginProviderDeclaration(
     capabilities.experimental_providerHealth ?? false;
   const experimentalProviderUsage =
     capabilities.experimental_providerUsage ?? false;
+  const experimentalProviderInstallation =
+    capabilities.experimental_providerInstallation ?? false;
   if (typeof experimentalProviderHealth !== "boolean") {
     throw new Error(
       `provider "${id}" capabilities.experimental_providerHealth must be a boolean`,
@@ -412,6 +417,11 @@ export function validatePluginProviderDeclaration(
   if (typeof experimentalProviderUsage !== "boolean") {
     throw new Error(
       `provider "${id}" capabilities.experimental_providerUsage must be a boolean`,
+    );
+  }
+  if (typeof experimentalProviderInstallation !== "boolean") {
+    throw new Error(
+      `provider "${id}" capabilities.experimental_providerInstallation must be a boolean`,
     );
   }
   const booleanCapabilityFields = [
@@ -429,7 +439,9 @@ export function validatePluginProviderDeclaration(
       );
     }
   }
-  if (!(PROVIDER_FORK_VALUES as readonly string[]).includes(capabilities.fork)) {
+  if (
+    !(PROVIDER_FORK_VALUES as readonly string[]).includes(capabilities.fork)
+  ) {
     throw new Error(
       `provider "${id}" capabilities.fork must be one of ${PROVIDER_FORK_VALUES.join(", ")}`,
     );
@@ -437,6 +449,7 @@ export function validatePluginProviderDeclaration(
   const normalizedCapabilities: PluginProviderCapabilities = Object.freeze({
     experimental_providerHealth: experimentalProviderHealth,
     experimental_providerUsage: experimentalProviderUsage,
+    experimental_providerInstallation: experimentalProviderInstallation,
     supportsServiceTier: capabilities.supportsServiceTier,
     supportsNativeUserQuestion: capabilities.supportsNativeUserQuestion,
     fork: capabilities.fork,

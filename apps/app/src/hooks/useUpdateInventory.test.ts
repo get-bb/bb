@@ -31,8 +31,8 @@ describe("buildUpdateInventoryProviderIssues", () => {
   it("includes Cursor updates in the machine inventory", () => {
     const status: ProviderCliStatusResponse = {
       codex: providerStatus("Codex"),
-      claudeCode: providerStatus("Claude Code"),
-      cursor: providerStatus("Cursor", {
+      "claude-code": providerStatus("Claude Code"),
+      "acp-cursor": providerStatus("Cursor", {
         latestVersion: "1.1.0",
         needsUpdate: true,
       }),
@@ -40,7 +40,7 @@ describe("buildUpdateInventoryProviderIssues", () => {
 
     expect(buildUpdateInventoryProviderIssues(status)).toMatchObject([
       {
-        provider: "cursor",
+        provider: "acp-cursor",
         title: "Cursor update available",
       },
     ]);

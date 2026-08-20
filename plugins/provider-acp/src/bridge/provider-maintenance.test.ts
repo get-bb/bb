@@ -1,6 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { __testing } from "./provider-maintenance.js";
 
+function cursorMissingInstallationStatus() {
+  return {
+    executableName: "cursor-agent",
+    executablePath: null,
+    installed: false,
+    installSource: "notInstalled" as const,
+    currentVersion: null,
+    latestVersion: null,
+    minimumSupportedVersion: null,
+    npmPackageName: null,
+    npmGlobalPackageVersion: null,
+    installAction: {
+      kind: "install" as const,
+      label: "Install" as const,
+      command: "install Cursor",
+    },
+    needsUpdate: false,
+    versionUnsupported: false,
+  };
+}
+
 describe("ACP provider maintenance", () => {
   it("normalizes Cursor plan and spend limits without reading daemon state", () => {
     expect(
@@ -33,6 +54,28 @@ describe("ACP provider maintenance", () => {
           cost: { usedUsdCents: 1250, limitUsdCents: 5000 },
         },
       ],
+    });
+  });
+
+  it("offers the Cursor installer only through a fresh matching action", () => {
+    expect(
+      __testing.buildProviderInstallationRun(
+        cursorMissingInstallationStatus(),
+        { providerId: "acp-cursor", action: "install" },
+      ),
+    ).toMatchObject({
+      available: true,
+      command: { command: "sh" },
+      verification: { kind: "installed" },
+    });
+    expect(
+      __testing.buildProviderInstallationRun(
+        { ...cursorMissingInstallationStatus(), installAction: null },
+        { providerId: "acp-opencode", action: "install" },
+      ),
+    ).toEqual({
+      available: false,
+      message: "acp-opencode install is not available on this host.",
     });
   });
 });

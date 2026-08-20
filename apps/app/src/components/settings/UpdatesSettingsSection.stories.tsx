@@ -64,7 +64,6 @@ function updateIssue(
   const action = {
     kind: "update" as const,
     label: "Update" as const,
-    commandKind: "exec" as const,
     command: `${base.executableName} update`,
   };
   return {
@@ -106,8 +105,8 @@ function machineOf({
       host.status === "connected"
         ? {
             codex: statusFor("codex"),
-            claudeCode: statusFor("claudeCode"),
-            cursor: statusFor("cursor"),
+            "claude-code": statusFor("claude-code"),
+            "acp-cursor": statusFor("acp-cursor"),
           }
         : null,
     statusPending: false,
@@ -253,7 +252,6 @@ function missingProviderIssue(provider: ProviderCliKey): ProviderCliIssue {
     installAction: {
       kind: "install",
       label: "Install",
-      commandKind: "exec",
       command: "npm install -g @anthropic-ai/claude-code",
     },
     needsUpdate: false,
@@ -280,7 +278,7 @@ export function UpdateStates() {
   });
   const providerInstalling = machineOf({
     host: makeHost({ id: "state-provider-installing", name: "studio-mac" }),
-    issues: [updateIssue("claudeCode", "2.0.1", "2.1.0")],
+    issues: [updateIssue("claude-code", "2.0.1", "2.1.0")],
   });
   const providerManual = machineOf({
     host: makeHost({ id: "state-provider-manual", name: "homelab" }),
@@ -290,7 +288,7 @@ export function UpdateStates() {
     host: makeHost({ id: "state-provider-missing", name: "workstation" }),
     issues: [
       updateIssue("codex", "0.145.0", "0.146.0"),
-      missingProviderIssue("claudeCode"),
+      missingProviderIssue("claude-code"),
     ],
   });
   const daemonUpdating = machineOf({
@@ -485,7 +483,7 @@ export function UpdateStates() {
           >
             <MachineUpdatesRows
               machine={providerInstalling}
-              runningJobKey="state-provider-installing:claudeCode"
+              runningJobKey="state-provider-installing:claude-code"
               queuedJobKeys={NO_JOBS}
               onStartInstall={noop}
               onOpenProvider={noop}
@@ -532,12 +530,12 @@ export function MultiMachine() {
     isPrimary: true,
     issues: [
       updateIssue("codex", "0.145.0", "0.146.0"),
-      updateIssue("cursor", "0.48.0", "0.49.0"),
+      updateIssue("acp-cursor", "0.48.0", "0.49.0"),
     ],
   });
   const studioMac = machineOf({
     host: makeHost({ id: "host-studio", name: "studio-mac" }),
-    issues: [updateIssue("claudeCode", "2.0.1", "2.1.0")],
+    issues: [updateIssue("claude-code", "2.0.1", "2.1.0")],
   });
   const ciRunner = machineOf({
     host: makeHost({
@@ -581,7 +579,7 @@ export function SingleMachine() {
   const workstation = machineOf({
     host: makeHost({ id: "host-primary", name: "workstation" }),
     isPrimary: true,
-    issues: [updateIssue("claudeCode", "2.0.1", "2.1.0")],
+    issues: [updateIssue("claude-code", "2.0.1", "2.1.0")],
   });
   return (
     <StoryPage>

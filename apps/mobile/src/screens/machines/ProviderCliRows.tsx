@@ -9,7 +9,6 @@ import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   hasProviderCliAction,
-  PROVIDER_CLI_MANAGED_PROVIDERS,
   providerCliRowState,
   useProviderCliInstallRunner,
   type ProviderCliInstallRecord,
@@ -199,9 +198,7 @@ export function ProviderCliRows({
   const issuesByProvider = new Map(
     issues.map((issue) => [issue.provider, issue]),
   );
-  const rows = PROVIDER_CLI_MANAGED_PROVIDERS.filter(
-    (provider) => status[provider] !== undefined,
-  );
+  const rows = Object.keys(status);
   return (
     <>
       {rows.map((provider, index) => {

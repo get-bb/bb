@@ -55,7 +55,6 @@ const VERSION: SystemVersionResponse = {
 const UPDATE_ACTION = {
   kind: "update" as const,
   label: "Update" as const,
-  commandKind: "exec" as const,
   command: "npm i -g codex@latest",
 };
 
@@ -84,8 +83,8 @@ describe("buildUpdateInventory", () => {
               latestVersion: "1.2.0",
               installAction: UPDATE_ACTION,
             }),
-            claudeCode: cli({ displayName: "Claude Code" }),
-            cursor: cli({ displayName: "Cursor", installed: false }),
+            "claude-code": cli({ displayName: "Claude Code" }),
+            "acp-cursor": cli({ displayName: "Cursor", installed: false }),
           },
           isPending: false,
           isError: false,
@@ -97,10 +96,11 @@ describe("buildUpdateInventory", () => {
     expect(inventory.machines[0]?.isPrimary).toBe(true);
     expect(inventory.machines[0]?.issues.map((i) => i.provider)).toEqual([
       "codex",
+      "acp-cursor",
     ]);
     expect(inventory.machines[1]?.canRetryDaemonUpdate).toBe(true);
     expect(inventory.machines[1]?.providerStatus).toBeNull();
-    expect(inventory.actionableCount).toBe(3);
+    expect(inventory.actionableCount).toBe(4);
     expect(inventory.lastCheckedAt).toBe(500);
     expect(actionableProviderIssues(inventory.machines)).toHaveLength(1);
   });
@@ -138,8 +138,8 @@ describe("summarizeMachineUpdates", () => {
     isPrimary: true,
     providerStatus: {
       codex: cli(),
-      claudeCode: cli({ displayName: "Claude Code" }),
-      cursor: cli({ displayName: "Cursor", installed: false }),
+      "claude-code": cli({ displayName: "Claude Code" }),
+      "acp-cursor": cli({ displayName: "Cursor", installed: false }),
     },
     statusPending: false,
     statusError: false,

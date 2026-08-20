@@ -35,14 +35,14 @@ import {
   pathsExistResponseSchema,
   pickFolderResponseSchema,
   providerCliInstallEventSchema,
-  providerCliInstallRequestSchema,
-  providerCliStatusResponseSchema,
+  providerCliInstallActionKindSchema,
 } from "./local.js";
 import { workspaceResolutionFailureSchema } from "./workspace.js";
 import { HOST_ARTIFACT_MAX_BYTES } from "./protocol.js";
 import {
   experimental_providerHealthSchema,
   experimental_providerHealthResultSchema,
+  experimental_providerInstallationStatusSchema,
   experimental_providerUsageResultSchema,
   experimental_providerUsageSchema,
   experimental_providerUsageWindowSchema,
@@ -1024,6 +1024,27 @@ const providerHealthCommandSchema = z
   })
   .strict();
 
+const providerInstallationStatusCommandSchema = z
+  .object({
+    type: z.literal("provider.installation.status"),
+    providerId: z.string().min(1),
+    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    cwd: z.string().min(1).optional(),
+  })
+  .strict();
+
+const providerInstallationRunCommandSchema = z
+  .object({
+    type: z.literal("provider.installation.run"),
+    providerId: z.string().min(1),
+    action: providerCliInstallActionKindSchema,
+    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    cwd: z.string().min(1).optional(),
+  })
+  .strict();
+
 /** Host-local readiness returned by a provider bridge. */
 export const providerHealthSchema = experimental_providerHealthSchema;
 export type ProviderHealth = z.infer<typeof providerHealthSchema>;
@@ -1584,16 +1605,6 @@ const providerUsageCommandSchema = z
   })
   .strict();
 
-const providerCliStatusCommandSchema = z
-  .object({ type: z.literal("provider_cli.status") })
-  .strict();
-
-const providerCliInstallCommandSchema = providerCliInstallRequestSchema
-  .extend({
-    type: z.literal("provider_cli.install"),
-  })
-  .strict();
-
 const providerCliInstallResultSchema = z
   .object({
     events: z.array(providerCliInstallEventSchema),
@@ -2077,6 +2088,24 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: false,
     envLane: null,
   }),
+  "provider.installation.status": defineHostDaemonCommandDescriptor({
+    type: "provider.installation.status",
+    schema: providerInstallationStatusCommandSchema,
+    resultSchema: experimental_providerInstallationStatusSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "provider.installation.run": defineHostDaemonCommandDescriptor({
+    type: "provider.installation.run",
+    schema: providerInstallationRunCommandSchema,
+    resultSchema: providerCliInstallResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
   "known_acp_agents.status": defineHostDaemonCommandDescriptor({
     type: "known_acp_agents.status",
     schema: knownAcpAgentsStatusCommandSchema,
@@ -2092,24 +2121,6 @@ export const hostDaemonCommandRegistry = {
     resultSchema: experimental_providerUsageResultSchema,
     transport: "onlineRpc",
     retryable: true,
-    flushEventsBeforeResult: false,
-    envLane: null,
-  }),
-  "provider_cli.status": defineHostDaemonCommandDescriptor({
-    type: "provider_cli.status",
-    schema: providerCliStatusCommandSchema,
-    resultSchema: providerCliStatusResponseSchema,
-    transport: "onlineRpc",
-    retryable: true,
-    flushEventsBeforeResult: false,
-    envLane: null,
-  }),
-  "provider_cli.install": defineHostDaemonCommandDescriptor({
-    type: "provider_cli.install",
-    schema: providerCliInstallCommandSchema,
-    resultSchema: providerCliInstallResultSchema,
-    transport: "onlineRpc",
-    retryable: false,
     flushEventsBeforeResult: false,
     envLane: null,
   }),

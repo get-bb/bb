@@ -20,6 +20,8 @@ export const BRIDGE_REQUEST_METHODS = {
   modelList: "model/list",
   experimentalProviderHealth: "provider/health",
   experimentalProviderUsage: "provider/usage",
+  experimentalProviderInstallationStatus: "provider/installation/status",
+  experimentalProviderInstallationRun: "provider/installation/run",
   threadStart: "thread/start",
   threadResume: "thread/resume",
   threadFork: "thread/fork",

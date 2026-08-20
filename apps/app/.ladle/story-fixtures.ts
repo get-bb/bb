@@ -421,11 +421,12 @@ export function makeProviderCliStatus(
   provider: ProviderCliKey,
   overrides: Partial<ProviderCliStatus> = {},
 ): ProviderCliStatus {
-  const identity = {
-    codex: { displayName: "Codex", executableName: "codex" },
-    claudeCode: { displayName: "Claude Code", executableName: "claude" },
-    cursor: { displayName: "Cursor", executableName: "agent" },
-  }[provider];
+  const identity =
+    provider === "codex"
+      ? { displayName: "Codex", executableName: "codex" }
+      : provider === "claude-code"
+        ? { displayName: "Claude Code", executableName: "claude" }
+        : { displayName: "Cursor", executableName: "agent" };
   return {
     displayName: identity.displayName,
     executableName: identity.executableName,

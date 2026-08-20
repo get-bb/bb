@@ -32,6 +32,7 @@ export function buildPluginProviderRegistration(args: {
   const {
     experimental_providerHealth,
     experimental_providerUsage,
+    experimental_providerInstallation,
     supportsThreadArchive,
     supportsThreadRename,
     supportsServiceTier,
@@ -65,6 +66,7 @@ export function buildPluginProviderRegistration(args: {
     available: args.available,
     experimental_providerHealth,
     experimental_providerUsage,
+    experimental_providerInstallation,
     // Served by the provider-logo route from the icon byte snapshot on the
     // registration (see registerProvider in plugin-runtime.ts). The raw
     // plugin-assets route serves only branding variants and built bundles, so

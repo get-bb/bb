@@ -56,6 +56,7 @@ const STORY_PROVIDER_INFOS: ProviderInfo[] = STORY_PROVIDER_OPTIONS.map(
     available: true,
     experimental_providerHealth: true,
     experimental_providerUsage: true,
+    experimental_providerInstallation: true,
     composerActions: [
       ...(STORY_COMPOSER_ACTIONS_BY_PROVIDER[provider.value] ?? []),
     ],

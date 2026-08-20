@@ -31,42 +31,28 @@ export interface ProviderCliActionableIssue extends ProviderCliIssue {
   action: ProviderCliInstallAction;
 }
 
-const PROVIDER_CLI_MANAGED_PROVIDERS = [
-  "codex",
-  "claudeCode",
-] as const satisfies readonly ProviderCliKey[];
-
 export function providerCliEntries(
   status: ProviderCliStatusResponse,
 ): ProviderCliStatusEntry[] {
-  return PROVIDER_CLI_MANAGED_PROVIDERS.map((provider) => ({
+  return Object.entries(status).map(([provider, providerStatus]) => ({
     provider,
-    status: status[provider],
+    status: providerStatus,
   }));
 }
-
-const PROVIDER_CLI_UPDATE_PROVIDERS = [
-  "codex",
-  "claudeCode",
-  "cursor",
-] as const satisfies readonly ProviderCliKey[];
 
 /** Provider rows Settings → Updates owns, including Cursor. */
 export function providerCliUpdateEntries(
   status: ProviderCliStatusResponse,
 ): ProviderCliStatusEntry[] {
-  return PROVIDER_CLI_UPDATE_PROVIDERS.map((provider) => ({
-    provider,
-    status: status[provider],
-  }));
+  return providerCliEntries(status);
 }
 
 /**
  * Whether an issue is an *update* rather than a first install.
  *
- * `buildProviderCliIssue` deliberately reports a missing CLI too — onboarding
- * and the compose box both need it to offer the install. Settings → Updates is
- * not one of those surfaces: a CLI you never installed has no update, and
+ * `buildProviderCliIssue` deliberately reports a missing CLI too so install
+ * surfaces can offer the action. Settings → Updates is not one of those
+ * surfaces: a CLI you never installed has no update, and
  * listing it there put a permanent install prompt on an update page, counted it
  * in "Update all", and made a fresh single-agent install look perpetually
  * behind. The sidebar chips have always drawn this line; this is the same one.

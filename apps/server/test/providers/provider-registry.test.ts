@@ -5,6 +5,7 @@ const CURSOR_LIKE_INFO = {
   available: true,
   experimental_providerHealth: true,
   experimental_providerUsage: true,
+  experimental_providerInstallation: false,
   capabilities: {
     supportsThreadArchive: false,
     supportsThreadRename: false,

@@ -5,6 +5,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type {
   ExperimentalProviderHealthResult,
+  ExperimentalProviderInstallationRunResult,
+  ExperimentalProviderInstallationStatus,
   ExperimentalProviderUsage,
   ExperimentalProviderUsageResult,
   ExperimentalProviderUsageWindow,
@@ -17,6 +19,8 @@ const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CHATGPT_AUTH_CLAIM_PATH = "https://api.openai.com/auth";
 const COMMAND_TIMEOUT_MS = 5_000;
 const USAGE_FETCH_TIMEOUT_MS = 15_000;
+const INSTALLATION_CHECK_TIMEOUT_MS = 15_000;
+const CODEX_NPM_PACKAGE = "@openai/codex";
 const ALLOWED_CLOUDFLARE_COOKIE_NAMES = new Set([
   "__cf_bm",
   "__cflb",
@@ -228,6 +232,193 @@ function compareVersions(left: string, right: string): number {
     return a.prerelease.localeCompare(b.prerelease);
   }
   return 0;
+}
+
+function npmCommand(): string {
+  return process.platform === "win32" ? "npm.cmd" : "npm";
+}
+
+function formatCommand(command: string, args: readonly string[]): string {
+  return [command, ...args]
+    .map((part) =>
+      /^[A-Za-z0-9_./:@+-]+$/u.test(part)
+        ? part
+        : `'${part.replace(/'/gu, "'\\''")}'`,
+    )
+    .join(" ");
+}
+
+async function commandOutput(
+  command: string,
+  args: readonly string[],
+): Promise<string | null> {
+  try {
+    const { stdout, stderr } = await execFileAsync(command, [...args], {
+      timeout: INSTALLATION_CHECK_TIMEOUT_MS,
+    });
+    return `${stdout}\n${stderr}`.trim();
+  } catch {
+    return null;
+  }
+}
+
+function firstLine(value: string | null): string | null {
+  return (
+    value
+      ?.split(/\r?\n/u)
+      .map((line) => line.trim())
+      .find(Boolean) ?? null
+  );
+}
+
+function versionFrom(value: string | null): string | null {
+  return (
+    value?.match(/\bv?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\b/u)?.[1] ?? null
+  );
+}
+
+function npmGlobalPackageVersion(value: string | null): string | null {
+  if (value === null) return null;
+  try {
+    const parsed = z
+      .object({
+        dependencies: z
+          .record(z.string(), z.object({ version: z.string().min(1) }))
+          .default({}),
+      })
+      .safeParse(JSON.parse(value));
+    return parsed.success
+      ? (parsed.data.dependencies[CODEX_NPM_PACKAGE]?.version ?? null)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function pathIsInside(child: string, parent: string): boolean {
+  const relativePath = path.relative(path.resolve(parent), path.resolve(child));
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+  );
+}
+
+export async function getCodexProviderInstallationStatus(): Promise<ExperimentalProviderInstallationStatus> {
+  const npm = npmCommand();
+  const [
+    resolvedExecutable,
+    versionOutput,
+    latestOutput,
+    prefixOutput,
+    listOutput,
+  ] = await Promise.all([
+    executablePath("codex"),
+    commandOutput("codex", ["--version"]),
+    commandOutput(npm, ["view", CODEX_NPM_PACKAGE, "version"]),
+    commandOutput(npm, ["prefix", "-g"]),
+    commandOutput(npm, [
+      "list",
+      "-g",
+      CODEX_NPM_PACKAGE,
+      "--depth=0",
+      "--json",
+    ]),
+  ]);
+  const installed = resolvedExecutable !== null || versionOutput !== null;
+  const currentVersion = versionFrom(versionOutput);
+  const latestVersion = versionFrom(latestOutput);
+  const npmPrefix = firstLine(prefixOutput);
+  const npmBin =
+    npmPrefix === null
+      ? null
+      : process.platform === "win32"
+        ? npmPrefix
+        : path.join(npmPrefix, "bin");
+  const installSource = !installed
+    ? "notInstalled"
+    : resolvedExecutable !== null &&
+        npmBin !== null &&
+        pathIsInside(resolvedExecutable, npmBin)
+      ? "npmGlobal"
+      : "external";
+  const needsUpdate =
+    installed &&
+    currentVersion !== null &&
+    latestVersion !== null &&
+    compareVersions(latestVersion, currentVersion) > 0;
+  const versionUnsupported =
+    installed &&
+    currentVersion !== null &&
+    compareVersions(currentVersion, CODEX_MINIMUM_SUPPORTED_VERSION) < 0;
+  const actionKind = !installed
+    ? "install"
+    : needsUpdate || versionUnsupported
+      ? "update"
+      : null;
+  const actionArgs =
+    actionKind === "install"
+      ? ["install", "-g", `${CODEX_NPM_PACKAGE}@latest`]
+      : ["update"];
+  const actionCommand = actionKind === "install" ? npm : "codex";
+
+  return {
+    executableName: "codex",
+    executablePath: resolvedExecutable,
+    installed,
+    installSource,
+    currentVersion,
+    latestVersion,
+    minimumSupportedVersion: CODEX_MINIMUM_SUPPORTED_VERSION,
+    npmPackageName: CODEX_NPM_PACKAGE,
+    npmGlobalPackageVersion: npmGlobalPackageVersion(listOutput),
+    installAction:
+      actionKind === null
+        ? null
+        : {
+            kind: actionKind,
+            label: actionKind === "install" ? "Install" : "Update",
+            command: formatCommand(actionCommand, actionArgs),
+          },
+    needsUpdate,
+    versionUnsupported,
+  };
+}
+
+export async function getCodexProviderInstallationRun(
+  action: "install" | "update",
+): Promise<ExperimentalProviderInstallationRunResult> {
+  const status = await getCodexProviderInstallationStatus();
+  return buildCodexProviderInstallationRun(status, action);
+}
+
+function buildCodexProviderInstallationRun(
+  status: ExperimentalProviderInstallationStatus,
+  action: "install" | "update",
+): ExperimentalProviderInstallationRunResult {
+  if (status.installAction?.kind !== action) {
+    return {
+      available: false,
+      message: `Codex ${action} is no longer available on this host.`,
+    };
+  }
+  const command = action === "install" ? npmCommand() : "codex";
+  const args =
+    action === "install"
+      ? ["install", "-g", `${CODEX_NPM_PACKAGE}@latest`]
+      : ["update"];
+  return {
+    available: true,
+    command: { command, args, displayCommand: formatCommand(command, args) },
+    verification:
+      action === "install"
+        ? { kind: "installed" }
+        : status.latestVersion !== null
+          ? { kind: "version_at_least", version: status.latestVersion }
+          : {
+              kind: "version_changed",
+              previousVersion: status.currentVersion ?? "unknown",
+            },
+  };
 }
 
 function healthResult(
@@ -454,4 +645,9 @@ export async function getCodexProviderUsage(): Promise<ExperimentalProviderUsage
   }
 }
 
-export const __testing = { compareVersions, normalizeUsage, planLabel };
+export const __testing = {
+  buildProviderInstallationRun: buildCodexProviderInstallationRun,
+  compareVersions,
+  normalizeUsage,
+  planLabel,
+};

@@ -17,10 +17,13 @@ import type {
   HostDaemonInjectedSkillSource,
   HostDaemonOnlineRpcCommand,
   HostDaemonConnectTunnelIdentity,
-  ProviderCliInstallRequest,
-  ProviderCliStatus,
   WorkspaceContext,
 } from "@bb/host-daemon-contract";
+import type {
+  ExperimentalProviderInstallationCommand,
+  ExperimentalProviderInstallationRunResult,
+  ExperimentalProviderInstallationStatus,
+} from "@bb/provider-bridge-protocol";
 import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
 import { ensurePluginProcessDataDir } from "@bb/process-utils";
 import type { InteractiveResolveCommandInput } from "./interactive-request-registry.js";
@@ -81,12 +84,24 @@ export interface CommandDispatchOptions {
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
   }) => Promise<ProviderUsageResult>;
-  getProviderCliStatusForProvider?: (
-    providerId: string,
-  ) => Promise<ProviderCliStatus | null>;
-  streamProviderCliInstall?: (
-    args: ProviderCliInstallRequest & { env?: NodeJS.ProcessEnv },
-  ) => ReadableStream<Uint8Array>;
+  providerInstallationStatus?: (args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  }) => Promise<ExperimentalProviderInstallationStatus>;
+  providerInstallationRun?: (args: {
+    providerId: string;
+    action: "install" | "update";
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  }) => Promise<ExperimentalProviderInstallationRunResult>;
+  streamProviderInstallation?: (args: {
+    providerId: string;
+    plan: ExperimentalProviderInstallationCommand;
+    env?: NodeJS.ProcessEnv;
+  }) => ReadableStream<Uint8Array>;
   resolveInteractiveRequest?: (
     request: InteractiveResolveCommandInput,
   ) => Promise<void>;
@@ -196,11 +211,11 @@ export async function resolveRuntimeBridgeLaunch(
   };
 }
 
-const defaultModelListRuntimes = new Map<string, AgentRuntime>();
+const defaultProviderMaintenanceRuntimes = new Map<string, AgentRuntime>();
 
-export async function shutdownDefaultListModelsRuntimes(): Promise<void> {
-  const runtimes = [...defaultModelListRuntimes.values()];
-  defaultModelListRuntimes.clear();
+export async function shutdownDefaultProviderMaintenanceRuntimes(): Promise<void> {
+  const runtimes = [...defaultProviderMaintenanceRuntimes.values()];
+  defaultProviderMaintenanceRuntimes.clear();
   await Promise.all(runtimes.map((runtime) => runtime.shutdown()));
 }
 
@@ -242,7 +257,7 @@ function defaultProviderMaintenanceRuntime(
     (args.acpLaunchSpec !== undefined
       ? `#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`
       : "");
-  let runtime = defaultModelListRuntimes.get(runtimeKey);
+  let runtime = defaultProviderMaintenanceRuntimes.get(runtimeKey);
   if (!runtime) {
     runtime = createAgentRuntime({
       bridgeBundleDir: options.bridgeBundleDir,
@@ -253,7 +268,7 @@ function defaultProviderMaintenanceRuntime(
         success: true,
       }),
     });
-    defaultModelListRuntimes.set(runtimeKey, runtime);
+    defaultProviderMaintenanceRuntimes.set(runtimeKey, runtime);
   }
   return runtime;
 }
@@ -284,6 +299,33 @@ export async function defaultProviderUsage(
   return await defaultProviderMaintenanceRuntime(args, options).providerUsage(
     args,
   );
+}
+
+export async function defaultProviderInstallationStatus(
+  args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  },
+  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
+): Promise<ExperimentalProviderInstallationStatus> {
+  const runtime = defaultProviderMaintenanceRuntime(args, options);
+  return await runtime.providerInstallationStatus(args);
+}
+
+export async function defaultProviderInstallationRun(
+  args: {
+    providerId: string;
+    action: "install" | "update";
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  },
+  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
+): Promise<ExperimentalProviderInstallationRunResult> {
+  const runtime = defaultProviderMaintenanceRuntime(args, options);
+  return await runtime.providerInstallationRun(args);
 }
 
 export function getErrorCode(error: unknown): string {

@@ -90,6 +90,8 @@ import {
 } from "./commands.js";
 import {
   getClaudeProviderHealth,
+  getClaudeProviderInstallationRun,
+  getClaudeProviderInstallationStatus,
   getClaudeProviderUsage,
 } from "./provider-maintenance.js";
 import {
@@ -1884,6 +1886,15 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       break;
     case "provider/usage":
       sendResult(request.id, await getClaudeProviderUsage());
+      break;
+    case "provider/installation/status":
+      sendResult(request.id, await getClaudeProviderInstallationStatus());
+      break;
+    case "provider/installation/run":
+      sendResult(
+        request.id,
+        await getClaudeProviderInstallationRun(request.params.action),
+      );
       break;
     case "thread/start":
       await handleThreadStart(

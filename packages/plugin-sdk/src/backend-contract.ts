@@ -524,6 +524,9 @@ export interface PluginProviderCapabilities {
    * settings omit the provider. A shared bridge that declares true may still
    * report usage unavailable for one provider id or return no windows. */
   experimental_providerUsage: boolean;
+  /** The provider bridge implements `provider/installation/status` and
+   * `provider/installation/run` for host-local installation management. */
+  experimental_providerInstallation: boolean;
   /** The provider accepts a fast/priority service-tier choice — shows the
    * service-tier toggle in the picker. */
   supportsServiceTier: boolean;

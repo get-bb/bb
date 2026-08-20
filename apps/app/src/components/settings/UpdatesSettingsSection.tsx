@@ -9,7 +9,6 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
-import type { ProviderCliKey } from "@bb/host-daemon-contract";
 import type { SystemVersionResponse } from "@bb/server-contract";
 import {
   RETRY_ACTION_ICON,
@@ -126,18 +125,6 @@ function isNewerChangelogVersion(
 
 /** Stalled machines needed before the page offers a bulk retry. */
 const BULK_RETRY_THRESHOLD = 1;
-
-const PROVIDER_CLI_AGENT_PROVIDER_ID = {
-  codex: "codex",
-  claudeCode: "claude-code",
-  cursor: "acp-cursor",
-} as const satisfies Record<ProviderCliKey, string>;
-
-const PROVIDER_CLI_DISPLAY_ORDER = [
-  "codex",
-  "claudeCode",
-  "cursor",
-] as const satisfies readonly ProviderCliKey[];
 
 function updateCheckErrorDescription(error: unknown): string {
   if (error instanceof Error && error.message.length > 0) {
@@ -1254,9 +1241,8 @@ export function MachineUpdatesRows({
     return null;
   }
 
-  const rows = PROVIDER_CLI_DISPLAY_ORDER.filter((provider) =>
-    issuesByProvider.has(provider),
-  ).map((provider) => {
+  const rows = updateIssues.map((listedIssue) => {
+    const provider = listedIssue.provider;
     const status = machine.providerStatus?.[provider];
     if (status === undefined) {
       return null;
@@ -1273,7 +1259,7 @@ export function MachineUpdatesRows({
         : null;
     const actionable =
       issue !== null && hasProviderCliAction(issue) && !running && !queued;
-    const providerId = PROVIDER_CLI_AGENT_PROVIDER_ID[provider];
+    const providerId = provider;
     const ProviderIcon = getProviderIconInfo(providerId)?.icon;
     return (
       <ResourceRow

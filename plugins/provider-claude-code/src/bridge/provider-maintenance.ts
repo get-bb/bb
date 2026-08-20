@@ -5,6 +5,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type {
   ExperimentalProviderHealthResult,
+  ExperimentalProviderInstallationRunResult,
+  ExperimentalProviderInstallationStatus,
   ExperimentalProviderUsage,
   ExperimentalProviderUsageResult,
   ExperimentalProviderUsageWindow,
@@ -16,6 +18,9 @@ const COMMAND_TIMEOUT_MS = 5_000;
 const USAGE_FETCH_TIMEOUT_MS = 15_000;
 const CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const CLAUDE_KEYCHAIN_SERVICE = "Claude Code-credentials";
+const INSTALLATION_CHECK_TIMEOUT_MS = 15_000;
+const CLAUDE_NPM_PACKAGE = "@anthropic-ai/claude-code";
+const CLAUDE_INSTALL_SCRIPT_URL = "https://claude.ai/install.sh";
 
 const claudeCredentialsSchema = z.object({
   claudeAiOauth: z.object({
@@ -65,6 +70,301 @@ async function installedVersion(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+function npmCommand(): string {
+  return process.platform === "win32" ? "npm.cmd" : "npm";
+}
+
+function formatCommand(command: string, args: readonly string[]): string {
+  return [command, ...args]
+    .map((part) =>
+      /^[A-Za-z0-9_./:@+-]+$/u.test(part)
+        ? part
+        : `'${part.replace(/'/gu, "'\\''")}'`,
+    )
+    .join(" ");
+}
+
+async function commandOutput(
+  command: string,
+  args: readonly string[],
+): Promise<string | null> {
+  try {
+    const { stdout, stderr } = await execFileAsync(command, [...args], {
+      timeout: INSTALLATION_CHECK_TIMEOUT_MS,
+    });
+    return `${stdout}\n${stderr}`.trim();
+  } catch {
+    return null;
+  }
+}
+
+function firstLine(value: string | null): string | null {
+  return (
+    value
+      ?.split(/\r?\n/u)
+      .map((line) => line.trim())
+      .find(Boolean) ?? null
+  );
+}
+
+function versionFrom(value: string | null): string | null {
+  return (
+    value?.match(/\bv?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\b/u)?.[1] ?? null
+  );
+}
+
+function compareVersions(left: string, right: string): number {
+  const parts = (value: string) =>
+    value.split("-", 1)[0]?.split(".").map(Number) ?? [];
+  const a = parts(left);
+  const b = parts(right);
+  for (let index = 0; index < 3; index += 1) {
+    const difference = (a[index] ?? 0) - (b[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return left.localeCompare(right);
+}
+
+function pathIsInside(child: string, parent: string): boolean {
+  const relativePath = path.relative(path.resolve(parent), path.resolve(child));
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+  );
+}
+
+function npmGlobalPackageVersion(value: string | null): string | null {
+  if (value === null) return null;
+  try {
+    const parsed = z
+      .object({
+        dependencies: z
+          .record(z.string(), z.object({ version: z.string().min(1) }))
+          .default({}),
+      })
+      .safeParse(JSON.parse(value));
+    return parsed.success
+      ? (parsed.data.dependencies[CLAUDE_NPM_PACKAGE]?.version ?? null)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function claudeDistTags(value: string | null): {
+  latest: string;
+  stable: string | null;
+} | null {
+  if (value === null) return null;
+  try {
+    const parsed = z
+      .object({
+        latest: z.string().min(1),
+        stable: z.string().min(1).optional(),
+      })
+      .safeParse(JSON.parse(value));
+    if (!parsed.success) return null;
+    const latest = versionFrom(parsed.data.latest);
+    if (latest === null) return null;
+    return {
+      latest,
+      stable:
+        parsed.data.stable === undefined
+          ? latest
+          : versionFrom(parsed.data.stable),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function claudeDoctor(value: string | null): {
+  installMethod: "native" | "npm-global" | "package-manager" | "unknown" | null;
+  updateChannel: "latest" | "stable" | null;
+} {
+  const running =
+    value === null ? null : /^Running:\s+([^\s(]+)/mu.exec(value)?.[1];
+  const channel =
+    value === null
+      ? null
+      : /^Auto-update channel:\s+(latest|stable)\s*$/mu.exec(value)?.[1];
+  return {
+    installMethod:
+      running === "native" || running === "npm-global"
+        ? running
+        : running !== null && running !== undefined
+          ? ["homebrew", "winget", "apt", "dnf", "apk"].includes(running)
+            ? "package-manager"
+            : "unknown"
+          : null,
+    updateChannel:
+      channel === "latest" || channel === "stable" ? channel : null,
+  };
+}
+
+function isDefaultNativeClaudePath(executablePath: string | null): boolean {
+  if (executablePath === null) return false;
+  const normalized = executablePath.replace(/\\/gu, "/");
+  return (
+    normalized.endsWith("/.local/bin/claude") ||
+    (process.platform === "win32" &&
+      normalized.endsWith("/.local/bin/claude.exe"))
+  );
+}
+
+function downloadedInstallerCommand(): {
+  command: string;
+  args: string[];
+  displayCommand: string;
+} {
+  const script = [
+    'tmp=$(mktemp "${TMPDIR:-/tmp}/provider-installation.XXXXXX")',
+    "trap 'rm -f \"$tmp\"' EXIT",
+    `curl -fsSL ${CLAUDE_INSTALL_SCRIPT_URL} -o "$tmp"`,
+    'bash "$tmp"',
+  ].join(" && ");
+  return { command: "sh", args: ["-c", script], displayCommand: script };
+}
+
+export async function getClaudeProviderInstallationStatus(): Promise<ExperimentalProviderInstallationStatus> {
+  const command = process.env.BB_CLAUDE_CODE_EXECUTABLE?.trim() || "claude";
+  const npm = npmCommand();
+  const [
+    resolvedExecutable,
+    versionOutput,
+    tagsOutput,
+    prefixOutput,
+    listOutput,
+    doctorOutput,
+  ] = await Promise.all([
+    executablePath(command),
+    commandOutput(command, ["--version"]),
+    commandOutput(npm, ["view", CLAUDE_NPM_PACKAGE, "dist-tags", "--json"]),
+    commandOutput(npm, ["prefix", "-g"]),
+    commandOutput(npm, [
+      "list",
+      "-g",
+      CLAUDE_NPM_PACKAGE,
+      "--depth=0",
+      "--json",
+    ]),
+    commandOutput(command, ["doctor"]),
+  ]);
+  const installed = resolvedExecutable !== null || versionOutput !== null;
+  const currentVersion = versionFrom(versionOutput);
+  const doctor = claudeDoctor(doctorOutput);
+  const tags = claudeDistTags(tagsOutput);
+  const latestVersion =
+    doctor.updateChannel === null || tags === null
+      ? null
+      : tags[doctor.updateChannel];
+  const definitelyNeedsUnknownChannelUpdate =
+    installed &&
+    currentVersion !== null &&
+    tags?.stable !== null &&
+    tags?.stable !== undefined &&
+    compareVersions(tags.latest, currentVersion) > 0 &&
+    compareVersions(tags.stable, currentVersion) > 0;
+  const needsUpdate =
+    installed && currentVersion !== null && latestVersion !== null
+      ? compareVersions(latestVersion, currentVersion) > 0
+      : definitelyNeedsUnknownChannelUpdate;
+  const npmPrefix = firstLine(prefixOutput);
+  const npmBin =
+    npmPrefix === null
+      ? null
+      : process.platform === "win32"
+        ? npmPrefix
+        : path.join(npmPrefix, "bin");
+  const installSource = !installed
+    ? "notInstalled"
+    : resolvedExecutable !== null &&
+        npmBin !== null &&
+        pathIsInside(resolvedExecutable, npmBin)
+      ? "npmGlobal"
+      : "external";
+  const nativeFallback =
+    doctor.installMethod === null &&
+    installSource === "external" &&
+    isDefaultNativeClaudePath(resolvedExecutable);
+  const canRunUpdate =
+    doctor.installMethod === "native" ||
+    nativeFallback ||
+    (installSource === "npmGlobal" &&
+      (doctor.installMethod === null || doctor.installMethod === "npm-global"));
+  const actionKind = !installed
+    ? "install"
+    : needsUpdate && canRunUpdate
+      ? "update"
+      : null;
+  const displayCommand =
+    actionKind === "install"
+      ? downloadedInstallerCommand().displayCommand
+      : formatCommand(command, ["update"]);
+  return {
+    executableName: command,
+    executablePath: resolvedExecutable,
+    installed,
+    installSource,
+    currentVersion,
+    latestVersion,
+    minimumSupportedVersion: null,
+    npmPackageName: CLAUDE_NPM_PACKAGE,
+    npmGlobalPackageVersion: npmGlobalPackageVersion(listOutput),
+    installAction:
+      actionKind === null
+        ? null
+        : {
+            kind: actionKind,
+            label: actionKind === "install" ? "Install" : "Update",
+            command: displayCommand,
+          },
+    needsUpdate,
+    versionUnsupported: false,
+  };
+}
+
+export async function getClaudeProviderInstallationRun(
+  action: "install" | "update",
+): Promise<ExperimentalProviderInstallationRunResult> {
+  const status = await getClaudeProviderInstallationStatus();
+  return buildClaudeProviderInstallationRun(status, action);
+}
+
+function buildClaudeProviderInstallationRun(
+  status: ExperimentalProviderInstallationStatus,
+  action: "install" | "update",
+): ExperimentalProviderInstallationRunResult {
+  if (status.installAction?.kind !== action) {
+    return {
+      available: false,
+      message: `Claude Code ${action} is no longer available on this host.`,
+    };
+  }
+  const command = process.env.BB_CLAUDE_CODE_EXECUTABLE?.trim() || "claude";
+  const execution =
+    action === "install"
+      ? downloadedInstallerCommand()
+      : {
+          command,
+          args: ["update"],
+          displayCommand: formatCommand(command, ["update"]),
+        };
+  return {
+    available: true,
+    command: execution,
+    verification:
+      action === "install"
+        ? { kind: "installed" }
+        : status.latestVersion !== null
+          ? { kind: "version_at_least", version: status.latestVersion }
+          : {
+              kind: "version_changed",
+              previousVersion: status.currentVersion ?? "unknown",
+            },
+  };
 }
 
 async function readKeychainCredentials(): Promise<string | null> {
@@ -366,4 +666,8 @@ export async function getClaudeProviderUsage(): Promise<ExperimentalProviderUsag
   }
 }
 
-export const __testing = { normalizeUsage, planLabel };
+export const __testing = {
+  buildProviderInstallationRun: buildClaudeProviderInstallationRun,
+  normalizeUsage,
+  planLabel,
+};

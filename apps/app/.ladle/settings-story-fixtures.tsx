@@ -71,15 +71,14 @@ const localProviderStatus = {
     installAction: {
       kind: "update",
       label: "Update",
-      commandKind: "exec",
       command: "codex update",
     },
   }),
-  claudeCode: makeProviderCliStatus("claudeCode", {
+  "claude-code": makeProviderCliStatus("claude-code", {
     currentVersion: "2.1.0",
     latestVersion: "2.1.0",
   }),
-  cursor: makeProviderCliStatus("cursor", {
+  "acp-cursor": makeProviderCliStatus("acp-cursor", {
     currentVersion: "0.49.0",
     latestVersion: "0.49.0",
   }),
@@ -93,15 +92,14 @@ const remoteProviderStatus = {
     installAction: {
       kind: "update",
       label: "Update",
-      commandKind: "exec",
       command: "codex update",
     },
   }),
-  claudeCode: makeProviderCliStatus("claudeCode", {
+  "claude-code": makeProviderCliStatus("claude-code", {
     currentVersion: "2.1.0",
     latestVersion: "2.1.0",
   }),
-  cursor: makeProviderCliStatus("cursor", {
+  "acp-cursor": makeProviderCliStatus("acp-cursor", {
     installed: false,
     executablePath: null,
     currentVersion: null,

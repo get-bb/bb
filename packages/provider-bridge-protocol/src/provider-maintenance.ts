@@ -126,3 +126,124 @@ export const experimental_providerUsageResultSchema = z.discriminatedUnion(
 export type ExperimentalProviderUsageResult = z.infer<
   typeof experimental_providerUsageResultSchema
 >;
+
+export const experimental_providerInstallationActionKindSchema = z.enum([
+  "install",
+  "update",
+]);
+export type ExperimentalProviderInstallationActionKind = z.infer<
+  typeof experimental_providerInstallationActionKindSchema
+>;
+
+/**
+ * An installation action that a provider currently knows how to perform.
+ * Only the display command crosses the product boundary; the executable plan
+ * is resolved afresh by `provider/installation/run` on the host.
+ */
+export const experimental_providerInstallationActionSchema = z
+  .object({
+    kind: experimental_providerInstallationActionKindSchema,
+    label: z.enum(["Install", "Update"]),
+    command: z.string().min(1),
+  })
+  .passthrough();
+export type ExperimentalProviderInstallationAction = z.infer<
+  typeof experimental_providerInstallationActionSchema
+>;
+
+export const experimental_providerInstallationSourceSchema = z.enum([
+  "notInstalled",
+  "npmGlobal",
+  "external",
+]);
+export type ExperimentalProviderInstallationSource = z.infer<
+  typeof experimental_providerInstallationSourceSchema
+>;
+
+/** Provider-owned installation and update state for one host. */
+export const experimental_providerInstallationStatusSchema = z
+  .object({
+    executableName: z.string().min(1),
+    executablePath: z.string().min(1).nullable(),
+    installed: z.boolean(),
+    installSource: experimental_providerInstallationSourceSchema,
+    currentVersion: z.string().min(1).nullable(),
+    latestVersion: z.string().min(1).nullable(),
+    minimumSupportedVersion: z.string().min(1).nullable(),
+    npmPackageName: z.string().min(1).nullable(),
+    npmGlobalPackageVersion: z.string().min(1).nullable(),
+    installAction: experimental_providerInstallationActionSchema.nullable(),
+    needsUpdate: z.boolean(),
+    versionUnsupported: z.boolean(),
+  })
+  .passthrough();
+export type ExperimentalProviderInstallationStatus = z.infer<
+  typeof experimental_providerInstallationStatusSchema
+>;
+
+export const experimental_providerInstallationRunParamsSchema =
+  experimental_providerMaintenanceParamsSchema.extend({
+    action: experimental_providerInstallationActionKindSchema,
+  });
+export type ExperimentalProviderInstallationRunParams = z.infer<
+  typeof experimental_providerInstallationRunParamsSchema
+>;
+
+/**
+ * A typed process plan. The provider chooses the executable and arguments;
+ * the daemon chooses the environment and cwd and owns process supervision.
+ */
+export const experimental_providerInstallationCommandSchema = z
+  .object({
+    command: z.string().min(1),
+    args: z.array(z.string()).max(64),
+    displayCommand: z.string().min(1),
+  })
+  .passthrough();
+export type ExperimentalProviderInstallationCommand = z.infer<
+  typeof experimental_providerInstallationCommandSchema
+>;
+
+export const experimental_providerInstallationVerificationSchema =
+  z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("installed") }).passthrough(),
+    z
+      .object({
+        kind: z.literal("version_changed"),
+        previousVersion: z.string().min(1),
+      })
+      .passthrough(),
+    z
+      .object({
+        kind: z.literal("version_at_least"),
+        version: z.string().min(1),
+      })
+      .passthrough(),
+  ]);
+export type ExperimentalProviderInstallationVerification = z.infer<
+  typeof experimental_providerInstallationVerificationSchema
+>;
+
+/**
+ * `available: false` handles a stale action safely: status may have changed
+ * between rendering a button and the daemon resolving the execution plan.
+ */
+export const experimental_providerInstallationRunResultSchema =
+  z.discriminatedUnion("available", [
+    z
+      .object({
+        available: z.literal(false),
+        message: z.string().min(1),
+      })
+      .passthrough(),
+    z
+      .object({
+        available: z.literal(true),
+        command: experimental_providerInstallationCommandSchema,
+        verification: experimental_providerInstallationVerificationSchema,
+      })
+      .passthrough(),
+  ]);
+export type ExperimentalProviderInstallationRunResult = z.infer<
+  typeof experimental_providerInstallationRunResultSchema
+>;

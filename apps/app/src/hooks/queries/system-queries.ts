@@ -62,6 +62,7 @@ export interface UseSystemExecutionOptionsArgs {
 export interface UseSystemProviderStatesOptions extends QueryOptions {
   environmentId?: string;
   hostId?: string;
+  poll?: boolean;
 }
 
 interface QueryOptions {
@@ -158,6 +159,7 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
     logoUrl: null,
     experimental_providerHealth: true,
     experimental_providerUsage: true,
+    experimental_providerInstallation: false,
     capabilities: {
       supportsThreadArchive: true,
       supportsThreadRename: true,
@@ -186,6 +188,7 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
     logoUrl: null,
     experimental_providerHealth: true,
     experimental_providerUsage: true,
+    experimental_providerInstallation: false,
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,
@@ -210,6 +213,7 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
     logoUrl: null,
     experimental_providerHealth: true,
     experimental_providerUsage: true,
+    experimental_providerInstallation: false,
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,
@@ -228,6 +232,7 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
     logoUrl: null,
     experimental_providerHealth: true,
     experimental_providerUsage: true,
+    experimental_providerInstallation: false,
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,

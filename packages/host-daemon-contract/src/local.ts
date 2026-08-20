@@ -164,8 +164,8 @@ export type StatusResponse = z.infer<typeof statusResponseSchema>;
 export const healthResponseSchema = z.string().min(1);
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 
-export const providerCliKeyValues = ["codex", "claudeCode", "cursor"] as const;
-export const providerCliKeySchema = z.enum(providerCliKeyValues);
+/** Registered provider id. Kept as a named type for the existing CLI/UI API. */
+export const providerCliKeySchema = z.string().min(1);
 export type ProviderCliKey = z.infer<typeof providerCliKeySchema>;
 
 export const providerCliInstallOutputStreamValues = [
@@ -199,15 +199,9 @@ export type ProviderCliInstallActionKind = z.infer<
   typeof providerCliInstallActionKindSchema
 >;
 
-export const providerCliInstallCommandKindValues = ["exec", "shell"] as const;
-export const providerCliInstallCommandKindSchema = z.enum(
-  providerCliInstallCommandKindValues,
-);
-
 export const providerCliInstallActionSchema = z.object({
   kind: providerCliInstallActionKindSchema,
   label: z.enum(["Install", "Update"]),
-  commandKind: providerCliInstallCommandKindSchema,
   command: z.string().min(1),
 });
 export type ProviderCliInstallAction = z.infer<
@@ -232,7 +226,7 @@ export const providerCliStatusSchema = z.object({
 export type ProviderCliStatus = z.infer<typeof providerCliStatusSchema>;
 
 export const providerCliStatusResponseSchema = z.record(
-  providerCliKeySchema,
+  z.string().min(1),
   providerCliStatusSchema,
 );
 export type ProviderCliStatusResponse = z.infer<

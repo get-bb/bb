@@ -11,10 +11,8 @@ import { renderBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
 import { resolveMachineId } from "./machine.js";
 
-const MANAGED_PROVIDERS = ["codex", "claudeCode"] as const;
-
-type ProviderCliKey = (typeof MANAGED_PROVIDERS)[number];
-type ProviderCliStatus = HostProviderCliStatusResponse[ProviderCliKey];
+type ProviderCliKey = string;
+type ProviderCliStatus = HostProviderCliStatusResponse[string];
 type ProviderCliStatusResponse = HostProviderCliStatusResponse;
 
 interface UpdatesCommandOptions {
@@ -107,8 +105,7 @@ function actionableTargets(
   const targets: ProviderUpdateTarget[] = [];
   for (const entry of entries) {
     if (entry.providerStatus === null) continue;
-    for (const provider of MANAGED_PROVIDERS) {
-      const status = entry.providerStatus[provider];
+    for (const [provider, status] of Object.entries(entry.providerStatus)) {
       if (isActionableProviderStatus(status)) {
         targets.push({ host: entry.host, provider, status });
       }
@@ -131,8 +128,7 @@ function printUpdatesTable(args: {
       rows.push([entry.host.name, "-", entry.statusError ?? "status failed"]);
       continue;
     }
-    for (const provider of MANAGED_PROVIDERS) {
-      const status = entry.providerStatus[provider];
+    for (const status of Object.values(entry.providerStatus)) {
       rows.push([
         `${entry.host.name} · ${status.displayName}`,
         providerVersionLabel(status),
@@ -238,15 +234,12 @@ export function registerUpdatesCommands(
           const hasManualUpdates = entries.some(
             (entry) =>
               entry.providerStatus !== null &&
-              MANAGED_PROVIDERS.some((provider) => {
-                const status = entry.providerStatus?.[provider];
-                return (
-                  status !== undefined &&
+              Object.values(entry.providerStatus).some(
+                (status) =>
                   status.installed &&
                   status.needsUpdate &&
-                  status.installAction === null
-                );
-              }),
+                  status.installAction === null,
+              ),
           );
           console.log(
             hasManualUpdates

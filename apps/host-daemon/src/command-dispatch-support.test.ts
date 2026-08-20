@@ -21,7 +21,7 @@ import {
   defaultListModels,
   getErrorCode,
   isExpectedOnlineRpcFailureError,
-  shutdownDefaultListModelsRuntimes,
+  shutdownDefaultProviderMaintenanceRuntimes,
 } from "./command-dispatch-support.js";
 
 interface MakeModelArgs {
@@ -78,6 +78,12 @@ function makeRuntime(args: MakeRuntimeArgs): AgentRuntime {
     async providerUsage() {
       return { supported: false as const };
     },
+    async providerInstallationStatus() {
+      throw new Error("Unexpected provider installation status call");
+    },
+    async providerInstallationRun() {
+      throw new Error("Unexpected provider installation run call");
+    },
     listRunningProviders() {
       return [];
     },
@@ -108,7 +114,7 @@ function makeRuntime(args: MakeRuntimeArgs): AgentRuntime {
 
 describe("command dispatch support", () => {
   afterEach(async () => {
-    await shutdownDefaultListModelsRuntimes();
+    await shutdownDefaultProviderMaintenanceRuntimes();
   });
 
   beforeEach(() => {
@@ -182,7 +188,7 @@ describe("command dispatch support", () => {
     expect(listModels).toHaveBeenCalledTimes(2);
     expect(shutdowns).toEqual([]);
 
-    await shutdownDefaultListModelsRuntimes();
+    await shutdownDefaultProviderMaintenanceRuntimes();
     expect(shutdowns).toEqual(["runtime"]);
   });
 
@@ -271,7 +277,7 @@ describe("command dispatch support", () => {
     ).resolves.toMatchObject({ models: [{ id: "second" }] });
 
     expect(createAgentRuntimeMock).toHaveBeenCalledTimes(2);
-    await shutdownDefaultListModelsRuntimes();
+    await shutdownDefaultProviderMaintenanceRuntimes();
     expect(shutdowns).toEqual(["first", "second"]);
   });
 });

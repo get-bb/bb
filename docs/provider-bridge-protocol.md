@@ -14,7 +14,7 @@ against every bridge in CI.
 ## Where a bridge lives
 
 A bridge ships inside its plugin's **`bb.host` artifact** — the same artifact
-a host RPC entry ships in, and one plugin may carry both. It is an *export*,
+a host RPC entry ships in, and one plugin may carry both. It is an _export_,
 not a program:
 
 ```ts
@@ -82,14 +82,26 @@ fact may only _narrow_ what the provider's declaration advertises (a
 declared fork affordance can turn out unavailable for this agent), never
 widen it.
 
-The sessionless `provider/health` and `provider/usage` methods are different:
-their support is declared by each provider through
+The sessionless `provider/health`, `provider/usage`,
+`provider/installation/status`, and `provider/installation/run` methods are
+different: their support is declared by each provider through
 `bb.agents.experimental_registerProvider`, so the server can skip an
 unsupported host probe and clients can omit providers that never expose usage
-before a bridge has started. A shared bridge may declare a method for every
-provider it owns and still return `{ supported: false }` for one provider id;
-a successful usage
-result may likewise contain an empty `windows` array.
+or installation management before a bridge has started. A shared bridge may
+declare health or usage for every provider it owns and still return
+`{ supported: false }` for one provider id; a successful usage result may
+likewise contain an empty `windows` array.
+
+Installation has a deliberately split execution boundary. The bridge owns
+provider-specific discovery, version/source comparison, and the install/update
+decision. `provider/installation/status` returns that state plus a display-only
+command. When the user acts, `provider/installation/run` rechecks the state and
+returns either `available: false` or a typed executable/argument plan with a
+post-run verification rule. The host daemon—not the bridge, server, or browser—
+chooses the environment and working directory, serializes installations,
+supervises the process, streams output, and asks the bridge for fresh status to
+verify success. Raw executable arguments never cross from the host daemon to a
+product client.
 
 Every capability listed there gates a request method, which is why the set
 holds no compaction fact. Compaction is triggered by a standalone builtin
@@ -106,7 +118,7 @@ only then does it earn a handshake capability.
 ## The timeline lane: `thread/delta`
 
 Everything timeline-bound rides one notification: `thread/delta
-{ threadId, deltas }`. A delta is a parsed *semantic* unit — `turn.open`,
+{ threadId, deltas }`. A delta is a parsed _semantic_ unit — `turn.open`,
 `turn.boundary`, `input.accepted`, `item.open`/`item.close` with a full item
 shape, streamed text (`message.delta`, `item.textDelta`), usage,
 context-window, errors/warnings, `unhandled` diagnostics, session lifecycle
@@ -159,11 +171,11 @@ adapter) consumes the deltas and owns every timeline invariant:
 
 Three identifier families, three owners:
 
-| Identifier                              | Minted by                    | Notes                                                                                                                 |
-| --------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `threadId`                              | bb server                    | Opaque to the provider; echoed verbatim.                                                                              |
-| `providerThreadId`                      | the provider                 | Its session handle (rollout id, session id). Exchanged via `thread/identity`; never used to scope bb events directly. |
-| turn ids and item ids on `ThreadEvent`s | **the runtime's assembler**  | Never the provider, never the bridge.                                                                                 |
+| Identifier                              | Minted by                   | Notes                                                                                                                 |
+| --------------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `threadId`                              | bb server                   | Opaque to the provider; echoed verbatim.                                                                              |
+| `providerThreadId`                      | the provider                | Its session handle (rollout id, session id). Exchanged via `thread/identity`; never used to scope bb events directly. |
+| turn ids and item ids on `ThreadEvent`s | **the runtime's assembler** | Never the provider, never the bridge.                                                                                 |
 
 The central-minting rule is the #1320 lesson made structural: a provider can
 inject arbitrary identifiers on its own wire, but the ids that reach bb's
@@ -190,7 +202,7 @@ it:
    message opened a turn; the assembler queues it until a turn opens (or
    emits into the already-open turn for steers) and constructs
    `turn/input/accepted` itself. Settlement rides `turn.boundary
-   { status }`; a boundary with `claimIfIdle: true` owns a turn only when
+{ status }`; a boundary with `claimIfIdle: true` owns a turn only when
    accepted input is pending, so a provider-terminal fallback signal on an
    idle thread settles nothing. A prompt the provider handles without doing
    work (claude `/clear`) still produces a `turn.open` + `turn.boundary`

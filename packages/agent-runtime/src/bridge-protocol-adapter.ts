@@ -309,6 +309,32 @@ export function createBridgeProtocolAdapter(
                 : {}),
             },
           };
+        case "provider/installation/status":
+          return {
+            kind: "request",
+            method:
+              BRIDGE_REQUEST_METHODS.experimentalProviderInstallationStatus,
+            params: {
+              providerId: options.id,
+              ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+              ...(options.staticProviderOptions !== undefined
+                ? { providerOptions: options.staticProviderOptions }
+                : {}),
+            },
+          };
+        case "provider/installation/run":
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.experimentalProviderInstallationRun,
+            params: {
+              providerId: options.id,
+              action: command.action,
+              ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+              ...(options.staticProviderOptions !== undefined
+                ? { providerOptions: options.staticProviderOptions }
+                : {}),
+            },
+          };
         case "skills/configure":
           return {
             kind: "request",

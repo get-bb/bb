@@ -124,6 +124,26 @@ describe("handshake gating", () => {
       method: "provider/usage",
       params: { providerId: "fake-bridge" },
     });
+    expect(
+      adapter.buildCommandPlan({
+        type: "provider/installation/status",
+        cwd: "/workspace",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "provider/installation/status",
+      params: { providerId: "fake-bridge", cwd: "/workspace" },
+    });
+    expect(
+      adapter.buildCommandPlan({
+        type: "provider/installation/run",
+        action: "update",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "provider/installation/run",
+      params: { providerId: "fake-bridge", action: "update" },
+    });
   });
 });
 

@@ -13,6 +13,7 @@ function declaration(
     capabilities: {
       experimental_providerHealth: true,
       experimental_providerUsage: false,
+      experimental_providerInstallation: true,
       supportsServiceTier: true,
       supportsNativeUserQuestion: true,
       fork: "checkpoint",
@@ -44,6 +45,7 @@ describe("buildPluginProviderRegistration", () => {
       logoUrl: "/api/v1/system/providers/my-remote-agent/logo",
       experimental_providerHealth: true,
       experimental_providerUsage: false,
+      experimental_providerInstallation: true,
       capabilities: {
         supportsThreadArchive: true,
         supportsThreadRename: true,

@@ -17,23 +17,33 @@ content-block vocabulary; decide whether legacy aggregate fields still need to
 be accepted; and define any image MIME validation, decoding, or payload-size
 policy at the server boundary before making the helper stable.
 
-## Provider bridge maintenance (`PluginProviderCapabilities.experimental_providerHealth`, `PluginProviderCapabilities.experimental_providerUsage`, `ProviderInfo.experimental_providerHealth`, `ProviderInfo.experimental_providerUsage`, `BRIDGE_REQUEST_METHODS.experimentalProviderHealth`, `BRIDGE_REQUEST_METHODS.experimentalProviderUsage`, `experimental_providerMaintenanceParamsSchema`, `experimental_providerHealthSchema`, `experimental_providerHealthResultSchema`, `experimental_providerUsageSchema`, `experimental_providerUsageWindowSchema`, and `experimental_providerUsageResultSchema`)
+## Provider bridge maintenance (`PluginProviderCapabilities.experimental_providerHealth`, `PluginProviderCapabilities.experimental_providerUsage`, `PluginProviderCapabilities.experimental_providerInstallation`, `ProviderInfo.experimental_providerHealth`, `ProviderInfo.experimental_providerUsage`, `ProviderInfo.experimental_providerInstallation`, `BRIDGE_REQUEST_METHODS.experimentalProviderHealth`, `BRIDGE_REQUEST_METHODS.experimentalProviderUsage`, `BRIDGE_REQUEST_METHODS.experimentalProviderInstallationStatus`, `BRIDGE_REQUEST_METHODS.experimentalProviderInstallationRun`, `experimental_providerMaintenanceParamsSchema`, `experimental_providerHealthSchema`, `experimental_providerHealthResultSchema`, `experimental_providerUsageSchema`, `experimental_providerUsageWindowSchema`, `experimental_providerUsageResultSchema`, and the `experimental_providerInstallation*` schemas/types)
 
-**What it does.** Adds optional, sessionless `provider/health` and
-`provider/usage` requests to provider bridges. Each provider declares support
-at registration so the server can skip unsupported host probes and the app can
-omit providers that never expose usage before starting a bridge. Health reports
-cheap host-local readiness and supported recovery actions; usage reports
-provider-normalized subscription windows. The maintenance runtime supplies the
-provider id, working directory when one exists, and the same provider-scoped
-launch options used by a real session.
+**What it does.** Adds optional, sessionless `provider/health`,
+`provider/usage`, `provider/installation/status`, and
+`provider/installation/run` requests to provider bridges. Each provider
+declares support at registration so the server can skip unsupported host probes
+and clients can omit unsupported maintenance surfaces before starting a bridge.
+Health reports cheap host-local readiness; usage reports provider-normalized
+subscription windows. Installation status owns provider-specific discovery,
+version/source detection, and whether an install or update is currently
+available. Installation run resolves a fresh typed executable/argument plan
+and post-run verification rule. Only its display command reaches product
+clients; the daemon receives the executable plan and remains responsible for
+host environment, working directory, concurrency, process supervision,
+streaming, and verifying the resulting provider status. The maintenance
+runtime supplies the provider id, working directory when one exists, and the
+same provider-scoped launch options used by a real session.
 
 **Audit before stabilizing.** Confirm the readiness vocabulary covers API-only
 and router providers, that health remains free of network usage/update checks,
-that account metadata has appropriate privacy treatment, that omitted fields
-from plugins built against the older experimental API continue to mean false,
-and that ACP's shared bridge can continue distinguishing built-in, known, and
-custom agents without exposing provider-specific launch details to clients.
+that account metadata has appropriate privacy treatment, that installation
+plans cannot smuggle host policy or unsafe execution through the typed boundary,
+that verification rules cover native and package-manager update behavior, that
+omitted fields from plugins built against the older experimental API continue
+to mean false, and that ACP's shared bridge can continue distinguishing
+built-in, known, and custom agents without exposing provider-specific launch or
+installation details to clients.
 
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 

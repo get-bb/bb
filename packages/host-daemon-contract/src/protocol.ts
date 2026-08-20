@@ -1,3 +1,8 @@
+// Version 144 moves provider installation status and execution plans into the
+// provider bridge contract. The server now sends provider-scoped
+// `provider.installation.*` commands with bridge launch metadata; older
+// daemons only understand the removed hard-coded `provider_cli.*` commands.
+//
 // Version 143 lets daemons from before session-open's `localApiPort` field
 // reach the protocol-version check by defaulting that field at the server
 // boundary. Without it, those daemons receive `invalid_request` instead of
@@ -16,7 +21,6 @@
 // acceptance once the `session/prompt` request carrying the input goes out, so
 // a steer the turn drops is no longer reported as accepted. Older daemons emit
 // the queue-time semantics and produce those phantom turns.
-//
 // Version 140 reports each daemon's browser-local editor helper port during
 // session open. The server uses those ports to let a remote browser discover
 // the helper on its own machine instead of assuming every machine uses the
@@ -96,7 +100,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 143 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 144 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

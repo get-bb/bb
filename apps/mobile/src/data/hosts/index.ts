@@ -52,7 +52,6 @@ export {
   buildProviderCliIssue,
   createProviderCliInstallAccumulator,
   hasProviderCliAction,
-  PROVIDER_CLI_MANAGED_PROVIDERS,
   providerCliEntries,
   providerCliIssues,
   providerCliRowState,

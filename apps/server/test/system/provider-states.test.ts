@@ -88,6 +88,7 @@ describe("getProviderStates", () => {
           available: true,
           experimental_providerHealth: false,
           experimental_providerUsage: false,
+          experimental_providerInstallation: false,
           capabilities: {
             supportsThreadArchive: false,
             supportsThreadRename: false,

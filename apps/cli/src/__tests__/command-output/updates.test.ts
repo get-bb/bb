@@ -68,12 +68,11 @@ function providerStatus(args: {
         ? {
             kind: "update" as const,
             label: "Update" as const,
-            commandKind: "exec" as const,
             command: "codex update",
           }
         : null,
     },
-    claudeCode: {
+    "claude-code": {
       ...base,
       displayName: "Claude Code",
       executableName: "claude",
@@ -82,7 +81,7 @@ function providerStatus(args: {
       needsUpdate: false,
       installAction: null,
     },
-    cursor: {
+    "acp-cursor": {
       ...base,
       displayName: "Cursor",
       executableName: "agent",

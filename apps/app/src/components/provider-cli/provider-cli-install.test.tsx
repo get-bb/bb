@@ -3,10 +3,7 @@
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import type {
-  ProviderCliInstallEvent,
-  ProviderCliKey,
-} from "@bb/host-daemon-contract";
+import type { ProviderCliInstallEvent } from "@bb/host-daemon-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { appToast } from "@/components/ui/app-toast";
@@ -74,14 +71,13 @@ function renderRunner() {
 }
 
 function issueForProvider(
-  provider: Extract<ProviderCliKey, "codex" | "claudeCode">,
+  provider: "codex" | "claude-code",
 ): ProviderCliActionableIssue {
   const displayName = provider === "codex" ? "Codex" : "Claude Code";
   const executableName = provider === "codex" ? "codex" : "claude";
   const action = {
     kind: "update" as const,
     label: "Update" as const,
-    commandKind: "exec" as const,
     command: `${executableName} update`,
   };
 
@@ -147,9 +143,9 @@ afterEach(() => {
 
 describe("buildProviderCliIssue", () => {
   it("keeps an external update visible when bb cannot apply it", () => {
-    const actionable = issueForProvider("claudeCode");
+    const actionable = issueForProvider("claude-code");
     const issue = buildProviderCliIssue({
-      provider: "claudeCode",
+      provider: "claude-code",
       status: {
         ...actionable.status,
         installSource: "external",
@@ -158,16 +154,16 @@ describe("buildProviderCliIssue", () => {
     });
 
     expect(issue).toMatchObject({
-      provider: "claudeCode",
+      provider: "claude-code",
       action: null,
       title: "Claude Code update available",
     });
   });
 
   it("describes an update without inventing a target for an unknown channel", () => {
-    const actionable = issueForProvider("claudeCode");
+    const actionable = issueForProvider("claude-code");
     const issue = buildProviderCliIssue({
-      provider: "claudeCode",
+      provider: "claude-code",
       status: {
         ...actionable.status,
         latestVersion: null,
@@ -204,14 +200,14 @@ describe("useProviderCliInstallRunner", () => {
     act(() => {
       result.current.startInstall({
         hostId: "host_1",
-        issue: issueForProvider("claudeCode"),
+        issue: issueForProvider("claude-code"),
       });
     });
 
     expect(installHostProviderCliMock).toHaveBeenCalledTimes(1);
     expect(appToastMock.message).not.toHaveBeenCalled();
     expect(appToastMock.loading).not.toHaveBeenCalled();
-    expect(result.current.queuedJobKeys.has("host_1:claudeCode")).toBe(true);
+    expect(result.current.queuedJobKeys.has("host_1:claude-code")).toBe(true);
 
     await act(async () => {
       completeInstall(installAt(0), {
@@ -228,16 +224,16 @@ describe("useProviderCliInstallRunner", () => {
     });
     expect(installHostProviderCliMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        provider: "claudeCode",
+        provider: "claude-code",
         actionKind: "update",
       }),
     );
-    expect(result.current.queuedJobKeys.has("host_1:claudeCode")).toBe(false);
+    expect(result.current.queuedJobKeys.has("host_1:claude-code")).toBe(false);
 
     await act(async () => {
       completeInstall(installAt(1), {
         type: "completed",
-        provider: "claudeCode",
+        provider: "claude-code",
         success: true,
         exitCode: 0,
         signal: null,
@@ -267,7 +263,7 @@ describe("useProviderCliInstallRunner", () => {
       });
       result.current.startInstall({
         hostId: "host_1",
-        issue: issueForProvider("claudeCode"),
+        issue: issueForProvider("claude-code"),
       });
     });
     expect(installHostProviderCliMock).toHaveBeenCalledTimes(1);
@@ -288,7 +284,7 @@ describe("useProviderCliInstallRunner", () => {
       expect(installHostProviderCliMock).toHaveBeenCalledTimes(2);
     });
     expect(installHostProviderCliMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({ provider: "claudeCode" }),
+      expect.objectContaining({ provider: "claude-code" }),
     );
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: hostProviderCliStatusQueryKey("host_1"),
@@ -296,7 +292,7 @@ describe("useProviderCliInstallRunner", () => {
 
     // Remounting elsewhere in the app picks the still-running job back up.
     const remounted = renderRunner();
-    expect(remounted.result.current.runningJobKey).toBe("host_1:claudeCode");
+    expect(remounted.result.current.runningJobKey).toBe("host_1:claude-code");
   });
 
   it("keeps a failed install and its stderr available for a retry", async () => {

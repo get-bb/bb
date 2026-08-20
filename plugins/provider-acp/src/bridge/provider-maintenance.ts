@@ -7,6 +7,8 @@ import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 import type {
   ExperimentalProviderHealthResult,
+  ExperimentalProviderInstallationRunResult,
+  ExperimentalProviderInstallationStatus,
   ExperimentalProviderUsage,
   ExperimentalProviderUsageResult,
   ExperimentalProviderUsageWindow,
@@ -21,6 +23,7 @@ const CURSOR_DASHBOARD_URL =
   "https://api2.cursor.sh/aiserver.v1.DashboardService";
 const CURSOR_KEYCHAIN_ACCOUNT = "cursor-user";
 const CURSOR_ACCESS_TOKEN_SERVICE = "cursor-access-token";
+const CURSOR_INSTALL_SCRIPT_URL = "https://cursor.com/install";
 
 async function executablePath(command: string): Promise<string | null> {
   try {
@@ -219,6 +222,82 @@ export async function getAcpProviderHealth(args: {
   }
 }
 
+function cursorInstallerCommand(): {
+  command: string;
+  args: string[];
+  displayCommand: string;
+} {
+  const script = [
+    'tmp=$(mktemp "${TMPDIR:-/tmp}/provider-installation.XXXXXX")',
+    "trap 'rm -f \"$tmp\"' EXIT",
+    `curl -fsSL ${CURSOR_INSTALL_SCRIPT_URL} -o "$tmp"`,
+    'bash "$tmp"',
+  ].join(" && ");
+  return { command: "sh", args: ["-c", script], displayCommand: script };
+}
+
+export async function getAcpProviderInstallationStatus(args: {
+  providerId: string;
+  command: string | null;
+}): Promise<ExperimentalProviderInstallationStatus> {
+  const executableName = args.command ?? "cursor-agent";
+  const resolvedExecutable =
+    args.command === null ? null : await executablePath(args.command);
+  const installed = resolvedExecutable !== null;
+  const currentVersion =
+    installed && args.command !== null
+      ? await installedVersion(args.command)
+      : null;
+  const installAction =
+    args.providerId === CURSOR_PROVIDER_ID && !installed
+      ? {
+          kind: "install" as const,
+          label: "Install" as const,
+          command: cursorInstallerCommand().displayCommand,
+        }
+      : null;
+  return {
+    executableName,
+    executablePath: resolvedExecutable,
+    installed,
+    installSource: installed ? "external" : "notInstalled",
+    currentVersion,
+    latestVersion: null,
+    minimumSupportedVersion: null,
+    npmPackageName: null,
+    npmGlobalPackageVersion: null,
+    installAction,
+    needsUpdate: false,
+    versionUnsupported: false,
+  };
+}
+
+export async function getAcpProviderInstallationRun(args: {
+  providerId: string;
+  command: string | null;
+  action: "install" | "update";
+}): Promise<ExperimentalProviderInstallationRunResult> {
+  const status = await getAcpProviderInstallationStatus(args);
+  return buildAcpProviderInstallationRun(status, args);
+}
+
+function buildAcpProviderInstallationRun(
+  status: ExperimentalProviderInstallationStatus,
+  args: { providerId: string; action: "install" | "update" },
+): ExperimentalProviderInstallationRunResult {
+  if (status.installAction?.kind !== args.action) {
+    return {
+      available: false,
+      message: `${args.providerId} ${args.action} is not available on this host.`,
+    };
+  }
+  return {
+    available: true,
+    command: cursorInstallerCommand(),
+    verification: { kind: "installed" },
+  };
+}
+
 const cursorNonNegativeIntegerSchema = z
   .union([
     z.number().int().nonnegative(),
@@ -381,4 +460,7 @@ export async function getAcpProviderUsage(args: {
   }
 }
 
-export const __testing = { normalizeUsage };
+export const __testing = {
+  buildProviderInstallationRun: buildAcpProviderInstallationRun,
+  normalizeUsage,
+};

@@ -222,6 +222,7 @@ describe("useSystemExecutionOptions", () => {
         available: true,
         experimental_providerHealth: true,
         experimental_providerUsage: true,
+        experimental_providerInstallation: false,
         composerActions: [],
         capabilities: {
           supportsThreadArchive: true,
@@ -240,6 +241,7 @@ describe("useSystemExecutionOptions", () => {
         available: true,
         experimental_providerHealth: true,
         experimental_providerUsage: true,
+        experimental_providerInstallation: false,
         composerActions: [],
         capabilities: {
           supportsThreadArchive: false,
@@ -341,6 +343,7 @@ describe("useSystemExecutionOptions", () => {
     available: true,
     experimental_providerHealth: true,
     experimental_providerUsage: true,
+    experimental_providerInstallation: false,
     composerActions: [],
     capabilities: {
       supportsThreadArchive: false,
@@ -410,6 +413,7 @@ describe("useSystemExecutionOptions", () => {
       logoUrl: null,
       experimental_providerHealth: true,
       experimental_providerUsage: true,
+      experimental_providerInstallation: false,
       capabilities: CODEX_CATALOG.providers[0]!.capabilities,
       composerActions: [],
       available: true,

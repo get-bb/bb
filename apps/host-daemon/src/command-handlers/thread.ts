@@ -6,6 +6,7 @@ import { resolveContainedPath } from "@bb/process-utils";
 import type { RuntimeEntry } from "../runtime-manager.js";
 import {
   CommandDispatchError,
+  defaultProviderInstallationStatus,
   ExpectedCommandDispatchError,
   resolveRuntimeBridgeLaunch,
   type CommandDispatchOptions,
@@ -16,7 +17,6 @@ import {
   stagePromptAttachments,
 } from "./prompt-attachments.js";
 import { requireResolvedWorkspaceForCommand } from "../workspace-resolution.js";
-import { getProviderCliStatusForProvider } from "../provider-cli-health.js";
 
 type TurnSubmitCommand = CommandOf<"turn.submit">;
 type ExistingThreadRuntimeCommand =
@@ -100,11 +100,19 @@ async function requireSupportedProviderCliForThreadStart({
     return;
   }
 
-  const status =
-    (await options.getProviderCliStatusForProvider?.(command.providerId)) ??
-    (await getProviderCliStatusForProvider("codex", {
-      env: options.runtimeManager.getShellEnv(),
-    }));
+  const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+    command.bridgeLaunch,
+    options,
+  );
+  const status = await (
+    options.providerInstallationStatus ?? defaultProviderInstallationStatus
+  )({
+    providerId: command.providerId,
+    bridgeLaunch,
+    ...(command.acpLaunchSpec === undefined
+      ? {}
+      : { acpLaunchSpec: command.acpLaunchSpec }),
+  });
   const minimumVersion =
     command.type === "thread.rewind.prepare"
       ? CODEX_REWIND_MINIMUM_SUPPORTED_VERSION

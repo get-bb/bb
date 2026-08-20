@@ -34,6 +34,7 @@
     "@bb/host-workspace": "workspace:*",
     "@bb/logger": "workspace:*",
     "@bb/process-utils": "workspace:*",
+    "@bb/provider-bridge-protocol": "workspace:*",
     "@bb/templates": "workspace:*",
     "@bb/tunnel-client": "workspace:*",
     "@bb/tunnel-contract": "workspace:*",

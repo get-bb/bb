@@ -242,6 +242,7 @@ export function registerFakeProviders(
           capabilities: {
             experimental_providerHealth: true,
             experimental_providerUsage: true,
+            experimental_providerInstallation: false,
             supportsServiceTier: true,
             supportsNativeUserQuestion: false,
             fork: "checkpoint",

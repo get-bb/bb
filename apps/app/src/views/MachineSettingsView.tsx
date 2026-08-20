@@ -1,11 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { Host, PermissionMode } from "@bb/domain";
-import {
-  providerCliKeyValues,
-  type HostPlatform,
-  type ProviderCliKey,
-} from "@bb/host-daemon-contract";
+import type { HostPlatform } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
 import { DialogFooter, DialogHeader, DialogTitle } from "@bb/shared-ui/dialog";
 import { DialogDescription } from "@bb/shared-ui/dialog";
@@ -63,12 +59,6 @@ const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   wsl: "WSL",
   unknown: null,
 };
-
-const PROVIDER_CLI_AGENT_PROVIDER_ID = {
-  codex: "codex",
-  claudeCode: "claude-code",
-  cursor: "acp-cursor",
-} as const satisfies Record<ProviderCliKey, string>;
 
 interface MachineProject {
   id: string;
@@ -218,10 +208,8 @@ export function MachineSettingsView() {
   const installedProviders = useMemo(() => {
     const status = machine?.providerStatus;
     if (!status) return [];
-    return providerCliKeyValues.flatMap((provider) => {
-      const entry = status[provider];
+    return Object.entries(status).flatMap(([providerId, entry]) => {
       if (!entry.installed) return [];
-      const providerId = PROVIDER_CLI_AGENT_PROVIDER_ID[provider];
       return [
         {
           ...entry,

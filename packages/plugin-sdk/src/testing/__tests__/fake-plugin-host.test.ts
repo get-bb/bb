@@ -434,7 +434,11 @@ describe("http", () => {
         clone: () => real.clone(),
       } as unknown as Response;
     });
-    bb.http.route("GET", "/not-a-response", () => ({ status: 200 }) as Response);
+    bb.http.route(
+      "GET",
+      "/not-a-response",
+      () => ({ status: 200 }) as Response,
+    );
 
     const foreign = await harness.fetchHttp("GET", "/foreign");
     expect(foreign.status).toBe(201);
@@ -839,10 +843,10 @@ describe("agent tools", () => {
       thread: { ...configurationContext.thread, id: "thread-beta" },
       host: { id: "host-beta", name: "Beta host" },
       provider: {
-      id: "claude-code",
-      model: "claude-opus",
-      capabilities: { supportsNativeUserQuestion: false },
-    },
+        id: "claude-code",
+        model: "claude-opus",
+        capabilities: { supportsNativeUserQuestion: false },
+      },
     };
     const beta = await harness.resolveAgentConfiguration(betaContext);
 
@@ -1006,6 +1010,7 @@ describe("agents.experimental_registerProvider", () => {
       capabilities: {
         experimental_providerHealth: true,
         experimental_providerUsage: false,
+        experimental_providerInstallation: false,
         supportsServiceTier: false,
         supportsNativeUserQuestion: true,
         fork: "tip",
@@ -1018,9 +1023,7 @@ describe("agents.experimental_registerProvider", () => {
       },
       composerActions: ["plan"],
       ...overrides,
-    } as Parameters<
-      BbPluginApi["agents"]["experimental_registerProvider"]
-    >[0];
+    } as Parameters<BbPluginApi["agents"]["experimental_registerProvider"]>[0];
   }
 
   it("rejects malformed declarations with the shared host policy", () => {
@@ -1069,6 +1072,7 @@ describe("agents.experimental_registerProvider", () => {
           capabilities: {
             ...agentDeclaration().capabilities,
             experimental_providerUsage: "yes",
+            experimental_providerInstallation: false,
           },
         }),
       ),
@@ -1078,9 +1082,9 @@ describe("agents.experimental_registerProvider", () => {
     ).toThrow(/icon must not escape the plugin directory/);
     // The `bb.branding.icon` grammar: "./" means a plugin file, anything else
     // is a host glyph name. A path without the prefix is neither.
-    expect(() =>
-      register(agentDeclaration({ icon: "/abs/icon.svg" })),
-    ).toThrow(/icon looks like a path but does not start with "\.\/"/);
+    expect(() => register(agentDeclaration({ icon: "/abs/icon.svg" }))).toThrow(
+      /icon looks like a path but does not start with "\.\/"/,
+    );
     expect(() =>
       register(agentDeclaration({ composerActions: ["plan", "plan"] })),
     ).toThrow(/composerActions entry "plan" is duplicated/);
@@ -1141,6 +1145,7 @@ describe("agents.experimental_registerProvider", () => {
     ).toMatchObject({
       experimental_providerHealth: false,
       experimental_providerUsage: false,
+      experimental_providerInstallation: false,
     });
   });
 

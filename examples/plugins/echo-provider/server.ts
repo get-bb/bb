@@ -27,6 +27,7 @@ export default function plugin(bb: BbPluginApi) {
     capabilities: {
       experimental_providerHealth: false,
       experimental_providerUsage: false,
+      experimental_providerInstallation: false,
       supportsServiceTier: false,
       supportsNativeUserQuestion: false,
       fork: "none",

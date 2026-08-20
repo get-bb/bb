@@ -382,64 +382,25 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       ],
     },
   },
-  "provider_cli.status": {
-    codex: {
-      displayName: "Codex",
-      executableName: "codex",
-      executablePath: null,
-      installed: false,
-      installSource: "notInstalled",
-      currentVersion: null,
-      latestVersion: "0.136.0",
-      minimumSupportedVersion: "0.136.0",
-      npmPackageName: "@openai/codex",
-      npmGlobalPackageVersion: null,
-      installAction: {
-        kind: "install",
-        label: "Install",
-        commandKind: "exec",
-        command: "npm install -g @openai/codex@latest",
-      },
-      needsUpdate: false,
-      versionUnsupported: false,
+  "provider.installation.status": {
+    executableName: "codex",
+    executablePath: null,
+    installed: false,
+    installSource: "notInstalled",
+    currentVersion: null,
+    latestVersion: "0.136.0",
+    minimumSupportedVersion: "0.136.0",
+    npmPackageName: "@openai/codex",
+    npmGlobalPackageVersion: null,
+    installAction: {
+      kind: "install",
+      label: "Install",
+      command: "npm install -g @openai/codex@latest",
     },
-    claudeCode: {
-      displayName: "Claude Code",
-      executableName: "claude",
-      executablePath: "/opt/homebrew/bin/claude",
-      installed: true,
-      installSource: "external",
-      currentVersion: "1.0.0",
-      latestVersion: null,
-      minimumSupportedVersion: null,
-      npmPackageName: null,
-      npmGlobalPackageVersion: null,
-      installAction: null,
-      needsUpdate: false,
-      versionUnsupported: false,
-    },
-    cursor: {
-      displayName: "Cursor",
-      executableName: "cursor-agent",
-      executablePath: null,
-      installed: false,
-      installSource: "notInstalled",
-      currentVersion: null,
-      latestVersion: null,
-      minimumSupportedVersion: null,
-      npmPackageName: "@cursor/agent",
-      npmGlobalPackageVersion: null,
-      installAction: {
-        kind: "install",
-        label: "Install",
-        commandKind: "shell",
-        command: "curl https://cursor.com/install | bash",
-      },
-      needsUpdate: false,
-      versionUnsupported: false,
-    },
+    needsUpdate: false,
+    versionUnsupported: false,
   },
-  "provider_cli.install": {
+  "provider.installation.run": {
     events: [
       {
         type: "started",
@@ -1156,7 +1117,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(143);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(144);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

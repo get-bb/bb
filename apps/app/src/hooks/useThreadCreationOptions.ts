@@ -331,6 +331,7 @@ export function useThreadCreationOptions(
   const providerStatesQuery = useSystemProviderStates({
     enabled: shouldResolveReadyProvider,
     ...executionOptionsRouting,
+    poll: false,
   });
   const queriedReadyProviderId = shouldResolveReadyProvider
     ? providerStatesQuery.data?.providers.find(
