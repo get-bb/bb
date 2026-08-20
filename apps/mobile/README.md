@@ -783,9 +783,10 @@ push key); nobody needs a local Xcode signing setup to ship.
   `--non-interactive`.
 - **CI**: `.github/workflows/mobile-ios-eas.yml` writes the `.p8` from the
   `ASC_API_KEY_P8` secret, optionally sets `app.json` `version`, and runs
-  `eas build -p ios --profile <profile> --no-wait [--auto-submit]` with
-  `EXPO_TOKEN`. EAS builds, then uploads to TestFlight; logs are on expo.dev
-  under the project's Builds and Submissions (the run summary links them).
+  `eas build -p ios --profile <profile> [--auto-submit]` with
+  `EXPO_TOKEN`. EAS builds, then uploads to TestFlight; the job waits for
+  both and fails when either fails. Logs are on expo.dev under the project's
+  Builds and Submissions (the run summary links them).
   Run it alone from the Actions tab ("Mobile iOS (EAS)") or
   `gh workflow run mobile-ios-eas.yml -f profile=production -f submit=true`.
   The nightly `publish-bb-app.yml` calls the same workflow after the npm

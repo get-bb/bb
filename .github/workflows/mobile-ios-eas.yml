@@ -1,7 +1,7 @@
 # Build the bb mobile app for iOS on EAS and (optionally) submit it to
 # TestFlight. Runs on its own from the Actions tab and as the nightly job in
 # publish-bb-app.yml. EAS builds on its own macOS workers, so this only needs
-# an Ubuntu runner to start the build.
+# an Ubuntu runner that starts the build and waits for the result.
 name: Mobile iOS (EAS)
 
 on:
@@ -50,9 +50,12 @@ jobs:
   build:
     name: Build bb iOS on EAS (${{ inputs.profile }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The job waits for the EAS build and the TestFlight upload. On the free
+    # EAS tier the build and submit queues alone can take 30+ minutes each.
+    timeout-minutes: 150
     # One EAS submission at a time: two runs with --auto-submit would race on
-    # the remote build number and upload two TestFlight builds at once.
+    # the remote build number and upload two TestFlight builds at once. The
+    # job holds this lock until EAS reports the final result.
     concurrency:
       group: mobile-ios-eas
       cancel-in-progress: false
@@ -130,20 +133,22 @@ jobs:
           umask 077
           printf '%s\n' "$ASC_API_KEY_P8" > asc-api-key.p8
 
-      - name: Start the EAS build
+      - name: Build on EAS and wait for the result
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EAS_PROFILE: ${{ inputs.profile }}
           EAS_SUBMIT: ${{ inputs.submit }}
         working-directory: apps/mobile
-        # --no-wait: EAS builds on its own workers for ~20 minutes and, with
-        # --auto-submit, then uploads to App Store Connect with the submit
-        # profile of the same name. expo.dev holds the build and submission
-        # logs; the run summary links to them.
+        # EAS builds on its own workers for ~20 minutes and, with --auto-submit,
+        # then uploads to App Store Connect with the submit profile of the same
+        # name. The command waits for both and exits non-zero when either
+        # fails, so a red EAS build or upload makes this job red. expo.dev
+        # holds the build and submission logs; the run summary links to them.
         run: |
           set -euo pipefail
+          trap 'rm -f asc-api-key.p8' EXIT
 
-          args=(build --platform ios --profile "$EAS_PROFILE" --non-interactive --no-wait)
+          args=(build --platform ios --profile "$EAS_PROFILE" --non-interactive)
           if [[ "$EAS_SUBMIT" == "true" ]]; then
             if [[ "$EAS_PROFILE" != "production" ]]; then
               echo "::error::Only the production profile has a submit profile; got '${EAS_PROFILE}'."
