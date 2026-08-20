@@ -9,8 +9,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },
-  "devDependencies": {
+  "dependencies": {
+    "@bb/domain": "workspace:*",
     "@bb/server-contract": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
     "@bb/tsconfig": "workspace:*",
     "@cloudflare/workers-types": "^4.20260610.0",
     "@types/node": "^22.0.0",

@@ -1,7 +1,0 @@
-{
-  "model": "gpt-5.6-sol",
-  "permissionMode": "accept-edits",
-  "reasoningLevel": "high",
-  "serviceTier": "default",
-  "source": "client/turn/requested"
-}

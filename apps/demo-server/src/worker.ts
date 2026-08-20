@@ -22,8 +22,13 @@
 // answers 501 with a clear message, so an unimplemented corner reads as "not
 // available in the demo" rather than as a broken app.
 //
-// All state lives in one Durable Object so a sent message and the WebSocket
-// that announces it share a consistent view.
+// ISOLATION
+//
+// Each client address gets its own Durable Object, so the messages a reviewer
+// sends are visible only to that reviewer. The server is public: a shared
+// world would let anyone put text in front of Apple's reviewer, and would
+// let one visitor read what another typed. State is in-memory only and is
+// dropped when the object goes idle.
 
 import { DemoStateDO } from "./demo-state.js";
 
@@ -33,11 +38,14 @@ export interface Env {
 
 export { DemoStateDO };
 
+/** The Durable Object name for a request: its client address, or one shared fallback when none is known (local dev). */
+export function demoStateName(request: Request): string {
+  return request.headers.get("cf-connecting-ip") ?? "local";
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    // A single global instance: the demo is one shared world, and Workers give
-    // no cheaper way to keep the socket and the timeline in step.
-    const id = env.DEMO_STATE.idFromName("demo");
+    const id = env.DEMO_STATE.idFromName(demoStateName(request));
     return env.DEMO_STATE.get(id).fetch(request);
   },
 };

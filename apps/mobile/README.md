@@ -274,6 +274,10 @@ e2e/flows/               Maestro flows (smoke, phase1-shell, phase3-threads, pha
                          phase4b-thread-actions, phase5-links, phase6-panel,
                          phase6-diff, phase6-files, phase6-terminal,
                          phase6-terminal-resume)
+e2e/manual/              flows that need a server the harness cannot provide
+                         (phase7-plugins-devserver: the checkout's dev server;
+                         demo-server: the apps/demo-server worker) and so are
+                         not part of `pnpm e2e:ios`
 e2e/subflows/            shared steps (launch-app.yaml: cold start through the
                          dev client + Metro, or `launchApp` of the embedded
                          Release bundle with `-e BB_E2E_EMBEDDED_BUNDLE=1`;
@@ -819,27 +823,32 @@ App Store Connect needs all of this:
   name, phone, and email. Apple uses these, testers never see them.
 - **A way for the reviewer to use the app.** This is the part that fails. bb
   opens on "Add server", and a reviewer has no bb server, so without help they
-  cannot get past the first screen and will reject the build. Give them a bb
-  server reachable over the internet through connect, and a pairing code that
-  is still valid, and step-by-step notes. Codes expire, so re-issue the code if
-  a review takes longer than expected.
+  cannot get past the first screen and will reject the build. Neither real
+  path works for a reviewer: a bb server's API is unauthenticated and runs
+  commands, so it cannot be on the internet, and connect pairing codes are
+  single-use and expire in ten minutes. Give them the **demo server** instead:
+  `apps/demo-server` is a Cloudflare Worker that answers the launch-path API
+  from fixed data, runs nothing, and isolates each client address. Deploy it
+  with `pnpm --filter @bb/demo-server deploy`, and rehearse the notes with
+  `e2e/manual/demo-server.yaml` before every submission. Disclose it in the
+  notes: a disclosed demo mode is sanctioned by guideline 2.1.
 
 Review notes template — keep it literal, and assume the reviewer knows nothing
 about coding agents:
 
 ```text
 bb is a client for a bb server that a developer runs on their own computer.
-The app has no accounts of its own, so we have prepared a server for you.
+The app has no accounts of its own, so we have prepared a demo server for
+you. It serves sample conversations and scripted replies; it does not run a
+real coding agent.
 
-1. Open the app. It shows "Add server".
-2. Select "Pair with a code".
-3. Enter this code: <CODE>
-4. The app connects and shows a list of conversations.
-5. Open any conversation to read it. Type a message and send it to see a
-   reply from the coding agent.
+1. Open the app. It shows "Connect to a bb server".
+2. Under "Direct URL", in "Server URL", enter: https://<DEMO-HOST>
+3. Tap "Connect".
+4. The app shows a list of conversations. Open any of them to read it.
+5. Type a message and send it. The agent replies after a moment.
 
-The code is valid until <DATE>. Write to <EMAIL> if it stops working and we
-will send a new one within a few hours.
+Write to <EMAIL> if the server does not respond.
 ```
 
 Rehearse it before submitting: hand a colleague a phone that has never run bb,

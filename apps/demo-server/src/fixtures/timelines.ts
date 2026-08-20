@@ -1,94 +1,69 @@
 // Synthetic timelines for the demo threads.
 //
-// The row shapes are copied from a real `GET /api/v1/threads/:id/timeline`
-// response; the content is invented. Nothing here comes from a real thread,
-// because this server is public and a real capture would publish whatever the
-// captured machine was working on.
+// Every row is typed against @bb/server-contract, so a contract change that
+// would crash the thread screen fails `typecheck` here instead of reaching a
+// reviewer. `demo-world.test.ts` additionally parses the served responses
+// with the contract's zod schemas.
 //
-// `timeline.test.ts` parses every row with the contract's own schema, so a
-// change to @bb/server-contract fails the build instead of reaching a
-// reviewer as a blank screen.
+// The content is invented. Nothing here comes from a real thread, because
+// this server is public and a real capture would publish whatever the
+// captured machine was working on.
 
-import { DEMO_HOST_ID, DEMO_NOW, DEMO_PROJECT_ID } from "./ids.js";
+import type {
+  TimelineCommandWorkRow,
+  TimelineConversationRow,
+  TimelineRow,
+} from "@bb/server-contract";
 
 export interface DemoThreadSeed {
   id: string;
   title: string;
+  /** How long before "now" the thread was last touched. */
   minutesAgo: number;
+  /** The seeded conversation, oldest first. */
+  rows: (threadId: string, startedAt: number) => TimelineRow[];
 }
-
-export const DEMO_THREADS: DemoThreadSeed[] = [
-  { id: "thr_demo00000001", title: "Add a dark mode toggle", minutesAgo: 12 },
-  {
-    id: "thr_demo00000002",
-    title: "Fix the flaky checkout test",
-    minutesAgo: 90,
-  },
-  {
-    id: "thr_demo00000003",
-    title: "Speed up the search index",
-    minutesAgo: 240,
-  },
-];
 
 const CWD = "/home/demo/demo-app";
 
-function baseRow(
-  threadId: string,
-  index: number,
-  startedAt: number,
-): {
-  threadId: string;
-  turnId: string;
-  sourceSeqStart: number;
-  sourceSeqEnd: number;
-  startedAt: number;
-  createdAt: number;
-} {
+function baseRow(threadId: string, turnId: string, seq: number, at: number) {
   return {
     threadId,
-    turnId: `${threadId}-t1`,
-    sourceSeqStart: index,
-    sourceSeqEnd: index,
-    startedAt,
-    createdAt: startedAt,
+    turnId,
+    sourceSeqStart: seq,
+    sourceSeqEnd: seq,
+    startedAt: at,
+    createdAt: at,
   };
 }
 
 /**
- * A conversation row. The two roles are not symmetric, and getting that wrong
- * crashes the thread screen rather than degrading:
- *
- * - user: carries `mentions`, an attachments object, and a `turnRequest`.
- *   `mentions: undefined` reaches `mentions.reduce`; `attachments: []` reaches
- *   `attachments.imageUrls.map`; `turnRequest: null` reaches `.status`.
- * - assistant: carries `attachments: null` and `turnRequest: null`, and none
- *   of the user-only fields.
- *
- * Shapes verified against a real `GET /threads/:id/timeline` capture.
+ * A conversation row. The two roles are not symmetric: a user row carries
+ * `mentions`, an attachments object, and a `turnRequest`; an assistant row
+ * carries `attachments: null` and `turnRequest: null`. The contract type
+ * enforces the difference.
  */
-export function conversationRow(
-  threadId: string,
-  index: number,
-  startedAt: number,
-  role: "user" | "assistant",
-  text: string,
-): Record<string, unknown> {
+export function conversationRow(args: {
+  threadId: string;
+  turnId: string;
+  seq: number;
+  at: number;
+  role: "user" | "assistant";
+  text: string;
+}): TimelineConversationRow {
+  const { threadId, turnId, seq, at, role, text } = args;
   const common = {
-    ...baseRow(threadId, index, startedAt),
-    id: `${threadId}:conversation:${index}`,
-    kind: "conversation",
-    role,
+    ...baseRow(threadId, turnId, seq, at),
+    id: `${threadId}:conversation:${seq}`,
+    kind: "conversation" as const,
     text,
   };
-
   if (role === "assistant") {
-    return { ...common, attachments: null, turnRequest: null };
+    return { ...common, role, attachments: null, turnRequest: null };
   }
-
   return {
     ...common,
-    turnId: null,
+    role,
     mentions: [],
     attachments: {
       webImages: 0,
@@ -106,26 +81,28 @@ export function conversationRow(
   };
 }
 
-export function commandRow(
-  threadId: string,
-  index: number,
-  startedAt: number,
-  command: string,
-  output: string,
-): Record<string, unknown> {
+export function commandRow(args: {
+  threadId: string;
+  turnId: string;
+  seq: number;
+  at: number;
+  command: string;
+  output: string;
+}): TimelineCommandWorkRow {
+  const { threadId, turnId, seq, at, command, output } = args;
   return {
-    ...baseRow(threadId, index, startedAt),
-    id: `${threadId}:command:${index}`,
+    ...baseRow(threadId, turnId, seq, at),
+    id: `${threadId}:command:${seq}`,
     kind: "work",
     workKind: "command",
     status: "completed",
-    callId: `${threadId}-i${index}`,
+    callId: `${threadId}-call-${seq}`,
     command,
     cwd: CWD,
     source: null,
     output,
     exitCode: 0,
-    completedAt: startedAt + 1_200,
+    completedAt: at + 1_200,
     approvalStatus: null,
     activityIntents: [],
   };
@@ -155,89 +132,132 @@ const ASSISTANT_INTRO = [
   "Want me to make the change?",
 ].join("\n");
 
-/** Rows for one demo thread, oldest first. */
-export function timelineRows(threadId: string): Record<string, unknown>[] {
-  const start = DEMO_NOW - 30 * 60_000;
+export const DEMO_THREADS: readonly DemoThreadSeed[] = [
+  {
+    id: "thr_demo00000001",
+    title: "Add a dark mode toggle",
+    minutesAgo: 12,
+    rows: (threadId, start) => {
+      const turnId = `${threadId}-turn-1`;
+      return [
+        conversationRow({
+          threadId,
+          turnId,
+          seq: 1,
+          at: start,
+          role: "user",
+          text: "Add a dark mode toggle to the settings screen.",
+        }),
+        commandRow({
+          threadId,
+          turnId,
+          seq: 2,
+          at: start + 2_000,
+          command: "rg -n 'theme' src --type ts",
+          output: [
+            'src/settings/appearance.ts:14:export const THEME_KEY = "theme";',
+            "src/settings/appearance.ts:22:  applyPalette(resolveTheme(stored));",
+            "src/app/boot.ts:41:  applyPalette(readTheme());",
+          ].join("\n"),
+        }),
+        conversationRow({
+          threadId,
+          turnId,
+          seq: 3,
+          at: start + 6_000,
+          role: "assistant",
+          text: ASSISTANT_INTRO,
+        }),
+      ];
+    },
+  },
+  {
+    id: "thr_demo00000002",
+    title: "Fix the flaky checkout test",
+    minutesAgo: 90,
+    rows: (threadId, start) => {
+      const turnId = `${threadId}-turn-1`;
+      return [
+        conversationRow({
+          threadId,
+          turnId,
+          seq: 1,
+          at: start,
+          role: "user",
+          text: "The checkout test fails about one run in five. Find out why.",
+        }),
+        commandRow({
+          threadId,
+          turnId,
+          seq: 2,
+          at: start + 3_000,
+          command: "pnpm test checkout --repeat 20",
+          output: [
+            "✓ checkout > applies a discount code (18 runs)",
+            "✗ checkout > applies a discount code (2 runs)",
+            "  expected 1 request, received 2",
+          ].join("\n"),
+        }),
+        conversationRow({
+          threadId,
+          turnId,
+          seq: 3,
+          at: start + 9_000,
+          role: "assistant",
+          text: [
+            "The test does not wait for the first request to settle, so a retry",
+            "sometimes lands inside the assertion window.",
+            "",
+            "The fix is to await the pending request instead of a fixed delay.",
+          ].join("\n"),
+        }),
+      ];
+    },
+  },
+  {
+    id: "thr_demo00000003",
+    title: "Speed up the search index",
+    minutesAgo: 240,
+    rows: (threadId, start) => {
+      const turnId = `${threadId}-turn-1`;
+      return [
+        conversationRow({
+          threadId,
+          turnId,
+          seq: 1,
+          at: start,
+          role: "user",
+          text: "Search takes about two seconds on the large fixture. Where does the time go?",
+        }),
+        conversationRow({
+          threadId,
+          turnId,
+          seq: 2,
+          at: start + 5_000,
+          role: "assistant",
+          text: [
+            "Almost all of it is in `buildIndex`, which re-reads every document on",
+            "each query. Caching the index and invalidating it on write brings a",
+            "warm query under 50ms.",
+          ].join("\n"),
+        }),
+      ];
+    },
+  },
+];
 
-  if (threadId === DEMO_THREADS[0].id) {
-    return [
-      conversationRow(
-        threadId,
-        1,
-        start,
-        "user",
-        "Add a dark mode toggle to the settings screen.",
-      ),
-      commandRow(
-        threadId,
-        2,
-        start + 2_000,
-        "rg -n 'theme' src --type ts",
-        [
-          'src/settings/appearance.ts:14:export const THEME_KEY = "theme";',
-          "src/settings/appearance.ts:22:  applyPalette(resolveTheme(stored));",
-          "src/app/boot.ts:41:  applyPalette(readTheme());",
-        ].join("\n"),
-      ),
-      conversationRow(threadId, 3, start + 6_000, "assistant", ASSISTANT_INTRO),
-    ];
-  }
+/** The scripted reply every sent message produces, so the app shows a real turn. */
+export const DEMO_REPLY = [
+  "That change is straightforward.",
+  "",
+  "I would put the toggle next to the other appearance settings and store the",
+  "choice with the existing preferences, so it survives a restart.",
+  "",
+  "This is the bb demo server, so I am replaying a scripted answer rather than",
+  "running a real agent.",
+].join("\n");
 
-  if (threadId === DEMO_THREADS[1].id) {
-    return [
-      conversationRow(
-        threadId,
-        1,
-        start,
-        "user",
-        "The checkout test fails about one run in five. Find out why.",
-      ),
-      commandRow(
-        threadId,
-        2,
-        start + 3_000,
-        "pnpm test checkout --repeat 20",
-        [
-          "✓ checkout > applies a discount code (18 runs)",
-          "✗ checkout > applies a discount code (2 runs)",
-          "  expected 1 request, received 2",
-        ].join("\n"),
-      ),
-      conversationRow(
-        threadId,
-        3,
-        start + 9_000,
-        "assistant",
-        [
-          "The test does not wait for the first request to settle, so a retry",
-          "sometimes lands inside the assertion window.",
-          "",
-          "The fix is to await the pending request instead of a fixed delay.",
-        ].join("\n"),
-      ),
-    ];
-  }
-
-  return [
-    conversationRow(
-      threadId,
-      1,
-      start,
-      "user",
-      "Search takes about two seconds on the large fixture. Where does the time go?",
-    ),
-    conversationRow(
-      threadId,
-      2,
-      start + 5_000,
-      "assistant",
-      [
-        "Almost all of it is in `buildIndex`, which re-reads every document on",
-        "each query. Caching the index and invalidating it on write brings a",
-        "warm query under 50ms.",
-      ].join("\n"),
-    ),
-  ];
-}
-
-export const DEMO_IDS = { DEMO_PROJECT_ID, DEMO_HOST_ID };
+export const DEMO_REPLY_COMMAND = {
+  command: "rg -n 'appearance' src --type ts",
+  output: 'src/settings/appearance.ts:14:export const THEME_KEY = "theme";',
+};

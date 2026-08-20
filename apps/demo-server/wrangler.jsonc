@@ -3,8 +3,9 @@
 // Deploy: pnpm --filter @bb/demo-server exec wrangler deploy
 //
 // No D1, no secrets, no bindings beyond the Durable Object: the demo holds
-// fixed fixtures and per-session state only. Nothing here can reach a real bb
-// server, a machine, or a user's data.
+// fixed fixtures and in-memory per-client state only (one object per client
+// address, see src/worker.ts). Nothing here can reach a real bb server, a
+// machine, or a user's data.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "bb-demo-server",

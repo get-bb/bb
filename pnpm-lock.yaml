@@ -550,10 +550,17 @@ importers:
         version: 8.21.0
 
   apps/demo-server:
-    devDependencies:
+    dependencies:
+      '@bb/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@bb/server-contract':
         specifier: workspace:*
         version: link:../../packages/server-contract
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+    devDependencies:
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
@@ -19329,7 +19336,9 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.6': {}
 
