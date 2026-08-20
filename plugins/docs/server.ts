@@ -1033,6 +1033,40 @@ export default async function plugin(
         hostId: environment.hostId,
       };
     }
+    if (source.kind === "workspace" && source.projectId) {
+      const hostId =
+        source.experimental_hostId ??
+        (await bb.sdk.system.config()).primaryHostId;
+      if (!hostId) {
+        throw new Error("This project has no primary host");
+      }
+      const project = await bb.sdk.projects.get({
+        projectId: source.projectId,
+      });
+      const matchingSources = project.sources.filter(
+        (projectSource) => projectSource.hostId === hostId,
+      );
+      const [projectSource] = matchingSources;
+      if (!projectSource) {
+        throw new Error(
+          source.experimental_hostId
+            ? "This project has no workspace on the selected host"
+            : "This project has no workspace on the primary host",
+        );
+      }
+      if (matchingSources.length > 1) {
+        throw new Error("This project has multiple workspaces on that host");
+      }
+      const rootPath = normalizeHostRoot(projectSource.path);
+      if (!isAbsoluteHostPath(rootPath)) {
+        throw new Error("This project has no absolute workspace path");
+      }
+      return {
+        path: hostPathApi(rootPath).join(rootPath, ...filePath.split("/")),
+        rootPath,
+        hostId,
+      };
+    }
     if (source.kind === "thread-storage") {
       if (!source.threadId) {
         throw new Error("Thread-storage files require a thread ID");
