@@ -16,28 +16,3 @@ import { disableGlobalCursorStyles } from "react-resizable-panels";
 export function takeOverPanelResizeCursor(): void {
   disableGlobalCursorStyles();
 }
-
-type ResizeOrientation = "horizontal" | "vertical";
-
-const RESIZE_CURSOR_BY_ORIENTATION: Record<ResizeOrientation, string> = {
-  horizontal: "col-resize",
-  vertical: "row-resize",
-};
-
-/**
- * Pin a global resize cursor for the duration of a drag. The pointer spends the
- * drag over panel content rather than the 1px handle, so the handle's own hover
- * cursor no longer applies — the body cursor is what keeps the splitter cursor
- * visible while dragging.
- *
- * `cursor` is inherited, so writing it on body restyles every element in the
- * document at drag start and end. Drags that mount an `IframeDragGuardOverlay`
- * should pass the cursor to the overlay instead and not call this.
- */
-export function applyResizeCursor(orientation: ResizeOrientation): void {
-  document.body.style.cursor = RESIZE_CURSOR_BY_ORIENTATION[orientation];
-}
-
-export function clearResizeCursor(): void {
-  document.body.style.cursor = "";
-}
