@@ -32,6 +32,7 @@
   --color-subtle-foreground: var(--subtle-foreground);
   --color-readback-foreground: var(--readback-foreground);
   --color-timeline-accent: var(--timeline-accent);
+  --color-version-upgrade: var(--version-upgrade);
   --color-file-accent: var(--file-accent);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
