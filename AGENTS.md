@@ -21,6 +21,14 @@
 - Accepted-but-ignored route or command fields are forbidden. Delete them or implement them end to end.
 - Add or update route and command documentation only when behavior is non-obvious.
 
+## Extension And Fork Changes
+
+- Follow [docs/fork-maintenance.md](docs/fork-maintenance.md) for substantial features and behavior changes.
+- Prefer, in order: an external plugin using the public SDK; a general-purpose extension to the plugin framework demonstrated by a real plugin; a fork-only core change when core owns the invariant.
+- Do not make plugin-first absolute. Canonical persistence and lifecycle semantics, authorization, cross-process contracts, plugin loading, and required cross-client behavior belong to core.
+- A builtin plugin that imports private `@bb/*` packages is not externally portable. Do not present it as proof that the public plugin SDK supports the capability.
+- Record every retained fork-only core change in the delta ledger in [docs/fork-maintenance.md](docs/fork-maintenance.md). Keep upstream syncs separate from new fork behavior.
+
 ## Server And Daemon
 
 - The server owns product policy: defaults, instructions, manager behavior, tool lists, and thread behavior.
@@ -28,6 +36,7 @@
 - If the server needs host-local data, the daemon should return raw data and the server should assemble product behavior.
 - Do not move responsibility across the server/daemon boundary unless the current change requires it.
 - **Always increment `HOST_DAEMON_PROTOCOL_VERSION` when a change can alter anything sent between the server and host daemon.** This includes adding, removing, renaming, or changing the type, requiredness, default, or meaning of fields in session payloads, WebSocket messages, host RPC commands, or host RPC results. A shared TypeScript build passing is not evidence of wire compatibility: an older daemon may connect successfully and then enter an `invalid-message` reconnect loop. The bump identifies the fork's current wire contract even when older daemons are intentionally unsupported. Do not preserve removed fields solely to keep an upstream daemon compatible.
+- CI mechanically enforces code changes under `packages/host-daemon-contract/src/`. It cannot prove that a server-only or daemon-only implementation change preserves existing wire meaning, so the author and reviewer must still apply the broader rule above to changes outside that package.
 
 ## CLI, Guide, And Skill
 
@@ -36,7 +45,9 @@
 
 ## Plugin API
 
+- Add a public plugin primitive only alongside a real plugin that cannot be implemented cleanly without it. Keep feature policy in the plugin and make the primitive independently useful.
 - Any new public plugin API member (a `@get-bb/plugin-sdk/app` export, an `app.slots.*` method, or a `BbPluginApi` property) ships with an `experimental_` name prefix and an entry in [docs/api_to_audit.md](docs/api_to_audit.md) describing what it does and what to audit before stabilizing. Dropping the prefix is the deliberate stabilization step: audit the entry, rename project-wide, and remove it from the doc in the same change.
+- Extend the external plugin test harness and authoring guidance with the public contract. Define lifecycle, cleanup, collision, fallback, limits, and compatibility behavior before exposing it.
 
 ## Data Access
 

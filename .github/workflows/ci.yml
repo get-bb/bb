@@ -35,6 +35,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The protocol-version guard compares the pull request with its true
+          # merge base rather than guessing from a shallow checkout.
+          fetch-depth: 0
 
       - name: Setup workspace
         uses: ./.github/actions/setup-workspace
@@ -42,6 +46,24 @@ jobs:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
           cache-prefix: checks
+
+      - name: Check host daemon protocol version
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/main' }}
+        run: |
+          node --test scripts/check-host-daemon-protocol-version.test.mjs
+          if [[ "$BASE_SHA" =~ ^0+$ ]]; then
+            if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+              BASE_SHA=HEAD^
+            else
+              BASE_SHA=""
+            fi
+          fi
+          if [[ -n "$BASE_SHA" ]]; then
+            node scripts/check-host-daemon-protocol-version.mjs "$BASE_SHA"
+          else
+            echo "::warning::No usable comparison base; protocol guard tests passed, diff check skipped."
+          fi
 
       - name: Build, typecheck, and lint
         run: pnpm exec turbo run build typecheck lint --cache-dir=.turbo/cache --output-logs=new-only

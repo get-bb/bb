@@ -25,6 +25,7 @@ If there are no findings, say so directly and mention any meaningful test gap or
 ## Check
 
 - Does the change do what it claims to do?
+- Is it in the narrowest correct extension layer described in [Fork Maintenance](fork-maintenance.md), with a concrete missing primitive or core invariant when it is not a portable plugin?
 - Are authorization, validation, query filters, ordering, pagination, and persistence correct at the layer that enforces them?
 - Are changed route, command, event, and database fields implemented end to end?
 - Are accepted fields actually used?

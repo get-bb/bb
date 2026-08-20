@@ -7,6 +7,7 @@
 ## What changed
 
 <!-- Files/modules and the behavior change. Call out wire changes (HOST_DAEMON_PROTOCOL_VERSION), CLI/guide/doc updates, and any deviation from the issue's proposed fix. -->
+<!-- Extension fit: say plugin, plugin-framework extension, or core. If not a portable plugin, name the missing primitive or the invariant that requires core. Fork-only core changes must update docs/fork-maintenance.md. -->
 
 ## How you verified
 
