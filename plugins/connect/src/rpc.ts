@@ -149,13 +149,13 @@ export type ConnectRpcHandlers = PluginRpcHandlers<typeof connectRpcContract>;
  * Mobile pairing (the "Add mobile device" card and `bb connect machine-code`)
  * ships behind the user-toggled `mobileApp` experiment until the app is
  * generally available. The gate is read at call time so a toggle applies
- * without a plugin reload.
+ * without a plugin reload. It covers only those two mobile surfaces: the
+ * `createMachineCode` rpc itself stays open because the desktop app's own
+ * enrollment and the web "Add machine" dialog mint machine codes through it.
  */
 export interface MobilePairingGate {
   enabled(): Promise<boolean>;
 }
-
-export const MOBILE_PAIRING_DISABLED_ERROR = "experiment_off";
 
 export function createRpcHandlers(
   tunnel: ConnectTunnel,
@@ -227,9 +227,6 @@ export function createRpcHandlers(
       return { enabled: await mobilePairing.enabled() };
     },
     async createMachineCode() {
-      if (!(await mobilePairing.enabled())) {
-        throw new Error(MOBILE_PAIRING_DISABLED_ERROR);
-      }
       try {
         return await tunnel.createMachineCode();
       } catch (error) {

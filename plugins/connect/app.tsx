@@ -525,21 +525,11 @@ function PairForm({
 // shown as copyable text for manual entry. Mirrors `bb connect machine-code`.
 // ---------------------------------------------------------------------------
 
-type MachineCodeErrorCode =
-  | "experiment_off"
-  | "machine_limit"
-  | "network"
-  | "not_paired";
+type MachineCodeErrorCode = "machine_limit" | "network" | "not_paired";
 
 function toMachineCodeErrorCode(error: unknown): MachineCodeErrorCode {
   const message = errorText(error);
-  if (
-    message === "experiment_off" ||
-    message === "machine_limit" ||
-    message === "not_paired"
-  ) {
-    return message;
-  }
+  if (message === "machine_limit" || message === "not_paired") return message;
   // Unknown failures read as transient; the user can retry.
   return "network";
 }
@@ -644,9 +634,11 @@ function MobilePairingCard({
 /**
  * Mobile pairing ships behind the `mobileApp` experiment (Settings →
  * Experiments) until the app is generally available. The backend owns the
- * gate (it also refuses `createMachineCode`); this hook only decides whether
- * to render the section. False while the answer is unknown or on error, so
- * the panel never flashes the section for an install that has it off.
+ * gate (the `mobilePairing` rpc, also honoured by `bb connect machine-code`);
+ * this hook only decides whether to render the section. False while the
+ * answer is unknown or on error, so the panel never flashes the section for
+ * an install that has it off. `createMachineCode` itself is not gated: the
+ * desktop app and the "Add machine" dialog mint machine codes through it.
  */
 function useMobilePairingEnabled(): boolean {
   const rpc = useRpc<typeof connectRpcContract>();
@@ -773,9 +765,7 @@ function AddMobileDeviceSectionContent({
         <p className="text-xs text-destructive-text">
           {errorCode === "not_paired"
             ? "This bb is no longer paired — re-pair, then try again."
-            : errorCode === "experiment_off"
-              ? "Mobile pairing was turned off in Settings → Experiments."
-              : "Couldn't reach the Connect service to create a code — check your connection, then try again."}
+            : "Couldn't reach the Connect service to create a code — check your connection, then try again."}
         </p>
       ) : null}
     </div>
