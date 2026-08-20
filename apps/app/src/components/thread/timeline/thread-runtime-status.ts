@@ -1,21 +1,2 @@
-import { assertNever } from "@bb/core-ui";
-import type { ThreadRuntimeDisplayStatus } from "@bb/domain";
-
-export function isRunningThreadRuntimeDisplayStatus(
-  status: ThreadRuntimeDisplayStatus,
-): boolean {
-  switch (status) {
-    case "active":
-    case "host-reconnecting":
-    case "provisioning":
-    case "starting":
-    case "stopping":
-      return true;
-    case "error":
-    case "idle":
-    case "waiting-for-host":
-      return false;
-    default:
-      return assertNever(status);
-  }
-}
+// Moved to @bb/client-core (shared with the native app); re-exported here so web imports keep resolving.
+export { isRunningThreadRuntimeDisplayStatus } from "@bb/client-core";

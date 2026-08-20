@@ -1,7 +1,3 @@
-import type { Thread } from "@bb/domain";
-
-export type ThreadReadState = Pick<Thread, "lastReadAt" | "latestAttentionAt">;
-
-export function isThreadRead(thread: ThreadReadState): boolean {
-  return (thread.lastReadAt ?? 0) >= thread.latestAttentionAt;
-}
+// Moved to @bb/client-core (shared with the native app); re-exported here so web imports keep resolving.
+export { isThreadRead } from "@bb/client-core";
+export type { ThreadReadState } from "@bb/client-core";

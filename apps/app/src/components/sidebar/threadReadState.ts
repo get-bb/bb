@@ -1,10 +1,2 @@
-import type { Thread } from "@bb/domain";
-import { isThreadRead } from "@/lib/thread-read-state";
-
-type ThreadReadToggleAction = "mark_read" | "mark_unread";
-
-export function getThreadReadToggleAction(
-  thread: Pick<Thread, "lastReadAt" | "latestAttentionAt">,
-): ThreadReadToggleAction {
-  return isThreadRead(thread) ? "mark_unread" : "mark_read";
-}
+// Moved to @bb/client-core (shared with the native app); re-exported here so web imports keep resolving.
+export { getThreadReadToggleAction } from "@bb/client-core";

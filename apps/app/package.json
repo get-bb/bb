@@ -18,6 +18,7 @@
     "test": "node scripts/generate-pwa-icons.mjs --check && vitest run --config vitest.config.ts"
   },
   "dependencies": {
+    "@bb/client-core": "workspace:*",
     "@bb/config": "workspace:*",
     "@bb/core-ui": "workspace:*",
     "@bb/desktop-contract": "workspace:*",

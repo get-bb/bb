@@ -1,12 +1,2 @@
-import type { TimelineConversationTurnRequest } from "@bb/server-contract";
-
-export function turnRequestLabel(
-  turnRequest: TimelineConversationTurnRequest,
-): string | null {
-  if (turnRequest.kind !== "steer") {
-    return null;
-  }
-  if (turnRequest.status === "pending") return "Steer pending";
-  if (turnRequest.status === "rejected") return "Steer failed";
-  return "Steer";
-}
+// Moved to @bb/client-core (shared with the native app); re-exported here so web imports keep resolving.
+export { turnRequestLabel } from "@bb/client-core";
