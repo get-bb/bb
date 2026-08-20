@@ -405,7 +405,9 @@ describe("connect settings section", () => {
 
     await slot.findByText("Connected");
     expect(slot.queryByText("K7QP-2M4X")).toBeNull();
-    fireEvent.click(slot.getByRole("button", { name: "Add mobile device" }));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Add mobile device" }),
+    );
 
     await waitFor(() =>
       expect(slot.rpcCalls).toContainEqual({
@@ -448,7 +450,9 @@ describe("connect settings section", () => {
     );
 
     await slot.findByText("Connected");
-    fireEvent.click(slot.getByRole("button", { name: "Add mobile device" }));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Add mobile device" }),
+    );
     await slot.findByText("AAAA-1111");
 
     await slot.findByText("Code expired", undefined, { timeout: 4_000 });
@@ -478,7 +482,9 @@ describe("connect settings section", () => {
     );
 
     await slot.findByText("Connected");
-    fireEvent.click(slot.getByRole("button", { name: "Add mobile device" }));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Add mobile device" }),
+    );
 
     await slot.findByText(/reached its machine limit/);
     const link = slot.getByRole("link", {
