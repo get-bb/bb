@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import {
   experimental_useSidebarThreadActions as useSidebarThreadActions,
   experimental_useSidebarThreads as useSidebarThreads,
@@ -11,6 +11,21 @@ import { StatusGlyph } from "./StatusGlyph";
 import { childrenOf, threadDisplayTitle } from "./inbox";
 
 const MAX_DISCS = 3;
+const CHILD_MENU_WIDTH = 320;
+const CHILD_MENU_VIEWPORT_GUTTER = 8;
+
+function clampCompactMenuLeft(triggerRight: number, viewportWidth: number) {
+  const menuWidth = Math.min(
+    CHILD_MENU_WIDTH,
+    Math.max(0, viewportWidth - CHILD_MENU_VIEWPORT_GUTTER * 2),
+  );
+  const minLeft = CHILD_MENU_VIEWPORT_GUTTER;
+  const maxLeft = Math.max(
+    minLeft,
+    viewportWidth - menuWidth - CHILD_MENU_VIEWPORT_GUTTER,
+  );
+  return Math.min(Math.max(triggerRight - menuWidth, minLeft), maxLeft);
+}
 
 /**
  * The home for child threads the flat list hides: a chip in the thread header
@@ -27,6 +42,33 @@ export function SubagentsChip({
   const { threads } = useSidebarThreads();
   const actions = useSidebarThreadActions();
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [compactMenuLeft, setCompactMenuLeft] = useState(
+    CHILD_MENU_VIEWPORT_GUTTER,
+  );
+
+  const updateCompactMenuLeft = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    setCompactMenuLeft(
+      clampCompactMenuLeft(trigger.getBoundingClientRect().right, innerWidth),
+    );
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open || !isCompactViewport) return;
+
+    updateCompactMenuLeft();
+    const viewport = window.visualViewport;
+    window.addEventListener("resize", updateCompactMenuLeft);
+    viewport?.addEventListener("resize", updateCompactMenuLeft);
+    viewport?.addEventListener("scroll", updateCompactMenuLeft);
+    return () => {
+      window.removeEventListener("resize", updateCompactMenuLeft);
+      viewport?.removeEventListener("resize", updateCompactMenuLeft);
+      viewport?.removeEventListener("scroll", updateCompactMenuLeft);
+    };
+  }, [isCompactViewport, open, updateCompactMenuLeft]);
 
   const children = childrenOf(threads, threadId);
   if (children.length === 0) return null;
@@ -37,10 +79,14 @@ export function SubagentsChip({
   return (
     <span className="relative">
       <button
+        ref={triggerRef}
         type="button"
         aria-expanded={open}
         aria-label={`${children.length} child threads`}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          if (!open && isCompactViewport) updateCompactMenuLeft();
+          setOpen((value) => !value);
+        }}
         className={cn(
           "flex h-7 items-center gap-1.5 rounded-full border border-border px-2 text-2xs text-muted-foreground",
           "hover:bg-accent hover:text-foreground",
@@ -52,8 +98,8 @@ export function SubagentsChip({
       </button>
       {open ? (
         <>
-          {/* Click-away. The header is a short row, so the list itself is
-              absolutely positioned rather than inline. */}
+          {/* Click-away. Wide headers anchor the menu to this chip; compact
+              headers pin it to the viewport so it cannot run off-screen. */}
           <span
             className="fixed inset-0 z-40"
             onClick={() => setOpen(false)}
@@ -62,7 +108,13 @@ export function SubagentsChip({
           <div
             role="menu"
             aria-label="Child threads"
-            className="absolute right-0 top-9 z-50 w-80 overflow-hidden rounded-xl border border-border bg-popover shadow-lg"
+            className={cn(
+              "z-50 w-80 max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-popover shadow-lg",
+              isCompactViewport
+                ? "fixed top-[calc(env(safe-area-inset-top)+3.5rem)]"
+                : "absolute right-0 top-9",
+            )}
+            style={isCompactViewport ? { left: compactMenuLeft } : undefined}
           >
             <div className="flex items-center gap-2 px-3 pb-1 pt-2.5">
               <span className="text-xs font-semibold">Children</span>
