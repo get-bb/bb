@@ -28,6 +28,7 @@ import {
   APP_SURFACE_WEB,
   DEFAULT_APP_SURFACE,
   parseAppSurface,
+  type AppSurface,
 } from "@bb/config/app-surface";
 import {
   BB_APP_MANAGED_CONFIG_KEYS,
@@ -494,7 +495,7 @@ interface CreateSharedEnvArgs {
   env: NodeJS.ProcessEnv;
 }
 
-interface CreateServerEnvArgs {
+export interface CreateServerEnvArgs {
   context: BbAppStartContext;
   env: NodeJS.ProcessEnv;
 }
@@ -2558,11 +2559,21 @@ function createSharedEnv(args: CreateSharedEnvArgs): NodeJS.ProcessEnv {
   };
 }
 
-function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
+/**
+ * Surface the server reports for telemetry. The desktop shell spawns this
+ * launcher with `BB_APP_SURFACE=desktop`, so an inherited (or env.json) value
+ * wins; a plain `bb-app` start has none and is the web surface. Overwriting
+ * this with `web` unconditionally made every desktop launch report `web`.
+ */
+function resolveServerAppSurface(env: NodeJS.ProcessEnv): AppSurface {
+  return parseAppSurface(env[APP_SURFACE_ENV_NAME]) ?? APP_SURFACE_WEB;
+}
+
+export function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
   return {
     ...args.env,
     BB_APP_VERSION: args.context.appVersion,
-    [APP_SURFACE_ENV_NAME]: APP_SURFACE_WEB,
+    [APP_SURFACE_ENV_NAME]: resolveServerAppSurface(args.env),
     // The daemon bundle holds the bb CLI. Server-side features that shell out
     // — script automations put it on the script's PATH — otherwise have no way
     // to find it: bb lives in the bundle directory, which is on no shell PATH.

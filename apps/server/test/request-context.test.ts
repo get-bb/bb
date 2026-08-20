@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   captureTrustedRemoteAddress,
   getTrustedRemoteAddress,
+  resolveRequestAppSurface,
   TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY,
 } from "../src/request-context.js";
 
@@ -47,5 +48,29 @@ describe("request context", () => {
     await expect(response.json()).resolves.toEqual({
       hasAddress: false,
     });
+  });
+  it("resolves the app surface from the client header and falls back to api", async () => {
+    const app = new Hono();
+    app.get("/", (context) =>
+      context.json({ surface: resolveRequestAppSurface(context) }),
+    );
+
+    const surfaceFor = async (header: string | undefined): Promise<unknown> => {
+      const response = await app.request(
+        "/",
+        header === undefined
+          ? undefined
+          : { headers: { "x-bb-app-surface": header } },
+      );
+      const body = (await response.json()) as { surface: string };
+      return body.surface;
+    };
+
+    await expect(surfaceFor("desktop")).resolves.toBe("desktop");
+    await expect(surfaceFor("mobile")).resolves.toBe("mobile");
+    // The bb CLI, the SDK, automations, and agents send no header. They must
+    // not count as desktop or web users.
+    await expect(surfaceFor(undefined)).resolves.toBe("api");
+    await expect(surfaceFor("tv")).resolves.toBe("api");
   });
 });

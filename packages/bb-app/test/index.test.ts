@@ -33,6 +33,7 @@ import {
 import {
   completeFullStackSupervision,
   createDaemonEnv,
+  createServerEnv,
   createHostDaemonJoinEnv,
   readBbAppPackageVersion,
   resolveServerListenerUrl,
@@ -2155,5 +2156,23 @@ describe("bb-app launcher", () => {
       "host-daemon/dist/bb-plugin-host-worker.mjs",
     );
     expect(metadata.os).toEqual(["darwin", "linux"]);
+  });
+
+  it("keeps the desktop app surface the desktop shell passes to the server", () => {
+    const context = createTestStartContext();
+
+    const desktopServerEnv = createServerEnv({
+      context,
+      env: { BB_APP_SURFACE: "desktop" },
+    });
+    const webServerEnv = createServerEnv({ context, env: {} });
+    const invalidSurfaceServerEnv = createServerEnv({
+      context,
+      env: { BB_APP_SURFACE: "bogus" },
+    });
+
+    expect(desktopServerEnv.BB_APP_SURFACE).toBe("desktop");
+    expect(webServerEnv.BB_APP_SURFACE).toBe("web");
+    expect(invalidSurfaceServerEnv.BB_APP_SURFACE).toBe("web");
   });
 });

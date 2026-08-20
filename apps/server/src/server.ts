@@ -304,11 +304,7 @@ export function createApp(
 
   app.use("*", async (context, next) => {
     captureTrustedRemoteAddress(context);
-    const appSurface = resolveRequestAppSurface(
-      context,
-      deps.config.appSurface,
-    );
-    return runWithTelemetryAppSurface(appSurface, next);
+    return runWithTelemetryAppSurface(resolveRequestAppSurface(context), next);
   });
   app.use("*", async (context, next) => {
     const path = context.req.path;

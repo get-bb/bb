@@ -11,7 +11,14 @@ import type { ServerLogger } from "../../types.js";
  * user message counts, and plugin installs) to PostHog so install/activation
  * funnels can be measured.
  * Identification is a random per-install id persisted in the data dir — no
- * user, host, project, workspace, or message content is ever attached.
+ * user, host, project, workspace, or message content is ever attached. One
+ * install can use more than one surface, so a per-surface unique count of
+ * `distinct_id` counts that install in each surface it used.
+ *
+ * Every event carries `app_surface`. For a request-scoped event that is the
+ * client that made the request (`desktop`, `web`, `mobile`, or `api` for the
+ * CLI, SDK, automations, and agents). For an event outside a request, such as
+ * `app_started`, it is the surface the server itself runs as.
  *
  * Delivery is intentionally fire-and-forget: events are analytics, not
  * workflow state, so lost sends (offline, PostHog outage, process exit
