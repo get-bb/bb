@@ -122,13 +122,6 @@ interface CreateTabForOpenRequestArgs {
   threadId: string | null | undefined;
 }
 
-interface CreateTabForFileSearchSelectionArgs {
-  projectId: string | null;
-  resolvedEnvironmentId: string | null | undefined;
-  selection: FileSearchSelection;
-  threadId: string | null | undefined;
-}
-
 interface PruneSecondaryTabsArgs {
   activeTabId: string | null;
   stateTabs: readonly FixedPanelTab[];
@@ -142,6 +135,8 @@ type SecondaryPanelTab =
   | BrowserFixedPanelTab
   | NewTabFixedPanelTab
   | PluginPanelFixedPanelTab;
+
+type OpenResolvedTabBehavior = "open" | "replace-new-tab";
 
 // Every side chat uses a constant tab title; the message it was triggered from
 // is shown inside the panel ("Replying to" bubble), so the tab needn't echo it.
@@ -213,38 +208,28 @@ function createTabForOpenRequest({
   }
 }
 
-function createTabForFileSearchSelection({
-  projectId,
-  resolvedEnvironmentId,
-  selection,
-  threadId,
-}: CreateTabForFileSearchSelectionArgs):
-  | WorkspaceFilePreviewFixedPanelTab
-  | ThreadStorageFilePreviewFixedPanelTab
-  | null {
+function openRequestForFileSearchSelection(
+  selection: FileSearchSelection,
+): OpenSecondaryPanelTabRequest {
   if (selection.source === "workspace") {
-    if (resolvedEnvironmentId === undefined) return null;
-    return createWorkspaceFilePreviewFixedPanelTab({
-      environmentId: resolvedEnvironmentId,
-      projectId: resolvedEnvironmentId === null ? projectId : null,
+    return {
+      kind: "workspace-file-preview",
       tab: {
         lineRange: null,
         path: selection.path,
         source: { kind: "working-tree" },
         statusLabel: null,
       },
-    });
+    };
   }
 
-  if (!threadId) return null;
-  return createStorageTab(
-    resolvedEnvironmentId ?? null,
-    {
+  return {
+    kind: "thread-storage-file-preview",
+    tab: {
       lineRange: null,
       path: selection.path,
     },
-    threadId,
-  );
+  };
 }
 
 function setPrunedSecondaryTabs({
@@ -441,16 +426,12 @@ export function useThreadFileTabs({
   const { fileOpeners } = usePluginSlots();
   const fileOpenerPreference = useFileOpenerPreferenceValue();
 
-  const openTab = useCallback(
+  const openResolvedTab = useCallback(
     (
       request: OpenSecondaryPanelTabRequest,
-      options?: { viewer?: FileTabViewerOverride },
+      behavior: OpenResolvedTabBehavior,
+      viewer?: FileTabViewerOverride,
     ): SecondaryPanelTab | null => {
-      // Opener diversion (plugin design §5.2): every file-open flow
-      // funnels through here (links, file search, `bb thread open`), so a
-      // matching plugin opener applies uniformly. Falls through to the
-      // built-in tab when no opener matches; a link menu's per-open viewer
-      // choice overrides automatic or pinned resolution in either direction.
       const openerTab = createFileOpenerTabForRequest({
         fileOpeners,
         preference: fileOpenerPreference,
@@ -459,7 +440,7 @@ export function useThreadFileTabs({
         request,
         resolvedEnvironmentId,
         threadId: resolvedFileOwnerThreadId,
-        ...(options?.viewer !== undefined ? { viewer: options.viewer } : {}),
+        ...(viewer !== undefined ? { viewer } : {}),
       });
       const tab =
         openerTab ??
@@ -482,7 +463,7 @@ export function useThreadFileTabs({
       }
 
       updateFixedPanelTabsState((state) => {
-        if (request.kind === "browser") {
+        if (behavior === "replace-new-tab") {
           return replaceNewTabWithSecondaryPanelTabInState({ state, tab });
         }
         return openSecondaryPanelTabInState({ state, tab });
@@ -499,6 +480,23 @@ export function useThreadFileTabs({
       resolvedFileOwnerThreadId,
       updateFixedPanelTabsState,
     ],
+  );
+
+  const openTab = useCallback(
+    (
+      request: OpenSecondaryPanelTabRequest,
+      options?: { viewer?: FileTabViewerOverride },
+    ): SecondaryPanelTab | null => {
+      // Browser navigation replaces the transient new-tab launcher. Other
+      // ordinary opens append or focus a tab. Both paths still share the
+      // same opener-or-built-in resolution above.
+      return openResolvedTab(
+        request,
+        request.kind === "browser" ? "replace-new-tab" : "open",
+        options?.viewer,
+      );
+    },
+    [openResolvedTab],
   );
 
   const activateTab = useCallback(
@@ -552,64 +550,12 @@ export function useThreadFileTabs({
 
   const selectFileSearchResult = useCallback(
     (selection: FileSearchSelection) => {
-      // Opener diversion, same as `openTab`. The file search builds its tab
-      // through its own path (it replaces the new-tab screen rather than
-      // appending a tab), so without this a plugin `fileOpener` was skipped
-      // for every file picked from the "+" screen while still applying to
-      // links and `bb thread open`.
-      const openerTab = createFileOpenerTabForRequest({
-        fileOpeners,
-        preference: fileOpenerPreference,
-        projectHostId,
-        projectId,
-        request:
-          selection.source === "workspace"
-            ? {
-                kind: "workspace-file-preview",
-                tab: {
-                  lineRange: null,
-                  path: selection.path,
-                  source: { kind: "working-tree" },
-                  statusLabel: null,
-                },
-              }
-            : {
-                kind: "thread-storage-file-preview",
-                tab: { lineRange: null, path: selection.path },
-              },
-        resolvedEnvironmentId,
-        threadId: resolvedFileOwnerThreadId,
-      });
-      const tab =
-        openerTab ??
-        createTabForFileSearchSelection({
-          projectId,
-          resolvedEnvironmentId,
-          selection,
-          threadId: resolvedFileOwnerThreadId,
-        });
-      if (tab === null) return;
-
-      if (selection.source === "workspace") {
-        recordRecentItem({ source: "workspace", path: selection.path });
-      } else {
-        recordRecentItem({ source: "thread-storage", path: selection.path });
-      }
-
-      updateFixedPanelTabsState((state) =>
-        replaceNewTabWithSecondaryPanelTabInState({ state, tab }),
+      openResolvedTab(
+        openRequestForFileSearchSelection(selection),
+        "replace-new-tab",
       );
     },
-    [
-      fileOpenerPreference,
-      fileOpeners,
-      projectHostId,
-      projectId,
-      recordRecentItem,
-      resolvedEnvironmentId,
-      resolvedFileOwnerThreadId,
-      updateFixedPanelTabsState,
-    ],
+    [openResolvedTab],
   );
 
   const updateBrowserTab = useCallback(

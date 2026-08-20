@@ -616,11 +616,8 @@ describe("useThreadFileTabs file opener diversion", () => {
     expect(result.current.activeWorkspaceFilePath).toBe("src/index.ts");
   });
 
-  // The file search builds its tab through its own path (it replaces the
-  // new-tab screen rather than appending a tab), so diversion has to be
-  // applied there too. It was not, and every file picked from the "+" screen
-  // silently got the built-in preview while links and `bb thread open`
-  // diverted correctly.
+  // File search replaces the new-tab screen rather than appending a tab, but
+  // it must use the same opener resolution as links and `bb thread open`.
   it("diverts a workspace file picked from the file search", () => {
     registerNotesOpener();
     const { result } = renderThreadHook(() =>
@@ -656,6 +653,44 @@ describe("useThreadFileTabs file opener diversion", () => {
       environmentId: "env_1",
     });
     // The new-tab screen is replaced, not appended to.
+    expect(result.current.isNewTabActive).toBe(false);
+    expect(
+      result.current.orderedSecondaryFileTabs.map((tab) => tab.kind),
+    ).toEqual(["plugin-panel"]);
+  });
+
+  it("diverts a thread-storage file picked from the file search", () => {
+    registerNotesOpener();
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "opener-storage-search",
+        syncThreadId: "thr_storage_search",
+        environmentId: "env_1",
+        storageFiles: [{ path: "artifacts/notes.md" }],
+        terminalSessions: undefined,
+      }),
+    );
+
+    act(() => result.current.openTab({ kind: "new-tab" }));
+    act(() =>
+      result.current.selectFileSearchResult({
+        source: "thread-storage",
+        path: "artifacts/notes.md",
+      }),
+    );
+
+    expect(result.current.activePluginPanelTab).toMatchObject({
+      kind: "plugin-panel",
+      pluginId: "notes",
+      actionId: "file-opener:editor",
+      title: "notes.md",
+      fileOpenerOwner: {
+        kind: "thread-storage-file-preview",
+        environmentId: "env_1",
+        threadId: "thr_storage_search",
+        tab: { path: "artifacts/notes.md" },
+      },
+    });
     expect(result.current.isNewTabActive).toBe(false);
     expect(
       result.current.orderedSecondaryFileTabs.map((tab) => tab.kind),
