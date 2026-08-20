@@ -926,9 +926,9 @@ enrolled to other servers. Atomic reservations under
 
 ## Source Development
 
-For source development only, `pnpm dev` and `pnpm start` load the repo-root
-dotenv cascade. Add a repo-root `.env` only when you need to override the
-defaults described above.
+For source development only, `pnpm dev`, `pnpm start:worktree`, and `pnpm start`
+load the repo-root dotenv cascade. Add a repo-root `.env` only when you need to
+override the defaults described above.
 
 The standard [dotenv-cli](https://github.com/entropitor/dotenv-cli) cascade
 applies to source development. `pnpm dev` loads `.env`, `.env.local`,
@@ -940,6 +940,11 @@ Vite app bind to loopback by default; an explicit `BB_DEV_APP_HOST` still
 overrides the Vite listener. Remote HTTP dev via `BB_DEV_APP_HOST` also requires
 `BB_SERVER_BIND_HOST=0.0.0.0` for realtime updates; the Tailscale Serve HTTPS
 path avoids this because WebSocket traffic goes through the Vite proxy.
+`pnpm start:worktree` loads the same development dotenv cascade and uses the
+same checkout-specific data directory, server port, and host-daemon port. It
+builds production artifacts and serves the frontend bundle from the main
+server, so there is no separate Vite listener or hot reload. Telemetry remains
+disabled for this source-development command.
 `pnpm start` loads `.env`, `.env.local`, `.env.production`, and
 `.env.production.local`.
 
