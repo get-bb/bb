@@ -1008,6 +1008,29 @@ const hostListBranchesCommandSchema = z.object({
   limit: z.number().int().positive().max(BRANCH_LIST_LIMIT_MAX),
 });
 
+/**
+ * List cached branch options without coupling picker latency to a remote
+ * refresh or to the checkout metadata needed by project/worktree flows.
+ */
+const hostListBranchOptionsCommandSchema = z
+  .object({
+    type: z.literal("host.list_branch_options"),
+    path: z.string().min(1),
+    query: z.string().max(BRANCH_LIST_QUERY_MAX_LENGTH).optional(),
+    selectedBranch: gitBranchNameSchema.optional(),
+    limit: z.number().int().positive().max(BRANCH_LIST_LIMIT_MAX),
+    remoteRefresh: z.enum(["background", "none"]),
+  })
+  .strict();
+
+const hostBranchOptionsResultSchema = projectSourceCheckoutSchema.pick({
+  branches: true,
+  branchesTruncated: true,
+  remoteBranches: true,
+  remoteBranchesTruncated: true,
+  selectedBranch: true,
+});
+
 const providerListModelsCommandSchema = z.object({
   type: z.literal("provider.list_models"),
   providerId: z.string().min(1),
@@ -2003,6 +2026,15 @@ export const hostDaemonCommandRegistry = {
     type: "host.list_branches",
     schema: hostListBranchesCommandSchema,
     resultSchema: projectSourceCheckoutSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.list_branch_options": defineHostDaemonCommandDescriptor({
+    type: "host.list_branch_options",
+    schema: hostListBranchOptionsCommandSchema,
+    resultSchema: hostBranchOptionsResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

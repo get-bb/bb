@@ -24,7 +24,10 @@ import {
   cancelEnvironmentProvision,
   provisionEnvironment,
 } from "./command-handlers/environment.js";
-import { listHostBranches } from "./command-handlers/host-branches.js";
+import {
+  listHostBranchOptions,
+  listHostBranches,
+} from "./command-handlers/host-branches.js";
 import {
   installGlobalSkills,
   readGlobalSkillsStatus,
@@ -609,6 +612,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.install_global_skills": installGlobalSkills,
   "host.global_skills_status": async (command) =>
     readGlobalSkillsStatus(command, {}),
+  "host.list_branch_options": listHostBranchOptions,
   "host.list_branches": listHostBranches,
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,

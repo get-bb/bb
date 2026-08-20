@@ -590,11 +590,12 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       hostId: environment.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: {
-        type: "host.list_branches",
+        type: "host.list_branch_options",
         path: environment.path,
         ...(branchQuery ? { query: branchQuery } : {}),
         ...(selectedBranch ? { selectedBranch } : {}),
         limit: parseBranchListLimit(query.limit),
+        remoteRefresh: "background",
       },
     });
     return context.json({
@@ -742,10 +743,11 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
             hostId: environment.hostId,
             timeoutMs: COMMAND_TIMEOUT_MS,
             command: {
-              type: "host.list_branches",
+              type: "host.list_branch_options",
               path: environment.path,
               selectedBranch: targetBranch,
               limit: 1,
+              remoteRefresh: "none",
             },
           });
           assertSquashMergeTargetIsLocal({

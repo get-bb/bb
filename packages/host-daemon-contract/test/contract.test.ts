@@ -297,6 +297,16 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       kind: "local",
     },
   },
+  "host.list_branch_options": {
+    branches: ["main"],
+    branchesTruncated: false,
+    remoteBranches: ["origin/main"],
+    remoteBranchesTruncated: false,
+    selectedBranch: {
+      name: "main",
+      kind: "local",
+    },
+  },
   "host.file_metadata": {
     path: "/tmp/report.html",
     modifiedAtMs: 1234,
@@ -1113,7 +1123,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(145);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(146);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1501,6 +1511,24 @@ describe("host-daemon command schemas", () => {
 
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
+        type: "host.list_branch_options",
+        path: "/tmp/workspace",
+        query: "release",
+        selectedBranch: "origin/main",
+        limit: 50,
+        remoteRefresh: "background",
+      }),
+    ).toMatchObject({
+      type: "host.list_branch_options",
+      path: "/tmp/workspace",
+      query: "release",
+      selectedBranch: "origin/main",
+      limit: 50,
+      remoteRefresh: "background",
+    });
+
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_branches",
         path: "/tmp/workspace",
         query: "release",
@@ -1696,6 +1724,12 @@ describe("host-daemon command schemas", () => {
         limit: 100,
         includeFiles: true,
         includeDirectories: true,
+      },
+      {
+        type: "host.list_branch_options",
+        path: "/tmp/workspace",
+        limit: 50,
+        remoteRefresh: "none",
       },
       {
         type: "host.list_branches",

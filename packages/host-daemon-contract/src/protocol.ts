@@ -1,3 +1,7 @@
+// Version 146 adds the lightweight `host.list_branch_options` RPC so branch
+// pickers can read cached refs while the daemon refreshes remotes in the
+// background. Older daemons cannot parse or serve that command.
+//
 // Version 145 adds provider-owned static options and installation capability
 // metadata to bridge launches, forwards typed installation requirements, and
 // removes the core `known_acp_agents.status` RPC. Older daemons reject the new
@@ -106,7 +110,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 145 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 146 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —
