@@ -1407,7 +1407,7 @@ function FileDiffCard({
         >
           {open ? "▾" : "▸"}
         </button>
-        {environmentId === null ? (
+        {environmentId === null || file.status === "removed" ? (
           <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
             {file.path}
           </span>
