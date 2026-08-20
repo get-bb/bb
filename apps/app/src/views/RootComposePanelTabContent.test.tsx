@@ -1,19 +1,37 @@
 // @vitest-environment jsdom
 
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createTerminalFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
+import { buildFileOpenerPanelTab } from "@/components/plugin/file-opener-tabs";
 import { RootComposePanelTabContent } from "./RootComposePanelTabContent";
 
 vi.mock("@/components/secondary-panel/lazySecondaryPanelComponents", () => ({
   LazyFilePreview: () => null,
   LazyHostFilePreviewTabContent: () => null,
   LazyNewTabPage: () => null,
-  LazyProjectFilePreviewTabContent: () => null,
+  LazyProjectFilePreviewTabContent: ({
+    activePath,
+    environmentId,
+    hostId,
+    projectId,
+  }: {
+    activePath: string;
+    environmentId: string | null;
+    hostId: string | null;
+    projectId: string;
+  }) => (
+    <div
+      data-testid={`project-${activePath}`}
+      data-environment-id={environmentId}
+      data-host-id={hostId}
+      data-project-id={projectId}
+    />
+  ),
   LazyThreadStorageFilePreviewTabContent: () => null,
   LazyThreadTerminalPanel: ({ terminalId }: { terminalId?: string }) => (
     <div data-testid={`terminal-${terminalId ?? "missing"}`} />
@@ -33,7 +51,11 @@ vi.mock("@/components/secondary-panel/lazySecondaryPanelComponents", () => ({
 }));
 
 vi.mock("@/components/plugin/PluginPanelActions", () => ({
-  PluginPanelTabContent: () => null,
+  PluginPanelTabContent: ({
+    fileOpenerOriginal,
+  }: {
+    fileOpenerOriginal?: ReactNode;
+  }) => fileOpenerOriginal ?? null,
 }));
 
 vi.mock("@/hooks/queries/environment-queries", () => ({
@@ -85,6 +107,7 @@ const baseProps = {
   onSelectFileSearchResult: noop,
   onSelectionAddToChat: noop,
   onStartTerminal: noop,
+  primaryHostId: "host-primary",
   pluginActions: [],
   projectSources: [],
   projects: [],
@@ -176,5 +199,46 @@ describe("RootComposePanelTabContent", () => {
 
     expect(screen.getByTestId("terminal-term-first")).toBeTruthy();
     expect(screen.getByTestId("terminal-term-second")).toBeTruthy();
+  });
+
+  it("keeps a persisted plugin opener route after compose context changes", () => {
+    const tab = buildFileOpenerPanelTab(
+      { id: "markdown", pluginId: "docs" },
+      {
+        path: "persisted/readme.md",
+        source: {
+          kind: "workspace",
+          environmentId: null,
+          experimental_hostId: "host-opened",
+          projectId: "project-opened",
+          threadId: null,
+        },
+      },
+      {
+        environmentId: null,
+        kind: "workspace-file-preview",
+        projectId: "project-stale",
+        tab: {
+          lineRange: null,
+          path: "stale/readme.md",
+          source: { kind: "working-tree" },
+          statusLabel: null,
+        },
+        threadId: null,
+      },
+    );
+
+    render(
+      <RootComposePanelTabContent
+        {...baseProps}
+        pane={{ isFocused: true, onFocusPane: noop }}
+        tab={tab}
+      />,
+    );
+
+    const preview = screen.getByTestId("project-persisted/readme.md");
+    expect(preview.getAttribute("data-environment-id")).toBeNull();
+    expect(preview.getAttribute("data-host-id")).toBe("host-opened");
+    expect(preview.getAttribute("data-project-id")).toBe("project-opened");
   });
 });

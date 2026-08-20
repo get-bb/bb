@@ -186,6 +186,7 @@ import {
   PluginPanelTabContent,
   usePluginPanelActions,
 } from "@/components/plugin/PluginPanelActions";
+import { createFileOpenerOriginalTab } from "@/components/plugin/file-opener-tabs";
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -2789,37 +2790,12 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           />
         );
       }
-      case "plugin-panel":
+      case "plugin-panel": {
+        const originalTab = createFileOpenerOriginalTab(tab);
         const fileOpenerOriginal =
-          tab.fileOpenerOwner === undefined
+          originalTab === null
             ? undefined
-            : renderSecondaryTabContent(
-                tab.fileOpenerOwner.kind === "workspace-file-preview"
-                  ? {
-                      ...tab.fileOpenerOwner.tab,
-                      environmentId: tab.fileOpenerOwner.environmentId,
-                      id: `${tab.id}:file-opener-original`,
-                      kind: "workspace-file-preview",
-                      projectId: tab.fileOpenerOwner.projectId,
-                    }
-                  : tab.fileOpenerOwner.kind === "host-file-preview"
-                    ? {
-                        ...tab.fileOpenerOwner.tab,
-                        environmentId: tab.fileOpenerOwner.environmentId,
-                        hostId: tab.fileOpenerOwner.hostId,
-                        id: `${tab.id}:file-opener-original`,
-                        kind: "host-file-preview",
-                        threadId: tab.fileOpenerOwner.threadId,
-                      }
-                    : {
-                        ...tab.fileOpenerOwner.tab,
-                        environmentId: tab.fileOpenerOwner.environmentId,
-                        id: `${tab.id}:file-opener-original`,
-                        isPinned: false,
-                        kind: "thread-storage-file-preview",
-                        threadId: tab.fileOpenerOwner.threadId,
-                      },
-              );
+            : renderSecondaryTabContent(originalTab);
         return (
           <ThreadTimelineNavigationProvider
             environmentId={thread.environmentId}
@@ -2835,6 +2811,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             />
           </ThreadTimelineNavigationProvider>
         );
+      }
     }
   };
   const filenameOfPanelTab = (path: string) => path.split("/").at(-1) ?? path;

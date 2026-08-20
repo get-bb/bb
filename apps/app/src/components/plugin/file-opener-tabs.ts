@@ -6,6 +6,7 @@ import type { ThreadTabFileOpenerOwner } from "@bb/server-contract";
 import {
   createPluginPanelFixedPanelTab,
   type PluginPanelFixedPanelTab,
+  type SecondaryFileFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import type { FileOpenerPreferenceMap } from "@/lib/file-opener-preference";
 import {
@@ -26,6 +27,16 @@ export const FILE_OPENER_ACTION_ID_PREFIX = "file-opener:";
 export type PluginFileOpenerFile = Pick<
   PluginFileOpenerProps,
   "path" | "source"
+>;
+
+export type FileOpenerOriginalTab = Extract<
+  SecondaryFileFixedPanelTab,
+  {
+    kind:
+      | "workspace-file-preview"
+      | "host-file-preview"
+      | "thread-storage-file-preview";
+  }
 >;
 
 export function fileOpenerIdFromActionId(actionId: string): string | null {
@@ -88,6 +99,59 @@ export function parseFileOpenerParams(
         : {}),
     },
   };
+}
+
+/**
+ * Rebuild the native preview behind a plugin file opener. Persisted params own
+ * file/routing identity; the owner retains only native presentation state.
+ */
+export function createFileOpenerOriginalTab(
+  tab: PluginPanelFixedPanelTab,
+): FileOpenerOriginalTab | null {
+  const owner = tab.fileOpenerOwner;
+  const file = parseFileOpenerParams(tab.paramsJson);
+  if (owner === undefined || file === null) return null;
+
+  const id = `${tab.id}:file-opener-original`;
+  if (
+    owner.kind === "workspace-file-preview" &&
+    file.source.kind === "workspace"
+  ) {
+    return {
+      ...owner.tab,
+      environmentId: file.source.environmentId,
+      id,
+      kind: "workspace-file-preview",
+      path: file.path,
+      projectId: file.source.projectId,
+    };
+  }
+  if (owner.kind === "host-file-preview" && file.source.kind === "host") {
+    return {
+      ...owner.tab,
+      environmentId: file.source.environmentId,
+      hostId: file.source.experimental_hostId ?? null,
+      id,
+      kind: "host-file-preview",
+      path: file.path,
+      threadId: file.source.threadId,
+    };
+  }
+  if (
+    owner.kind === "thread-storage-file-preview" &&
+    file.source.kind === "thread-storage"
+  ) {
+    return {
+      ...owner.tab,
+      environmentId: file.source.environmentId,
+      id,
+      isPinned: false,
+      kind: "thread-storage-file-preview",
+      path: file.path,
+      threadId: file.source.threadId,
+    };
+  }
+  return null;
 }
 
 /**

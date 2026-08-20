@@ -179,6 +179,7 @@ import {
   RootComposePanelTabContent,
   type RootComposeTerminalTarget,
 } from "./RootComposePanelTabContent";
+export { resolveRootComposeProjectFileRouting } from "./RootComposePanelTabContent";
 
 const ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY = "bb.promptbox.zen-mode.root-compose";
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
@@ -1629,6 +1630,7 @@ function RootComposeSurface({
         onSelectionAddToChat={handleRootPanelSelectionAddToChat}
         onStartTerminal={handleStartTerminal}
         pane={pane}
+        primaryHostId={primaryHostId}
         pluginActions={rootPluginPanelActions}
         projectSources={projectSources}
         projects={projects}
@@ -1656,6 +1658,7 @@ function RootComposeSurface({
       isProjectless,
       isSecondaryPanelOpen,
       projectId,
+      primaryHostId,
       projectSources,
       projects,
       rootPanelEnvironmentId,

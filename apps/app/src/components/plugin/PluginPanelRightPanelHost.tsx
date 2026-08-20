@@ -47,10 +47,10 @@ import {
   createPluginPageFixedPanelTab,
   createTerminalFixedPanelTab,
   type PluginPageFixedPanelTab,
-  type PluginPanelFixedPanelTab,
   type SecondaryFileFixedPanelTab,
   type TerminalFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
+import { createFileOpenerOriginalTab } from "./file-opener-tabs";
 import { activateSecondaryPanelTabInState } from "@/components/secondary-panel/secondaryPanelTabState";
 import {
   useCloseTerminal,
@@ -166,40 +166,6 @@ function PluginFixedTabContent({
       </AppFixedTabTargetProvider>
     </PluginSlotMount>
   );
-}
-
-function fileOpenerOriginalTab(
-  tab: PluginPanelFixedPanelTab,
-): SecondaryFileFixedPanelTab | null {
-  const owner = tab.fileOpenerOwner;
-  if (owner === undefined) return null;
-  if (owner.kind === "workspace-file-preview") {
-    return {
-      ...owner.tab,
-      environmentId: owner.environmentId,
-      id: `${tab.id}:file-opener-original`,
-      kind: "workspace-file-preview",
-      projectId: owner.projectId,
-    };
-  }
-  if (owner.kind === "host-file-preview") {
-    return {
-      ...owner.tab,
-      environmentId: owner.environmentId,
-      hostId: owner.hostId,
-      id: `${tab.id}:file-opener-original`,
-      kind: "host-file-preview",
-      threadId: owner.threadId,
-    };
-  }
-  return {
-    ...owner.tab,
-    environmentId: owner.environmentId,
-    id: `${tab.id}:file-opener-original`,
-    isPinned: false,
-    kind: "thread-storage-file-preview",
-    threadId: owner.threadId,
-  };
 }
 
 function findPluginRightPanelTogglePortal(
@@ -772,7 +738,7 @@ export function PluginPanelRightPanelHost({
             />
           );
         case "plugin-panel": {
-          const originalTab = fileOpenerOriginalTab(tab);
+          const originalTab = createFileOpenerOriginalTab(tab);
           return (
             <PluginPanelTabContent
               tab={tab}
