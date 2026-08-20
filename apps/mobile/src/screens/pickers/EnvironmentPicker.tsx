@@ -18,6 +18,9 @@ import {
 } from "@/ui";
 import { usePickerSheetMaxHeight } from "./OptionSheet";
 import { PickerTrigger } from "./PickerTrigger";
+import { describeEnvironmentSelection } from "./environment-picker-model";
+
+export { describeEnvironmentSelection } from "./environment-picker-model";
 
 /** The mode rows the picker offers; reuse rows carry their environment id. */
 export type EnvironmentPickerMode =
@@ -34,8 +37,6 @@ export interface EnvironmentPickerProps {
   host: Host | null;
   /** Whether that machine holds a checkout of the project (always for personal). */
   hostHasSource: boolean;
-  /** The server's primary host; the pill names any other machine explicitly. */
-  primaryHostId?: string | null;
   isPersonalProject: boolean;
   reuseOptions: readonly ReuseEnvironmentOption[];
   reuseOptionsLoading: boolean;
@@ -43,65 +44,6 @@ export interface EnvironmentPickerProps {
   worktreeDisabledReason: string | null;
   disabled?: boolean;
   testID?: string;
-}
-
-interface SelectedSummary {
-  label: string;
-  icon: IconName;
-  tone: "default" | "warning";
-}
-
-export function describeEnvironmentSelection(
-  value: ThreadEnvironmentSelection,
-  host: Host | null,
-  reuseOptions: readonly ReuseEnvironmentOption[],
-  /** Name the machine in the label only when it is not the primary host. */
-  primaryHostId: string | null = null,
-): SelectedSummary {
-  switch (value.type) {
-    case "project-default":
-      return { label: "Project default", icon: "Laptop", tone: "default" };
-    case "reuse": {
-      const option = reuseOptions.find(
-        (candidate) => candidate.environmentId === value.environmentId,
-      );
-      const name = option?.name ?? option?.branchName;
-      return {
-        label: name ? `Reuse ${name}` : "Reuse worktree",
-        icon: "FolderGit",
-        tone: "default",
-      };
-    }
-    case "host": {
-      const offline = host !== null && host.status !== "connected";
-      const machine =
-        host !== null && host.id !== primaryHostId ? host.name : undefined;
-      if (value.workspace.type === "managed-worktree") {
-        return {
-          label: machine ? `${machine} · New worktree` : "New worktree",
-          icon: "FolderGit",
-          tone: offline ? "warning" : "default",
-        };
-      }
-      if (value.workspace.type === "personal") {
-        return {
-          label: machine ? `${machine} · Personal` : "Personal workspace",
-          icon: "Laptop",
-          tone: offline ? "warning" : "default",
-        };
-      }
-      const custom = value.workspace.path;
-      return {
-        label: custom
-          ? `${machine ? `${machine} · ` : ""}${custom}`
-          : machine
-            ? `${machine} · Checkout`
-            : "Work in checkout",
-        icon: "Folder",
-        tone: offline ? "warning" : "default",
-      };
-    }
-  }
 }
 
 /**
@@ -115,7 +57,6 @@ export function EnvironmentPicker({
   onChange,
   host,
   hostHasSource,
-  primaryHostId = null,
   isPersonalProject,
   reuseOptions,
   reuseOptionsLoading,
@@ -127,9 +68,8 @@ export function EnvironmentPicker({
   const { tokens } = useTheme();
   const maxHeight = usePickerSheetMaxHeight();
   const summary = useMemo(
-    () =>
-      describeEnvironmentSelection(value, host, reuseOptions, primaryHostId),
-    [host, primaryHostId, reuseOptions, value],
+    () => describeEnvironmentSelection(value, host, reuseOptions),
+    [host, reuseOptions, value],
   );
   const hostUnavailableReason =
     host === null

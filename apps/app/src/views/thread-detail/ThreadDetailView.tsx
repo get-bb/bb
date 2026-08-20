@@ -96,7 +96,7 @@ import { assertNever } from "@bb/thread-view";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
-import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
+import { useHosts } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
 import {
@@ -2430,18 +2430,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         host: environmentDisplayHostContext,
       })
     : undefined;
-  // The follow-up composer chip names the machine when the thread doesn't run
-  // on the primary host ("Mac Studio · Worktree") — mirrors the new-thread
-  // composer chip.
+  // `threadEnvironmentHost` is populated only when the server knows multiple
+  // machines, so name that machine in the full follow-up composer label in
+  // exactly that case. Compact layouts use the host-free compact label.
   const environmentMachinePrefix =
-    threadEnvironmentHost !== null &&
-    threadEnvironmentHost.id !==
-      selectPrimaryHost(
-        hostsQuery.data,
-        systemConfigQuery.data?.primaryHostId ?? null,
-      )?.id
-      ? `${threadEnvironmentHost.name} · `
-      : "";
+    threadEnvironmentHost !== null ? `${threadEnvironmentHost.name} · ` : "";
   const threadEnvironmentIcon = threadEnvironmentDisplay
     ? getEnvironmentWorkspaceLabelIconName(
         threadEnvironmentDisplay.workspaceDisplayKind,
@@ -2579,7 +2572,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       environmentCheckout={threadCheckoutDisplay}
       environmentCompactLabel={
         threadEnvironmentDisplay
-          ? `${environmentMachinePrefix}${threadEnvironmentDisplay.compactModeLabel}`
+          ? threadEnvironmentDisplay.compactModeLabel
           : undefined
       }
       environmentIcon={threadEnvironmentIcon ?? undefined}

@@ -255,7 +255,6 @@ function WhereControls({
         onChange={c.setEnvironment}
         host={c.selectedHost}
         hostHasSource={c.hostHasSource}
-        primaryHostId={c.primaryHostId}
         isPersonalProject={c.isPersonalProject}
         reuseOptions={c.reuseOptions}
         reuseOptionsLoading={c.reuseOptionsLoading}
