@@ -470,7 +470,9 @@ function createOnPiEvent(
           ? event
           : { ...event, providerCheckpointId },
     });
-    if (event.type === "agent_end" || event.type === "compaction_end") {
+    // Pi emits turn_end only after the assistant response and its tool results
+    // have entered session context, so this samples what the next request sees.
+    if (event.type === "turn_end" || event.type === "compaction_end") {
       emitContextWindowUsage(args.threadId);
     }
   };

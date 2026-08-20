@@ -337,6 +337,59 @@ function createAgentEndEvent(): AgentSessionEvent {
   };
 }
 
+function createTurnEndEvent(
+  stopReason: "toolUse" | "stop",
+): AgentSessionEvent {
+  const hasToolResult = stopReason === "toolUse";
+  return {
+    type: "turn_end",
+    message: {
+      role: "assistant",
+      content: hasToolResult
+        ? [
+            {
+              type: "toolCall",
+              id: "call-read-1",
+              name: "read",
+              arguments: { path: "/tmp/example.txt" },
+            },
+          ]
+        : [{ type: "text", text: "done" }],
+      api: "openai-responses",
+      provider: "openai",
+      model: "gpt-5.4",
+      usage: {
+        input: 10,
+        output: 2,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 12,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason,
+      timestamp: 0,
+    },
+    toolResults: hasToolResult
+      ? [
+          {
+            role: "toolResult",
+            toolCallId: "call-read-1",
+            toolName: "read",
+            content: [{ type: "text", text: "tool output" }],
+            isError: false,
+            timestamp: 0,
+          },
+        ]
+      : [],
+  };
+}
+
 describe("pi bridge", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1213,6 +1266,71 @@ describe("pi bridge", () => {
           status: "completed",
         }),
       );
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("reports context usage after every Pi turn_end without duplicating agent_end", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const piSession = createControlledPiAgentSession();
+    piSession.getContextUsage
+      .mockReturnValueOnce({
+        tokens: 10_500,
+        contextWindow: 1_050_000,
+        percent: 1,
+      })
+      .mockReturnValueOnce({
+        tokens: 11_750,
+        contextWindow: 1_050_000,
+        percent: (11_750 / 1_050_000) * 100,
+      });
+    piSession.prompt.mockImplementation(async () => {
+      piSession.emit({ type: "agent_start" });
+      piSession.emit(createTurnEndEvent("toolUse"));
+      piSession.emit(createTurnEndEvent("stop"));
+      piSession.emit(createAgentEndEvent());
+    });
+    mockCreateAgentSession.mockResolvedValue({ session: piSession });
+
+    try {
+      bridge.sendRequest(
+        52,
+        "thread/start",
+        sessionParams({ threadId: "thread-context-usage" }),
+      );
+      await bridge.waitForResponse(52);
+
+      bridge.sendRequest(
+        53,
+        "turn/start",
+        turnStartParams("thread-context-usage", [
+          { type: "text", text: "read and respond" },
+        ]),
+      );
+      await bridge.waitForResponse(53);
+      await bridge.flushWork();
+
+      const usageEvents = threadEvents(bridge.messages).filter(
+        (event) => event.type === "thread/contextWindowUsage/updated",
+      );
+      expect(usageEvents).toEqual([
+        expect.objectContaining({
+          contextWindowUsage: {
+            usedTokens: 10_500,
+            modelContextWindow: 1_050_000,
+            estimated: true,
+          },
+        }),
+        expect.objectContaining({
+          contextWindowUsage: {
+            usedTokens: 11_750,
+            modelContextWindow: 1_050_000,
+            estimated: true,
+          },
+        }),
+      ]);
+      expect(piSession.getContextUsage).toHaveBeenCalledTimes(2);
     } finally {
       bridge.restore();
     }

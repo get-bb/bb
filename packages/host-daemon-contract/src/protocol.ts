@@ -1,3 +1,8 @@
+// Version 142 ships Pi context-window usage after every SDK turn ends, once
+// its assistant response and tool results are both reflected in the session.
+// Older bundled bridges report only after the full agent run ends, leaving the
+// meter stale throughout multi-tool turns.
+//
 // Version 141 extends the consumed-not-queued acceptance rule to the remaining
 // providers. Pi reports `input.accepted` for a turn only once it read the
 // input: a prompt pi queues behind a live run stays unaccepted, and the
@@ -80,7 +85,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 141 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 142 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —
