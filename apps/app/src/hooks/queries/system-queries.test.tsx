@@ -81,6 +81,51 @@ afterEach(() => {
 });
 
 describe("useSystemProviderInfo", () => {
+  it("uses capabilities already loaded by the composer while the provider roster loads", async () => {
+    const provider: ProviderInfo = {
+      id: "codex",
+      displayName: "Codex",
+      logoUrl: null,
+      available: true,
+      composerActions: [],
+      capabilities: {
+        supportsThreadArchive: true,
+        supportsThreadRename: true,
+        supportsServiceTier: true,
+        supportsNativeUserQuestion: false,
+        supportsFork: true,
+        supportsSessionRewind: true,
+        permissionModes: ["accept-edits", "auto", "full"],
+      },
+    };
+    vi.mocked(sdk.providers.list).mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      systemExecutionOptionsQueryKey({
+        environmentId: "env-remote",
+        hostId: null,
+        providerId: "codex",
+      }),
+      { ...EXECUTION_OPTIONS_RESPONSE, providers: [provider] },
+    );
+
+    const { result } = renderHook(
+      () =>
+        useSystemProviderInfo({
+          environmentId: "env-remote",
+          providerId: "codex",
+        }),
+      { wrapper },
+    );
+
+    expect(result.current).toBe(provider);
+    await waitFor(() => {
+      expect(sdk.providers.list).toHaveBeenCalledOnce();
+    });
+  });
+
   it("loads routed provider capabilities without waiting for model discovery", async () => {
     const providers: ProviderInfo[] = [
       {

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryKey } from "@tanstack/react-query";
 import type { AvailableModel, PermissionMode, ProviderInfo } from "@bb/domain";
 import { SYSTEM_EXECUTION_OPTIONS_QUERY_KEY } from "@/hooks/queries/query-keys";
@@ -412,17 +412,24 @@ export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
  * Resolve one provider from the lightweight provider roster. Unlike the full
  * execution-options request, this does not wait for model discovery, so
  * capability-gated controls can render as soon as provider metadata arrives.
+ * A just-submitted composer has already loaded the same provider facts through
+ * execution options, so reuse that warm cache synchronously during navigation
+ * while the lightweight roster fills its own route-scoped cache.
  */
 export function useSystemProviderInfo({
   providerId,
   ...args
 }: UseSystemProviderInfoArgs): ProviderInfo | null {
+  const queryClient = useQueryClient();
   const providersQuery = useSystemProviders({
     ...args,
     enabled: (args.enabled ?? true) && providerId !== undefined,
   });
   return (
-    providersQuery.data?.find((provider) => provider.id === providerId) ?? null
+    providersQuery.data?.find((provider) => provider.id === providerId) ??
+    (providerId === undefined
+      ? null
+      : findCachedProviderInfo(queryClient, providerId))
   );
 }
 
