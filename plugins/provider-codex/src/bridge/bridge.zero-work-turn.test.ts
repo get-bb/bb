@@ -132,6 +132,43 @@ it("settles a prompt the app-server accepts without any turn activity", async ()
   ]);
 }, 30_000);
 
+it("preserves the native checkpoint when thread/stop interrupts a turn", async () => {
+  const providerThreadId = await startSession();
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    input: [{ type: "text", text: "/wait-for-interrupt", mentions: [] }],
+    clientRequestId: "creq_a2b3c4d5e6",
+    options: { ...sessionOptions },
+  });
+  await harness.waitForResponse(2);
+  await waitForEvents((events) =>
+    events.some((event) => event.type === "turn/started"),
+  );
+
+  harness.sendRequest(3, "thread/stop", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    intent: "interrupt",
+    activeTurnId: "turn-fx-1",
+  });
+  await harness.waitForResponse(3);
+
+  const events = await waitForEvents((all) =>
+    all.some(
+      (event) =>
+        event.type === "turn/completed" && event.status === "interrupted",
+    ),
+  );
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "turn/completed",
+      status: "interrupted",
+      providerCheckpointId: "turn-fx-1",
+    }),
+  );
+}, 30_000);
+
 it("lets a turn/started that lands after the turn/start response win the race", async () => {
   const providerThreadId = await startSession();
   harness.sendRequest(2, "turn/start", {

@@ -18,8 +18,8 @@
  *   delta assembler mints the bb ids and reverse-maps command-plane ids, so
  *   steer's expectedTurnId and interrupt's activeTurnId arrive here already
  *   provider-native and the bridge does zero id translation. `turn.boundary`
- *   carries the Codex turn id as `providerCheckpointId` on every terminal turn
- *   so checkpoint forks survive bridge and runtime restarts.
+ *   carries the Codex turn id as `providerCheckpointId` on completed and
+ *   interrupted turns so checkpoint forks survive bridge and runtime restarts.
  * - Canonical → codex method mapping: `thread/stop {intent: "interrupt"}` →
  *   `turn/interrupt`; `{intent: "release"}` → kill that thread's child (no
  *   fabricated interruption — the rollout stays resumable, #1584);

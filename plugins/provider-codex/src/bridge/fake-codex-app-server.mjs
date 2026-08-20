@@ -60,6 +60,9 @@ const ZERO_WORK_PROMPT_TEXT = "/clear";
 const LATE_TURN_START_PROMPT_TEXT = "/late-start";
 const LATE_TURN_START_DELAY_MS = 60;
 
+/** A prompt that stays open until the client sends turn/interrupt. */
+const INTERRUPTIBLE_PROMPT_TEXT = "/wait-for-interrupt";
+
 /**
  * A prompt that spawns a native subagent (open thread work) and then dies with
  * the subagent still running — the crash/OOM shape. The bridge has to settle
@@ -327,6 +330,17 @@ async function handleRequest(message) {
           () => runScriptedTurn(params.threadId),
           LATE_TURN_START_DELAY_MS,
         );
+        return;
+      }
+      if (firstInputText(params.input) === INTERRUPTIBLE_PROMPT_TEXT) {
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        openTurnIdsByThreadId.set(params.threadId, turnId);
+        notify("turn/started", {
+          threadId: params.threadId,
+          turn: { id: turnId, status: "inProgress" },
+        });
+        respond(id, {});
         return;
       }
       if (scriptedTurns) {
