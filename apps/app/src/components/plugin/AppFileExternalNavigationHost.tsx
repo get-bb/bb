@@ -19,15 +19,21 @@ const LazyAppFileExternalNavigationDispatcher = lazy(() =>
   ),
 );
 
+interface ExternalFileIntentRequest {
+  id: number;
+  intent: ExperimentalFileOpenOptions;
+}
+
 /** App-wide preferred-external file dispatcher; discovery starts on activation. */
 export function AppFileExternalNavigationHost({
   children,
 }: {
   children: ReactNode;
 }) {
-  const [queue, setQueue] = useState<ExperimentalFileOpenOptions[]>([]);
+  const [queue, setQueue] = useState<ExternalFileIntentRequest[]>([]);
   const queueRef = useRef(queue);
-  const replaceQueue = useCallback((next: ExperimentalFileOpenOptions[]) => {
+  const nextRequestIdRef = useRef(0);
+  const replaceQueue = useCallback((next: ExternalFileIntentRequest[]) => {
     queueRef.current = next;
     setQueue(next);
   }, []);
@@ -38,7 +44,9 @@ export function AppFileExternalNavigationHost({
       }
       // Public SDK callers are parsed by useBbNavigate before capabilities are
       // invoked; this host only queues that already-normalized internal value.
-      replaceQueue([...queueRef.current, intent]);
+      const request = { id: nextRequestIdRef.current, intent };
+      nextRequestIdRef.current += 1;
+      replaceQueue([...queueRef.current, request]);
       return true;
     },
     [replaceQueue],
@@ -58,7 +66,8 @@ export function AppFileExternalNavigationHost({
       {current === null ? null : (
         <Suspense fallback={null}>
           <LazyAppFileExternalNavigationDispatcher
-            intent={current}
+            key={current.id}
+            intent={current.intent}
             onSettled={settleCurrent}
           />
         </Suspense>
