@@ -438,13 +438,19 @@ The canonical release summary.
     // Opening the page runs the check, so there is no freshness stamp: the age
     // of the claim is always "since you got here".
     await waitFor(() => {
-      expect(screen.getByText("Up to date").className).toContain("sr-only");
+      expect(
+        screen
+          .getAllByText("Up to date")
+          .every((label) => label.className.includes("sr-only")),
+      ).toBe(true);
     });
     expect(screen.queryByText("2 up to date")).toBeNull();
     expect(screen.getByRole("heading", { name: /workstation/ })).toBeDefined();
     expect(screen.queryByText("Primary")).toBeNull();
     expect(screen.queryByText("This machine")).toBeNull();
-    expect(screen.queryByText("studio-mac")).toBeNull();
+    expect(screen.getByRole("heading", { name: /studio-mac/ })).toBeDefined();
+    expect(screen.getAllByText("Codex")).toHaveLength(2);
+    expect(screen.getAllByText("Claude Code")).toHaveLength(2);
     expect(screen.queryByText(/Checked/)).toBeNull();
     expect(screen.queryByText(/ago$/)).toBeNull();
     expect(screen.queryByText(/^In sync$/)).toBeNull();
@@ -605,8 +611,13 @@ The canonical release summary.
 
     // Being up to date is the state every row is expected to be in, so it
     // carries no indicator: the page spends its dots on exceptions only.
-    const settled = screen.getByText(/^Up to date/);
-    expect(settled.parentElement?.querySelector(".bg-success")).toBeNull();
+    const settledRows = screen.getAllByText(/^Up to date/);
+    expect(
+      settledRows.every(
+        (settled) =>
+          settled.parentElement?.querySelector(".bg-success") === null,
+      ),
+    ).toBe(true);
     expect(document.querySelector(".bg-success")).toBeNull();
     expect(
       document
@@ -919,7 +930,7 @@ The canonical release summary.
     ).toBeDefined();
   });
 
-  it("shows only provider CLIs that need attention", () => {
+  it("shows installed provider CLIs including up-to-date rows", () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
@@ -955,7 +966,14 @@ The canonical release summary.
     expect(screen.queryByLabelText(/available update/)).toBeNull();
     expect(screen.getAllByText("workstation")).toHaveLength(1);
     expect(screen.getByText("Codex")).toBeDefined();
-    expect(screen.queryByText("Claude Code")).toBeNull();
+    const claudeRow = screen
+      .getByText("Claude Code")
+      .closest("[data-resource-row]");
+    expect(claudeRow).not.toBeNull();
+    expect(
+      claudeRow?.querySelector('[data-update-state="up-to-date"]'),
+    ).not.toBeNull();
+    expect(screen.queryByText("Cursor")).toBeNull();
     expect(screen.queryByText(/^Update available/)).toBeNull();
     expect(screen.queryByText("Choose an update below.")).toBeNull();
     const providerIcon = document.querySelector('[data-provider-icon="codex"]');

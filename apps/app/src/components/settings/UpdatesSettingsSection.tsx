@@ -34,9 +34,11 @@ import {
 import {
   hasProviderCliAction,
   isProviderCliUpdateIssue,
+  providerCliEntries,
   useProviderCliInstallRunner,
   type ProviderCliActionableIssue,
   type ProviderCliIssue,
+  type ProviderCliStatusEntry,
 } from "@/components/provider-cli/provider-cli-install";
 import {
   openProviderCliInstallLog,
@@ -1070,6 +1072,24 @@ function visibleProviderUpdateIssues(
   return machine.issues.filter(isProviderCliUpdateIssue);
 }
 
+/** Installed provider rows shown after a successful check, update or not. */
+function visibleInstalledProviderEntries(
+  machine: UpdateInventoryMachine,
+): ProviderCliStatusEntry[] {
+  if (
+    machine.canRetryDaemonUpdate ||
+    machine.host.status !== "connected" ||
+    machine.statusError ||
+    machine.statusPending ||
+    machine.providerStatus === null
+  ) {
+    return [];
+  }
+  return providerCliEntries(machine.providerStatus).filter(
+    (entry) => entry.status.installed,
+  );
+}
+
 /**
  * A machine's bb daemon condition. The machine name now owns the section, so
  * the row names the software that needs attention and uses the same bb mark as
@@ -1232,21 +1252,19 @@ export function MachineUpdatesRows({
   onOpenProvider,
 }: MachineUpdatesRowsProps) {
   const { host } = machine;
-  const updateIssues = visibleProviderUpdateIssues(machine);
+  const providerEntries = visibleInstalledProviderEntries(machine);
   const issuesByProvider = new Map(
-    updateIssues.map((issue) => [issue.provider, issue]),
+    visibleProviderUpdateIssues(machine).map((issue) => [
+      issue.provider,
+      issue,
+    ]),
   );
 
-  if (updateIssues.length === 0) {
+  if (providerEntries.length === 0) {
     return null;
   }
 
-  const rows = updateIssues.map((listedIssue) => {
-    const provider = listedIssue.provider;
-    const status = machine.providerStatus?.[provider];
-    if (status === undefined) {
-      return null;
-    }
+  const rows = providerEntries.map(({ provider, status }) => {
     const issue = issuesByProvider.get(provider) ?? null;
     const state = providerRowState({ issue });
     const jobKey = providerCliJobKey(host.id, provider);
@@ -1506,7 +1524,7 @@ export function UpdatesSettingsSection({
     (machine) =>
       machine.host.id === appMachine?.host.id ||
       machineHasRelevantHealthStatus(machine) ||
-      visibleProviderUpdateIssues(machine).length > 0,
+      visibleInstalledProviderEntries(machine).length > 0,
   );
   const hasUpdateWork =
     appUpdateVisible ||
