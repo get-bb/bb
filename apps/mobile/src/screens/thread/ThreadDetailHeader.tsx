@@ -1,13 +1,13 @@
 import { Pressable, View } from "react-native";
 import { useTheme } from "@/theme";
-import { cn, Icon, Spinner, Text } from "@/ui";
+import { cn, Icon, Text } from "@/ui";
 import { PanelToggleButton } from "../panel/PanelToggleButton";
 import type { ThreadStatusPill } from "./thread-detail-header-model";
 
 /**
  * The thread screen's native header pieces. There is one header only: the
  * title (tap to rename) with a status subtitle while the thread needs
- * attention or works, and two buttons on the right — the workspace panel
+ * attention, has an error, or waits on a host, and two buttons on the right — the workspace panel
  * and the "…" menu. Everything else the old two-layer header carried
  * (environment line, child roll-up, git action) lives in the menu sheet.
  */
@@ -21,13 +21,18 @@ export interface ThreadHeaderTitleProps {
   onPressTitle: (() => void) | null;
 }
 
-/** Subtitle shown under the title; idle / archived threads show none. */
+/**
+ * Subtitle shown under the title. Idle threads show none, and working threads
+ * show none either: the timeline's working indicator already carries that.
+ */
 export function headerSubtitle(
   statusPill: ThreadStatusPill,
   childPillLabel: ThreadHeaderTitleProps["childPillLabel"],
 ): string | null {
   const parts: string[] = [];
-  if (statusPill.tone !== "idle") parts.push(statusPill.label);
+  if (statusPill.tone !== "idle" && statusPill.tone !== "working") {
+    parts.push(statusPill.label);
+  }
   if (childPillLabel) parts.push(childPillLabel);
   return parts.length > 0 ? parts.join(" · ") : null;
 }
@@ -68,21 +73,14 @@ export function ThreadHeaderTitle({
         {title}
       </Text>
       {subtitle ? (
-        <View
-          className="flex-row items-center gap-1"
+        <Text
+          variant="caption"
+          numberOfLines={1}
+          style={{ color: subtitleColor }}
           testID="thread-status-pill"
         >
-          {statusPill.spinning ? (
-            <Spinner size="small" color={subtitleColor} />
-          ) : null}
-          <Text
-            variant="caption"
-            numberOfLines={1}
-            style={{ color: subtitleColor }}
-          >
-            {subtitle}
-          </Text>
-        </View>
+          {subtitle}
+        </Text>
       ) : null}
     </Pressable>
   );
