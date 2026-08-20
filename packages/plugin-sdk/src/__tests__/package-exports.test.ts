@@ -28,6 +28,7 @@ describe("packed plugin SDK exports", () => {
       "./host",
       "./internal/composer-customization-validation",
       "./internal/composer-view",
+      "./internal/file-navigation-validation",
       "./internal/host-policy",
       "./internal/plugin-app-collector",
       "./testing",

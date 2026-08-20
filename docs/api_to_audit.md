@@ -54,10 +54,12 @@ details to clients.
 **What it does.** Gives plugin UI the same semantic HTTP(S) opening path as
 first-party UI. Ordinary activation respects the current client's in-app
 browser preference and capability; app routes remain SPA navigation, modifier
-clicks and explicit anchor targets remain native, and unsupported schemes are
-left to the browser. The imperative method returns whether the current app
-accepted the intent. The frontend harness records link and imperative calls
-through the same navigation inspection log.
+clicks and explicit anchor targets remain browser-owned, and unsupported
+schemes are left to the browser. New top-level targets preserve supplied `rel`
+tokens but add `noopener noreferrer` unless `rel` explicitly contains
+`opener`. The imperative method returns whether the current app accepted the
+intent. The frontend harness records link and imperative calls through the same
+navigation inspection log.
 
 **Audit before stabilizing.**
 
@@ -67,7 +69,8 @@ through the same navigation inspection log.
    keyboard activation, explicit targets, copied hrefs, and accessible names.
 3. Confirm the component should retain ordinary anchor props rather than a
    smaller styled-link contract, and that explicit `target` continues to mean
-   native browser behavior rather than BB preference routing.
+   browser behavior rather than BB preference routing while safe default `rel`
+   values prevent implicit opener access.
 4. Measure use across plugin pages, Settings sections, panel tabs, Markdown,
    and menus before stabilizing the boolean acceptance contract.
 5. Keep the host implementation in the shell and verify plugin bundles contain
@@ -84,7 +87,8 @@ path, local/remote-SSH context, and line/column support. The boolean methods
 report host acceptance; later OS failures remain host-owned. The host id added
 to file-opener sources preserves explicit host identity when a plugin page
 opens a host file without ambient thread context. Valid link targets expose a
-scheme-safe href, while malformed runtime targets remain inert.
+scheme-safe href, while traversal paths, ill-formed Unicode, and other
+malformed runtime targets remain inert in both the app and SDK test runtime.
 
 **Audit before stabilizing.**
 

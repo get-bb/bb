@@ -56,6 +56,30 @@ describe("normalizeExperimentalLiveFileTarget", () => {
   ])("rejects ambiguous or non-exact target %#", (target) => {
     expect(normalizeExperimentalLiveFileTarget(target)).toBeNull();
   });
+
+  it("accepts valid surrogate pairs and rejects unpaired surrogates", () => {
+    expect(
+      normalizeExperimentalLiveFileTarget({
+        kind: "workspace",
+        environmentId: "env_1",
+        path: `reports/${String.fromCodePoint(0x1f4c4)}.md`,
+      }),
+    ).not.toBeNull();
+
+    for (const path of [
+      String.fromCharCode(0xd800),
+      String.fromCharCode(0xdc00),
+      `a${String.fromCharCode(0xd800)}b`,
+    ]) {
+      expect(
+        normalizeExperimentalLiveFileTarget({
+          kind: "workspace",
+          environmentId: "env_1",
+          path,
+        }),
+      ).toBeNull();
+    }
+  });
 });
 
 describe("normalizeExperimentalFileOpenOptions", () => {

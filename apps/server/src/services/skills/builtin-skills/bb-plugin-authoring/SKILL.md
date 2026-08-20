@@ -1889,8 +1889,10 @@ className?, leadingContent?, messageActions? }` —
 - `experimental_UrlLink` — a real anchor whose ordinary HTTP(S) activation
   follows the current client's in-app/external-browser preference. It keeps
   internal BB routes in SPA history, preserves modifier clicks, copying,
-  accessibility, and explicit anchor props, and leaves unsupported schemes to
-  normal browser behavior. Use `useBbNavigate().experimental_openUrl(url)` for
+  accessibility, and explicit anchor props, and leaves unsupported schemes and
+  explicit targets to browser behavior. A `_blank` or named target preserves
+  supplied `rel` tokens but adds `noopener noreferrer` unless `rel` explicitly
+  contains `opener`. Use `useBbNavigate().experimental_openUrl(url)` for
   buttons, menus, and effects; its boolean reports whether the current app
   accepted the intent, not whether a later OS launch completed.
 - `experimental_FileLink` — a real anchor for an explicit live file target:
@@ -1899,8 +1901,11 @@ className?, leadingContent?, messageActions? }` —
   `{ kind: "thread-storage", threadId, path }`. Ordinary activation opens the
   current surface's shared BB preview. Its lazy context menu offers the
   built-in preview, matching plugin `fileOpener`s, the preferred external
-  target, available client apps, and copy actions. Optional `location` is a
-  one-based line/column or line range. For buttons and effects use
+  target, available client apps, and copy actions. Valid targets expose an
+  encoded, scheme-safe href; traversal paths, ill-formed Unicode, and other
+  malformed runtime targets are inert in both the app and SDK test harness.
+  Optional `location` is a one-based line/column or line range. For buttons and
+  effects use
   `useBbNavigate().experimental_openFilePreview({ target, location })` or
   `.experimental_openFileExternally({ target, location })`; the boolean means
   host acceptance, not completed I/O. Every identity is explicit—never invent

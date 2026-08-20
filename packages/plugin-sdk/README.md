@@ -25,16 +25,19 @@ Use `experimental_UrlLink` for a real anchor that applies BB's current
 in-app/external-browser preference on ordinary HTTP(S) activation, or
 `useBbNavigate().experimental_openUrl(url)` for a button or menu. Internal app
 routes, modifier clicks, explicit anchor targets, and unsupported schemes stay
-native. The frontend harness records both forms in `navigateCalls` and accepts
-an `openUrl` behavior option.
+browser-owned. A `_blank` or named target preserves supplied `rel` tokens but
+adds `noopener noreferrer` unless `rel` explicitly contains `opener`, so a
+newly opened page cannot control BB by accident. The frontend harness records
+both forms in `navigateCalls` and accepts an `openUrl` behavior option.
 
 Use `experimental_FileLink` for an explicit live workspace, host, or
 thread-storage file. Ordinary activation opens the shared BB preview and its
 context menu exposes built-in/plugin viewers, preferred external opening, and
 copy actions. Valid targets expose an encoded, scheme-safe anchor href so
 modifier clicks, downloads, and copied links cannot reinterpret a file name as
-an external URL scheme; malformed runtime targets have no active href. Buttons
-and menus can call
+an external URL scheme. Malformed runtime targets—including traversal paths
+and ill-formed Unicode—have no active href and cannot record a preview in the
+frontend harness. Buttons and menus can call
 `experimental_openFilePreview({ target, location })` or
 `experimental_openFileExternally({ target, location })`; both return whether
 the current host accepted the intent. Targets never infer an ambient workspace.

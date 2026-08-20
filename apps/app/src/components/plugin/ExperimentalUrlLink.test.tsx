@@ -59,10 +59,58 @@ describe("ExperimentalUrlLink", () => {
       );
       const link = screen.getByRole("link", { name: "Example" });
       expect(link.getAttribute("target")).toBe(target);
+      expect(link.getAttribute("rel")).toBe("noopener noreferrer");
       expect(fireEvent.click(link)).toBe(true);
       expect(openUrl).not.toHaveBeenCalled();
     },
   );
+
+  it("preserves an explicit rel for a named target", () => {
+    render(
+      <MemoryRouter>
+        <ExperimentalUrlLink
+          href="https://example.com"
+          target="preview-pane"
+          rel="opener"
+        >
+          Example
+        </ExperimentalUrlLink>
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole("link", { name: "Example" }).getAttribute("rel"),
+    ).toBe("opener");
+  });
+
+  it("preserves rel tokens without sacrificing named-target isolation", () => {
+    render(
+      <MemoryRouter>
+        <ExperimentalUrlLink
+          href="https://example.com"
+          target="preview-pane"
+          rel="nofollow"
+        >
+          Example
+        </ExperimentalUrlLink>
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole("link", { name: "Example" }).getAttribute("rel"),
+    ).toBe("nofollow noopener noreferrer");
+  });
+
+  it("does not add new-context rel tokens to a same-context target", () => {
+    render(
+      <MemoryRouter>
+        <ExperimentalUrlLink href="https://example.com" target="_self">
+          Example
+        </ExperimentalUrlLink>
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole("link", { name: "Example" }).getAttribute("rel"),
+    ).toBeNull();
+  });
 
   it("routes internal links through browser history before URL preferences", () => {
     const openUrl = vi.fn(() => true);

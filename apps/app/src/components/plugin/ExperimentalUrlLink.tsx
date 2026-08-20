@@ -52,8 +52,24 @@ export function ExperimentalUrlLink({
     },
     [href, navigation, onClick],
   );
+  const normalizedTarget = target?.toLowerCase();
+  const opensNewBrowsingContext =
+    normalizedTarget !== undefined &&
+    normalizedTarget !== "" &&
+    normalizedTarget !== "_self" &&
+    normalizedTarget !== "_parent" &&
+    normalizedTarget !== "_top" &&
+    normalizedTarget !== "_unfencedtop";
+  const relTokens = rel?.split(/\s+/u).filter(Boolean) ?? [];
+  const normalizedRelTokens = relTokens.map((token) => token.toLowerCase());
   const resolvedRel =
-    target === "_blank" ? (rel ?? "noopener noreferrer") : rel;
+    opensNewBrowsingContext && !normalizedRelTokens.includes("opener")
+      ? [
+          ...relTokens,
+          ...(normalizedRelTokens.includes("noopener") ? [] : ["noopener"]),
+          ...(normalizedRelTokens.includes("noreferrer") ? [] : ["noreferrer"]),
+        ].join(" ")
+      : rel;
   if (target !== undefined) {
     return (
       <a

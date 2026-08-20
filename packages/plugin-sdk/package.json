@@ -56,6 +56,12 @@
       "import": "./dist/internal/composer-view.js",
       "default": "./dist/internal/composer-view.js"
     },
+    "./internal/file-navigation-validation": {
+      "source": "./src/internal/file-navigation-validation.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-file-navigation-validation.d.ts",
+      "import": "./dist/internal/file-navigation-validation.js",
+      "default": "./dist/internal/file-navigation-validation.js"
+    },
     "./internal/host-policy": {
       "source": "./src/internal/host-policy.ts",
       "types": "./bundled-types/bb-plugin-sdk-internal-host-policy.d.ts",

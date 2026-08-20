@@ -32,6 +32,11 @@ const entries = [
     external: [],
   },
   {
+    source: "src/internal/file-navigation-validation.ts",
+    output: "dist/internal/file-navigation-validation.js",
+    external: [],
+  },
+  {
     source: "src/internal/host-policy.ts",
     output: "dist/internal/host-policy.js",
     external: ["zod", "zod/*"],

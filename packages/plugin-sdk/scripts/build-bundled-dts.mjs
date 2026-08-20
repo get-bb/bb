@@ -53,6 +53,10 @@ const outputs = {
     pkgRoot,
     "src/internal/composer-view.ts",
   ),
+  "bb-plugin-sdk-internal-file-navigation-validation.d.ts": path.join(
+    pkgRoot,
+    "src/internal/file-navigation-validation.ts",
+  ),
   "bb-plugin-sdk-internal-host-policy.d.ts": path.join(
     pkgRoot,
     "src/internal/host-policy.ts",

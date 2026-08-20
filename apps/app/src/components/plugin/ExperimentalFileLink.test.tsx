@@ -94,4 +94,24 @@ describe("ExperimentalFileLink", () => {
     fireEvent.click(invalid);
     expect(openFilePreview).not.toHaveBeenCalled();
   });
+
+  it("renders a path with an unpaired UTF-16 surrogate as inert", () => {
+    const openFilePreview = vi.fn(() => true);
+    render(
+      <MemoryRouter>
+        <AppNavigationHostProvider capabilities={{ openFilePreview }}>
+          <ExperimentalFileLink
+            target={{ ...target, path: String.fromCharCode(0xd800) }}
+          >
+            invalid Unicode
+          </ExperimentalFileLink>
+        </AppNavigationHostProvider>
+      </MemoryRouter>,
+    );
+    const invalid = screen.getByText("invalid Unicode");
+    expect(screen.queryByRole("link", { name: "invalid Unicode" })).toBeNull();
+    expect(invalid.getAttribute("href")).toBeNull();
+    fireEvent.click(invalid);
+    expect(openFilePreview).not.toHaveBeenCalled();
+  });
 });

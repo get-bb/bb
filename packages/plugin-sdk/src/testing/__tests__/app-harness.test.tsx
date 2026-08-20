@@ -153,7 +153,11 @@ function UrlNavigationProbe() {
   return (
     <div>
       <UrlLink href="https://example.com/from-link">Open link</UrlLink>
-      <UrlLink href="https://example.com/native" target="preview-pane">
+      <UrlLink
+        href="https://example.com/native"
+        target="preview-pane"
+        rel="nofollow"
+      >
         Open in explicit target
       </UrlLink>
       <button
@@ -189,6 +193,34 @@ function FileNavigationProbe() {
         Open file externally
       </button>
     </div>
+  );
+}
+
+function MalformedFileLinkProbe() {
+  return (
+    <FileLink
+      target={{
+        kind: "workspace",
+        environmentId: "env_42",
+        path: "../secret",
+      }}
+    >
+      Open malformed file
+    </FileLink>
+  );
+}
+
+function MalformedUnicodeFileLinkProbe() {
+  return (
+    <FileLink
+      target={{
+        kind: "workspace",
+        environmentId: "env_42",
+        path: String.fromCharCode(0xd800),
+      }}
+    >
+      Open malformed Unicode file
+    </FileLink>
   );
 }
 
@@ -1174,6 +1206,9 @@ describe("renderSlot", () => {
       name: "Open in explicit target",
     });
     expect(explicitTargetLink.getAttribute("target")).toBe("preview-pane");
+    expect(explicitTargetLink.getAttribute("rel")).toBe(
+      "nofollow noopener noreferrer",
+    );
     expect(fireEvent.click(explicitTargetLink)).toBe(true);
     fireEvent.click(slot.getByRole("button", { name: "Open imperatively" }));
     expect(slot.inspection.navigateCalls).toEqual([
@@ -1207,6 +1242,36 @@ describe("renderSlot", () => {
         },
       },
     ]);
+  });
+
+  it("makes malformed file-link targets inert", () => {
+    const slot = renderSlot(
+      { component: MalformedFileLinkProbe },
+      {},
+      { openFilePreview: () => true },
+    );
+    const invalid = slot.getByText("Open malformed file");
+    expect(
+      slot.queryByRole("link", { name: "Open malformed file" }),
+    ).toBeNull();
+    expect(invalid.getAttribute("href")).toBeNull();
+    fireEvent.click(invalid);
+    expect(slot.inspection.navigateCalls).toEqual([]);
+  });
+
+  it("makes malformed Unicode file-link targets inert", () => {
+    const slot = renderSlot(
+      { component: MalformedUnicodeFileLinkProbe },
+      {},
+      { openFilePreview: () => true },
+    );
+    const invalid = slot.getByText("Open malformed Unicode file");
+    expect(
+      slot.queryByRole("link", { name: "Open malformed Unicode file" }),
+    ).toBeNull();
+    expect(invalid.getAttribute("href")).toBeNull();
+    fireEvent.click(invalid);
+    expect(slot.inspection.navigateCalls).toEqual([]);
   });
 
   it("records file-link preview and imperative external intents through one host boundary", () => {

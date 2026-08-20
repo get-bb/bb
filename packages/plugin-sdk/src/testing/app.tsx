@@ -69,6 +69,7 @@ import {
 } from "@get-bb/plugin-sdk";
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
 import { normalizePluginThreadRowStatus } from "../internal/composer-customization-validation.js";
+import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
 import { collectPluginAppRegistrations } from "../internal/plugin-app-collector.js";
 
 /**
@@ -336,12 +337,30 @@ function TestUrlLink({
   ...anchorProps
 }: ExperimentalUrlLinkProps) {
   const navigate = useSlotEnv("experimental_UrlLink").navigate;
+  const normalizedTarget = target?.toLowerCase();
+  const opensNewBrowsingContext =
+    normalizedTarget !== undefined &&
+    normalizedTarget !== "" &&
+    normalizedTarget !== "_self" &&
+    normalizedTarget !== "_parent" &&
+    normalizedTarget !== "_top" &&
+    normalizedTarget !== "_unfencedtop";
+  const relTokens = rel?.split(/\s+/u).filter(Boolean) ?? [];
+  const normalizedRelTokens = relTokens.map((token) => token.toLowerCase());
+  const resolvedRel =
+    opensNewBrowsingContext && !normalizedRelTokens.includes("opener")
+      ? [
+          ...relTokens,
+          ...(normalizedRelTokens.includes("noopener") ? [] : ["noopener"]),
+          ...(normalizedRelTokens.includes("noreferrer") ? [] : ["noreferrer"]),
+        ].join(" ")
+      : rel;
   return (
     <a
       {...anchorProps}
       href={href}
       target={target}
-      rel={target === "_blank" ? (rel ?? "noopener noreferrer") : rel}
+      rel={resolvedRel}
       onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
         onClick?.(event);
         if (
@@ -370,14 +389,19 @@ function TestFileLink({
   ...anchorProps
 }: ExperimentalFileLinkProps) {
   const navigate = useSlotEnv("experimental_FileLink").navigate;
-  const options = { target, location };
+  const options = normalizeExperimentalFileOpenOptions({ target, location });
+  const href =
+    options === null
+      ? undefined
+      : `./${encodeURIComponent(options.target.path)}`;
   return (
     <a
       {...anchorProps}
-      href={`./${encodeURIComponent(target.path)}`}
+      href={href}
       onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
         onClick?.(event);
         if (
+          options === null ||
           event.defaultPrevented ||
           event.button !== 0 ||
           event.altKey ||
