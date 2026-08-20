@@ -34,6 +34,7 @@ import {
   readRootComposeSectionTargetFromLocationState,
   readInitialPromptFromLocationState,
   requestRootComposePluginFocus,
+  resolveRootComposeProjectFileRouting,
   resolveRootComposePanelThreadId,
   shouldReplaceInitialPromptFromLocationState,
   shouldStartComposingFromLocationState,
@@ -80,6 +81,52 @@ describe("new-thread right-panel tabs", () => {
     expect(tab.isHidden).toBeUndefined();
     expect(tab.onClose).toBe(onClose);
     expect(tab.onSelect).toBe(onSelect);
+  });
+});
+
+describe("root-compose project file routing", () => {
+  it("uses a persisted opener host instead of the newly selected context", () => {
+    expect(
+      resolveRootComposeProjectFileRouting({
+        fileOpenerSource: {
+          kind: "workspace",
+          threadId: null,
+          environmentId: null,
+          projectId: "proj_opened",
+          experimental_hostId: "host_opened",
+        },
+        selectedEnvironmentId: "env_selected",
+        selectedHostId: "host_selected",
+      }),
+    ).toEqual({ environmentId: null, hostId: "host_opened" });
+  });
+
+  it("keeps primary-host routing when a persisted opener omits a host", () => {
+    expect(
+      resolveRootComposeProjectFileRouting({
+        fileOpenerSource: {
+          kind: "workspace",
+          threadId: null,
+          environmentId: null,
+          projectId: "proj_opened",
+        },
+        selectedEnvironmentId: null,
+        selectedHostId: "host_selected",
+      }),
+    ).toEqual({ environmentId: null, hostId: null });
+  });
+
+  it("retains live routing for a native project file tab", () => {
+    expect(
+      resolveRootComposeProjectFileRouting({
+        fileOpenerSource: null,
+        selectedEnvironmentId: "env_selected",
+        selectedHostId: "host_selected",
+      }),
+    ).toEqual({
+      environmentId: "env_selected",
+      hostId: "host_selected",
+    });
   });
 });
 

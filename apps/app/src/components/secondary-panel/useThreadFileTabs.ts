@@ -24,6 +24,7 @@ import { useFileOpenerPreferenceValue } from "@/lib/file-opener-preference";
 import {
   createFileOpenerTabForRequest,
   fileOpenerIdFromActionId,
+  parseFileOpenerParams,
   type FileTabViewerOverride,
 } from "@/components/plugin/file-opener-tabs";
 import type { OpenPluginPanelArgs } from "@/components/plugin/PluginPanelActions";
@@ -620,56 +621,67 @@ export function useThreadFileTabs({
     fileOpenerIdFromActionId(activePluginPanelTab.actionId) !== null
       ? (activePluginPanelTab.fileOpenerOwner ?? null)
       : null;
+  // Params own the routed file identity; the owner only restores native
+  // presentation state such as line range and workspace status.
+  const activeFileOpenerFile =
+    activeFileOpenerOwner === null || activePluginPanelTab === null
+      ? null
+      : parseFileOpenerParams(activePluginPanelTab.paramsJson);
+  const activeWorkspaceFileOpener =
+    activeFileOpenerOwner?.kind === "workspace-file-preview" &&
+    activeFileOpenerFile?.source.kind === "workspace"
+      ? activeFileOpenerFile
+      : null;
+  const activeHostFileOpener =
+    activeFileOpenerOwner?.kind === "host-file-preview" &&
+    activeFileOpenerFile?.source.kind === "host"
+      ? activeFileOpenerFile
+      : null;
+  const activeStorageFileOpener =
+    activeFileOpenerOwner?.kind === "thread-storage-file-preview" &&
+    activeFileOpenerFile?.source.kind === "thread-storage"
+      ? activeFileOpenerFile
+      : null;
 
   return {
     activateTab,
     activeBrowserTab,
+    activeFileOpenerFile,
     activeFileOpenerOwner,
     activeHostFileEnvironmentId:
       activeHostFileTab?.environmentId ??
-      (activeFileOpenerOwner?.kind === "host-file-preview"
-        ? activeFileOpenerOwner.environmentId
-        : null),
+      activeHostFileOpener?.source.environmentId ??
+      null,
     activeHostFileHostId:
       activeHostFileTab?.hostId ??
-      (activeFileOpenerOwner?.kind === "host-file-preview"
-        ? activeFileOpenerOwner.hostId
-        : null),
+      activeHostFileOpener?.source.experimental_hostId ??
+      null,
     activeHostFileLineRange:
       activeHostFileTab?.lineRange ??
       (activeFileOpenerOwner?.kind === "host-file-preview"
         ? activeFileOpenerOwner.tab.lineRange
         : null),
     activeHostFilePath:
-      activeHostFileTab?.path ??
-      (activeFileOpenerOwner?.kind === "host-file-preview"
-        ? activeFileOpenerOwner.tab.path
-        : null),
+      activeHostFileTab?.path ?? activeHostFileOpener?.path ?? null,
     activeHostFileThreadId:
       activeHostFileTab?.threadId ??
-      (activeFileOpenerOwner?.kind === "host-file-preview"
-        ? activeFileOpenerOwner.threadId
-        : null),
+      activeHostFileOpener?.source.threadId ??
+      null,
     activeStorageFileEnvironmentId:
       activeStorageFileTab?.environmentId ??
-      (activeFileOpenerOwner?.kind === "thread-storage-file-preview"
-        ? activeFileOpenerOwner.environmentId
-        : null),
+      activeStorageFileOpener?.source.environmentId ??
+      null,
     activeStorageFileLineRange:
       activeStorageFileTab?.lineRange ??
       (activeFileOpenerOwner?.kind === "thread-storage-file-preview"
         ? activeFileOpenerOwner.tab.lineRange
         : null),
     activeStorageFilePath:
-      activeStorageFileTab?.path ??
-      (activeFileOpenerOwner?.kind === "thread-storage-file-preview"
-        ? activeFileOpenerOwner.tab.path
-        : null),
+      activeStorageFileTab?.path ?? activeStorageFileOpener?.path ?? null,
     activeStorageFileThreadId:
       activeStorageFileTab?.threadId ??
-      (activeFileOpenerOwner?.kind === "thread-storage-file-preview"
-        ? activeFileOpenerOwner.threadId
-        : null),
+      activeStorageFileOpener?.source.threadId ??
+      null,
     activeWorkspaceFileLineRange:
       activeWorkspaceFileTab?.lineRange ??
       (activeFileOpenerOwner?.kind === "workspace-file-preview"
@@ -677,19 +689,14 @@ export function useThreadFileTabs({
         : null),
     activeWorkspaceFileEnvironmentId:
       activeWorkspaceFileTab?.environmentId ??
-      (activeFileOpenerOwner?.kind === "workspace-file-preview"
-        ? activeFileOpenerOwner.environmentId
-        : null),
+      activeWorkspaceFileOpener?.source.environmentId ??
+      null,
     activeWorkspaceFilePath:
-      activeWorkspaceFileTab?.path ??
-      (activeFileOpenerOwner?.kind === "workspace-file-preview"
-        ? activeFileOpenerOwner.tab.path
-        : null),
+      activeWorkspaceFileTab?.path ?? activeWorkspaceFileOpener?.path ?? null,
     activeWorkspaceFileProjectId:
       activeWorkspaceFileTab?.projectId ??
-      (activeFileOpenerOwner?.kind === "workspace-file-preview"
-        ? activeFileOpenerOwner.projectId
-        : null),
+      activeWorkspaceFileOpener?.source.projectId ??
+      null,
     activeWorkspaceFileSource:
       activeWorkspaceFileTab?.source ??
       (activeFileOpenerOwner?.kind === "workspace-file-preview"

@@ -15,6 +15,7 @@ import {
   serializeFixedPanelTabsState,
   FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
 } from "@/lib/fixed-panel-tabs-state";
+import { buildFileOpenerPanelTab } from "@/components/plugin/file-opener-tabs";
 import { useThreadFileTabs } from "./useThreadFileTabs";
 import {
   resetPluginSlotStoreForTest,
@@ -202,6 +203,77 @@ describe("useThreadFileTabs terminal pruning", () => {
 });
 
 describe("useThreadFileTabs active owners", () => {
+  it("restores a project opener from its persisted file source", () => {
+    const panelStateId = "restored-project-file-opener";
+    const openerTab = buildFileOpenerPanelTab(
+      { id: "pdf", pluginId: "pdf-preview" },
+      {
+        path: "reports/quarterly.pdf",
+        source: {
+          kind: "workspace",
+          threadId: null,
+          environmentId: null,
+          projectId: "proj_opened",
+          experimental_hostId: "host_opened",
+        },
+      },
+      {
+        environmentId: null,
+        kind: "workspace-file-preview",
+        projectId: "proj_opened",
+        tab: {
+          lineRange: null,
+          path: "reports/quarterly.pdf",
+          source: { kind: "working-tree" },
+          statusLabel: null,
+        },
+        threadId: null,
+      },
+    );
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId: panelStateId }),
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({
+          secondary: {
+            activeTabId: openerTab.id,
+            isOpen: true,
+            tabs: [openerTab],
+          },
+          lastUsedAt: Date.now(),
+        }),
+      }),
+    );
+
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId,
+        syncThreadId: null,
+        environmentId: "env_selected",
+        preserveWorkspaceTabsAcrossContexts: true,
+        projectHostId: "host_selected",
+        projectId: "proj_selected",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    expect(result.current.activeFileOpenerFile).toEqual({
+      path: "reports/quarterly.pdf",
+      source: {
+        kind: "workspace",
+        threadId: null,
+        environmentId: null,
+        projectId: "proj_opened",
+        experimental_hostId: "host_opened",
+      },
+    });
+    expect(result.current.activeWorkspaceFileEnvironmentId).toBeNull();
+    expect(result.current.activeWorkspaceFileProjectId).toBe("proj_opened");
+    expect(result.current.activeWorkspaceFilePath).toBe(
+      "reports/quarterly.pdf",
+    );
+  });
+
   it("returns owner ids for an active restored host file tab", () => {
     const threadId = "root-compose-ownerful";
     const hostTab = createHostFilePreviewFixedPanelTab({

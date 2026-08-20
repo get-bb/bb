@@ -17,7 +17,10 @@ import {
   type ThreadListEntry,
 } from "@bb/domain";
 import type { OpenInTargetContext } from "@bb/host-daemon-contract";
-import type { NewThreadRequest } from "@get-bb/plugin-sdk";
+import type {
+  NewThreadRequest,
+  PluginFileOpenerSource,
+} from "@get-bb/plugin-sdk";
 import type {
   SidebarBootstrapResponse,
   TerminalSession,
@@ -246,6 +249,33 @@ export function readSectionIdFromLocationState(state: unknown): string | null {
   }
   const sectionId = state.sectionId.trim();
   return sectionId.length > 0 ? sectionId : null;
+}
+
+export function resolveRootComposeProjectFileRouting({
+  fileOpenerSource,
+  selectedEnvironmentId,
+  selectedHostId,
+}: {
+  fileOpenerSource: PluginFileOpenerSource | null;
+  selectedEnvironmentId: string | null;
+  selectedHostId: string | null;
+}): { environmentId: string | null; hostId: string | null } {
+  // Root file tabs survive compose context changes, so a plugin opener's
+  // persisted project route must outrank the newly selected environment/host.
+  if (
+    fileOpenerSource?.kind === "workspace" &&
+    fileOpenerSource.environmentId === null &&
+    fileOpenerSource.projectId !== null
+  ) {
+    return {
+      environmentId: null,
+      hostId: fileOpenerSource.experimental_hostId ?? null,
+    };
+  }
+  return {
+    environmentId: selectedEnvironmentId,
+    hostId: selectedHostId,
+  };
 }
 
 export type RootComposeSectionTarget =
@@ -1187,6 +1217,7 @@ function RootComposeSurface({
     usePluginSlots();
   const {
     activePluginPanelTab,
+    activeFileOpenerFile,
     activeFileOpenerOwner,
     activeHostFileEnvironmentId,
     activeHostFileLineRange,
@@ -1879,7 +1910,9 @@ function RootComposeSurface({
   const activeWorkspaceFileProjectPreviewId =
     activeWorkspaceFilePath !== null &&
     activeWorkspaceFileEnvironmentId === null
-      ? (activeWorkspaceFileProjectId ?? projectId)
+      ? activeFileOpenerFile?.source.kind === "workspace"
+        ? activeFileOpenerFile.source.projectId
+        : (activeWorkspaceFileProjectId ?? projectId)
       : null;
   const serverOrigin = window.location.origin;
   const activeWorkspaceOpenContext = resolveEnvironmentOpenContext({
@@ -1898,22 +1931,33 @@ function RootComposeSurface({
         : (projects?.find(
             (project) => project.id === activeWorkspaceFileProjectPreviewId,
           )?.sources ?? []);
+  const projectFilePreviewRouting = resolveRootComposeProjectFileRouting({
+    fileOpenerSource: activeFileOpenerFile?.source ?? null,
+    selectedEnvironmentId: rootPanelEnvironmentId,
+    selectedHostId: rootProjectHostId,
+  });
+  const projectSourceRoutingHostId =
+    projectFilePreviewRouting.environmentId === null
+      ? (projectFilePreviewRouting.hostId ?? primaryHostId)
+      : null;
   const projectSourcePreviewRootPath =
     activeWorkspaceFileEnvironmentId === null &&
     activeWorkspaceFileProjectPreviewId !== null
-      ? rootPanelEnvironmentId !== null
+      ? projectFilePreviewRouting.environmentId !== null
         ? (rootPanelEnvironment?.path ?? null)
-        : rootProjectHostId !== null
+        : projectSourceRoutingHostId !== null
           ? (findLocalPathProjectSourceForHost(
               activeProjectSources,
-              rootProjectHostId,
+              projectSourceRoutingHostId,
             )?.path ?? null)
           : null
       : null;
   const projectSourcePreviewHostId =
     projectSourcePreviewRootPath === null
       ? null
-      : (rootPanelEnvironment?.hostId ?? rootProjectHostId);
+      : projectFilePreviewRouting.environmentId !== null
+        ? (rootPanelEnvironment?.hostId ?? null)
+        : projectSourceRoutingHostId;
   const projectSourceOpenContext = resolveHostOpenContext({
     hostId: projectSourcePreviewHostId,
     isLocal: isLocalDaemonHost(projectSourcePreviewHostId),
@@ -2136,8 +2180,8 @@ function RootComposeSurface({
         <LazyProjectFilePreviewTabContent
           activePath={activeWorkspaceFilePath}
           copyPath={projectFileCopyPath}
-          environmentId={rootPanelEnvironmentId}
-          hostId={rootProjectHostId}
+          environmentId={projectFilePreviewRouting.environmentId}
+          hostId={projectFilePreviewRouting.hostId}
           isPanelOpen={isSecondaryPanelOpen}
           lineRange={activeWorkspaceFileLineRange}
           onOpenInEditor={handleOpenProjectFileInEditor}
