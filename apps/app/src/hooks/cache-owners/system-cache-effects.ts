@@ -153,7 +153,10 @@ export function invalidateSystemExecutionOptions({
   });
 }
 
-/** Refresh settings and timeline projections after a General settings write. */
+/**
+ * Refresh settings, timeline projections, and model catalogs after a General
+ * settings write. Streamer mode changes which custom models the server lists.
+ */
 export function invalidateGeneralSettingsDependencies({
   queryClient,
 }: QueryClientArg): void {
@@ -163,6 +166,7 @@ export function invalidateGeneralSettingsDependencies({
       systemConfigQueryKey(),
       allThreadTimelineQueryKeyPrefix(),
       allThreadTimelineTurnSummaryDetailsQueryKeyPrefix(),
+      allSystemExecutionOptionsQueryKeyPrefix(),
     ],
   });
 }

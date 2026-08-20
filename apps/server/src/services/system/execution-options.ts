@@ -18,6 +18,7 @@ import {
   type AvailableModel,
   type ProviderInfo,
 } from "@bb/domain";
+import { getAppSettings } from "@bb/db";
 import {
   normalizeHostDaemonAcpLaunchSpec,
   type HostDaemonRetryableOnlineRpcCommand,
@@ -370,7 +371,7 @@ export async function resolveSystemProviderModels(
   const { models, selectedOnlyModels } = appendCustomModels(
     deps.providerRegistry,
     {
-      customModels: deps.config.customModels,
+      customModels: listVisibleCustomModels(deps),
       models: result.models,
       providerId: provider.id,
       selectedOnlyModels: result.selectedOnlyModels,
@@ -381,6 +382,22 @@ export async function resolveSystemProviderModels(
     selectedOnlyModels,
     modelLoadError: result.modelLoadError,
   };
+}
+
+/**
+ * The config.json custom models that model lists may show. Streamer mode hides
+ * all of them: a custom entry is often a private or early-access model id, and
+ * this is the one place every picker, the CLI, and the SDK read them from. An
+ * explicit thread model request bypasses the catalog, so a hidden model still
+ * runs when a caller names it directly.
+ */
+export function listVisibleCustomModels(
+  deps: Pick<LoggedWorkSessionDeps, "config" | "db">,
+): CustomProviderModel[] {
+  if (deps.config.customModels.length === 0) {
+    return deps.config.customModels;
+  }
+  return getAppSettings(deps.db).streamerMode ? [] : deps.config.customModels;
 }
 
 function buildCustomModel(
@@ -533,7 +550,7 @@ export async function resolveSystemExecutionOptions(
     const { models, selectedOnlyModels } = appendCustomModels(
       deps.providerRegistry,
       {
-        customModels: deps.config.customModels,
+        customModels: listVisibleCustomModels(deps),
         models: [],
         providerId: modelsProvider.id,
         selectedOnlyModels: [],
@@ -566,7 +583,7 @@ export async function resolveSystemExecutionOptions(
   const { models, selectedOnlyModels } = appendCustomModels(
     deps.providerRegistry,
     {
-      customModels: deps.config.customModels,
+      customModels: listVisibleCustomModels(deps),
       models: modelResult.models,
       providerId: modelsProvider.id,
       selectedOnlyModels: modelResult.selectedOnlyModels,

@@ -1600,6 +1600,7 @@ describe("migrate", () => {
         codexSubagentsDisabled: true,
         claudeCodeSubagentsDisabled: false,
         claudeCodeWorkflowsDisabled: true,
+        streamerMode: false,
       });
       expect(getAppKeybindingOverrides(db)).toEqual([
         { command: "thread.new", shortcut: null },

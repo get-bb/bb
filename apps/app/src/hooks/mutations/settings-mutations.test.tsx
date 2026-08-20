@@ -14,6 +14,7 @@ import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   systemConfigQueryKey,
+  systemExecutionOptionsQueryKey,
   threadTimelineQueryKey,
   threadTimelineTurnSummaryDetailsQueryKey,
 } from "../queries/query-keys";
@@ -76,7 +77,7 @@ afterEach(() => {
 });
 
 describe("general settings mutation", () => {
-  it("invalidates config and timeline projections after visibility changes", async () => {
+  it("invalidates config, timeline projections, and model catalogs after a write", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     const configKey = systemConfigQueryKey();
     const timelineKey = threadTimelineQueryKey("thread-1");
@@ -86,9 +87,17 @@ describe("general settings mutation", () => {
       sourceSeqStart: 1,
       sourceSeqEnd: 2,
     });
+    // Streamer mode changes which custom models the server lists, so cached
+    // pickers must refetch.
+    const executionOptionsKey = systemExecutionOptionsQueryKey({
+      environmentId: null,
+      hostId: "host-1",
+      providerId: "claude-code",
+    });
     queryClient.setQueryData(configKey, systemConfig());
     queryClient.setQueryData(timelineKey, {});
     queryClient.setQueryData(summaryKey, {});
+    queryClient.setQueryData(executionOptionsKey, {});
     const nextSettings = {
       ...defaultAppSettings,
       showUnhandledProviderEvents: true,
@@ -104,6 +113,9 @@ describe("general settings mutation", () => {
     expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(summaryKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(executionOptionsKey)?.isInvalidated).toBe(
+      true,
+    );
   });
 });
 

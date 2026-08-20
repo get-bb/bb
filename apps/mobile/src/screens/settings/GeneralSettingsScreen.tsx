@@ -72,6 +72,22 @@ function ConnectedGeneralSettingsScreen() {
         />
       </SettingsSection>
 
+      <SettingsSection title="Privacy">
+        <SettingsSwitchRow
+          label="Streamer mode"
+          description="Hide the custom models from config.json in every model picker, so a screen share does not show them."
+          checked={settings.streamerMode}
+          disabled={serverDisabled}
+          onCheckedChange={(value) =>
+            updateGeneral.mutate({
+              ...settings,
+              streamerMode: value,
+            })
+          }
+          testID="general-streamer-mode"
+        />
+      </SettingsSection>
+
       <SettingsSection title="Debug">
         <SettingsSwitchRow
           label="Show unhandled provider events"

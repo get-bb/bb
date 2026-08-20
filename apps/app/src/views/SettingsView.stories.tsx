@@ -204,6 +204,7 @@ function useSettingsStoryState() {
   const [richTextEditing, setRichTextEditing] = useState(false);
   const [steerActiveThreadOnEnter, setSteerActiveThreadOnEnter] =
     useState(false);
+  const [streamerMode, setStreamerMode] = useState(false);
   const [showUnhandledProviderEvents, setShowUnhandledProviderEvents] =
     useState(false);
   const [preferredAudioInputDeviceId, setPreferredAudioInputDeviceId] =
@@ -226,6 +227,7 @@ function useSettingsStoryState() {
     rewriteLocalhostLinks,
     richTextEditing,
     steerActiveThreadOnEnter,
+    streamerMode,
     showUnhandledProviderEvents,
     setAppearance,
     setDirectoryTargetId,
@@ -237,6 +239,7 @@ function useSettingsStoryState() {
     setRewriteLocalhostLinks,
     setRichTextEditing,
     setSteerActiveThreadOnEnter,
+    setStreamerMode,
     setShowUnhandledProviderEvents,
     setThemePreference,
     themePreference,
@@ -278,11 +281,14 @@ function GeneralSettingsStory({
         onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
         onRichTextEditingChange={state.setRichTextEditing}
         onSteerActiveThreadOnEnterChange={state.setSteerActiveThreadOnEnter}
+        onStreamerModeChange={state.setStreamerMode}
         openLinksInAppBrowser={state.openLinksInAppBrowser}
         rewriteLocalhostLinks={state.rewriteLocalhostLinks}
         richTextEditing={state.richTextEditing}
         steerActiveThreadOnEnter={state.steerActiveThreadOnEnter}
         steerActiveThreadOnEnterDisabled={false}
+        streamerMode={state.streamerMode}
+        streamerModeDisabled={false}
       />
       <DebugSettingsSection
         disabled={false}

@@ -94,6 +94,10 @@ message agents, or inspect projects, providers, and environments.
   keyboard keeps Return as a newline; iPadOS WebKit preserves the Enter
   shortcuts for a connected Magic Keyboard. Update the preference with
   `bb settings general steerActiveThreadOnEnter <true|false>`.
+- The `streamerMode` General preference defaults to false. Enable it to hide
+  every `customModels` entry from `~/.bb/config.json` in all model lists
+  (pickers, `bb provider models`, and the SDK) during a screen share. Update it
+  with `bb settings general streamerMode <true|false>`.
 - Settings → Keyboard records server-backed per-command shortcut overrides.
   The `showKeyboardHints` preference controls the delayed badges shown while
   holding Command or Control and defaults to true; update it with

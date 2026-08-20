@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { getAppSettings, setAppSettings } from "@bb/db";
 import {
   hostDaemonServerWsMessageSchema,
   type HostDaemonOnlineRpcRequestMessage,
@@ -854,6 +855,67 @@ describe("resolveSystemExecutionOptions", () => {
           "claude-example-preview",
         ]);
         expect(response.selectedOnlyModels).toEqual([]);
+      },
+    );
+  });
+
+  it("hides custom models while streamer mode is on and restores them when it is off", async () => {
+    await withTestHarness(
+      {
+        customModels: [
+          {
+            providerId: "claude-code",
+            model: "claude-example-preview",
+            displayName: "Example Preview",
+          },
+        ],
+      },
+      async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-execution-options-streamer-mode",
+        });
+        const catalogModel = availableModelFixture({ model: "claude-opus-5" });
+        const responder = registerProviderHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          modelsByProviderId: {
+            "claude-code": { models: [catalogModel], selectedOnlyModels: [] },
+          },
+        });
+        const listModelIds = async () =>
+          (
+            await resolveSystemExecutionOptions(harness.deps, {
+              hostId: host.id,
+              providerId: "claude-code",
+            })
+          ).models.map((model) => model.model);
+
+        expect(await listModelIds()).toEqual([
+          "claude-opus-5",
+          "claude-example-preview",
+        ]);
+
+        setAppSettings(harness.db, {
+          ...getAppSettings(harness.db),
+          streamerMode: true,
+        });
+        expect(await listModelIds()).toEqual(["claude-opus-5"]);
+
+        setAppSettings(harness.db, {
+          ...getAppSettings(harness.db),
+          streamerMode: false,
+        });
+        expect(await listModelIds()).toEqual([
+          "claude-opus-5",
+          "claude-example-preview",
+        ]);
+        // The toggle filters after the memoized probe, so it never re-probes
+        // the daemon.
+        expect(
+          responder.requests.filter(
+            (request) => request.command.type === "provider.list_models",
+          ),
+        ).toHaveLength(1);
       },
     );
   });

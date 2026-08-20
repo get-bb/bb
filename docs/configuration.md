@@ -176,6 +176,14 @@ defaults to off: Enter queues and Command+Enter steers. When enabled, Enter
 steers and Command+Enter queues. Set it with
 `bb settings general steerActiveThreadOnEnter <true|false>`.
 
+The "Streamer mode" toggle in Settings → General hides every `customModels`
+entry from `~/.bb/config.json` in all model lists: the web and mobile pickers,
+`bb provider models`, and `sdk.providers.models`. Turn it on before a screen
+share so a private or early-access model id does not appear. It defaults to
+off. The entries stay in `config.json`, and a thread that names a hidden model
+explicitly still runs with it. Set it with
+`bb settings general streamerMode <true|false>`.
+
 Outside an open typeahead menu, Shift+Enter inserts a newline. In zen mode,
 unmodified Enter also inserts a newline. On coarse-pointer touch devices, the
 software-keyboard Return path inserts a newline and the submit button sends.
@@ -431,7 +439,9 @@ an invalid entry with a warning and keeps the rest of the config.
 
 Each entry appears in `bb provider models <providerId>` and in the model
 picker after the provider's own catalog. The provider catalog wins on a model
-id collision.
+id collision. The "Streamer mode" General setting
+(`bb settings general streamerMode true`) hides every entry from these lists
+until you turn it off again.
 
 A `customModels` entry only makes the id selectable; the provider must still
 accept it. Built-in providers such as `claude-code` and `codex` accept

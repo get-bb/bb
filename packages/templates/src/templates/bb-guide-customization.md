@@ -89,6 +89,11 @@ in zen mode. On coarse-pointer touch devices, the software-keyboard Return path
 inserts a newline. iPadOS WebKit preserves these Enter shortcuts for a connected
 Magic Keyboard.
 
+Settings → General also includes `streamerMode`, which defaults to false. Turn
+it on to hide every `customModels` entry from `~/.bb/config.json` in all model
+lists (pickers, `bb provider models`, and the SDK) during a screen share. The
+entries stay in the config file.
+
   bb settings show
   bb settings general <key> <value>
   bb settings experiment <key> <value>

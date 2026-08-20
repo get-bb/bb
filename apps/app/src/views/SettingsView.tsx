@@ -146,6 +146,12 @@ export interface SteerActiveThreadOnEnterSettingsControlProps {
   onEnabledChange: (enabled: boolean) => void;
 }
 
+export interface StreamerModeSettingsControlProps {
+  disabled: boolean;
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+}
+
 export interface RichTextEditingSettingsControlProps {
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
@@ -184,11 +190,14 @@ export interface GeneralSettingsSectionProps {
   onRewriteLocalhostLinksChange: (enabled: boolean) => void;
   onRichTextEditingChange: (enabled: boolean) => void;
   onSteerActiveThreadOnEnterChange: (enabled: boolean) => void;
+  onStreamerModeChange: (enabled: boolean) => void;
   openLinksInAppBrowser: boolean;
   rewriteLocalhostLinks: boolean;
   richTextEditing: boolean;
   steerActiveThreadOnEnter: boolean;
   steerActiveThreadOnEnterDisabled: boolean;
+  streamerMode: boolean;
+  streamerModeDisabled: boolean;
 }
 
 export type DebugSettingsSectionProps =
@@ -564,6 +573,7 @@ const UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL =
   "Show unhandled provider events";
 const STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL =
   "Steer running threads on Enter";
+const STREAMER_MODE_SETTING_LABEL = "Streamer mode";
 
 export function RootComposeBehaviorSettingsControl({
   navigateToThreadAfterCreate,
@@ -595,6 +605,26 @@ export function SteerActiveThreadOnEnterSettingsControl({
         disabled={disabled}
         onCheckedChange={onEnabledChange}
         aria-label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
+      />
+    </SettingsWithControl>
+  );
+}
+
+export function StreamerModeSettingsControl({
+  disabled,
+  enabled,
+  onEnabledChange,
+}: StreamerModeSettingsControlProps) {
+  return (
+    <SettingsWithControl
+      label={STREAMER_MODE_SETTING_LABEL}
+      description="Hide the custom models from config.json in every model picker, so a screen share does not show them."
+    >
+      <Switch
+        checked={enabled}
+        disabled={disabled}
+        onCheckedChange={onEnabledChange}
+        aria-label={STREAMER_MODE_SETTING_LABEL}
       />
     </SettingsWithControl>
   );
@@ -833,11 +863,14 @@ export function GeneralSettingsSection({
   onRewriteLocalhostLinksChange,
   onRichTextEditingChange,
   onSteerActiveThreadOnEnterChange,
+  onStreamerModeChange,
   openLinksInAppBrowser,
   rewriteLocalhostLinks,
   richTextEditing,
   steerActiveThreadOnEnter,
   steerActiveThreadOnEnterDisabled,
+  streamerMode,
+  streamerModeDisabled,
 }: GeneralSettingsSectionProps) {
   return (
     <SettingsSection title="General">
@@ -870,6 +903,12 @@ export function GeneralSettingsSection({
         <RewriteLocalhostLinksSettingsControl
           enabled={rewriteLocalhostLinks}
           onEnabledChange={onRewriteLocalhostLinksChange}
+        />
+
+        <StreamerModeSettingsControl
+          disabled={streamerModeDisabled}
+          enabled={streamerMode}
+          onEnabledChange={onStreamerModeChange}
         />
       </div>
     </SettingsSection>
@@ -1273,6 +1312,17 @@ export function SettingsView() {
             updateGeneralSettingsMutation.mutate({
               ...generalSettings,
               steerActiveThreadOnEnter: enabled,
+            })
+          }
+          streamerMode={generalSettings.streamerMode}
+          streamerModeDisabled={
+            systemConfigQuery.data === undefined ||
+            updateGeneralSettingsMutation.isPending
+          }
+          onStreamerModeChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              streamerMode: enabled,
             })
           }
         />
