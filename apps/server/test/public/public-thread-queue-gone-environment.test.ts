@@ -1,4 +1,14 @@
-import { getThread, listQueuedThreadMessages } from "@bb/db";
+import {
+  archiveThread,
+  getEnvironment,
+  getThread,
+  listIdleThreadsWithQueuedMessages,
+  listQueuedThreadMessages,
+} from "@bb/db";
+import {
+  applyEnvironmentLifecycleEvent,
+  requireEnvironmentLifecycleEventApplied,
+} from "@bb/db/internal-environment-lifecycle";
 import {
   encodeClientTurnRequestIdNumber,
   threadScope,
@@ -11,6 +21,7 @@ import {
   seedEvent,
   seedHostSession,
   seedProjectWithSource,
+  seedQueuedMessage,
   seedThread,
   seedTurnStarted,
 } from "../helpers/seed.js";
@@ -192,6 +203,83 @@ describe("queued message into a thread whose environment is gone (#1789)", () =>
       );
       expect(queueResponse.status, await queueResponse.text()).toBe(201);
       expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
+    });
+  });
+
+  it("drops a thread from the auto-send sweep once its environment is gone, so pre-existing queued rows stop failing every cycle", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, { id: "host-queue-sweep" });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        managed: true,
+        projectId: project.id,
+        status: "ready",
+        workspaceProvisionType: "managed-worktree",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      });
+      seedTurnStarted(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        turnId: "turn-1",
+      });
+      // The row was queued while the environment was still ready.
+      seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: [{ type: "text", text: "queued before destroy", mentions: [] }],
+      });
+      const sweepCandidates = () =>
+        listIdleThreadsWithQueuedMessages(harness.db).map((row) => row.threadId);
+      expect(sweepCandidates()).toEqual([thread.id]);
+
+      // Archive → grace window elapses → destroy → unarchive. The queued row
+      // survives all of it.
+      archiveThread(harness.db, harness.hub, thread.id);
+      requireEnvironmentLifecycleEventApplied(
+        applyEnvironmentLifecycleEvent(harness.db, harness.hub, {
+          environmentId: environment.id,
+          event: { type: "retire.requested" },
+        }),
+      );
+      requireEnvironmentLifecycleEventApplied(
+        applyEnvironmentLifecycleEvent(harness.db, harness.hub, {
+          environmentId: environment.id,
+          event: { type: "destroy.started", destroyAttemptId: "rpc_sweep" },
+        }),
+      );
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe(
+        "destroying",
+      );
+      expect(sweepCandidates()).toEqual([]);
+      requireEnvironmentLifecycleEventApplied(
+        applyEnvironmentLifecycleEvent(harness.db, harness.hub, {
+          environmentId: environment.id,
+          event: { type: "destroy.completed", destroyAttemptId: "rpc_sweep" },
+        }),
+      );
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe(
+        "destroyed",
+      );
+      const unarchiveResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/unarchive`,
+        { method: "POST" },
+      );
+      expect(unarchiveResponse.status).toBe(200);
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        archivedAt: null,
+        status: "idle",
+      });
+
+      // The row is still there for the user to see, but the sweep no longer
+      // picks the thread up, so there is no send to fail every 10 s.
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
+      expect(sweepCandidates()).toEqual([]);
     });
   });
 });

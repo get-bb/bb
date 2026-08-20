@@ -512,6 +512,7 @@ export {
   claimNextQueuedThreadMessage,
   claimNextQueuedThreadMessageGroup,
   createQueuedThreadMessage,
+  createQueuedThreadMessageInTransaction,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   deleteClaimedQueuedThreadMessage,
   deleteClaimedQueuedThreadMessageInTransaction,

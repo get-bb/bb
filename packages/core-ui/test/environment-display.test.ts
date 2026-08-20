@@ -143,8 +143,11 @@ describe("formatEnvironmentDisplay", () => {
       expect(result.mode).toBe("direct");
     });
 
-    it("reports 'Destroyed' for a destroyed managed worktree instead of 'Provisioning' (#1789)", () => {
-      for (const status of ["destroying", "destroyed"] as const) {
+    it("reports 'Destroying'/'Destroyed' for a gone managed worktree instead of 'Provisioning' (#1789)", () => {
+      for (const [status, label] of [
+        ["destroying", "Destroying"],
+        ["destroyed", "Destroyed"],
+      ] as const) {
         const result = formatEnvironmentDisplay({
           environment: makeEnvironment({
             managed: true,
@@ -155,8 +158,8 @@ describe("formatEnvironmentDisplay", () => {
           }),
           host: localHostContext,
         });
-        expect(result.modeLabel).toBe("Destroyed");
-        expect(result.compactModeLabel).toBe("Destroyed");
+        expect(result.modeLabel).toBe(label);
+        expect(result.compactModeLabel).toBe(label);
       }
     });
 

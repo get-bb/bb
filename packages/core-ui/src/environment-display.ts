@@ -20,9 +20,9 @@ export interface EnvironmentDisplayHostContext {
 export interface EnvironmentDisplayInfo {
   /**
    * Human-readable environment label: a custom environment name when present,
-   * "Provisioning" while the environment is still being set up, "Destroyed"
-   * once it is being torn down or gone, otherwise "Working locally",
-   * "Working remotely", or "Worktree".
+   * "Provisioning" while the environment is still being set up, "Destroying"
+   * while it is torn down, "Destroyed" once it is gone, otherwise "Working
+   * locally", "Working remotely", or "Worktree".
    */
   modeLabel: string;
   /**
@@ -65,10 +65,14 @@ export function formatEnvironmentDisplay({
   // setup lifecycle honestly instead of guessing "Working locally".
   // A destroyed managed worktree also has no path. It is gone, not being set
   // up, so it must not read as "Provisioning" (#1789).
-  const isGoneDisplay =
-    environment.status === "destroying" || environment.status === "destroyed";
+  const goneLabel =
+    environment.status === "destroying"
+      ? "Destroying"
+      : environment.status === "destroyed"
+        ? "Destroyed"
+        : null;
   const isProvisioningDisplay =
-    !isGoneDisplay &&
+    goneLabel === null &&
     (environment.status === "provisioning" ||
       (environment.workspaceProvisionType === "managed-worktree" &&
         environment.path === null));
@@ -76,15 +80,15 @@ export function formatEnvironmentDisplay({
     host.locality === "remote" ? "Working remotely" : "Working locally";
   const directCompactModeLabel =
     host.locality === "remote" ? "Remote" : "Local";
-  const generatedModeLabel = isGoneDisplay
-    ? "Destroyed"
+  const generatedModeLabel = goneLabel
+    ? goneLabel
     : isProvisioningDisplay
       ? "Provisioning"
       : mode === "worktree"
         ? "Worktree"
         : directModeLabel;
-  const generatedCompactModeLabel = isGoneDisplay
-    ? "Destroyed"
+  const generatedCompactModeLabel = goneLabel
+    ? goneLabel
     : isProvisioningDisplay
       ? "Provisioning"
       : mode === "worktree"
