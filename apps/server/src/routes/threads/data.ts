@@ -619,6 +619,16 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     }
   });
 
+  get(routes.storageLocation, async (context) => {
+    const target = await requireThreadStorageTarget(deps, {
+      threadId: context.req.param("id"),
+    });
+    return context.json({
+      hostId: target.hostId,
+      storageRootPath: target.storagePath,
+    });
+  });
+
   get(routes.storageFile, async (context) =>
     serveThreadStorageRawFile(
       deps,

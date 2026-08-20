@@ -771,6 +771,16 @@ export type ThreadStorageContentQuery = z.infer<
   typeof threadStorageContentQuerySchema
 >;
 
+export const threadStorageLocationResponseSchema = z
+  .object({
+    hostId: z.string().min(1),
+    storageRootPath: z.string().min(1),
+  })
+  .strict();
+export type ThreadStorageLocationResponse = z.infer<
+  typeof threadStorageLocationResponseSchema
+>;
+
 export const threadHostFileContentQuerySchema = z.object({
   path: z.string().min(1),
 });

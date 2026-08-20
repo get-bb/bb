@@ -189,6 +189,7 @@ import type {
   ThreadStorageContentQuery,
   ThreadStorageFileListResponse,
   ThreadStorageFilesQuery,
+  ThreadStorageLocationResponse,
   ThreadStoragePathListResponse,
   ThreadStoragePathsQuery,
   ThreadTimelineQuery,
@@ -1261,6 +1262,12 @@ export const publicApiRoutes = {
         threadStorageFilesQuerySchema,
       ),
       response: jsonResponse<ThreadStorageFileListResponse>(),
+    }),
+    storageLocation: defineRoute({
+      path: "/threads/:id/thread-storage/location",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<ThreadStorageLocationResponse>(),
     }),
     storageFile: defineRoute({
       path: "/threads/:id/thread-storage/files/:filePath{.+}",

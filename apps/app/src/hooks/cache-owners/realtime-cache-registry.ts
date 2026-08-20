@@ -73,6 +73,7 @@ import {
   allProjectCommandsQueryKeyPrefix,
   allThreadStorageFilePreviewQueryKeyPrefix,
   allThreadStorageFilesQueryKeyPrefix,
+  allThreadStorageLocationsQueryKeyPrefix,
   allThreadStoragePathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
   allThreadQueryKeyPrefix,
@@ -93,6 +94,7 @@ import {
   threadsQueryKey,
   threadStorageFilePreviewQueryKeyPrefix,
   threadStorageFilesForThreadQueryKeyPrefix,
+  threadStorageLocationQueryKey,
   threadStoragePathsForThreadQueryKeyPrefix,
   threadTimelineQueryKeyPrefix,
 } from "../queries/query-keys";
@@ -1001,12 +1003,14 @@ function dirtyThreadStorageQueriesForThread({
   if (!threadId) {
     return [
       allThreadStorageFilesQueryKeyPrefix(),
+      allThreadStorageLocationsQueryKeyPrefix(),
       allThreadStoragePathsQueryKeyPrefix(),
       allThreadStorageFilePreviewQueryKeyPrefix(),
     ];
   }
   return [
     threadStorageFilesForThreadQueryKeyPrefix(threadId),
+    threadStorageLocationQueryKey(threadId),
     threadStoragePathsForThreadQueryKeyPrefix(threadId),
     threadStorageFilePreviewQueryKeyPrefix(threadId),
   ];

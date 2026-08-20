@@ -19,6 +19,7 @@ import type {
   ThreadWithIncludesResponse,
   ThreadConversationOutlineResponse,
   ThreadStorageFileListResponse,
+  ThreadStorageLocationResponse,
   ThreadStoragePathListResponse,
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsResponse,
@@ -71,6 +72,7 @@ import {
   threadQueryKey,
   threadSearchQueryKey,
   threadStorageFilesQueryKey,
+  threadStorageLocationQueryKey,
   threadStoragePathsQueryKey,
   threadStorageFilePreviewQueryKey,
   threadHostFilePreviewQueryKey,
@@ -807,6 +809,22 @@ export function useThreadStorageFiles(
     enabled,
     // Subscriptions can be absent while no UI is listening, so remount must
     // establish a fresh baseline instead of trusting cached data.
+    ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
+  });
+}
+
+export function useThreadStorageLocation(id: string, options?: QueryOptions) {
+  const enabled = (options?.enabled ?? true) && Boolean(id);
+  useThreadDetailRealtimeSubscription(id, { enabled });
+
+  return useQuery<ThreadStorageLocationResponse>({
+    queryKey: threadStorageLocationQueryKey(id),
+    queryFn: ({ signal }) =>
+      sdk.threads.storageLocation({
+        threadId: requireThreadId(id, "useThreadStorageLocation"),
+        signal,
+      }),
+    enabled,
     ...REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
   });
 }

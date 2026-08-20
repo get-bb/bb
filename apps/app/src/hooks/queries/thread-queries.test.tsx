@@ -32,6 +32,7 @@ import {
   useThreadHostFilePreview,
   useThreadMentionCandidates,
   useThreadQueuedMessages,
+  useThreadStorageLocation,
   useThreadTimeline,
 } from "./thread-queries";
 
@@ -49,6 +50,7 @@ vi.mock("@/lib/sdk", () => ({
       get: vi.fn(),
       list: vi.fn(),
       queuedMessages: { list: vi.fn() },
+      storageLocation: vi.fn(),
       timeline: vi.fn(),
     },
   },
@@ -146,6 +148,10 @@ beforeEach(() => {
   vi.mocked(sdk.threads.get).mockResolvedValue(THREAD_WITH_INCLUDES);
   vi.mocked(sdk.threads.list).mockResolvedValue([]);
   vi.mocked(sdk.threads.queuedMessages.list).mockResolvedValue([]);
+  vi.mocked(sdk.threads.storageLocation).mockResolvedValue({
+    hostId: "host-1",
+    storageRootPath: "/tmp/thread-storage/thread-1",
+  });
   vi.mocked(sdk.threads.timeline).mockResolvedValue({
     rows: [],
     activePromptMode: null,
@@ -675,6 +681,27 @@ describe("useThreadMentionCandidates", () => {
     expect(vi.mocked(sdk.threads.list).mock.calls[0]?.[0]).toEqual({
       archived: false,
       limit: 200,
+      signal: expect.any(AbortSignal),
+    });
+  });
+});
+
+describe("useThreadStorageLocation", () => {
+  it("requests only the storage location for the thread", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(() => useThreadStorageLocation("thread-1"), {
+      wrapper,
+    });
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual({
+        hostId: "host-1",
+        storageRootPath: "/tmp/thread-storage/thread-1",
+      });
+    });
+    expect(sdk.threads.storageLocation).toHaveBeenCalledWith({
+      threadId: "thread-1",
       signal: expect.any(AbortSignal),
     });
   });

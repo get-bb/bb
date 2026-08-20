@@ -30,6 +30,7 @@ import {
   threadSectionSchema,
   threadConversationOutlineResponseSchema,
   threadQueuedMessageListResponseSchema,
+  threadStorageLocationResponseSchema,
   threadTimelineResponseSchema,
   threadWithIncludesResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
@@ -4029,6 +4030,37 @@ describe("public thread data routes", () => {
         ],
         truncated: false,
         storageRootPath: threadStoragePath,
+      });
+    });
+  });
+
+  it("resolves thread storage location without a host filesystem command", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/project-source",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/project-source",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/thread-storage/location`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(
+        threadStorageLocationResponseSchema.parse(await readJson(response)),
+      ).toEqual({
+        hostId: host.id,
+        storageRootPath: `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}`,
       });
     });
   });

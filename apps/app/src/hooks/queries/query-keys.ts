@@ -37,6 +37,7 @@ export const THREAD_PENDING_INTERACTIONS_QUERY_KEY =
 export const TERMINALS_QUERY_KEY = "terminals";
 export const PROJECT_COMMANDS_QUERY_KEY = "projectCommands";
 export const THREAD_STORAGE_FILES_QUERY_KEY = "threadStorageFiles";
+export const THREAD_STORAGE_LOCATION_QUERY_KEY = "threadStorageLocation";
 export const THREAD_STORAGE_PATHS_QUERY_KEY = "threadStoragePaths";
 export const THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY = "threadStorageFilePreview";
 export const THREAD_HOST_FILE_PREVIEW_QUERY_KEY = "threadHostFilePreview";
@@ -254,6 +255,13 @@ export type ThreadStorageFilesQueryKey = readonly [
   typeof THREAD_STORAGE_FILES_QUERY_KEY,
   string,
   ThreadStorageFileListOptions,
+];
+export type ThreadStorageLocationQueryKey = readonly [
+  typeof THREAD_STORAGE_LOCATION_QUERY_KEY,
+  string,
+];
+export type AllThreadStorageLocationsQueryKeyPrefix = readonly [
+  typeof THREAD_STORAGE_LOCATION_QUERY_KEY,
 ];
 export type ThreadStoragePathsQueryKey = readonly [
   typeof THREAD_STORAGE_PATHS_QUERY_KEY,
@@ -766,6 +774,16 @@ export function threadStorageFilesQueryKey(
   options: ThreadStorageFileListOptions = DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
 ): ThreadStorageFilesQueryKey {
   return [THREAD_STORAGE_FILES_QUERY_KEY, threadId, options];
+}
+
+export function threadStorageLocationQueryKey(
+  threadId: string,
+): ThreadStorageLocationQueryKey {
+  return [THREAD_STORAGE_LOCATION_QUERY_KEY, threadId];
+}
+
+export function allThreadStorageLocationsQueryKeyPrefix(): AllThreadStorageLocationsQueryKeyPrefix {
+  return [THREAD_STORAGE_LOCATION_QUERY_KEY];
 }
 
 export function threadStoragePathsQueryKey(

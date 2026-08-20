@@ -380,6 +380,7 @@ type ExpectedThreadsKey =
   | "spawn"
   | "stop"
   | "storageFiles"
+  | "storageLocation"
   | "storagePaths"
   | "tabs"
   | "timeline"
