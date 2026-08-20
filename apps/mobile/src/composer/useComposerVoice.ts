@@ -18,8 +18,14 @@ import {
   type VoiceInputState,
 } from "@/data/composer";
 import { toast } from "@/ui";
+import { meteringToAmplitude } from "./voice-waveform-model";
 
 const KEEP_AWAKE_TAG = "bb-composer-voice";
+/** The web preset plus metering so the recording bar can draw sound waves. */
+const RECORDING_OPTIONS = {
+  ...RecordingPresets.HIGH_QUALITY,
+  isMeteringEnabled: true,
+};
 
 export interface UseComposerVoiceArgs {
   /** `/system/config` `voiceTranscriptionEnabled`. */
@@ -32,8 +38,11 @@ export interface UseComposerVoiceArgs {
 export interface ComposerVoiceController {
   enabled: boolean;
   state: VoiceInputState;
-  /** Seconds recorded so far (for the recording bar). */
-  elapsedSeconds: number;
+  /**
+   * Current input level as a waveform bar amplitude in `0..1` (the recorder's
+   * metering; 0 outside a recording). Polled by `VoiceWaveform`.
+   */
+  readLevel: () => number;
   start: () => Promise<void>;
   stop: () => Promise<void>;
   cancel: () => void;
@@ -52,13 +61,11 @@ export function useComposerVoice({
   getPromptContext,
   onTranscript,
 }: UseComposerVoiceArgs): ComposerVoiceController {
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = useAudioRecorder(RECORDING_OPTIONS);
   const transcription = useVoiceTranscription();
   const [state, setState] = useState<VoiceInputState>("idle");
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const startedAtRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stateRef = useRef<VoiceInputState>("idle");
   stateRef.current = state;
 
@@ -67,30 +74,26 @@ export function useComposerVoice({
     toast.error("Voice input failed", { description: message });
   }, []);
 
-  const stopTicking = useCallback(() => {
-    if (tickRef.current !== null) {
-      clearInterval(tickRef.current);
-      tickRef.current = null;
-    }
-  }, []);
+  const readLevel = useCallback(() => {
+    if (stateRef.current !== "recording") return 0;
+    return meteringToAmplitude(recorder.getStatus().metering);
+  }, [recorder]);
 
   const releaseRecording = useCallback(async () => {
-    stopTicking();
     deactivateKeepAwake(KEEP_AWAKE_TAG);
     try {
       await setAudioModeAsync({ allowsRecording: false });
     } catch {
       // Audio mode restore is best-effort.
     }
-  }, [stopTicking]);
+  }, []);
 
   useEffect(
     () => () => {
-      stopTicking();
       deactivateKeepAwake(KEEP_AWAKE_TAG);
       abortRef.current?.abort();
     },
-    [stopTicking],
+    [],
   );
 
   const start = useCallback(async () => {
@@ -117,13 +120,6 @@ export function useComposerVoice({
       await recorder.prepareToRecordAsync();
       recorder.record();
       startedAtRef.current = Date.now();
-      setElapsedSeconds(0);
-      tickRef.current = setInterval(() => {
-        const startedAt = startedAtRef.current;
-        if (startedAt !== null) {
-          setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
-        }
-      }, 500);
       await activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => undefined);
       setState("recording");
     } catch (error) {
@@ -209,5 +205,5 @@ export function useComposerVoice({
     if (stateRef.current === "error") setState("idle");
   }, [recorder, releaseRecording]);
 
-  return { enabled, state, elapsedSeconds, start, stop, cancel };
+  return { enabled, state, readLevel, start, stop, cancel };
 }

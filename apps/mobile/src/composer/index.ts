@@ -30,5 +30,8 @@ export {
   type ComposerVoiceController,
   type UseComposerVoiceArgs,
 } from "./useComposerVoice";
+export { VoiceBar, type VoiceBarController } from "./VoiceBar";
+export { VoiceWaveform, type VoiceWaveformProps } from "./VoiceWaveform";
+export { meteringToAmplitude } from "./voice-waveform-model";
 export { useComposerDraft, type ComposerDraft } from "@/data/composer";
 export * from "./model";
