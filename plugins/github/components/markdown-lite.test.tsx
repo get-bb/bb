@@ -61,7 +61,7 @@ After the table.`}
     slot.unmount();
   });
 
-  it("routes markdown links through the plugin navigation host", () => {
+  it("leaves explicitly targeted markdown links native", () => {
     const slot = renderSlot(
       {
         component: () => (
@@ -72,13 +72,13 @@ After the table.`}
       { openUrl: () => true },
     );
 
-    slot.getByRole("link", { name: "Open issue" }).click();
-    expect(slot.navigateCalls).toEqual([
-      {
-        method: "experimental_openUrl",
-        url: "https://github.com/get-bb/bb/issues/1",
-      },
-    ]);
+    const link = slot.getByRole("link", { name: "Open issue" });
+    expect(link.getAttribute("href")).toBe(
+      "https://github.com/get-bb/bb/issues/1",
+    );
+    expect(link.getAttribute("target")).toBe("_blank");
+    link.click();
+    expect(slot.navigateCalls).toEqual([]);
     slot.unmount();
   });
 });
