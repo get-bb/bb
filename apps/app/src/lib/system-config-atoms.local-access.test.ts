@@ -5,7 +5,10 @@ const mocks = vi.hoisted(() => ({
   fetchHostStatus: vi.fn(),
   fetchSystemConfig: vi.fn(async () => ({
     ok: true,
-    json: async () => ({ hostDaemonPort: 38_887 }),
+    json: async () => ({
+      hostDaemonPort: 38_887,
+      localHelperPorts: [38_887, 38_888],
+    }),
   })),
 }));
 
@@ -36,6 +39,7 @@ vi.mock("./ws", () => ({
 }));
 
 import {
+  hostDaemonPortAtom,
   localHostDaemonAccessStateAtom,
   localHostStatusAtom,
   requestLocalHostDaemonAccessAtom,
@@ -44,7 +48,10 @@ import {
 beforeEach(() => {
   mocks.fetchHostStatus.mockReset();
   vi.stubGlobal("window", {
-    location: { hostname: "remote.getbb.app" },
+    location: {
+      hostname: "remote.getbb.app",
+      origin: "https://remote.getbb.app",
+    },
   });
   vi.stubGlobal("navigator", {
     permissions: {
@@ -55,6 +62,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -69,14 +77,14 @@ describe("local host daemon access atoms", () => {
     expect(mocks.fetchHostStatus).not.toHaveBeenCalled();
   });
 
-  it("makes one probe when access is explicitly requested", async () => {
+  it("probes every advertised helper port when access is explicitly requested", async () => {
     mocks.fetchHostStatus.mockResolvedValue(null);
     const store = createStore();
 
     await expect(store.set(requestLocalHostDaemonAccessAtom)).resolves.toBe(
       false,
     );
-    expect(mocks.fetchHostStatus).toHaveBeenCalledExactlyOnceWith(38_887);
+    expect(mocks.fetchHostStatus.mock.calls).toEqual([[38_887], [38_888]]);
   });
 
   it("keeps successful explicit access when permission queries are unsupported", async () => {
@@ -91,6 +99,7 @@ describe("local host daemon access atoms", () => {
     mocks.fetchHostStatus.mockResolvedValue({
       connected: true,
       hostId: "host-local",
+      serverUrl: "https://remote.getbb.app",
     });
     const store = createStore();
 
@@ -103,5 +112,48 @@ describe("local host daemon access atoms", () => {
     await expect(store.get(localHostDaemonAccessStateAtom)).resolves.toBe(
       "available",
     );
+  });
+
+  it("prefers the helper enrolled with the server serving the browser", async () => {
+    mocks.fetchHostStatus.mockImplementation(async (port: number) => ({
+      connected: true,
+      hostId: port === 38_888 ? "host-browser-machine" : "host-primary",
+      serverUrl:
+        port === 38_888 ? "https://remote.getbb.app" : "http://127.0.0.1:38886",
+    }));
+    const store = createStore();
+
+    await expect(store.set(requestLocalHostDaemonAccessAtom)).resolves.toBe(
+      true,
+    );
+    await expect(store.get(hostDaemonPortAtom)).resolves.toBe(38_888);
+    await expect(store.get(localHostStatusAtom)).resolves.toMatchObject({
+      hostId: "host-browser-machine",
+    });
+  });
+
+  it("retries unreachable helpers twice at one-second intervals", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("navigator", {
+      permissions: {
+        query: vi.fn(async () => ({ state: "granted" })),
+      },
+      userAgent: "test",
+    });
+    mocks.fetchHostStatus.mockResolvedValue(null);
+    const store = createStore();
+
+    const status = store.get(localHostStatusAtom);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.fetchHostStatus).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(mocks.fetchHostStatus).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mocks.fetchHostStatus).toHaveBeenCalledTimes(4);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(status).resolves.toBeNull();
+    expect(mocks.fetchHostStatus).toHaveBeenCalledTimes(6);
   });
 });

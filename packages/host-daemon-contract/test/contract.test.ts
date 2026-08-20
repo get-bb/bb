@@ -1110,6 +1110,10 @@ describe("host-daemon command schemas", () => {
   // Version 134 keeps replayed Codex resume/fork usage snapshots off turn ids
   // bb never stored a turn/started for (token usage dropped, context usage
   // thread-scoped).
+  // Version 140 reports the daemon's browser-local helper port during session
+  // open so remote pages can discover helpers on non-primary machines.
+  // Version 139 keeps resumed Claude task notifications from claiming newly
+  // accepted human input before the SDK prompt iterator consumes it.
   // Version 137 removes the `claudeCodeMockCliTraffic` runtime option with
   // the Claude Code mock CLI traffic experiment.
   // Version 136 ships the narrow-grammar provider bridges: served bridge
@@ -1134,7 +1138,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(139);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(140);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -3165,6 +3169,7 @@ describe("host-daemon session schemas", () => {
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
+        localApiPort: 38_887,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [
           {
@@ -3188,6 +3193,7 @@ describe("host-daemon session schemas", () => {
         hasMachineCredential: false,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
+        localApiPort: null,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [],
         loadedEnvironments: [
@@ -3213,6 +3219,7 @@ describe("host-daemon session schemas", () => {
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
+        localApiPort: 38_887,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [
           {
@@ -3231,6 +3238,7 @@ describe("host-daemon session schemas", () => {
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
+        localApiPort: 38_887,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
         activeThreads: [],
       }),
@@ -3247,6 +3255,7 @@ describe("host-daemon session schemas", () => {
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
+        localApiPort: 38_887,
         protocolVersion: 0,
         activeThreads: [],
       }),

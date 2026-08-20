@@ -98,6 +98,25 @@ describe("local API server", () => {
     expect(openInTarget).toHaveBeenCalledTimes(2);
   });
 
+  it("allows the exact remote server origin the daemon is enrolled with", async () => {
+    server = await startLocalApiServer({
+      hostId: "host-remote",
+      localApiConfig: createLocalApiConfig(),
+      serverUrl: "https://remote-bb.example.test/projects/proj_1",
+      serverPort: 0,
+      getConnected: () => true,
+    });
+
+    const response = await fetch(`http://localhost:${server.port}/status`, {
+      headers: { Origin: "https://remote-bb.example.test" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://remote-bb.example.test",
+    );
+  });
+
   // A rebound page sends a matching Origin and Host pair, which the self-origin
   // branch previously accepted as the daemon's own origin. This API binds
   // loopback, so a genuine caller always addresses it by a loopback name or a

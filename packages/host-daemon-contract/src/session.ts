@@ -114,6 +114,8 @@ export const hostDaemonSessionOpenRequestSchema = z.object({
   hasMachineCredential: z.boolean(),
   platform: hostPlatformSchema,
   dataDir: z.string().min(1),
+  /** Loopback editor-helper port, or null when this daemon exposes no full local API. */
+  localApiPort: z.number().int().min(1).max(65_535).nullable(),
   // Accept any version at the schema boundary so the server can return an
   // actionable protocol mismatch instead of an opaque validation failure.
   protocolVersion: z.number().int().positive(),

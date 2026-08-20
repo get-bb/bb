@@ -142,6 +142,7 @@ const systemConfig = {
   pluginThemes: [],
   featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
   hostDaemonPort: null,
+  localHelperPorts: [],
   serverUrl: "http://localhost:38886",
   primaryHostId: HOST_IDS.local,
   primaryHostPlatform: "darwin",

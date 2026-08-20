@@ -43,10 +43,12 @@ message agents, or inspect projects, providers, and environments.
 
 ## Remote Client
 
-- `bb-app client ssh-target set <server-origin> <ssh-target>` configures the
+- `bb-app client ssh-target set <server-origin> <ssh-target> [--host-id <id>]`
+  configures the
   local helper to open files from a remote bb server in local editors. The SSH
   target is the value that works after `ssh`, such as `devbox` or
-  `user@devbox`.
+  `user@devbox`. Pass the work-host ID from `bb machine list` when the server
+  has more than one machine; single-machine servers are selected automatically.
 - These mappings live on the client machine in `<dataDir>/client.json`;
   the CLI resolves the server's host ID when writing the mapping, and the remote
   server does not read the file.

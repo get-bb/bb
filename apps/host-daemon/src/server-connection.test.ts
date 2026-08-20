@@ -173,6 +173,7 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     hostName: "Server Connection Test Host",
     hostType: "persistent",
     instanceId: "instance-server-connection-test",
+    localApiPort: 38_887,
     logger,
     ...(args.machineCredential !== undefined
       ? { machineCredential: args.machineCredential }
@@ -306,7 +307,10 @@ describe("ServerConnection", () => {
     try {
       await fixture.connection.start();
       expect(fixture.openSession).toHaveBeenCalledWith(
-        expect.objectContaining({ connectMachineId: "machine-cloud-1" }),
+        expect.objectContaining({
+          connectMachineId: "machine-cloud-1",
+          localApiPort: 38_887,
+        }),
       );
     } finally {
       await fixture.connection.shutdown();

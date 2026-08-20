@@ -117,6 +117,7 @@ describe("public host management", () => {
             hostType: "persistent",
             instanceId: "instance-cloud-2",
             loadedEnvironments: [],
+            localApiPort: 38_888,
             platform: "linux",
             protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           }),

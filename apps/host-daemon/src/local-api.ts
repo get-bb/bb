@@ -187,7 +187,7 @@ async function resolveOpenPathInTargetArgs({
   if (sshAuthority === null) {
     throw new WorkspaceOpenTargetError({
       code: "remote_mapping_missing",
-      message: `No SSH target configured for host ${request.context.hostId} on ${serverOrigin}. Run: bb-app client ssh-target set ${serverOrigin} <ssh-target>`,
+      message: `No SSH target configured for host ${request.context.hostId} on ${serverOrigin}. Run: bb-app client ssh-target set ${serverOrigin} <ssh-target> --host-id ${request.context.hostId}`,
     });
   }
 
@@ -224,6 +224,15 @@ export async function startLocalApiServer(
     value: options.devAppPort,
   });
   const allowedCorsOrigins = new Set<string>(buildLocalAppOrigins(originArgs));
+  // A daemon enrolled with a remote bb already trusts that server for command
+  // traffic. Trust its exact web origin for loopback editor-helper calls too,
+  // so an enrolled browser machine needs no duplicate BB_APP_URL setting.
+  try {
+    allowedCorsOrigins.add(new URL(options.serverUrl).origin);
+  } catch {
+    // startHostDaemon validates ordinary server URLs. Keep this boundary
+    // defensive for injected test/custom callers instead of failing startup.
+  }
   const isAllowedAppOrigin = async (
     origin: string,
     requestUrl: string,

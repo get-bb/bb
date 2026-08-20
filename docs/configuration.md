@@ -41,10 +41,14 @@ bb server in local editors. The SSH target is the value that works after
 `ssh`, such as `devbox`, `user@devbox`, or a `Host` entry from `~/.ssh/config`:
 
 ```bash
-npx bb-app client ssh-target set https://bb.example.test devbox
+npx bb-app client ssh-target set https://bb.example.test devbox --host-id host_abc
 npx bb-app client ssh-target list
-npx bb-app client ssh-target remove https://bb.example.test
+npx bb-app client ssh-target remove https://bb.example.test --host-id host_abc
 ```
+
+Use `--host-id` when the server has more than one machine; copy the ID from
+`bb machine list`. Omit it to preserve the single-machine auto-selection for
+`set`, or to remove every mapping for that server with `remove`.
 
 ## Precedence
 

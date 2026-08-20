@@ -1,3 +1,8 @@
+// Version 140 reports each daemon's browser-local editor helper port during
+// session open. The server uses those ports to let a remote browser discover
+// the helper on its own machine instead of assuming every machine uses the
+// primary server host's port.
+//
 // Version 139 keeps a resumed Claude session's provider-owned task-notification
 // result from claiming a newly accepted human input, and delays turn/start
 // acceptance until Claude's SDK prompt iterator consumes the input. Older
@@ -66,7 +71,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 139 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 140 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

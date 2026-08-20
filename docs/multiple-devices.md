@@ -57,8 +57,14 @@ sure bb is running on the browser device. Verify `ssh <work-host>` succeeds
 there, then map the server/work-host to that SSH target:
 
 ```bash
-npx bb-app client ssh-target set <bb-server-origin> <ssh-target>
+npx bb-app client ssh-target set <bb-server-origin> <ssh-target> --host-id <work-host-id>
 ```
+
+Copy the work-host ID from `bb machine list`. `--host-id` may be omitted when
+the server has exactly one machine. A browser running on an enrolled execution
+machine needs no SSH mapping for that same machine: connected daemons report
+their helper ports to the server, and the browser discovers the matching local
+helper after you enable integration.
 
 Then open Settings → Files in that browser and enable **Local editor
 integration**. The browser may ask once for permission to connect to software
@@ -69,7 +75,9 @@ If Settings reports that it cannot connect to the helper:
 
 1. Confirm the bb desktop app or `npx bb-app` is running on the browser device.
 2. Confirm the browser allows local network access for the bb page.
-3. For a custom HTTPS or Tailscale origin, configure that exact origin with
+3. A helper enrolled with this exact server trusts its origin automatically.
+   For a separate local bb helper serving a custom HTTPS or Tailscale browser,
+   configure that exact origin with
    `npx bb-app config set BB_APP_URL <origin>` and restart bb.
 4. Return to Settings → Files and choose **Retry**.
 

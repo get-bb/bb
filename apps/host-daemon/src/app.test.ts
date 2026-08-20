@@ -802,6 +802,7 @@ describe("createHostDaemonApp", () => {
         .filter((request) => request.pathname === "/internal/session/open")
         .map((request) => JSON.parse(request.body ?? "{}"));
       expect(openSessionBody[0]).toMatchObject({
+        localApiPort: null,
         loadedEnvironments: [{ environmentId: "env-app-retired" }],
       });
     } finally {

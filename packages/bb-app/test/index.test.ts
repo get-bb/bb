@@ -1116,6 +1116,55 @@ describe("bb-app launcher", () => {
         dataDir,
         "client",
         "ssh-target",
+        "set",
+        server.url,
+        "buildbox",
+        "--host-id",
+        "host_2",
+      ]);
+      expect(
+        server.requests().filter((request) => request.includes("/hosts")),
+      ).toHaveLength(1);
+      expect(
+        JSON.parse(readFileSync(join(dataDir, "client.json"), "utf8")),
+      ).toMatchObject({
+        servers: {
+          [server.url]: {
+            hosts: {
+              host_1: { sshAuthority: "mbp-intel" },
+              host_2: { sshAuthority: "buildbox" },
+            },
+          },
+        },
+      });
+
+      await runBbApp([
+        "--data-dir",
+        dataDir,
+        "client",
+        "ssh-target",
+        "remove",
+        server.url,
+        "--host-id",
+        "host_2",
+      ]);
+      expect(
+        JSON.parse(readFileSync(join(dataDir, "client.json"), "utf8")),
+      ).toEqual({
+        servers: {
+          [server.url]: {
+            hosts: {
+              host_1: { sshAuthority: "mbp-intel" },
+            },
+          },
+        },
+      });
+
+      await runBbApp([
+        "--data-dir",
+        dataDir,
+        "client",
+        "ssh-target",
         "remove",
         server.url,
       ]);

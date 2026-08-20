@@ -49,9 +49,8 @@ const THREAD_LIST_EVENTS_APPENDED_COALESCE_MS = 1_000;
  * Event types the thread-list client path reacts to individually (prompt
  * history recall, pull-request refresh), so they bypass coalescing.
  */
-const LIST_RELEVANT_THREAD_EVENT_TYPES: ReadonlySet<ThreadEventType> = new Set<
-  ThreadEventType
->(["client/turn/requested", "turn/completed"]);
+const LIST_RELEVANT_THREAD_EVENT_TYPES: ReadonlySet<ThreadEventType> =
+  new Set<ThreadEventType>(["client/turn/requested", "turn/completed"]);
 
 interface HubSocket {
   close(code?: number, reason?: string): void;
@@ -195,7 +194,16 @@ export class NotificationHub implements DbNotifier {
   private readonly clientSocketsByKey = new Map<string, Set<HubSocket>>();
   private readonly daemonSessions = new Map<
     string,
-    { hostId: string; platform: HostPlatform; socket: HubSocket }
+    {
+      hostId: string;
+      localApiPort: number | null;
+      platform: HostPlatform;
+      socket: HubSocket;
+    }
+  >();
+  private readonly daemonSessionLocalApiPortsBySessionId = new Map<
+    string,
+    number | null
   >();
   private readonly daemonSessionPlatformsBySessionId = new Map<
     string,
@@ -507,6 +515,13 @@ export class NotificationHub implements DbNotifier {
     this.daemonSessionPlatformsBySessionId.set(sessionId, platform);
   }
 
+  recordDaemonSessionLocalApiPort(
+    sessionId: string,
+    localApiPort: number | null,
+  ): void {
+    this.daemonSessionLocalApiPortsBySessionId.set(sessionId, localApiPort);
+  }
+
   registerDaemon(sessionId: string, hostId: string, socket: HubSocket): void {
     this.cancelPendingDaemonDisconnect(sessionId);
     const existingSessionId = this.daemonSessionIdsByHost.get(hostId);
@@ -516,6 +531,8 @@ export class NotificationHub implements DbNotifier {
     }
     this.daemonSessions.set(sessionId, {
       hostId,
+      localApiPort:
+        this.daemonSessionLocalApiPortsBySessionId.get(sessionId) ?? null,
       platform:
         this.daemonSessionPlatformsBySessionId.get(sessionId) ?? "unknown",
       socket,
@@ -535,6 +552,7 @@ export class NotificationHub implements DbNotifier {
       return;
     }
     this.daemonSessions.delete(sessionId);
+    this.daemonSessionLocalApiPortsBySessionId.delete(sessionId);
     this.daemonSessionPlatformsBySessionId.delete(sessionId);
     this.rejectHostOnlineRpcWaitersForSession(sessionId);
     if (this.daemonSessionIdsByHost.get(entry.hostId) === sessionId) {
@@ -561,6 +579,16 @@ export class NotificationHub implements DbNotifier {
       return null;
     }
     return this.daemonSessions.get(sessionId)?.platform ?? null;
+  }
+
+  listDaemonLocalApiPorts(): number[] {
+    const ports = new Set<number>();
+    for (const session of this.daemonSessions.values()) {
+      if (session.localApiPort !== null) {
+        ports.add(session.localApiPort);
+      }
+    }
+    return [...ports].sort((left, right) => left - right);
   }
 
   async waitForDaemonForHost(
@@ -1069,7 +1097,10 @@ export class NotificationHub implements DbNotifier {
       console.error("Skipping invalid realtime broadcast", parseResult.error);
       return;
     }
-    this.notifyThreadListOnlySockets(threadId, JSON.stringify(parseResult.data));
+    this.notifyThreadListOnlySockets(
+      threadId,
+      JSON.stringify(parseResult.data),
+    );
   }
 
   /** Sockets subscribed to the thread list but not to this thread's detail. */

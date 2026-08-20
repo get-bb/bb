@@ -380,6 +380,7 @@ export class ServerConnection {
         hostType: this.options.hostType,
         connectMachineId: this.options.connectMachineId,
         dataDir: this.options.dataDir,
+        localApiPort: this.options.localApiPort,
         activeThreads: this.options.getActiveThreads?.() ?? [],
         loadedEnvironments: this.options.getLoadedEnvironments?.() ?? [],
       });

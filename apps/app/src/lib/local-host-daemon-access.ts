@@ -16,7 +16,7 @@ export interface LocalNetworkPermissionQuery {
 }
 
 interface ResolveLocalHostDaemonAccessArgs {
-  configuredPort: number | null;
+  configuredPorts: readonly number[];
   hostname: string | null;
   isDesktop: boolean;
   permissions: LocalNetworkPermissionQuery | null;
@@ -65,13 +65,13 @@ async function queryLoopbackPermissionState(
 }
 
 export async function resolveLocalHostDaemonAccess({
-  configuredPort,
+  configuredPorts,
   hostname,
   isDesktop,
   permissions,
   sessionAccessGranted,
 }: ResolveLocalHostDaemonAccessArgs): Promise<LocalHostDaemonAccessState> {
-  if (configuredPort === null) {
+  if (configuredPorts.length === 0) {
     return "unavailable";
   }
 
@@ -96,9 +96,9 @@ export async function resolveLocalHostDaemonAccess({
   }
 }
 
-export function resolveLocalHostDaemonProbePort(
-  configuredPort: number | null,
+export function resolveLocalHostDaemonProbePorts(
+  configuredPorts: readonly number[],
   accessState: LocalHostDaemonAccessState,
-): number | null {
-  return accessState === "available" ? configuredPort : null;
+): readonly number[] {
+  return accessState === "available" ? configuredPorts : [];
 }

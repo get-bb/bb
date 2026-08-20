@@ -120,6 +120,7 @@ describe("server skeleton", () => {
           hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-data",
+          localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
         }),

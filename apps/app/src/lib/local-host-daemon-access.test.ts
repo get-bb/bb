@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   resolveLocalHostDaemonAccess,
-  resolveLocalHostDaemonProbePort,
+  resolveLocalHostDaemonProbePorts,
   type LocalNetworkPermissionQuery,
 } from "./local-host-daemon-access";
 
@@ -17,7 +17,7 @@ describe("local host daemon access", () => {
 
     await expect(
       resolveLocalHostDaemonAccess({
-        configuredPort: null,
+        configuredPorts: [],
         hostname: "bb.example.com",
         isDesktop: false,
         permissions: createPermissionQuery(query),
@@ -35,7 +35,7 @@ describe("local host daemon access", () => {
 
     await expect(
       resolveLocalHostDaemonAccess({
-        configuredPort: 38_887,
+        configuredPorts: [38_887],
         ...context,
         permissions: createPermissionQuery(query),
         sessionAccessGranted: false,
@@ -60,7 +60,7 @@ describe("local host daemon access", () => {
 
       await expect(
         resolveLocalHostDaemonAccess({
-          configuredPort: 38_887,
+          configuredPorts: [38_887],
           hostname: "bb.example.com",
           isDesktop: false,
           permissions: createPermissionQuery(query),
@@ -85,7 +85,7 @@ describe("local host daemon access", () => {
 
     await expect(
       resolveLocalHostDaemonAccess({
-        configuredPort: 38_887,
+        configuredPorts: [38_887],
         hostname: "bb.example.com",
         isDesktop: false,
         permissions: createPermissionQuery(query),
@@ -105,7 +105,7 @@ describe("local host daemon access", () => {
 
     await expect(
       resolveLocalHostDaemonAccess({
-        configuredPort: 38_887,
+        configuredPorts: [38_887],
         hostname: "bb.example.com",
         isDesktop: false,
         permissions: createPermissionQuery(query),
@@ -119,7 +119,7 @@ describe("local host daemon access", () => {
 
     await expect(
       resolveLocalHostDaemonAccess({
-        configuredPort: 38_887,
+        configuredPorts: [38_887],
         hostname: "bb.example.com",
         isDesktop: false,
         permissions: createPermissionQuery(query),
@@ -130,11 +130,15 @@ describe("local host daemon access", () => {
   });
 
   it("only exposes the helper port when probing is available", () => {
-    expect(resolveLocalHostDaemonProbePort(38_887, "available")).toBe(38_887);
     expect(
-      resolveLocalHostDaemonProbePort(38_887, "permission-required"),
-    ).toBeNull();
-    expect(resolveLocalHostDaemonProbePort(38_887, "denied")).toBeNull();
-    expect(resolveLocalHostDaemonProbePort(38_887, "unsupported")).toBeNull();
+      resolveLocalHostDaemonProbePorts([38_887, 38_888], "available"),
+    ).toEqual([38_887, 38_888]);
+    expect(
+      resolveLocalHostDaemonProbePorts([38_887], "permission-required"),
+    ).toEqual([]);
+    expect(resolveLocalHostDaemonProbePorts([38_887], "denied")).toEqual([]);
+    expect(resolveLocalHostDaemonProbePorts([38_887], "unsupported")).toEqual(
+      [],
+    );
   });
 });

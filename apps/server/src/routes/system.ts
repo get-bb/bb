@@ -154,6 +154,12 @@ export function registerSystemRoutes(
   async function buildSystemConfigResponse(serverUrl: string) {
     const keybindingOverrides = readAppKeybindingOverrides();
     const primaryHostId = resolvePrimaryHostId(deps);
+    const localHelperPorts = [
+      ...new Set([
+        deps.config.hostDaemonPort,
+        ...deps.hub.listDaemonLocalApiPorts(),
+      ]),
+    ];
     return {
       generalSettings: getAppSettings(deps.db),
       keybindings: applyAppKeybindingOverrides(
@@ -171,6 +177,7 @@ export function registerSystemRoutes(
       pluginThemes: pluginService.listThemes(),
       featureFlags: deps.config.featureFlags,
       hostDaemonPort: deps.config.hostDaemonPort,
+      localHelperPorts,
       serverUrl,
       primaryHostId,
       primaryHostPlatform:
