@@ -19,6 +19,7 @@ import {
   pruneSidebarSplitStorage,
   reconcileSidebarSplitState,
   reorderSidebarTab,
+  replaceSidebarTab,
   resizeSidebarSplit,
   selectSidebarTab,
   serializeSidebarSplitState,
@@ -291,6 +292,28 @@ describe("sidebar split layout", () => {
     expect(
       getSidebarGroupForPane(restored, restored.layout.focusedPaneId)?.tabIds,
     ).toContain("terminal-a");
+  });
+
+  it("keeps a New Tab replacement in its existing split pane", () => {
+    const newTabId = "new-tab:launcher";
+    const terminalTabId = "terminal:term-a:none";
+    const split = splitOff(
+      createSidebarSplitState([SIDEBAR_FIXED_INFO_TAB_ID, newTabId], newTabId),
+      newTabId,
+      "bottom",
+    );
+    const replaced = replaceSidebarTab(split, newTabId, terminalTabId);
+    const reconciled = reconcileSidebarSplitState(
+      replaced,
+      [SIDEBAR_FIXED_INFO_TAB_ID, terminalTabId],
+      terminalTabId,
+    );
+
+    expect(countPanes(reconciled.layout.root)).toBe(2);
+    expect(
+      getSidebarGroupForPane(reconciled, reconciled.layout.focusedPaneId)
+        ?.tabIds,
+    ).toEqual([terminalTabId]);
   });
 
   it("preserves browser, terminal, and plugin tabs across persistence", () => {

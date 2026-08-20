@@ -607,7 +607,7 @@ function NewTabPanelStory({
         requestedMergeBaseBranch="main"
         environmentId={ENVIRONMENT_ID}
         fileTabs={fileTabs}
-        fileTabContent={content}
+        renderTabContent={() => content}
         isOpen
         metadataContent={null}
         onCollapse={noop}

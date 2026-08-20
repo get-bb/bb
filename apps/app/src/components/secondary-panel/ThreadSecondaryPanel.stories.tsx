@@ -349,7 +349,9 @@ function FileTabsShellInner({
         isOpen
         metadataContent={<RepresentativeInfoContent />}
         fileTabs={fileTabs}
-        fileTabContent={activeFilename ? representativeFileContent : null}
+        renderTabContent={() =>
+          activeFilename ? representativeFileContent : null
+        }
         showGitDiffTab
         onPanelFocus={noop}
         onPanelChange={(panel) => {
@@ -456,7 +458,7 @@ function TerminalTabsShellInner({
         isOpen
         metadataContent={<RepresentativeInfoContent />}
         fileTabs={fileTabs}
-        fileTabContent={
+        renderTabContent={() =>
           activeTerminal ? (
             <RepresentativeTerminalContent title={activeTerminal.title} />
           ) : null
@@ -563,23 +565,16 @@ function ProductionSplitPanesStory() {
             isOpen
             metadataContent={<RepresentativeInfoContent />}
             fileTabs={fileTabs}
-            fileTabContent={
-              activeTab.kind === "terminal" ? (
-                <RepresentativeTerminalContent title="pnpm dev" />
-              ) : (
-                representativeFileContent
-              )
-            }
             splitPanelStateId={SPLIT_STORY_PANEL_STATE_ID}
-            splitTabModels={SPLIT_STORY_FILE_TABS}
-            renderSplitTabContent={(tab) =>
+            tabModels={SPLIT_STORY_FILE_TABS}
+            renderTabContent={(tab) =>
               tab.kind === "terminal" ? (
                 <RepresentativeTerminalContent title="pnpm dev" />
               ) : (
                 representativeFileContent
               )
             }
-            splitTabContentFillsRegion={(tab) => tab.kind === "terminal"}
+            tabContentFillsRegion={(tab) => tab.kind === "terminal"}
             showGitDiffTab
             onPanelFocus={noop}
             onPanelChange={(panel) =>

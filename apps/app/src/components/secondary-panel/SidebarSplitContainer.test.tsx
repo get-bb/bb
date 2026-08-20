@@ -231,6 +231,55 @@ describe("SidebarSplitContainer", () => {
     ).toEqual(["true:true", "false:false"]);
   });
 
+  it("keeps an active New Tab replacement in the same split pane", async () => {
+    persistState(createStackedPaneState());
+
+    function Harness() {
+      const [terminalOpen, setTerminalOpen] = useState(false);
+      const tabs = terminalOpen
+        ? [
+            TABS[0] as SidebarSplitTabDescriptor,
+            { id: "terminal-a", label: "Terminal" },
+          ]
+        : TABS;
+      return (
+        <>
+          <button type="button" onClick={() => setTerminalOpen(true)}>
+            Start terminal
+          </button>
+          <SidebarSplitContainer
+            activeTabId={terminalOpen ? "terminal-a" : "tab-b"}
+            onActivateTab={vi.fn()}
+            onGlobalTabReorder={vi.fn()}
+            panelStateId={PANEL_STATE_ID}
+            renderPane={({ group, paneId }) => (
+              <div data-testid={`active-tab-${paneId}`}>
+                {group.activeTabId}
+              </div>
+            )}
+            tabs={tabs}
+          />
+        </>
+      );
+    }
+
+    render(
+      <SidebarProvider>
+        <TooltipProvider>
+          <Harness />
+        </TooltipProvider>
+      </SidebarProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Start terminal" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getAllByTestId(/active-tab-/).map((tab) => tab.textContent),
+      ).toEqual(["tab-a", "terminal-a"]),
+    );
+    expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(2);
+  });
+
   it.each([
     ["left", "flex-row", "tab-a,tab-b"],
     ["right", "flex-row", "tab-b,tab-a"],

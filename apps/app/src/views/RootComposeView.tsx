@@ -1233,7 +1233,6 @@ function RootComposeSurface({
     activeWorkspaceFileProjectId,
     activeWorkspaceFileSource,
     activeWorkspaceFileStatusLabel,
-    activeBrowserTab,
     browserTabs,
     activateTab,
     closeTab,
@@ -1542,27 +1541,38 @@ function RootComposeSurface({
     });
   }, [browserTabIds, openBrowserTabAndReveal]);
   const renderBrowserDeck = useCallback(
-    ({ canShowNativeBrowserView }: { canShowNativeBrowserView: boolean }) => {
+    ({
+      activeBrowserTabId,
+      canHandleBrowserCommands,
+      canShowNativeBrowserView,
+      onNativeFocus,
+    }: {
+      activeBrowserTabId: string | null;
+      canHandleBrowserCommands: boolean;
+      canShowNativeBrowserView: boolean;
+      onNativeFocus: () => void;
+    }) => {
       if (rootPanelThreadId === null) {
         return null;
       }
       return (
         <LazyBrowserTabDeck
           browserTabs={browserTabs}
-          activeBrowserTabId={activeBrowserTab?.id ?? null}
+          activeBrowserTabId={activeBrowserTabId}
           addressFocusRequest={browserAddressFocusRequest}
           onAddressFocusRequestConsumed={
             handleBrowserAddressFocusRequestConsumed
           }
           environmentId={rootPanelEnvironmentId}
           canShowNativeBrowserView={canShowNativeBrowserView}
+          canHandleBrowserCommands={canHandleBrowserCommands}
+          onNativeFocus={onNativeFocus}
           threadId={rootPanelThreadId}
           onUpdate={updateBrowserTab}
         />
       );
     },
     [
-      activeBrowserTab?.id,
       browserAddressFocusRequest,
       browserTabs,
       handleBrowserAddressFocusRequestConsumed,
@@ -2127,7 +2137,7 @@ function RootComposeSurface({
     ) : (
       original
     );
-  const fileTabContent: ReactNode =
+  const activePanelTabContent: ReactNode =
     activeTerminalId && rootPanelTerminalTarget ? (
       <LazyThreadTerminalPanel
         autoFocus={shouldAutoFocusTerminal}
@@ -2241,7 +2251,7 @@ function RootComposeSurface({
         }}
       />
     ) : undefined;
-  const isBrowserTabActive = activeBrowserTab !== null;
+  const renderRootPanelTabContent = () => activePanelTabContent;
   const rootPanelMetadataContent = useMemo(
     () => (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pt-1">
@@ -2482,6 +2492,47 @@ function RootComposeSurface({
               ? openBrowserTabAndReveal
               : null
           }
+          isSecondaryPanelOpen={isSecondaryPanelOpen}
+          onToggleSecondaryPanel={handleToggleSecondaryPanel}
+          panelTogglePositionClassName={panelTogglePositionClassName}
+          secondaryPanel={{
+            activeTab: activeFixedSecondaryTab,
+            canUseGitUi: false,
+            environmentId: rootPanelEnvironmentId ?? undefined,
+            metadataContent: rootPanelMetadataContent,
+            workspaceRootPath:
+              rootPanelEnvironment?.path ??
+              (rootPanelTerminalTarget?.kind === "host_path"
+                ? (rootPanelTerminalTarget.cwd ?? undefined)
+                : undefined),
+            fileTabs,
+            tabModels: syncedOrderedSecondaryFileTabs,
+            renderTabContent: renderRootPanelTabContent,
+            tabContentFillsRegion: (tab) =>
+              tab.kind === "plugin-panel" &&
+              (tab.fileOpenerOwner !== undefined ||
+                rootPanelNewThreadPanelActions.find(
+                  (candidate) =>
+                    candidate.pluginId === tab.pluginId &&
+                    candidate.id === tab.actionId,
+                )?.layout === "flush"),
+            renderBrowserDeck,
+            isOpen: isSecondaryPanelOpen,
+            fixedTabs: [],
+            // The shell, tab strip, launcher, resize, and drawer behavior are
+            // shared with threads. Info, Diff, and conversation full-screen
+            // stay thread-only because no thread exists on this surface yet.
+            showConversationCollapseControl: false,
+            inlinePanelToggle: panelTogglePlacement.inlinePanelToggle,
+            onClose: closeSecondaryPanel,
+            onCollapse: closeSecondaryPanel,
+            onOpenFileInEditor: handleOpenWorkspaceFileInEditor,
+            onFileTabReorder: reorderFileTab,
+            onOpenNewTab: handleOpenNewTab,
+            onOpenFilePreview: handleOpenFilePreview,
+            onSelectionAddToChat: handleRootPanelSelectionAddToChat,
+            onPanelFocus: handleSecondaryPanelFocus,
+          }}
         >
           <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
             <RootComposeSecondaryContent

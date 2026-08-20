@@ -1607,8 +1607,10 @@ Slot props contracts (versioned, additive-only):
   `{ id, panelId, title, icon, component, layout?, experimental_target? }`.
   BB opens the
   first fixed tab on the page's first wide-layout visit, but remembers a later
-  user close. Only the active fixed-tab component is mounted, and closing the
-  panel unmounts it. It receives the same `{ subPath }` as the main page. `layout: "padded"` (the default) gives it
+  user close. One tab is active per visible split pane, so multiple fixed-tab
+  components can be mounted concurrently. A component mounts only while its
+  tab is active in a visible pane; closing the panel unmounts it. It receives
+  the same `{ subPath }` as the main page. `layout: "padded"` (the default) gives it
   host padding and scrolling; `layout: "flush"` gives it the full panel content
   region so it can own both. Fixed tabs add content to the shared panel; they
   do not replace its native chrome, Browser, Terminal, or keyboard commands.

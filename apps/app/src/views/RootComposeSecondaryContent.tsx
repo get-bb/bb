@@ -43,7 +43,7 @@ export const ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS =
 
 type RootSecondaryPanelProps = Omit<
   ComponentProps<typeof LazyThreadSecondaryPanel>,
-  | "browserDeck"
+  | "renderBrowserDeck"
   | "drawerFallback"
   | "isConversationCollapsed"
   | "onToggleConversationCollapse"
@@ -51,7 +51,10 @@ type RootSecondaryPanelProps = Omit<
   | "showNewTabButton"
 > & {
   renderBrowserDeck?: (args: {
+    activeBrowserTabId: string | null;
+    canHandleBrowserCommands: boolean;
     canShowNativeBrowserView: boolean;
+    onNativeFocus: () => void;
   }) => ReactNode;
 };
 
@@ -160,7 +163,15 @@ export function RootComposeSecondaryContent({
           <LazyThreadSecondaryPanel
             {...threadSecondaryPanelProps}
             drawerFallback={<DrawerPanelLoadingSkeleton />}
-            browserDeck={renderBrowserDeck?.({ canShowNativeBrowserView })}
+            renderBrowserDeck={(activeBrowserTabId, pane) =>
+              renderBrowserDeck?.({
+                activeBrowserTabId,
+                canHandleBrowserCommands:
+                  canShowNativeBrowserView && pane.isFocused,
+                canShowNativeBrowserView,
+                onNativeFocus: pane.onFocusPane,
+              })
+            }
             renderAsDrawer={presentation === "drawer"}
             isConversationCollapsed={false}
             onToggleConversationCollapse={onToggleMainCollapse}

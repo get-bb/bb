@@ -7,6 +7,7 @@ import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import {
   createGitDiffFixedPanelTab,
+  createPluginPageFixedPanelTab,
   createThreadInfoFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
@@ -56,6 +57,139 @@ function renderPanel(args: {
 }
 
 describe("ThreadSecondaryPanel compact file content", () => {
+  it("renders arbitrary fixed-tab content through the shared surface", () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    const fixedTab = createPluginPageFixedPanelTab({
+      fixedTabId: "docs",
+      pageId: "plugin-page",
+      pluginId: "plugin-test",
+    });
+
+    render(
+      <Wrapper>
+        <TooltipProvider>
+          <ThreadSecondaryPanel
+            activeTab={fixedTab}
+            canUseGitUi={false}
+            fixedTabs={[
+              {
+                ariaLabel: "Show plugin docs",
+                label: "Docs",
+                leadingVisual: null,
+                onSelect: noop,
+                contentFillsRegion: true,
+                renderContent: () => (
+                  <input aria-label="Plugin fixed content" />
+                ),
+                tab: fixedTab,
+                title: "Plugin docs",
+              },
+            ]}
+            isConversationCollapsed={false}
+            isOpen
+            metadataContent={null}
+            onClose={noop}
+            onCollapse={noop}
+            onFileTabReorder={noop}
+            onOpenNewTab={noop}
+            onPanelFocus={noop}
+            onToggleConversationCollapse={noop}
+            renderAsDrawer
+          />
+        </TooltipProvider>
+      </Wrapper>,
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: "Show plugin docs" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(screen.getByLabelText("Plugin fixed content")).toBeTruthy();
+  });
+
+  it("renders plugin fixed tabs concurrently when they are split", () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    const docsTab = createPluginPageFixedPanelTab({
+      fixedTabId: "docs",
+      pageId: "plugin-page",
+      pluginId: "plugin-test",
+    });
+    const activityTab = createPluginPageFixedPanelTab({
+      fixedTabId: "activity",
+      pageId: "plugin-page",
+      pluginId: "plugin-test",
+    });
+    const panelStateId = "plugin-fixed-tab-split";
+    const initial = createSidebarSplitState(
+      [docsTab.id, activityTab.id],
+      activityTab.id,
+    );
+    const split = moveSidebarTab(
+      initial,
+      initial.layout.focusedPaneId,
+      activityTab.id,
+      { paneId: initial.layout.focusedPaneId, zone: "right" },
+      { groupId: "group-activity" },
+    );
+    window.localStorage.setItem(
+      sidebarSplitStorageKey(panelStateId),
+      serializeSidebarSplitState(split),
+    );
+
+    render(
+      <Wrapper>
+        <SidebarProvider>
+          <TooltipProvider>
+            <PanelGroup direction="horizontal">
+              <ThreadSecondaryPanel
+                activeTab={activityTab}
+                canUseGitUi={false}
+                fixedTabs={[
+                  {
+                    ariaLabel: "Show plugin docs",
+                    label: "Docs",
+                    leadingVisual: null,
+                    onSelect: noop,
+                    renderContent: () => <div>Plugin docs body</div>,
+                    tab: docsTab,
+                    title: "Plugin docs",
+                  },
+                  {
+                    ariaLabel: "Show plugin activity",
+                    label: "Activity",
+                    leadingVisual: null,
+                    onSelect: noop,
+                    renderContent: () => <div>Plugin activity body</div>,
+                    tab: activityTab,
+                    title: "Plugin activity",
+                  },
+                ]}
+                isConversationCollapsed={false}
+                isOpen
+                metadataContent={null}
+                onClose={noop}
+                onCollapse={noop}
+                onFileTabReorder={noop}
+                onOpenNewTab={noop}
+                onPanelFocus={noop}
+                onToggleConversationCollapse={noop}
+                renderAsDrawer={false}
+                renderTabContent={() => null}
+                splitPanelStateId={panelStateId}
+                tabModels={[]}
+              />
+            </PanelGroup>
+          </TooltipProvider>
+        </SidebarProvider>
+      </Wrapper>,
+    );
+
+    expect(screen.getByText("Plugin docs body")).toBeTruthy();
+    expect(screen.getByText("Plugin activity body")).toBeTruthy();
+    expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(2);
+  });
+
   it("retains the active file body after the persistent drawer closes", () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
     const activeTab = createWorkspaceFilePreviewFixedPanelTab({
@@ -85,7 +219,10 @@ describe("ThreadSecondaryPanel compact file content", () => {
                 onClose: noop,
               },
             ]}
-            fileTabContent={<input aria-label="Retained file content" />}
+            tabModels={[activeTab]}
+            renderTabContent={() => (
+              <input aria-label="Retained file content" />
+            )}
             isConversationCollapsed={false}
             isOpen={isOpen}
             metadataContent={null}
@@ -138,8 +275,8 @@ describe("ThreadSecondaryPanel compact file content", () => {
     const storedSplit = serializeSidebarSplitState(split);
     const storageKey = sidebarSplitStorageKey(panelStateId);
     window.localStorage.setItem(storageKey, storedSplit);
-    const renderSplitTabContent = vi.fn(() => (
-      <input aria-label="Unexpected split body" />
+    const renderTabContent = vi.fn(() => (
+      <input aria-label="Compact active body" />
     ));
 
     const renderPanel = (renderAsDrawer: boolean) => (
@@ -160,7 +297,6 @@ describe("ThreadSecondaryPanel compact file content", () => {
                   onClose: noop,
                 },
               ]}
-              fileTabContent={<input aria-label="Compact active body" />}
               isConversationCollapsed={false}
               isOpen
               metadataContent={null}
@@ -172,9 +308,9 @@ describe("ThreadSecondaryPanel compact file content", () => {
               onPanelFocus={noop}
               onToggleConversationCollapse={noop}
               renderAsDrawer={renderAsDrawer}
-              renderSplitTabContent={renderSplitTabContent}
+              renderTabContent={renderTabContent}
               splitPanelStateId={panelStateId}
-              splitTabModels={[activeTab]}
+              tabModels={[activeTab]}
             />
           </PanelGroup>
         </TooltipProvider>
@@ -183,8 +319,10 @@ describe("ThreadSecondaryPanel compact file content", () => {
     const view = render(renderPanel(true));
 
     expect(screen.getAllByLabelText("Compact active body")).toHaveLength(1);
-    expect(screen.queryByLabelText("Unexpected split body")).toBeNull();
-    expect(renderSplitTabContent).not.toHaveBeenCalled();
+    expect(renderTabContent).toHaveBeenCalledWith(
+      activeTab,
+      expect.objectContaining({ isFocused: true }),
+    );
     expect(window.localStorage.getItem(storageKey)).toBe(storedSplit);
 
     view.rerender(renderPanel(false));
@@ -197,7 +335,10 @@ describe("ThreadSecondaryPanel compact file content", () => {
     expect(restoredTabGroups).toHaveLength(2);
     expect(restoredTabGroups[0]?.textContent).toContain("Info");
     expect(restoredTabGroups[1]?.textContent).toContain("index.ts");
-    expect(renderSplitTabContent).toHaveBeenCalledWith(activeTab);
+    expect(renderTabContent).toHaveBeenCalledWith(
+      activeTab,
+      expect.objectContaining({ isFocused: expect.any(Boolean) }),
+    );
     expect(window.localStorage.getItem(storageKey)).toBe(storedSplit);
   });
 });
@@ -366,9 +507,9 @@ describe("ThreadSecondaryPanel full-screen control", () => {
                 onPanelFocus={noop}
                 onToggleConversationCollapse={noop}
                 renderAsDrawer={false}
-                renderSplitTabContent={() => null}
+                renderTabContent={() => null}
                 splitPanelStateId="thread-position-menu"
-                splitTabModels={[fileTab]}
+                tabModels={[fileTab]}
               />
             </PanelGroup>
           </TooltipProvider>
@@ -477,9 +618,9 @@ describe("ThreadSecondaryPanel full-screen control", () => {
                 onPanelFocus={noop}
                 onToggleConversationCollapse={onToggleConversationCollapse}
                 renderAsDrawer={false}
-                renderSplitTabContent={() => null}
+                renderTabContent={() => null}
                 splitPanelStateId={panelStateId}
-                splitTabModels={[fileTab]}
+                tabModels={[fileTab]}
               />
             </PanelGroup>
           </TooltipProvider>

@@ -140,17 +140,17 @@ function BrowserTabStage({ tab, threadId, width }: BrowserTabStageProps) {
         requestedMergeBaseBranch="main"
         environmentId={undefined}
         fileTabs={fileTabs}
-        fileTabContent={
+        tabModels={[tab]}
+        renderBrowserDeck={(activeBrowserTabId) => (
           <BrowserTabDeck
             browserTabs={[tab]}
-            activeBrowserTabId={tab.id}
+            activeBrowserTabId={activeBrowserTabId}
             canShowNativeBrowserView
             threadId={threadId}
             environmentId={null}
             onUpdate={noop}
           />
-        }
-        isBrowserTabActive
+        )}
         isConversationCollapsed={false}
         isOpen
         metadataContent={null}

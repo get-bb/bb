@@ -235,6 +235,36 @@ export function focusSidebarPane(
   };
 }
 
+/**
+ * Keeps a one-for-one tab replacement in the pane that owned the old active
+ * tab. New Tab launchers use this when they become a Browser or Terminal tab.
+ */
+export function replaceSidebarTab(
+  state: SidebarSplitState,
+  previousTabId: string,
+  nextTabId: string,
+): SidebarSplitState {
+  if (previousTabId === nextTabId) return state;
+  const groups = Object.values(state.groups);
+  if (groups.some((group) => group.tabIds.includes(nextTabId))) return state;
+  const owner = groups.find((group) => group.tabIds.includes(previousTabId));
+  if (owner === undefined) return state;
+  return {
+    ...state,
+    groups: {
+      ...state.groups,
+      [owner.id]: {
+        ...owner,
+        tabIds: owner.tabIds.map((tabId) =>
+          tabId === previousTabId ? nextTabId : tabId,
+        ),
+        activeTabId:
+          owner.activeTabId === previousTabId ? nextTabId : owner.activeTabId,
+      },
+    },
+  };
+}
+
 export function reorderSidebarTab(
   state: SidebarSplitState,
   paneId: string,

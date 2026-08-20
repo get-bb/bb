@@ -116,6 +116,15 @@ const hostState = vi.hoisted(() => ({
   ],
   primaryHostId: "host-1",
 }));
+const secondaryPanelState = vi.hoisted(() => ({
+  fixedTabs: [] as Array<{
+    contentFillsRegion: boolean;
+    hasRenderer: boolean;
+    title: string;
+  }>,
+  splitPanelStateId: undefined as string | undefined,
+  tabKinds: [] as string[],
+}));
 
 vi.mock("@/lib/sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/sdk")>();
@@ -269,68 +278,97 @@ vi.mock("@/components/secondary-panel/SecondaryPanelLayout", () => ({
 
 vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
   ThreadSecondaryPanel: ({
-    browserDeck,
+    activeTab,
     fileTabs,
-    fileTabContent,
-    fileTabContentFillsRegion,
     fixedTabs,
-    fixedTabContent,
     onClose,
     onOpenNewTab,
+    renderBrowserDeck,
+    renderTabContent,
+    splitPanelStateId,
+    tabModels,
     topChromeSurface,
   }: {
-    browserDeck: ReactNode;
+    activeTab: { id: string } | null;
     fileTabs: Array<{
       id: string;
       filename: string;
       onClose: () => void;
       onSelect: () => void;
     }>;
-    fileTabContent: ReactNode;
-    fileTabContentFillsRegion?: boolean;
     fixedTabs: Array<{
       tab: { id: string };
       title: string;
       onSelect: () => void;
+      contentFillsRegion?: boolean;
+      renderContent?: (pane: {
+        isFocused: boolean;
+        onFocusPane: () => void;
+      }) => ReactNode;
     }>;
-    fixedTabContent: ReactNode;
     onClose: () => void;
     onOpenNewTab: () => void;
+    renderBrowserDeck?: (
+      activeBrowserTabId: string | null,
+      pane: { isFocused: boolean; onFocusPane: () => void },
+    ) => ReactNode;
+    renderTabContent?: (
+      tab: { id: string; kind: string },
+      pane: { isFocused: boolean; onFocusPane: () => void },
+    ) => ReactNode;
+    splitPanelStateId?: string;
+    tabModels: Array<{ id: string; kind: string }>;
     topChromeSurface?: "panel" | "page";
-  }) => (
-    <aside
-      data-testid="shared-thread-secondary-panel"
-      data-file-tab-content-fills-region={
-        fileTabContentFillsRegion === true ? "true" : "false"
-      }
-      data-top-chrome-surface={topChromeSurface ?? "panel"}
-    >
-      {fileTabs.map((tab) => (
-        <div key={tab.id}>
-          <button type="button" onClick={tab.onSelect}>
-            {tab.filename}
+  }) => {
+    const pane = { isFocused: true, onFocusPane: () => undefined };
+    const activeFixedTab = fixedTabs.find(
+      (tab) => tab.tab.id === activeTab?.id,
+    );
+    const activeTabModel = tabModels.find((tab) => tab.id === activeTab?.id);
+    secondaryPanelState.fixedTabs = fixedTabs.map((tab) => ({
+      contentFillsRegion: tab.contentFillsRegion === true,
+      hasRenderer: tab.renderContent !== undefined,
+      title: tab.title,
+    }));
+    secondaryPanelState.splitPanelStateId = splitPanelStateId;
+    secondaryPanelState.tabKinds = tabModels.map((tab) => tab.kind);
+    return (
+      <aside
+        data-testid="shared-thread-secondary-panel"
+        data-top-chrome-surface={topChromeSurface ?? "panel"}
+      >
+        {fileTabs.map((tab) => (
+          <div key={tab.id}>
+            <button type="button" onClick={tab.onSelect}>
+              {tab.filename}
+            </button>
+            <button
+              type="button"
+              aria-label={`Close ${tab.filename}`}
+              onClick={tab.onClose}
+            />
+          </div>
+        ))}
+        {fixedTabs.map((tab) => (
+          <button key={tab.tab.id} type="button" onClick={tab.onSelect}>
+            {tab.title}
           </button>
-          <button
-            type="button"
-            aria-label={`Close ${tab.filename}`}
-            onClick={tab.onClose}
-          />
-        </div>
-      ))}
-      {fixedTabs.map((tab) => (
-        <button key={tab.tab.id} type="button" onClick={tab.onSelect}>
-          {tab.title}
+        ))}
+        <button type="button" onClick={onOpenNewTab}>
+          Add tab
         </button>
-      ))}
-      <button type="button" onClick={onOpenNewTab}>
-        Add tab
-      </button>
-      <button type="button" aria-label="Hide right panel" onClick={onClose} />
-      {fileTabContent}
-      {fixedTabContent}
-      {browserDeck}
-    </aside>
-  ),
+        <button type="button" aria-label="Hide right panel" onClick={onClose} />
+        {activeFixedTab?.renderContent?.(pane)}
+        {activeTabModel?.kind === "browser"
+          ? null
+          : activeTabModel && renderTabContent?.(activeTabModel, pane)}
+        {renderBrowserDeck?.(
+          activeTabModel?.kind === "browser" ? activeTabModel.id : null,
+          pane,
+        )}
+      </aside>
+    );
+  },
 }));
 
 vi.mock("@/components/secondary-panel/NewTabPage", () => ({
@@ -368,7 +406,14 @@ vi.mock("@/components/secondary-panel/NewTabPage", () => ({
 }));
 
 vi.mock("@/components/secondary-panel/BrowserTabDeck", () => ({
-  BrowserTabDeck: () => <div data-testid="plugin-page-browser" />,
+  BrowserTabDeck: ({
+    activeBrowserTabId,
+  }: {
+    activeBrowserTabId: string | null;
+  }) =>
+    activeBrowserTabId === null ? null : (
+      <div data-testid="plugin-page-browser" />
+    ),
 }));
 
 vi.mock("@/components/thread/terminal/ThreadTerminalPanel", async () => {
@@ -550,8 +595,9 @@ describe("PluginPanelRightPanelHost", () => {
     threadTabsApi.update.mockResolvedValue({ revision: 5, tabs: [] });
     fixedTabState.panelRegistered = true;
     fixedTabState.registrations = [];
-    fixedTabState.fileOpeners = [];
-    fixedTabState.newThreadPanelActions = [];
+    secondaryPanelState.fixedTabs = [];
+    secondaryPanelState.splitPanelStateId = undefined;
+    secondaryPanelState.tabKinds = [];
     localStorage.clear();
     // Clearing storage is not enough on its own: the per-thread atoms cache
     // whatever storage held when they were first created.
@@ -639,6 +685,21 @@ describe("PluginPanelRightPanelHost", () => {
     ];
 
     renderHost("board", "task/123");
+
+    expect(secondaryPanelState.splitPanelStateId).toBe(
+      getPluginPagePanelStateId({
+        panelPath: "board",
+        pluginId: "demo",
+      }),
+    );
+    expect(secondaryPanelState.fixedTabs).toEqual([
+      {
+        contentFillsRegion: false,
+        hasRenderer: true,
+        title: "Navigation",
+      },
+      { contentFillsRegion: true, hasRenderer: true, title: "Details" },
+    ]);
 
     expect(
       screen
@@ -968,6 +1029,7 @@ describe("PluginPanelRightPanelHost", () => {
     );
 
     expect(await screen.findByTestId("plugin-page-browser")).toBeTruthy();
+    expect(secondaryPanelState.tabKinds).toContain("browser");
     fireEvent.click(screen.getByRole("button", { name: "Close Browser" }));
     expect(
       await screen.findByRole("button", { name: "Show right panel" }),
@@ -1031,6 +1093,7 @@ describe("PluginPanelRightPanelHost", () => {
       }),
     );
     expect(await screen.findByTestId("plugin-page-terminal")).toBeTruthy();
+    expect(secondaryPanelState.tabKinds).toContain("terminal");
   });
 
   it("keeps a restored thread-targeted terminal out of thread tab sync", async () => {

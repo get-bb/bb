@@ -718,7 +718,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     activeHostFilePath,
     activeStorageFilePath,
     activeWorkspaceFilePath,
-    activePluginPanelTab,
     browserTabs,
     clearActiveFileTabs,
     activateTab,
@@ -763,7 +762,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     },
     [],
   );
-  // Browser tabs are not rendered through the single `fileTabContent` slot:
+  // Browser tabs are not rendered through the ordinary tab-content callback:
   // each one keeps a live native view that must persist across tab switches, so
   // the deck stays mounted independently of which tab is active.
   const renderBrowserDeck = useCallback(
@@ -2768,7 +2767,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       thread={thread}
     />
   );
-  const renderSplitTabContent = (
+  const renderSecondaryTabContent = (
     tab: SecondaryFileFixedPanelTab,
   ): ReactNode => {
     switch (tab.kind) {
@@ -2802,9 +2801,17 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             currentThreadId={thread.id}
             onAutoFocusHandled={handleNewTabAutoFocusHandled}
             onSelect={handleSelectFileSearchResult}
-            onOpenBrowser={handleOpenBrowser}
+            onOpenBrowser={() => {
+              activateTab(tab.id);
+              handleOpenBrowser();
+            }}
             onStartTerminal={
-              canCreateTerminal ? handleStartTerminal : undefined
+              canCreateTerminal
+                ? () => {
+                    activateTab(tab.id);
+                    handleStartTerminal();
+                  }
+                : undefined
             }
             pluginActions={pluginPanelActions}
           />
@@ -2891,7 +2898,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         const fileOpenerOriginal =
           tab.fileOpenerOwner === undefined
             ? undefined
-            : renderSplitTabContent(
+            : renderSecondaryTabContent(
                 tab.fileOpenerOwner.kind === "workspace-file-preview"
                   ? {
                       ...tab.fileOpenerOwner.tab,
@@ -2935,13 +2942,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         );
     }
   };
-  const activeFileTabModel = syncedOrderedSecondaryFileTabs.find(
-    (tab) => tab.id === activeFixedSecondaryTabId,
-  );
-  const fileTabContent = activeFileTabModel
-    ? renderSplitTabContent(activeFileTabModel)
-    : undefined;
-  const isBrowserTabActive = activeBrowserTab !== null;
   const threadDetailContent = (
     <MarkdownLocalFileContextMenuContext.Provider
       value={getLocalFileContextMenuItems}
@@ -2969,47 +2969,119 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               <MarkdownLocalFileContextMenuContext.Provider
                 value={getLocalFileContextMenuItems}
               >
-                <UrlOpenRoutingProvider
-                  openInAppBrowser={
-                    canOpenUrlsInAppBrowser ? openBrowserTabAndReveal : null
-                  }
-                >
-                  {panel}
-                </UrlOpenRoutingProvider>
-              </MarkdownLocalFileContextMenuContext.Provider>
-            )}
-            metadata={{
-              thread,
-              projectId,
-              parentThreadProjectId: parentThread?.projectId ?? null,
-              parentThreadDisplayName: parentThreadDisplayName ?? null,
-              parentThreads,
-              canAssignToParent,
-              canTakeOverThread,
-              isLoadingParentThreads: parentThreadSubsetQuery.isLoading,
-              isParentThreadsError: parentThreadSubsetQuery.isError,
-              environment: environment ?? null,
-              environmentDisplayHost: environmentDisplayHostContext,
-              workspaceStatus,
-              workspaceStatusError: workspaceStatusError ?? null,
-              workspaceUnavailable,
-              pullRequest,
-              selectedMergeBaseBranch,
-              mergeBaseBranchRef: selectedMergeBaseBranchRef,
-              mergeBaseBranchOptions,
-              mergeBaseRemoteBranchOptions,
-              isLoadingMergeBaseBranchOptions,
-              updateThreadPending:
-                updateThread.isPending || updateEnvironment.isPending,
-              storage: metadataStorage,
-              onAssignParent: handleAssignParent,
-              onParentSelectorOpenChange: handleParentSelectorOpenChange,
-              onRetryParentThreads: handleRetryParentThreads,
-              onMergeBaseBranchChange: handleMergeBaseBranchChange,
-              onMergeBasePickerOpenChange: handleMergeBasePickerOpenChange,
-              onMergeBaseBranchSearchQueryChange: setMergeBaseBranchSearchQuery,
-              onChangedFileClick: canUseGitUi
-                ? handleChangedFileClick
+                {panel}
+              </UrlOpenRoutingProvider>
+            </MarkdownLocalFileContextMenuContext.Provider>
+          )}
+          metadata={{
+            thread,
+            projectId,
+            parentThreadProjectId: parentThread?.projectId ?? null,
+            parentThreadDisplayName: parentThreadDisplayName ?? null,
+            parentThreads,
+            canAssignToParent,
+            canTakeOverThread,
+            isLoadingParentThreads: parentThreadSubsetQuery.isLoading,
+            isParentThreadsError: parentThreadSubsetQuery.isError,
+            environment: environment ?? null,
+            environmentDisplayHost: environmentDisplayHostContext,
+            workspaceStatus,
+            workspaceStatusError: workspaceStatusError ?? null,
+            workspaceUnavailable,
+            pullRequest,
+            selectedMergeBaseBranch,
+            mergeBaseBranchRef: selectedMergeBaseBranchRef,
+            mergeBaseBranchOptions,
+            mergeBaseRemoteBranchOptions,
+            isLoadingMergeBaseBranchOptions,
+            updateThreadPending:
+              updateThread.isPending || updateEnvironment.isPending,
+            storage: metadataStorage,
+            onAssignParent: handleAssignParent,
+            onParentSelectorOpenChange: handleParentSelectorOpenChange,
+            onRetryParentThreads: handleRetryParentThreads,
+            onMergeBaseBranchChange: handleMergeBaseBranchChange,
+            onMergeBasePickerOpenChange: handleMergeBasePickerOpenChange,
+            onMergeBaseBranchSearchQueryChange: setMergeBaseBranchSearchQuery,
+            onChangedFileClick: canUseGitUi
+              ? handleChangedFileClick
+              : undefined,
+            onCommitClick: canUseGitUi ? handleCommitClick : undefined,
+          }}
+          secondaryPanel={{
+            activeTab: activeFixedSecondaryTab,
+            canUseGitUi,
+            gitDiffTabStatus,
+            environmentId: thread.environmentId ?? undefined,
+            workspaceRootPath: environment?.path,
+            fileTabs,
+            splitPanelStateId: thread.id,
+            tabModels: syncedOrderedSecondaryFileTabs,
+            renderTabContent: renderSecondaryTabContent,
+            tabContentFillsRegion: (tab) =>
+              tab.kind === "plugin-panel" &&
+              (tab.fileOpenerOwner !== undefined ||
+                pluginThreadPanelActions.find(
+                  (candidate) =>
+                    candidate.pluginId === tab.pluginId &&
+                    candidate.id === tab.actionId,
+                )?.layout === "flush"),
+            renderBrowserDeck,
+            isOpen: isSecondaryPanelOpen,
+            onClose: closeSecondaryPanel,
+            onCollapse: closeSecondaryPanel,
+            onClearPendingGitDiffIntent: clearPendingGitDiffIntent,
+            onOpenFileInEditor: handleOpenFileInEditor,
+            onFileTabReorder: reorderFileTab,
+            onOpenNewTab: handleOpenNewTab,
+            onRetryGitDiffEligibility: () => {
+              void environmentQuery.refetch();
+            },
+            onOpenFilePreview: handleOpenFilePreview,
+            onSelectionAddToChat: handleSelectionAddToChat,
+            pendingGitDiffCommitSha,
+            pendingGitDiffScrollPath,
+            requestedMergeBaseBranch,
+            onPanelFocus: handleSecondaryPanelFocus,
+            onPanelChange: handleSecondaryPanelChange,
+          }}
+          timeline={{
+            activeThinking,
+            canSpawnChild: thread.canSpawnChild,
+            threadOriginKind,
+            hasOlderTimelineRows,
+            hostConnectionNotice,
+            isLoadingOlderTimelineRows,
+            isThreadTimelinePending,
+            timelineError: Boolean(timelineError),
+            onForkMessage: isForkAvailable ? handleForkMessage : undefined,
+            onEditMessage: canEditSentMessages
+              ? handleEditSentMessage
+              : undefined,
+            inlineMessageEditor,
+            onMessageAddToChat: handleSelectionAddToChat,
+            onSendToMainMessage: handleSendToMainMessage,
+            onSelectionAddToChat: handleSelectionAddToChat,
+            onLoadOlderRows: loadOlderTimelineRows,
+            onOpenLink: handleOpenTimelineLink,
+            onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
+            onOpenPluginPanel: handleOpenTimelinePluginPanel,
+            onTitleAction: handleTimelineTitleAction,
+            projectId,
+            resolveMentionLink,
+            showOngoingIndicator:
+              thread.status !== "stopping" &&
+              // A pending interaction (question or approval) already renders its
+              // own inline shimmer row, so the bottom indicator would just
+              // duplicate it.
+              !hasPendingInteraction &&
+              isRunningThreadRuntimeDisplayStatus(
+                thread.runtime.displayStatus,
+              ) &&
+              !isThreadTimelinePending,
+            ongoingIndicatorLabel:
+              thread.runtime.displayStatus === "host-reconnecting"
+                ? "Waiting for reconnection"
                 : undefined,
               onCommitClick: canUseGitUi ? handleCommitClick : undefined,
             }}

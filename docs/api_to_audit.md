@@ -179,8 +179,10 @@ unexpected-exit recovery without feature-specific core hooks.
 
 **What it does.** Lets a nav panel declare ordered, non-closable tabs in the
 host-owned right panel. The host owns tab selection, persistence, chrome,
-Browser and Terminal tools, and only mounts the active plugin component while
-the panel is open. A fixed tab receives the nav page's current `subPath`; `layout: "padded"` uses
+Browser and Terminal tools. One tab is active per visible split pane, so
+multiple fixed-tab components can be mounted concurrently; a component mounts
+only while active in a visible pane and the panel is open. A fixed tab receives
+the nav page's current `subPath`; `layout: "padded"` uses
 host padding and scrolling, while `layout: "flush"` gives the component the
 whole content region. On the first visit the first declared fixed tab opens on
 wide layouts. A later user close remains closed. Every fixed-tab registration
@@ -211,8 +213,8 @@ the `experimental_fixedTabOpenCalls` inspection list.
 1. Confirm first-visit opening and subsequent close persistence across plugin
    reloads, app upgrades, wide/compact transitions, and page deep links.
 2. Exercise multiple fixed tabs and dynamic registration changes; selection
-   must remain stable when possible and fall back without mounting inactive
-   components.
+   must remain stable when possible and fall back without mounting components
+   that are inactive in every visible pane.
 3. Confirm `subPath` is sufficient context and that fixed tabs should remain
    page-scoped rather than gaining independent routes or plugin-owned state.
 4. Audit padded versus flush layout against Tasks, Docs, accessibility zoom,

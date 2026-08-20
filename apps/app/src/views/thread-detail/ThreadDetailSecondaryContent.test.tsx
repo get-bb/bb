@@ -18,7 +18,7 @@ type ThreadDetailSecondaryContentProps = ComponentProps<
 >;
 
 const secondaryPanelMockState = vi.hoisted(() => ({
-  browserDeckForTab: undefined as
+  renderBrowserDeck: undefined as
     | ((
         activeBrowserTabId: string,
         pane: {
@@ -119,12 +119,12 @@ vi.mock(
       >();
 
     const ThreadSecondaryPanel = ({
-      browserDeckForTab,
+      renderBrowserDeck,
       inlinePanelToggle,
       metadataContent,
       renderAsDrawer,
     }: ComponentProps<typeof actual.ThreadSecondaryPanel>) => {
-      secondaryPanelMockState.browserDeckForTab = browserDeckForTab;
+      secondaryPanelMockState.renderBrowserDeck = renderBrowserDeck;
       return React.createElement(
         "section",
         {
@@ -241,7 +241,6 @@ function createProps(
       activeTab: null,
       canUseGitUi: false,
       fileTabs: [],
-      isBrowserTabActive: true,
       isOpen: true,
       onCollapse: noop,
       onClose: noop,
@@ -314,7 +313,7 @@ function renderThreadDetail(
 afterEach(() => {
   cleanup();
   publishedHostedPanel = null;
-  secondaryPanelMockState.browserDeckForTab = undefined;
+  secondaryPanelMockState.renderBrowserDeck = undefined;
   useThreadsMock.mockClear();
 });
 
@@ -396,12 +395,12 @@ describe("ThreadDetailSecondaryContent", () => {
       </MemoryRouter>,
     );
 
-    const browserDeckForTab = secondaryPanelMockState.browserDeckForTab;
-    expect(browserDeckForTab).toBeDefined();
-    if (browserDeckForTab === undefined) return;
+    const panelBrowserDeck = secondaryPanelMockState.renderBrowserDeck;
+    expect(panelBrowserDeck).toBeDefined();
+    if (panelBrowserDeck === undefined) return;
 
     const onFocusPane = vi.fn();
-    browserDeckForTab("browser-split", {
+    panelBrowserDeck("browser-split", {
       isFocused: true,
       onFocusPane,
     });
@@ -412,7 +411,7 @@ describe("ThreadDetailSecondaryContent", () => {
       onNativeFocus: onFocusPane,
     });
 
-    browserDeckForTab("browser-split", {
+    panelBrowserDeck("browser-split", {
       isFocused: false,
       onFocusPane,
     });

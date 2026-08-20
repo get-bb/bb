@@ -39,6 +39,7 @@ import {
   pruneSidebarSplitStorage,
   reconcileSidebarSplitState,
   reorderSidebarTab,
+  replaceSidebarTab,
   resizeSidebarSplit,
   selectSidebarTab,
   serializeSidebarSplitState,
@@ -124,12 +125,18 @@ export function SidebarSplitContainer({
   }, [state]);
 
   useEffect(() => {
+    const previousExternalActiveTabId = previousActiveTabId.current;
     const shouldFollowExternalSelection =
-      previousActiveTabId.current !== activeTabId;
+      previousExternalActiveTabId !== activeTabId;
     previousActiveTabId.current = activeTabId;
     const current = stateRef.current;
+    const withActiveTabReplacement =
+      shouldFollowExternalSelection &&
+      !availableTabIds.includes(previousExternalActiveTabId)
+        ? replaceSidebarTab(current, previousExternalActiveTabId, activeTabId)
+        : current;
     const reconciled = reconcileSidebarSplitState(
-      current,
+      withActiveTabReplacement,
       availableTabIds,
       activeTabId,
     );
