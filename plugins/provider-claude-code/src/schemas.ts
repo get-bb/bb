@@ -392,6 +392,14 @@ const claudeResultSubtypeSchema = z.enum([
 ]);
 export type ClaudeResultSubtype = z.infer<typeof claudeResultSubtypeSchema>;
 
+const claudeMessageOriginSchema = z
+  .object({
+    // The SDK treats an absent origin as human and can add new non-human
+    // provenance kinds over time. The translator only needs that distinction.
+    kind: z.string().min(1),
+  })
+  .passthrough();
+
 export const claudeResultMessageSchema = z
   .object({
     type: z.literal("result"),
@@ -402,6 +410,7 @@ export const claudeResultMessageSchema = z
     result: z.unknown().optional(),
     usage: z.unknown().optional(),
     modelUsage: z.unknown().optional(),
+    origin: claudeMessageOriginSchema.optional(),
   })
   .passthrough();
 export type ClaudeResultMessage = z.infer<typeof claudeResultMessageSchema>;

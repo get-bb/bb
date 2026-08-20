@@ -681,6 +681,76 @@ describe("claude synthetic no-response handling", () => {
     );
   });
 
+  it("does not let a recovered task notification settle pending human input", () => {
+    const harness = createClaudeDeltaHarness();
+    harness.acceptInput("creq_23456789af", "bb-thread-1");
+
+    // On resume the Claude SDK can drain a provider-owned task notification
+    // immediately before the queued human prompt. Its zero-work result is a
+    // different root segment and must not claim the pending bb input.
+    expect(
+      harness.translate(
+        {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          num_turns: 0,
+          result: "",
+          origin: { kind: "task-notification" },
+          session_id: "claude-session-1",
+        },
+        { threadId: "bb-thread-1" },
+      ),
+    ).toEqual([]);
+
+    const assistantEvents = harness.translate(
+      {
+        type: "assistant",
+        message: {
+          id: "human-response",
+          role: "assistant",
+          content: [{ type: "text", text: "I am working on it." }],
+        },
+        session_id: "claude-session-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+
+    expect(assistantEvents).toContainEqual(
+      expect.objectContaining({
+        type: "turn/input/accepted",
+        scope: turnScope(TURN_1),
+        clientRequestId: "creq_23456789af",
+      }),
+    );
+    expect(assistantEvents).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope(TURN_1),
+        item: expect.objectContaining({ text: "I am working on it." }),
+      }),
+    );
+
+    expect(
+      harness.translate(
+        {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          origin: { kind: "human" },
+          session_id: "claude-session-1",
+        },
+        { threadId: "bb-thread-1" },
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope(TURN_1),
+        status: "completed",
+      }),
+    );
+  });
+
   it("ignores a trailing result once the turn has closed", () => {
     const harness = createClaudeDeltaHarness();
     harness.acceptInput("creq_23456789af", "bb-thread-1");

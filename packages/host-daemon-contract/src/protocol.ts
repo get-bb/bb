@@ -1,3 +1,9 @@
+// Version 139 keeps a resumed Claude session's provider-owned task-notification
+// result from claiming a newly accepted human input, and delays turn/start
+// acceptance until Claude's SDK prompt iterator consumes the input. Older
+// daemons can still make a sent message appear to complete immediately while
+// its real response continues under a second, unaccepted turn.
+//
 // Version 138 removes the `workspace.discover_repos` command. It existed only
 // for the first-run onboarding flow's project step, which is deleted; no server
 // sends it any more. A newer daemon no longer answers it, so an older server
@@ -60,7 +66,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 138 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 139 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

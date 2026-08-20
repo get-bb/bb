@@ -2815,8 +2815,8 @@ describe("bridge", () => {
           },
         },
       });
-      await bridge.waitForResponse(2);
       await readNextPrompt(call);
+      await bridge.waitForResponse(2);
 
       expect(queries).toHaveLength(1);
       expect(query.close).not.toHaveBeenCalled();
@@ -2891,8 +2891,8 @@ describe("bridge", () => {
           },
         },
       });
-      await bridge.waitForResponse(3);
       await readNextPrompt(call);
+      await bridge.waitForResponse(3);
 
       expect(queries).toHaveLength(1);
       expect(query.applyFlagSettings).toHaveBeenLastCalledWith({
@@ -3004,8 +3004,8 @@ describe("bridge", () => {
           providerOptions: {},
         },
       });
-      await bridge.waitForResponse(2);
       const deniedPrompt = await readNextPrompt(call);
+      await bridge.waitForResponse(2);
       if (!deniedPrompt.uuid) {
         throw new Error("Expected denied prompt UUID");
       }
@@ -3034,8 +3034,8 @@ describe("bridge", () => {
           providerOptions: {},
         },
       });
-      await bridge.waitForResponse(3);
       const askPrompt = await readNextPrompt(call);
+      await bridge.waitForResponse(3);
       if (!askPrompt.uuid) {
         throw new Error("Expected ask prompt UUID");
       }
@@ -3088,8 +3088,8 @@ describe("bridge", () => {
           providerOptions: {},
         },
       });
-      await bridge.waitForResponse(4);
       const latestPrompt = await readNextPrompt(call);
+      await bridge.waitForResponse(4);
       if (!latestPrompt.uuid) {
         throw new Error("Expected latest prompt UUID");
       }
@@ -3419,7 +3419,7 @@ describe("bridge", () => {
           providerOptions: {},
         },
       });
-      await bridge.waitForResponse(2);
+      await bridge.flushWork();
 
       expect(queries).toHaveLength(2);
       expect(getLatestQueryOptions()).toMatchObject({
@@ -3428,6 +3428,7 @@ describe("bridge", () => {
       await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
         inputText,
       );
+      await bridge.waitForResponse(2);
 
       bridge.sendRequest(3, "thread/stop", {
         threadId,
@@ -3559,6 +3560,9 @@ describe("bridge", () => {
           providerOptions: {},
         },
       });
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        inputText,
+      );
       await bridge.waitForResponse(2);
 
       queries[0]?.emit(
@@ -3720,49 +3724,57 @@ describe("bridge", () => {
     }
   });
 
-  it("delays turn steer responses until the SDK prompt consumes the input", async () => {
-    const threadId = "thread-steer-consumed";
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    const queries: ControlledClaudeQuery[] = [];
-    queryMock.mockImplementation(() => {
-      const query = createControlledClaudeQuery();
-      queries.push(query);
-      return query;
-    });
-
-    try {
-      await startBridgeThread({ bridge, threadId });
-
-      bridge.sendRequest(2, "turn/steer", {
-        threadId,
-        providerThreadId: threadId,
-        expectedTurnId: "turn-1",
-        input: [{ type: "text", text: "Please account for the restart" }],
-        clientRequestId: "creq_abcdefghjk",
-        options: {
-          permissionMode: "accept-edits",
-          permissionScope: "workspace",
-          approvalReviewer: "user",
-          permissionEscalation: "ask",
-          providerOptions: {},
-        },
-      });
-      await bridge.flushWork();
-
-      expect(bridge.hasResponse(2)).toBe(false);
-      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
-        "Please account for the restart",
-      );
-      await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
-        result: { threadId },
+  it.each([
+    { method: "turn/start", name: "turn start" },
+    { method: "turn/steer", name: "turn steer" },
+  ] as const)(
+    "delays $name responses until the SDK prompt consumes the input",
+    async (testCase) => {
+      const threadId = `thread-${testCase.method.replace("/", "-")}-consumed`;
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      const queries: ControlledClaudeQuery[] = [];
+      queryMock.mockImplementation(() => {
+        const query = createControlledClaudeQuery();
+        queries.push(query);
+        return query;
       });
 
-      await stopBridgeThread({ bridge, queries, threadId });
-    } finally {
-      queries[0]?.finish();
-      bridge.restore();
-    }
-  });
+      try {
+        await startBridgeThread({ bridge, threadId });
+
+        bridge.sendRequest(2, testCase.method, {
+          threadId,
+          providerThreadId: threadId,
+          ...(testCase.method === "turn/steer"
+            ? { expectedTurnId: "turn-1" }
+            : {}),
+          input: [{ type: "text", text: "Please account for the restart" }],
+          clientRequestId: "creq_abcdefghjk",
+          options: {
+            permissionMode: "accept-edits",
+            permissionScope: "workspace",
+            approvalReviewer: "user",
+            permissionEscalation: "ask",
+            providerOptions: {},
+          },
+        });
+        await bridge.flushWork();
+
+        expect(bridge.hasResponse(2)).toBe(false);
+        await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+          "Please account for the restart",
+        );
+        await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
+          result: { threadId },
+        });
+
+        await stopBridgeThread({ bridge, queries, threadId });
+      } finally {
+        queries[0]?.finish();
+        bridge.restore();
+      }
+    },
+  );
 
   it.each([
     { method: "turn/start", name: "turn start" },
@@ -3861,8 +3873,8 @@ describe("bridge", () => {
           providerOptions: {},
         },
       });
-      await bridge.waitForResponse(2);
       const text = await readNextPromptText(getLatestQueryCall());
+      await bridge.waitForResponse(2);
       await stopBridgeThread({ bridge, queries, threadId });
       return text;
     }
@@ -4130,6 +4142,7 @@ describe("canonical model context-window hint", () => {
         input: [{ type: "text", text: "hello", mentions: [] }],
         options: { ...canonicalOptions, model: "claude-opus-4-7[1m]" },
       });
+      await readNextPrompt(getLatestQueryCall());
       await bridge.waitForResponse(2);
 
       // A result with token usage but no `modelUsage`: the only capacity

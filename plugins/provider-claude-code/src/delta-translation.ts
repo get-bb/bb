@@ -1206,9 +1206,18 @@ export function createClaudeDeltaTranslator() {
       return unexpectedSdkEventDeltas(event, context);
     }
     const message = parsedMessage.data;
-    // The terminal-turn rule: the result owns the open turn, or claims one
-    // proven by pending accepted input; on an idle thread it emits nothing.
-    if (!state.mirror.turnOpen && state.mirror.pendingInputs === 0) {
+    // The terminal-turn rule: the result owns the open turn, or a human result
+    // claims one proven by pending accepted input. On resume, Claude can drain
+    // a recovered task notification immediately before the queued human
+    // prompt. Its result belongs to a provider-owned root segment and must not
+    // steal that prompt's pending input. The SDK defines absent origin as
+    // human, preserving local zero-work commands such as /clear.
+    const resultCanClaimPendingInput =
+      message.origin === undefined || message.origin.kind === "human";
+    if (
+      !state.mirror.turnOpen &&
+      (state.mirror.pendingInputs === 0 || !resultCanClaimPendingInput)
+    ) {
       return [];
     }
     // Claiming through pending input opens the turn first (clearing the

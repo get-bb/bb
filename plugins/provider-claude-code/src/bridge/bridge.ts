@@ -563,10 +563,6 @@ function logBridgeError(message: string): void {
   process.stderr.write(`claude-code bridge: ${message}\n`);
 }
 
-function ignoreInputConsumption(promise: Promise<void>): void {
-  void promise.catch(() => {});
-}
-
 function pushPromptInput(
   threadSession: ThreadSession,
   input: string,
@@ -581,22 +577,6 @@ function pushPromptInput(
     threadSession.permissionEscalationByPromptId.delete(promptId);
     throw error;
   });
-}
-
-function queuePromptInputs(
-  threadSession: ThreadSession,
-  inputs: readonly string[],
-  permissionEscalation: PermissionEscalation | null,
-): boolean {
-  if (!threadSession.session.canPushInput()) {
-    return false;
-  }
-  for (const input of inputs) {
-    ignoreInputConsumption(
-      pushPromptInput(threadSession, input, permissionEscalation),
-    );
-  }
-  return true;
 }
 
 async function applyLiveSessionSettings(
@@ -2222,15 +2202,22 @@ async function runTurnStart(
     return;
   }
 
-  if (
-    !queuePromptInputs(threadSession, [promptText], params.permissionEscalation)
-  ) {
-    sendError(id, -32000, "Claude SDK input stream is closed");
-    return;
+  try {
+    await pushPromptInput(
+      threadSession,
+      promptText,
+      params.permissionEscalation,
+    );
+    // Like steer, a new turn is accepted only after the SDK prompt iterator
+    // consumes it. Queueing alone cannot prove which provider-owned segment a
+    // concurrently drained result belongs to.
+    emitCanonicalTurnInputAccepted(threadSession, acceptance, params.threadId);
+    threadSession.permissionEscalation = params.permissionEscalation;
+    sendResult(id, { threadId: params.threadId });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendError(id, -32000, message);
   }
-  emitCanonicalTurnInputAccepted(threadSession, acceptance, params.threadId);
-  threadSession.permissionEscalation = params.permissionEscalation;
-  sendResult(id, { threadId: params.threadId });
 }
 
 async function handleTurnStart(
