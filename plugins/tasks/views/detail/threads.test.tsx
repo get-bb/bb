@@ -129,10 +129,7 @@ describe("task detail pull request pills", () => {
     expect(link.rel).toContain("noopener");
     expect(link.textContent).toContain("#12");
     fireEvent.click(link);
-    expect(slot.navigateCalls).toContainEqual({
-      method: "experimental_openUrl",
-      url: "https://github.com/acme/bb/pull/12",
-    });
+    expect(slot.navigateCalls).toEqual([]);
   });
 
   it("marks threads whose PR lookup failed and stays quiet otherwise", async () => {
