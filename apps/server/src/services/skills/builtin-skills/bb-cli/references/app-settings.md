@@ -63,3 +63,10 @@ every window and client sees the same value.
 - The `changelogPreview` experiment defaults to false.
 - Enable it with `bb settings experiment changelogPreview true` to show the
   latest release notes on Settings → Updates.
+
+## Timeline windowing
+
+- The `timelineWindowing` experiment defaults to false.
+- Enable it with `bb settings experiment timelineWindowing true`.
+- It keeps stable timeline wrappers while mounting only rows near the active
+  main or nested detail scrollport.

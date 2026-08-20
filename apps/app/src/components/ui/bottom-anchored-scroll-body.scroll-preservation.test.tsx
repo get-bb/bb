@@ -97,6 +97,7 @@ interface RenderArgs {
   rowIds: string[];
   showCapturePrependAnchorControl?: boolean;
   showScrollToBottomControl?: boolean;
+  virtualized?: boolean;
 }
 
 function CapturePrependAnchorControl() {
@@ -122,7 +123,13 @@ function renderTimeline({
   rowIds,
   showCapturePrependAnchorControl = false,
   showScrollToBottomControl = false,
+  virtualized = false,
 }: RenderArgs) {
+  const rows = rowIds.map((rowId) => (
+    <div key={rowId} data-timeline-row-id={rowId}>
+      {rowId}
+    </div>
+  ));
   const view = render(
     <BottomAnchoredScrollBody
       footer={<div>Footer</div>}
@@ -132,11 +139,13 @@ function renderTimeline({
     >
       {showCapturePrependAnchorControl ? <CapturePrependAnchorControl /> : null}
       {showScrollToBottomControl ? <ScrollToBottomControl /> : null}
-      {rowIds.map((rowId) => (
-        <div key={rowId} data-timeline-row-id={rowId}>
-          {rowId}
+      {virtualized ? (
+        <div data-timeline-row-list="top-level">
+          <div data-timeline-virtual-spacer="">{rows}</div>
         </div>
-      ))}
+      ) : (
+        rows
+      )}
     </BottomAnchoredScrollBody>,
   );
 
@@ -230,6 +239,41 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     });
 
     // User-intent scroll away from bottom, then a scroll event triggers capture.
+    fireEvent.wheel(scrollArea);
+    fireEvent.scroll(scrollArea);
+
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "row-b",
+      offsetWithinRow: 20,
+      atBottom: false,
+    });
+  });
+
+  it("captures rows nested in a virtualizer spacer", () => {
+    const { scrollArea, rowElements } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+      virtualized: true,
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(requireHTMLElement(rowElements.get("row-a")!), {
+      top: -120,
+      bottom: -20,
+    });
+    mockRowRect(requireHTMLElement(rowElements.get("row-b")!), {
+      top: -20,
+      bottom: 80,
+    });
+    mockRowRect(requireHTMLElement(rowElements.get("row-c")!), {
+      top: 80,
+      bottom: 180,
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 150,
+    });
+
     fireEvent.wheel(scrollArea);
     fireEvent.scroll(scrollArea);
 

@@ -18,6 +18,7 @@ describe("experiments settings", () => {
         editMessages: true,
         mobileApp: false,
         providerSessionReaping: false,
+        timelineWindowing: false,
       });
     });
   });
@@ -32,6 +33,7 @@ describe("experiments settings", () => {
           editMessages: true,
           mobileApp: true,
           providerSessionReaping: true,
+          timelineWindowing: true,
         }),
       });
       expect(put.status).toBe(200);
@@ -40,12 +42,14 @@ describe("experiments settings", () => {
         editMessages: true,
         mobileApp: true,
         providerSessionReaping: true,
+        timelineWindowing: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         changelogPreview: true,
         editMessages: true,
         mobileApp: true,
         providerSessionReaping: true,
+        timelineWindowing: true,
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -56,6 +60,7 @@ describe("experiments settings", () => {
         editMessages: true,
         mobileApp: true,
         providerSessionReaping: true,
+        timelineWindowing: true,
       });
     });
   });
@@ -82,6 +87,7 @@ describe("experiments settings", () => {
           editMessages: true,
           mobileApp: false,
           providerSessionReaping: true,
+          timelineWindowing: false,
         }),
       });
       const updated = await harness.app.request("/internal/runtime-policy", {
@@ -106,6 +112,7 @@ describe("experiments settings", () => {
           editMessages: false,
           mobileApp: false,
           providerSessionReaping: false,
+          timelineWindowing: false,
         }),
       });
       expect(put.status).toBe(200);

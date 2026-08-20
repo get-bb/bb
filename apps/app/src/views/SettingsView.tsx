@@ -213,10 +213,12 @@ export interface ExperimentsSettingsSectionProps {
   editMessagesEnabled: boolean;
   mobileAppEnabled: boolean;
   providerSessionReapingEnabled: boolean;
+  timelineWindowingEnabled: boolean;
   onChangelogPreviewEnabledChange: (enabled: boolean) => void;
   onEditMessagesEnabledChange: (enabled: boolean) => void;
   onMobileAppEnabledChange: (enabled: boolean) => void;
   onProviderSessionReapingEnabledChange: (enabled: boolean) => void;
+  onTimelineWindowingEnabledChange: (enabled: boolean) => void;
 }
 
 const THEME_PREFERENCE_OPTIONS: ReadonlyArray<ThemePreferenceOption> = [
@@ -969,16 +971,19 @@ const EDIT_MESSAGES_EXPERIMENT_LABEL = "Edit messages";
 const MOBILE_APP_EXPERIMENT_LABEL = "Mobile app";
 const PROVIDER_SESSION_REAPING_EXPERIMENT_LABEL =
   "Idle provider session release";
+const TIMELINE_WINDOWING_EXPERIMENT_LABEL = "Timeline windowing";
 export function ExperimentsSettingsSection({
   changelogPreviewEnabled,
   disabled,
   editMessagesEnabled,
   mobileAppEnabled,
   providerSessionReapingEnabled,
+  timelineWindowingEnabled,
   onChangelogPreviewEnabledChange,
   onEditMessagesEnabledChange,
   onMobileAppEnabledChange,
   onProviderSessionReapingEnabledChange,
+  onTimelineWindowingEnabledChange,
 }: ExperimentsSettingsSectionProps) {
   return (
     <SettingsSection
@@ -1031,6 +1036,18 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onProviderSessionReapingEnabledChange}
             aria-label={PROVIDER_SESSION_REAPING_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={TIMELINE_WINDOWING_EXPERIMENT_LABEL}
+          description="Mount only nearby rows in long timelines and expanded timeline details."
+        >
+          <Switch
+            checked={timelineWindowingEnabled}
+            disabled={disabled}
+            onCheckedChange={onTimelineWindowingEnabledChange}
+            aria-label={TIMELINE_WINDOWING_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
       </div>
@@ -1217,6 +1234,13 @@ export function SettingsView() {
           updateExperimentsMutation.mutate({
             ...experiments,
             providerSessionReaping: enabled,
+          })
+        }
+        timelineWindowingEnabled={experiments.timelineWindowing}
+        onTimelineWindowingEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            timelineWindowing: enabled,
           })
         }
       />

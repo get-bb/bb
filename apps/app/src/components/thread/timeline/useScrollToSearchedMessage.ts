@@ -30,6 +30,7 @@ interface SeqRange {
 
 const FLASH_CLASS_NAME = "bb-search-flash";
 const FLASH_DURATION_MS = 1700;
+const POST_WINDOW_SETTLE_REVEAL_MS = 800;
 
 function escapeTimelineRowId(rowId: string): string {
   if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
@@ -129,7 +130,7 @@ function collectSearchedMessageAncestorRowIdsInRows({
       continue;
     }
     const nestedRows = getNestedRows(row);
-    if (nestedRows === null) {
+    if (nestedRows === null || nestedRows.length === 0) {
       ancestorIds.add(row.id);
       return true;
     }
@@ -201,6 +202,8 @@ export function useScrollToSearchedMessage(
   const bottomAnchor = useBottomAnchoredScroll();
   const handledKeyRef = useRef<string | null>(null);
   const olderLoadAttemptKeyRef = useRef<string | null>(null);
+  const locationKeyRef = useRef(location.key);
+  locationKeyRef.current = location.key;
   const target = readSearchMessageTarget(location.state);
   const targetSeq = target?.seq ?? null;
   const targetThreadId = target?.threadId ?? null;
@@ -247,13 +250,20 @@ export function useScrollToSearchedMessage(
       return;
     }
     const selector = `[data-timeline-row-id="${escapeTimelineRowId(targetLeafRow.id)}"]`;
-    if (document.querySelector(selector) === null) {
+    const renderedTarget = document.querySelector<HTMLElement>(selector);
+    if (
+      renderedTarget === null ||
+      renderedTarget.dataset.timelineWindowedRealized === "false"
+    ) {
       return;
     }
     handledKeyRef.current = location.key;
 
     let flashed = false;
     const revealTarget = () => {
+      if (locationKeyRef.current !== location.key) {
+        return;
+      }
       const element = document.querySelector<HTMLElement>(selector);
       if (element === null) {
         return;
@@ -277,13 +287,12 @@ export function useScrollToSearchedMessage(
       }
     };
 
-    // Reveal on the next frame, then once more after layout settles, so a late
-    // scroll-anchor restore can't leave the target off-screen.
+    // Reveal after initial layout and again after idle placeholder correction.
     const frame = requestAnimationFrame(revealTarget);
-    const settle = window.setTimeout(revealTarget, 320);
+    window.setTimeout(revealTarget, 320);
+    window.setTimeout(revealTarget, POST_WINDOW_SETTLE_REVEAL_MS);
     return () => {
       cancelAnimationFrame(frame);
-      window.clearTimeout(settle);
     };
   }, [
     bottomAnchor,

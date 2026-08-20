@@ -40,6 +40,7 @@ describe("experiments", () => {
         "futureExperiment",
         "mobileApp",
         "providerSessionReaping",
+        "timelineWindowing",
       ]);
     } finally {
       db.$client.close();

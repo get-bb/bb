@@ -117,6 +117,9 @@ message agents, or inspect projects, providers, and environments.
   failed or incomplete turns. Submitting an edit to a running thread stops and
   settles the current turn first. Change it with:
   `bb settings experiment editMessages <true|false>`.
+- The default-off `timelineWindowing` experiment mounts only nearby rows in
+  long timelines and large expanded timeline details. Change it with
+  `bb settings experiment timelineWindowing <true|false>`.
 - Thread timeline windows are capped by event count as well as by user-message
   count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), because a thread
   with few user messages but many events would otherwise reproject its whole

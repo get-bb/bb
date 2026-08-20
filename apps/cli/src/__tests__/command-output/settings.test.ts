@@ -110,6 +110,26 @@ describe("bb settings commands", () => {
     });
   });
 
+  it("updates timeline windowing while preserving every experiment", async () => {
+    const updateExperiments = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: defaultAppSettings,
+        experiments: defaultExperiments,
+      })),
+      "v1.settings.experiments.$put": updateExperiments,
+    });
+
+    await runCommand(
+      ["settings", "experiment", "timelineWindowing", "true"],
+      register,
+    );
+
+    expect(updateExperiments).toHaveBeenCalledWith({
+      json: { ...defaultExperiments, timelineWindowing: true },
+    });
+  });
+
   it("reads usage from a selected machine", async () => {
     const getUsage = vi.fn(async () => ({
       codex: { status: "unauthenticated" },

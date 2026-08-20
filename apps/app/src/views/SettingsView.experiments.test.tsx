@@ -9,6 +9,7 @@ function renderSection(overrides?: {
   onChangelogPreviewEnabledChange?: (enabled: boolean) => void;
   onMobileAppEnabledChange?: (enabled: boolean) => void;
   onProviderSessionReapingEnabledChange?: (enabled: boolean) => void;
+  onTimelineWindowingEnabledChange?: (enabled: boolean) => void;
 }) {
   return render(
     <ExperimentsSettingsSection
@@ -17,6 +18,7 @@ function renderSection(overrides?: {
       editMessagesEnabled={false}
       mobileAppEnabled={false}
       providerSessionReapingEnabled={false}
+      timelineWindowingEnabled={false}
       onChangelogPreviewEnabledChange={
         overrides?.onChangelogPreviewEnabledChange ?? vi.fn()
       }
@@ -24,6 +26,9 @@ function renderSection(overrides?: {
       onMobileAppEnabledChange={overrides?.onMobileAppEnabledChange ?? vi.fn()}
       onProviderSessionReapingEnabledChange={
         overrides?.onProviderSessionReapingEnabledChange ?? vi.fn()
+      }
+      onTimelineWindowingEnabledChange={
+        overrides?.onTimelineWindowingEnabledChange ?? vi.fn()
       }
     />,
   );
@@ -48,6 +53,13 @@ describe("ExperimentsSettingsSection", () => {
     const onChange = vi.fn();
     renderSection({ onProviderSessionReapingEnabledChange: onChange });
     fireEvent.click(screen.getByLabelText("Idle provider session release"));
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  it("reports timeline windowing changes", () => {
+    const onChange = vi.fn();
+    renderSection({ onTimelineWindowingEnabledChange: onChange });
+    fireEvent.click(screen.getByLabelText("Timeline windowing"));
     expect(onChange).toHaveBeenCalledWith(true);
   });
 });

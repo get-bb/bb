@@ -49,10 +49,11 @@ export const TOP_LEVEL_TIMELINE_ROW_CLASS_NAME = `${CONTENT_VISIBILITY_CLASS_NAM
  */
 export function useArmTopLevelTimelineRowContainment(
   wrapperRef: RefObject<HTMLElement | null>,
+  enabled = true,
 ): void {
   useEffect(() => {
     const wrapper = wrapperRef.current;
-    if (wrapper === null || !supportsScrollAnchoring()) {
+    if (!enabled || wrapper === null || !supportsScrollAnchoring()) {
       return;
     }
     let cancelled = false;
@@ -74,7 +75,7 @@ export function useArmTopLevelTimelineRowContainment(
         cancelAnimationFrame(secondFrame);
       }
     };
-  }, [wrapperRef]);
+  }, [enabled, wrapperRef]);
 }
 
 /**
