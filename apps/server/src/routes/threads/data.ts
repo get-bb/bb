@@ -319,9 +319,11 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   // The conversation outline reprojects the entire thread, so memoize it by
   // the newest event that can affect the outline. Command output, reasoning,
   // and usage events still advance maxSeq in the response but do not invalidate
-  // the expensive projection. The key includes thread metadata that can affect
-  // grouping; add provider/env inputs if the outline ever surfaces them. A
-  // small LRU bounds memory across many viewed threads.
+  // the expensive projection. The client also refreshes this full projection
+  // at turn boundaries and overlays the live timeline window while a turn
+  // streams. The key includes thread metadata that can affect grouping; add
+  // provider/env inputs if the outline ever surfaces them. A small LRU bounds
+  // memory across many viewed threads.
   const conversationOutlineCache = new Map<
     string,
     ThreadConversationOutlineResponse["items"]

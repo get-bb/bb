@@ -687,6 +687,45 @@ describe("ThreadTableOfContents", () => {
     expect(screen.getByText("Agent messages")).not.toBeNull();
   });
 
+  it("merges live timeline messages into the cached full outline", async () => {
+    setOutline([
+      {
+        id: "row_user_1",
+        role: "user",
+        preview: "First cached question",
+        attachmentSummary: null,
+      },
+      {
+        id: "row_user_2",
+        role: "user",
+        preview: "Second cached question",
+        attachmentSummary: null,
+      },
+      {
+        id: "row_user_3",
+        role: "user",
+        preview: "Stale third question",
+        attachmentSummary: null,
+      },
+    ]);
+
+    render(
+      <TocHost
+        timelineRows={[userConversationRow(3), userConversationRow(4)]}
+      />,
+    );
+    openTocPanel();
+
+    expect(await screen.findByText("First cached question")).not.toBeNull();
+    expect(
+      screen.getByText("Loaded after client-side navigation 3"),
+    ).not.toBeNull();
+    expect(
+      screen.getByText("Loaded after client-side navigation 4"),
+    ).not.toBeNull();
+    expect(screen.queryByText("Stale third question")).toBeNull();
+  });
+
   it("renders an agent-to-agent message source as a thread mention", async () => {
     setOutline([
       {

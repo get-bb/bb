@@ -102,6 +102,20 @@ function outlineItemToTocItem(item: ThreadConversationOutlineItem): TocItem {
   };
 }
 
+function mergeLiveTocItems(
+  outlineItems: readonly TocItem[],
+  timelineItems: readonly TocItem[],
+): TocItem[] {
+  const timelineItemsById = new Map(
+    timelineItems.map((item) => [item.id, item]),
+  );
+  const outlineItemIds = new Set(outlineItems.map((item) => item.id));
+  return [
+    ...outlineItems.map((item) => timelineItemsById.get(item.id) ?? item),
+    ...timelineItems.filter((item) => !outlineItemIds.has(item.id)),
+  ];
+}
+
 export function selectTocRailItems({
   activeId,
   items,
@@ -224,9 +238,10 @@ function TocItemPreview({
 
 /**
  * Builds the user/agent item lists for the minimap. Prefers the full
- * conversation outline (the whole thread, independent of pagination); falls
- * back to the loaded timeline window so the minimap still renders on first
- * paint and in environments without the outline endpoint (e.g. stories).
+ * conversation outline (the whole thread, independent of pagination), then
+ * overlays the loaded timeline window so the current turn stays live between
+ * full-outline refreshes. Falls back to the timeline alone on first paint and
+ * in environments without the outline endpoint (e.g. stories).
  */
 function useConversationTocItems({
   outlineItems,
@@ -270,7 +285,19 @@ function useConversationTocItems({
     return { agentItems, userItems };
   }, [timelineRows]);
 
-  return outlineTocItems ?? timelineTocItems;
+  return useMemo(() => {
+    if (!outlineTocItems) return timelineTocItems;
+    return {
+      agentItems: mergeLiveTocItems(
+        outlineTocItems.agentItems,
+        timelineTocItems.agentItems,
+      ),
+      userItems: mergeLiveTocItems(
+        outlineTocItems.userItems,
+        timelineTocItems.userItems,
+      ),
+    };
+  }, [outlineTocItems, timelineTocItems]);
 }
 
 /**

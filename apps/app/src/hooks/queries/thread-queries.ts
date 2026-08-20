@@ -997,8 +997,9 @@ export function useThreadTimeline(
  * table-of-contents minimap. Unlike {@link useThreadTimeline}, this is not
  * paginated — it always reflects the whole thread — so the minimap can show
  * messages that have not yet been scrolled/paged into the loaded window. It is
- * invalidated by the same realtime `events-appended` signal as the timeline
- * window, so it stays in sync as new messages arrive.
+ * refreshed when a turn completes. The table of contents merges the live
+ * timeline window into this full-history snapshot while a turn is streaming,
+ * avoiding a full outline request for every appended text delta.
  */
 export function useThreadConversationOutline(
   id: string,

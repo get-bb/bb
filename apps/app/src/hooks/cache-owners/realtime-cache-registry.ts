@@ -101,6 +101,7 @@ import {
   getProjectListInvalidationQueryKeys,
   getProjectPromptHistoryInvalidationQueryKeys,
   getProjectSourceDependentInvalidationQueryKeys,
+  getThreadConversationOutlineInvalidationQueryKeys,
   getThreadDetailInvalidationQueryKeys,
   getThreadListInvalidationQueryKeys,
   getThreadPendingInteractionInvalidationQueryKeys,
@@ -902,7 +903,13 @@ function dirtyThreadTimelineQueries({
 }: ThreadRealtimeDirtyContext): void {
   // Window only: completed turn-summary-details are immutable, so realtime
   // event batches must not refetch open detail panels (see helper docs).
-  const queryKeys = getThreadTimelineWindowInvalidationQueryKeys({ threadId });
+  const timelineQueryKeys = getThreadTimelineWindowInvalidationQueryKeys({
+    threadId,
+  });
+  const outlineQueryKeys =
+    getThreadConversationOutlineInvalidationQueryKeys({ threadId });
+  const outlineMayHaveChanged =
+    eventTypes === undefined || eventTypes.includes("turn/completed");
   if (
     threadId !== undefined &&
     !hasActiveQueries(queryClient, threadTimelineQueryKeyPrefix(threadId))
@@ -910,16 +917,28 @@ function dirtyThreadTimelineQueries({
     // Nobody is viewing this thread: mark the cached window stale so a remount
     // refetches, but skip the fetch pacing/cancel machinery. List
     // subscriptions deliver every streaming thread's batches to every client.
-    for (const queryKey of queryKeys) {
+    for (const queryKey of [...timelineQueryKeys, ...outlineQueryKeys]) {
       queryClient.invalidateQueries({ queryKey, refetchType: "none" });
     }
     return;
   }
   if (eventTypes?.includes("turn/completed")) {
-    invalidateTerminalTimelineQueryKeys({ queryClient, queryKeys });
+    invalidateTerminalTimelineQueryKeys({
+      queryClient,
+      queryKeys: [...timelineQueryKeys, ...outlineQueryKeys],
+    });
     return;
   }
-  invalidateQueryKeysWithoutCancelingActiveFetches({ queryClient, queryKeys });
+  invalidateQueryKeysWithoutCancelingActiveFetches({
+    queryClient,
+    queryKeys: timelineQueryKeys,
+  });
+  if (outlineMayHaveChanged) {
+    invalidateQueryKeysWithoutCancelingActiveFetches({
+      queryClient,
+      queryKeys: outlineQueryKeys,
+    });
+  }
 }
 
 function dirtyThreadTimelineRewriteQueries({
