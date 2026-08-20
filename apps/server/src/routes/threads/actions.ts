@@ -71,6 +71,7 @@ import {
 import {
   archiveThreadAndChildren,
   archiveThreadAndHiddenSourceForks,
+  resolveArchiveThreadEnvironment,
 } from "../../services/threads/thread-archive.js";
 import {
   requireThreadCommandEnvironment,
@@ -650,10 +651,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       environmentId: thread.environmentId,
       excludeThreadId: thread.id,
     });
-    const environment = resolveThreadHostCommandEnvironment({
-      db: deps.db,
-      thread,
-    });
+    const environment = resolveArchiveThreadEnvironment(deps, { thread });
     const archiveResult = archiveThreadAndHiddenSourceForks(deps, {
       environment,
       thread,

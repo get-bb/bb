@@ -27,8 +27,8 @@ interface ThreadHostCommandEnvironment {
 /**
  * Resolve the host command environment for a thread, or null when the thread
  * has no environment pointer. A thread loses its pointer when its environment
- * row is pruned (threads.environment_id is ON DELETE SET NULL), so callers
- * that only need the environment to stop live runtime work must tolerate null.
+ * row is pruned (threads.environment_id is ON DELETE SET NULL). Callers decide
+ * what a missing pointer means for their command.
  */
 export function resolveThreadHostCommandEnvironment(
   args: RequireThreadHostCommandEnvironmentArgs,
@@ -46,12 +46,9 @@ export function resolveThreadHostCommandEnvironment(
 export function requireThreadHostCommandEnvironment(
   args: RequireThreadHostCommandEnvironmentArgs,
 ): ThreadHostCommandEnvironment {
-  if (args.thread.environmentId !== null) {
-    const environment = requireEnvironment(args.db, args.thread.environmentId);
-    return {
-      id: environment.id,
-      hostId: environment.hostId,
-    };
+  const environment = resolveThreadHostCommandEnvironment(args);
+  if (environment !== null) {
+    return environment;
   }
 
   throwThreadEnvironmentUnavailable(
