@@ -16,6 +16,7 @@ import type {
 import { useResolvedCodeThemePair } from "@/lib/code-theme";
 import { PierreWorkerPoolBoundary } from "@/lib/pierre-worker-pool-boundary";
 import { useRequirePierreWorkerPool } from "@/lib/pierre-worker-pool-gate";
+import { usePierreStrictModeRecoveryOptions } from "@/lib/pierre-strict-mode-recovery";
 import { FileDiff as DiffView } from "@pierre/diffs/react";
 import { useIntersectionObserver } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
@@ -1303,7 +1304,7 @@ function GitDiffCardRawDiffBody({
     enabled: onSelectionAddToChat !== undefined,
     onSelectionAddToChat,
   });
-  const options = useMemo<FileDiffOptions<undefined>>(
+  const baseOptions = useMemo<FileDiffOptions<undefined>>(
     () => ({
       ...fileDiffOptions,
       enableGutterUtility: onSelectionAddToChat !== undefined,
@@ -1327,6 +1328,7 @@ function GitDiffCardRawDiffBody({
       onSelectionAddToChat,
     ],
   );
+  const options = usePierreStrictModeRecoveryOptions(baseOptions);
   // `DiffView` captures the worker pool when it creates its instance, so wait
   // for the workspace to build the pool before the first render.
   const isWorkerPoolReady = useRequirePierreWorkerPool();

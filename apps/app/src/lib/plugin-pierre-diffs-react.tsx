@@ -32,6 +32,7 @@ import {
   usePierreWorkerPool,
   useRequirePierreWorkerPool,
 } from "./pierre-worker-pool-gate";
+import { usePierreStrictModeRecoveryOptions } from "./pierre-strict-mode-recovery";
 
 /**
  * The `@pierre/diffs/react` surface handed to plugin bundles through the
@@ -54,24 +55,48 @@ import {
  * mirrors `RUNTIME_EXPORT_MANIFEST["@pierre/diffs/react"]` in
  * packages/plugin-build; the plugin-frontend test keeps them in sync.
  */
-function gatePierreComponent<P extends object>(
-  Component: ComponentType<P>,
-  name: string,
-) {
-  function PierreWorkerPoolGated(props: P) {
+function gatePierreDiffComponent<
+  P extends {
+    options?: ComponentPropsWithoutRef<typeof FileDiff>["options"];
+  },
+>(Component: ComponentType<P>, name: string) {
+  function PierreWorkerPoolGatedDiff(props: P) {
     const ready = useRequirePierreWorkerPool();
+    const options = usePierreStrictModeRecoveryOptions(props.options);
     return (
       <PierreWorkerPoolBoundary>
-        {ready ? <Component {...props} /> : null}
+        {ready ? <Component {...props} options={options} /> : null}
       </PierreWorkerPoolBoundary>
     );
   }
-  PierreWorkerPoolGated.displayName = `PierreWorkerPoolGated(${name})`;
-  return PierreWorkerPoolGated;
+  PierreWorkerPoolGatedDiff.displayName = `PierreWorkerPoolGated(${name})`;
+  return PierreWorkerPoolGatedDiff;
 }
 
 type CodeViewProps = ComponentPropsWithoutRef<typeof CodeView>;
 type CodeViewHandle = ElementRef<typeof CodeView>;
+type FileProps = ComponentPropsWithoutRef<typeof File>;
+type UnresolvedFileProps = ComponentPropsWithoutRef<typeof UnresolvedFile>;
+
+function GatedFile(props: FileProps) {
+  const ready = useRequirePierreWorkerPool();
+  const options = usePierreStrictModeRecoveryOptions(props.options);
+  return (
+    <PierreWorkerPoolBoundary>
+      {ready ? <File {...props} options={options} /> : null}
+    </PierreWorkerPoolBoundary>
+  );
+}
+
+function GatedUnresolvedFile(props: UnresolvedFileProps) {
+  const ready = useRequirePierreWorkerPool();
+  const options = usePierreStrictModeRecoveryOptions(props.options);
+  return (
+    <PierreWorkerPoolBoundary>
+      {ready ? <UnresolvedFile {...props} options={options} /> : null}
+    </PierreWorkerPoolBoundary>
+  );
+}
 
 /** `CodeView` forwards an imperative handle, so its gate must forward too. */
 const GatedCodeView = forwardRef<CodeViewHandle, CodeViewProps>(
@@ -106,13 +131,13 @@ function useHostWorkerPool(): ReturnType<typeof useWorkerPool> {
 export function createGatedPierreDiffsReact(): Record<string, unknown> {
   return {
     CodeView: GatedCodeView,
-    File: gatePierreComponent(File, "File"),
-    FileDiff: gatePierreComponent(FileDiff, "FileDiff"),
+    File: GatedFile,
+    FileDiff: gatePierreDiffComponent(FileDiff, "FileDiff"),
     GutterUtilitySlotStyles,
     MergeConflictSlotStyles,
-    MultiFileDiff: gatePierreComponent(MultiFileDiff, "MultiFileDiff"),
-    PatchDiff: gatePierreComponent(PatchDiff, "PatchDiff"),
-    UnresolvedFile: gatePierreComponent(UnresolvedFile, "UnresolvedFile"),
+    MultiFileDiff: gatePierreDiffComponent(MultiFileDiff, "MultiFileDiff"),
+    PatchDiff: gatePierreDiffComponent(PatchDiff, "PatchDiff"),
+    UnresolvedFile: GatedUnresolvedFile,
     Virtualizer,
     VirtualizerContext,
     WorkerPoolContext,
