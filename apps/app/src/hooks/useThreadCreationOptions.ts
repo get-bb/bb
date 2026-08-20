@@ -64,7 +64,7 @@ const EMPTY_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
 const DEFAULT_SUPPORTED_PERMISSION_MODES: readonly PermissionMode[] = ["full"];
 
 const PERMISSION_CEILING_REASON =
-  "Above this machine's permission limit. Change it in Settings → Machines.";
+  "Above the selected machine's permission limit. Change it in Settings → Machines.";
 
 type StringSelectionSetter = (value: string) => void;
 type ServiceTierSelectionSetter = (value: ServiceTier | undefined) => void;

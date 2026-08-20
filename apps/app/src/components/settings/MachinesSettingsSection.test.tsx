@@ -17,7 +17,7 @@ import {
 } from "@bb/domain";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { MachinesSettingsSection } from "./MachinesSettingsSection";
@@ -36,6 +36,18 @@ vi.mock("@/lib/sdk", () => ({
 
 vi.mock("@/lib/ws", () => ({
   wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
+}));
+
+const hostDaemon = vi.hoisted(() => ({
+  localDaemonHostId: "host_primary" as string | null,
+  platform: "darwin" as "darwin" | "linux" | "wsl" | "unknown" | null,
+}));
+
+vi.mock("@/hooks/useHostDaemon", () => ({
+  useHostDaemon: () => ({
+    localDaemonHostId: hostDaemon.localDaemonHostId,
+    platform: hostDaemon.platform,
+  }),
 }));
 
 const NOW = Date.now();
@@ -127,6 +139,11 @@ async function openHostMenu(hostName: string): Promise<void> {
   );
 }
 
+beforeEach(() => {
+  hostDaemon.localDaemonHostId = "host_primary";
+  hostDaemon.platform = "darwin";
+});
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -144,6 +161,7 @@ describe("MachinesSettingsSection", () => {
     expect(await screen.findByText("MacBook Pro")).toBeDefined();
     expect(screen.getByText("dev-vm")).toBeDefined();
     expect(screen.getByText("this machine")).toBeDefined();
+    expect(screen.getByText("primary")).toBeDefined();
     await waitFor(() => {
       expect(screen.getByRole("img", { name: "Online" })).toBeDefined();
     });
@@ -165,6 +183,62 @@ describe("MachinesSettingsSection", () => {
     expect(screen.getAllByRole("img", { name: "Full Access" })).toHaveLength(2);
     expect(screen.getByText("macOS")).toBeDefined();
     expect(screen.queryByText(/Online ·/u)).toBeNull();
+  });
+
+  it("distinguishes the client-local daemon from the primary machine", async () => {
+    hostDaemon.localDaemonHostId = "host_remote";
+    hostDaemon.platform = "linux";
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    const primaryName = await screen.findByText("MacBook Pro");
+    const localName = screen.getByText("dev-vm");
+    expect(primaryName.parentElement?.textContent).toContain("primary");
+    expect(primaryName.parentElement?.textContent).not.toContain(
+      "this machine",
+    );
+    expect(localName.parentElement?.textContent).toContain("this machine");
+    expect(localName.parentElement?.textContent).not.toContain("primary");
+    expect(screen.getByText("Linux")).toBeDefined();
+  });
+
+  it("does not infer client-local identity when no daemon is reachable", async () => {
+    hostDaemon.localDaemonHostId = null;
+    hostDaemon.platform = null;
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    await screen.findByText("MacBook Pro");
+    expect(screen.queryByText("this machine")).toBeNull();
+    expect(screen.getByText("primary")).toBeDefined();
+  });
+
+  it("does not promote a fallback host to primary policy", async () => {
+    hostDaemon.localDaemonHostId = null;
+    vi.mocked(sdk.system.config).mockResolvedValue({
+      ...systemConfig(),
+      primaryHostId: null,
+      primaryHostPlatform: null,
+    });
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    await screen.findByText("MacBook Pro");
+    expect(screen.queryByText("primary")).toBeNull();
+    await openHostMenu("MacBook Pro");
+    expect(
+      screen
+        .getByRole("menuitem", { name: "Remove machine" })
+        .getAttribute("aria-disabled"),
+    ).toBeNull();
   });
 
   it("shows protocol versions when a machine needs an update", async () => {
@@ -412,7 +486,7 @@ describe("MachinesSettingsSection", () => {
     fireEvent.focus(removeItem);
     expect(
       await screen.findByRole("tooltip", {
-        name: "This machine runs bb and can't be removed.",
+        name: "bb's primary machine can't be removed.",
       }),
     ).toBeDefined();
     fireEvent.click(removeItem);

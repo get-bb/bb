@@ -35,11 +35,12 @@ import {
   useRetryHostUpdate,
   useUpdateHostPermissionCeiling,
 } from "@/hooks/mutations/host-mutations";
-import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
+import { useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { isProviderCliUpdateIssue } from "@/components/provider-cli/provider-cli-install";
 import { useUpdateInventory } from "@/hooks/useUpdateInventory";
+import { useHostDaemon } from "@/hooks/useHostDaemon";
 import {
   formatHostUpdateStatus,
   hostCanRetryUpdate,
@@ -57,11 +58,10 @@ import {
   getSettingsRoutePath,
 } from "@/lib/route-paths";
 
-const PRIMARY_REMOVE_DISABLED_REASON =
-  "This machine runs bb and can't be removed.";
+const PRIMARY_REMOVE_DISABLED_REASON = "bb's primary machine can't be removed.";
 
 const PERMISSION_LIMIT_DESCRIPTION =
-  "Highest permission mode any thread on this machine may run with. Threads that ask for more resolve down to it, and a provider that supports nothing this low can't run here.";
+  "Highest permission mode any thread on the selected machine may run with. Threads that ask for more resolve down to it, and a provider that supports nothing this low can't run here.";
 
 const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   darwin: "macOS",
@@ -203,6 +203,7 @@ export function MachineSettingsView() {
   const navigate = useNavigate();
   const hostsQuery = useHosts();
   const systemConfig = useSystemConfig();
+  const { localDaemonHostId, platform: localDaemonPlatform } = useHostDaemon();
   const sidebarNavigationQuery = useSidebarNavigation();
   const updateInventory = useUpdateInventory();
   const renameHost = useRenameHost();
@@ -214,10 +215,11 @@ export function MachineSettingsView() {
 
   const hosts = hostsQuery.data;
   const host = hosts?.find((candidate) => candidate.id === hostId) ?? null;
-  const primaryHostId =
-    selectPrimaryHost(hosts, systemConfig.data?.primaryHostId ?? null)?.id ??
-    null;
+  const primaryHostId = systemConfig.data?.primaryHostId ?? null;
   const isPrimary = host !== null && host.id === primaryHostId;
+  const showMachineIdentityBadges = (hosts?.length ?? 0) > 1;
+  const isThisMachine =
+    showMachineIdentityBadges && host !== null && host.id === localDaemonHostId;
 
   const projects: MachineProject[] = useMemo(() => {
     const navigation = sidebarNavigationQuery.data?.projects ?? [];
@@ -256,9 +258,13 @@ export function MachineSettingsView() {
 
   const now = Date.now();
   const platformLabel =
-    isPrimary && systemConfig.data?.primaryHostPlatform
-      ? PLATFORM_LABELS[systemConfig.data.primaryHostPlatform]
-      : null;
+    host !== null &&
+    host.id === localDaemonHostId &&
+    localDaemonPlatform !== null
+      ? PLATFORM_LABELS[localDaemonPlatform]
+      : isPrimary && systemConfig.data?.primaryHostPlatform
+        ? PLATFORM_LABELS[systemConfig.data.primaryHostPlatform]
+        : null;
 
   if (hosts === undefined) {
     return (
@@ -282,7 +288,7 @@ export function MachineSettingsView() {
             Machines
           </Link>
           <p className="text-sm text-muted-foreground">
-            This machine is no longer paired.
+            That machine is no longer paired.
           </p>
         </div>
       </PageShell>
@@ -311,7 +317,12 @@ export function MachineSettingsView() {
                   aria-hidden
                 />
                 <span className="truncate">{host.name}</span>
-                {isPrimary ? <SettingsBadge>This machine</SettingsBadge> : null}
+                {isThisMachine ? (
+                  <SettingsBadge>This machine</SettingsBadge>
+                ) : null}
+                {showMachineIdentityBadges && isPrimary ? (
+                  <SettingsBadge>Primary</SettingsBadge>
+                ) : null}
               </span>
             }
             titleAction={

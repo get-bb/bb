@@ -12,7 +12,6 @@ import {
   useHostsProviderCliStatus,
   useServerProtocolVersion,
 } from "../hosts/host-queries";
-import { selectPrimaryHost } from "../hosts/select-primary-host";
 import { useSystemConfig, useSystemVersion } from "../system/system-queries";
 import {
   buildUpdateInventory,
@@ -48,9 +47,7 @@ export function useUpdateInventory(
   const providerStatuses = useHostsProviderCliStatus(connectedHostIds, {
     enabled,
   });
-  const primaryHostId =
-    selectPrimaryHost(hosts, configQuery.data?.primaryHostId ?? null)?.id ??
-    null;
+  const primaryHostId = configQuery.data?.primaryHostId ?? null;
   const inventory = useMemo(
     () =>
       buildUpdateInventory({

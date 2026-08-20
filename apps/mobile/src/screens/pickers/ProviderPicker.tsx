@@ -49,7 +49,7 @@ export function ProviderPicker({
           ),
         description: option.available
           ? undefined
-          : "Not available on this machine",
+          : "Not available on the selected machine",
       })),
     [options, tokens.foreground, tokens.subtleForeground],
   );

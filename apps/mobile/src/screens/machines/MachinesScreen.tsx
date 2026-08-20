@@ -11,7 +11,6 @@ import {
   machineMetaLine,
   PERMISSION_MODE_SHORT_LABELS,
   PRIMARY_HOST_REMOVE_DISABLED_REASON,
-  selectPrimaryHost,
   useHosts,
   useAddMachineSession,
   useRemoveHost,
@@ -76,12 +75,7 @@ function ConnectedMachinesScreen() {
   const retryUpdate = useRetryHostUpdate();
 
   const hosts = hostsQuery.data;
-  const primaryHostId = useMemo(
-    () =>
-      selectPrimaryHost(hosts, configQuery.data?.primaryHostId ?? null)?.id ??
-      null,
-    [hosts, configQuery.data?.primaryHostId],
-  );
+  const primaryHostId = configQuery.data?.primaryHostId ?? null;
   const projectCounts = useMemo(
     () => countProjectsByHost(bootstrap.data?.projects ?? []),
     [bootstrap.data?.projects],
@@ -139,7 +133,7 @@ function ConnectedMachinesScreen() {
                   key={host.id}
                   title={host.name}
                   titleLines={1}
-                  subtitle={`${isPrimary ? "This machine · " : ""}${machineMetaLine(
+                  subtitle={`${hosts.length > 1 && isPrimary ? "Primary · " : ""}${machineMetaLine(
                     {
                       host,
                       platformLabel:

@@ -70,6 +70,7 @@ import {
   useUpdateInventory,
   type UpdateInventoryMachine,
 } from "@/hooks/useUpdateInventory";
+import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import {
@@ -1360,10 +1361,12 @@ export function MachineUpdatesRows({
 /** One machine owns one settings section; the badge makes local scope explicit. */
 export function MachineUpdatesSection({
   machine,
+  isThisMachine,
   action,
   children,
 }: {
   machine: UpdateInventoryMachine;
+  isThisMachine: boolean;
   action?: ReactNode;
   children: ReactNode;
 }) {
@@ -1379,9 +1382,7 @@ export function MachineUpdatesSection({
               aria-hidden
             />
             <span className="truncate">{machine.host.name}</span>
-            {machine.isPrimary ? (
-              <SettingsBadge>This machine</SettingsBadge>
-            ) : null}
+            {isThisMachine ? <SettingsBadge>This machine</SettingsBadge> : null}
           </span>
         }
         action={
@@ -1421,6 +1422,7 @@ export function UpdatesSettingsSection({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const inventory = useUpdateInventory();
+  const { localDaemonHostId } = useHostDaemon();
   const { desktopApi, desktopInfo, isDesktop } = useDesktopUpdateInfo();
   const retryHostUpdate = useRetryHostUpdate();
   // The check store outlives this view, so an in-flight check stays visible
@@ -1535,7 +1537,7 @@ export function UpdatesSettingsSection({
           (candidate) => candidate.host.id === hostId,
         );
         appToast.success(
-          `Retrying the update on ${machine?.host.name ?? "this machine"}`,
+          `Retrying the update on ${machine?.host.name ?? "the requested machine"}`,
         );
       },
     });
@@ -1608,6 +1610,10 @@ export function UpdatesSettingsSection({
             <MachineUpdatesSection
               key={machine.host.id}
               machine={machine}
+              isThisMachine={
+                inventory.machines.length > 1 &&
+                machine.host.id === localDaemonHostId
+              }
               action={index === 0 ? bulkActions : null}
             >
               {ownsApp ? (

@@ -13,7 +13,6 @@ import {
   PERMISSION_MODE_SHORT_LABELS,
   PRIMARY_HOST_REMOVE_DISABLED_REASON,
   providerCliIssues,
-  selectPrimaryHost,
   useHostProviderCliStatus,
   useHosts,
   useProviderCliInstallRunner,
@@ -82,9 +81,7 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
   const bootstrap = useSidebarBootstrap();
   const hosts = hostsQuery.data;
   const host = hosts?.find((candidate) => candidate.id === hostId) ?? null;
-  const primaryHostId =
-    selectPrimaryHost(hosts, configQuery.data?.primaryHostId ?? null)?.id ??
-    null;
+  const primaryHostId = configQuery.data?.primaryHostId ?? null;
   const isPrimary = host !== null && host.id === primaryHostId;
   const online = host?.status === "connected";
 
@@ -131,7 +128,7 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
   if (host === null) {
     return (
       <Screen testID="machine-detail-screen">
-        <EmptyStatePanel>This machine is no longer paired.</EmptyStatePanel>
+        <EmptyStatePanel>That machine is no longer paired.</EmptyStatePanel>
         <Button variant="outline" onPress={() => router.back()}>
           Back to machines
         </Button>
@@ -178,9 +175,9 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
             >
               {host.name}
             </Text>
-            {isPrimary ? (
+            {hosts.length > 1 && isPrimary ? (
               <Pill variant="outline" size="sm">
-                this machine
+                Primary
               </Pill>
             ) : null}
           </View>
@@ -233,7 +230,7 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
           />
         </SettingsSection>
 
-        <SettingsSection title="Projects on this machine">
+        <SettingsSection title={`Projects on ${host.name}`}>
           {projects.length === 0 ? (
             <SettingsValueRow label="Projects" value="None" />
           ) : (

@@ -131,12 +131,14 @@ function BbAppRow({
 
 function MachineUpdatesBlock({
   machine,
+  showPrimaryBadge,
   serverProtocolVersion,
   runner,
   retryPending,
   onRetry,
 }: {
   machine: UpdateInventoryMachine;
+  showPrimaryBadge: boolean;
   serverProtocolVersion: number | null;
   runner: ReturnType<typeof useProviderCliInstallRunner>;
   retryPending: boolean;
@@ -152,9 +154,9 @@ function MachineUpdatesBlock({
         <Text variant="label" numberOfLines={1} className="shrink">
           {host.name}
         </Text>
-        {machine.isPrimary ? (
+        {showPrimaryBadge ? (
           <Pill variant="outline" size="sm">
-            this machine
+            Primary
           </Pill>
         ) : null}
         <View className="flex-1" />
@@ -455,6 +457,9 @@ function ConnectedUpdatesScreen() {
                 {index > 0 ? <Separator /> : null}
                 <MachineUpdatesBlock
                   machine={machine}
+                  showPrimaryBadge={
+                    inventory.machines.length > 1 && machine.isPrimary
+                  }
                   serverProtocolVersion={inventory.serverProtocolVersion}
                   runner={runner}
                   retryPending={

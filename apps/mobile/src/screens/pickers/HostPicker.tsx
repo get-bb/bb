@@ -112,7 +112,7 @@ export function HostPicker({
               ? onRequestSetup
                 ? "Not set up for this project · tap to set up"
                 : "Not set up for this project"
-              : isPrimary
+              : hosts.length > 1 && isPrimary
                 ? "Primary machine"
                 : undefined;
           return (

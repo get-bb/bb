@@ -179,6 +179,7 @@ export function SettingsUpdatesStory() {
     <div className="space-y-6">
       <MachineUpdatesSection
         machine={settingsUpdateMachine}
+        isThisMachine={false}
         action={
           <div role="toolbar" aria-label="Bulk update actions">
             <UpdateActionButton

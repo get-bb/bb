@@ -142,7 +142,7 @@ export function EnvironmentPicker({
     hostUnavailableReason ??
     (isPersonalProject || hostHasSource
       ? null
-      : `${host?.name ?? "This machine"} has no checkout of this project`);
+      : `${host?.name ?? "The selected machine"} has no checkout of this project`);
   const worktreeReason = isPersonalProject
     ? "Personal threads have no repository"
     : (workspaceDisabledReason ?? worktreeDisabledReason);

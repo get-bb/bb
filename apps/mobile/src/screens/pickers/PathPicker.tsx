@@ -56,7 +56,9 @@ export function PathPicker({
       >
         <ListRow
           title="Project checkout"
-          subtitle={defaultPath ?? "The project's folder on this machine"}
+          subtitle={
+            defaultPath ?? "The project's folder on the selected machine"
+          }
           leading="FolderGit"
           selected={value === null}
           onPress={() => {

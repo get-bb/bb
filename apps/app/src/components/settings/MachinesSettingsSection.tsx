@@ -41,9 +41,10 @@ import {
   useRenameHost,
   useRetryHostUpdate,
 } from "@/hooks/mutations/host-mutations";
-import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
+import { useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
+import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { PersistentHostIconName } from "@/lib/host-display";
 import { getSettingsMachineRoutePath } from "@/lib/route-paths";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
@@ -64,8 +65,7 @@ const PERMISSION_MODE_PRESENTATION: Record<
 const MACHINES_SECTION_DESCRIPTION =
   "Computers that can run your tasks. Pair a machine to run projects and threads on it.";
 
-const PRIMARY_REMOVE_DISABLED_REASON =
-  "This machine runs bb and can't be removed.";
+const PRIMARY_REMOVE_DISABLED_REASON = "bb's primary machine can't be removed.";
 
 const MACHINE_MENU_ITEM_CLASS = "min-h-9 px-2.5 py-2";
 
@@ -112,6 +112,8 @@ function MachineMetadataIcon({
 interface MachineRowProps {
   host: Host;
   isPrimary: boolean;
+  isThisMachine: boolean;
+  showPrimaryBadge: boolean;
   platformLabel: string | null;
   projectCount: number;
   now: number;
@@ -124,6 +126,8 @@ interface MachineRowProps {
 function MachineRow({
   host,
   isPrimary,
+  isThisMachine,
+  showPrimaryBadge,
   platformLabel,
   projectCount,
   now,
@@ -180,7 +184,10 @@ function MachineRow({
               <span className="min-w-0 truncate text-sm font-medium text-foreground">
                 {host.name}
               </span>
-              {isPrimary ? <SettingsBadge>this machine</SettingsBadge> : null}
+              {isThisMachine ? (
+                <SettingsBadge>this machine</SettingsBadge>
+              ) : null}
+              {showPrimaryBadge ? <SettingsBadge>primary</SettingsBadge> : null}
             </div>
             <div className="flex min-w-0 items-center gap-2 text-xs text-subtle-foreground/75">
               <MachineStatusIcon
@@ -275,6 +282,7 @@ function MachineRow({
 export function MachinesSettingsSection() {
   const systemConfig = useSystemConfig();
   const hostsQuery = useHosts();
+  const { localDaemonHostId, platform: localDaemonPlatform } = useHostDaemon();
   const sidebarNavigationQuery = useSidebarNavigation();
   const renameHost = useRenameHost();
   const removeHost = useRemoveHost();
@@ -285,10 +293,6 @@ export function MachinesSettingsSection() {
 
   const hosts = hostsQuery.data;
   const serverPrimaryHostId = systemConfig.data?.primaryHostId ?? null;
-  const primaryHostId = useMemo(
-    () => selectPrimaryHost(hosts, serverPrimaryHostId)?.id ?? null,
-    [hosts, serverPrimaryHostId],
-  );
   const projects = sidebarNavigationQuery.data?.projects;
   const projectCountByHostId = useMemo(() => {
     const counts = new Map<string, number>();
@@ -303,6 +307,7 @@ export function MachinesSettingsSection() {
 
   const now = Date.now();
   const primaryHostPlatform = systemConfig.data?.primaryHostPlatform ?? null;
+  const showMachineIdentityBadges = (hosts?.length ?? 0) > 1;
 
   return (
     <>
@@ -338,11 +343,20 @@ export function MachinesSettingsSection() {
               <MachineRow
                 key={host.id}
                 host={host}
-                isPrimary={host.id === primaryHostId}
+                isPrimary={host.id === serverPrimaryHostId}
+                isThisMachine={
+                  showMachineIdentityBadges && host.id === localDaemonHostId
+                }
+                showPrimaryBadge={
+                  showMachineIdentityBadges && host.id === serverPrimaryHostId
+                }
                 platformLabel={
-                  host.id === primaryHostId && primaryHostPlatform !== null
-                    ? PLATFORM_LABELS[primaryHostPlatform]
-                    : null
+                  host.id === localDaemonHostId && localDaemonPlatform !== null
+                    ? PLATFORM_LABELS[localDaemonPlatform]
+                    : host.id === serverPrimaryHostId &&
+                        primaryHostPlatform !== null
+                      ? PLATFORM_LABELS[primaryHostPlatform]
+                      : null
                 }
                 projectCount={projectCountByHostId.get(host.id) ?? 0}
                 now={now}

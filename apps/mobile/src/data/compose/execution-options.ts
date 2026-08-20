@@ -61,7 +61,7 @@ export const REASONING_LABELS: Record<ReasoningLevel, string> = {
 };
 
 export const PERMISSION_CEILING_REASON =
-  "Above this machine's permission limit. Change it in Settings → Machines.";
+  "Above the selected machine's permission limit. Change it in Settings → Machines.";
 
 const DEFAULT_SUPPORTED_PERMISSION_MODES: readonly PermissionMode[] = ["full"];
 

@@ -61,6 +61,16 @@ vi.mock("@/hooks/useDesktopUpdateInfo", () => ({
   useDesktopUpdateInfo: vi.fn(),
 }));
 
+const hostDaemon = vi.hoisted(() => ({
+  localDaemonHostId: null as string | null,
+}));
+
+vi.mock("@/hooks/useHostDaemon", () => ({
+  useHostDaemon: () => ({
+    localDaemonHostId: hostDaemon.localDaemonHostId,
+  }),
+}));
+
 const openUrlInExternalBrowserMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/url-open-routing", () => ({
@@ -264,6 +274,7 @@ const useDesktopUpdateInfoMock = vi.mocked(useDesktopUpdateInfo);
 const useProviderCliInstallRunnerMock = vi.mocked(useProviderCliInstallRunner);
 
 beforeEach(() => {
+  hostDaemon.localDaemonHostId = null;
   vi.stubGlobal(
     "fetch",
     vi.fn().mockRejectedValue(new Error("Changelog unavailable offline")),
@@ -431,7 +442,8 @@ The canonical release summary.
     });
     expect(screen.queryByText("2 up to date")).toBeNull();
     expect(screen.getByRole("heading", { name: /workstation/ })).toBeDefined();
-    expect(screen.getByText("This machine")).toBeDefined();
+    expect(screen.queryByText("Primary")).toBeNull();
+    expect(screen.queryByText("This machine")).toBeNull();
     expect(screen.queryByText("studio-mac")).toBeNull();
     expect(screen.queryByText(/Checked/)).toBeNull();
     expect(screen.queryByText(/ago$/)).toBeNull();
@@ -935,9 +947,8 @@ The canonical release summary.
     expect(machineHeading.className).toContain("font-semibold");
     expect(machineHeading.className).toContain("text-foreground");
     const machineName = screen.getByText("workstation");
-    const thisMachine = screen.getByText("This machine");
     expect(machineHeading.querySelector('[data-icon="Laptop"]')).not.toBeNull();
-    expect(machineName.nextElementSibling).toBe(thisMachine);
+    expect(machineName.nextElementSibling).toBeNull();
     // No summary banner above the rows: with work outstanding the rows are
     // the statement, and with none the settled card is the only thing shown.
     expect(screen.getByText("bb app")).toBeDefined();
@@ -981,6 +992,43 @@ The canonical release summary.
     expect(upgrade?.textContent).toBe("1.0.1");
     expect(upgrade?.className).toContain("font-semibold");
     expect(screen.queryByText("1 up to date")).toBeNull();
+  });
+
+  it("badges the client-local daemon independently from the primary update owner", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const primary = makeHost({ id: "host_primary", name: "workstation" });
+    const local = makeHost({ id: "host_local", name: "studio-mac" });
+    hostDaemon.localDaemonHostId = local.id;
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [
+          makeMachine({
+            host: primary,
+            issues: [makeUpdateIssue({ provider: "codex" })],
+            isPrimary: true,
+          }),
+          makeMachine({
+            host: local,
+            issues: [makeUpdateIssue({ provider: "claudeCode" })],
+          }),
+        ],
+      }),
+    );
+
+    renderSection();
+
+    const primaryHeading = screen.getByRole("heading", {
+      name: /workstation/u,
+    });
+    const localHeading = screen.getByRole("heading", { name: /studio-mac/u });
+    expect(primaryHeading.textContent).not.toContain("Primary");
+    expect(primaryHeading.textContent).not.toContain("This machine");
+    expect(localHeading.textContent).toContain("This machine");
+    expect(localHeading.textContent).not.toContain("Primary");
   });
 
   it("lists Cursor updates with the other provider CLIs", () => {

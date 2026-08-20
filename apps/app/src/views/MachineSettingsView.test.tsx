@@ -20,7 +20,7 @@ import type {
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { MachineSettingsView } from "./MachineSettingsView";
@@ -40,6 +40,18 @@ vi.mock("@/lib/sdk", () => ({
 
 vi.mock("@/lib/ws", () => ({
   wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
+}));
+
+const hostDaemon = vi.hoisted(() => ({
+  localDaemonHostId: null as string | null,
+  platform: null as "darwin" | "linux" | "wsl" | "unknown" | null,
+}));
+
+vi.mock("@/hooks/useHostDaemon", () => ({
+  useHostDaemon: () => ({
+    localDaemonHostId: hostDaemon.localDaemonHostId,
+    platform: hostDaemon.platform,
+  }),
 }));
 
 const HOST_ID = "host_remote";
@@ -142,6 +154,11 @@ function stubSupportingFetches(): void {
     ),
   );
 }
+
+beforeEach(() => {
+  hostDaemon.localDaemonHostId = null;
+  hostDaemon.platform = null;
+});
 
 afterEach(() => {
   cleanup();
@@ -326,7 +343,40 @@ describe("MachineSettingsView", () => {
     expect(remove.hasAttribute("disabled")).toBe(true);
     expect(remove.className).toContain("bg-destructive");
     expect(remove.parentElement?.className).not.toContain("justify-end");
-    expect(screen.getAllByText("This machine")).toHaveLength(1);
+    expect(screen.queryByText("This machine")).toBeNull();
+    expect(screen.queryByText("Primary")).toBeNull();
+    expect(
+      screen.getByText("bb's primary machine can't be removed."),
+    ).toBeDefined();
+  });
+
+  it("shows client-local identity only when several machines need disambiguation", async () => {
+    hostDaemon.localDaemonHostId = HOST_ID;
+    hostDaemon.platform = "linux";
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      host(),
+      host({ id: "host_primary", name: "workstation" }),
+    ]);
+    stubSupportingFetches();
+
+    renderView();
+
+    expect(await screen.findByText("This machine")).toBeDefined();
+    expect(screen.queryByText("Primary")).toBeNull();
+    expect(screen.getByText(/Linux/u)).toBeDefined();
+  });
+
+  it("suppresses the client-local badge when there is only one machine", async () => {
+    hostDaemon.localDaemonHostId = HOST_ID;
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([host()]);
+    stubSupportingFetches();
+
+    renderView();
+
+    await screen.findByRole("heading", { name: /dev-vm/u });
+    expect(screen.queryByText("This machine")).toBeNull();
   });
 
   it("explains a machine that is no longer paired", async () => {
@@ -337,7 +387,7 @@ describe("MachineSettingsView", () => {
     renderView();
 
     expect(
-      await screen.findByText("This machine is no longer paired."),
+      await screen.findByText("That machine is no longer paired."),
     ).toBeDefined();
   });
 });

@@ -17,13 +17,13 @@ export const PERMISSION_MODE_SHORT_LABELS: Record<PermissionMode, string> = {
 };
 
 export const PRIMARY_HOST_REMOVE_DISABLED_REASON =
-  "This machine runs bb and can't be removed.";
+  "bb's primary machine can't be removed.";
 
 export const MACHINES_SECTION_DESCRIPTION =
   "Computers that can run your tasks. Pair a machine to run projects and threads on it.";
 
 export const PERMISSION_LIMIT_DESCRIPTION =
-  "Highest permission mode any thread on this machine may run with. Threads that ask for more resolve down to it, and a provider that supports nothing this low can't run here.";
+  "Highest permission mode any thread on the selected machine may run with. Threads that ask for more resolve down to it, and a provider that supports nothing this low can't run here.";
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;

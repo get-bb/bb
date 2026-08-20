@@ -122,7 +122,7 @@ function ConnectedNewProjectScreen() {
             subtitle={
               host
                 ? host.status === "connected"
-                  ? host.id === primaryHost?.id
+                  ? hosts.length > 1 && host.id === primaryHost?.id
                     ? "Primary machine"
                     : undefined
                   : "Offline"

@@ -280,7 +280,7 @@ function ConnectedProjectSettingsScreen({ projectId }: { projectId: string }) {
         title="Remove this source?"
         message={
           sourceForMenu
-            ? `bb stops using ${sourceForMenu.path} on ${hostById.get(sourceForMenu.hostId)?.name ?? "this machine"} for this project. The folder stays on disk.`
+            ? `bb stops using ${sourceForMenu.path} on ${hostById.get(sourceForMenu.hostId)?.name ?? "that machine"} for this project. The folder stays on disk.`
             : undefined
         }
         actions={[

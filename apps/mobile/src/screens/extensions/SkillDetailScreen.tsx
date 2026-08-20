@@ -208,7 +208,7 @@ export function SkillDetailScreen() {
               {isSkillDeletable(skill) ? (
                 <ListRow
                   title="Delete skill"
-                  subtitle="Removes the skill folder from this machine"
+                  subtitle="Removes the installed skill folder"
                   leading="Trash2"
                   destructive
                   onPress={confirmDelete.present}

@@ -182,7 +182,7 @@ export function ProviderCliRows({
     return (
       <View className="px-4 py-3">
         <Text variant="caption" tone="destructive">
-          Couldn't check provider CLIs on this machine.
+          Couldn't check provider CLIs on {host.name}.
         </Text>
       </View>
     );

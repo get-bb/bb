@@ -154,7 +154,11 @@ function StoryMachineSection({
   const showDaemon =
     machine.canRetryDaemonUpdate || machine.host.status !== "connected";
   return (
-    <MachineUpdatesSection machine={machine} action={action}>
+    <MachineUpdatesSection
+      machine={machine}
+      isThisMachine={false}
+      action={action}
+    >
       {app ? (
         <BbAppUpdateRows
           systemVersion={appUpdate ? undefined : NPM_VERSION}
@@ -212,7 +216,9 @@ function StoryAppState({ children }: { children: ReactNode }) {
     isPrimary: true,
   });
   return (
-    <MachineUpdatesSection machine={machine}>{children}</MachineUpdatesSection>
+    <MachineUpdatesSection machine={machine} isThisMachine={false}>
+      {children}
+    </MachineUpdatesSection>
   );
 }
 
@@ -473,7 +479,10 @@ export function UpdateStates() {
           name="Installing"
           note="The provider update is currently running."
         >
-          <MachineUpdatesSection machine={providerInstalling}>
+          <MachineUpdatesSection
+            machine={providerInstalling}
+            isThisMachine={false}
+          >
             <MachineUpdatesRows
               machine={providerInstalling}
               runningJobKey="state-provider-installing:claudeCode"
