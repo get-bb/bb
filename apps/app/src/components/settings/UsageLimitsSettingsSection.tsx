@@ -475,10 +475,14 @@ export function UsageLimitsSettingsSection() {
     hostId: usageHostId,
     enabled: systemConfigQuery.data !== undefined,
   });
-  const providersQuery = useSystemProviders({
-    hostId: usageHostId,
-    enabled: systemConfigQuery.data !== undefined,
-  });
+  const providersQuery = useSystemProviders(
+    usageHostId === undefined
+      ? { enabled: systemConfigQuery.data !== undefined }
+      : {
+          enabled: systemConfigQuery.data !== undefined,
+          hostId: usageHostId,
+        },
+  );
 
   return (
     <UsageLimitsSettingsSectionContent

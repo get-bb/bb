@@ -93,6 +93,9 @@ describe("useSystemProviderInfo", () => {
       displayName: "Codex",
       logoUrl: null,
       available: true,
+      experimental_providerHealth: false,
+      experimental_providerUsage: false,
+      experimental_providerInstallation: false,
       composerActions: [],
       capabilities: {
         supportsThreadArchive: true,
@@ -139,6 +142,9 @@ describe("useSystemProviderInfo", () => {
         displayName: "Codex",
         logoUrl: null,
         available: true,
+        experimental_providerHealth: false,
+        experimental_providerUsage: false,
+        experimental_providerInstallation: false,
         composerActions: [],
         capabilities: {
           supportsThreadArchive: true,
