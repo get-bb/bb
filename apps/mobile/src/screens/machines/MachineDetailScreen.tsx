@@ -19,6 +19,7 @@ import {
   useProviderCliInstallRunner,
   useRemoveHost,
   useRetryHostUpdate,
+  useServerProtocolVersion,
   useUpdateHostPermissionCeiling,
 } from "@/data/hosts";
 import { useSidebarBootstrap } from "@/data/sidebar";
@@ -88,6 +89,7 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
   const online = host?.status === "connected";
 
   const statusQuery = useHostProviderCliStatus(online ? hostId : null);
+  const serverProtocolVersion = useServerProtocolVersion();
   const runner = useProviderCliInstallRunner();
   const updateCeiling = useUpdateHostPermissionCeiling();
   const retryUpdate = useRetryHostUpdate();
@@ -141,7 +143,7 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
     isPrimary && configQuery.data?.primaryHostPlatform
       ? HOST_PLATFORM_LABELS[configQuery.data.primaryHostPlatform]
       : null;
-  const updateStatus = formatHostUpdateStatus(host);
+  const updateStatus = formatHostUpdateStatus(host, serverProtocolVersion);
 
   return (
     <>
@@ -253,7 +255,7 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
             label="Updates"
             description={updateStatus ?? "Up to date"}
             control={
-              hostCanRetryUpdate(host) ? (
+              hostCanRetryUpdate(host, serverProtocolVersion) ? (
                 <Button
                   size="sm"
                   variant="outline"

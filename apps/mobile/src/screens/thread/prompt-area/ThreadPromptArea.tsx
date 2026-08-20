@@ -74,7 +74,9 @@ const MAX_PROMPT_AREA_WINDOW_FRACTION = 0.6;
  * commands, plan, goal, to-dos, the context banner, model fallback, the
  * queued-message list — above the follow-up composer with its execution
  * pills and context-window readout. Archived threads and gone environments
- * keep the stack but hide the composer.
+ * keep the stack but hide the composer; so does a thread that is still
+ * loading (web parity: the prompt area needs the loaded thread), so nothing
+ * is ever typed into a draft keyed on a placeholder project id.
  */
 export function ThreadPromptArea({
   threadId,
@@ -210,7 +212,7 @@ export function ThreadPromptArea({
               />
             ) : null}
           </ScrollView>
-          {composer.hidden ? null : (
+          {composer.hidden || thread === undefined ? null : (
             <Composer
               ref={composerRef}
               value={composer.value}
@@ -218,11 +220,11 @@ export function ThreadPromptArea({
               attachments={composer.attachments}
               onAttachmentsChange={composer.setAttachments}
               scope={{
-                projectId: thread?.projectId ?? null,
+                projectId: thread.projectId,
                 threadId,
                 environmentId,
                 hostId,
-                providerId: thread?.providerId ?? null,
+                providerId: thread.providerId,
               }}
               submitMode={composer.submitMode}
               submitLabel={composer.submitLabel}

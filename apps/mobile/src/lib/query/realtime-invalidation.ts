@@ -1,8 +1,10 @@
 import { createDebouncedCallbackScheduler } from "@bb/domain";
 import type {
   ChangedMessage,
+  SidebarBootstrapResponse,
   ThreadChangedMessage,
   ThreadChangeKind,
+  ThreadResponse,
 } from "@bb/server-contract";
 import {
   hashKey,
@@ -129,8 +131,19 @@ export function queryKeysForChangedMessage(
         // Global thread change (bulk archive, reorder): every list is suspect.
         return threadListQueryKeys();
       }
-      keys.push(threadQueryKey(id));
       const kinds = new Set(message.changes);
+      if (
+        message.changes.some((kind) => kind !== "events-appended") ||
+        message.metadata?.backgroundActivityChanged === true
+      ) {
+        // The record's own fields travel under dedicated kinds (status, title,
+        // archive, ...); a pure `events-appended` batch is timeline streaming
+        // and only touches the record when the server flags a
+        // background-activity change. Re-issuing (and cancelling) the detail
+        // GET on every ~200 ms flush would starve it for the whole turn on a
+        // slow link.
+        keys.push(threadQueryKey(id));
+      }
       if (kinds.has("events-appended") || kinds.has("history-rewritten")) {
         keys.push(threadTimelineQueryKey(id));
       }
@@ -219,13 +232,18 @@ export function queryKeysForChangedMessage(
             kind === "work-status-changed" || kind === "git-refs-changed",
         );
       if (!workspaceOnly) {
-        keys.push(environmentQueryKey(id));
+        // The pull request is remote state: a local file edit or ref move
+        // cannot change it, so workspace-only changes deliberately leave it
+        // alone (`turn/completed` — see
+        // `threadPullRequestQueryKeysForCompletedTurn` — and the pending-check
+        // poll cover it). Lifecycle and metadata changes can change whether
+        // and how the lookup resolves.
+        keys.push(environmentQueryKey(id), environmentPullRequestQueryKey(id));
       }
-      // Any change can move the working tree / PR lookup (a status change
-      // makes them available; metadata can change how the request resolves).
+      // Any change can move the working tree (a status change makes it
+      // available; metadata can change how the request resolves).
       keys.push(
         environmentWorkStatusQueryKeyPrefix(id),
-        environmentPullRequestQueryKey(id),
         // The diff tab's table of contents and the per-side file reads follow
         // the working tree (work status) and the merge base (git refs); the
         // observer-less patch cache is evicted separately
@@ -345,6 +363,52 @@ export function diffPatchEvictionForChangedMessage(
   return message.id === undefined ? "all" : message.id;
 }
 
+/** The cached environment of a thread: its record first, then the sidebar. */
+function cachedThreadEnvironmentId(
+  queryClient: QueryClient,
+  threadId: string,
+): string | null {
+  const thread = queryClient.getQueryData<ThreadResponse>(
+    threadQueryKey(threadId),
+  );
+  if (thread !== undefined) return thread.environmentId;
+  const sidebar = queryClient.getQueryData<SidebarBootstrapResponse>(
+    sidebarNavigationQueryKey(),
+  );
+  if (sidebar === undefined) return null;
+  for (const project of [...sidebar.projects, sidebar.personalProject]) {
+    const entry = project.threads.find((row) => row.id === threadId);
+    if (entry !== undefined) return entry.environmentId;
+  }
+  return null;
+}
+
+/**
+ * Cache-derived keys for one realtime message (mirrors the web registry's
+ * `dirtyThreadPullRequestQueryForCompletedTurn`): a completed turn may have
+ * created or updated a remote pull request without changing the workspace, so
+ * it refetches the PR of the thread's environment. The PR query is only
+ * mounted from the thread screen, where the thread record is cached; the
+ * sidebar covers a cached-but-unobserved PR of another thread.
+ */
+export function threadPullRequestQueryKeysForCompletedTurn(
+  queryClient: QueryClient,
+  message: ChangedMessage,
+): readonly QueryKey[] {
+  if (
+    message.entity !== "thread" ||
+    message.id === undefined ||
+    !message.changes.includes("events-appended") ||
+    !message.metadata?.eventTypes?.includes("turn/completed")
+  ) {
+    return [];
+  }
+  const environmentId = cachedThreadEnvironmentId(queryClient, message.id);
+  return environmentId === null
+    ? []
+    : [environmentPullRequestQueryKey(environmentId)];
+}
+
 /**
  * How one queued invalidation is applied on flush. The timeline window is the
  * only query with a streaming producer, so it is the only one that gets the
@@ -442,7 +506,8 @@ export interface RealtimeInvalidationHandle {
  * frame. A reconnect (including resume from background) catches up from the
  * socket's watermark: the server has no resume cursor, so every query whose
  * data predates the moment the previous socket was last known healthy is
- * invalidated (see `invalidateQueriesStaleSince`).
+ * invalidated (see `invalidateQueriesStaleSince`) and the observer-less diff
+ * patch cache is evicted.
  */
 export function installRealtimeInvalidation(
   queryClient: QueryClient,
@@ -490,7 +555,10 @@ export function installRealtimeInvalidation(
     } else if (eviction !== null && pendingPatchEvictions !== "all") {
       pendingPatchEvictions.add(eviction);
     }
-    const keys = queryKeysForChangedMessage(message);
+    const keys = [
+      ...queryKeysForChangedMessage(message),
+      ...threadPullRequestQueryKeysForCompletedTurn(queryClient, message),
+    ];
     if (keys.length === 0 && eviction === null) return;
     for (const queryKey of keys) {
       const hash = hashKey(queryKey);
@@ -507,6 +575,13 @@ export function installRealtimeInvalidation(
   });
   const unsubscribeConnected = realtime.onConnected((event) => {
     if (!event.reconnected) return;
+    // The observer-less patch cache is never refetched by an invalidation, and
+    // the workspace changes that would have evicted it were missed while the
+    // socket was down (suspended in the background): remove it, bumping every
+    // environment's generation so a patch fetch in flight across the
+    // reconnect drops its stale write. The TOC refetch below re-requests the
+    // visible paths (mirrors the web's system-cache-effects reconnect path).
+    removeAllDiffPatchQueries(queryClient);
     invalidateQueriesStaleSince(queryClient, event.disconnectedAt);
   });
 

@@ -1,5 +1,4 @@
 import type { Host } from "@bb/domain";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract/protocol";
 import { describe, expect, it } from "vitest";
 import { resolveHostDependentAvailability } from "./host-availability";
 import {
@@ -8,11 +7,6 @@ import {
   machineHeaderMeta,
   machineMetaLine,
 } from "./host-display";
-import {
-  formatHostUpdateStatus,
-  hostCanRetryUpdate,
-  hostNeedsUpdate,
-} from "./host-update-status";
 
 const NOW = Date.UTC(2026, 7, 19, 12, 0, 0);
 
@@ -46,43 +40,6 @@ describe("formatRelativeAge", () => {
   });
 });
 
-describe("host update status", () => {
-  it("flags only a disconnected daemon rejected on another protocol", () => {
-    expect(hostNeedsUpdate(host())).toBe(false);
-    expect(
-      hostNeedsUpdate(
-        host({ status: "connected", lastRejectedProtocolVersion: 1 }),
-      ),
-    ).toBe(false);
-    expect(
-      hostNeedsUpdate(
-        host({
-          status: "disconnected",
-          lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
-        }),
-      ),
-    ).toBe(false);
-    const stranded = host({
-      status: "disconnected",
-      lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
-    });
-    expect(hostNeedsUpdate(stranded)).toBe(true);
-    expect(hostCanRetryUpdate(stranded)).toBe(true);
-    expect(formatHostUpdateStatus(stranded)).toBe(
-      `Needs update · daemon protocol ${HOST_DAEMON_PROTOCOL_VERSION - 1} · server protocol ${HOST_DAEMON_PROTOCOL_VERSION}`,
-    );
-  });
-
-  it("does not offer a retry to a daemon newer than the server", () => {
-    const newer = host({
-      status: "disconnected",
-      lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION + 1,
-    });
-    expect(hostNeedsUpdate(newer)).toBe(true);
-    expect(hostCanRetryUpdate(newer)).toBe(false);
-  });
-});
-
 describe("machineMetaLine / machineHeaderMeta", () => {
   it("leads with presence, then platform and the project count", () => {
     expect(
@@ -90,6 +47,7 @@ describe("machineMetaLine / machineHeaderMeta", () => {
         host: host(),
         platformLabel: "macOS",
         projectCount: 1,
+        serverProtocolVersion: 31,
         now: NOW,
       }),
     ).toBe("Online · macOS · 1 project");
@@ -98,6 +56,7 @@ describe("machineMetaLine / machineHeaderMeta", () => {
         host: host({ status: "disconnected" }),
         platformLabel: null,
         projectCount: 0,
+        serverProtocolVersion: 31,
         now: NOW,
       }),
     ).toBe("Offline · last seen 5m ago · 0 projects");
@@ -106,23 +65,38 @@ describe("machineMetaLine / machineHeaderMeta", () => {
         host: host({ status: "disconnected", lastSeenAt: null }),
         platformLabel: null,
         projectCount: 2,
+        serverProtocolVersion: null,
         now: NOW,
       }),
     ).toBe("Offline · 2 projects");
   });
 
   it("lets a stranded daemon's update status win over presence", () => {
-    const line = machineMetaLine({
-      host: host({
-        status: "disconnected",
-        lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
-      }),
-      platformLabel: null,
-      projectCount: 0,
-      now: NOW,
+    const stranded = host({
+      status: "disconnected",
+      lastRejectedProtocolVersion: 30,
     });
-    expect(line.startsWith("Needs update · daemon protocol")).toBe(true);
-    expect(line.endsWith("0 projects")).toBe(true);
+    expect(
+      machineMetaLine({
+        host: stranded,
+        platformLabel: null,
+        projectCount: 0,
+        serverProtocolVersion: 31,
+        now: NOW,
+      }),
+    ).toBe(
+      "Needs update · daemon protocol 30 · server protocol 31 · 0 projects",
+    );
+    // Server version not loaded yet: still stranded, no made-up number.
+    expect(
+      machineMetaLine({
+        host: stranded,
+        platformLabel: null,
+        projectCount: 0,
+        serverProtocolVersion: null,
+        now: NOW,
+      }),
+    ).toBe("Needs update · daemon protocol 30 · 0 projects");
   });
 
   it("adds the pairing age to the header line", () => {

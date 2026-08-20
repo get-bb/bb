@@ -75,6 +75,8 @@ export interface MachineMetaLineArgs {
   host: Host;
   platformLabel: string | null;
   projectCount: number;
+  /** Null until `GET /install/version` has answered (see `useServerProtocolVersion`). */
+  serverProtocolVersion: number | null;
   now: number;
 }
 
@@ -87,10 +89,11 @@ export function machineMetaLine({
   host,
   platformLabel,
   projectCount,
+  serverProtocolVersion,
   now,
 }: MachineMetaLineArgs): string {
   const parts: string[] = [];
-  const updateStatus = formatHostUpdateStatus(host);
+  const updateStatus = formatHostUpdateStatus(host, serverProtocolVersion);
   parts.push(updateStatus ?? describeHostPresence(host, now));
   if (platformLabel !== null) parts.push(platformLabel);
   parts.push(`${projectCount} ${projectCount === 1 ? "project" : "projects"}`);

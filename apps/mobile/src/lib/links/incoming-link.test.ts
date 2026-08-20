@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addServerPathForLink,
+  isDeveloperRoutePath,
   mapWebPathToMobilePath,
   matchProfileForWebLink,
   parseIncomingLink,
@@ -120,7 +121,11 @@ describe("matchProfileForWebLink", () => {
 });
 
 describe("resolveIncomingLink", () => {
-  const context = { profiles: [sawyer, lan], activeProfileId: "p2" };
+  const context = {
+    profiles: [sawyer, lan],
+    activeProfileId: "p2",
+    developerRoutesEnabled: false,
+  };
 
   it("passes foreign URLs through untouched", () => {
     expect(
@@ -137,6 +142,38 @@ describe("resolveIncomingLink", () => {
       path: "/threads/thr_1",
       profileId: null,
     });
+  });
+
+  it("sends developer-only scheme links home unless the bundle exposes them", () => {
+    // Any web page can open `bb://…`; the dev spike / e2e reset screens must
+    // stay unreachable in release bundles even though the route files ship.
+    for (const url of [
+      "bb://dev/connect-spike",
+      "bb://dev",
+      "bb://e2e/reset?x=1",
+    ]) {
+      expect(resolveIncomingLink(url, context)).toEqual({
+        kind: "navigate",
+        path: "/",
+        profileId: null,
+      });
+    }
+    // Only the route groups themselves, not paths that merely start with "dev".
+    expect(resolveIncomingLink("bb://devices/d1", context)).toMatchObject({
+      path: "/devices/d1",
+    });
+    expect(
+      resolveIncomingLink("bb://dev/connect-spike", {
+        ...context,
+        developerRoutesEnabled: true,
+      }),
+    ).toEqual({
+      kind: "navigate",
+      path: "/dev/connect-spike",
+      profileId: null,
+    });
+    expect(isDeveloperRoutePath("/e2e")).toBe(true);
+    expect(isDeveloperRoutePath("/settings/dev")).toBe(false);
   });
 
   it("switches to the profile that owns a universal link", () => {

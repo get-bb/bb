@@ -13,14 +13,16 @@ import {
 } from "@bb/connect-client";
 import CookieManager from "@react-native-cookies/cookies";
 import { Image } from "expo-image";
+import { Redirect } from "expo-router";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
+import { e2eModeEnabled } from "@/app-shell";
 
 const APEX_URL = process.env.EXPO_PUBLIC_BB_CONNECT_APEX ?? "https://getbb.app";
 
-export default function ConnectSpikeScreen() {
+function ConnectSpikeScreen() {
   const insets = useSafeAreaInsets();
   const [code, setCode] = useState("");
   const [credential, setCredential] = useState<ConnectCredential | null>(null);
@@ -242,4 +244,10 @@ function SpikeButton({
       <Text style={{ color: "white", fontWeight: "600" }}>{label}</Text>
     </Pressable>
   );
+}
+
+// Dev-only route: inert in production bundles (see app/e2e/reset.tsx).
+export default function ConnectSpikeRoute() {
+  if (!e2eModeEnabled) return <Redirect href="/" />;
+  return <ConnectSpikeScreen />;
 }

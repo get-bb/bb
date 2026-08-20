@@ -23,7 +23,10 @@ export interface MarkdownLocalFileLink {
 
 export interface MarkdownExternalLink {
   kind: "external";
-  /** Absolute URL (after localhost rewriting), ready for `Linking.openURL`. */
+  /**
+   * Absolute URL (after localhost rewriting) on the safe-scheme allow-list,
+   * ready for `Linking.openURL`.
+   */
   url: string;
   href: string;
 }
@@ -34,10 +37,22 @@ export interface MarkdownRelativeLink {
   href: string;
 }
 
+/**
+ * A URL whose scheme is not on the allow-list (`tel:`, `sms:`, `javascript:`,
+ * `shortcuts://`, the app's own `bb://` deep links, other apps' custom
+ * schemes, …). Never handed to `Linking.openURL`; the web blanks these via
+ * react-markdown's `defaultUrlTransform`.
+ */
+export interface MarkdownBlockedLink {
+  kind: "blocked";
+  href: string;
+}
+
 export type MarkdownLinkTarget =
   | MarkdownLocalFileLink
   | MarkdownExternalLink
-  | MarkdownRelativeLink;
+  | MarkdownRelativeLink
+  | MarkdownBlockedLink;
 
 export interface ClassifyMarkdownLinkOptions {
   /** `bb.rewriteLocalhostLinks` preference (default on in the web app). */
@@ -234,10 +249,18 @@ export function parseLocalFileHref(
 const URI_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:/u;
 
 /**
+ * Schemes a tap may open outside the app. Same allow-list as react-markdown's
+ * `defaultUrlTransform` (`safeProtocol`), which the web's markdown preview
+ * falls back to; everything else is model-authored input that must not reach
+ * `Linking.openURL`.
+ */
+const SAFE_EXTERNAL_SCHEME_PATTERN = /^(?:https?|ircs?|mailto|xmpp):/iu;
+
+/**
  * Decide what tapping a markdown link should do. Local file links win over
- * scheme detection so `Cargo.lock:14` style references keep working; any
- * other URL with a scheme is external; the rest (fragments, relative paths)
- * are inert.
+ * scheme detection so `Cargo.lock:14` style references keep working; a URL
+ * with an allow-listed scheme is external; a URL with any other scheme is
+ * blocked; the rest (fragments, relative paths) are inert.
  */
 export function classifyMarkdownLink(
   href: string,
@@ -258,7 +281,9 @@ export function classifyMarkdownLink(
   // remaining path part still carries one.
   const schemeProbe = parseLocalFileLineSuffix(rewritten)?.path ?? rewritten;
   if (URI_SCHEME_PATTERN.test(schemeProbe)) {
-    return { kind: "external", href: rewritten, url: rewritten };
+    return SAFE_EXTERNAL_SCHEME_PATTERN.test(schemeProbe)
+      ? { kind: "external", href: rewritten, url: rewritten }
+      : { kind: "blocked", href: rewritten };
   }
   return { kind: "relative", href: rewritten };
 }

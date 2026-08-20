@@ -7,7 +7,11 @@ import {
   systemCliSkillsQueryKey,
   systemVersionQueryKey,
 } from "@/lib/query/query-keys";
-import { useHosts, useHostsProviderCliStatus } from "../hosts/host-queries";
+import {
+  useHosts,
+  useHostsProviderCliStatus,
+  useServerProtocolVersion,
+} from "../hosts/host-queries";
 import { selectPrimaryHost } from "../hosts/select-primary-host";
 import { useSystemConfig, useSystemVersion } from "../system/system-queries";
 import {
@@ -35,6 +39,7 @@ export function useUpdateInventory(
   const versionQuery = useSystemVersion({ enabled });
   const configQuery = useSystemConfig({ enabled });
   const hostsQuery = useHosts({ enabled });
+  const serverProtocolVersion = useServerProtocolVersion({ enabled });
   const hosts = useMemo(() => hostsQuery.data ?? [], [hostsQuery.data]);
   const connectedHostIds = useMemo(
     () => hosts.filter((host) => host.status === "connected").map((h) => h.id),
@@ -53,6 +58,7 @@ export function useUpdateInventory(
         primaryHostId,
         systemVersion: versionQuery.data,
         systemVersionUpdatedAt: versionQuery.dataUpdatedAt,
+        serverProtocolVersion,
         providerStatuses,
       }),
     [
@@ -60,6 +66,7 @@ export function useUpdateInventory(
       primaryHostId,
       versionQuery.data,
       versionQuery.dataUpdatedAt,
+      serverProtocolVersion,
       providerStatuses,
     ],
   );

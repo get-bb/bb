@@ -55,7 +55,11 @@ import { useThreadExecutionOptions } from "./use-thread-execution-options";
 
 export interface UseFollowUpComposerArgs {
   threadId: string;
-  /** The open thread; undefined while it loads (the composer stays blocked). */
+  /**
+   * The open thread; undefined while it loads. ThreadPromptArea mounts the
+   * Composer only once it is defined, so nothing is typed into the draft
+   * before its real scope (`projectId` + `threadId`) is known.
+   */
   thread: ThreadResponse | undefined;
   hasPendingInteraction: boolean;
   pendingInteractionsInitialLoading: boolean;
@@ -136,6 +140,10 @@ export function useFollowUpComposer({
   onSubmitted,
   composerRef,
 }: UseFollowUpComposerArgs): FollowUpComposerController {
+  // Placeholder scope only until the thread loads: the Composer is not
+  // mounted before then (ThreadPromptArea) and the quote entry points sit in
+  // the timeline / file previews that need the loaded thread, so nothing is
+  // ever written under the placeholder key.
   const projectId = thread?.projectId ?? "";
   const draftScope = useMemo(
     () => ({ kind: "thread" as const, projectId, threadId }),

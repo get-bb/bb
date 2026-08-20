@@ -11,11 +11,12 @@ import { deriveConnectBaseUrl } from "@bb/connect-client";
 import { createPublicApiClient } from "@bb/server-contract";
 import { createBrowserBbSdk, type BrowserBbSdk } from "@bb/sdk/browser";
 import { fileNameFromPath } from "@bb/thread-view";
-import { Link } from "expo-router";
+import { Link, Redirect } from "expo-router";
 import { version as reactVersion } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { e2eModeEnabled } from "@/app-shell";
 
 const DEFAULT_SERVER_URL =
   process.env.EXPO_PUBLIC_BB_SERVER_URL ?? "http://127.0.0.1:20304";
@@ -78,7 +79,7 @@ function runRuntimeChecks(): CheckResult[] {
   return results;
 }
 
-export default function SpikeScreen() {
+function SpikeScreen() {
   const insets = useSafeAreaInsets();
   const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL);
   const [log, setLog] = useState<string[]>([]);
@@ -364,4 +365,10 @@ function MentionRangeInput() {
       </Text>
     </TextInput>
   );
+}
+
+// Dev-only route: inert in production bundles (see app/e2e/reset.tsx).
+export default function SpikeRoute() {
+  if (!e2eModeEnabled) return <Redirect href="/" />;
+  return <SpikeScreen />;
 }

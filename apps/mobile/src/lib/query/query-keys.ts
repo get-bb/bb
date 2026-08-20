@@ -1288,6 +1288,7 @@ export const SYSTEM_USAGE_LIMITS_QUERY_KEY = "systemUsageLimits";
 export const SYSTEM_CLI_SKILLS_QUERY_KEY = "systemCliSkills";
 export const HOST_PROVIDER_CLI_STATUS_QUERY_KEY = "hostProviderCliStatus";
 export const THEME_CATALOG_QUERY_KEY = "themeCatalog";
+export const SERVER_PROTOCOL_VERSION_QUERY_KEY = "serverProtocolVersion";
 
 /** `[key, hostId]`: `GET /system/usage-limits?hostId=` (null = primary host). */
 export type SystemUsageLimitsQueryKey = readonly [
@@ -1305,6 +1306,10 @@ export type HostProviderCliStatusQueryKey = readonly [
 ];
 /** `GET /settings/themes`. */
 export type ThemeCatalogQueryKey = readonly [typeof THEME_CATALOG_QUERY_KEY];
+/** `GET /install/version`: the server's host-daemon protocol version. */
+export type ServerProtocolVersionQueryKey = readonly [
+  typeof SERVER_PROTOCOL_VERSION_QUERY_KEY,
+];
 
 export function systemUsageLimitsQueryKey(
   hostId: string | null,
@@ -1336,6 +1341,10 @@ export function allHostProviderCliStatusQueryKeyPrefix(): readonly [
 
 export function themeCatalogQueryKey(): ThemeCatalogQueryKey {
   return [THEME_CATALOG_QUERY_KEY];
+}
+
+export function serverProtocolVersionQueryKey(): ServerProtocolVersionQueryKey {
+  return [SERVER_PROTOCOL_VERSION_QUERY_KEY];
 }
 
 /**

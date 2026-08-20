@@ -131,18 +131,20 @@ function BbAppRow({
 
 function MachineUpdatesBlock({
   machine,
+  serverProtocolVersion,
   runner,
   retryPending,
   onRetry,
 }: {
   machine: UpdateInventoryMachine;
+  serverProtocolVersion: number | null;
   runner: ReturnType<typeof useProviderCliInstallRunner>;
   retryPending: boolean;
   onRetry: () => void;
 }) {
   const { host } = machine;
   const stranded = machine.canRetryDaemonUpdate;
-  const daemonStatus = formatHostUpdateStatus(host);
+  const daemonStatus = formatHostUpdateStatus(host, serverProtocolVersion);
   return (
     <View testID={`updates-machine-${host.id}`}>
       <View className="flex-row items-center gap-2 bg-surface-recessed px-4 py-2">
@@ -453,6 +455,7 @@ function ConnectedUpdatesScreen() {
                 {index > 0 ? <Separator /> : null}
                 <MachineUpdatesBlock
                   machine={machine}
+                  serverProtocolVersion={inventory.serverProtocolVersion}
                   runner={runner}
                   retryPending={
                     retryUpdate.isPending &&

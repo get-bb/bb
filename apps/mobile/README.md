@@ -69,7 +69,9 @@ app/                     Expo Router routes (thin: each file re-exports a screen
                          on synthetic rows), interactions (pending-interaction
                          banners + queued list on synthetic payloads, plus a
                          "Live thread" section for any thread id), spike,
-                         connect-spike (Phase 0 diagnostics)
+                         connect-spike (Phase 0 diagnostics). Dev /
+                         EXPO_PUBLIC_BB_E2E=1 only: release bundles redirect
+                         them (and bb://dev/* links) home
   e2e/reset.tsx          bb://e2e/reset — wipes local state (dev / EXPO_PUBLIC_BB_E2E=1)
   +native-intent.tsx     redirectSystemPath: every incoming URL (bb:// scheme,
                          universal links, dev-client URLs) → src/lib/links

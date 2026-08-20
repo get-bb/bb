@@ -6,11 +6,18 @@ import type {
   DirectServerProfile,
 } from "../profiles/profile";
 import type { AppStateLike, AppStateStatusLike } from "../realtime/app-state";
-import { createFakeSocketFactory } from "../realtime/fake-socket";
+import {
+  createFakeSocketFactory,
+  type FakeSocket,
+} from "../realtime/fake-socket";
+import type { RealtimeSocketFactory } from "../realtime/socket";
 import { createProfileClientRegistry } from "../sdk/client-registry";
 import { createSessionScheduler } from "../session/session-scheduler";
 import {
+  AUTH_FAILURE_BREAKER_COOLDOWN_MS,
+  AUTH_FAILURE_MAX_REMINTS,
   AUTH_FAILURE_REFETCH_DELAY_MS,
+  AUTH_FAILURE_STREAK_WINDOW_MS,
   AUTH_FAILURE_VERIFY_DEBOUNCE_MS,
   CONNECT_FAILURE_VERIFY_INTERVAL_MS,
   createActiveProfileConnector,
@@ -54,17 +61,31 @@ function fakeAppState(): AppStateLike & {
   };
 }
 
-function setup() {
+interface SetupOptions {
+  /** Answers every SDK fetch once `fetchResponses` runs dry. */
+  fallbackResponse?: () => Response;
+  /** Runs for every socket the realtime manager creates (auto-accept/refuse). */
+  onSocket?: (socket: FakeSocket) => void;
+}
+
+function setup(options: SetupOptions = {}) {
   const sockets = createFakeSocketFactory();
+  const socketFactory: RealtimeSocketFactory = (url, socketOptions) => {
+    const socket = sockets(url, socketOptions);
+    options.onSocket?.(sockets.latest());
+    return socket;
+  };
   const fetchResponses: Response[] = [];
+  const fetchCalls = { count: 0 };
   const registry = createProfileClientRegistry({
     sdk: {
       fetch: async () => {
-        const next = fetchResponses.shift();
+        fetchCalls.count += 1;
+        const next = fetchResponses.shift() ?? options.fallbackResponse?.();
         if (!next) throw new TypeError("Network request failed");
         return next;
       },
-      realtime: { socketFactory: sockets, onInvalidMessage: () => {} },
+      realtime: { socketFactory, onInvalidMessage: () => {} },
     },
   });
   const appState = fakeAppState();
@@ -93,9 +114,17 @@ function setup() {
     appState,
     fetchSession,
     fetchResponses,
+    fetchCalls,
     schedulers,
     connector,
   };
+}
+
+function signInPage(): Response {
+  return new Response("<html>sign in</html>", {
+    status: 401,
+    headers: { "content-type": "text/html" },
+  });
 }
 
 function sessionCookie(value: string): DesktopSession {
@@ -423,6 +452,97 @@ describe("createActiveProfileConnector", () => {
     expect(observer.getCurrentResult().status).toBe("success");
     expect(fetchSession).toHaveBeenCalledTimes(1);
     unsubscribe();
+  });
+
+  it("stops re-minting after a few cycles when the gate keeps refusing freshly minted sessions, reports an error, and recovers after the cooldown", async () => {
+    // The gate refuses every request and `/ws` upgrade (the cookie arrives
+    // already expired: device clock far ahead), while the credential itself
+    // keeps being accepted, so each re-mint "succeeds" after a round trip.
+    let gateRefuses = true;
+    const { sockets, fetchSession, fetchCalls, connector, registry } = setup({
+      fallbackResponse: () =>
+        gateRefuses
+          ? signInPage()
+          : new Response(JSON.stringify({ ok: true }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+      onSocket: (socket) => {
+        setTimeout(() => {
+          if (gateRefuses) {
+            socket.reject("Received bad response code from server 401");
+          } else {
+            socket.open();
+          }
+        }, 0);
+      },
+    });
+    fetchSession.mockImplementation(
+      () =>
+        new Promise<DesktopSession>((resolve) => {
+          setTimeout(() => resolve(sessionCookie("s")), 300);
+        }),
+    );
+    connector.activate(connect);
+    const client = registry.peekClient(connect.id);
+    if (!client) throw new Error("client missing");
+    const observer = new QueryObserver(client.queryClient, {
+      queryKey: ["system-config"],
+      queryFn: () => client.sdk.system.config(),
+    });
+    const unsubscribe = observer.subscribe(() => {});
+
+    await vi.advanceTimersByTimeAsync(AUTH_FAILURE_BREAKER_COOLDOWN_MS);
+    // The first mint plus the tolerated re-mints, then the breaker trips:
+    // no mint every couple of seconds for the whole minute, and no refetch
+    // storm (the errored query is not hammered while tripped).
+    expect(fetchSession.mock.calls.length).toBeGreaterThan(1);
+    expect(fetchSession.mock.calls.length).toBeLessThanOrEqual(
+      1 + AUTH_FAILURE_MAX_REMINTS,
+    );
+    expect(fetchCalls.count).toBeLessThan(60);
+    const tripped = connector.getSnapshot()?.session;
+    expect(tripped?.status).toBe("error");
+    if (tripped?.status !== "error") throw new Error("unreachable");
+    expect(tripped.retryAt).toBeGreaterThan(Date.now());
+    expect(observer.getCurrentResult().status).toBe("error");
+    const mintsWhileTripped = fetchSession.mock.calls.length;
+    const fetchesWhileTripped = fetchCalls.count;
+
+    // The gate accepts the cookie again: the cooldown retry re-mints once,
+    // the rejected query is fetched again, the socket opens, and the
+    // session is authenticated again.
+    gateRefuses = false;
+    await vi.advanceTimersByTimeAsync(tripped.retryAt - Date.now());
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchSession.mock.calls.length).toBe(mintsWhileTripped + 1);
+    expect(fetchCalls.count).toBeGreaterThan(fetchesWhileTripped);
+    expect(connector.getSnapshot()?.session.status).toBe("authenticated");
+    expect(observer.getCurrentResult().status).toBe("success");
+    expect(sockets.latest().readyState).toBe(1);
+    unsubscribe();
+  });
+
+  it("keeps re-minting for auth failures spaced out in time: the streak only counts failures that follow a mint closely", async () => {
+    const { fetchSession, fetchResponses, connector, registry } = setup();
+    fetchSession.mockResolvedValue(sessionCookie("s"));
+    connector.activate(connect);
+    await flush();
+    const client = registry.peekClient(connect.id);
+    if (!client) throw new Error("client missing");
+    expect(fetchSession).toHaveBeenCalledTimes(1);
+
+    // Well past the cap: a lost cookie every so often is re-minted each time.
+    for (let i = 0; i < AUTH_FAILURE_MAX_REMINTS + 2; i += 1) {
+      vi.advanceTimersByTime(AUTH_FAILURE_STREAK_WINDOW_MS);
+      fetchResponses.push(signInPage());
+      await expect(client.sdk.system.config()).rejects.toMatchObject({
+        status: 401,
+      });
+      await settle();
+      expect(fetchSession).toHaveBeenCalledTimes(i + 2);
+      expect(connector.getSnapshot()?.session.status).toBe("authenticated");
+    }
   });
 
   it("ignores late session events from a profile the user already left", async () => {

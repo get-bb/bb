@@ -1,6 +1,5 @@
 import type { Host } from "@bb/domain";
 import type { ProviderCliStatus } from "@bb/host-daemon-contract/local";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract/protocol";
 import type { SystemVersionResponse } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
@@ -69,12 +68,13 @@ describe("buildUpdateInventory", () => {
           id: "h2",
           name: "old",
           status: "disconnected",
-          lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
+          lastRejectedProtocolVersion: 30,
         }),
       ],
       primaryHostId: "h1",
       systemVersion: VERSION,
       systemVersionUpdatedAt: 1_000,
+      serverProtocolVersion: 31,
       providerStatuses: [
         {
           hostId: "h1",
@@ -111,6 +111,7 @@ describe("buildUpdateInventory", () => {
       primaryHostId: null,
       systemVersion: { ...VERSION, isDevelopment: true },
       systemVersionUpdatedAt: 1_000,
+      serverProtocolVersion: null,
       providerStatuses: [
         {
           hostId: "h1",

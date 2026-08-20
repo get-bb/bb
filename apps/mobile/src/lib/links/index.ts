@@ -4,6 +4,7 @@ export {
   ADD_SERVER_PATH,
   BB_URL_SCHEME,
   addServerPathForLink,
+  isDeveloperRoutePath,
   mapWebPathToMobilePath,
   matchProfileForWebLink,
   parseIncomingLink,

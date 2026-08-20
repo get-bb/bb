@@ -16,6 +16,7 @@ import {
   useAddMachineSession,
   useRemoveHost,
   useRetryHostUpdate,
+  useServerProtocolVersion,
 } from "@/data/hosts";
 import { useSidebarBootstrap } from "@/data/sidebar";
 import { useSystemConfig } from "@/data/system";
@@ -70,6 +71,7 @@ function ConnectedMachinesScreen() {
   const hostsQuery = useHosts();
   const configQuery = useSystemConfig();
   const bootstrap = useSidebarBootstrap();
+  const serverProtocolVersion = useServerProtocolVersion();
   const removeHost = useRemoveHost();
   const retryUpdate = useRetryHostUpdate();
 
@@ -145,6 +147,7 @@ function ConnectedMachinesScreen() {
                           ? HOST_PLATFORM_LABELS[primaryPlatform]
                           : null,
                       projectCount: projectCounts.get(host.id) ?? 0,
+                      serverProtocolVersion,
                       now,
                     },
                   )}`}
@@ -212,7 +215,7 @@ function ConnectedMachinesScreen() {
               setTimeout(() => renameSheet.present(), 250);
             },
           },
-          ...(target && hostCanRetryUpdate(target)
+          ...(target && hostCanRetryUpdate(target, serverProtocolVersion)
             ? [
                 {
                   key: "retry",

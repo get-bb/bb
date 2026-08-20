@@ -26,6 +26,12 @@ packages/plugin-sdk/bundled-types/
 packages/plugin-build/src/generated/
 packages/db/drizzle/meta/
 apps/mobile/assets/terminal/
+# Expo prebuild / typed-routes output. Gitignored in apps/mobile/.gitignore,
+# but Prettier only reads the root ignore files.
+apps/mobile/ios/
+apps/mobile/android/
+apps/mobile/.expo/
+apps/mobile/expo-env.d.ts
 
 # These templates intentionally use aligned plain-text command columns.
 packages/templates/src/templates/

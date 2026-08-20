@@ -63,7 +63,9 @@ Conventions:
   `environment-action-model.ts` (header git actions, failure description).
   Every hook holds the `environment-detail` realtime subscription so the
   daemon watches the workspace; `work-status-changed` / `git-refs-changed`
-  invalidate the status / PR / branches keys.
+  invalidate the status / branches keys (the PR is remote state: it refetches
+  on a `turn/completed` of a thread in the environment and on its own
+  pending-check poll, never on a file edit).
 - `diff/` backs the workspace panel's Diff tab (mirror of the web
   `useEnvironmentDiffFiles` / `use-environment-diff-patches` /
   `gitDiffPanelHelpers` / `diffFilesStore`): `useEnvironmentDiffFiles`
@@ -162,8 +164,10 @@ Conventions:
   profile's SDK so an install outlives the screen; success / failure toasts
   with "View log"; status + execution-option invalidation on finish). Pure,
   tested: `select-primary-host.ts`, `host-availability.ts`,
-  `host-update-status.ts` (stranded-daemon rules against
-  `HOST_DAEMON_PROTOCOL_VERSION`), `host-display.ts` (presence / meta lines,
+  `host-update-status.ts` (stranded-daemon rules against the server's
+  protocol version from `useServerProtocolVersion` / `GET /install/version`,
+  never this build's `HOST_DAEMON_PROTOCOL_VERSION`: the phone ships
+  independently of the server), `host-display.ts` (presence / meta lines,
   `formatRelativeAge`), `add-machine.ts` (`pairingCommand`, `isLocalOnlyUrl`,
   `createConnectMachineCode` error mapping, `resolveAddMachinePresentation`),
   `provider-cli-install.ts` (issues, row state, the event accumulator + log

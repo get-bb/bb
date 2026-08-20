@@ -31,6 +31,8 @@ export interface UpdateInventoryMachine {
 
 export interface UpdateInventory {
   systemVersion: SystemVersionResponse | undefined;
+  /** The server's daemon protocol version; null until `GET /install/version` answers. */
+  serverProtocolVersion: number | null;
   /** bb-app has a newer release on the registry (never in development mode). */
   appUpdateAvailable: boolean;
   machines: UpdateInventoryMachine[];
@@ -56,6 +58,7 @@ export interface BuildUpdateInventoryArgs {
   primaryHostId: string | null;
   systemVersion: SystemVersionResponse | undefined;
   systemVersionUpdatedAt: number;
+  serverProtocolVersion: number | null;
   providerStatuses: readonly ProviderStatusInput[];
 }
 
@@ -75,7 +78,10 @@ export function buildUpdateInventory(
       statusPending: status?.isPending ?? false,
       statusError: status?.isError ?? false,
       issues: providerStatus === null ? [] : providerCliIssues(providerStatus),
-      canRetryDaemonUpdate: hostCanRetryUpdate(host),
+      canRetryDaemonUpdate: hostCanRetryUpdate(
+        host,
+        args.serverProtocolVersion,
+      ),
     };
   });
   const systemVersion = args.systemVersion;
@@ -98,6 +104,7 @@ export function buildUpdateInventory(
     timestamps.every((value) => Number.isFinite(value) && value > 0);
   return {
     systemVersion,
+    serverProtocolVersion: args.serverProtocolVersion,
     appUpdateAvailable,
     machines,
     actionableCount,

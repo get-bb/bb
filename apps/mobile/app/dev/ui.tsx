@@ -1,9 +1,11 @@
 // Dev-only gallery: renders every primitive in src/ui so the design system
 // can be eyeballed per palette × mode on the simulator. Not product UI.
 import { BUILTIN_THEME_IDS } from "@bb/domain";
+import { Redirect } from "expo-router";
 import { useState, type ReactNode } from "react";
 import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { e2eModeEnabled } from "@/app-shell";
 import { useTheme } from "@/theme/ThemeProvider";
 import type { ThemeModePreference } from "@/theme/theme-preference";
 import {
@@ -39,7 +41,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 const MODES: ThemeModePreference[] = ["system", "light", "dark"];
 
-export default function UiGalleryScreen() {
+function UiGalleryScreen() {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const [checked, setChecked] = useState(true);
@@ -379,4 +381,10 @@ export default function UiGalleryScreen() {
       />
     </ScrollView>
   );
+}
+
+// Dev-only route: inert in production bundles (see app/e2e/reset.tsx).
+export default function UiGalleryRoute() {
+  if (!e2eModeEnabled) return <Redirect href="/" />;
+  return <UiGalleryScreen />;
 }

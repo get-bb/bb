@@ -3,8 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeSocketFactory } from "../realtime/fake-socket";
 import { createMobileRealtime } from "../realtime/mobile-realtime";
 import {
+  getDiffPatchEvictionGeneration,
+  readDiffPatchEntry,
+  writeDiffPatchEntry,
+} from "./diff-patch-cache";
+import {
   installRealtimeInvalidation,
   queryKeysForChangedMessage,
+  threadPullRequestQueryKeysForCompletedTurn,
   timelineInvalidationPolicyForMessage,
 } from "./realtime-invalidation";
 import {
@@ -82,13 +88,11 @@ describe("installRealtimeInvalidation", () => {
       vi.advanceTimersByTime(10);
     }
     // 200 ms of frames: the max-wait flush fired exactly once.
-    expect(invalidated).toEqual([
-      hashKey(threadQueryKey("t1")),
-      hashKey(threadTimelineQueryKey("t1")),
-    ]);
+    expect(invalidated).toEqual([hashKey(threadTimelineQueryKey("t1"))]);
     vi.advanceTimersByTime(500);
-    expect(invalidated).toHaveLength(2);
-    // Streaming does not touch the thread lists.
+    expect(invalidated).toHaveLength(1);
+    // Streaming touches neither the thread record nor the thread lists.
+    expect(invalidated).not.toContain(hashKey(threadQueryKey("t1")));
     expect(invalidated).not.toContain(hashKey(threadsQueryKey()));
 
     // A lone frame after the burst flushes on the debounce.
@@ -101,9 +105,9 @@ describe("installRealtimeInvalidation", () => {
       }),
     );
     vi.advanceTimersByTime(49);
-    expect(invalidated).toHaveLength(2);
+    expect(invalidated).toHaveLength(1);
     vi.advanceTimersByTime(1);
-    expect(invalidated.slice(2)).toEqual([
+    expect(invalidated.slice(1)).toEqual([
       hashKey(threadQueryKey("t2")),
       hashKey(threadsQueryKey()),
       hashKey(sidebarNavigationQueryKey()),
@@ -150,6 +154,49 @@ describe("installRealtimeInvalidation", () => {
     const { invalidated } = setup();
     vi.advanceTimersByTime(500);
     expect(invalidated).toEqual([]);
+  });
+
+  it("evicts the observer-less diff patch cache on a resume reconnect, before the watermark catch-up", () => {
+    const factory = createFakeSocketFactory();
+    const realtime = createMobileRealtime({
+      url: "ws://x/ws",
+      socketFactory: factory,
+      onInvalidMessage: () => {},
+    });
+    const queryClient = new QueryClient();
+    const order: string[] = [];
+    vi.spyOn(queryClient, "invalidateQueries").mockImplementation(async () => {
+      order.push("invalidate");
+    });
+    const removeQueries = queryClient.removeQueries.bind(queryClient);
+    vi.spyOn(queryClient, "removeQueries").mockImplementation((filters) => {
+      order.push(`remove:${String(filters?.queryKey?.[0])}`);
+      removeQueries(filters);
+    });
+    const identity = {
+      environmentId: "env_1",
+      targetType: "all",
+      targetKey: "main",
+    };
+    const entry = { path: "a.ts", patch: "old", truncated: false };
+    writeDiffPatchEntry(queryClient, identity, entry);
+    const handle = installRealtimeInvalidation(queryClient, realtime);
+    realtime.connect();
+    factory.latest().open();
+    // The initial connect is not a catch-up: the patches survive.
+    expect(readDiffPatchEntry(queryClient, identity, "a.ts")).toEqual(entry);
+    expect(getDiffPatchEvictionGeneration(queryClient, "env_1")).toBe(0);
+    expect(order).toEqual([]);
+
+    // Background → foreground: the `work-status-changed` events that would
+    // have evicted the patches were missed while the socket was suspended.
+    realtime.suspend();
+    realtime.resume();
+    factory.latest().open();
+    expect(readDiffPatchEntry(queryClient, identity, "a.ts")).toBeUndefined();
+    expect(getDiffPatchEvictionGeneration(queryClient, "env_1")).toBe(1);
+    expect(order).toEqual(["remove:environmentDiffPatch", "invalidate"]);
+    handle.dispose();
   });
 
   it("keeps pending fine-grained work across a resume reconnect and adds the watermark catch-up", () => {
@@ -216,6 +263,47 @@ describe("queryKeysForChangedMessage", () => {
       sidebarNavigationQueryKey(),
       threadSearchQueryKeyPrefix(),
     ]);
+  });
+
+  it("leaves the thread record alone for pure streaming batches but refetches it for background-activity and record changes", () => {
+    // A delta batch: timeline only (the record has dedicated change kinds).
+    expect(
+      queryKeysForChangedMessage({
+        type: "changed",
+        entity: "thread",
+        id: "t1",
+        changes: ["events-appended"],
+        metadata: { eventTypes: ["item/agentMessage/delta"] },
+      }),
+    ).toEqual([threadTimelineQueryKey("t1")]);
+    // A turn completing is not a record change either; `status-changed` is.
+    expect(
+      queryKeysForChangedMessage({
+        type: "changed",
+        entity: "thread",
+        id: "t1",
+        changes: ["events-appended"],
+        metadata: { eventTypes: ["turn/completed"] },
+      }),
+    ).not.toContainEqual(threadQueryKey("t1"));
+    // The detail indicator reads activeBackgroundAgentCount off the record.
+    expect(
+      queryKeysForChangedMessage({
+        type: "changed",
+        entity: "thread",
+        id: "t1",
+        changes: ["events-appended"],
+        metadata: { backgroundActivityChanged: true },
+      }),
+    ).toEqual([threadQueryKey("t1"), threadTimelineQueryKey("t1")]);
+    expect(
+      queryKeysForChangedMessage({
+        type: "changed",
+        entity: "thread",
+        id: "t1",
+        changes: ["status-changed"],
+      }),
+    ).toContainEqual(threadQueryKey("t1"));
   });
 
   it("maps system changes to config plus provider/default keys for settings and plugin changes", () => {
@@ -294,25 +382,31 @@ describe("queryKeysForChangedMessage", () => {
       id: "env_1",
       changes: ["work-status-changed"],
     });
-    expect(workStatusKeys).toEqual(
-      expect.arrayContaining([
-        environmentWorkStatusQueryKeyPrefix("env_1"),
-        environmentPullRequestQueryKey("env_1"),
-      ]),
+    expect(workStatusKeys).toContainEqual(
+      environmentWorkStatusQueryKeyPrefix("env_1"),
     );
     expect(workStatusKeys).not.toContainEqual(environmentQueryKey("env_1"));
     expect(workStatusKeys).not.toContainEqual(
       environmentMergeBaseBranchesQueryKeyPrefix("env_1"),
     );
-    // A ref change (commit, checkout, fetch) can move the merge-base options.
-    expect(
-      queryKeysForChangedMessage({
-        type: "changed",
-        entity: "environment",
-        id: "env_1",
-        changes: ["git-refs-changed"],
-      }),
-    ).toContainEqual(environmentMergeBaseBranchesQueryKeyPrefix("env_1"));
+    // The PR is remote state a file edit cannot change; every refetch is a
+    // server cache miss that runs `gh` on the host, so the watcher must not
+    // drive it (a completed turn and the pending-check poll do).
+    expect(workStatusKeys).not.toContainEqual(
+      environmentPullRequestQueryKey("env_1"),
+    );
+    // A ref change (commit, checkout, fetch) can move the merge-base options,
+    // but still does not touch the PR.
+    const refKeys = queryKeysForChangedMessage({
+      type: "changed",
+      entity: "environment",
+      id: "env_1",
+      changes: ["git-refs-changed", "work-status-changed"],
+    });
+    expect(refKeys).toContainEqual(
+      environmentMergeBaseBranchesQueryKeyPrefix("env_1"),
+    );
+    expect(refKeys).not.toContainEqual(environmentPullRequestQueryKey("env_1"));
     // Without an id every workspace view is suspect.
     expect(
       queryKeysForChangedMessage({
@@ -348,6 +442,73 @@ describe("queryKeysForChangedMessage", () => {
     expect(keys).toContainEqual(
       allProjectDefaultExecutionOptionsQueryKeyPrefix(),
     );
+  });
+});
+
+describe("threadPullRequestQueryKeysForCompletedTurn", () => {
+  const completed = {
+    type: "changed",
+    entity: "thread",
+    id: "t1",
+    changes: ["events-appended"],
+    metadata: { eventTypes: ["item/completed", "turn/completed"] },
+  } as const;
+
+  it("refetches the PR of the thread's cached environment when a turn completes", () => {
+    const queryClient = new QueryClient();
+    // Unknown thread: nothing to resolve.
+    expect(
+      threadPullRequestQueryKeysForCompletedTurn(queryClient, completed),
+    ).toEqual([]);
+    queryClient.setQueryData(threadQueryKey("t1"), {
+      id: "t1",
+      environmentId: "env_1",
+    });
+    expect(
+      threadPullRequestQueryKeysForCompletedTurn(queryClient, completed),
+    ).toEqual([environmentPullRequestQueryKey("env_1")]);
+    // A streaming delta is not a turn boundary.
+    expect(
+      threadPullRequestQueryKeysForCompletedTurn(queryClient, {
+        ...completed,
+        metadata: { eventTypes: ["item/agentMessage/delta"] },
+      }),
+    ).toEqual([]);
+    // A thread without an environment has no PR.
+    queryClient.setQueryData(threadQueryKey("t1"), {
+      id: "t1",
+      environmentId: null,
+    });
+    expect(
+      threadPullRequestQueryKeysForCompletedTurn(queryClient, completed),
+    ).toEqual([]);
+  });
+
+  it("falls back to the sidebar bootstrap when the thread record is not cached", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(sidebarNavigationQueryKey(), {
+      sections: [],
+      projects: [{ id: "p1", threads: [{ id: "t1", environmentId: "env_2" }] }],
+      personalProject: { id: "personal", threads: [] },
+    });
+    expect(
+      threadPullRequestQueryKeysForCompletedTurn(queryClient, completed),
+    ).toEqual([environmentPullRequestQueryKey("env_2")]);
+  });
+
+  it("is applied by the realtime bridge on the completed-turn flush", () => {
+    vi.useFakeTimers();
+    const { factory, queryClient, invalidated } = setup();
+    queryClient.setQueryData(threadQueryKey("t1"), {
+      id: "t1",
+      environmentId: "env_1",
+    });
+    factory.latest().receive(JSON.stringify(completed));
+    vi.advanceTimersByTime(250);
+    expect(invalidated).toContain(
+      hashKey(environmentPullRequestQueryKey("env_1")),
+    );
+    vi.useRealTimers();
   });
 });
 
@@ -390,7 +551,10 @@ describe("timelineInvalidationPolicyForMessage", () => {
         entity: "thread",
         id: "t1",
         changes: ["events-appended"],
-        metadata: { eventTypes: ["item/agentMessage/delta"] },
+        metadata: {
+          eventTypes: ["item/agentMessage/delta"],
+          backgroundActivityChanged: true,
+        },
       }),
     );
     vi.advanceTimersByTime(250);
@@ -401,12 +565,14 @@ describe("timelineInvalidationPolicyForMessage", () => {
         hashKey(filters.queryKey) === hashKey(threadTimelineQueryKey("t1")),
     );
     expect(timelineCall?.[1]).toEqual({ cancelRefetch: false });
-    // Every other key takes the default (cancelling) path.
+    // Every other key (here the record, dirtied by the background-activity
+    // flag) takes the default (cancelling) path.
     const threadCall = invalidateSpy.mock.calls.find(
       ([filters]) =>
         filters?.queryKey !== undefined &&
         hashKey(filters.queryKey) === hashKey(threadQueryKey("t1")),
     );
+    expect(threadCall).toBeDefined();
     expect(threadCall?.[1]).toBeUndefined();
     void queryClient;
     vi.useRealTimers();

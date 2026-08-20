@@ -3,9 +3,11 @@
 // git patches, client-core synthetic created/deleted patches, renames,
 // binaries, plain-text fallbacks, and colored command output. Not product UI.
 import type { TimelineFileChange } from "@bb/server-contract";
+import { Redirect } from "expo-router";
 import { useState, type ReactNode } from "react";
 import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { e2eModeEnabled } from "@/app-shell";
 import { AnsiText, TerminalOutputBlock } from "@/ansi";
 import { DiffFileCard, FileChangeDiffBlock, parseUnifiedDiff } from "@/diff";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -176,7 +178,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 const MODES: ThemeModePreference[] = ["system", "light", "dark"];
 
-export default function DiffShowcaseScreen() {
+function DiffShowcaseScreen() {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const [showAddToChat, setShowAddToChat] = useState(true);
@@ -277,4 +279,10 @@ export default function DiffShowcaseScreen() {
       </Section>
     </ScrollView>
   );
+}
+
+// Dev-only route: inert in production bundles (see app/e2e/reset.tsx).
+export default function DiffShowcaseRoute() {
+  if (!e2eModeEnabled) return <Redirect href="/" />;
+  return <DiffShowcaseScreen />;
 }

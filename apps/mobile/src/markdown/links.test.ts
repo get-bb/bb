@@ -79,6 +79,36 @@ describe("classifyMarkdownLink", () => {
     );
   });
 
+  it("blocks schemes outside the allow-list so they never reach Linking.openURL", () => {
+    // Same allow-list as react-markdown's defaultUrlTransform on the web.
+    for (const href of [
+      "https://example.com/a",
+      "HTTP://EXAMPLE.COM/",
+      "mailto:a@b.c",
+      "irc://irc.example/#bb",
+      "xmpp:user@example.com",
+    ]) {
+      expect(classifyMarkdownLink(href, OPTIONS).kind, href).toBe("external");
+    }
+    for (const href of [
+      "tel:+15555550100",
+      "sms:+15555550100?body=hi",
+      "facetime:user@example.com",
+      "shortcuts://run-shortcut?name=Wipe",
+      "bb://connect?code=ABCD-EFGH&apex=https://evil.example",
+      "bb://settings/servers/add?serverUrl=https://evil.example",
+      "javascript:alert(1)",
+      "data:text/html,<script>alert(1)</script>",
+      "file://host/x.ts",
+      "com.example.app://callback",
+    ]) {
+      expect(classifyMarkdownLink(href, OPTIONS), href).toEqual({
+        kind: "blocked",
+        href,
+      });
+    }
+  });
+
   it("rewrites loopback links to the server host only when enabled", () => {
     const enabled = {
       rewriteLocalhostLinks: true,

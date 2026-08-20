@@ -68,20 +68,34 @@ export function buildFileTargetExternalUrl(
   }
 }
 
-/** The URL the HTML WebView loads (host files go through the CSP-sandboxed raw route). */
+/**
+ * The URL the HTML WebView loads, or null when the file must be shown as
+ * source instead. Only routes the server serves with the
+ * `Content-Security-Policy: sandbox allow-scripts` header qualify: the
+ * worktree / storage raw routes and, for host files, the raw filesystem
+ * route. `/projects/:id/files/content` sets no CSP, so project-file HTML
+ * would execute same-origin with the session cookie; like the web app, it is
+ * never rendered.
+ */
 export function buildFileTargetHtmlUrl(
   context: FileTargetUrlContext,
   target: FilePreviewTarget,
 ): string | null {
-  if (target.kind === "host-file") {
-    if (context.threadId === null) return null;
-    return buildRawFilesystemHtmlContentUrl(
-      context.serverUrl,
-      context.threadId,
-      target.path,
-    );
+  switch (target.kind) {
+    case "host-file":
+      return context.threadId === null
+        ? null
+        : buildRawFilesystemHtmlContentUrl(
+            context.serverUrl,
+            context.threadId,
+            target.path,
+          );
+    case "project-file":
+      return null;
+    case "workspace-file":
+    case "storage-file":
+      return buildFileTargetExternalUrl(context, target);
   }
-  return buildFileTargetExternalUrl(context, target);
 }
 
 /** The same-source target for a link relative to the previewed file, or null. */

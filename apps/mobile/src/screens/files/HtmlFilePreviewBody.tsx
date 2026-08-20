@@ -15,18 +15,26 @@ function sameUrl(a: string, b: string): boolean {
 }
 
 export interface HtmlFilePreviewBodyProps {
-  /** Raw route URL (absolute, on the profile's server); cookies come from the shared jar. */
+  /**
+   * Absolute URL on the profile's server of a route that serves the file with
+   * `Content-Security-Policy: sandbox allow-scripts` (`buildFileTargetHtmlUrl`
+   * only returns those). Cookies come from the shared jar, so pointing this
+   * at any un-sandboxed route would run the file's scripts same-origin with
+   * the session.
+   */
   rawUrl: string;
   onOpenExternally: () => void;
   testID?: string;
 }
 
 /**
- * Renders an HTML file through the server's raw route in a WebView. The
- * server answers with `Content-Security-Policy: sandbox allow-scripts`, so
- * the page runs with an opaque origin and cannot reach bb cookies or APIs;
- * the WebView only points at the profile's server origin, never at the
- * host's localhost (which the phone cannot reach anyway).
+ * Renders an HTML file through one of the server's CSP-sandboxed raw routes
+ * in a WebView. Invariant: `rawUrl` must be a route the server answers with
+ * `Content-Security-Policy: sandbox allow-scripts`, so the page runs with an
+ * opaque origin and cannot reach bb cookies or APIs even though the WebView
+ * shares the cookie jar. The WebView only points at the profile's server
+ * origin, never at the host's localhost (which the phone cannot reach
+ * anyway).
  */
 export function HtmlFilePreviewBody({
   rawUrl,

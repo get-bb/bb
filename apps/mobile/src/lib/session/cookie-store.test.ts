@@ -31,6 +31,48 @@ describe("sessionCookieSpec", () => {
     ).toMatchObject({ secure: false, domain: "127.0.0.1" });
   });
 
+  it("rejects a cookie domain the server host does not domain-match", () => {
+    // iOS's cookie manager only substring-checks the domain against the URL
+    // host, so a rogue gate at a host that merely contains `getbb.app` could
+    // otherwise plant cookies for real profiles in the shared jars.
+    const rogue = "https://bee.getbb.app.evil.example";
+    for (const domain of ["bee.getbb.app", ".getbb.app", "getbb.app"]) {
+      expect(() =>
+        sessionCookieSpec({ cookie: { ...session.cookie, domain } }, rogue),
+      ).toThrow(/does not match bee\.getbb\.app\.evil\.example/u);
+    }
+    // A sibling host is not a match either, dot or no dot.
+    expect(() =>
+      sessionCookieSpec(
+        { cookie: { ...session.cookie, domain: "ant.getbb.app" } },
+        "https://bee.getbb.app",
+      ),
+    ).toThrow(/does not match/u);
+    expect(() =>
+      sessionCookieSpec(
+        { cookie: { ...session.cookie, domain: "ee.getbb.app" } },
+        "https://bee.getbb.app",
+      ),
+    ).toThrow(/does not match/u);
+  });
+
+  it("accepts the host itself and any parent domain", () => {
+    for (const domain of [
+      "bee.getbb.app",
+      ".bee.getbb.app",
+      ".getbb.app",
+      "getbb.app",
+      "GetBB.app",
+    ]) {
+      expect(
+        sessionCookieSpec(
+          { cookie: { ...session.cookie, domain } },
+          "https://bee.getbb.app",
+        ),
+      ).toMatchObject({ domain });
+    }
+  });
+
   it("installs into the shared jar and the WebKit store", async () => {
     const calls: { url: string; secure: boolean; useWebKit: boolean }[] = [];
     await installSessionCookie(

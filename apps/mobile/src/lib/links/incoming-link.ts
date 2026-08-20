@@ -45,10 +45,27 @@ export type LinkResolution =
 export interface ResolveIncomingLinkContext {
   profiles: readonly LinkProfileLike[];
   activeProfileId: string | null;
+  /**
+   * Whether this bundle exposes the developer-only route groups
+   * (`app/dev/*`, `app/e2e/*`); dev builds and `EXPO_PUBLIC_BB_E2E=1` do.
+   * Scheme links into them land on home otherwise.
+   */
+  developerRoutesEnabled: boolean;
 }
 
 /** The add-server route, prefilled with the linked server and a follow-up path. */
 export const ADD_SERVER_PATH = "/settings/servers/add";
+
+/** Route groups that exist only in dev / e2e bundles (see app/e2e/reset.tsx). */
+const DEVELOPER_ROUTE_PREFIXES = ["/dev", "/e2e"] as const;
+
+/** `/dev/spike`, `/e2e/reset?x=1`, … — mobile paths under a developer-only group. */
+export function isDeveloperRoutePath(path: string): boolean {
+  const pathname = path.split("?", 1)[0] ?? "";
+  return DEVELOPER_ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
 
 const SCHEME_URL_PATTERN = /^([a-z][a-z0-9+.-]*):\/\/(.*)$/iu;
 
@@ -220,7 +237,8 @@ export function addServerPathForLink(serverUrl: string, next: string): string {
 
 /**
  * Decide what an incoming URL means for this phone. Scheme links route as
- * typed; web links resolve to the profile that owns the origin (switching the
+ * typed (developer-only paths land on home unless the bundle exposes them);
+ * web links resolve to the profile that owns the origin (switching the
  * active profile when needed) or, for an unknown server, to the add-server
  * screen prefilled with the origin and the follow-up path.
  */
@@ -233,7 +251,14 @@ export function resolveIncomingLink(
     case "foreign":
       return { kind: "passthrough" };
     case "scheme":
-      return { kind: "navigate", path: link.path, profileId: null };
+      return {
+        kind: "navigate",
+        path:
+          !context.developerRoutesEnabled && isDeveloperRoutePath(link.path)
+            ? "/"
+            : link.path,
+        profileId: null,
+      };
     case "web": {
       const match = matchProfileForWebLink(
         context.profiles,

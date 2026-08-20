@@ -37,6 +37,10 @@ env:
   PNPM_VERSION: 9.15.0
   NODE_VERSION: 22.x
   MAESTRO_VERSION: 2.8.0
+  # sha256 of the cli-${MAESTRO_VERSION} maestro.zip release asset. Maestro
+  # publishes no checksums, so recompute it when bumping the version:
+  #   curl -fsSL -o maestro.zip https://github.com/mobile-dev-inc/maestro/releases/download/cli-<ver>/maestro.zip && shasum -a 256 maestro.zip
+  MAESTRO_SHA256: b3e561161904fb391875ca5834d5b22cf0b01c052dd1b408ad83e30d8f8951b3
   # The harness backend port the flows' env blocks point at.
   BB_MOBILE_E2E_PORT: "41999"
   # Xcode DerivedData for the Release build measured 6.9 GB raw on a Mac
@@ -127,10 +131,21 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # Pinned direct download of the release asset (what the
+      # get.maestro.mobile.dev installer fetches) instead of piping that
+      # unversioned script to bash, so GitHub releases stay the only trust
+      # root. The zip unpacks to maestro/{bin,lib}; it lands in ~/.maestro
+      # where the installer would put it.
       - name: Install Maestro
         run: |
           set -x
-          curl -fsSL "https://get.maestro.mobile.dev" | MAESTRO_VERSION="$MAESTRO_VERSION" bash
+          curl -fsSL --retry 3 -o /tmp/maestro.zip \
+            "https://github.com/mobile-dev-inc/maestro/releases/download/cli-${MAESTRO_VERSION}/maestro.zip"
+          echo "${MAESTRO_SHA256}  /tmp/maestro.zip" | shasum -a 256 -c -
+          rm -rf "$HOME/.maestro" /tmp/maestro-unzip
+          unzip -qo /tmp/maestro.zip -d /tmp/maestro-unzip
+          mv /tmp/maestro-unzip/maestro "$HOME/.maestro"
+          rm -rf /tmp/maestro.zip /tmp/maestro-unzip
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
           "$HOME/.maestro/bin/maestro" --version
 

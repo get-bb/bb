@@ -5,6 +5,7 @@
 // activate the profile that owns a web link, wait for its connection, and
 // send unknown servers to the add-server screen with the link remembered.
 import { waitForActiveConnection } from "@/app-shell/connector";
+import { e2eModeEnabled } from "@/app-shell/e2e";
 import { addServerPathForLink, resolveIncomingLink } from "@/lib/links";
 import { getProfileStore } from "@/lib/native";
 
@@ -21,6 +22,7 @@ export async function redirectSystemPath({
     const resolution = resolveIncomingLink(path, {
       profiles: snapshot.profiles,
       activeProfileId: snapshot.activeProfileId,
+      developerRoutesEnabled: e2eModeEnabled,
     });
     switch (resolution.kind) {
       case "passthrough":

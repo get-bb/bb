@@ -17,8 +17,12 @@ import {
   hostPathExistenceQueryKey,
   hostProviderCliStatusQueryKey,
   hostsQueryKey,
+  serverProtocolVersionQueryKey,
 } from "@/lib/query/query-keys";
-import { SESSION_STATIC_QUERY_POLICY } from "../shared/query-policies";
+import {
+  SERVER_SESSION_QUERY_POLICY,
+  SESSION_STATIC_QUERY_POLICY,
+} from "../shared/query-policies";
 import { useHostListRealtimeSubscription } from "../shared/use-realtime-subscription";
 import { useSystemConfig } from "../system/system-queries";
 import {
@@ -26,6 +30,7 @@ import {
   type HostDependentAvailability,
 } from "./host-availability";
 import { selectPrimaryHost } from "./select-primary-host";
+import { fetchServerProtocolVersion } from "./server-protocol-version";
 
 interface QueryOptions {
   enabled?: boolean;
@@ -42,6 +47,27 @@ export function useHosts(options?: QueryOptions) {
     enabled,
     staleTime: 60_000,
   });
+}
+
+/**
+ * The server's daemon protocol version (`GET /install/version`, see
+ * `fetchServerProtocolVersion`). Null until the server has answered or while
+ * the read fails; callers render the stranded-daemon status without the
+ * number and hide the retry action rather than compare against a guess. A
+ * server restart drops the realtime socket and the reconnect catch-up
+ * refetches it.
+ */
+export function useServerProtocolVersion(
+  options?: QueryOptions,
+): number | null {
+  const client = useProfileClient();
+  const query = useQuery<number>({
+    queryKey: serverProtocolVersionQueryKey(),
+    queryFn: ({ signal }) => fetchServerProtocolVersion(client, signal),
+    enabled: options?.enabled ?? true,
+    ...SERVER_SESSION_QUERY_POLICY,
+  });
+  return query.data ?? null;
 }
 
 /** Null while loading or before any host has ever connected. */

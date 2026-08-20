@@ -8,6 +8,7 @@ export {
   useHosts,
   useHostsProviderCliStatus,
   usePrimaryHost,
+  useServerProtocolVersion,
   type HostPathExistence,
   type HostProviderCliStatusEntry,
 } from "./host-queries";
@@ -32,6 +33,7 @@ export {
   hostCanRetryUpdate,
   hostNeedsUpdate,
 } from "./host-update-status";
+export { fetchServerProtocolVersion } from "./server-protocol-version";
 export {
   countProjectsByHost,
   describeHostPresence,
