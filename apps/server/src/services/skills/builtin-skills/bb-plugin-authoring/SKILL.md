@@ -1296,6 +1296,7 @@ export default definePluginApp((app) => {
     component: Board,
     experimental_fixedTabs: [
       {
+        panelId: "board",
         id: "navigation",
         title: "Navigation",
         icon: "PanelRight",
@@ -1603,7 +1604,7 @@ Slot props contracts (versioned, additive-only):
 
   `experimental_fixedTabs` declares ordered, non-closable page views in that
   same host tab strip:
-  `{ id, panelId?, title, icon, component, layout?, experimental_target? }`.
+  `{ id, panelId, title, icon, component, layout?, experimental_target? }`.
   BB opens the
   first fixed tab on the page's first wide-layout visit, but remembers a later
   user close. Only the active fixed-tab component is mounted, and closing the
@@ -1613,10 +1614,9 @@ Slot props contracts (versioned, additive-only):
   do not replace its native chrome, Browser, Terminal, or keyboard commands.
   Experimental: see `docs/api_to_audit.md`.
 
-  A registration whose `panelId` exactly matches its containing nav panel's
-  `id` is also the stable reference for selecting that plugin-owned tab.
-  Existing untargeted declarations may omit `panelId`; add it whenever code
-  will address the tab. A targetable tab declares
+  Every registration's `panelId` must exactly match its containing nav panel's
+  `id`; the registration is also the stable reference for selecting that
+  plugin-owned tab. A targetable tab declares
   `experimental_target: { validate(value): value is Target }`; BB checks JSON
   safety before calling the owner validator. From any component of the same
   plugin on that page, call

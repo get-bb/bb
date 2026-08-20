@@ -390,18 +390,9 @@ export type ExperimentalPluginFixedTabRegistration<
   layout?: "padded" | "flush";
 };
 
-interface LegacyPluginFixedTabRegistration {
-  id: string;
-  title: string;
-  icon: string;
-  component: ComponentType<PluginNavPanelProps>;
-  layout?: "padded" | "flush";
-  panelId?: string;
-  experimental_target?: never;
-}
-
+/** A fixed tab with either no target or an owner-validated JSON target. */
 export type ExperimentalPluginFixedTabDeclaration =
-  | LegacyPluginFixedTabRegistration
+  | ExperimentalPluginFixedTabRegistration
   | ExperimentalPluginFixedTabRegistration<JsonValue>;
 
 export interface PluginNavPanelRegistration {

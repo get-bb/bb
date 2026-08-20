@@ -14,6 +14,7 @@ export default definePluginApp((app) => {
     experimental_sidebarAccessory: TasksSidebarAccessory,
     experimental_fixedTabs: [
       {
+        panelId: "tasks",
         id: "navigation",
         title: "Navigation",
         icon: "ListView",

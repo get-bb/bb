@@ -185,10 +185,12 @@ export function collectPluginAppRegistrations(
                   `${fixedTabKind}: "layout" must be "padded" or "flush" when set`,
                 );
               }
-              if (
-                fixedTab?.panelId !== undefined &&
-                fixedTab.panelId !== panelId
-              ) {
+              const fixedTabPanelId = requireNonEmptyString(
+                fixedTabKind,
+                "panelId",
+                fixedTab?.panelId,
+              );
+              if (fixedTabPanelId !== panelId) {
                 throw new Error(
                   `${fixedTabKind}: "panelId" must match its containing navPanel id ${JSON.stringify(panelId)}`,
                 );
@@ -207,7 +209,7 @@ export function collectPluginAppRegistrations(
               }
               return {
                 id,
-                panelId,
+                panelId: fixedTabPanelId,
                 title: requireNonEmptyString(
                   fixedTabKind,
                   "title",

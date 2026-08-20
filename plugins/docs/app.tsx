@@ -2276,6 +2276,7 @@ export default definePluginApp((app) => {
     component: NotesPanel,
     experimental_fixedTabs: [
       {
+        panelId: "docs",
         id: "navigation",
         title: "Navigation",
         icon: "ListView",

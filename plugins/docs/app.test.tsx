@@ -143,6 +143,7 @@ describe("Docs nav panel", () => {
       path: "docs",
       experimental_fixedTabs: [
         {
+          panelId: "docs",
           id: "navigation",
           title: "Navigation",
           icon: "ListView",

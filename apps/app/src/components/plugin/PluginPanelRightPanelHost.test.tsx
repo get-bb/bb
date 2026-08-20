@@ -28,6 +28,7 @@ import {
 } from "@/lib/app-fixed-tab-navigation";
 
 interface TestFixedTabRegistration {
+  panelId: string;
   id: string;
   title: string;
   icon: string;
@@ -589,12 +590,14 @@ describe("PluginPanelRightPanelHost", () => {
     }
     fixedTabState.registrations = [
       {
+        panelId: "board",
         id: "navigation",
         title: "Navigation",
         icon: "PanelRight",
         component: Navigation,
       },
       {
+        panelId: "board",
         id: "details",
         title: "Details",
         icon: "Info",
@@ -655,12 +658,14 @@ describe("PluginPanelRightPanelHost", () => {
     }
     fixedTabState.registrations = [
       {
+        panelId: "board",
         id: "navigation",
         title: "Navigation",
         icon: "PanelRight",
         component: () => <div data-testid="navigation-content">Navigation</div>,
       },
       {
+        panelId: "board",
         id: "details",
         title: "Details",
         icon: "Info",
@@ -726,6 +731,7 @@ describe("PluginPanelRightPanelHost", () => {
   it("does not reopen fixed tabs after navigating away and back", async () => {
     fixedTabState.registrations = [
       {
+        panelId: "board",
         id: "navigation",
         title: "Navigation",
         icon: "PanelRight",
@@ -773,6 +779,7 @@ describe("PluginPanelRightPanelHost", () => {
   it("preserves a closed fixed tab while its plugin registration is loading", async () => {
     fixedTabState.registrations = [
       {
+        panelId: "board",
         id: "navigation",
         title: "Navigation",
         icon: "PanelRight",

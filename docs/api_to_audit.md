@@ -183,9 +183,9 @@ Browser and Terminal tools, and only mounts the active plugin component while
 the panel is open. A fixed tab receives the nav page's current `subPath`; `layout: "padded"` uses
 host padding and scrolling, while `layout: "flush"` gives the component the
 whole content region. On the first visit the first declared fixed tab opens on
-wide layouts. A later user close remains closed. A fixed-tab registration is
-also its stable, plugin-owner-and-panel-scoped reference when its `panelId`
-matches the containing nav panel's id. `experimental_useAppPanel()`
+wide layouts. A later user close remains closed. Every fixed-tab registration
+must include a `panelId` matching its containing nav panel and is also its
+stable, plugin-owner-and-panel-scoped reference. `experimental_useAppPanel()`
 can select one of the calling plugin's eligible tabs on the current surface
 and optionally submit a JSON-safe target. The tab's `experimental_target`
 validator owns the target type and policy; `experimental_useFixedTabTarget()`

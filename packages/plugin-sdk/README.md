@@ -38,9 +38,9 @@ the current host accepted the intent. Targets never infer an ambient workspace.
 The frontend harness records both methods and accepts `openFilePreview` and
 `openFileExternally` behavior options.
 
-A nav panel's `experimental_fixedTabs` entries are also stable references to
-that plugin's own tabs when their `panelId` matches the containing nav panel's
-`id`. Give a targeted tab an `experimental_target.validate` type guard, call
+A nav panel's `experimental_fixedTabs` entries must include the containing nav
+panel's `id` as `panelId`; each entry is also a stable reference to that
+plugin's own tab. Give a targeted tab an `experimental_target.validate` type guard, call
 `experimental_useAppPanel().openFixedTab({ surface: { kind:
 "current" }, tab, target })`, and read the in-memory delivery inside the tab
 with `experimental_useFixedTabTarget(tab)`. Call `consume()` after applying it.

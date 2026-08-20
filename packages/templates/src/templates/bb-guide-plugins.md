@@ -546,8 +546,8 @@ experimental_FileLink renders a real explicit live-file anchor whose ordinary
 activation uses the same preview/file-opener controller as first-party links;
 its lazy context menu adds Open with, preferred-external, installed-app, and
 copy actions without reading the file or discovering editors on mount.
-An `experimental_fixedTabs` registration with `panelId` equal to its containing
-nav panel's `id` is also an owner-scoped reference. Add
+Every `experimental_fixedTabs` registration must include `panelId` equal to its
+containing nav panel's `id`; it is also an owner-scoped reference. Add
 `experimental_target: { validate }` for a typed JSON-safe transient target,
 select it with `experimental_useAppPanel().openFixedTab({ surface: { kind:
 "current" }, tab, target? })`, and read/consume delivery inside the fixed tab

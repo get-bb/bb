@@ -790,6 +790,31 @@ describe("loadPluginApp", () => {
     );
   });
 
+  it("rejects a fixed-tab registration without an owner panel", async () => {
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.navPanel({
+            id: "tasks",
+            title: "Tasks",
+            icon: "ListTodo",
+            path: "tasks",
+            component: Panel,
+            experimental_fixedTabs: [
+              // @ts-expect-error Runtime collector coverage for malformed JS.
+              {
+                id: "navigation",
+                title: "Navigation",
+                icon: "PanelRight",
+                component: Panel,
+              },
+            ],
+          });
+        }),
+      ),
+    ).rejects.toThrow('"panelId" must be a non-empty string');
+  });
+
   it("rejects duplicate nav panel fixed tab ids", async () => {
     await expect(
       loadPluginApp(
@@ -802,12 +827,14 @@ describe("loadPluginApp", () => {
             component: Panel,
             experimental_fixedTabs: [
               {
+                panelId: "tasks",
                 id: "navigation",
                 title: "First",
                 icon: "PanelRight",
                 component: Panel,
               },
               {
+                panelId: "tasks",
                 id: "navigation",
                 title: "Second",
                 icon: "PanelRight",
