@@ -36,6 +36,7 @@ import {
 import {
   Button,
   EmptyStatePanel,
+  COMPOSER_KEYBOARD_GAP,
   KeyboardPaddingView,
   Skeleton,
   Text,
@@ -423,7 +424,10 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
         }}
       />
       {turnLoaders}
-      <KeyboardPaddingView style={{ flex: 1 }}>
+      <KeyboardPaddingView
+        style={{ flex: 1 }}
+        keyboardGap={COMPOSER_KEYBOARD_GAP}
+      >
         {(timelineLoading && entries.length === 0) || !threadReady ? (
           <View className="flex-1">
             <TimelineSkeleton />

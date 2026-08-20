@@ -19,7 +19,9 @@ import { Screen } from "../shell/Screen";
 import {
   resolveThreadRowIndicator,
   SidebarActionsProvider,
+  projectSubtitle,
   SidebarThreadRowView,
+  type SidebarRowSubtitle,
   useSidebarActions,
   type SidebarThreadRow,
 } from "../sidebar";
@@ -157,8 +159,12 @@ function SearchBody() {
           </Text>
         );
       }
-      const projectName = projectNamesById.get(item.row.thread.projectId);
-      const subtitle = item.snippet ?? projectName ?? null;
+      const subtitle: SidebarRowSubtitle | null =
+        item.snippet !== null && item.snippet !== undefined
+          ? { kind: "snippet", text: item.snippet }
+          : projectSubtitle(
+              projectNamesById.get(item.row.thread.projectId) ?? null,
+            );
       return (
         <SidebarThreadRowView
           row={item.row}

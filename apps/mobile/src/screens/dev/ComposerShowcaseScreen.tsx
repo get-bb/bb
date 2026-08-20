@@ -20,6 +20,7 @@ import { useSystemProviders } from "@/data/system";
 import {
   Button,
   EmptyStatePanel,
+  COMPOSER_KEYBOARD_GAP,
   KeyboardPaddingView,
   Text,
   toast,
@@ -76,7 +77,10 @@ function ConnectedComposerShowcase() {
   );
   return (
     <Screen scroll={false} testID="dev-composer-screen">
-      <KeyboardPaddingView style={{ flex: 1 }}>
+      <KeyboardPaddingView
+        style={{ flex: 1 }}
+        keyboardGap={COMPOSER_KEYBOARD_GAP}
+      >
         <ScrollView
           className="flex-1"
           contentContainerStyle={{ padding: 16, gap: 12 }}

@@ -13,7 +13,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, View, type StyleProp, type ViewStyle } from "react-native";
 import { haptic } from "@/lib/haptics";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
 import { buildProjectAttachmentContentUrl } from "@/data/thread-detail";
@@ -521,13 +521,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
               {/* Collapsed right slot: Stop while a turn runs (it must stay
                   reachable without expanding), else the mic, else a spacer. */}
               {collapsed && affordance.stop ? (
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  icon="Square"
-                  accessibilityLabel="Stop"
-                  haptic
+                <StopButton
                   onPress={affordance.stop}
+                  style={{ marginRight: 4 }}
                   testID={`${testID}-stop`}
                 />
               ) : collapsed && showVoicePrimary ? (
@@ -578,12 +574,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
                 </View>
                 {footerAccessory}
                 {affordance.stop ? (
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    icon="Square"
-                    accessibilityLabel="Stop"
-                    haptic
+                  <StopButton
                     onPress={affordance.stop}
                     testID={`${testID}-stop`}
                   />
@@ -687,5 +678,55 @@ function usePromptActionApplier({
       inputRef.current?.focus();
     },
     [commit, inputRef, valueRef],
+  );
+}
+
+/**
+ * Round "stop the run" button, the same 36pt circle as the send button so the
+ * collapsed pill and the expanded footer keep one silhouette. A filled square
+ * (web: `Square` with `fill-current`), not the stroked icon, reads as stop.
+ */
+function StopButton({
+  onPress,
+  style,
+  testID,
+}: {
+  onPress: () => void;
+  style?: StyleProp<ViewStyle>;
+  testID: string;
+}) {
+  const { tokens } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Stop"
+      hitSlop={4}
+      onPress={() => {
+        haptic("impact-medium");
+        onPress();
+      }}
+      testID={testID}
+      style={({ pressed }) => [
+        {
+          width: 36,
+          height: 36,
+          borderRadius: 18,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: tokens.secondary,
+          opacity: pressed ? 0.8 : 1,
+        },
+        style,
+      ]}
+    >
+      <View
+        style={{
+          width: 12,
+          height: 12,
+          borderRadius: 2,
+          backgroundColor: tokens.secondaryForeground,
+        }}
+      />
+    </Pressable>
   );
 }

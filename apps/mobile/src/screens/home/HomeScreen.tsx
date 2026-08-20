@@ -17,11 +17,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useProfiles } from "@/app-shell";
 import type { ComposerHandle } from "@/composer";
 import { blendOver, withAlpha } from "@/markdown/colors";
-import { useTheme } from "@/theme";
+import { scrimBaseColor, useTheme } from "@/theme";
 import {
   Button,
   EmptyStatePanel,
   Icon,
+  COMPOSER_KEYBOARD_GAP,
   KeyboardPaddingView,
   Spinner,
   Text,
@@ -40,7 +41,7 @@ import {
 } from "../sidebar";
 
 const SCRIM_DURATION_MS = 180;
-/** Opacity of the ink scrim over the list while the dock is expanded. */
+/** Opacity of the scrim over the list while the dock is expanded. */
 const SCRIM_ALPHA = 0.35;
 
 /**
@@ -52,13 +53,14 @@ const SCRIM_ALPHA = 0.35;
 function HomeHeaderActions({ dimmed }: { dimmed: boolean }) {
   const navigation = useNavigation();
   const router = useRouter();
-  const { tokens, fonts } = useTheme();
+  const { tokens, fonts, mode } = useTheme();
   const actions = useSidebarActions();
+  const scrimColor = scrimBaseColor(mode, tokens);
   const background = dimmed
-    ? blendOver(tokens.background, tokens.ink, SCRIM_ALPHA)
+    ? blendOver(tokens.background, scrimColor, SCRIM_ALPHA)
     : tokens.background;
   const foreground = dimmed
-    ? blendOver(tokens.foreground, tokens.ink, SCRIM_ALPHA)
+    ? blendOver(tokens.foreground, scrimColor, SCRIM_ALPHA)
     : tokens.foreground;
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -180,7 +182,7 @@ function useNewThreadRouteParams(): {
 function HomeBody() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { tokens } = useTheme();
+  const { tokens, mode } = useTheme();
   const route = useNewThreadRouteParams();
   const controller = useComposeController(route.params);
   const composerRef = useRef<ComposerHandle | null>(null);
@@ -244,7 +246,10 @@ function HomeBody() {
   return (
     <SidebarActionsProvider onCreateThread={createThreadInDock}>
       <HomeHeaderActions dimmed={expanded} />
-      <KeyboardPaddingView style={{ flex: 1 }}>
+      <KeyboardPaddingView
+        style={{ flex: 1 }}
+        keyboardGap={COMPOSER_KEYBOARD_GAP}
+      >
         <View className="flex-1">
           <SidebarThreadList
             contentContainerStyle={{ paddingBottom: 16 }}
@@ -263,7 +268,10 @@ function HomeBody() {
               right: 0,
               bottom: 0,
               opacity: scrim,
-              backgroundColor: withAlpha(tokens.ink, SCRIM_ALPHA),
+              backgroundColor: withAlpha(
+                scrimBaseColor(mode, tokens),
+                SCRIM_ALPHA,
+              ),
             }}
           >
             <Pressable

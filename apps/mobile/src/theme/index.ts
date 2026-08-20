@@ -25,6 +25,7 @@ export {
   type ThemeModePreference,
   type ThemePreferenceStorage,
 } from "./theme-preference";
+export { scrimBaseColor } from "./scrim";
 export { buildThemeVars, tokenKeyToCssVar } from "./theme-vars";
 export {
   nativeRadii,

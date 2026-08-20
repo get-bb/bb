@@ -22,6 +22,7 @@ import {
 import { Keyboard, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/theme/ThemeProvider";
+import { scrimBaseColor } from "@/theme/scrim";
 import { Text } from "./Text";
 import { useDeferredRealization } from "./useDeferredRealization";
 
@@ -119,7 +120,8 @@ export function Sheet({
   deferContent = true,
 }: SheetProps) {
   const modalRef = useRef<BottomSheetModal>(null);
-  const { tokens, radii } = useTheme();
+  const { tokens, radii, mode } = useTheme();
+  const scrimColor = scrimBaseColor(mode, tokens);
   const insets = useSafeAreaInsets();
   const [presented, setPresented] = useState(false);
   const realized = useDeferredRealization(presented);
@@ -156,9 +158,10 @@ export function Sheet({
         disappearsOnIndex={-1}
         opacity={0.45}
         pressBehavior="close"
+        style={[props.style, { backgroundColor: scrimColor }]}
       />
     ),
-    [],
+    [scrimColor],
   );
 
   const dynamic = enableDynamicSizing ?? snapPoints === undefined;

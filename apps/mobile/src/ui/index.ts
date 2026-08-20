@@ -36,6 +36,7 @@ export {
 } from "./Icon";
 export { Input, type InputProps } from "./Input";
 export {
+  COMPOSER_KEYBOARD_GAP,
   KeyboardPaddingView,
   type KeyboardPaddingViewProps,
 } from "./KeyboardPaddingView";

@@ -9,7 +9,9 @@ export {
   type SidebarThreadListProps,
 } from "./SidebarThreadList";
 export {
+  projectSubtitle,
   SidebarThreadRowView,
+  type SidebarRowSubtitle,
   type SidebarThreadRowViewProps,
 } from "./SidebarRows";
 export { ThreadStatusGlyph } from "./ThreadStatusGlyph";

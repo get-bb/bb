@@ -29,7 +29,9 @@ import { Screen } from "../shell/Screen";
 import {
   resolveThreadRowIndicator,
   SidebarActionsProvider,
+  projectSubtitle,
   SidebarThreadRowView,
+  type SidebarRowSubtitle,
   useSidebarActions,
   type SidebarThreadRow,
 } from "../sidebar";
@@ -63,7 +65,7 @@ function ArchivedRow({
   pending,
 }: {
   row: SidebarThreadRow;
-  subtitle: string | null;
+  subtitle: SidebarRowSubtitle | null;
   onPress: (row: SidebarThreadRow) => void;
   onLongPress: (row: SidebarThreadRow) => void;
   onUnarchive: (thread: ThreadListEntry) => void;
@@ -161,11 +163,11 @@ function ArchivedBody({
     ({ item }: ListRenderItemInfo<SidebarThreadRow>) => (
       <ArchivedRow
         row={item}
-        subtitle={
+        subtitle={projectSubtitle(
           projectId === null
             ? (projectNamesById.get(item.thread.projectId) ?? null)
-            : null
-        }
+            : null,
+        )}
         onPress={onPress}
         onLongPress={onLongPress}
         onUnarchive={onUnarchive}

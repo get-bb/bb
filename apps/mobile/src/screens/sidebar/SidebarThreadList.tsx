@@ -15,6 +15,7 @@ import {
   SidebarEmptyRowView,
   SidebarEnvironmentRowView,
   SidebarHeaderRowView,
+  projectSubtitle,
   SidebarThreadRowView,
 } from "./SidebarRows";
 import {
@@ -179,11 +180,11 @@ export function SidebarThreadList({
             <SidebarThreadRowView
               row={item}
               selected={thread.id === selectedThreadId}
-              subtitle={
+              subtitle={projectSubtitle(
                 showProject
                   ? (projectNamesById.get(thread.projectId) ?? null)
-                  : null
-              }
+                  : null,
+              )}
               onPress={onThreadPress}
               onLongPress={onThreadLongPress}
               onToggleCollapsed={onToggleThread}

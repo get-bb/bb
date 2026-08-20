@@ -1,10 +1,11 @@
 import { Drawer } from "expo-router/drawer";
 import { useProfiles } from "@/app-shell";
 import { DrawerContent } from "@/screens";
-import { useTheme } from "@/theme";
+import { withAlpha } from "@/markdown/colors";
+import { scrimBaseColor, useTheme } from "@/theme";
 
 export default function DrawerLayout() {
-  const { tokens, fonts } = useTheme();
+  const { tokens, fonts, mode } = useTheme();
   const { activeProfile } = useProfiles();
   return (
     <Drawer
@@ -21,6 +22,7 @@ export default function DrawerLayout() {
         },
         drawerStyle: { backgroundColor: tokens.sidebar, width: 300 },
         drawerType: "front",
+        overlayColor: withAlpha(scrimBaseColor(mode, tokens), 0.45),
         sceneStyle: { backgroundColor: tokens.background },
         swipeEdgeWidth: 48,
       }}

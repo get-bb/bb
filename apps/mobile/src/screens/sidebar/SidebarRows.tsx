@@ -48,11 +48,19 @@ function CountChip({ count }: { count: number }) {
   );
 }
 
+export type SidebarRowSubtitle =
+  | { kind: "project"; name: string }
+  | { kind: "snippet"; text: string };
+
 export interface SidebarThreadRowViewProps {
   row: SidebarThreadRow;
   selected: boolean;
-  /** Second line: the project name outside project mode, or nothing. */
-  subtitle: string | null;
+  /**
+   * Second line: the project name outside project mode (with a folder icon
+   * so it reads as a project, not a second title), a search snippet, or
+   * nothing.
+   */
+  subtitle: SidebarRowSubtitle | null;
   onPress: (row: SidebarThreadRow) => void;
   onLongPress: (row: SidebarThreadRow) => void;
   onToggleCollapsed: (threadId: string) => void;
@@ -66,6 +74,7 @@ export const SidebarThreadRowView = memo(function SidebarThreadRowView({
   onLongPress,
   onToggleCollapsed,
 }: SidebarThreadRowViewProps) {
+  const { tokens } = useTheme();
   const { thread } = row;
   const title = getThreadDisplayTitle(thread);
   const unread = !isThreadRead(thread) && thread.parentThreadId === null;
@@ -73,7 +82,7 @@ export const SidebarThreadRowView = memo(function SidebarThreadRowView({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={title}
-      accessibilityHint={subtitle ?? undefined}
+      accessibilityHint={subtitleText(subtitle)}
       accessibilityState={{ selected }}
       onPress={() => onPress(row)}
       onLongPress={() => onLongPress(row)}
@@ -111,9 +120,20 @@ export const SidebarThreadRowView = memo(function SidebarThreadRowView({
         >
           {title}
         </Text>
-        {subtitle ? (
+        {subtitle?.kind === "project" ? (
+          <View className="flex-row items-center gap-1">
+            <Icon name="Folder" size={12} color={tokens.mutedForeground} />
+            <Text
+              variant="caption"
+              numberOfLines={1}
+              className="min-w-0 shrink"
+            >
+              {subtitle.name}
+            </Text>
+          </View>
+        ) : subtitle?.kind === "snippet" ? (
           <Text variant="caption" numberOfLines={1}>
-            {subtitle}
+            {subtitle.text}
           </Text>
         ) : null}
       </View>
@@ -123,6 +143,18 @@ export const SidebarThreadRowView = memo(function SidebarThreadRowView({
     </Pressable>
   );
 });
+
+/** The project-name subtitle for a row, or nothing when there is no name. */
+export function projectSubtitle(
+  name: string | null,
+): SidebarRowSubtitle | null {
+  return name === null ? null : { kind: "project", name };
+}
+
+function subtitleText(subtitle: SidebarRowSubtitle | null): string | undefined {
+  if (subtitle === null) return undefined;
+  return subtitle.kind === "project" ? subtitle.name : subtitle.text;
+}
 
 export interface SidebarHeaderRowViewProps {
   row: SidebarHeaderRow;
