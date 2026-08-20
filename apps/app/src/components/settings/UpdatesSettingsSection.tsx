@@ -18,6 +18,7 @@ import {
   type UpdateState,
 } from "@bb/domain/update-state";
 import { Button, type ButtonProps } from "@bb/shared-ui/button";
+import { usePrefersReducedMotion } from "@bb/shared-ui/hooks/use-media-query";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -93,6 +94,13 @@ const CHANGELOG_URL = "https://getbb.app/changelog";
 const CHANGELOG_STALE_TIME_MS = 5 * 60_000;
 const CHANGELOG_DISMISSED_VERSION_STORAGE_KEY =
   "bb.settings.updates.dismissed-changelog-version";
+const CHANGELOG_DISMISS_CONFIRMATION_MS = 2_000;
+const CHANGELOG_DISMISS_EXIT_MS = 180;
+
+interface ChangelogDismissal {
+  phase: "confirming" | "exiting";
+  version: string;
+}
 
 function isNewerChangelogVersion(
   candidate: string,
@@ -148,6 +156,7 @@ export function UpdateActionButton({
   label,
   tooltipLabel,
   icon,
+  iconPosition = "start",
   visibleLabel,
   className,
   variant,
@@ -160,6 +169,7 @@ export function UpdateActionButton({
   /** Short tooltip when the accessible label is a full sentence. */
   tooltipLabel?: string;
   icon: IconName;
+  iconPosition?: "start" | "end";
   visibleLabel?: string;
   className?: string;
   variant?: ButtonProps["variant"];
@@ -206,12 +216,13 @@ export function UpdateActionButton({
       )}
       onClick={onClick}
     >
+      {iconPosition === "end" ? visibleLabel : null}
       <Icon
         aria-hidden
         name={loading ? "Spinner" : icon}
         className={cn("size-3.5", loading && "animate-spin")}
       />
-      {visibleLabel}
+      {iconPosition === "start" ? visibleLabel : null}
     </Button>
   );
 }
@@ -387,8 +398,8 @@ function RowName({
  */
 function stateTextClass(state: UpdateState): string {
   return UPDATE_STATE_PRESENTATION[state].tone === "error"
-    ? "text-destructive"
-    : "text-muted-foreground";
+    ? "font-semibold text-destructive"
+    : "font-semibold text-subtle-foreground";
 }
 
 /**
@@ -658,6 +669,8 @@ export function ChangelogPreviewCard() {
   const [dismissedVersion, setDismissedVersion] = useState(() =>
     rawStringLocalStorage.getItem(CHANGELOG_DISMISSED_VERSION_STORAGE_KEY, ""),
   );
+  const [dismissal, setDismissal] = useState<ChangelogDismissal | null>(null);
+  const prefersReducedMotion = usePrefersReducedMotion();
   const releaseBodyRef = useRef<HTMLDivElement>(null);
   const [moreBelow, setMoreBelow] = useState(false);
   const syncFade = (node: HTMLDivElement | null) => {
@@ -669,6 +682,35 @@ export function ChangelogPreviewCard() {
   useEffect(() => {
     syncFade(releaseBodyRef.current);
   }, [entry]);
+  useEffect(() => {
+    if (dismissal?.phase !== "confirming") {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setDismissal((current) =>
+        current?.version === dismissal.version
+          ? { ...current, phase: "exiting" }
+          : current,
+      );
+    }, CHANGELOG_DISMISS_CONFIRMATION_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [dismissal]);
+  useEffect(() => {
+    if (dismissal?.phase !== "exiting") {
+      return;
+    }
+    const dismissedEntryVersion = dismissal.version;
+    const timeoutId = window.setTimeout(
+      () => {
+        setDismissedVersion(dismissedEntryVersion);
+        setDismissal((current) =>
+          current?.version === dismissedEntryVersion ? null : current,
+        );
+      },
+      prefersReducedMotion ? 0 : CHANGELOG_DISMISS_EXIT_MS,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [dismissal, prefersReducedMotion]);
   if (entry === null) {
     return null;
   }
@@ -680,102 +722,170 @@ export function ChangelogPreviewCard() {
     return null;
   }
   const releaseMeta = CHANGELOG_RELEASE_META[entry.version];
+  const dismissalPhase =
+    dismissal?.version === entry.version ? dismissal.phase : "visible";
+  const releaseVisible = dismissalPhase === "visible";
   return (
-    <div data-updates-domain="changelog">
+    <div
+      data-updates-domain="changelog"
+      data-changelog-dismiss-phase={dismissalPhase}
+      className={cn(
+        "grid transition-[grid-template-rows,margin,opacity,transform] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none [&>section]:min-h-0 [&>section]:overflow-hidden",
+        dismissalPhase === "exiting"
+          ? "-mb-6 grid-rows-[0fr] -translate-y-1 opacity-0"
+          : "grid-rows-[1fr] translate-y-0 opacity-100",
+      )}
+    >
       <SettingsSection
         title={
           <span
             data-changelog-label
-            className="inline-flex rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs font-medium leading-none text-muted-foreground"
+            className="inline-flex rounded-sm border border-border bg-muted/40 px-2.5 py-1 text-xs font-medium leading-none text-muted-foreground"
           >
             What's new
           </span>
         }
         action={
-          <Tooltip delayDuration={300} disableHoverableContent>
-            <TooltipTrigger asChild>
-              <Button
-                data-changelog-dismiss
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-7 text-muted-foreground hover:text-foreground"
-                aria-label={`Dismiss bb ${entry.version} changelog preview`}
-                onClick={() => {
-                  rawStringLocalStorage.setItem(
-                    CHANGELOG_DISMISSED_VERSION_STORAGE_KEY,
-                    entry.version,
-                  );
-                  setDismissedVersion(entry.version);
-                }}
-              >
-                <Icon aria-hidden name="X" className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Dismiss</TooltipContent>
-          </Tooltip>
+          releaseVisible ? (
+            <Tooltip delayDuration={300} disableHoverableContent>
+              <TooltipTrigger asChild>
+                <Button
+                  data-changelog-dismiss
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 text-muted-foreground hover:text-foreground"
+                  aria-label={`Dismiss bb ${entry.version} changelog preview`}
+                  onClick={() => {
+                    rawStringLocalStorage.setItem(
+                      CHANGELOG_DISMISSED_VERSION_STORAGE_KEY,
+                      entry.version,
+                    );
+                    setDismissal({
+                      phase: "confirming",
+                      version: entry.version,
+                    });
+                  }}
+                >
+                  <Icon aria-hidden name="X" className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Dismiss</TooltipContent>
+            </Tooltip>
+          ) : (
+            <span aria-hidden className="block size-7" />
+          )
         }
         bodyClassName="p-0"
       >
-        <article data-changelog-preview className="min-w-0 p-4 sm:p-5">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <span
-              data-changelog-version={entry.version}
-              className="inline-flex rounded-full border border-border bg-muted/30 px-2.5 py-1 font-mono text-xs font-semibold leading-none tracking-tight text-foreground"
-            >
-              {entry.version}
-            </span>
-            {releaseMeta === undefined ? null : (
-              <span className="text-xs text-muted-foreground">
-                {releaseMeta.date}
-              </span>
-            )}
-          </div>
-
-          <div className="relative mt-3 min-w-0">
-            <div
-              ref={releaseBodyRef}
-              data-changelog-release-scroll
-              onScroll={(event) => syncFade(event.currentTarget)}
-              className="max-h-56 overflow-y-auto pr-3"
-            >
-              <h3 className="text-lg font-semibold leading-snug tracking-tight text-foreground">
-                {releaseMeta?.headline ?? entry.version}
-              </h3>
-              {entry.lede.length === 0 ? null : (
-                <div className="mt-2">
-                  <ChangelogBlocks blocks={entry.lede} lede />
-                </div>
-              )}
-              {entry.sections.map((section) => (
-                <div key={section.title} className="mt-4">
-                  <h4 className="text-sm font-semibold leading-snug text-foreground">
-                    {section.title}
-                  </h4>
-                  <ChangelogBlocks blocks={section.blocks} />
-                </div>
-              ))}
-            </div>
-            {moreBelow ? <OverflowFade placement="below" inset /> : null}
-          </div>
-        </article>
         <div
-          data-changelog-footer
-          className="flex items-center justify-end border-t border-border bg-muted/40 px-4 py-2.5 sm:px-5"
+          data-changelog-release-panel
+          aria-hidden={!releaseVisible}
+          className={cn(
+            "grid transition-[grid-template-rows,opacity] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+            releaseVisible
+              ? "grid-rows-[1fr] opacity-100"
+              : "pointer-events-none grid-rows-[0fr] opacity-0",
+          )}
         >
-          <button
-            type="button"
-            aria-label={`Open the full bb ${entry.version} changelog`}
-            onClick={() =>
-              openUrlInExternalBrowser(
-                `${CHANGELOG_URL}#${entry.version.replaceAll(".", "-")}`,
-              )
-            }
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            Full changelog
-            <Icon aria-hidden name="ExternalLink" className="size-3.5" />
-          </button>
+          <div className="min-h-0 overflow-hidden">
+            <article data-changelog-preview className="min-w-0 p-4 sm:p-5">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <span
+                  data-changelog-version={entry.version}
+                  className="inline-flex rounded-full border border-border bg-muted/30 px-2.5 py-1 font-mono text-xs font-semibold leading-none tracking-tight text-foreground"
+                >
+                  {entry.version}
+                </span>
+                {releaseMeta === undefined ? null : (
+                  <span className="text-xs text-muted-foreground">
+                    {releaseMeta.date}
+                  </span>
+                )}
+              </div>
+
+              <div className="relative mt-3 min-w-0">
+                <div
+                  ref={releaseBodyRef}
+                  data-changelog-release-scroll
+                  onScroll={(event) => syncFade(event.currentTarget)}
+                  className="max-h-56 overflow-y-auto pr-3"
+                >
+                  <h3 className="text-lg font-semibold leading-snug tracking-tight text-foreground">
+                    {releaseMeta?.headline ?? entry.version}
+                  </h3>
+                  {entry.lede.length === 0 ? null : (
+                    <div className="mt-2">
+                      <ChangelogBlocks blocks={entry.lede} lede />
+                    </div>
+                  )}
+                  {entry.sections.map((section) => (
+                    <div key={section.title} className="mt-4">
+                      <h4 className="text-sm font-semibold leading-snug text-foreground">
+                        {section.title}
+                      </h4>
+                      <ChangelogBlocks blocks={section.blocks} />
+                    </div>
+                  ))}
+                </div>
+                {moreBelow ? <OverflowFade placement="below" inset /> : null}
+              </div>
+            </article>
+            <div
+              data-changelog-footer
+              className="flex items-center justify-end border-t border-foreground bg-foreground px-4 py-2.5 text-background sm:px-5"
+            >
+              <button
+                type="button"
+                disabled={!releaseVisible}
+                aria-label={`Open the full bb ${entry.version} changelog`}
+                onClick={() =>
+                  openUrlInExternalBrowser(
+                    `${CHANGELOG_URL}#${entry.version.replaceAll(".", "-")}`,
+                  )
+                }
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm text-xs font-semibold text-background underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-background"
+              >
+                Full changelog
+                <Icon aria-hidden name="ExternalLink" className="size-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+        <div
+          data-changelog-dismiss-confirmation
+          role="status"
+          aria-live="polite"
+          aria-hidden={releaseVisible}
+          className={cn(
+            "grid transition-[grid-template-rows,opacity] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+            releaseVisible
+              ? "pointer-events-none grid-rows-[0fr] opacity-0"
+              : "grid-rows-[1fr] opacity-100",
+          )}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div className="p-4 text-center sm:p-5">
+              <div className="mx-auto max-w-sm">
+                <div className="flex items-center justify-center gap-2">
+                  <Icon
+                    aria-hidden
+                    name="CircleCheck"
+                    className="size-4 text-muted-foreground"
+                  />
+                  <span className="inline-flex rounded-full border border-border bg-muted/30 px-2.5 py-1 font-mono text-xs font-semibold leading-none tracking-tight text-foreground">
+                    {entry.version}
+                  </span>
+                </div>
+                <h3 className="mt-3 text-lg font-semibold leading-snug tracking-tight text-foreground">
+                  You're all caught up
+                </h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                  We'll show the next bb release here.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </SettingsSection>
     </div>
@@ -1025,7 +1135,7 @@ export function BbDaemonUpdateRow({
         </span>
       }
       title="bb daemon"
-      titleMeta={daemonCaption}
+      state={daemonCaption}
       trailingMeta={null}
       actions={
         // One indicator. `waiting-to-retry` is the only machine state with a
@@ -1079,7 +1189,7 @@ export function ProviderCliCheckRow({
         />
       }
       title="Provider CLIs"
-      titleMeta={
+      state={
         <RowStateCaption state="failed">
           Couldn&apos;t check for updates
         </RowStateCaption>
@@ -1188,9 +1298,12 @@ export function MachineUpdatesRows({
             {failure === null ? null : (
               <>
                 <RowStateCaption state="failed">Failed</RowStateCaption>
-                <span role="alert" className="text-xs text-destructive">
+                <code
+                  role="alert"
+                  className="rounded bg-muted/70 px-1.5 py-0.5 font-mono text-xs text-destructive"
+                >
                   {failure.logDialogState.message}
-                </span>
+                </code>
               </>
             )}
           </span>
@@ -1446,6 +1559,8 @@ export function UpdatesSettingsSection({
         label={`Update all ${actionableIssues.length} CLI tools`}
         tooltipLabel="Update all"
         icon={UPDATE_ACTION_ICON}
+        iconPosition="end"
+        visibleLabel="Update all"
         variant="default"
         onClick={() => {
           for (const { hostId, issue } of actionableIssues) {
@@ -1460,6 +1575,7 @@ export function UpdatesSettingsSection({
         label={`Update all ${stalledMachines.length} machines now`}
         visibleLabel="Retry all"
         icon="RotateCcw"
+        iconPosition="end"
         variant="default"
         className="font-medium"
         onClick={retryAllStalledDaemonUpdates}

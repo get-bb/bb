@@ -13,6 +13,11 @@ import {
   makeProviderCliStatus,
 } from "../../../.ladle/story-fixtures";
 import {
+  StoryState as State,
+  StoryStateGroup as Group,
+  StoryStates as Story,
+} from "../../../.ladle/story-states";
+import {
   BbAppUpdateRows,
   BbDaemonUpdateRow,
   ChangelogPreviewCard,
@@ -123,6 +128,11 @@ function StoryPage({ children }: { children: ReactNode }) {
 
 /** The default-off changelog preview experiment in its enabled state. */
 export function ChangelogPreviewExperiment() {
+  // A review story must always expose the initial state, even when this
+  // browser already exercised dismissal for the same bundled release.
+  window.localStorage.removeItem(
+    "bb.settings.updates.dismissed-changelog-version",
+  );
   return (
     <SettingsStoryChrome activeSection="updates">
       <ChangelogPreviewCard />
@@ -181,6 +191,331 @@ function StoryMachineSection({
   );
 }
 
+function Why({ items }: { items: readonly string[] }) {
+  return (
+    <ul className="space-y-1">
+      {items.map((item) => (
+        <li key={item} className="flex gap-1.5">
+          <span aria-hidden className="text-subtle-foreground">
+            •
+          </span>
+          <span className="min-w-0">{item}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function StoryAppState({ children }: { children: ReactNode }) {
+  const machine = machineOf({
+    host: makeHost({ id: "state-app", name: "workstation" }),
+    isPrimary: true,
+  });
+  return (
+    <MachineUpdatesSection machine={machine}>{children}</MachineUpdatesSection>
+  );
+}
+
+function manualUpdateIssue(
+  provider: ProviderCliKey,
+  currentVersion: string,
+  latestVersion: string,
+): ProviderCliIssue {
+  const status = makeProviderCliStatus(provider, {
+    currentVersion,
+    latestVersion,
+    installAction: null,
+    needsUpdate: true,
+  });
+  return {
+    provider,
+    status,
+    action: null,
+    title: `${status.displayName} update available`,
+    description: `${currentVersion} -> ${latestVersion}`,
+    fingerprint: `${provider}:${currentVersion}:${latestVersion}:manual`,
+  };
+}
+
+function missingProviderIssue(provider: ProviderCliKey): ProviderCliIssue {
+  const status = makeProviderCliStatus(provider, {
+    executablePath: null,
+    installed: false,
+    installSource: "notInstalled",
+    currentVersion: null,
+    latestVersion: "2.1.0",
+    installAction: {
+      kind: "install",
+      label: "Install",
+      commandKind: "exec",
+      command: "npm install -g @anthropic-ai/claude-code",
+    },
+    needsUpdate: false,
+  });
+  return {
+    provider,
+    status,
+    action: status.installAction,
+    title: `${status.displayName} CLI not installed`,
+    description: "Not installed",
+    fingerprint: `${provider}:not-installed`,
+  };
+}
+
+/**
+ * Every state Settings → Updates can reach, once, using the production rows.
+ * Keep this separate from the representative page stories: this is the
+ * reviewed vocabulary catalogue, while those stories exercise page density.
+ */
+export function UpdateStates() {
+  const providerUpdate = machineOf({
+    host: makeHost({ id: "state-provider-update", name: "workstation" }),
+    issues: [updateIssue("codex", "0.145.0", "0.146.0")],
+  });
+  const providerInstalling = machineOf({
+    host: makeHost({ id: "state-provider-installing", name: "studio-mac" }),
+    issues: [updateIssue("claudeCode", "2.0.1", "2.1.0")],
+  });
+  const providerManual = machineOf({
+    host: makeHost({ id: "state-provider-manual", name: "homelab" }),
+    issues: [manualUpdateIssue("codex", "0.145.0", "0.146.0")],
+  });
+  const providerMissing = machineOf({
+    host: makeHost({ id: "state-provider-missing", name: "workstation" }),
+    issues: [
+      updateIssue("codex", "0.145.0", "0.146.0"),
+      missingProviderIssue("claudeCode"),
+    ],
+  });
+  const daemonUpdating = machineOf({
+    host: makeHost({
+      id: "state-daemon-updating",
+      name: "studio-mac",
+      status: "disconnected",
+      lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
+      updatedAt: STORY_NOW - 30_000,
+    }),
+    canRetryDaemonUpdate: true,
+  });
+  const daemonStalled = machineOf({
+    host: makeHost({
+      id: "state-daemon-stalled",
+      name: "ci-runner-3",
+      status: "disconnected",
+      lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
+      updatedAt: STORY_NOW - 6 * 60_000,
+    }),
+    canRetryDaemonUpdate: true,
+  });
+  const daemonOffline = machineOf({
+    host: makeHost({
+      id: "state-daemon-offline",
+      name: "old-laptop",
+      status: "disconnected",
+    }),
+  });
+  const providerCheckFailed = machineOf({
+    host: makeHost({ id: "state-provider-check", name: "workstation" }),
+    statusError: true,
+  });
+
+  return (
+    <SettingsStoryChrome activeSection="updates" contentOwnsPageShell>
+      <Story
+        title="Updates — every state"
+        description="Each state Settings → Updates can reach, once, rendered by the production component."
+        renderedLabel="Rendered card"
+        renderedNote="The real Updates section"
+      >
+        <Group
+          title="bb"
+          note="The app itself, and the machine daemons it runs."
+        />
+
+        <State
+          name="Up to date"
+          note="Nothing to do. The settled state stays visually quiet."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={NPM_VERSION}
+              desktopInfo={null}
+              isDesktop={false}
+              onRelaunchDesktop={null}
+              onRetryDesktop={null}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
+          name="Checking"
+          note="The app version check is still in progress."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={undefined}
+              desktopInfo={null}
+              isDesktop={false}
+              onRelaunchDesktop={null}
+              onRetryDesktop={null}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
+          name="Update available"
+          note="A web install cannot replace itself, so its action copies the upgrade command."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={{
+                ...NPM_VERSION,
+                latestVersion: "0.39.0",
+                updateAvailable: true,
+              }}
+              desktopInfo={null}
+              isDesktop={false}
+              onRelaunchDesktop={null}
+              onRetryDesktop={null}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
+          name="Downloading"
+          note="The desktop shell is fetching the update automatically."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={undefined}
+              desktopInfo={{
+                ...DESKTOP_UPDATE,
+                downloadState: "downloading",
+                pendingVersion: null,
+                updateDownloaded: false,
+              }}
+              isDesktop
+              onRelaunchDesktop={noop}
+              onRetryDesktop={noop}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
+          name="Downloaded — relaunch"
+          note="The update is ready and needs one explicit relaunch."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={undefined}
+              desktopInfo={DESKTOP_UPDATE}
+              isDesktop
+              onRelaunchDesktop={noop}
+              onRetryDesktop={noop}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
+          name="Download failed"
+          note="The red caption states the failure; the neutral Retry button is the recovery."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={undefined}
+              desktopInfo={{
+                ...DESKTOP_UPDATE,
+                downloadState: "failed",
+                pendingVersion: null,
+                updateDownloaded: false,
+              }}
+              isDesktop
+              onRelaunchDesktop={noop}
+              onRetryDesktop={noop}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
+          name="Machine updating bb"
+          note="The enrolled daemon is applying its required update automatically."
+        >
+          <StoryMachineSection machine={daemonUpdating} />
+        </State>
+
+        <State
+          name="Machine offline"
+          note="bb cannot currently reach this machine."
+        >
+          <StoryMachineSection machine={daemonOffline} />
+        </State>
+
+        <State
+          name="Machine update stalled"
+          note="The daemon update did not finish and can be retried."
+        >
+          <StoryMachineSection machine={daemonStalled} />
+        </State>
+
+        <Group
+          title="Provider CLIs"
+          note="Agent CLIs installed on each machine."
+        />
+
+        <State
+          name="Update available"
+          note="bb has an installer it can run for this provider."
+        >
+          <StoryMachineSection machine={providerUpdate} />
+        </State>
+
+        <State
+          name="Installing"
+          note="The provider update is currently running."
+        >
+          <MachineUpdatesSection machine={providerInstalling}>
+            <MachineUpdatesRows
+              machine={providerInstalling}
+              runningJobKey="state-provider-installing:claudeCode"
+              queuedJobKeys={NO_JOBS}
+              onStartInstall={noop}
+              onOpenProvider={noop}
+            />
+          </MachineUpdatesSection>
+        </State>
+
+        <State
+          name="Update in terminal"
+          note="The CLI was installed outside bb, so the update must run in its own package manager."
+        >
+          <StoryMachineSection machine={providerManual} />
+        </State>
+
+        <State
+          name="Never installed — no row"
+          note={
+            <Why
+              items={[
+                "A CLI with no installed version has no update, so it stays off this page.",
+                "Claude Code is absent in this fixture; only the stale Codex row renders.",
+              ]}
+            />
+          }
+        >
+          <StoryMachineSection machine={providerMissing} />
+        </State>
+
+        <State
+          name="Status check failed"
+          note="The machine is connected, but bb could not inspect its provider CLIs."
+        >
+          <StoryMachineSection machine={providerCheckFailed} />
+        </State>
+      </Story>
+    </SettingsStoryChrome>
+  );
+}
+
 /** Multiple machines, each owning its app, daemon, or provider update rows. */
 export function MultiMachine() {
   const workstation = machineOf({
@@ -218,6 +553,8 @@ export function MultiMachine() {
               label="Update all 3 CLI tools"
               tooltipLabel="Update all"
               icon={UPDATE_ACTION_ICON}
+              iconPosition="end"
+              visibleLabel="Update all"
               variant="default"
               onClick={noop}
             />

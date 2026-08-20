@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
   PERSONAL_PROJECT_ID,
@@ -27,6 +28,7 @@ import {
   type UpdateInventoryMachine,
 } from "../src/hooks/useUpdateInventory";
 import { createAppQueryClient } from "../src/lib/query-client";
+import { getSettingsProviderRoutePath } from "../src/lib/route-paths";
 import {
   BbAppUpdateRows,
   MachineUpdatesRows,
@@ -85,8 +87,15 @@ const localProviderStatus = {
 
 const remoteProviderStatus = {
   codex: makeProviderCliStatus("codex", {
-    currentVersion: "0.146.0",
+    currentVersion: "0.145.0",
     latestVersion: "0.146.0",
+    needsUpdate: true,
+    installAction: {
+      kind: "update",
+      label: "Update",
+      commandKind: "exec",
+      command: "codex update",
+    },
   }),
   claudeCode: makeProviderCliStatus("claudeCode", {
     currentVersion: "2.1.0",
@@ -165,6 +174,7 @@ const noop = () => {};
 
 /** The representative, side-effect-free Updates route inside the Settings story. */
 export function SettingsUpdatesStory() {
+  const navigate = useNavigate();
   return (
     <div className="space-y-6">
       <MachineUpdatesSection
@@ -175,6 +185,9 @@ export function SettingsUpdatesStory() {
               label="Update all 1 CLI tool"
               tooltipLabel="Update all"
               icon={UPDATE_ACTION_ICON}
+              iconPosition="end"
+              visibleLabel="Update all"
+              variant="default"
               onClick={noop}
             />
           </div>
@@ -192,7 +205,9 @@ export function SettingsUpdatesStory() {
           runningJobKey={null}
           queuedJobKeys={noJobs}
           onStartInstall={noop}
-          onOpenProvider={noop}
+          onOpenProvider={(providerId) =>
+            navigate(getSettingsProviderRoutePath(providerId))
+          }
         />
       </MachineUpdatesSection>
     </div>

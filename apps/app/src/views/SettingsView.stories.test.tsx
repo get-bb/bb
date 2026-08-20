@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
@@ -8,6 +14,7 @@ import {
   SettingsStoryChrome,
   useSettingsStoryRoute,
 } from "../../.ladle/story-settings-chrome";
+import { FullPage } from "./SettingsView.stories";
 
 function NavigableSettingsStory() {
   const route = useSettingsStoryRoute();
@@ -27,7 +34,10 @@ function NavigableSettingsStory() {
   );
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.history.replaceState(null, "", "/");
+});
 
 describe("settings/Settings/Full Page story chrome", () => {
   it("navigates between Settings sections and provider pages", () => {
@@ -81,5 +91,33 @@ describe("settings/Settings/Full Page story chrome", () => {
         .getByRole("link", { name: "Machines" })
         .getAttribute("aria-current"),
     ).toBe("page");
+  });
+
+  it("applies settingsPath once without resetting subsequent row navigation", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?settingsPath=%2Fsettings%2Fmachines",
+    );
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <TooltipProvider>
+          <FullPage />
+        </TooltipProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("link", {
+        name: "Open michael-build-box",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "michael-build-box" }),
+      ).toBeDefined();
+    });
+    expect(screen.queryByRole("heading", { name: "Machines" })).toBeNull();
   });
 });

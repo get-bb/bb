@@ -177,9 +177,21 @@ describe("MachineSettingsView", () => {
       auto: "true",
       full: "false",
     });
-    for (const option of await screen.findAllByRole("radio")) {
-      expect(option.querySelector("[data-icon]")).toBeNull();
-    }
+    expect(
+      screen
+        .getByRole("radio", { name: /Accept Edits/u })
+        .querySelector('[data-icon="FolderEdit"]'),
+    ).not.toBeNull();
+    expect(
+      screen
+        .getByRole("radio", { name: /Approve for me/u })
+        .querySelector('[data-icon="SecurityCheck"]'),
+    ).not.toBeNull();
+    expect(
+      screen
+        .getByRole("radio", { name: /Full Access/u })
+        .querySelector('[data-icon="SquareUnlock02"]'),
+    ).not.toBeNull();
     expect(screen.getByRole("img", { name: "Online" })).toBeDefined();
     expect(document.querySelector('[data-icon="FolderGit"]')).not.toBeNull();
     expect(
@@ -228,6 +240,35 @@ describe("MachineSettingsView", () => {
 
     expect(await screen.findByRole("img", { name: "Offline" })).toBeDefined();
     expect(screen.queryByText(/^Offline ·/u)).toBeNull();
+  });
+
+  it("links update issues to Updates in a warning pill", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([host()]);
+    stubSupportingFetches();
+    const statuses = providerCliStatusResponse();
+    vi.mocked(sdk.hosts.providerCliStatus).mockResolvedValue({
+      ...statuses,
+      codex: {
+        ...statuses.codex,
+        latestVersion: "0.149.0",
+        needsUpdate: true,
+        installAction: {
+          kind: "update",
+          label: "Update",
+          commandKind: "exec",
+          command: "codex update",
+        },
+      },
+    });
+
+    renderView();
+
+    const issueLink = await screen.findByRole("link", { name: "1 to fix" });
+    expect(issueLink.getAttribute("href")).toBe("/settings/updates");
+    const pill = issueLink.firstElementChild;
+    expect(pill?.className).toContain("bg-surface-attention");
+    expect(pill?.className).toContain("text-warning-text");
   });
 
   it("writes the selected limit to the owner-only route", async () => {

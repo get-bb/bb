@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Route, Routes, useNavigate } from "react-router-dom";
 import {
   defaultAppTheme,
@@ -491,7 +491,10 @@ function SettingsStoryContent({ route }: { route: SettingsStoryRoute }) {
 export function FullPage() {
   const navigate = useNavigate();
   const route = useSettingsStoryRoute();
+  const initializedFromStoryPath = useRef(false);
   useEffect(() => {
+    if (initializedFromStoryPath.current) return;
+    initializedFromStoryPath.current = true;
     const storyPath =
       new URLSearchParams(window.location.hash.slice(1)).get("settingsPath") ??
       new URLSearchParams(window.location.search).get("settingsPath");

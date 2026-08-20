@@ -16,14 +16,10 @@ import { DialogFooter, DialogHeader, DialogTitle } from "@bb/shared-ui/dialog";
 import { DialogDescription } from "@bb/shared-ui/dialog";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { Pill } from "@bb/shared-ui/pill";
 import { ResourceOverflowMenu } from "@bb/shared-ui/resource-list";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
 import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
+import { MachineStatusIcon } from "@/components/machines/MachineStatusDot";
 import { PageShell } from "@/components/ui/page-shell.js";
 import {
   SettingsBadge,
@@ -107,33 +103,6 @@ function headerMeta({
   return parts.join(" · ");
 }
 
-function MachineStatusIcon({ connected }: { connected: boolean }) {
-  const label = connected ? "Online" : "Offline";
-  return (
-    <TooltipProvider delayDuration={250}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            role="img"
-            aria-label={label}
-            className={cn(
-              "inline-flex size-5 shrink-0 items-center justify-center",
-              connected ? "text-success" : "text-muted-foreground",
-            )}
-          >
-            <Icon
-              aria-hidden
-              name={connected ? "CircleCheck" : "CircleX"}
-              className="size-4"
-            />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
 interface PermissionLimitCardProps {
   disabled: boolean;
   onSelect: (permissionMode: PermissionMode) => void;
@@ -176,6 +145,14 @@ function PermissionLimitCards({
                     <span className="size-2 rounded-full bg-foreground" />
                   ) : null}
                 </span>
+                <Icon
+                  aria-hidden
+                  name={option.iconName}
+                  className={cn(
+                    "mt-0.5 size-4 shrink-0 text-muted-foreground",
+                    option.tone === "warning" && "text-warning-text",
+                  )}
+                />
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm text-foreground">
                     {option.label}
@@ -431,9 +408,15 @@ export function MachineSettingsView() {
                   {updateIssueCount > 0 ? (
                     <Link
                       to={getSettingsRoutePath("updates")}
-                      className="shrink-0 text-warning-text hover:text-foreground"
+                      className="shrink-0 rounded outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     >
-                      {updateIssueCount} to fix
+                      <Pill
+                        variant="outline"
+                        size="sm"
+                        className="border-attention/50 bg-surface-attention text-warning-text transition-colors hover:border-attention hover:text-foreground"
+                      >
+                        {updateIssueCount} to fix
+                      </Pill>
                     </Link>
                   ) : null}
                 </>

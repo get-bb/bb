@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -276,6 +277,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   window.localStorage.clear();
   resetAppUpdateCheckStoreForTests();
@@ -341,8 +343,12 @@ describe("UpdatesSettingsSection", () => {
       '[aria-label="Update all 2 CLI tools"]',
     );
     expect(updateAll).not.toBeNull();
-    expect(updateAll?.className).toContain("bg-primary");
-    expect(updateAll?.className).toContain("text-primary-foreground");
+    expect(updateAll?.className).toContain("bg-foreground");
+    expect(updateAll?.className).toContain("text-background");
+    expect(updateAll?.textContent).toBe("Update all");
+    expect(updateAll?.lastElementChild?.getAttribute("data-icon")).toBe(
+      "Download",
+    );
     const workstationHeading = screen.getByRole("heading", {
       name: "workstation",
     });
@@ -467,7 +473,8 @@ The canonical release summary.
       changelog?.querySelector('[data-changelog-version="9.9.9"]'),
     ).not.toBeNull();
     const changelogLabel = changelog?.querySelector("[data-changelog-label]");
-    expect(changelogLabel?.className).toContain("rounded-full");
+    expect(changelogLabel?.className).toContain("rounded-sm");
+    expect(changelogLabel?.className).not.toContain("rounded-full");
     expect(changelogLabel?.className).toContain("bg-muted/40");
     const changelogPreview = changelog?.querySelector(
       "[data-changelog-preview]",
@@ -482,10 +489,18 @@ The canonical release summary.
     ).toContain("border-t");
     expect(
       changelog?.querySelector("[data-changelog-footer]")?.className,
-    ).toContain("bg-muted/40");
+    ).toContain("bg-foreground");
+    expect(
+      changelog?.querySelector("[data-changelog-footer]")?.className,
+    ).toContain("text-background");
     // The footer is one fixed label, so it cannot change length with whatever
     // release happens to be bundled.
     expect(changelog?.textContent).toContain("Full changelog");
+    expect(
+      screen.getByRole("button", {
+        name: "Open the full bb 9.9.9 changelog",
+      }).className,
+    ).toContain("font-semibold");
     // The card carries the whole release, not a fixed three: a truncated list
     // reads as the complete set unless the reader already knows to doubt it.
     for (const highlight of ["New features", "Fixes"]) {
@@ -510,15 +525,48 @@ The canonical release summary.
     expect(openUrlInExternalBrowserMock).toHaveBeenCalledWith(
       "https://getbb.app/changelog#9-9-9",
     );
+    vi.useFakeTimers();
     fireEvent.click(dismissChangelog);
+    expect(screen.getByRole("status").textContent).toContain(
+      "You're all caught up",
+    );
     expect(
-      document.querySelector('[data-updates-domain="changelog"]'),
+      screen.queryByRole("button", {
+        name: "Open the full bb 9.9.9 changelog",
+      }),
     ).toBeNull();
+    expect(changelog?.getAttribute("data-changelog-dismiss-phase")).toBe(
+      "confirming",
+    );
+    expect(
+      changelog?.querySelector("[data-changelog-release-panel]")?.className,
+    ).toContain("grid-rows-[0fr]");
+    const confirmation = changelog?.querySelector(
+      "[data-changelog-dismiss-confirmation]",
+    );
+    expect(confirmation?.className).toContain("grid-rows-[1fr]");
+    expect(confirmation?.className).not.toContain("absolute");
+    expect(changelog?.className).toContain("motion-reduce:transition-none");
     expect(
       window.localStorage.getItem(
         "bb.settings.updates.dismissed-changelog-version",
       ),
     ).toBe("9.9.9");
+
+    act(() => vi.advanceTimersByTime(1_999));
+    expect(changelog?.getAttribute("data-changelog-dismiss-phase")).toBe(
+      "confirming",
+    );
+    act(() => vi.advanceTimersByTime(1));
+    expect(changelog?.getAttribute("data-changelog-dismiss-phase")).toBe(
+      "exiting",
+    );
+    expect(changelog?.className).toContain("grid-rows-[0fr]");
+    act(() => vi.advanceTimersByTime(180));
+    expect(
+      document.querySelector('[data-updates-domain="changelog"]'),
+    ).toBeNull();
+    vi.useRealTimers();
 
     cleanup();
     renderSection({ showChangelogPreview: true });
@@ -749,6 +797,12 @@ The canonical release summary.
     // A stalled bb update is outstanding update work, so the page must not
     // claim everything is settled while that row sits under the claim.
     expect(screen.queryByText(/^Up to date/)).toBeNull();
+    const stalledMessage = screen.getByText("Update didn't finish");
+    expect(stalledMessage.tagName).toBe("SPAN");
+    expect(stalledMessage.className).toContain("font-semibold");
+    expect(stalledMessage.className).toContain("text-destructive");
+    expect(stalledMessage.className).not.toContain("rounded");
+    expect(stalledMessage.className).not.toContain("font-mono");
     // The row states the condition once; no banner repeats it above.
     expect(
       screen.getAllByRole("button", { name: /^Failed · Retry on/ }),
@@ -1081,9 +1135,26 @@ The canonical release summary.
 
     renderSection();
 
-    expect(screen.getByText("Couldn't check for updates").className).toContain(
+    const failedStatus = screen.getByText("Couldn't check for updates");
+    expect(failedStatus.tagName).toBe("SPAN");
+    for (const className of [
+      "shrink-0",
+      "text-xs",
+      "font-semibold",
       "text-destructive",
-    );
+    ]) {
+      expect(failedStatus.className).toContain(className);
+    }
+    for (const className of [
+      "rounded",
+      "border",
+      "px-",
+      "py-",
+      "bg-",
+      "font-mono",
+    ]) {
+      expect(failedStatus.className).not.toContain(className);
+    }
     expect(
       screen.getByRole("button", { name: /Check workstation's CLIs again/ })
         .className,
@@ -1395,15 +1466,13 @@ The canonical release summary.
     expect(useProviderCliInstallRunnerMock).toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: "laptop" })).toBeDefined();
     expect(screen.getByRole("heading", { name: "homelab" })).toBeDefined();
-    // The count stays in the accessible name while the compact visible
-    // treatment uses the established update glyph and a concise tooltip.
+    // The count stays in the accessible name while the visible control uses
+    // the established update glyph and the concise requested label.
     const updateAll = screen.getByRole("button", {
       name: "Update all 2 CLI tools",
     });
-    expect(updateAll.textContent).toBe("");
+    expect(updateAll.textContent).toBe("Update all");
     expect(updateAll.querySelector('[data-icon="Download"]')).not.toBeNull();
-    fireEvent.focus(updateAll);
-    expect((await screen.findByRole("tooltip")).textContent).toBe("Update all");
 
     fireEvent.click(updateAll);
     expect(startInstallMock).toHaveBeenCalledTimes(2);
