@@ -1,0 +1,152 @@
+# Phase 6 Files: open the thread named THREAD_TITLE → the workspace panel →
+# the Files launcher → search "README" → the workspace result opens as a
+# panel file tab (markdown preview) → Source → Jump to line 60 → back to the
+# Files launcher → browse thread storage (notes › plan.md) → the storage
+# preview renders → close the panel → the full-screen preview route by deep
+# link (`/threads/<id>/files?kind=workspace&path=src/app.ts&line=12`) lands
+# on the highlighted line → long-press a line → Copy line toasts.
+#
+# Seed the files first (the harness repo only has alpha.txt / beta.md):
+#   SERVER_URL=http://127.0.0.1:41999 THREAD_TITLE="Idle thread" e2e/scripts/phase6-files-setup.sh
+#   maestro test -e THREAD_ID=<threadId from the setup JSON> e2e/flows/phase6-files.yaml
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+  THREAD_TITLE: "Idle thread"
+---
+- runFlow: ../subflows/launch-to-home.yaml
+- scrollUntilVisible:
+    element: "${THREAD_TITLE}"
+    direction: DOWN
+    timeout: 60000
+- tapOn: "${THREAD_TITLE}"
+- extendedWaitUntil:
+    visible:
+      id: "thread-detail-header"
+    timeout: 30000
+# Workspace panel → Files launcher.
+- tapOn:
+    id: "thread-panel-button"
+- extendedWaitUntil:
+    visible:
+      id: "panel-tab-files"
+    timeout: 15000
+- tapOn:
+    id: "panel-tab-files"
+- extendedWaitUntil:
+    visible:
+      id: "files-search-input"
+    timeout: 15000
+# Idle: the thread storage browser lists the seeded directory + file.
+- extendedWaitUntil:
+    visible: "notes"
+    timeout: 15000
+- assertVisible: "report.csv"
+- takeScreenshot: phase6-files-launcher
+# Search "README" → the workspace result.
+- tapOn:
+    id: "files-search-input"
+- inputText: "README"
+- extendedWaitUntil:
+    visible: "Workspace files"
+    timeout: 20000
+- extendedWaitUntil:
+    visible:
+      id: "files-search-result"
+    timeout: 20000
+- takeScreenshot: phase6-files-search
+- tapOn:
+    id: "files-search-result"
+    index: 0
+# The file opens as a panel tab: markdown preview first.
+- extendedWaitUntil:
+    visible:
+      id: "file-preview-markdown-body"
+    timeout: 30000
+- assertVisible: "Mobile E2E Project"
+- takeScreenshot: phase6-files-readme-preview
+# Source view + jump to line 60.
+- tapOn:
+    id: "file-preview-mode-source"
+- extendedWaitUntil:
+    visible:
+      id: "file-preview-lines"
+    timeout: 15000
+- tapOn:
+    id: "file-preview-jump"
+- extendedWaitUntil:
+    visible:
+      id: "file-preview-jump-input"
+    timeout: 10000
+- tapOn:
+    id: "file-preview-jump-input"
+- inputText: "60"
+- tapOn:
+    id: "file-preview-jump-submit"
+- extendedWaitUntil:
+    visible:
+      id: "file-line-60"
+    timeout: 15000
+- takeScreenshot: phase6-files-readme-line-60
+# Back to the Files launcher: it stayed mounted (retainWhenInactive), so the
+# "README" query is still there; clear it → thread storage browser → notes ›
+# plan.md.
+- tapOn:
+    id: "panel-tab-files"
+- extendedWaitUntil:
+    visible:
+      id: "files-search-clear"
+    timeout: 15000
+- tapOn:
+    id: "files-search-clear"
+- extendedWaitUntil:
+    visible:
+      id: "storage-directory-row"
+    timeout: 15000
+- tapOn:
+    id: "storage-directory-row"
+    index: 0
+- extendedWaitUntil:
+    visible: "plan.md"
+    timeout: 15000
+- tapOn: "plan.md"
+- extendedWaitUntil:
+    visible:
+      id: "file-preview-markdown-body"
+    timeout: 30000
+- assertVisible: "Build the files tab"
+- takeScreenshot: phase6-files-storage-preview
+# Close the panel (tap the backdrop), then the full-screen preview route by
+# deep link: highlighted line 12 of src/app.ts.
+- tapOn:
+    point: "50%,8%"
+- extendedWaitUntil:
+    notVisible:
+      id: "workspace-panel-tab-strip"
+    timeout: 10000
+- openLink: "bb://threads/${THREAD_ID}/files?kind=workspace&path=src%2Fapp.ts&line=12"
+- extendedWaitUntil:
+    visible:
+      id: "file-preview-name"
+      text: "app.ts"
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: "file-line-12"
+    timeout: 15000
+- takeScreenshot: phase6-files-route-line-12
+- longPressOn:
+    id: "file-line-12"
+- extendedWaitUntil:
+    visible:
+      id: "action-sheet-copy-line"
+    timeout: 10000
+- assertVisible:
+    id: "action-sheet-add-to-chat"
+- tapOn:
+    id: "action-sheet-copy-line"
+- extendedWaitUntil:
+    visible: "Line copied"
+    timeout: 10000
+- takeScreenshot: phase6-files-line-copied

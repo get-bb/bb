@@ -1,0 +1,80 @@
+name: Mobile Runner Probe
+
+# Manual probe of the macOS runner before we commit to an iOS simulator e2e
+# job for apps/mobile (see plans/bb-mobile-expo.md, Phase 0). Prints the
+# toolchain versions Maestro/Expo need and times a Release iOS build.
+on:
+  workflow_dispatch:
+    inputs:
+      build:
+        description: Also time a Release simulator build of apps/mobile
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+
+env:
+  PNPM_VERSION: 9.15.0
+
+jobs:
+  probe:
+    name: Probe macOS runner toolchain
+    runs-on: blacksmith-6vcpu-macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Same Xcode selection as mobile-e2e.yml: the macOS 15 image defaults to
+      # Xcode 16.4 but also ships 26.x; apps/mobile is verified on 26.2.
+      - name: Select Xcode
+        run: |
+          if [ -d /Applications/Xcode_26.2.app ]; then
+            xcode=/Applications/Xcode_26.2.app
+          else
+            xcode=$(find /Applications -maxdepth 1 -name 'Xcode_26*.app' | sort -V | tail -1)
+          fi
+          if [ -n "${xcode:-}" ]; then
+            echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No Xcode 26.x found; using the selected Xcode"
+          fi
+
+      - name: Toolchain versions
+        run: |
+          set -x
+          sw_vers
+          find /Applications -maxdepth 1 -name 'Xcode*.app'
+          xcodebuild -version
+          xcrun simctl list runtimes
+          xcrun simctl list devices available | head -40
+          java -version 2>&1 || true
+          /usr/libexec/java_home -V 2>&1 || true
+          which maestro || echo "maestro: not installed"
+          pod --version || true
+          node --version
+          df -h / | tail -1
+
+      - name: Setup workspace
+        if: ${{ inputs.build == 'true' }}
+        uses: ./.github/actions/setup-workspace
+        with:
+          node-version: "22.x"
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          cache-prefix: mobile-probe
+          turbo-cache: "false"
+
+      - name: Time a Release simulator build
+        if: ${{ inputs.build == 'true' }}
+        working-directory: apps/mobile
+        env:
+          LANG: en_US.UTF-8
+          CI: "1"
+        run: |
+          set -x
+          time npx expo prebuild --platform ios --no-install
+          time (cd ios && pod install)
+          DEVICE=$(node e2e/scripts/pick-simulator.mjs)
+          echo "device=$DEVICE"
+          time npx expo run:ios --configuration Release --no-bundler --device "$DEVICE"
