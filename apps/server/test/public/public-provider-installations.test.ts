@@ -2,13 +2,63 @@ import type {
   HostDaemonOnlineRpcRequestMessage,
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract";
+import { DEFAULT_BB_REQUEST_TIMEOUT_MS } from "@bb/sdk";
+import {
+  validatePluginProviderDeclaration,
+} from "@get-bb/plugin-sdk/internal/host-policy";
 import { describe, expect, it, vi } from "vitest";
+import { COMMAND_TIMEOUT_MS } from "../../src/constants.js";
+import { ApiError } from "../../src/errors.js";
+import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession } from "../helpers/seed.js";
-import { withTestHarness } from "../helpers/test-app.js";
+import {
+  type TestAppHarness,
+  withTestHarness,
+} from "../helpers/test-app.js";
 
 const API = "/api/v1";
+
+function registerInstallationProviders(
+  harness: TestAppHarness,
+  providerIds: readonly string[],
+): void {
+  const bridgeArtifact = harness.deps.pluginHostArtifacts.get("provider-acp");
+  if (bridgeArtifact === undefined) {
+    throw new Error("Expected the test ACP provider bridge artifact");
+  }
+  for (const providerId of providerIds) {
+    const pluginId = `provider-${providerId}`;
+    harness.deps.providerRegistry.register({
+      ...buildPluginProviderRegistration({
+        available: true,
+        pluginId,
+        declaration: validatePluginProviderDeclaration({
+          id: providerId,
+          displayName: providerId,
+          capabilities: {
+            experimental_providerHealth: false,
+            experimental_providerUsage: false,
+            experimental_providerInstallation: true,
+            supportsServiceTier: false,
+            supportsNativeUserQuestion: false,
+            fork: "none",
+            supportsManualCompaction: false,
+            supportsThreadArchive: false,
+            supportsThreadRename: false,
+            supportsWorkflows: false,
+            permissionModes: ["full"],
+            reasoningLevels: ["medium"],
+          },
+          composerActions: [],
+        }),
+      }),
+      pluginId,
+    });
+    harness.deps.pluginHostArtifacts.set(pluginId, bridgeArtifact);
+  }
+}
 
 function installationStatus(providerId: string) {
   const executableName =
@@ -177,6 +227,98 @@ describe("public provider installation routes", () => {
         },
         "Failed to load provider installation status; omitting provider",
       );
+    });
+  });
+
+  it("preserves the host unavailable route error when the target host is offline", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "provider-installation-offline-host",
+      });
+      harness.hub.unregisterDaemon(session.id);
+
+      const response = await harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/status`,
+      );
+
+      expect(response.status).toBe(502);
+      expect(await readJson(response)).toMatchObject({
+        code: "host_unavailable",
+      });
+    });
+  });
+
+  it("finishes stalled provider aggregation before the SDK request timeout", async () => {
+    await withTestHarness(async (harness) => {
+      registerInstallationProviders(
+        harness,
+        Array.from(
+          { length: 7 },
+          (_, index) => `stalled-installation-${index + 1}`,
+        ),
+      );
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "provider-installation-deadline-host",
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: handleProviderInstallationRpc,
+      });
+      const requestHostOnlineRpc = harness.hub.requestHostOnlineRpc.bind(
+        harness.hub,
+      );
+      const statusTimeouts: number[] = [];
+      vi.spyOn(harness.hub, "requestHostOnlineRpc").mockImplementation(
+        async (args) => {
+          if (args.message.command.type !== "provider.installation.status") {
+            return requestHostOnlineRpc(args);
+          }
+          statusTimeouts.push(args.timeoutMs);
+          return new Promise((_, reject) => {
+            setTimeout(
+              () =>
+                reject(
+                  new ApiError(
+                    504,
+                    "command_timeout",
+                    "Timed out waiting for command result",
+                  ),
+                ),
+              args.timeoutMs,
+            );
+          });
+        },
+      );
+
+      vi.useFakeTimers();
+      try {
+        const startedAt = Date.now();
+        let resolvedAt: number | null = null;
+        const responsePromise = Promise.resolve(
+          harness.app.request(
+            `${API}/hosts/${host.id}/provider-clis/status`,
+          ),
+        ).then((response) => {
+          resolvedAt = Date.now();
+          return response;
+        });
+
+        await vi.advanceTimersByTimeAsync(150_000);
+        const response = await responsePromise;
+
+        expect(response.status).toBe(200);
+        expect(await readJson(response)).toEqual({});
+        expect(resolvedAt).not.toBeNull();
+        expect(resolvedAt! - startedAt).toBeLessThan(
+          DEFAULT_BB_REQUEST_TIMEOUT_MS,
+        );
+        expect(statusTimeouts).toHaveLength(9);
+        expect(statusTimeouts.some((timeout) => timeout < COMMAND_TIMEOUT_MS))
+          .toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
