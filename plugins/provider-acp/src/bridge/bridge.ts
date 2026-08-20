@@ -104,6 +104,11 @@ import {
   type AcpAgentRequestResponder,
 } from "./agent-connection.js";
 import {
+  approveCursorSessionMcpServer,
+  revokeCursorSessionMcpServer,
+  type CursorMcpApproval,
+} from "./cursor-mcp-approval.js";
+import {
   buildAgentModelCatalog,
   buildAcpNativeReasoningSupport,
   buildModelCatalogFromConfigOptions,
@@ -117,6 +122,7 @@ import {
   type AgentModelCatalog,
 } from "./model-catalog.js";
 import {
+  ACP_BRIDGE_MCP_SERVER_NAME,
   buildAcpMcpServerConfig,
   runAcpDynamicToolMcpServer,
   type AcpMcpServerConfig,
@@ -166,6 +172,7 @@ interface AcpThreadSession {
   /** Resolves when the in-flight turn or maintenance prompt fully settles. */
   turnSettled: Promise<void> | undefined;
   pendingPermissions: Set<PendingAcpPermission>;
+  cursorMcpApproval: CursorMcpApproval | undefined;
 }
 
 const sessionsByBbThreadId = new Map<string, AcpThreadSession>();
@@ -385,6 +392,13 @@ function handleDynamicToolBridgeSocket(
       );
       return;
     }
+    if (request.data.kind === "initialized") {
+      process.stderr.write(
+        `acp bridge: "${ACP_BRIDGE_MCP_SERVER_NAME}" answered initialize for thread "${request.data.threadId}" (${request.data.toolCount} tools)\n`,
+      );
+      socket.end(`${JSON.stringify({ ok: true, content: "" })}\n`);
+      return;
+    }
     void forwardDynamicToolCall(request.data).then((response) => {
       socket.end(`${JSON.stringify(response)}\n`);
     });
@@ -432,18 +446,20 @@ async function buildSessionMcpServers(
     return [];
   }
   const bridge = await ensureDynamicToolBridge();
-  return [
-    buildAcpMcpServerConfig({
-      bridgeArgs: resolveBridgeProcessArgsForMcpServer(),
-      command: process.execPath,
-      dynamicTools,
-      host: bridge.host,
-      port: bridge.port,
-      runtimeEnv: resolveBridgeProcessEnvForMcpServer(),
-      threadId: params.threadId,
-      token: bridge.token,
-    }),
-  ];
+  const config = buildAcpMcpServerConfig({
+    bridgeArgs: resolveBridgeProcessArgsForMcpServer(),
+    command: process.execPath,
+    dynamicTools,
+    host: bridge.host,
+    port: bridge.port,
+    runtimeEnv: resolveBridgeProcessEnvForMcpServer(),
+    threadId: params.threadId,
+    token: bridge.token,
+  });
+  process.stderr.write(
+    `acp bridge: built "${config.name}" session MCP config for thread "${params.threadId}" (${dynamicTools.length} tools)\n`,
+  );
+  return [config];
 }
 
 // ---------------------------------------------------------------------------
@@ -679,13 +695,22 @@ interface AcpDynamicToolBridge {
   token: string;
 }
 
-const dynamicToolBridgeRequestSchema = z.object({
-  arguments: z.record(z.string(), z.unknown()).default({}),
-  callId: z.string().min(1),
-  threadId: z.string().min(1),
-  token: z.string().min(1),
-  tool: z.string().min(1),
-});
+const dynamicToolBridgeRequestSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("initialized"),
+    threadId: z.string().min(1),
+    token: z.string().min(1),
+    toolCount: z.number().int().nonnegative(),
+  }),
+  z.object({
+    kind: z.literal("toolCall"),
+    arguments: z.record(z.string(), z.unknown()).default({}),
+    callId: z.string().min(1),
+    threadId: z.string().min(1),
+    token: z.string().min(1),
+    tool: z.string().min(1),
+  }),
+]);
 
 let cachedModelCatalog: { key: string; catalog: AgentModelCatalog } | null =
   null;
@@ -1519,6 +1544,25 @@ function removeSession(session: AcpThreadSession): void {
   }
 }
 
+async function releaseCursorMcpApproval(
+  session: AcpThreadSession,
+): Promise<void> {
+  const approval = session.cursorMcpApproval;
+  session.cursorMcpApproval = undefined;
+  if (!approval) {
+    return;
+  }
+  try {
+    await revokeCursorSessionMcpServer(approval);
+  } catch (error) {
+    process.stderr.write(
+      `acp bridge: failed to remove Cursor session MCP approval for thread "${session.bbThreadId}": ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
+  }
+}
+
 function getSessionByProviderThreadId(
   providerThreadId: string,
 ): AcpThreadSession | undefined {
@@ -1598,6 +1642,7 @@ async function startAgentSession(
       if (!wasCurrent || session.stopping) {
         return;
       }
+      void releaseCursorMcpApproval(session);
       emitSessionError(
         session,
         `ACP agent "${agentLabel}" exited unexpectedly` +
@@ -1631,6 +1676,7 @@ async function startAgentSession(
     stopping: false,
     turnSettled: undefined,
     pendingPermissions: new Set(),
+    cursorMcpApproval: undefined,
   };
 
   try {
@@ -1664,6 +1710,20 @@ async function startAgentSession(
     }
     session.supportsLoadSession = supportsLoadSession;
     const mcpServers = await buildSessionMcpServers(params);
+    const mcpServer = mcpServers[0];
+    if (mcpServer) {
+      session.cursorMcpApproval = await approveCursorSessionMcpServer({
+        agentCommand: params.agent.command,
+        config: mcpServer,
+        cwd: params.cwd,
+        env: childEnv,
+      });
+      if (session.cursorMcpApproval?.installedByBb) {
+        process.stderr.write(
+          `acp bridge: installed Cursor session MCP approval for thread "${bbThreadId}"\n`,
+        );
+      }
+    }
 
     let sessionId: string | undefined;
     let loadedConfigOptions: readonly AcpConfigOption[] | undefined;
@@ -1784,6 +1844,7 @@ async function startAgentSession(
     session.stopping = true;
     connection.kill();
     removeSession(session);
+    await releaseCursorMcpApproval(session);
     throw error;
   }
 }
@@ -1812,6 +1873,7 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
 
   session.connection.kill();
   removeSession(session);
+  await releaseCursorMcpApproval(session);
 }
 
 /**
@@ -1820,7 +1882,7 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
  * any in-flight prompt rejection is swallowed by the turn loop because
  * `stopping` is already set.
  */
-function releaseSession(session: AcpThreadSession): void {
+async function releaseSession(session: AcpThreadSession): Promise<void> {
   if (session.stopping) {
     return;
   }
@@ -1829,6 +1891,7 @@ function releaseSession(session: AcpThreadSession): void {
   cancelPendingPermissions(session);
   session.connection.kill();
   removeSession(session);
+  await releaseCursorMcpApproval(session);
 }
 
 // ---------------------------------------------------------------------------
@@ -2368,7 +2431,7 @@ async function handleRequest(
       const session = sessionsByBbThreadId.get(request.params.threadId);
       if (session) {
         if (request.params.intent === "release") {
-          releaseSession(session);
+          await releaseSession(session);
         } else {
           await stopSession(session);
         }

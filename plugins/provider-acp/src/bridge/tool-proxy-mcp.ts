@@ -34,13 +34,30 @@ export interface BuildAcpMcpServerConfigArgs {
   token: string;
 }
 
-interface BridgeToolCallRequest {
-  arguments: Record<string, unknown>;
-  callId: string;
+interface BridgeRequestBase {
   threadId: string;
   token: string;
-  tool: string;
 }
+
+type BridgeRequest = BridgeRequestBase &
+  (
+    | { kind: "initialized"; toolCount: number }
+    | {
+        kind: "toolCall";
+        arguments: Record<string, unknown>;
+        callId: string;
+        tool: string;
+      }
+  );
+
+type BridgeRequestPayload =
+  | { kind: "initialized"; toolCount: number }
+  | {
+      kind: "toolCall";
+      arguments: Record<string, unknown>;
+      callId: string;
+      tool: string;
+    };
 
 type BridgeToolCallResponse =
   | { ok: true; content: string; isError?: boolean }
@@ -147,14 +164,14 @@ function mcpToolCallId(toolName: string): string {
 
 function callBridge(
   env: McpServerEnvironment,
-  request: Omit<BridgeToolCallRequest, "threadId" | "token">,
+  request: BridgeRequestPayload,
 ): Promise<BridgeToolCallResponse> {
   return new Promise((resolve, reject) => {
     const socket = createConnection({ host: env.host, port: env.port });
     let buffer = "";
     socket.setEncoding("utf8");
     socket.on("connect", () => {
-      const payload: BridgeToolCallRequest = {
+      const payload: BridgeRequest = {
         ...request,
         threadId: env.threadId,
         token: env.token,
@@ -237,6 +254,16 @@ async function handleRequest(
         capabilities: { tools: {} },
         serverInfo: { name: ACP_BRIDGE_MCP_SERVER_NAME, version: "1.0.0" },
       });
+      void callBridge(env, {
+        kind: "initialized",
+        toolCount: env.tools.length,
+      }).catch((error) => {
+        process.stderr.write(
+          `bb-bridge MCP: failed to report initialize: ${
+            error instanceof Error ? error.message : String(error)
+          }\n`,
+        );
+      });
       return;
 
     case "tools/list":
@@ -274,6 +301,7 @@ async function handleRequest(
             });
       try {
         const result = await callBridge(env, {
+          kind: "toolCall",
           arguments: toolArguments,
           callId: mcpToolCallId(tool.name),
           tool: tool.name,

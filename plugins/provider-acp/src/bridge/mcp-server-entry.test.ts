@@ -45,6 +45,7 @@ interface AdvertisedMcpServer {
 const children: ChildProcess[] = [];
 const tempDirs: string[] = [];
 const bridgeLines: BridgeLine[] = [];
+let bridgeStderr = "";
 let nextRequestId = 1;
 
 function makeTempDir(prefix: string): string {
@@ -104,6 +105,7 @@ function spawnBridgeLikeTheAgentRuntime(dataDir: string): ChildProcess {
   );
   children.push(bridge);
   bridge.stderr?.on("data", (chunk: Buffer) => {
+    bridgeStderr += chunk.toString();
     process.stderr.write(`[bridge] ${chunk.toString()}`);
   });
   if (!bridge.stdout) {
@@ -261,6 +263,7 @@ afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
   }
   bridgeLines.length = 0;
+  bridgeStderr = "";
 });
 
 describe("bb-bridge MCP server entry point (#1918)", () => {
@@ -278,6 +281,15 @@ describe("bb-bridge MCP server entry point (#1918)", () => {
     expect(exitCode).toBeUndefined();
     expect(stdoutLines[0]).toContain(
       `"serverInfo":{"name":"${ACP_BRIDGE_MCP_SERVER_NAME}"`,
+    );
+    await waitFor(
+      () =>
+        bridgeStderr.includes(
+          `"${ACP_BRIDGE_MCP_SERVER_NAME}" answered initialize`,
+        )
+          ? true
+          : undefined,
+      "bridge-side MCP initialize diagnostic",
     );
     // The entry must be the bridge module itself, never the bootstrap.
     expect(config.args.some((arg) => arg.includes("bridge-worker"))).toBe(

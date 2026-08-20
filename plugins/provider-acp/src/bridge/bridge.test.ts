@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
 } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
@@ -418,6 +419,7 @@ function callDynamicToolBridge(args: {
     socket.on("connect", () => {
       socket.write(
         `${JSON.stringify({
+          kind: "toolCall",
           arguments: args.toolArguments,
           callId: args.callId,
           threadId: args.threadId,
@@ -1308,6 +1310,44 @@ describe("acp bridge", () => {
 
     expect(agentMessageTexts()).toContain(
       `mcp-servers:${ACP_BRIDGE_MCP_SERVER_NAME}`,
+    );
+  });
+
+  it("approves Cursor session MCP servers for the session lifetime (#2018)", async () => {
+    const cursorAgent = join(workspaceDir, "cursor-agent");
+    const cursorDataDir = join(workspaceDir, "cursor-data");
+    symlinkSync(process.execPath, cursorAgent);
+    const { providerThreadId } = await startThread({
+      agent: { command: cursorAgent, args: [FAKE_AGENT_PATH] },
+      envVars: { CURSOR_DATA_DIR: cursorDataDir },
+      dynamicTools: [
+        {
+          name: "update_environment_directory",
+          description: "Move this thread to another environment directory.",
+          inputSchema: { type: "object", properties: {} },
+        },
+      ],
+    });
+    const projectSlug = workspaceDir
+      .replace(/[^a-zA-Z0-9]/gu, "-")
+      .replace(/-+/gu, "-")
+      .replace(/^-+|-+$/gu, "");
+    const approvalPath = join(
+      cursorDataDir,
+      "projects",
+      projectSlug,
+      "mcp-approvals.json",
+    );
+    const approvals = JSON.parse(
+      readFileSync(approvalPath, "utf8"),
+    ) as unknown;
+    expect(approvals).toEqual([
+      expect.stringMatching(`^${ACP_BRIDGE_MCP_SERVER_NAME}-[a-f0-9]{16}$`),
+    ]);
+
+    await stopThread(providerThreadId);
+    expect(JSON.parse(readFileSync(approvalPath, "utf8")) as unknown).toEqual(
+      [],
     );
   });
 

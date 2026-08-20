@@ -43,7 +43,14 @@ async function listenFakeBridge(args: {
       buffer += chunk;
       const newline = buffer.indexOf("\n");
       if (newline === -1) return;
-      requests.push(JSON.parse(buffer.slice(0, newline)));
+      const request = JSON.parse(buffer.slice(0, newline)) as {
+        kind?: unknown;
+      };
+      if (request.kind === "initialized") {
+        socket.end(`${JSON.stringify({ ok: true, content: "" })}\n`);
+        return;
+      }
+      requests.push(request);
       setTimeout(() => {
         socket.end(
           `${JSON.stringify({ ok: true, content: '{"answers":{"Which?":"B"}}' })}\n`,
