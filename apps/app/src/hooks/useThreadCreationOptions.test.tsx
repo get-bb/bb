@@ -1062,7 +1062,7 @@ describe("useThreadCreationOptions", () => {
     });
   });
 
-  it("latches the initial connected provider instead of resolving it again after a machine switch", async () => {
+  it("latches the initial ready provider instead of resolving it again after a machine switch", async () => {
     window.localStorage.setItem(
       "bb.promptbox.environment",
       "host:remote-host:local",
@@ -1094,8 +1094,8 @@ describe("useThreadCreationOptions", () => {
       });
       expect(result.current.executionInputSources.model).toBeUndefined();
     });
-    const initialDiscoveryCallCount = vi.mocked(sdk.system.onboardingAgents)
-      .mock.calls.length;
+    const initialDiscoveryCallCount = vi.mocked(sdk.system.providerStates).mock
+      .calls.length;
 
     act(() => {
       result.current.setEnvironmentSelectionValue("host:second-host:local");
@@ -1110,10 +1110,10 @@ describe("useThreadCreationOptions", () => {
       );
       expect(result.current.selectedProviderId).toBe(PROJECT_PROVIDER_ID);
     });
-    expect(sdk.system.onboardingAgents).toHaveBeenCalledTimes(
+    expect(sdk.system.providerStates).toHaveBeenCalledTimes(
       initialDiscoveryCallCount,
     );
-    expect(sdk.system.onboardingAgents).not.toHaveBeenCalledWith(
+    expect(sdk.system.providerStates).not.toHaveBeenCalledWith(
       expect.objectContaining({ hostId: "second-host" }),
     );
   });
