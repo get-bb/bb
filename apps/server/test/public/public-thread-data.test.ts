@@ -603,6 +603,94 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("reuses the conversation outline across timeline-only events", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "system/manager/user_message",
+        scope: threadScope(),
+        data: { text: "Visible response" },
+      });
+      const prepareSpy = vi.spyOn(harness.db.$client, "prepare");
+      const countFullOutlineQueries = () =>
+        prepareSpy.mock.calls.filter(([source]) => {
+          return (
+            typeof source === "string" &&
+            source.includes('"created_at"') &&
+            source.includes('"data"') &&
+            source.includes("union all")
+          );
+        }).length;
+
+      const firstResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/conversation-outline`,
+      );
+      expect(firstResponse.status).toBe(200);
+      const first = threadConversationOutlineResponseSchema.parse(
+        await readJson(firstResponse),
+      );
+      expect(first.maxSeq).toBe(1);
+      expect(countFullOutlineQueries()).toBe(1);
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        sequence: 2,
+        type: "item/completed",
+        scope: turnScope("turn-1"),
+        data: {
+          item: {
+            id: "command-1",
+            type: "commandExecution",
+            command: "pwd",
+            cwd: "/tmp/test",
+            status: "completed",
+            approvalStatus: null,
+            aggregatedOutput: "/tmp/test",
+            exitCode: 0,
+          },
+        },
+      });
+
+      const cachedResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/conversation-outline`,
+      );
+      expect(cachedResponse.status).toBe(200);
+      const cached = threadConversationOutlineResponseSchema.parse(
+        await readJson(cachedResponse),
+      );
+      expect(cached).toEqual({ items: first.items, maxSeq: 2 });
+      expect(countFullOutlineQueries()).toBe(1);
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 3,
+        type: "system/manager/user_message",
+        scope: threadScope(),
+        data: { text: "New visible response" },
+      });
+
+      const changedResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/conversation-outline`,
+      );
+      expect(changedResponse.status).toBe(200);
+      const changed = threadConversationOutlineResponseSchema.parse(
+        await readJson(changedResponse),
+      );
+      expect(changed.maxSeq).toBe(3);
+      expect(changed.items.map((item) => item.preview)).toEqual([
+        "Visible response",
+        "New visible response",
+      ]);
+      expect(countFullOutlineQueries()).toBe(2);
+    });
+  });
+
   it("summarizes attachment-only messages in the conversation outline", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);

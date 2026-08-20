@@ -2927,6 +2927,48 @@ describe("events", () => {
     ).toEqual([1, 4]);
   });
 
+  it("bounds each resolved delta prune pass", () => {
+    const { db, thread } = setup();
+    const deltas = Array.from({ length: 502 }, (_, index) => ({
+      threadId: thread.id,
+      sequence: index + 1,
+      scope: turnScope("turn-bounded-prune"),
+      type: "item/agentMessage/delta" as const,
+      itemId: "msg-bounded-prune",
+      itemKind: null,
+      parentToolCallId: null,
+      data: JSON.stringify({
+        itemId: "msg-bounded-prune",
+        delta: `chunk-${index}`,
+      }),
+    }));
+    insertEvents(db, noopNotifier, [
+      ...deltas,
+      {
+        threadId: thread.id,
+        sequence: 503,
+        scope: turnScope("turn-bounded-prune"),
+        type: "item/completed",
+        itemId: "msg-bounded-prune",
+        itemKind: "agentMessage",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            id: "msg-bounded-prune",
+            type: "agentMessage",
+            text: "Complete response",
+          },
+        }),
+      },
+    ]);
+
+    expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(500);
+    expect(pruneResolvedItemDeltas(db, { threadId: thread.id })).toBe(1);
+    expect(
+      listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
+    ).toEqual([1, 503]);
+  });
+
   it("keeps unresolved assistant deltas", () => {
     const { db, thread } = setup();
 

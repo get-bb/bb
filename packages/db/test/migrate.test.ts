@@ -677,7 +677,22 @@ function dropMarketplaceCatalogSchema(db: DbConnection): void {
   }
 }
 
+function dropEventToolNameColumn(db: DbConnection): void {
+  // Generated columns are omitted from table_info but included in table_xinfo.
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_xinfo(events)")
+    .all();
+  if (columns.some((column) => column.name === "tool_name")) {
+    db.$client.exec(
+      "DROP INDEX IF EXISTS events_todo_tool_call_thread_tool_sequence_idx",
+    );
+    db.$client.prepare("ALTER TABLE events DROP COLUMN tool_name").run();
+  }
+}
+
 function dropEventParentToolCallIdColumn(db: DbConnection): void {
+  // Every rewind before 0103 also rewinds the later generated tool-name column.
+  dropEventToolNameColumn(db);
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(events)")
     .all();
@@ -3974,6 +3989,7 @@ describe("migrate", () => {
         "events_thread_turn_type_item_sequence_idx",
         "events_thread_type_item_kind_sequence_idx",
         "events_thread_type_sequence_idx",
+        "events_todo_tool_call_thread_tool_sequence_idx",
         "events_tool_call_parent_lookup_idx",
       ]);
 

@@ -739,6 +739,10 @@ export const events = sqliteTable(
     itemKind: text("item_kind").$type<ThreadEventItemType>(),
     parentToolCallId: text("parent_tool_call_id"),
     data: text("data").notNull().default("{}"),
+    toolName: text("tool_name").generatedAlwaysAs(
+      sql`CASE WHEN json_valid(data) THEN json_extract(data, '$.item.tool') END`,
+      { mode: "virtual" },
+    ),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [
@@ -753,6 +757,14 @@ export const events = sqliteTable(
     index("events_tool_call_parent_lookup_idx")
       .on(table.threadId, table.itemId, table.sequence)
       .where(sql`${table.itemKind} = 'toolCall'`),
+    // The latest timeline page restores todo/task head state by tool name.
+    // Keep that lookup on a tiny generated-column index instead of parsing every
+    // tool-call payload in a long-running thread on every timeline refresh.
+    index("events_todo_tool_call_thread_tool_sequence_idx")
+      .on(table.threadId, table.toolName, table.sequence)
+      .where(
+        sql`${table.itemKind} = 'toolCall' AND ${table.type} IN ('item/started', 'item/completed')`,
+      ),
     index("events_parent_tool_call_thread_parent_sequence_idx")
       .on(table.threadId, table.parentToolCallId, table.sequence)
       .where(sql`${table.parentToolCallId} IS NOT NULL`),

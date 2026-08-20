@@ -3,6 +3,7 @@ import { performance } from "node:perf_hooks";
 import { roundDurationMs } from "../lib/duration.js";
 
 interface EventLoopWorkFrame {
+  blocksEventLoop: boolean;
   id: number;
   label: string;
   parentId: number | null;
@@ -10,6 +11,7 @@ interface EventLoopWorkFrame {
 }
 
 interface CompletedEventLoopWork {
+  blocksEventLoop: boolean;
   durationMs: number;
   label: string;
 }
@@ -28,10 +30,11 @@ const completedInWindow: CompletedEventLoopWork[] = [];
 let nextFrameId = 1;
 let lastCompleted: CompletedEventLoopWork | null = null;
 
-function enterEventLoopWork(label: string): number {
+function enterEventLoopWork(label: string, blocksEventLoop: boolean): number {
   const id = nextFrameId;
   nextFrameId += 1;
   activeFrames.set(id, {
+    blocksEventLoop,
     id,
     label,
     parentId: currentFrameId.getStore() ?? null,
@@ -47,6 +50,7 @@ function leaveEventLoopWork(id: number): void {
     return;
   }
   const completed: CompletedEventLoopWork = {
+    blocksEventLoop: frame.blocksEventLoop,
     durationMs: performance.now() - frame.startedAt,
     label: frame.label,
   };
@@ -86,15 +90,11 @@ function formatActiveWork(): string | null {
 function selectSlowestWork(): CompletedEventLoopWork | null {
   let slowest: CompletedEventLoopWork | null = null;
   for (const completed of completedInWindow) {
+    if (!completed.blocksEventLoop) {
+      continue;
+    }
     if (slowest === null || completed.durationMs > slowest.durationMs) {
       slowest = completed;
-    }
-  }
-  const now = performance.now();
-  for (const frame of activeFrames.values()) {
-    const durationMs = now - frame.startedAt;
-    if (slowest === null || durationMs > slowest.durationMs) {
-      slowest = { durationMs, label: frame.label };
     }
   }
   return slowest;
@@ -120,7 +120,7 @@ export function takeEventLoopWorkWindowSnapshot(): EventLoopWorkSnapshot {
 }
 
 export function runEventLoopWorkSync<T>(label: string, work: () => T): T {
-  const id = enterEventLoopWork(label);
+  const id = enterEventLoopWork(label, true);
   return currentFrameId.run(id, () => {
     try {
       return work();
@@ -134,7 +134,7 @@ export async function runEventLoopWork<T>(
   label: string,
   work: () => Promise<T> | T,
 ): Promise<T> {
-  const id = enterEventLoopWork(label);
+  const id = enterEventLoopWork(label, false);
   return currentFrameId.run(id, async () => {
     try {
       return await work();

@@ -62,7 +62,7 @@ import {
 
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
 /**
- * Keep the scalar byte-total fast path above the default 1,500-event timeline
+ * Keep the scalar byte-total fast path above the default timeline event
  * window without letting a client-selected details range aggregate an entire
  * thread before the byte-limited iterator gets a chance to stop early.
  */
@@ -71,6 +71,10 @@ const SQLITE_MAX_VARIABLE_NUMBER = 32_766;
 // This OR query prepares with 995 keys. A 996th key reaches the configured
 // SQLite expression-depth limit of 1,000.
 const CLIENT_TURN_REQUEST_KEY_BATCH_SIZE = 995;
+// Pruning is output-preserving maintenance on the synchronous SQLite writer.
+// Bound each pass so a delta-heavy completed turn cannot stall event ingestion
+// for seconds while deleting thousands of redundant rows at once.
+const RESOLVED_ITEM_DELTA_PRUNE_BATCH_SIZE = 500;
 
 interface QueryInSqliteVariableBatchesArgs<TValue, TRow> {
   dedupeKey: (value: TValue) => string;
@@ -1135,6 +1139,9 @@ export interface ListStoredConversationOutlineEventRowsArgs {
   threadId: string;
 }
 
+export type GetLatestStoredConversationOutlineSequenceArgs =
+  ListStoredConversationOutlineEventRowsArgs;
+
 export interface ListStoredTimelineWindowEventRowsArgs {
   beforeSequence?: number;
   excludedTypes?: readonly ThreadEventType[];
@@ -2108,22 +2115,23 @@ export function listTodoSnapshotEventRowsForThread(
   db: DbConnection,
   args: ListTodoSnapshotEventRowsForThreadArgs,
 ): StoredEventRow[] {
-  const itemTypes = [
-    "item/started",
-    "item/completed",
-  ] satisfies ThreadEventType[];
-
   const rows = db
     .select(storedEventRowFields)
     .from(events)
     .where(
       and(
         eq(events.threadId, args.threadId),
-        inArray(events.type, itemTypes),
-        eq(events.itemKind, "toolCall"),
-        sql`json_extract(${events.data}, '$.item.tool') IN (
-          'TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet'
-        )`,
+        // Keep the partial-index predicates literal. SQLite cannot prove that
+        // bound parameters imply the index WHERE clause at prepare time.
+        sql`${events.type} IN ('item/started', 'item/completed')`,
+        sql`${events.itemKind} = 'toolCall'`,
+        inArray(events.toolName, [
+          "TodoWrite",
+          "TaskCreate",
+          "TaskUpdate",
+          "TaskList",
+          "TaskGet",
+        ]),
       ),
     )
     .all();
@@ -2522,64 +2530,102 @@ export function listRecentStoredEventRows(
  * dominate long-lived histories. Keep only conversation-producing rows plus
  * the small set of structural lifecycle/error rows that affect their grouping.
  */
+const conversationOutlineLifecycleTypes = [
+  "client/turn/requested",
+  "turn/input/accepted",
+  "turn/started",
+  "turn/completed",
+  "system/manager/user_message",
+  "system/thread/interrupted",
+  "system/error",
+  "provider/error",
+  "item/agentMessage/delta",
+  "item/plan/delta",
+] satisfies ThreadEventType[];
+const conversationOutlineItemKinds = [
+  "agentMessage",
+  "plan",
+] satisfies ThreadEventItemType[];
+const conversationOutlineStructuralItemKinds = [
+  "backgroundTask",
+  "toolCall",
+] satisfies ThreadEventItemType[];
+const conversationOutlineStructuralLifecycleTypes = [
+  "item/started",
+  "item/completed",
+  "item/backgroundTask/progress",
+  "item/backgroundTask/completed",
+] satisfies ThreadEventType[];
+
+function storedConversationOutlineLifecycleWhere(threadId: string): SQL {
+  return and(
+    eq(events.threadId, threadId),
+    inArray(events.type, conversationOutlineLifecycleTypes),
+  )!;
+}
+
+function storedConversationOutlineCompletedWhere(threadId: string): SQL {
+  return and(
+    eq(events.threadId, threadId),
+    eq(events.type, "item/completed"),
+    inArray(events.itemKind, conversationOutlineItemKinds),
+  )!;
+}
+
+function storedConversationOutlineStructuralWhere(threadId: string): SQL {
+  return and(
+    eq(events.threadId, threadId),
+    inArray(events.type, conversationOutlineStructuralLifecycleTypes),
+    inArray(events.itemKind, conversationOutlineStructuralItemKinds),
+  )!;
+}
+
+/**
+ * Sequence revision of the event subset that can change the conversation
+ * outline. Generic command/reasoning/file events advance the thread high-water
+ * sequence without changing this revision, allowing the server to reuse the
+ * expensive full-history outline projection during streaming work.
+ */
+export function getLatestStoredConversationOutlineSequence(
+  db: DbConnection,
+  args: GetLatestStoredConversationOutlineSequenceArgs,
+): number {
+  const lifecycle = db
+    .select({ sequence: max(events.sequence) })
+    .from(events)
+    .where(storedConversationOutlineLifecycleWhere(args.threadId));
+  const completedConversation = db
+    .select({ sequence: max(events.sequence) })
+    .from(events)
+    .where(storedConversationOutlineCompletedWhere(args.threadId));
+  const structural = db
+    .select({ sequence: max(events.sequence) })
+    .from(events)
+    .where(storedConversationOutlineStructuralWhere(args.threadId));
+
+  return unionAll(lifecycle, completedConversation, structural)
+    .all()
+    .reduce((latest, row) => Math.max(latest, row.sequence ?? 0), 0);
+}
+
 export function listStoredConversationOutlineEventRows(
   db: DbConnection,
   args: ListStoredConversationOutlineEventRowsArgs,
 ): StoredEventRow[] {
-  const lifecycleTypes = [
-    "client/turn/requested",
-    "turn/input/accepted",
-    "turn/started",
-    "turn/completed",
-    "system/manager/user_message",
-    "system/thread/interrupted",
-    "system/error",
-    "provider/error",
-    "item/agentMessage/delta",
-    "item/plan/delta",
-  ] satisfies ThreadEventType[];
-  const conversationItemKinds = [
-    "agentMessage",
-    "plan",
-  ] satisfies ThreadEventItemType[];
-  const structuralItemKinds = [
-    "backgroundTask",
-    "toolCall",
-  ] satisfies ThreadEventItemType[];
-  const structuralItemLifecycleTypes = [
-    "item/started",
-    "item/completed",
-    "item/backgroundTask/progress",
-    "item/backgroundTask/completed",
-  ] satisfies ThreadEventType[];
-
   const lifecycleRows = db
     .select(storedEventRowFields)
     .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        inArray(events.type, lifecycleTypes),
-      ),
-    );
+    .where(storedConversationOutlineLifecycleWhere(args.threadId));
   const completedConversationRows = db
     .select(storedEventRowFields)
     .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        eq(events.type, "item/completed"),
-        inArray(events.itemKind, conversationItemKinds),
-      ),
-    );
+    .where(storedConversationOutlineCompletedWhere(args.threadId));
   const structuralRows = db
     .select(storedEventRowFields)
     .from(events)
     .where(
       and(
-        eq(events.threadId, args.threadId),
-        inArray(events.type, structuralItemLifecycleTypes),
-        inArray(events.itemKind, structuralItemKinds),
+        storedConversationOutlineStructuralWhere(args.threadId),
         isNotSupersededBackgroundTaskProgress,
       ),
     );
@@ -3277,7 +3323,7 @@ export function listThreadTurnInterruptionEventStates(
           WHERE latest.thread_id = ${events.threadId}
             AND latest.type = 'turn/started'
             AND latest.turn_id IS NOT NULL
-            AND COALESCE(json_extract(latest.data, '$.parentToolCallId'), '') = ''
+            AND latest.parent_tool_call_id IS NULL
         )`,
         sql`NOT EXISTS (
           SELECT 1
@@ -3476,7 +3522,7 @@ function pruneLatestRowsForContextWindowUsageBeforeSequence(
               WHERE nested_turn_started.thread_id = usage.thread_id
                 AND nested_turn_started.turn_id = usage.turn_id
                 AND nested_turn_started.type = 'turn/started'
-                AND COALESCE(json_extract(nested_turn_started.data, '$.parentToolCallId'), '') <> ''
+                AND nested_turn_started.parent_tool_call_id IS NOT NULL
             )
         )
         DELETE FROM events
@@ -3558,50 +3604,53 @@ export function pruneResolvedItemDeltas(
 
   const result = db.run(
     sql`DELETE FROM events
-        WHERE ${events.threadId} = ${args.threadId}
-          AND ${events.type} IN (
+        WHERE rowid IN (
+          SELECT candidate.rowid
+          FROM events candidate
+          WHERE candidate.thread_id = ${args.threadId}
+          AND candidate.type IN (
             ${"item/agentMessage/delta" satisfies PrunableResolvedDeltaEventType},
             ${"item/commandExecution/outputDelta" satisfies PrunableResolvedDeltaEventType},
             ${"item/reasoning/summaryTextDelta" satisfies PrunableResolvedDeltaEventType},
             ${"item/reasoning/textDelta" satisfies PrunableResolvedDeltaEventType}
           )
-          AND ${events.itemId} IS NOT NULL
-          AND ${events.turnId} IS NOT NULL
+          AND candidate.item_id IS NOT NULL
+          AND candidate.turn_id IS NOT NULL
           AND EXISTS (
             SELECT 1
             FROM events completed
-            WHERE completed.thread_id = ${events.threadId}
-              AND completed.turn_id = ${events.turnId}
+            WHERE completed.thread_id = candidate.thread_id
+              AND completed.turn_id = candidate.turn_id
               AND completed.type = ${itemCompletedType}
               AND completed.item_kind = CASE
-                WHEN ${events.type} = ${"item/agentMessage/delta" satisfies PrunableResolvedDeltaEventType}
+                WHEN candidate.type = ${"item/agentMessage/delta" satisfies PrunableResolvedDeltaEventType}
                   THEN ${prunableDeltaMatches["item/agentMessage/delta"]}
-                WHEN ${events.type} = ${"item/commandExecution/outputDelta" satisfies PrunableResolvedDeltaEventType}
+                WHEN candidate.type = ${"item/commandExecution/outputDelta" satisfies PrunableResolvedDeltaEventType}
                   THEN ${prunableDeltaMatches["item/commandExecution/outputDelta"]}
-                WHEN ${events.type} = ${"item/reasoning/summaryTextDelta" satisfies PrunableResolvedDeltaEventType}
+                WHEN candidate.type = ${"item/reasoning/summaryTextDelta" satisfies PrunableResolvedDeltaEventType}
                   THEN ${prunableDeltaMatches["item/reasoning/summaryTextDelta"]}
-                WHEN ${events.type} = ${"item/reasoning/textDelta" satisfies PrunableResolvedDeltaEventType}
+                WHEN candidate.type = ${"item/reasoning/textDelta" satisfies PrunableResolvedDeltaEventType}
                   THEN ${prunableDeltaMatches["item/reasoning/textDelta"]}
               END
-              AND completed.item_id = ${events.itemId}
+              AND completed.item_id = candidate.item_id
               AND (
-                ${events.type} <> ${"item/commandExecution/outputDelta" satisfies PrunableResolvedDeltaEventType}
+                candidate.type <> ${"item/commandExecution/outputDelta" satisfies PrunableResolvedDeltaEventType}
                 OR json_type(completed.data, '$.item.aggregatedOutput') IS NOT NULL
               )
-              AND COALESCE(json_extract(completed.data, '$.item.parentToolCallId'), '') =
-                COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '')
+              AND completed.parent_tool_call_id IS candidate.parent_tool_call_id
           )
           AND EXISTS (
             SELECT 1
             FROM events earlier_delta
-            WHERE earlier_delta.thread_id = ${events.threadId}
-              AND earlier_delta.turn_id = ${events.turnId}
-              AND earlier_delta.type = ${events.type}
-              AND earlier_delta.item_id = ${events.itemId}
-              AND COALESCE(json_extract(earlier_delta.data, '$.parentToolCallId'), '') =
-                COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '')
-              AND earlier_delta.sequence < ${events.sequence}
-          )`,
+            WHERE earlier_delta.thread_id = candidate.thread_id
+              AND earlier_delta.turn_id = candidate.turn_id
+              AND earlier_delta.type = candidate.type
+              AND earlier_delta.item_id = candidate.item_id
+              AND earlier_delta.parent_tool_call_id IS candidate.parent_tool_call_id
+              AND earlier_delta.sequence < candidate.sequence
+          )
+          LIMIT ${RESOLVED_ITEM_DELTA_PRUNE_BATCH_SIZE}
+        )`,
   );
 
   return result.changes;

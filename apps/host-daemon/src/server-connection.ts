@@ -24,6 +24,7 @@ import {
   type ReconnectingWebSocketLike,
   type ServerConnectionOptions,
 } from "./server-connection-support.js";
+import { isLikelySystemSuspensionDelay } from "./system-suspension.js";
 import { normalizeCaughtError, runtimeErrorLogFields } from "./error-utils.js";
 import { ServerResponseError } from "./server-client.js";
 
@@ -756,7 +757,23 @@ export class ServerConnection {
       if (lastTickAt !== null) {
         const gapMs = now - lastTickAt;
         const thresholdMs = session.leaseTimeoutMs / 2;
-        if (gapMs > thresholdMs) {
+        if (
+          isLikelySystemSuspensionDelay({
+            gapMs,
+            intervalMs: session.heartbeatIntervalMs,
+          })
+        ) {
+          this.options.logger.info(
+            {
+              gapMs,
+              heartbeatIntervalMs: session.heartbeatIntervalMs,
+              leaseTimeoutMs: session.leaseTimeoutMs,
+              sessionId: session.sessionId,
+              websocketReadyState: this.websocket?.readyState ?? null,
+            },
+            "Host daemon resumed after likely system suspension",
+          );
+        } else if (gapMs > thresholdMs) {
           this.options.logger.warn(
             {
               gapMs,

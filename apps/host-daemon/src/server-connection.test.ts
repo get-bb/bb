@@ -354,6 +354,33 @@ describe("ServerConnection", () => {
     }
   });
 
+  it("reports a system-suspension gap without calling it a heartbeat stall", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { connection, logger } = createConnectionFixture({
+      heartbeatIntervalMs: 5_000,
+      leaseTimeoutMs: 30_000,
+    });
+    try {
+      await connection.start();
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      vi.setSystemTime(300_000);
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(logger.warn).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "Host daemon heartbeat timer delayed",
+      );
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({ gapMs: 300_000 }),
+        "Host daemon resumed after likely system suspension",
+      );
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
   it("queues output above high water and flushes it before lifecycle messages", async () => {
     vi.useFakeTimers();
     const { connection, webSocket } = createConnectionFixture();

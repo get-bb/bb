@@ -1,0 +1,2 @@
+ALTER TABLE `events` ADD `tool_name` text GENERATED ALWAYS AS (CASE WHEN json_valid(data) THEN json_extract(data, '$.item.tool') END) VIRTUAL;--> statement-breakpoint
+CREATE INDEX `events_todo_tool_call_thread_tool_sequence_idx` ON `events` (`thread_id`,`tool_name`,`sequence`) WHERE "events"."item_kind" = 'toolCall' AND "events"."type" IN ('item/started', 'item/completed');
