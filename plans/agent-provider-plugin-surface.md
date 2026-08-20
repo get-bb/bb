@@ -338,122 +338,116 @@ next starts; commits structured so a later PR split stays mechanical:
      `thread/start` is the ONLY thing that lets the idle sweep release a
      graduated provider's session, and nothing covered that path — the
      process-lifecycle reaper tests now report it on the wire.
-   Still id-switched in core after the wave, deliberately: the four-variant
-   skill-root union and `runtime-skill-roots.ts`'s per-provider normalizers
-   (they ride the wire as data; collapsing them is the deferred
-   `skills/configure` work), `isAcpProviderId` (used by those normalizers,
-   by the steer-stale recovery, and by the server's ACP tier), the
-   `acp-launch-specs.ts` cursor table, and the runtime's deliberate codex
-   error-text special cases audited and kept in wave 3.
-   KNOWN RED, PRE-EXISTING, NOT ADDRESSED BY THIS WAVE: the
-   `@bb/agent-runtime#test:integration` suite (live CLIs, not in CI)
-   constructs providers straight from `createProviderForId` with no
-   `bridgeLaunch`, so every graduated provider now fails there with
-   "Unsupported provider". Codex broke it first; claude-code and acp extend
-   it. The harness needs the same built-artifact wiring the integration
-   harness just got, and it belongs to the final gate's live QA matrix.
+     Still id-switched in core after the wave, deliberately: the four-variant
+     skill-root union and `runtime-skill-roots.ts`'s per-provider normalizers
+     (they ride the wire as data; collapsing them is the deferred
+     `skills/configure` work), `isAcpProviderId` (used by those normalizers,
+     by the steer-stale recovery, and by the server's ACP tier), the
+     `acp-launch-specs.ts` cursor table, and the runtime's deliberate codex
+     error-text special cases audited and kept in wave 3.
+     KNOWN RED, PRE-EXISTING, NOT ADDRESSED BY THIS WAVE: the
+     `@bb/agent-runtime#test:integration` suite (live CLIs, not in CI)
+     constructs providers straight from `createProviderForId` with no
+     `bridgeLaunch`, so every graduated provider now fails there with
+     "Unsupported provider". Codex broke it first; claude-code and acp extend
+     it. The harness needs the same built-artifact wiring the integration
+     harness just got, and it belongs to the final gate's live QA matrix.
 
 FINAL VALIDATION GATE (mandatory before calling graduation done): full
 multi-agent adversarial review of the graduation diff — DONE, and all
 eight confirmed findings are fixed with red-verified tests (full-tree
 typecheck + test green):
-  1+6. `thread.archive` / `thread.unarchive` carried no `bridgeLaunch`, so
-     every graduated provider threw "Unsupported provider" — unarchive
-     always (it runs on a fresh provider-maintenance runtime), archive
-     whenever the thread's process was not already live. Threaded end to
-     end like `thread.start`: wire field, server attach, daemon artifact
-     resolve, runtime process key + adapter.
-  2. The codex account-restart re-resume rebuilt from `ThreadRuntimeConfig`,
-     which stored no launch, so it killed the thread's process and then
-     failed to rebuild it. The config now carries the launch (archive and
-     unarchive fall back to it too).
-  3. The codex bridge never retracted `thread/openWork` on child exit, and
-     the runtime's view is level-triggered, so the thread was never
-     idle-reaped. Child exit now clears the dead child's translator state
-     and re-reports.
-  4. Known and custom ACP agents were listed independently of the registry,
-     but their only bridge is the ACP plugin's; with that plugin disabled
-     the picker offered agents whose first turn died on the daemon. The
-     dynamic ACP tier is now gated on a registered ACP provider plugin.
-  5. The listener serves before plugins load, so provider-routed work saw
-     an empty registry on boot (409 `no_provider_available`, empty provider
-     list, turns dispatched with no `bridgeLaunch`). The registry now has a
-     bounded settlement gate the server resolves when plugin startup
-     settles, awaited by thread create, command building, provider listing
-     and model loads.
-  7. ThreadDetailView read the execution-options cache non-reactively for
-     fork/edit affordances; it now subscribes to the query cache.
-  8. The skills library labelled every custom ACP agent "ACP provider"; it
-     now names providers from the server roster.
+1+6. `thread.archive` / `thread.unarchive` carried no `bridgeLaunch`, so
+every graduated provider threw "Unsupported provider" — unarchive
+always (it runs on a fresh provider-maintenance runtime), archive
+whenever the thread's process was not already live. Threaded end to
+end like `thread.start`: wire field, server attach, daemon artifact
+resolve, runtime process key + adapter. 2. The codex account-restart re-resume rebuilt from `ThreadRuntimeConfig`,
+which stored no launch, so it killed the thread's process and then
+failed to rebuild it. The config now carries the launch (archive and
+unarchive fall back to it too). 3. The codex bridge never retracted `thread/openWork` on child exit, and
+the runtime's view is level-triggered, so the thread was never
+idle-reaped. Child exit now clears the dead child's translator state
+and re-reports. 4. Known and custom ACP agents were listed independently of the registry,
+but their only bridge is the ACP plugin's; with that plugin disabled
+the picker offered agents whose first turn died on the daemon. The
+dynamic ACP tier is now gated on a registered ACP provider plugin. 5. The listener serves before plugins load, so provider-routed work saw
+an empty registry on boot (409 `no_provider_available`, empty provider
+list, turns dispatched with no `bridgeLaunch`). The registry now has a
+bounded settlement gate the server resolves when plugin startup
+settles, awaited by thread create, command building, provider listing
+and model loads. 7. ThreadDetailView read the execution-options cache non-reactively for
+fork/edit affordances; it now subscribes to the query cache. 8. The skills library labelled every custom ACP agent "ACP provider"; it
+now names providers from the server roster.
 A SECOND, EXTERNAL comparison review then raised six more findings, all
 re-verified against current HEAD with the refute-by-default discipline
 (several resembled pre-graduation claims that had been refuted then; the
 code had since changed, and this time most were real). Five confirmed and
 fixed with red-verified tests, one commit each; one part refuted:
 
-  1. CONFIRMED — declaration/implementation binding. A declaration alone
-     made a provider listable and thread-creatable. A bridge build failure
-     on a mutable-source plugin left the plugin "running" with the failure
-     as a status detail and its provider in the picker (git installs fail
-     hard and npm installs require a prebuilt bundle, so only that path was
-     open); `kind: "router"` did the same by construction, since routers
-     have no bridge and nothing anywhere resolves one. Either way
-     `resolveBridgeLaunchForProviderId` failed open and the first turn died
-     on the daemon with "Unsupported provider". Registration now demands an
-     implementation — this load's artifact, or a daemon-bundled id — and
-     `kind`/`bridge` are gone from the declaration contract:
-     `bridge.entry` was validated and never bound to anything (all four
-     first-party plugins passed the placeholder "provider-bridge"; the real
-     entry is the manifest's `bb.providerBridge`). The daemon-bundled set
-     now lives once, on the host contract both sides read.
-  2. CONFIRMED — first-party id squatting. Collision rejection only covers
-     ids registered right now, so a disabled (or failed, or not-yet-loaded)
-     official plugin left its id free. For `pi` that is more than a name:
-     the runtime refuses artifact routing for bundled ids, so a third-party
-     "pi" would have supplied metadata for bb's own bundled bridge. The
-     four ids and the `acp-` prefix are now reserved to their official
-     plugin, enforced at declaration time and in the registry.
-  3. CONFIRMED — no lifecycle validation at the host boundary.
-     `translateEvent` was a shape-only zod parse straight into runtime
-     state; the only grammar rule anywhere was the turn-replay filter.
-     `ThreadEventGrammar` now applies the conformance kit's rules as a
-     streaming machine at intake (the kit's `checkItemOpensBeforeDelta` is
-     that machine fed a log, so there is one implementation), dropping
-     violations with a warning that names the rule. It replaces the replay
-     filter, whose completed-turn state it subsumes. An item that settles
-     without opening is kept rather than dropped: it carries the whole item
-     payload, so refusing it would lose real content — and the fake bridge
-     in the runtime's own tests emits exactly that shape. Ownership: the
-     single-thread fallback in event thread-id resolution no longer accepts
-     an id naming another live thread.
-  4. PARTLY CONFIRMED — resource bounds. The prior refutation ("server-side
-     caps bound the artifact download") no longer held: there was no cap on
-     a bridge bundle anywhere, and the daemon buffers one whole to verify it
-     before executing it. Capped now on the wire contract and enforced at
-     both ends. The stdout JSON-RPC line was genuinely unbounded on BOTH
-     sides of the pipe (`readline` has no maximum); `readBoundedLines`
-     replaces it and also strips CR, which the stdout path never did.
-     REFUTED — the daemon event-sink queue: unbounded on purpose and
-     documented as such (it holds every host thread's events across a
-     delivery stall and must not drop them), with depth/age tripwires that
-     already warn.
-  5. CONFIRMED — process identity and retirement, both halves. The process
-     key carried the artifact hash but not the declaration facts baked into
-     the adapter at spawn, so a plugin editing its declaration without
-     rebuilding its bundle kept serving new threads from the superseded
-     adapter; and the stale-hash sweep ran only on `ensureProvider`, so a
-     superseded process still owning a thread was skipped and never
-     revisited. A capabilities+options fingerprint now rides the key (and
-     the daemon's model-list runtime cache), and the release path — which
-     already retired thread-scoped codex processes — retires superseded
-     bridge processes too.
-  6. CONFIRMED — fork was constructed unconditionally. The runtime gated on
-     the declaration's `supportsFork` and never read the handshake's
-     `fork`, which the protocol doc calls the operative truth: a `"none"`
-     bridge was sent forks it never promised to reject, and a `"tip"`
-     bridge got checkpoint forks. The adapter now rejects both before
-     dispatch, and the start path builds its plan inside the try so a
-     rejected fork takes the normal failed-construction cleanup.
+1. CONFIRMED — declaration/implementation binding. A declaration alone
+   made a provider listable and thread-creatable. A bridge build failure
+   on a mutable-source plugin left the plugin "running" with the failure
+   as a status detail and its provider in the picker (git installs fail
+   hard and npm installs require a prebuilt bundle, so only that path was
+   open); `kind: "router"` did the same by construction, since routers
+   have no bridge and nothing anywhere resolves one. Either way
+   `resolveBridgeLaunchForProviderId` failed open and the first turn died
+   on the daemon with "Unsupported provider". Registration now demands an
+   implementation — this load's artifact, or a daemon-bundled id — and
+   `kind`/`bridge` are gone from the declaration contract:
+   `bridge.entry` was validated and never bound to anything (all four
+   first-party plugins passed the placeholder "provider-bridge"; the real
+   entry is the manifest's `bb.providerBridge`). The daemon-bundled set
+   now lives once, on the host contract both sides read.
+2. CONFIRMED — first-party id squatting. Collision rejection only covers
+   ids registered right now, so a disabled (or failed, or not-yet-loaded)
+   official plugin left its id free. For `pi` that is more than a name:
+   the runtime refuses artifact routing for bundled ids, so a third-party
+   "pi" would have supplied metadata for bb's own bundled bridge. The
+   four ids and the `acp-` prefix are now reserved to their official
+   plugin, enforced at declaration time and in the registry.
+3. CONFIRMED — no lifecycle validation at the host boundary.
+   `translateEvent` was a shape-only zod parse straight into runtime
+   state; the only grammar rule anywhere was the turn-replay filter.
+   `ThreadEventGrammar` now applies the conformance kit's rules as a
+   streaming machine at intake (the kit's `checkItemOpensBeforeDelta` is
+   that machine fed a log, so there is one implementation), dropping
+   violations with a warning that names the rule. It replaces the replay
+   filter, whose completed-turn state it subsumes. An item that settles
+   without opening is kept rather than dropped: it carries the whole item
+   payload, so refusing it would lose real content — and the fake bridge
+   in the runtime's own tests emits exactly that shape. Ownership: the
+   single-thread fallback in event thread-id resolution no longer accepts
+   an id naming another live thread.
+4. PARTLY CONFIRMED — resource bounds. The prior refutation ("server-side
+   caps bound the artifact download") no longer held: there was no cap on
+   a bridge bundle anywhere, and the daemon buffers one whole to verify it
+   before executing it. Capped now on the wire contract and enforced at
+   both ends. The stdout JSON-RPC line was genuinely unbounded on BOTH
+   sides of the pipe (`readline` has no maximum); `readBoundedLines`
+   replaces it and also strips CR, which the stdout path never did.
+   REFUTED — the daemon event-sink queue: unbounded on purpose and
+   documented as such (it holds every host thread's events across a
+   delivery stall and must not drop them), with depth/age tripwires that
+   already warn.
+5. CONFIRMED — process identity and retirement, both halves. The process
+   key carried the artifact hash but not the declaration facts baked into
+   the adapter at spawn, so a plugin editing its declaration without
+   rebuilding its bundle kept serving new threads from the superseded
+   adapter; and the stale-hash sweep ran only on `ensureProvider`, so a
+   superseded process still owning a thread was skipped and never
+   revisited. A capabilities+options fingerprint now rides the key (and
+   the daemon's model-list runtime cache), and the release path — which
+   already retired thread-scoped codex processes — retires superseded
+   bridge processes too.
+6. CONFIRMED — fork was constructed unconditionally. The runtime gated on
+   the declaration's `supportsFork` and never read the handshake's
+   `fork`, which the protocol doc calls the operative truth: a `"none"`
+   bridge was sent forks it never promised to reject, and a `"tip"`
+   bridge got checkpoint forks. The adapter now rejects both before
+   dispatch, and the start path builds its plan inside the try so a
+   rejected fork takes the normal failed-construction cleanup.
 
 Remaining: conformance all
 green for all five bridges (the codex pin must be flipped, not deleted);
@@ -486,7 +480,7 @@ protocol 70), full-tree typecheck, full-tree test, and `smoke:tarball`.
 What died beyond the dialect switch itself:
 
 - **The internal params zod round-trip (pi, acp, claude-code).** Each canonical
-  handler built an untyped record shaped like the *legacy wire*, re-parsed it
+  handler built an untyped record shaped like the _legacy wire_, re-parsed it
   through the legacy zod schema, and mapped it again before it became session
   options. The builders now return the typed params they always described.
   Pi's was the worst: env vars made a full round trip out to
@@ -494,7 +488,7 @@ What died beyond the dialect switch itself:
   `extractEnvOverrides`, so the kit grew one `buildShellEnvOverrides` that
   `buildShellEnvironmentPolicyConfig` (still needed by codex) delegates to.
 - **A latent bug the union hid.** The legacy schemas were non-passthrough and
-  sat *second* in each union, so a canonical request that failed validation for
+  sat _second_ in each union, so a canonical request that failed validation for
   any reason fell through to them, got `options` stripped, and was silently
   served in the legacy dialect instead of answering INVALID_PARAMS.
 - **ACP `thread/compact`.** The handshake reports `manualCompaction: false`, so
@@ -513,7 +507,7 @@ What died beyond the dialect switch itself:
   session.
 - **Two codex pass-through modules.** `permission-mapping.ts` (one importer, no
   test of its own) merged into `interactive-requests.ts`; `subagent-activity-
-  translation.ts` (one importer, and no possible second — the tracking state
+translation.ts` (one importer, and no possible second — the tracking state
   lives in the translator's closures) merged into `translator.ts`. Fifteen more
   codex exports were module-internal in practice and are now declared so.
   Three that looked identical are deliberately still exported: they are pure
@@ -594,7 +588,7 @@ Two things were audited and deliberately left:
   `activePromptKind` (`"turn" | "compaction" | null`) came back with it, the
   compaction envelopes and the translator's two arms are restored, and the
   handshake now reports `manualCompaction: true` — that is a process-level
-  fact about what this bridge implements, decided *before* any session exists,
+  fact about what this bridge implements, decided _before_ any session exists,
   so it cannot answer the per-agent question; nothing consumes it (there is no
   compaction request method to gate), and the comment says so.
   Per-agent honesty: an ACP agent's `available_commands_update` is **not** a
@@ -855,8 +849,7 @@ The provider "contract" today is six scattered surfaces:
    (`apps/server/src/services/threads/thread-edit-message.ts`), onboarding
    provider list, `SETTINGS_PROVIDER_ENTRIES`, usage-limits UI, provider
    switches in `packages/thread-view`, Claude-only fields on the shared
-   `ProviderExecutionContext` (`claudeCodePermissionMode`,
-   `claudeCodeMockCliTraffic`).
+   `ProviderExecutionContext` (`claudeCodePermissionMode`).
 
 **ACP** is the only extension point: a pure-data launch spec
 (`hostDaemonAcpLaunchSpecSchema`) resolved per command — from `config.json`
@@ -1024,8 +1017,7 @@ Disposition of every current `ProviderAdapter` member:
 
 `ProviderExecutionContext` sheds every provider-flavored field.
 `claudeCodePermissionMode` becomes the declared prompt-mode capability + a
-normalized field; `claudeCodeMockCliTraffic` becomes a bridge-test-harness
-concern inside the claude plugin; and `workflowsEnabled` / `memoryEnabled` /
+normalized field; and `workflowsEnabled` / `memoryEnabled` /
 `providerSubagentsEnabled` — claude-specific knobs riding the shared
 contract today — move to **provider-scoped session options**: opaque data a
 provider plugin derives from its own settings, which core passes through to

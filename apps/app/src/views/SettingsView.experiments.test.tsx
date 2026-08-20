@@ -12,13 +12,11 @@ function renderSection(overrides?: {
 }) {
   return render(
     <ExperimentsSettingsSection
-      claudeCodeMockCliTrafficEnabled={false}
       disabled={false}
       editMessagesEnabled={false}
       mobileAppEnabled={false}
       newOnboardingEnabled={false}
       providerSessionReapingEnabled={false}
-      onClaudeCodeMockCliTrafficEnabledChange={vi.fn()}
       onEditMessagesEnabledChange={vi.fn()}
       onMobileAppEnabledChange={overrides?.onMobileAppEnabledChange ?? vi.fn()}
       onNewOnboardingEnabledChange={

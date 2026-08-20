@@ -64,13 +64,6 @@ describe("execution setting classification", () => {
       { ...baseOptions, claudeCodePermissionMode: "plan" },
       {
         ...baseOptions,
-        claudeCodeMockCliTraffic: {
-          enabled: true,
-          endpoint: "http://127.0.0.1:19001",
-        },
-      },
-      {
-        ...baseOptions,
         permissionMode: "full",
         permissionScope: "full",
         approvalReviewer: null,

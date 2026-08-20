@@ -9,7 +9,6 @@ import {
   setThreadExecutionOverride,
 } from "@bb/db";
 import {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   defaultAppSettings,
   defaultExperiments,
   encodeClientTurnRequestIdNumber,
@@ -814,64 +813,6 @@ describe("thread runtime config", () => {
           entryPath: "SKILL.md",
         },
       ]);
-    });
-  });
-
-  it("gates Claude Code mock CLI traffic on its experiment with the fixed endpoint", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-runtime-mock-cli-traffic-experiment",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "codex",
-      });
-      const execution = await resolveExecutionOptions(harness.deps, {
-        threadId: thread.id,
-        requestedExecution: {
-          model: "gpt-5",
-          source: "client/turn/requested",
-        },
-      });
-      const buildCommand = (requestValue: number) =>
-        buildThreadStartCommand(harness.deps, {
-          environment,
-          execution,
-          fork: null,
-          permissionEscalation: "ask",
-          input: textInput("hello"),
-          projectId: project.id,
-          providerId: "codex",
-          requestId: encodeClientTurnRequestIdNumber({ value: requestValue }),
-          syncGeneratedTitle: false,
-          thread,
-        });
-
-      expect((await buildCommand(1)).options.claudeCodeMockCliTraffic).toEqual({
-        enabled: false,
-        endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
-      });
-
-      setExperiments(harness.db, {
-        claudeCodeMockCliTraffic: true,
-        editMessages: false,
-        mobileApp: false,
-        newOnboarding: false,
-        providerSessionReaping: false,
-      });
-
-      expect((await buildCommand(2)).options.claudeCodeMockCliTraffic).toEqual({
-        enabled: true,
-        endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
-      });
     });
   });
 

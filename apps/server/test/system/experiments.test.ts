@@ -14,7 +14,6 @@ describe("experiments settings", () => {
       expect(response.status).toBe(200);
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.experiments).toEqual({
-        claudeCodeMockCliTraffic: false,
         editMessages: true,
         mobileApp: false,
         newOnboarding: false,
@@ -29,7 +28,6 @@ describe("experiments settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          claudeCodeMockCliTraffic: true,
           editMessages: true,
           mobileApp: true,
           newOnboarding: true,
@@ -38,14 +36,12 @@ describe("experiments settings", () => {
       });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
-        claudeCodeMockCliTraffic: true,
         editMessages: true,
         mobileApp: true,
         newOnboarding: true,
         providerSessionReaping: true,
       });
       expect(getExperiments(harness.db)).toEqual({
-        claudeCodeMockCliTraffic: true,
         editMessages: true,
         mobileApp: true,
         newOnboarding: true,
@@ -56,7 +52,6 @@ describe("experiments settings", () => {
       expect(
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
       ).toEqual({
-        claudeCodeMockCliTraffic: true,
         editMessages: true,
         mobileApp: true,
         newOnboarding: true,
@@ -83,7 +78,6 @@ describe("experiments settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          claudeCodeMockCliTraffic: false,
           editMessages: true,
           mobileApp: false,
           newOnboarding: false,
@@ -108,7 +102,6 @@ describe("experiments settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          claudeCodeMockCliTraffic: false,
           editMessages: false,
           mobileApp: false,
           newOnboarding: false,

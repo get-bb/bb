@@ -19,7 +19,6 @@
  */
 
 import {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   pendingInteractionResolutionSchema,
   type PendingInteractionGrantedPermissionProfile,
   type PendingInteractionPayload,
@@ -98,10 +97,6 @@ import {
   type BuildSessionOptionsArgs,
   type PermissionEscalationWorkContext,
 } from "./session-options.js";
-import {
-  startClaudeCodeMockCliTrafficProxy,
-  type ClaudeCodeMockCliTrafficProxy,
-} from "./mock-cli-traffic-proxy.js";
 import { buildReadonlyBashUpdatedInput } from "./readonly-bash-policy.js";
 import {
   buildBridgeMcpServer,
@@ -233,7 +228,6 @@ interface ThreadSession {
   streamEnded: boolean;
   /** Every session-scoped notification is translated through this. */
   translator: ClaudeDeltaTranslator;
-  mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
   pendingInteractiveRequests: Map<string | number, PendingInteractiveRequest>;
   /** Current-turn fallback when Claude supplies no originating-work metadata. */
   permissionEscalation: PermissionEscalation | null;
@@ -263,7 +257,6 @@ interface ThreadSession {
 }
 
 interface CreateThreadSessionArgs {
-  mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   liveSettings: ClaudeLiveSessionSettings;
@@ -290,13 +283,7 @@ interface CanonicalTurnAcceptance {
   providerThreadId: string;
 }
 
-interface PreparedSessionEnv {
-  env: NodeJS.ProcessEnv;
-  mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
-}
-
 interface SessionConstructionConfig {
-  claudeCodeMockCliTraffic: ThreadResumeParams["claudeCodeMockCliTraffic"];
   config: ThreadResumeParams["config"];
   dynamicTools: ThreadResumeParams["dynamicTools"];
   // Live settings are not part of the comparable construction config: the
@@ -323,12 +310,6 @@ type SessionConstructionParams =
   | ThreadStartParams
   | ThreadResumeParams
   | ThreadForkParams;
-
-interface PrepareSessionEnvParams {
-  claudeCodeMockCliTraffic: ThreadStartParams["claudeCodeMockCliTraffic"];
-  config?: ThreadStartParams["config"];
-  threadId: ThreadStartParams["threadId"];
-}
 
 interface ReplaceThreadSessionArgs {
   providerThreadId: string;
@@ -422,9 +403,7 @@ function resolvePendingSessionWork(
   resolvePendingInteractiveRequests(threadSession, message);
 }
 
-function createForwardToolCall(
-  getThreadId: () => string,
-): ToolCallForwarder {
+function createForwardToolCall(getThreadId: () => string): ToolCallForwarder {
   return (toolName, args) => {
     const threadId = getThreadId();
     const threadSession = sessions.get(threadId);
@@ -462,7 +441,9 @@ async function closeThreadSession(args: {
   threadSession.closing = true;
   resolvePendingSessionWork(threadSession, args.message);
   const closePromise = Promise.resolve()
-    .then(() => closeClaudeThreadSession(threadSession, args.graceful !== false))
+    .then(() =>
+      closeClaudeThreadSession(threadSession, args.graceful !== false),
+    )
     .finally(() => {
       if (sessions.get(args.threadId) === threadSession) {
         sessions.delete(args.threadId);
@@ -802,7 +783,6 @@ function toSessionConstructionConfig(
   params: SessionConstructionParams,
 ): SessionConstructionConfig {
   return {
-    claudeCodeMockCliTraffic: params.claudeCodeMockCliTraffic,
     config: params.config,
     dynamicTools: params.dynamicTools,
     sessionOptions: {
@@ -906,7 +886,6 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     closing: false,
     streamEnded: false,
     translator: createClaudeDeltaTranslator(),
-    mockCliTrafficProxy: args.mockCliTrafficProxy,
     pendingInteractiveRequests: new Map(),
     permissionEscalation: args.permissionEscalation,
     permissionEscalationByAgentId: new Map(),
@@ -1196,7 +1175,6 @@ function buildTrackedSessionOptions(
 
 function replaceThreadSession(args: ReplaceThreadSessionArgs): void {
   args.threadSession.closing = true;
-  args.threadSession.mockCliTrafficProxy = null;
   resolvePendingSessionWork(args.threadSession, args.reason);
   // Canonical sessions settle in-flight work and announce the rebuild before
   // any replacement-session traffic; the replacement resumes the same
@@ -1231,7 +1209,6 @@ function replaceEndedThreadSession(
   }
 
   const replacementSession = createThreadSession({
-    mockCliTrafficProxy: args.threadSession.mockCliTrafficProxy,
     liveSettings: args.threadSession.liveSettings,
     permissionEscalation: args.threadSession.permissionEscalation,
     // Carries the live mode, so a session replaced after an approved plan
@@ -1360,15 +1337,10 @@ async function closeClaudeThreadSession(
   threadSession: ThreadSession,
   graceful: boolean,
 ): Promise<void> {
-  try {
-    if (graceful) {
-      await threadSession.session.closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS);
-    } else {
-      threadSession.session.stop();
-    }
-  } finally {
-    await threadSession.mockCliTrafficProxy?.close();
-    threadSession.mockCliTrafficProxy = null;
+  if (graceful) {
+    await threadSession.session.closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS);
+  } else {
+    threadSession.session.stop();
   }
 }
 
@@ -1399,18 +1371,6 @@ function buildSessionEnv(
   return sessionEnv;
 }
 
-function appendNoProxyLoopback(value: string | undefined): string {
-  const entries = new Set(
-    (value ?? "")
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0),
-  );
-  entries.add("127.0.0.1");
-  entries.add("localhost");
-  return [...entries].join(",");
-}
-
 const sessionConfigEnvVarsSchema = z.record(z.string(), z.string());
 
 /** The bridge end of `buildClaudeCodeConfig`'s plugin-internal config bag. */
@@ -1419,36 +1379,6 @@ function readConfigEnvOverrides(
 ): Record<string, string> {
   const parsed = sessionConfigEnvVarsSchema.safeParse(config?.["envVars"]);
   return parsed.success ? parsed.data : {};
-}
-
-async function prepareSessionEnv(
-  params: PrepareSessionEnvParams,
-): Promise<PreparedSessionEnv> {
-  const envOverrides = readConfigEnvOverrides(params.config);
-  if (!params.claudeCodeMockCliTraffic.enabled) {
-    return {
-      env: buildSessionEnv(envOverrides),
-      mockCliTrafficProxy: null,
-    };
-  }
-
-  const mockCliTrafficProxy = await startClaudeCodeMockCliTrafficProxy({
-    endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
-    threadId: params.threadId,
-  });
-  return {
-    env: buildSessionEnv({
-      ...envOverrides,
-      ANTHROPIC_BASE_URL: mockCliTrafficProxy.baseUrl,
-      NO_PROXY: appendNoProxyLoopback(
-        envOverrides.NO_PROXY ?? process.env.NO_PROXY,
-      ),
-      no_proxy: appendNoProxyLoopback(
-        envOverrides.no_proxy ?? process.env.no_proxy,
-      ),
-    }),
-    mockCliTrafficProxy,
-  };
 }
 
 function parseClaudeSuggestedPermissionUpdates(
@@ -2041,12 +1971,8 @@ async function handleThreadStart(
     });
   }
 
-  const preparedEnv = await prepareSessionEnv(params);
-  const sessionOptions = buildTrackedSessionOptions(
-    params,
-    preparedEnv.env,
-    threadIdRef,
-  );
+  const env = buildSessionEnv(readConfigEnvOverrides(params.config));
+  const sessionOptions = buildTrackedSessionOptions(params, env, threadIdRef);
   const providerThreadId = randomUUID();
   sessionOptions.sessionId = providerThreadId;
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
@@ -2060,7 +1986,6 @@ async function handleThreadStart(
   }
 
   const threadSession = createThreadSession({
-    mockCliTrafficProxy: preparedEnv.mockCliTrafficProxy,
     liveSettings: toInitialLiveSessionSettings(params),
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
@@ -2136,13 +2061,9 @@ async function handleThreadResume(
     });
   }
 
-  const preparedEnv = await prepareSessionEnv(params);
+  const env = buildSessionEnv(readConfigEnvOverrides(params.config));
   const threadIdRef = { current: threadId };
-  const sessionOptions = buildTrackedSessionOptions(
-    params,
-    preparedEnv.env,
-    threadIdRef,
-  );
+  const sessionOptions = buildTrackedSessionOptions(params, env, threadIdRef);
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
   if (params.dynamicTools && params.dynamicTools.length > 0) {
     const mcpServer = buildBridgeMcpServer(
@@ -2153,7 +2074,6 @@ async function handleThreadResume(
     sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
   }
   const threadSession = createThreadSession({
-    mockCliTrafficProxy: preparedEnv.mockCliTrafficProxy,
     liveSettings: toInitialLiveSessionSettings(params),
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
@@ -2217,13 +2137,9 @@ async function handleThreadFork(
     return;
   }
 
-  const preparedEnv = await prepareSessionEnv(params);
+  const env = buildSessionEnv(readConfigEnvOverrides(params.config));
   const threadIdRef = { current: threadId };
-  const sessionOptions = buildTrackedSessionOptions(
-    params,
-    preparedEnv.env,
-    threadIdRef,
-  );
+  const sessionOptions = buildTrackedSessionOptions(params, env, threadIdRef);
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
   if (params.dynamicTools && params.dynamicTools.length > 0) {
     const mcpServer = buildBridgeMcpServer(
@@ -2234,7 +2150,6 @@ async function handleThreadFork(
     sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
   }
   const threadSession = createThreadSession({
-    mockCliTrafficProxy: preparedEnv.mockCliTrafficProxy,
     liveSettings: toInitialLiveSessionSettings(params),
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
@@ -2255,8 +2170,6 @@ async function handleThreadFork(
     sessionRestorable: true,
   });
 }
-
-
 
 /**
  * Session-construction params for a start, resume, or fork, with this

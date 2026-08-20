@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG } from "@bb/domain";
 import { createProviderForId } from "./provider-registry.js";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type { AgentRuntimeBridgeLaunch } from "./types.js";
@@ -98,7 +97,6 @@ describe("provider registry", () => {
       threadId: "thread-1",
       cwd: "/workspace",
       options: {
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "full",
         permissionScope: "full",
@@ -228,7 +226,6 @@ describe("provider registry", () => {
       threadId: "thread-1",
       cwd: "/workspace",
       options: {
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "full",
         permissionScope: "full",
@@ -277,7 +274,6 @@ describe("provider registry", () => {
       threadId: "thread-1",
       cwd: "/workspace",
       options: {
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "full",
         permissionScope: "full",
@@ -390,7 +386,6 @@ describe("provider registry", () => {
       threadId: "thread-1",
       cwd: "/workspace",
       options: {
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "full",
         permissionScope: "full",

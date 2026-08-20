@@ -17,7 +17,7 @@ describe("experiments", () => {
 
       const experiments = {
         ...defaultExperiments,
-        claudeCodeMockCliTraffic: true,
+        newOnboarding: true,
       };
       setExperiments(db, experiments);
       db.$client
@@ -35,7 +35,6 @@ describe("experiments", () => {
           .all()
           .map((row) => row.key),
       ).toEqual([
-        "claudeCodeMockCliTraffic",
         "editMessages",
         "futureExperiment",
         "mobileApp",

@@ -627,14 +627,6 @@ export async function createHostDaemonApp(
         throw error;
       }
     },
-    onStderr: (line) => {
-      if (line.includes('"component":"claude-code-mock-cli-traffic-proxy"')) {
-        options.logger.info(
-          { providerStderr: line },
-          "Claude Code mock CLI traffic proxy request",
-        );
-      }
-    },
     onProcessExit: (info) => {
       const threadIds = info.threads.map((thread) => thread.threadId);
       if (!info.expected && info.stderr) {

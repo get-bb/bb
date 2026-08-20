@@ -210,12 +210,10 @@ function appPaletteLabel(
 export interface ExperimentsSettingsSectionProps {
   /** True while the config query hasn't loaded or a toggle write is in flight. */
   disabled: boolean;
-  claudeCodeMockCliTrafficEnabled: boolean;
   editMessagesEnabled: boolean;
   mobileAppEnabled: boolean;
   newOnboardingEnabled: boolean;
   providerSessionReapingEnabled: boolean;
-  onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
   onEditMessagesEnabledChange: (enabled: boolean) => void;
   onMobileAppEnabledChange: (enabled: boolean) => void;
   onNewOnboardingEnabledChange: (enabled: boolean) => void;
@@ -996,20 +994,17 @@ export function ProviderSettingsSection({
   );
 }
 
-const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
 const EDIT_MESSAGES_EXPERIMENT_LABEL = "Edit messages";
 const MOBILE_APP_EXPERIMENT_LABEL = "Mobile app";
 const NEW_ONBOARDING_EXPERIMENT_LABEL = "New onboarding";
 const PROVIDER_SESSION_REAPING_EXPERIMENT_LABEL =
   "Idle provider session release";
 export function ExperimentsSettingsSection({
-  claudeCodeMockCliTrafficEnabled,
   disabled,
   editMessagesEnabled,
   mobileAppEnabled,
   newOnboardingEnabled,
   providerSessionReapingEnabled,
-  onClaudeCodeMockCliTrafficEnabledChange,
   onEditMessagesEnabledChange,
   onMobileAppEnabledChange,
   onNewOnboardingEnabledChange,
@@ -1021,19 +1016,6 @@ export function ExperimentsSettingsSection({
       description="Early features that are off by default. Opt in to try them."
     >
       <div className="space-y-5">
-        <SettingsWithControl
-          label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
-          labelBadge="dev-only"
-          description="Route Claude Code through CLI-style traffic."
-        >
-          <Switch
-            checked={claudeCodeMockCliTrafficEnabled}
-            disabled={disabled}
-            onCheckedChange={onClaudeCodeMockCliTrafficEnabledChange}
-            aria-label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
-          />
-        </SettingsWithControl>
-
         <SettingsWithControl
           label={EDIT_MESSAGES_EXPERIMENT_LABEL}
           description="Edit a sent message and replace the conversation from that point. Workspace changes are kept."
@@ -1231,16 +1213,9 @@ export function SettingsView() {
   } else if (activeSection === "experiments") {
     content = (
       <ExperimentsSettingsSection
-        claudeCodeMockCliTrafficEnabled={experiments.claudeCodeMockCliTraffic}
         disabled={
           systemConfigQuery.data === undefined ||
           updateExperimentsMutation.isPending
-        }
-        onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
-          updateExperimentsMutation.mutate({
-            ...experiments,
-            claudeCodeMockCliTraffic: enabled,
-          })
         }
         editMessagesEnabled={experiments.editMessages}
         onEditMessagesEnabledChange={(enabled) =>

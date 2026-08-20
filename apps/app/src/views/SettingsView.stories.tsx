@@ -330,20 +330,11 @@ function ExperimentsStory() {
 
   return (
     <ExperimentsSettingsSection
-      claudeCodeMockCliTrafficEnabled={
-        state.experiments.claudeCodeMockCliTraffic
-      }
       disabled={false}
       editMessagesEnabled={state.experiments.editMessages}
       mobileAppEnabled={state.experiments.mobileApp}
       newOnboardingEnabled={state.experiments.newOnboarding}
       providerSessionReapingEnabled={state.experiments.providerSessionReaping}
-      onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
-        state.setExperiments((current) => ({
-          ...current,
-          claudeCodeMockCliTraffic: enabled,
-        }))
-      }
       onEditMessagesEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,
