@@ -567,6 +567,60 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("Committed");
     expect(markup).toContain("1 file");
   });
+
+  it.each([
+    {
+      label: "checked open",
+      pullRequest: pullRequestFixture,
+      expectedMinWidthClass: "min-w-13",
+    },
+    {
+      label: "merged",
+      pullRequest: {
+        ...pullRequestFixture,
+        state: "merged" as const,
+        attention: "merged" as const,
+      },
+      expectedMinWidthClass: "min-w-8",
+    },
+    {
+      label: "closed",
+      pullRequest: {
+        ...pullRequestFixture,
+        state: "closed" as const,
+        attention: "closed" as const,
+      },
+      expectedMinWidthClass: "min-w-8",
+    },
+  ])(
+    "reserves only the width needed by a $label pull request status pill",
+    ({ pullRequest, expectedMinWidthClass }) => {
+      render(
+        <MemoryRouter>
+          <ThreadPromptContextBanner
+            gitSection={makeGitSection("committed")}
+            gitSectionPending={false}
+            archivedSection={null}
+            environmentGoneSection={null}
+            parentThreadSection={null}
+            childThreadsSection={null}
+            pullRequestSection={{ pullRequest }}
+            expandedSection={null}
+            onToggleSection={noop}
+          />
+        </MemoryRouter>,
+      );
+
+      const pullRequestLink = screen.getByRole("link", {
+        name: /Pull request 128:/,
+      });
+      expect(
+        ["min-w-8", "min-w-13"].filter((className) =>
+          pullRequestLink.classList.contains(className),
+        ),
+      ).toEqual([expectedMinWidthClass]);
+    },
+  );
 });
 
 describe("ThreadPromptContextBanner git section body", () => {

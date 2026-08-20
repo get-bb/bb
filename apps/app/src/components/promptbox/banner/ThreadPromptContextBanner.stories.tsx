@@ -473,6 +473,18 @@ const pendingPullRequestFixture = buildPullRequestFixture({
   },
   attention: "checks_pending",
 });
+const mergedPullRequestFixture = buildPullRequestFixture({
+  number: 134,
+  state: "merged",
+  checks: {
+    state: "passing",
+    totalCount: 3,
+    passedCount: 3,
+    failedCount: 0,
+    pendingCount: 0,
+  },
+  attention: "merged",
+});
 
 const pullRequestStateRows: readonly {
   label: string;
@@ -587,18 +599,7 @@ const pullRequestStateRows: readonly {
   {
     label: "merged",
     hint: "terminal state",
-    pullRequest: buildPullRequestFixture({
-      number: 134,
-      state: "merged",
-      checks: {
-        state: "passing",
-        totalCount: 3,
-        passedCount: 3,
-        failedCount: 0,
-        pendingCount: 0,
-      },
-      attention: "merged",
-    }),
+    pullRequest: mergedPullRequestFixture,
   },
   {
     label: "closed",
@@ -865,6 +866,12 @@ export function Overview() {
         hint="committed branch changes use the same label with or without PR context"
       >
         <Row pullRequest={pullRequestFixture} section={committedSection} />
+      </StoryRow>
+      <StoryRow
+        label="merged pull request + committed"
+        hint="terminal pull requests reserve space for only their single status glyph"
+      >
+        <Row pullRequest={mergedPullRequestFixture} section={committedSection} />
       </StoryRow>
       <StoryRow
         label="pull request + many committed + actions"

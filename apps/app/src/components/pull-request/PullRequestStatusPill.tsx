@@ -1,12 +1,10 @@
-import type {
-  PullRequestState,
-  ThreadPullRequest,
-  ThreadPullRequestChecksState,
-} from "@bb/domain";
+import type { PullRequestState, ThreadPullRequest } from "@bb/domain";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-
-export type GithubCheckStatus = "success" | "failure" | "pending";
+import {
+  getPullRequestGithubCheckStatus,
+  type GithubCheckStatus,
+} from "@/lib/pull-request-display";
 
 // The check glyph is the bundled GitHub mark with a small status dot in the
 // corner, drawn from theme tokens. It replaces the light + dark favicon PNGs
@@ -63,31 +61,6 @@ const PR_STATUS_ICON: Record<
 
 const CHECKED_PULL_REQUEST_STATUS_MIN_WIDTH_CLASS = "min-w-9";
 const SINGLE_PULL_REQUEST_STATUS_MIN_WIDTH_CLASS = "min-w-4";
-
-function getGithubCheckStatus(
-  state: ThreadPullRequestChecksState,
-): GithubCheckStatus | null {
-  switch (state) {
-    case "passing":
-      return "success";
-    case "failing":
-      return "failure";
-    case "pending":
-      return "pending";
-    case "no_checks":
-    case "unknown":
-      return null;
-  }
-}
-
-function getPullRequestGithubCheckStatus(
-  pullRequest: ThreadPullRequest,
-): GithubCheckStatus | null {
-  if (pullRequest.state !== "open" && pullRequest.state !== "draft") {
-    return null;
-  }
-  return getGithubCheckStatus(pullRequest.checks.state);
-}
 
 export function PullRequestStateIcon({
   state,
