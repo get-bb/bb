@@ -82,13 +82,16 @@ export function AppSelectAllController() {
           : null;
     }
 
-    function selectActiveScopeOrEditor() {
+    function selectActiveScopeOrEditor(): boolean {
       copyOverride = null;
       clearSelectAllHighlight();
       const activeElement = getDeepActiveElement();
+      if (activeElement instanceof HTMLIFrameElement) {
+        return false;
+      }
       if (activeElement !== null && isEditableTarget(activeElement)) {
         selectEditorContents(activeElement);
-        return;
+        return true;
       }
       if (
         activeScope !== null &&
@@ -114,6 +117,7 @@ export function AppSelectAllController() {
           selectedScope?.kind ?? null,
         );
       }
+      return true;
     }
 
     function handleCopy(event: ClipboardEvent) {

@@ -571,6 +571,7 @@ describe("desktop preload browser API", () => {
 
     api.onSelectAll?.(() => {
       selectAllRequests += 1;
+      return true;
     });
     emitIpcPayload({
       channel: BB_DESKTOP_SELECT_ALL_CHANNEL,
@@ -582,6 +583,21 @@ describe("desktop preload browser API", () => {
 
   it("requests native Select All when no renderer subscriber is installed", async () => {
     await loadPreload();
+
+    emitIpcPayload({
+      channel: BB_DESKTOP_SELECT_ALL_CHANNEL,
+      payload: null,
+    });
+
+    expect(electronMock.sendCalls).toContainEqual({
+      channel: BB_DESKTOP_SELECT_ALL_FALLBACK_CHANNEL,
+      payload: null,
+    });
+  });
+
+  it("requests native Select All when the renderer leaves the command unhandled", async () => {
+    const api = await loadPreload();
+    api.onSelectAll?.(() => false);
 
     emitIpcPayload({
       channel: BB_DESKTOP_SELECT_ALL_CHANNEL,

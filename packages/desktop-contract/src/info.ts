@@ -48,7 +48,7 @@ export type BbDesktopWindowStateChangeHandler = (
 ) => void;
 export type BbDesktopOpenNewTabHandler = () => void;
 export type BbDesktopAppCommandHandler = (command: AppCommandId) => void;
-export type BbDesktopSelectAllHandler = () => void;
+export type BbDesktopSelectAllHandler = () => boolean;
 export type BbDesktopCloseWindowRequestHandler = () => boolean;
 
 export interface BbDesktopApi extends BbDesktopInfo {
@@ -83,7 +83,10 @@ export interface BbDesktopApi extends BbDesktopInfo {
   onOpenNewTab?(listener: BbDesktopOpenNewTabHandler): BbDesktopInfoUnsubscribe;
   /** Subscribe to native menu commands that are executed by the renderer. */
   onAppCommand?(listener: BbDesktopAppCommandHandler): BbDesktopInfoUnsubscribe;
-  /** Subscribe to the native Edit ▸ Select All command. */
+  /**
+   * Subscribe to the native Edit ▸ Select All command. Return false when
+   * Electron should preserve its native fallback, such as for a focused frame.
+   */
   onSelectAll?(listener: BbDesktopSelectAllHandler): BbDesktopInfoUnsubscribe;
   /**
    * Subscribe to native desktop close-window requests. Return true when the

@@ -75,15 +75,15 @@ function dispatchSelectAll(target: Element): KeyboardEvent {
   return event;
 }
 
-function installDesktopSelectAllBridge(): () => void {
-  let listener: (() => void) | undefined;
+function installDesktopSelectAllBridge(): () => boolean {
+  let listener: (() => boolean) | undefined;
   window.bbDesktop = {
-    onSelectAll(nextListener: () => void) {
+    onSelectAll(nextListener: () => boolean) {
       listener = nextListener;
       return () => undefined;
     },
   } as unknown as BbDesktopApi;
-  return () => listener?.();
+  return () => listener?.() ?? false;
 }
 
 afterEach(() => {
@@ -154,6 +154,17 @@ describe("AppSelectAllController", () => {
     expect(window.getSelection()?.toString()).not.toContain(
       "Side chat message",
     );
+  });
+
+  it("leaves desktop Select All to Electron when an iframe owns focus", () => {
+    const requestSelectAll = installDesktopSelectAllBridge();
+    render(<AppSelectAllController />);
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    iframe.focus();
+
+    expect(document.activeElement).toBe(iframe);
+    expect(requestSelectAll()).toBe(false);
   });
 
   it("keeps native desktop Select All inside a shadow-root editor", () => {

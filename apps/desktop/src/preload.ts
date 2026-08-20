@@ -416,12 +416,12 @@ ipcRenderer.on(BB_DESKTOP_APP_COMMAND_CHANNEL, (_event, payload: unknown) => {
 });
 
 ipcRenderer.on(BB_DESKTOP_SELECT_ALL_CHANNEL, () => {
-  if (selectAllListeners.size === 0) {
-    ipcRenderer.send(BB_DESKTOP_SELECT_ALL_FALLBACK_CHANNEL, null);
-    return;
-  }
+  let handled = false;
   for (const listener of selectAllListeners) {
-    listener();
+    handled = listener() || handled;
+  }
+  if (!handled) {
+    ipcRenderer.send(BB_DESKTOP_SELECT_ALL_FALLBACK_CHANNEL, null);
   }
 });
 
