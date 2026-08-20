@@ -254,15 +254,26 @@ jobs:
           mkdir -p e2e-artifacts
           pnpm exec turbo run e2e:mobile-backend --filter=@bb/integration-tests --output-logs=full > e2e-artifacts/backend.log 2>&1 &
           echo $! > e2e-artifacts/backend.pid
+          # `$!` is the `pnpm exec` wrapper, which exits on macOS while turbo
+          # and the backend keep running, so its death alone does not mean the
+          # backend died — only give up when the backend process is gone too.
+          healthy=0
           for _ in $(seq 1 240); do
             if curl -fsS "http://127.0.0.1:$BB_MOBILE_E2E_PORT/health" >/dev/null 2>&1; then
+              healthy=1
               break
             fi
-            if ! kill -0 "$(cat e2e-artifacts/backend.pid)" 2>/dev/null; then
+            if ! kill -0 "$(cat e2e-artifacts/backend.pid)" 2>/dev/null &&
+              ! pgrep -f "mobile-e2e/backend.ts" >/dev/null 2>&1; then
               echo "backend exited early"; cat e2e-artifacts/backend.log; exit 1
             fi
             sleep 2
           done
+          if [ "$healthy" != "1" ]; then
+            echo "backend did not answer /health in time"
+            cat e2e-artifacts/backend.log
+            exit 1
+          fi
           curl -fsS "http://127.0.0.1:$BB_MOBILE_E2E_PORT/health"
           grep -m1 '"serverUrl"' e2e-artifacts/backend.log || (cat e2e-artifacts/backend.log; exit 1)
 
