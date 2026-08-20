@@ -59,6 +59,7 @@ import {
   pruneResolvedItemDeltas,
   pruneThreadEventsBeforeSequence,
   listLatestOpenBackgroundTaskStateRowsForThread,
+  STORED_TIMELINE_BYTE_PREFLIGHT_EVENT_LIMIT,
 } from "../../src/data/events.js";
 import { createEnvironment } from "../../src/data/environments.js";
 import { createProject } from "../../src/data/projects.js";
@@ -4623,6 +4624,44 @@ describe("timeline read-boundary output truncation", () => {
       sequenceStart: 3,
       turnId: null,
     }));
+  });
+
+  it("bounds the byte-total preflight before using the early-stopping iterator", () => {
+    const { db, thread } = setup();
+    const validData = JSON.stringify({ message: "valid" });
+    insertEvents(
+      db,
+      noopNotifier,
+      Array.from(
+        { length: STORED_TIMELINE_BYTE_PREFLIGHT_EVENT_LIMIT + 2 },
+        (_, index) => ({
+          threadId: thread.id,
+          sequence: index + 1,
+          type: "system/error" as const,
+          ...threadEventFields,
+          data: validData,
+        }),
+      ),
+    );
+    db.$client
+      .prepare("UPDATE events SET data = ? WHERE thread_id = ? AND sequence = 1")
+      .run(`{"item":{"resultText":"${"x".repeat(1_100)}`, thread.id);
+
+    expect(
+      findStoredTimelineWindowByteBudgetFloor(db, {
+        maxDataBytes: 1,
+        maxInlineOutputChars: 1_000,
+        sequenceStart: 1,
+        threadId: thread.id,
+      }),
+    ).toEqual({
+      createdAt: expect.any(Number),
+      eventDataBytes: Buffer.byteLength(validData),
+      hasOlderRows: true,
+      kind: "single-event-too-large",
+      sequenceStart: STORED_TIMELINE_BYTE_PREFLIGHT_EVENT_LIMIT + 2,
+      turnId: null,
+    });
   });
 
   it.each(["floor", "single-event-too-large"] as const)(
