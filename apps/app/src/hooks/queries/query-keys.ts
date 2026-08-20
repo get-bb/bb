@@ -435,6 +435,7 @@ export type SystemProvidersQueryKey = readonly [
   typeof SYSTEM_PROVIDERS_QUERY_KEY,
   string | null,
   string | null,
+  "usage" | null,
 ];
 export type AllSystemProvidersQueryKeyPrefix = readonly [
   typeof SYSTEM_PROVIDERS_QUERY_KEY,
@@ -450,6 +451,7 @@ export type HostProviderCliStatusQueryKey = readonly [
 ];
 export type SystemUsageLimitsQueryKey = readonly [
   typeof SYSTEM_USAGE_LIMITS_QUERY_KEY,
+  string | null,
   string | null,
 ];
 export type SystemProviderStatesQueryKey = readonly [
@@ -1035,6 +1037,7 @@ export function environmentFilePreviewQueryKeyPrefix(
 }
 
 export interface SystemProvidersQueryKeyArgs {
+  capability?: "usage" | null;
   environmentId?: string | null;
   hostId?: string | null;
 }
@@ -1046,6 +1049,7 @@ export function systemProvidersQueryKey(
     SYSTEM_PROVIDERS_QUERY_KEY,
     args.environmentId ?? null,
     args.hostId ?? null,
+    args.capability ?? null,
   ];
 }
 
@@ -1073,8 +1077,9 @@ export function hostProviderCliStatusQueryKey(
 
 export function systemUsageLimitsQueryKey(
   hostId: string | null,
+  providerId: string | null = null,
 ): SystemUsageLimitsQueryKey {
-  return [SYSTEM_USAGE_LIMITS_QUERY_KEY, hostId];
+  return [SYSTEM_USAGE_LIMITS_QUERY_KEY, hostId, providerId];
 }
 
 export function systemProviderStatesQueryKey(

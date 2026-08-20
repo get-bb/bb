@@ -194,6 +194,31 @@ describe("UsageLimitsSettingsSectionContent", () => {
     expect(screen.queryByText("Usage not provided.")).toBeNull();
   });
 
+  it("renders completed providers while their peers are still loading", () => {
+    renderContent({
+      usage: { codex: { status: "unauthenticated" } },
+      providers: [
+        provider("codex", "Codex"),
+        provider("claude-code", "Claude Code"),
+      ],
+      providerStates: {
+        codex: { isError: false, isLoading: false },
+        "claude-code": { isError: false, isLoading: true },
+      },
+      isLoading: true,
+      isError: false,
+      isFetching: true,
+      onRefresh: vi.fn(),
+    });
+
+    expect(screen.getByText(/Run `codex` to sign in/u)).toBeDefined();
+    const claudeHeading = screen.getByRole("heading", {
+      name: "Claude Code",
+    });
+    const loading = screen.getByText("Loading usage…");
+    expect(claudeHeading.parentElement?.contains(loading)).toBe(true);
+  });
+
   it("shows an initial loading message before the provider list arrives", () => {
     renderContent({
       usage: {},

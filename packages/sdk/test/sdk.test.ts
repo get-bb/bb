@@ -555,7 +555,7 @@ describe("@bb/sdk", () => {
     });
 
     await expect(
-      sdk.providers.list({ hostId: "host_remote" }),
+      sdk.providers.list({ capability: "usage", hostId: "host_remote" }),
     ).resolves.toEqual([]);
     await expect(
       sdk.providers.models({
@@ -568,7 +568,7 @@ describe("@bb/sdk", () => {
       {
         bodyText: undefined,
         method: "GET",
-        url: "http://bb.test/api/v1/system/providers?hostId=host_remote",
+        url: "http://bb.test/api/v1/system/providers?capability=usage&hostId=host_remote",
       },
       {
         bodyText: undefined,
@@ -594,13 +594,16 @@ describe("@bb/sdk", () => {
     });
 
     await expect(
-      sdk.system.usageLimits({ hostId: "host_remote" }),
+      sdk.system.usageLimits({
+        hostId: "host_remote",
+        providerId: "codex",
+      }),
     ).resolves.toEqual(usage);
     expect(queue.requests).toEqual([
       {
         bodyText: undefined,
         method: "GET",
-        url: "http://bb.test/api/v1/system/usage-limits?hostId=host_remote",
+        url: "http://bb.test/api/v1/system/usage-limits?hostId=host_remote&providerId=codex",
       },
     ]);
   });

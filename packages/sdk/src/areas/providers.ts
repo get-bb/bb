@@ -1,6 +1,7 @@
 import type {
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
+  SystemProvidersQuery,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
@@ -11,6 +12,7 @@ export type ProviderHostRoutingArgs =
   | { environmentId?: never; hostId?: never };
 
 export type ProviderListArgs = ProviderHostRoutingArgs & {
+  capability?: SystemProvidersQuery["capability"];
   signal?: AbortSignal;
 };
 export type ProviderModelsArgs = ProviderHostRoutingArgs & {
@@ -36,6 +38,7 @@ export function createProvidersArea(args: CreateSdkAreaArgs): ProvidersArea {
         transport.api.v1.system.providers.$get(
           {
             query: {
+              capability: input.capability,
               environmentId: input.environmentId,
               hostId: input.hostId,
             },

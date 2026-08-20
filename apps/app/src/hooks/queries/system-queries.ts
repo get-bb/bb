@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryKey } from "@tanstack/react-query";
 import type { AvailableModel, PermissionMode, ProviderInfo } from "@bb/domain";
 import { SYSTEM_EXECUTION_OPTIONS_QUERY_KEY } from "@/hooks/queries/query-keys";
@@ -16,11 +16,13 @@ import type {
   SystemCliSkillsStatusResponse,
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
+  SystemProvidersQuery,
   SystemProviderStatesResponse,
   SystemVersionResponse,
 } from "@bb/server-contract";
 import type {
   ProviderCliStatusResponse,
+  ProviderUsage,
   ProviderUsageResponse,
 } from "@bb/host-daemon-contract";
 import { BbHttpError, sdk } from "@/lib/sdk";
@@ -74,7 +76,9 @@ type SystemProviderRoutingArgs =
   | { environmentId?: never; hostId: string }
   | { environmentId?: never; hostId?: never };
 
-export type UseSystemProvidersArgs = QueryOptions & SystemProviderRoutingArgs;
+export type UseSystemProvidersArgs = QueryOptions &
+  SystemProviderRoutingArgs &
+  Pick<SystemProvidersQuery, "capability">;
 
 export type UseSystemProviderInfoArgs = UseSystemProvidersArgs & {
   providerId?: string;
@@ -398,23 +402,38 @@ function shouldRetrySystemExecutionOptions(
  * need provider metadata or capabilities should use.
  */
 export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
+  const capability = args.capability ?? null;
   const environmentId = args.environmentId ?? null;
   const hostId = args.hostId ?? null;
   const enabled = args.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
   return useQuery<ProviderInfo[]>({
-    queryKey: systemProvidersQueryKey({ environmentId, hostId }),
+    queryKey: systemProvidersQueryKey({ capability, environmentId, hostId }),
     queryFn: ({ signal }) => {
       if (args.environmentId !== undefined) {
         return sdk.providers.list({
+          ...(args.capability === undefined
+            ? {}
+            : { capability: args.capability }),
           environmentId: args.environmentId,
           signal,
         });
       }
       if (args.hostId !== undefined) {
-        return sdk.providers.list({ hostId: args.hostId, signal });
+        return sdk.providers.list({
+          ...(args.capability === undefined
+            ? {}
+            : { capability: args.capability }),
+          hostId: args.hostId,
+          signal,
+        });
       }
-      return sdk.providers.list({ signal });
+      return sdk.providers.list({
+        ...(args.capability === undefined
+          ? {}
+          : { capability: args.capability }),
+        signal,
+      });
     },
     enabled,
     staleTime: 60_000,
@@ -590,18 +609,80 @@ export function useSystemProviderStates(
 
 export interface UseSystemUsageLimitsArgs extends QueryOptions {
   hostId?: string;
+  providerId?: string;
 }
 
 export function useSystemUsageLimits(args: UseSystemUsageLimitsArgs = {}) {
   const hostId = args.hostId ?? null;
+  const providerId = args.providerId ?? null;
   return useQuery<ProviderUsageResponse>({
-    queryKey: systemUsageLimitsQueryKey(hostId),
+    queryKey: systemUsageLimitsQueryKey(hostId, providerId),
     queryFn: ({ signal }) =>
       sdk.system.usageLimits({
         ...(args.hostId === undefined ? {} : { hostId: args.hostId }),
+        ...(args.providerId === undefined
+          ? {}
+          : { providerId: args.providerId }),
         signal,
       }),
     enabled: args.enabled ?? true,
     ...FOCUS_OWNED_LIVE_QUERY_POLICY,
   });
+}
+
+export interface ProviderUsageQueryState {
+  isError: boolean;
+  isLoading: boolean;
+}
+
+export interface UseSystemProviderUsageLimitsArgs extends QueryOptions {
+  hostId?: string;
+  providerIds: readonly string[];
+}
+
+/** Loads each provider independently so one slow bridge cannot block peers. */
+export function useSystemProviderUsageLimits(
+  args: UseSystemProviderUsageLimitsArgs,
+) {
+  const hostId = args.hostId ?? null;
+  const enabled = args.enabled ?? true;
+  const queries = useQueries({
+    queries: args.providerIds.map((providerId) => ({
+      queryKey: systemUsageLimitsQueryKey(hostId, providerId),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        sdk.system.usageLimits({
+          ...(args.hostId === undefined ? {} : { hostId: args.hostId }),
+          providerId,
+          signal,
+        }),
+      enabled,
+      ...FOCUS_OWNED_LIVE_QUERY_POLICY,
+    })),
+  });
+  const usage: ProviderUsageResponse = {};
+  const providerStates: Record<string, ProviderUsageQueryState> = {};
+
+  args.providerIds.forEach((providerId, index) => {
+    const query = queries[index];
+    if (query === undefined) return;
+    const providerUsage: ProviderUsage | undefined = query.data?.[providerId];
+    if (providerUsage !== undefined) {
+      usage[providerId] = providerUsage;
+    }
+    providerStates[providerId] = {
+      isError: query.isError,
+      isLoading: query.isLoading,
+    };
+  });
+
+  return {
+    isError: queries.some((query) => query.isError),
+    isFetching: queries.some((query) => query.isFetching),
+    isLoading: queries.some((query) => query.isLoading),
+    providerStates,
+    refetch: async () => {
+      await Promise.all(queries.map((query) => query.refetch()));
+    },
+    usage,
+  };
 }

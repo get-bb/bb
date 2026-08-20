@@ -16,9 +16,10 @@ import { resolveBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
 import { mapProviderMaintenanceRequests } from "./provider-maintenance-concurrency.js";
 
 /**
- * Reads live subscription usage from every provider bridge that implements
- * provider/usage. The server owns aggregation and host routing; credentials,
- * provider APIs, and normalization stay inside the provider plugin.
+ * Reads live subscription usage from one requested provider or every provider
+ * bridge that declares provider/usage. The server owns aggregation and host
+ * routing; credentials, provider APIs, and normalization stay inside the
+ * provider plugin.
  */
 export async function getProviderUsageLimits(
   deps: AppDeps,
@@ -26,7 +27,12 @@ export async function getProviderUsageLimits(
 ): Promise<ProviderUsageResponse> {
   const hostId = query.hostId ?? requirePrimaryHostId(deps);
   assertUsableHostId(deps, { hostId });
-  const providers = await listSystemProviderInfos(deps, { hostId });
+  const providers = (
+    await listSystemProviderInfos(deps, { hostId, capability: "usage" })
+  ).filter(
+    (provider) =>
+      query.providerId === undefined || provider.id === query.providerId,
+  );
   const entries = await mapProviderMaintenanceRequests(
     providers,
     async (provider): Promise<[string, ProviderUsage] | null> => {

@@ -86,6 +86,9 @@ type AppendCustomModelsResult = Pick<
 >;
 
 type ListSystemProviderInfosRequest = SystemProvidersQuery;
+type ProviderCapabilityFilter = NonNullable<
+  ListSystemProviderInfosRequest["capability"]
+>;
 
 interface ListSystemProviderInfosResult {
   hostId: string | null;
@@ -112,8 +115,21 @@ function buildCustomAcpProviderInfo(agent: CustomAcpAgent): ProviderInfo {
   });
 }
 
+function providerMatchesCapability(
+  provider: ProviderInfo,
+  capability: ProviderCapabilityFilter | undefined,
+): boolean {
+  switch (capability) {
+    case "usage":
+      return provider.experimental_providerUsage;
+    case undefined:
+      return true;
+  }
+}
+
 function listConfiguredSystemProviderInfos(
   deps: Pick<LoggedWorkSessionDeps, "config" | "providerRegistry">,
+  capability?: ProviderCapabilityFilter,
 ): ProviderInfo[] {
   // User-configured ACP ids stay dynamic and override a plugin-owned built-in
   // with the same id, preserving the existing custom-agent precedence.
@@ -129,11 +145,14 @@ function listConfiguredSystemProviderInfos(
       .filter(
         (entry) =>
           entry.visibility === "always" &&
-          !customProviderIds.has(entry.info.id),
+          !customProviderIds.has(entry.info.id) &&
+          providerMatchesCapability(entry.info, capability),
       )
       .map((entry) => entry.info),
     ...(acpTierAvailable
-      ? deps.config.customAcpAgents.map(buildCustomAcpProviderInfo)
+      ? deps.config.customAcpAgents
+          .map(buildCustomAcpProviderInfo)
+          .filter((provider) => providerMatchesCapability(provider, capability))
       : []),
   ];
   return providers;
@@ -180,6 +199,7 @@ function expectedFallbackErrorLogFields(
 async function listInstalledPluginProviderInfos(
   deps: LoggedWorkSessionDeps,
   hostId: string,
+  capability?: ProviderCapabilityFilter,
 ): Promise<ProviderInfo[]> {
   const customProviderIds = new Set(
     deps.config.customAcpAgents.map((agent) =>
@@ -191,7 +211,8 @@ async function listInstalledPluginProviderInfos(
     .filter(
       (registration) =>
         registration.visibility === "installed" &&
-        !customProviderIds.has(registration.info.id),
+        !customProviderIds.has(registration.info.id) &&
+        providerMatchesCapability(registration.info, capability),
     );
   const results = await mapProviderMaintenanceRequests(
     registrations,
@@ -238,9 +259,10 @@ async function listInstalledPluginProviderInfos(
 async function listSystemProviderInfosForHost(
   deps: LoggedWorkSessionDeps,
   hostId: string,
+  capability?: ProviderCapabilityFilter,
 ): Promise<ProviderInfo[]> {
-  return listConfiguredSystemProviderInfos(deps).concat(
-    await listInstalledPluginProviderInfos(deps, hostId),
+  return listConfiguredSystemProviderInfos(deps, capability).concat(
+    await listInstalledPluginProviderInfos(deps, hostId, capability),
   );
 }
 
@@ -253,7 +275,11 @@ function resolveSystemProviderInfosPlan(
     return {
       hostId,
       hostLookupError: null,
-      providersPromise: listSystemProviderInfosForHost(deps, hostId),
+      providersPromise: listSystemProviderInfosForHost(
+        deps,
+        hostId,
+        query.capability,
+      ),
     };
   } catch (error) {
     if (!canOmitProviderDiscoveryForError(error)) {
@@ -267,7 +293,7 @@ function resolveSystemProviderInfosPlan(
       hostId: null,
       hostLookupError: error,
       providersPromise: Promise.resolve(
-        listConfiguredSystemProviderInfos(deps),
+        listConfiguredSystemProviderInfos(deps, query.capability),
       ),
     };
   }

@@ -220,7 +220,12 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     async usageLimits(input = {}) {
       return transport.readJson(
         transport.api.v1.system["usage-limits"].$get(
-          { query: { hostId: input.hostId } },
+          {
+            query: {
+              hostId: input.hostId,
+              providerId: input.providerId,
+            },
+          },
           ...signalRequestArgs(input.signal),
         ),
       );

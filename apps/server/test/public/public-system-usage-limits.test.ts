@@ -109,6 +109,42 @@ describe("GET /api/v1/system/usage-limits", () => {
             request.command.providerId === "no-usage",
         ),
       ).toBe(false);
+      expect(
+        responder.requests.some(
+          (request) => request.command.type === "provider.health",
+        ),
+      ).toBe(false);
+    });
+  });
+
+  it("loads one provider without waiting for its peers", async () => {
+    await withTestHarness(async (harness) => {
+      const primary = seedHostSession(harness.deps, { id: "host-primary" });
+      seedPrimaryHost(harness.deps, primary.host.id);
+      const responder = registerHostRpcResponder(harness, {
+        hostId: primary.host.id,
+        sessionId: primary.session.id,
+        handle: handleUsageRequest,
+      });
+
+      const response = await harness.app.request(
+        "/api/v1/system/usage-limits?providerId=codex",
+      );
+
+      expect(response.status).toBe(200);
+      expect(await readJson(response)).toEqual({ codex: USAGE_RESPONSE.codex });
+      expect(
+        responder.requests.flatMap((request) =>
+          request.command.type === "provider.usage"
+            ? [request.command.providerId]
+            : [],
+        ),
+      ).toEqual(["codex"]);
+      expect(
+        responder.requests.some(
+          (request) => request.command.type === "provider.health",
+        ),
+      ).toBe(false);
     });
   });
 

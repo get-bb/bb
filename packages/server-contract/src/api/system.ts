@@ -12,9 +12,7 @@ import {
   pluginThemeMetaSchema,
   providerInfoSchema,
 } from "@bb/domain";
-import {
-  experimental_providerHealthSchema as providerHealthSchema,
-} from "@bb/provider-bridge-protocol/provider-maintenance";
+import { experimental_providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
 import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
 
 export const systemExecutionOptionsModelLoadErrorCodeSchema = z.enum([
@@ -83,10 +81,14 @@ function rejectMultipleProviderHostSelectors(
 
 /**
  * Routes provider discovery through an environment's host or an explicit
- * host. Omitting both preserves the primary-host fallback.
+ * host. Omitting both preserves the primary-host fallback. `capability`
+ * narrows discovery before host probes begin.
  */
 export const systemProvidersQuerySchema = z
-  .object(systemProviderHostQueryFields)
+  .object({
+    ...systemProviderHostQueryFields,
+    capability: z.enum(["usage"]),
+  })
   .partial()
   .superRefine(rejectMultipleProviderHostSelectors);
 export type SystemProvidersQuery = z.infer<typeof systemProvidersQuerySchema>;
@@ -102,9 +104,13 @@ export type SystemExecutionOptionsQuery = z.infer<
   typeof systemExecutionOptionsQuerySchema
 >;
 
-/** Omission preserves the existing behavior of reading the primary machine. */
+/**
+ * Omitting `hostId` reads the primary machine; omitting `providerId` returns
+ * the aggregate used by CLI clients.
+ */
 export const systemUsageLimitsQuerySchema = z.object({
   hostId: z.string().min(1).optional(),
+  providerId: z.string().min(1).optional(),
 });
 export type SystemUsageLimitsQuery = z.infer<
   typeof systemUsageLimitsQuerySchema

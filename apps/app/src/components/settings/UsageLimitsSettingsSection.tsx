@@ -22,8 +22,9 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
   useSystemConfig,
+  useSystemProviderUsageLimits,
   useSystemProviders,
-  useSystemUsageLimits,
+  type ProviderUsageQueryState,
 } from "@/hooks/queries/system-queries";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import {
@@ -181,6 +182,7 @@ export interface UsageLimitsSettingsSectionContentProps {
   isProviderListError?: boolean;
   isFetching: boolean;
   onRefresh: () => void;
+  providerStates?: Readonly<Record<string, ProviderUsageQueryState>>;
   providers?: readonly ProviderInfo[];
   hosts?: readonly Host[];
   selectedHostId?: string | null;
@@ -376,6 +378,7 @@ export function UsageLimitsSettingsSectionContent({
   isProviderListError = false,
   isFetching,
   onRefresh,
+  providerStates = {},
   providers = [],
   hosts = [],
   selectedHostId = null,
@@ -448,8 +451,10 @@ export function UsageLimitsSettingsSectionContent({
               key={config.providerId}
               config={config}
               usage={usage[config.providerId]}
-              isLoading={isLoading}
-              isError={isError}
+              isLoading={
+                providerStates[config.providerId]?.isLoading ?? isLoading
+              }
+              isError={providerStates[config.providerId]?.isError ?? isError}
             />
           ))
         )}
@@ -471,22 +476,28 @@ export function UsageLimitsSettingsSection() {
     hosts.find((host) => host.id === selectedHostId) ?? primaryHost;
   const usageHostId =
     selectedHost?.id ?? systemConfigQuery.data?.primaryHostId ?? undefined;
-  const usageQuery = useSystemUsageLimits({
-    hostId: usageHostId,
-    enabled: systemConfigQuery.data !== undefined,
-  });
   const providersQuery = useSystemProviders(
     usageHostId === undefined
-      ? { enabled: systemConfigQuery.data !== undefined }
+      ? {
+          capability: "usage",
+          enabled: systemConfigQuery.data !== undefined,
+        }
       : {
+          capability: "usage",
           enabled: systemConfigQuery.data !== undefined,
           hostId: usageHostId,
         },
   );
+  const providers = providersQuery.data ?? [];
+  const usageQuery = useSystemProviderUsageLimits({
+    ...(usageHostId === undefined ? {} : { hostId: usageHostId }),
+    enabled: systemConfigQuery.data !== undefined && providersQuery.isSuccess,
+    providerIds: providers.map((provider) => provider.id),
+  });
 
   return (
     <UsageLimitsSettingsSectionContent
-      usage={usageQuery.data ?? {}}
+      usage={usageQuery.usage}
       isLoading={usageQuery.isLoading}
       isError={usageQuery.isError}
       isProviderListLoading={providersQuery.isLoading}
@@ -495,7 +506,8 @@ export function UsageLimitsSettingsSection() {
       onRefresh={() => {
         void usageQuery.refetch();
       }}
-      providers={providersQuery.data ?? []}
+      providerStates={usageQuery.providerStates}
+      providers={providers}
       hosts={hosts}
       selectedHostId={selectedHost?.id ?? null}
       onSelectHost={setSelectedHostId}
