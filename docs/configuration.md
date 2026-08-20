@@ -944,7 +944,10 @@ path avoids this because WebSocket traffic goes through the Vite proxy.
 same checkout-specific data directory, server port, and host-daemon port. It
 builds production artifacts and serves the frontend bundle from the main
 server, so there is no separate Vite listener or hot reload. Telemetry remains
-disabled for this source-development command.
+disabled for this source-development command. Its worktree data directory,
+ports, inherited skills, listener host, absent Vite port, and telemetry policy
+take precedence over conflicting values saved in that instance's `config.json`
+or `env.json`.
 `pnpm start` loads `.env`, `.env.local`, `.env.production`, and
 `.env.production.local`.
 

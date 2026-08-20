@@ -55,6 +55,7 @@ export function createStartWorktreeCommand(): DevCommand {
       "--import",
       "tsx",
       resolve(repoRoot, "scripts", "start-bb.mjs"),
+      "--worktree-runtime-policy",
     ],
     command: process.execPath,
   };

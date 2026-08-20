@@ -240,6 +240,7 @@ describe("run-dev", () => {
       "--import",
       "tsx",
       path.resolve(import.meta.dirname, "../../..", "scripts/start-bb.mjs"),
+      "--worktree-runtime-policy",
     ]);
   });
 
