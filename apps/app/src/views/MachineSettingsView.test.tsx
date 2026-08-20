@@ -387,7 +387,7 @@ describe("MachineSettingsView", () => {
     renderView();
 
     expect(
-      await screen.findByText("That machine is no longer paired."),
+      await screen.findByText("Machine is no longer paired."),
     ).toBeDefined();
   });
 });

@@ -288,7 +288,7 @@ export function MachineSettingsView() {
             Machines
           </Link>
           <p className="text-sm text-muted-foreground">
-            That machine is no longer paired.
+            Machine is no longer paired.
           </p>
         </div>
       </PageShell>

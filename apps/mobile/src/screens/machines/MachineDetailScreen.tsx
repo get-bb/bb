@@ -128,7 +128,7 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
   if (host === null) {
     return (
       <Screen testID="machine-detail-screen">
-        <EmptyStatePanel>That machine is no longer paired.</EmptyStatePanel>
+        <EmptyStatePanel>Machine is no longer paired.</EmptyStatePanel>
         <Button variant="outline" onPress={() => router.back()}>
           Back to machines
         </Button>
