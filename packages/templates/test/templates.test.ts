@@ -7,15 +7,6 @@ import {
 } from "../src/index.js";
 
 describe("@bb/templates", () => {
-  it("renders a template with variables", () => {
-    const rendered = renderTemplate("threadOperationCommitFailureFollowUp", {
-      errorMessage: "hooks/pre-commit exited with status 1",
-    });
-
-    expect(rendered).toContain("Commit in this thread workspace failed.");
-    expect(rendered).toContain("hooks/pre-commit exited with status 1");
-  });
-
   it("documents project creation machine routing", () => {
     const guide = renderTemplate("bbGuideProjects", {});
 
@@ -48,20 +39,6 @@ describe("@bb/templates", () => {
         "Please check the failing test.",
       ].join("\n"),
     );
-  });
-
-  it("renders squash merge commit failure follow-up from structured variables", () => {
-    const rendered = renderTemplate(
-      "threadOperationSquashMergeCommitFailureFollowUp",
-      {
-        prepCommitMergeBaseBranch: "main",
-        errorMessage: "nothing to commit",
-      },
-    );
-
-    expect(rendered).toContain("could not create the prep commit");
-    expect(rendered).toContain("main");
-    expect(rendered).toContain("nothing to commit");
   });
 
   it("renders standardAgentAppendInstructions without user-question guidance", () => {

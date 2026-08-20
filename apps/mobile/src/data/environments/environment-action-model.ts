@@ -115,23 +115,6 @@ function toEnvironmentActionFailureDetails(
   return result.success ? result.data : undefined;
 }
 
-function describeFailureDetails(
-  details: EnvironmentActionFailureDetails,
-): string | undefined {
-  switch (details.kind) {
-    case "commit_failed":
-      return details.errorMessage;
-    case "squash_merge_conflict":
-      return details.conflictFiles.length > 0
-        ? `Conflicts: ${details.conflictFiles.join(", ")}`
-        : undefined;
-    case "squash_merge_commit_failed":
-      return details.errorMessage;
-    case "workspace_unavailable":
-      return details.failure.message;
-  }
-}
-
 export function describeEnvironmentActionFailure({
   action,
   error,
@@ -142,7 +125,7 @@ export function describeEnvironmentActionFailure({
   const details = toEnvironmentActionFailureDetails(error);
   const copy = ENVIRONMENT_ACTION_COPY[action];
   const description =
-    (details ? describeFailureDetails(details) : undefined) ??
+    details?.failure.message ??
     getMutationErrorMessage({
       error,
       fallbackMessage: "The action did not complete.",

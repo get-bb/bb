@@ -2057,7 +2057,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const gitActions = useThreadGitActions({
     environment,
     requestEnvironmentAction,
-    sendMessage,
     thread,
     workspaceStatus,
   });

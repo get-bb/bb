@@ -173,42 +173,15 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     },
   },
   {
-    id: "git-error-ask-agent",
+    id: "git-error",
     group: "Git actions",
-    label: "git error with action",
+    label: "git error",
     source: "useThreadGitActions",
-    usage: [
-      "Thread git action fails",
-      "Ask agent only for recoverable failures",
-    ],
+    usage: ["Thread git action fails"],
     current: {
       tone: "error",
       title: "Commit failed",
       description: "Command exited with code 1",
-      primaryActionLabel: "Ask agent to fix",
-    },
-  },
-  {
-    id: "message-to-agent-success",
-    group: "Git actions",
-    label: "agent message success",
-    source: "useThreadGitActions",
-    usage: ["Ask agent to fix message sent"],
-    current: {
-      tone: "success",
-      title: "Message sent",
-    },
-  },
-  {
-    id: "message-to-agent-error",
-    group: "Git actions",
-    label: "agent message error",
-    source: "useThreadGitActions",
-    usage: ["Ask agent to fix message failed"],
-    current: {
-      tone: "error",
-      title: "Failed to message agent",
-      description: "Message was not sent",
     },
   },
   {

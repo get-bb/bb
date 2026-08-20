@@ -115,26 +115,33 @@ describe("describeEnvironmentActionFailure", () => {
     });
   });
 
-  it("prefers the typed failure details (conflicts) over the generic message", () => {
+  it("prefers workspace-unavailable details over the generic message", () => {
     const failure = describeEnvironmentActionFailure({
       action: "squash_merge",
       error: new BbHttpError({
-        status: 502,
-        code: "git_command_failed",
-        message: "squash merge failed",
+        status: 409,
+        code: "workspace_unavailable",
+        message: "Workspace unavailable",
         body: {
-          code: "git_command_failed",
-          message: "squash merge failed",
+          code: "workspace_unavailable",
+          message: "Workspace unavailable",
           details: {
-            kind: "squash_merge_conflict",
-            conflictFiles: ["src/a.ts", "src/b.ts"],
+            kind: "workspace_unavailable",
+            failure: {
+              code: "path_not_found",
+              workspacePath: "/tmp/missing-workspace",
+              message:
+                "Managed workspace path does not exist: /tmp/missing-workspace",
+            },
           },
         },
       }),
     });
-    expect(failure.kind).toBe("error");
-    expect(failure.description).toBe("Conflicts: src/a.ts, src/b.ts");
-    expect(failure.details?.kind).toBe("squash_merge_conflict");
+    expect(failure.kind).toBe("blocked");
+    expect(failure.description).toBe(
+      "Managed workspace path does not exist: /tmp/missing-workspace",
+    );
+    expect(failure.details?.kind).toBe("workspace_unavailable");
   });
 
   it("falls back to a transport description for non-HTTP errors", () => {
