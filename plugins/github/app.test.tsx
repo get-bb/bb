@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
-import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app"));
 
@@ -12,7 +12,7 @@ describe("GitHub app fixed-tab navigation", () => {
       id: "details",
       title: "Details",
       icon: "Info",
-      layout: "flush",
+      layout: "padded",
     });
     expect(
       details?.experimental_target?.validate({
@@ -30,5 +30,29 @@ describe("GitHub app fixed-tab navigation", () => {
         number: -1,
       }),
     ).toBe(false);
+  });
+
+  it("uses the standard responsive page inset for the main panel", () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "" },
+      {
+        rpc: {
+          listItems: () => ({ items: [] }),
+          status: () => ({
+            ghOk: true,
+            ghState: "ready",
+            ghError: null,
+            repos: [],
+            lastSyncedAt: null,
+          }),
+          viewer: () => ({ login: "octocat" }),
+        },
+      },
+    );
+
+    expect(slot.container.firstElementChild?.className).toContain("p-4 md:p-5");
+    expect(slot.container.firstElementChild?.className).not.toContain("p-3");
+    slot.lifecycle.unmount();
   });
 });

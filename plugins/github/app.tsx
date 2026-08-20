@@ -2102,7 +2102,7 @@ function GithubPanel({ subPath }: PluginNavPanelProps) {
   }, []);
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4 md:p-5">
+    <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
       <PageBody className="max-w-5xl">
         <GithubPanelBody
           route={route}
@@ -2152,7 +2152,7 @@ const githubDetailsFixedTab = {
   title: "Details",
   icon: "Info",
   component: GithubDetailsFixedTab,
-  layout: "flush",
+  layout: "padded",
   experimental_target: { validate: isGithubDetailsFixedTabTarget },
 } satisfies ExperimentalPluginFixedTabRegistration<GithubDetailsFixedTabTarget>;
 
