@@ -347,4 +347,22 @@ describe("TerminalWebSocketTransport", () => {
     expect(harness.sockets).toHaveLength(1);
     harness.transport.dispose();
   });
+
+  it("defers a start while suspended until resume", () => {
+    const harness = createHarness();
+    harness.transport.suspend();
+    harness.transport.start();
+    expect(harness.sockets).toHaveLength(0);
+    expect(harness.states).not.toContain("connecting");
+
+    harness.transport.resume();
+    expect(harness.sockets).toHaveLength(1);
+    expect(harness.urls[0]).toBe(
+      "ws://example.test/ws/terminals/term-1?sinceSeq=0",
+    );
+    expect(harness.states.at(-1)).toBe("reconnecting");
+    harness.sockets[0]!.open();
+    expect(harness.states.at(-1)).toBe("open");
+    harness.transport.dispose();
+  });
 });

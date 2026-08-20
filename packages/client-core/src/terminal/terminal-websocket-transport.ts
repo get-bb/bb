@@ -112,10 +112,14 @@ export class TerminalWebSocketTransport {
   }
 
   start(): void {
-    if (this.disposed || this.suspended || this.socket !== null) {
+    if (this.disposed || this.socket !== null) {
       return;
     }
+    // Record the intent even while suspended so {@link resume} connects.
     this.started = true;
+    if (this.suspended) {
+      return;
+    }
     this.connect("connecting");
   }
 
