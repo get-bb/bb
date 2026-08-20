@@ -860,14 +860,17 @@ function WorkflowPreviewLoaded({
 
 function WorkflowRunPanel({ threadId, params }: PluginThreadPanelProps) {
   const runId = panelRunId(params);
-  if (runId === undefined) {
-    return (
-      <EmptyOrError>
-        This workflow panel has invalid run parameters.
-      </EmptyOrError>
-    );
-  }
-  return <WorkflowRunPanelLoaded threadId={threadId} runId={runId} />;
+  return (
+    <div className="h-full min-h-0 flex-1 p-4">
+      {runId === undefined ? (
+        <EmptyOrError>
+          This workflow panel has invalid run parameters.
+        </EmptyOrError>
+      ) : (
+        <WorkflowRunPanelLoaded threadId={threadId} runId={runId} />
+      )}
+    </div>
+  );
 }
 
 function WorkflowRunPanelLoaded({
@@ -921,7 +924,7 @@ function WorkflowRunPanelLoaded({
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div
         data-detail-scroll-area="workflow-panel"
-        className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
+        className="min-h-0 flex-1 overflow-y-auto"
       >
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
@@ -1043,5 +1046,6 @@ export default definePluginApp((app) => {
     title: "Workflow run",
     icon: "Workflow",
     component: WorkflowRunPanel,
+    layout: "flush",
   });
 });

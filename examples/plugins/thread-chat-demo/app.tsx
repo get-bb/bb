@@ -183,6 +183,7 @@ export default definePluginApp((app) => {
     title: "ThreadChat demo panel",
     icon: "MessageSquarePlus",
     component: MessageAnchoredPanel,
+    layout: "flush",
   });
   app.slots.messageAction({
     id: "open-in-demo-panel",

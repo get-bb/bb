@@ -95,7 +95,12 @@ describe("workflows app registration", () => {
       "workflow-preview",
     ]);
     expect(app.threadPanelActions).toMatchObject([
-      { id: "workflow-run", title: "Workflow run", icon: "Workflow" },
+      {
+        id: "workflow-run",
+        title: "Workflow run",
+        icon: "Workflow",
+        layout: "flush",
+      },
     ]);
   });
 });
@@ -713,6 +718,7 @@ describe("workflow thread panel", () => {
     expect((await slot.findByRole("alert")).textContent).toMatch(
       /invalid run parameters/i,
     );
+    expect(slot.getByRole("alert").parentElement?.className).toContain("p-4");
     expect(slot.rpcCalls).toEqual([]);
   });
 });
