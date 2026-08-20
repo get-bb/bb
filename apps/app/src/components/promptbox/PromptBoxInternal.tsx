@@ -905,9 +905,13 @@ function revealPromptEditorSelection({
   const scrollContainerRect = scrollContainer.getBoundingClientRect();
   if (scrollContainerRect.height <= 0) return;
 
+  // Reveal the head, not `to`. While the user drags or Shift+Arrows a
+  // selection upward, the anchor stays below and `to` is the anchor. The
+  // browser autoscrolls toward the head; revealing `to` scrolled back toward
+  // the anchor on every selection update and the prompt jittered.
   let selectionRect: ReturnType<Editor["view"]["coordsAtPos"]>;
   try {
-    selectionRect = editor.view.coordsAtPos(editor.state.selection.to);
+    selectionRect = editor.view.coordsAtPos(editor.state.selection.head);
   } catch {
     return;
   }
