@@ -27,6 +27,7 @@ import {
   usePierreWorkerPool,
   useRequirePierreWorkerPool,
 } from "@/lib/pierre-worker-pool-gate";
+import { usePierreStrictModeRecoveryOptions } from "@/lib/pierre-strict-mode-recovery";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   hashSourceContents,
@@ -349,7 +350,7 @@ export function BbSourceCode({
     enabled: onSelectionAddToChat !== undefined,
     onSelectionAddToChat,
   });
-  const options = useMemo<FileOptions<undefined>>(
+  const baseOptions = useMemo<FileOptions<undefined>>(
     () => ({
       themeType: preferredTheme,
       theme: codeTheme,
@@ -380,6 +381,7 @@ export function BbSourceCode({
       preferredTheme,
     ],
   );
+  const options = usePierreStrictModeRecoveryOptions(baseOptions);
   const selectedLines = useMemo<SelectedLineRange | null>(() => {
     if (lineSelectionActions.selectedRange !== null) {
       return lineSelectionActions.selectedRange;

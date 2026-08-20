@@ -4,6 +4,7 @@ import { FileDiff as DiffView } from "@pierre/diffs/react";
 import { usePierreLineSelectionActions } from "@/components/git-diff/PierreLineSelectionActions.js";
 import { PierreWorkerPoolBoundary } from "@/lib/pierre-worker-pool-boundary";
 import { useRequirePierreWorkerPool } from "@/lib/pierre-worker-pool-gate";
+import { usePierreStrictModeRecoveryOptions } from "@/lib/pierre-strict-mode-recovery";
 import {
   buildDiffDomSelectionText,
   buildDiffLineSelectionText,
@@ -75,7 +76,7 @@ export function BbDiff({
     enabled: onSelectionAddToChat !== undefined,
     onSelectionAddToChat,
   });
-  const options = useMemo<FileDiffOptions<undefined>>(
+  const baseOptions = useMemo<FileDiffOptions<undefined>>(
     () => ({
       diffStyle: view,
       overflow,
@@ -114,6 +115,7 @@ export function BbDiff({
       view,
     ],
   );
+  const options = usePierreStrictModeRecoveryOptions(baseOptions);
   // `DiffView` captures the worker pool when it creates its instance, so wait
   // for the workspace to build the pool before the first render. Asking here
   // rather than in the host keeps the pool unbuilt when a plugin replacement
