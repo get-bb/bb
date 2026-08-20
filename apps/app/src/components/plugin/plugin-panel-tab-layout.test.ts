@@ -12,47 +12,22 @@ const ACTION_TAB: PluginPanelFixedPanelTab = {
 };
 
 describe("pluginPanelTabFillsRegion", () => {
-  it("fills the region for file-opener tabs independently of panel actions", () => {
+  it("fills the region for file-opener tabs", () => {
     expect(
-      pluginPanelTabFillsRegion(
-        {
-          ...ACTION_TAB,
-          fileOpenerOwner: {
-            environmentId: "env_1",
-            kind: "thread-storage-file-preview",
-            tab: { lineRange: null, path: "artifact.md" },
-            threadId: "thr_1",
-          },
+      pluginPanelTabFillsRegion({
+        ...ACTION_TAB,
+        fileOpenerOwner: {
+          environmentId: "env_1",
+          kind: "thread-storage-file-preview",
+          tab: { lineRange: null, path: "artifact.md" },
+          threadId: "thr_1",
         },
-        [],
-      ),
+      }),
     ).toBe(true);
   });
 
-  it("fills the region only for the matching flush action", () => {
-    expect(
-      pluginPanelTabFillsRegion(ACTION_TAB, [
-        {
-          id: "viewer",
-          layout: "flush",
-          pluginId: "docs",
-        },
-      ]),
-    ).toBe(true);
-    expect(
-      pluginPanelTabFillsRegion(ACTION_TAB, [
-        {
-          id: "viewer",
-          layout: "padded",
-          pluginId: "docs",
-        },
-        {
-          id: "viewer",
-          layout: "flush",
-          pluginId: "tasks",
-        },
-      ]),
-    ).toBe(false);
-    expect(pluginPanelTabFillsRegion(null, [])).toBe(false);
+  it("fills the region for action tabs so their mount owns padded or flush layout", () => {
+    expect(pluginPanelTabFillsRegion(ACTION_TAB)).toBe(true);
+    expect(pluginPanelTabFillsRegion(null)).toBe(false);
   });
 });

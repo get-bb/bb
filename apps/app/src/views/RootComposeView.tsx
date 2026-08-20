@@ -2461,10 +2461,8 @@ function RootComposeSurface({
                     : undefined),
                 fileTabs,
                 fileTabContent,
-                fileTabContentFillsRegion: pluginPanelTabFillsRegion(
-                  activePluginPanelTab,
-                  rootPanelNewThreadPanelActions,
-                ),
+                fileTabContentFillsRegion:
+                  pluginPanelTabFillsRegion(activePluginPanelTab),
                 renderBrowserDeck,
                 isBrowserTabActive,
                 isOpen: isSecondaryPanelOpen,

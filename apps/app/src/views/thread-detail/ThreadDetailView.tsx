@@ -3021,16 +3021,14 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               workspaceRootPath: environment?.path,
               fileTabs,
               fileTabContent,
-              fileTabContentFillsRegion: pluginPanelTabFillsRegion(
-                activePluginPanelTab,
-                pluginThreadPanelActions,
-              ),
+              fileTabContentFillsRegion:
+                pluginPanelTabFillsRegion(activePluginPanelTab),
               splitPanelStateId: thread.id,
               splitTabModels: syncedOrderedSecondaryFileTabs,
               renderSplitTabContent,
               splitTabContentFillsRegion: (tab) =>
                 tab.kind === "plugin-panel" &&
-                pluginPanelTabFillsRegion(tab, pluginThreadPanelActions),
+                pluginPanelTabFillsRegion(tab),
               renderBrowserDeck,
               isBrowserTabActive,
               isOpen: isSecondaryPanelOpen,

@@ -136,7 +136,7 @@ export function PluginPanelRightPanelHost({
   flushPageInsets?: boolean;
   paneId?: string;
 }) {
-  const { navPanels, newThreadPanelActions } = usePluginSlots();
+  const { navPanels } = usePluginSlots();
   const panel =
     navPanels.find(
       (candidate) =>
@@ -841,7 +841,7 @@ export function PluginPanelRightPanelHost({
   ]);
   const fileTabContentFillsRegion =
     activeTerminalTab !== null ||
-    pluginPanelTabFillsRegion(activePluginPanelTab, newThreadPanelActions);
+    pluginPanelTabFillsRegion(activePluginPanelTab);
 
   const renderPanel = useCallback(
     ({

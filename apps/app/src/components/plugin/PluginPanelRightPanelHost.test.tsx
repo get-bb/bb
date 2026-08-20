@@ -784,13 +784,13 @@ describe("PluginPanelRightPanelHost", () => {
     ).toBe("true");
   });
 
-  it("gives restored flush action tabs the full content region", async () => {
+  it("lets a restored padded action own its single padded scroll frame", async () => {
     fixedTabState.newThreadPanelActions = [
       {
         id: "canvas",
         title: "Canvas",
         component: () => <div>Plugin canvas</div>,
-        layout: "flush",
+        layout: "padded",
         pluginId: "demo",
         generation: 1,
       },
