@@ -760,34 +760,46 @@ devserver.yaml` drives the same screens against the checkout's dev server
 
 ## Release (EAS)
 
-Nothing is published yet: no Expo/EAS account exists, so `app.json` has no
-`extra.eas.projectId` (push registration, in a later PR, needs it). The
-steps, once the account is created (Apple team `9QCU24SXK5`, bundle id
-`app.getbb.mobile`):
+The app lives in the EAS project `@bb-team/bb-app` (id in
+`app.json` → `extra.eas.projectId`; the Expo slug `bb-app` also names the
+dev-client scheme `exp+bb-app://`). Apple team `9QCU24SXK5`, bundle id
+`app.getbb.mobile`, App Store Connect app `6803559210`. EAS holds the iOS
+credentials (distribution certificate, App Store provisioning profile, APNs
+push key); nobody needs a local Xcode signing setup to ship.
 
-1. `npm i -g eas-cli && eas login`, then `eas init` in `apps/mobile` (writes
-   `extra.eas.projectId` into `app.json`; commit it — the push module reads it
-   and Settings → Notifications turns on).
-2. Credentials: `eas credentials -p ios` — distribution certificate +
-   provisioning profiles (EAS-managed), and upload an **APNs key** so Expo
-   Push can deliver to the app (`eas credentials` → Push Notifications). For
-   Android later: `eas credentials -p android` (keystore, FCM V1 service
-   account) and fill `ASSETLINKS_SHA256_FINGERPRINTS` on the connect workers
-   with the signing fingerprint.
-3. Builds from the profiles in `eas.json`: `development` (simulator dev
-   client), `development-device` (dev client for a physical iPhone — needed
-   for push acceptance), `preview` (internal distribution / ad-hoc) and
-   `production` (App Store / TestFlight; `autoIncrement` bumps the build
-   number, `appVersionSource: remote` keeps it on EAS), for example
-   `eas build -p ios --profile preview`; `eas submit -p ios` uploads the
-   production build to TestFlight. The `expo-modules-jsi` pnpm patch and the
-   `lightningcss` override ship with the repo and apply on EAS
-   (`pnpm install` runs there too); the build image must provide Xcode 26.x.
-4. Universal links need the signed app's team id in the AASA the connect
-   gate serves (`packages/connect-db/src/app-links.ts`) and a physical-device
-   check against `https://<handle>.getbb.app/threads/…`.
-5. `eas update` (JS-only fixes over the air) is deferred: `expo-updates` is
-   not installed, so the profiles define no update channels.
+- **Log in once**: `pnpm exec eas login` (or `EXPO_TOKEN`). `eas-cli` is a
+  pinned devDependency, so use `pnpm exec eas …` from `apps/mobile`.
+- **Build profiles** (`eas.json`): `development` (simulator dev client),
+  `development-device` (dev client for a physical iPhone; needed for push
+  acceptance), `preview` (internal ad-hoc), `production` (App Store /
+  TestFlight; `autoIncrement` + `appVersionSource: remote` keep the build
+  number on EAS, `version` in `app.json` is the marketing version).
+- **TestFlight by hand**: `pnpm exec eas build -p ios --profile production`,
+  then `pnpm exec eas submit -p ios --latest`. The submit profile reads the
+  App Store Connect API key from the gitignored `apps/mobile/asc-api-key.p8`
+  (key id and issuer id are in `eas.json`); get the `.p8` from a teammate or
+  App Store Connect → Users and Access → Integrations → App Store Connect API
+  (role App Manager, one-time download). Both commands also work with
+  `--non-interactive`.
+- **Nightly**: the `nightly-mobile-ios` job in
+  `.github/workflows/publish-bb-app.yml` runs after the npm nightly publish.
+  It sets `app.json` `version` to the numeric base of the nightly version,
+  writes the `.p8` from the `ASC_API_KEY_P8` secret, and runs
+  `eas build -p ios --profile production --no-wait --auto-submit` with
+  `EXPO_TOKEN`. EAS builds, then uploads to TestFlight; logs are on expo.dev
+  under the project's Builds and Submissions. Repo secrets: `EXPO_TOKEN` (a
+  robot token from the `bb-team` Expo org) and `ASC_API_KEY_P8` (the `.p8`
+  contents).
+- The `expo-modules-jsi` pnpm patch and the `lightningcss` override ship
+  with the repo and apply on EAS; the default build image provides
+  Xcode 26.x.
+- Universal links need the signed app's team id in the AASA the connect gate
+  serves (`packages/connect-db/src/app-links.ts`) and a physical-device
+  check against `https://<handle>.getbb.app/threads/…`. Android signing
+  (`eas credentials -p android`, FCM V1, `ASSETLINKS_SHA256_FINGERPRINTS`)
+  is still open.
+- `eas update` (JS-only fixes over the air) is deferred: `expo-updates` is
+  not installed, so the profiles define no update channels.
 
 ## Local state
 

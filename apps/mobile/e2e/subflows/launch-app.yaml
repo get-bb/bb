@@ -24,7 +24,7 @@ appId: app.getbb.mobile
     when:
       true: ${typeof BB_E2E_EMBEDDED_BUNDLE === "undefined" || BB_E2E_EMBEDDED_BUNDLE !== "1"}
     commands:
-      - openLink: "exp+bb-mobile://expo-development-client/?url=${METRO_URL}"
+      - openLink: "exp+bb-app://expo-development-client/?url=${METRO_URL}"
       # A fresh simulator confirms the first custom-scheme link.
       - runFlow:
           when:

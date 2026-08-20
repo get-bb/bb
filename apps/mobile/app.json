@@ -1,7 +1,8 @@
 {
   "expo": {
     "name": "bb",
-    "slug": "bb-mobile",
+    "slug": "bb-app",
+    "owner": "bb-team",
     "version": "0.0.1",
     "scheme": "bb",
     "orientation": "default",
@@ -16,6 +17,7 @@
         "NSCameraUsageDescription": "bb attaches photos you take to your prompts.",
         "NSMicrophoneUsageDescription": "bb records voice input and transcribes it into your prompt.",
         "NSPhotoLibraryUsageDescription": "bb attaches photos you pick to your prompts.",
+        "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         },
@@ -89,6 +91,11 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3dca8cca-f48a-4c3a-ba3d-3af40e58a588"
+      }
     }
   }
 }

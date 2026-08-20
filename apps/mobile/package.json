@@ -100,6 +100,7 @@
     "@xterm/addon-web-links": "0.13.0-beta.292",
     "@xterm/xterm": "6.1.0-beta.292",
     "culori": "^4.0.2",
+    "eas-cli": "22.0.0",
     "esbuild": "^0.28.0",
     "eslint": "^9.39.3",
     "eslint-plugin-react-hooks": "^7.0.1",
