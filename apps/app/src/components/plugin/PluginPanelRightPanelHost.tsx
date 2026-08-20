@@ -7,9 +7,9 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { atom, useAtom } from "jotai";
+import { atom, useAtom, useAtomValue, useStore } from "jotai";
 import { atomFamily } from "jotai-family";
-import type { Host } from "@bb/domain";
+import type { Host, JsonValue } from "@bb/domain";
 import { jsonValueSchema } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
@@ -71,7 +71,6 @@ import {
   getPluginFixedTabOwnerId,
   openAppFixedTabFromDestinations,
   type AppFixedTabDestination,
-  type AppFixedTabTargetSnapshot,
   type AppFixedTabTargetState,
 } from "@/lib/app-fixed-tab-navigation";
 import {
@@ -95,8 +94,12 @@ const RIGHT_PANEL_TOGGLE_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} ${C
 const compactDrawerOpenAtomFamily = atomFamily((_panelStateId: string) =>
   atom(false),
 );
-const fixedTabTargetsAtomFamily = atomFamily((_panelStateId: string) =>
-  atom<ReadonlyMap<string, AppFixedTabTargetSnapshot>>(new Map()),
+interface FixedTabSessionTarget {
+  sequence: number;
+  target: JsonValue;
+}
+const fixedTabTargetAtomFamily = atomFamily((_targetId: string) =>
+  atom<FixedTabSessionTarget | null>(null),
 );
 
 function findPluginRightPanelTogglePortal(
@@ -287,9 +290,7 @@ export function PluginPanelRightPanelHost({
       secondary: { ...state.secondary, isOpen: true },
     }));
   }, [isCompactViewport, setCompactDrawerOpen, updatePanelState]);
-  const [fixedTabTargets, setFixedTabTargets] = useAtom(
-    fixedTabTargetsAtomFamily(panelStateId),
-  );
+  const targetStore = useStore();
   const fixedTabOwnerId = getPluginFixedTabOwnerId(
     pluginId,
     panel?.id ?? panelPath,
@@ -323,17 +324,15 @@ export function PluginPanelRightPanelHost({
                 } catch {
                   return false;
                 }
-                setFixedTabTargets((current) => {
-                  const previous = current.get(registration.id);
-                  const next = new Map(current);
-                  next.set(registration.id, {
-                    ownerId: fixedTabOwnerId,
-                    sequence: (previous?.sequence ?? 0) + 1,
-                    tabId: registration.id,
+                targetStore.set(
+                  fixedTabTargetAtomFamily(
+                    `${panelStateId}\0${registration.id}`,
+                  ),
+                  (current) => ({
+                    sequence: (current?.sequence ?? 0) + 1,
                     target: result.data,
-                  });
-                  return next;
-                });
+                  }),
+                );
               }
               updatePanelState((state) =>
                 activateSecondaryPanelTabInState(state, tab.id),
@@ -347,9 +346,10 @@ export function PluginPanelRightPanelHost({
     [
       fixedViewTabs,
       fixedTabOwnerId,
+      panelStateId,
       panel?.experimental_fixedTabs,
       revealPanel,
-      setFixedTabTargets,
+      targetStore,
       updatePanelState,
     ],
   );
@@ -583,31 +583,37 @@ export function PluginPanelRightPanelHost({
           (registration) => registration.id === activeTab.fixedTabId,
         ) ?? null)
       : null;
-  const activeFixedTabTargetSnapshot =
-    activeFixedTabRegistration === null
-      ? null
-      : (fixedTabTargets.get(activeFixedTabRegistration.id) ?? null);
+  const activeFixedTabTargetAtom = fixedTabTargetAtomFamily(
+    `${panelStateId}\0${activeFixedTabRegistration?.id ?? ""}`,
+  );
+  const activeFixedTabTargetSnapshot = useAtomValue(activeFixedTabTargetAtom);
   const activeFixedTabTargetState =
     useMemo<AppFixedTabTargetState | null>(() => {
-      if (activeFixedTabTargetSnapshot === null) return null;
+      if (
+        activeFixedTabRegistration === null ||
+        activeFixedTabTargetSnapshot === null
+      ) {
+        return null;
+      }
+      const tabId = activeFixedTabRegistration.id;
+      const { sequence } = activeFixedTabTargetSnapshot;
       return {
         ...activeFixedTabTargetSnapshot,
+        ownerId: fixedTabOwnerId,
+        tabId,
         clear: () => {
-          setFixedTabTargets((current) => {
-            const latest = current.get(activeFixedTabTargetSnapshot.tabId);
-            if (
-              latest?.sequence !== activeFixedTabTargetSnapshot.sequence ||
-              latest.ownerId !== activeFixedTabTargetSnapshot.ownerId
-            ) {
-              return current;
-            }
-            const next = new Map(current);
-            next.delete(activeFixedTabTargetSnapshot.tabId);
-            return next;
-          });
+          targetStore.set(activeFixedTabTargetAtom, (current) =>
+            current?.sequence === sequence ? null : current,
+          );
         },
       };
-    }, [activeFixedTabTargetSnapshot, setFixedTabTargets]);
+    }, [
+      activeFixedTabRegistration,
+      activeFixedTabTargetAtom,
+      activeFixedTabTargetSnapshot,
+      fixedTabOwnerId,
+      targetStore,
+    ]);
   const fixedTabContent = useMemo(() => {
     if (panel === null || activeFixedTabRegistration === null || !isOpen) {
       return null;
