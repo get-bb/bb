@@ -776,6 +776,16 @@ describe("plugin update service and routes", () => {
     return scheduled;
   }
 
+  it("waits one full interval when no plugins are eligible for update checks", async () => {
+    const HOUR = 60 * 60 * 1_000;
+    await service.remove("updater");
+    const scheduled = await restartWithScheduler(Date.now);
+
+    service.startPeriodicUpdateChecks();
+
+    expect(scheduled.map((entry) => entry.delayMs)).toEqual([6 * HOUR]);
+  });
+
   it("sweeps on start when a plugin was never checked, then waits out the interval across restarts", async () => {
     const HOUR = 60 * 60 * 1_000;
     let clock = Date.now();

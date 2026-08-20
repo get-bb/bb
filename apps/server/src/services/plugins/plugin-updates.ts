@@ -422,6 +422,7 @@ export function createPluginUpdates(
         (row) => row.sourceKind !== "path" && row.sourceKind !== "builtin",
       )
       .map((row) => row.lastUpdateCheckAt);
+    if (stamps.length === 0) return PLUGIN_UPDATE_CHECK_INTERVAL_MS;
     if (stamps.includes(null)) return 0;
     const oldest = Math.min(...stamps.filter((stamp) => stamp !== null));
     return Math.max(0, PLUGIN_UPDATE_CHECK_INTERVAL_MS - (now() - oldest));
