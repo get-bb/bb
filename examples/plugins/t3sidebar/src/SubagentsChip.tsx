@@ -62,7 +62,7 @@ export function SubagentsChip({
           <div
             role="menu"
             aria-label="Child threads"
-            className="absolute right-0 top-9 z-50 w-80 overflow-hidden rounded-xl border border-border bg-popover shadow-lg"
+            className="absolute right-0 top-9 z-50 flex max-h-[min(32rem,calc(100dvh-6rem))] w-80 flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-lg"
           >
             <div className="flex items-center gap-2 px-3 pb-1 pt-2.5">
               <span className="text-xs font-semibold">Children</span>
@@ -70,7 +70,7 @@ export function SubagentsChip({
                 {children.length}
               </span>
             </div>
-            <ul className="flex flex-col gap-px p-1.5 pt-0.5">
+            <ul className="flex min-h-0 touch-pan-y flex-col gap-px overflow-y-auto overscroll-contain p-1.5 pt-0.5 [-webkit-overflow-scrolling:touch]">
               {children.map((child) => (
                 <li key={child.id} className="list-none">
                   <button
