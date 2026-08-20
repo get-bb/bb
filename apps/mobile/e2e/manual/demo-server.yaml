@@ -20,7 +20,40 @@ env:
 # The E2E build wipes profiles on launch, so the shared subflow lands on
 # "Connect to a bb server" and adds SERVER_URL as a Direct URL. The probe
 # (/health + /system/config) must pass against the worker.
-- runFlow: ../subflows/launch-to-home.yaml
+#
+# Launch is inlined rather than `runFlow: ../subflows/launch-to-home.yaml`
+# because this simulator refuses the dev-client deep link
+# (LSApplicationWorkspaceErrorDomain 115), so `openLink` in
+# subflows/launch-app.yaml fails. The launcher's "Recently opened" row for
+# Metro reaches the same place. The add-server steps and the Home wait below
+# are copied from that subflow unchanged; only the launch differs, and a
+# Release/TestFlight build needs none of this.
+- stopApp
+- launchApp
+- runFlow:
+    when:
+      visible: "${METRO_URL}"
+    commands:
+      - tapOn: "${METRO_URL}"
+# Wait for the bundle before touching the screen: a bare `when: visible`
+# evaluates immediately and skips while Metro is still serving. The E2E build
+# wipes profiles on launch, so first run is guaranteed here.
+- extendedWaitUntil:
+    visible: "Connect to a bb server"
+    timeout: 60000
+- tapOn:
+    id: "server-url-input"
+- inputText: "${SERVER_URL}"
+- tapOn:
+    id: "server-label-input"
+- inputText: "E2E backend"
+- tapOn: "Server URL"
+- tapOn:
+    id: "add-server-submit"
+- extendedWaitUntil:
+    visible:
+      id: "home-thread-list"
+    timeout: 30000
 - takeScreenshot: demo-home
 # The seeded threads come from the demo's sidebar-bootstrap.
 - assertVisible: "Add a dark mode toggle"
