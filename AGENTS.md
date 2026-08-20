@@ -1,5 +1,12 @@
 # Codebase Guidelines
 
+## Fork Direction
+
+- This repository is a custom agent harness forked from bb. Treat the fork's intended product as authoritative; upstream bb product scope is historical context, not a compatibility contract.
+- Backwards compatibility with upstream bb releases, removed upstream features, old clients or daemons, persisted upstream data, and upstream deployment artifacts is not required unless a task explicitly says otherwise.
+- When removing an inherited feature, remove it end to end: code, schema, migrations, contracts, config, scripts, tests, docs, assets, dependencies, and generated artifacts. Do not retain shims, ignored fields, migration bridges, deprecated aliases, or dormant branches solely for old bb installations.
+- Prefer a clean current model and regenerated baseline over compatibility work for upstream bb. Compatibility within the supported fork remains required unless a task explicitly changes that contract.
+
 ## Simplicity First
 
 - When renaming a domain concept, search project-wide for stale names in variables, files, query keys, constants, tests, and docs. TypeScript only catches type references.
@@ -20,7 +27,7 @@
 - The host daemon owns host-local primitives, provider translation, runtime/session management, and workspace execution.
 - If the server needs host-local data, the daemon should return raw data and the server should assemble product behavior.
 - Do not move responsibility across the server/daemon boundary unless the current change requires it.
-- **Always increment `HOST_DAEMON_PROTOCOL_VERSION` when a change can alter anything sent between the server and host daemon.** This includes adding, removing, renaming, or changing the type, requiredness, default, or meaning of fields in session payloads, WebSocket messages, host RPC commands, or host RPC results. A shared TypeScript build passing is not evidence of wire compatibility: enrolled machines can still be running an older daemon. The version mismatch is what triggers their automatic update; without a bump, an old daemon may connect successfully and then enter an `invalid-message` reconnect loop. If compatibility with the previously shipped daemon has not been deliberately preserved and tested, bump the version.
+- **Always increment `HOST_DAEMON_PROTOCOL_VERSION` when a change can alter anything sent between the server and host daemon.** This includes adding, removing, renaming, or changing the type, requiredness, default, or meaning of fields in session payloads, WebSocket messages, host RPC commands, or host RPC results. A shared TypeScript build passing is not evidence of wire compatibility: an older daemon may connect successfully and then enter an `invalid-message` reconnect loop. The bump identifies the fork's current wire contract even when older daemons are intentionally unsupported. Do not preserve removed fields solely to keep an upstream daemon compatible.
 
 ## CLI, Guide, And Skill
 
@@ -35,7 +42,7 @@
 
 - Do not load all rows and filter in JavaScript when a targeted query with `WHERE` or `JOIN` is possible.
 - Add indexes only when they are required by the new or changed query.
-- Do not manually edit Drizzle snapshot JSON. Change the schema, then regenerate migrations/snapshots with Drizzle so the snapshot chain stays consistent.
+- Do not manually edit Drizzle snapshot JSON. Change the schema, then regenerate migrations/snapshots with Drizzle. When intentionally erasing inherited upstream schema, regenerate a clean baseline instead of preserving bridge migrations for old bb databases.
 - Never mock the database in tests. Use in-memory SQLite via `createConnection(":memory:")` plus `migrate(db)`.
 
 ## UI

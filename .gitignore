@@ -64,11 +64,12 @@ next-env.d.ts
 /data/
 output.txt
 
-# codex, claude code
+# codex, claude code, pi
 .claude/settings.local.json
 .codex
 .hermes/plans/
 .otto/
+/.pi-subagents/
 
 # turborepo
 .turbo
