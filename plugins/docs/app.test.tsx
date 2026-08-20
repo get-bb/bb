@@ -1273,31 +1273,72 @@ describe("Docs nav panel", () => {
     });
   });
 
-  it("opens arbitrary Markdown files without exposing composer actions", async () => {
+  it("preserves an explicit host for file opener reads and autosaves", async () => {
     const slot = renderSlot(
       app.fileOpeners[0]!,
       {
-        path: "notes/plan.mdx",
+        path: "/Users/shared/notes/plan.mdx",
         source: {
-          kind: "workspace",
+          kind: "host",
           threadId: "thr_1",
-          environmentId: "env_1",
+          environmentId: null,
           projectId: "project_1",
+          experimental_hostId: "host_remote",
         },
         experimental_Original: () => null,
       },
       {
         rpc: {
           openFile: () => ({
-            file: { content: "# Workspace plan", sha256: "sha" },
+            file: { content: "# Remote plan", sha256: "sha" },
             preview,
             previewPath: "notes/plan.mdx",
+          }),
+          saveOpenedFile: () => ({
+            outcome: "written",
+            sha256: "updated-sha",
           }),
         },
       },
     );
 
-    await slot.findByText("Workspace plan");
+    const body = await slot.findByText("Remote plan");
+    expect(slot.rpcCalls).toContainEqual({
+      method: "openFile",
+      input: {
+        source: {
+          kind: "host",
+          threadId: "thr_1",
+          environmentId: null,
+          projectId: "project_1",
+          experimental_hostId: "host_remote",
+        },
+        path: "/Users/shared/notes/plan.mdx",
+      },
+    });
+
+    body.textContent = "Updated remote plan";
+    fireEvent.input(body);
+    await waitFor(
+      () => {
+        expect(slot.rpcCalls).toContainEqual({
+          method: "saveOpenedFile",
+          input: {
+            source: {
+              kind: "host",
+              threadId: "thr_1",
+              environmentId: null,
+              projectId: "project_1",
+              experimental_hostId: "host_remote",
+            },
+            path: "/Users/shared/notes/plan.mdx",
+            content: "# Updated remote plan",
+            expectedSha256: "sha",
+          },
+        });
+      },
+      { timeout: 2_000 },
+    );
     expect(slot.queryByRole("button", { name: "Add to chat" })).toBeNull();
     expect(slot.queryByRole("button", { name: "Mention in chat" })).toBeNull();
   });

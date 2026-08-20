@@ -134,6 +134,7 @@ interface OpenerSource {
   threadId: string | null;
   environmentId: string | null;
   projectId: string | null;
+  experimental_hostId?: string;
 }
 
 interface ResolvedOpenerFile {
@@ -171,6 +172,7 @@ const openerSourceSchema = z
     threadId: z.string().nullable(),
     environmentId: z.string().nullable(),
     projectId: z.string().nullable(),
+    experimental_hostId: z.string().min(1).optional(),
   })
   .strict();
 const fileReadSchema = z
@@ -500,6 +502,9 @@ function parseOpenerSource(value: unknown): OpenerSource {
     environmentId:
       typeof source.environmentId === "string" ? source.environmentId : null,
     projectId: typeof source.projectId === "string" ? source.projectId : null,
+    ...(typeof source.experimental_hostId === "string"
+      ? { experimental_hostId: source.experimental_hostId }
+      : {}),
   };
 }
 
@@ -1012,7 +1017,7 @@ export default async function plugin(
       return {
         path: normalized,
         rootPath: pathApi.dirname(normalized),
-        hostId: null,
+        hostId: source.experimental_hostId ?? null,
       };
     }
     if (source.kind === "workspace" && source.environmentId) {

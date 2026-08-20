@@ -1172,8 +1172,17 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
       threadId: source.threadId,
       environmentId: source.environmentId,
       projectId: source.projectId,
+      ...(source.experimental_hostId === undefined
+        ? {}
+        : { experimental_hostId: source.experimental_hostId }),
     }),
-    [source.environmentId, source.kind, source.projectId, source.threadId],
+    [
+      source.environmentId,
+      source.experimental_hostId,
+      source.kind,
+      source.projectId,
+      source.threadId,
+    ],
   );
   const [state, setState] = useState<
     | { content: string; lease: PreviewLease; previewPath: string }
