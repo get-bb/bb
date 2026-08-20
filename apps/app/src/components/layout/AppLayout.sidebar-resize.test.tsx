@@ -40,7 +40,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
     data: {
       experiments: {
-        claudeCodeMockCliTraffic: false,
         editMessages: false,
         newOnboarding: false,
         providerSessionReaping: false,
