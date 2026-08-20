@@ -397,6 +397,23 @@ export function validatePluginProviderDeclaration(
   if (typeof capabilities !== "object" || capabilities === null) {
     throw new Error(`provider "${id}" capabilities must be an object`);
   }
+  // These fields were originally reported by the bridge handshake. Treat an
+  // omitted value from a plugin compiled against that older experimental API
+  // as false, then carry an explicit boolean everywhere inside bb.
+  const experimentalProviderHealth =
+    capabilities.experimental_providerHealth ?? false;
+  const experimentalProviderUsage =
+    capabilities.experimental_providerUsage ?? false;
+  if (typeof experimentalProviderHealth !== "boolean") {
+    throw new Error(
+      `provider "${id}" capabilities.experimental_providerHealth must be a boolean`,
+    );
+  }
+  if (typeof experimentalProviderUsage !== "boolean") {
+    throw new Error(
+      `provider "${id}" capabilities.experimental_providerUsage must be a boolean`,
+    );
+  }
   const booleanCapabilityFields = [
     "supportsServiceTier",
     "supportsNativeUserQuestion",
@@ -418,6 +435,8 @@ export function validatePluginProviderDeclaration(
     );
   }
   const normalizedCapabilities: PluginProviderCapabilities = Object.freeze({
+    experimental_providerHealth: experimentalProviderHealth,
+    experimental_providerUsage: experimentalProviderUsage,
     supportsServiceTier: capabilities.supportsServiceTier,
     supportsNativeUserQuestion: capabilities.supportsNativeUserQuestion,
     fork: capabilities.fork,

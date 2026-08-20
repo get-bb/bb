@@ -12,6 +12,8 @@ export default function plugin(bb: BbPluginApi) {
     displayName: "Claude Code",
     icon: "./icons/claude-code.svg",
     capabilities: {
+      experimental_providerHealth: true,
+      experimental_providerUsage: true,
       supportsServiceTier: false,
       supportsNativeUserQuestion: true,
       fork: "checkpoint",

@@ -220,6 +220,8 @@ describe("useSystemExecutionOptions", () => {
         displayName: "Codex",
         logoUrl: null,
         available: true,
+        experimental_providerHealth: true,
+        experimental_providerUsage: true,
         composerActions: [],
         capabilities: {
           supportsThreadArchive: true,
@@ -236,6 +238,8 @@ describe("useSystemExecutionOptions", () => {
         displayName: "OpenCode",
         logoUrl: null,
         available: true,
+        experimental_providerHealth: true,
+        experimental_providerUsage: true,
         composerActions: [],
         capabilities: {
           supportsThreadArchive: false,
@@ -335,6 +339,8 @@ describe("useSystemExecutionOptions", () => {
     displayName: id,
     logoUrl: null,
     available: true,
+    experimental_providerHealth: true,
+    experimental_providerUsage: true,
     composerActions: [],
     capabilities: {
       supportsThreadArchive: false,
@@ -402,6 +408,8 @@ describe("useSystemExecutionOptions", () => {
       id: "acp:my-agent",
       displayName: "My agent",
       logoUrl: null,
+      experimental_providerHealth: true,
+      experimental_providerUsage: true,
       capabilities: CODEX_CATALOG.providers[0]!.capabilities,
       composerActions: [],
       available: true,

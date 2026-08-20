@@ -1872,8 +1872,6 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
           threadGoalClear: false,
           fork: "checkpoint",
           approvalEnforcedBy: "provider",
-          experimentalProviderHealth: true,
-          experimentalProviderUsage: true,
         },
       };
       sendResult(request.id, result);

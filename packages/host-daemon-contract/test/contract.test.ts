@@ -1075,9 +1075,11 @@ const BRIDGE_LAUNCH = {
 } as const;
 
 describe("host-daemon command schemas", () => {
-  // Version 136 adds the provider-targeted provider.health command and changes
-  // provider.usage from one fixed aggregate into a provider bridge query.
-  // Older daemons cannot parse either command shape.
+  // Version 138 adds the provider-targeted provider.health command, changes
+  // provider.usage from one fixed aggregate into a provider bridge query, and
+  // moves maintenance capability authority from bridge initialization to
+  // provider registration. Older daemons cannot parse the new command shapes
+  // and would still apply the removed initialization gates.
   // Version 130 makes every provider plugin-declared on the wire: a REQUIRED
   // `bridgeLaunch` field beside every `acpLaunchSpec` site (thread.start, the
   // resume contexts, thread.goal.clear, thread.archive, thread.unarchive,

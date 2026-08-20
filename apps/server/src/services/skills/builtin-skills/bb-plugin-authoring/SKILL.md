@@ -1064,11 +1064,11 @@ bb.agents.experimental_registerProvider({
   id: "echo-agent", // stable public id; thread rows persist it
   displayName: "Echo Agent", // 1-80 chars, shown in the picker
   icon: "./icons/echo.svg", // optional; same grammar as bb.branding.icon
-  kind: "agent", // "agent" REQUIRES bridge; "router" forbids it
-  bridge: { entry: "provider-bridge" }, // names the built bundle
   capabilities: {
-    // Pre-session facts only — the bridge reports the same facts at
-    // initialize and may only narrow what is declared here, never widen it.
+    // Sessionless methods are declared here so bb can avoid unsupported host
+    // probes. A true usage method may return no windows or supported: false.
+    experimental_providerHealth: false,
+    experimental_providerUsage: false,
     supportsServiceTier: false,
     supportsNativeUserQuestion: false,
     fork: "none", // "none" | "tip" | "checkpoint"

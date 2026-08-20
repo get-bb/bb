@@ -30,6 +30,7 @@ export async function getProviderUsageLimits(
   const entries = await mapProviderMaintenanceRequests(
     providers,
     async (provider): Promise<[string, ProviderUsage] | null> => {
+      if (!provider.experimental_providerUsage) return null;
       const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, provider.id);
       if (bridgeLaunch === null) return null;
       const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(

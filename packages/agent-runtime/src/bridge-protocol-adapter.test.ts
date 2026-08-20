@@ -110,17 +110,8 @@ describe("handshake gating", () => {
     expect(adapter.approvalEnforcedBy).toBe("provider");
   });
 
-  it("gates sessionless maintenance methods and carries provider context", () => {
+  it("routes declared sessionless maintenance methods with provider context", () => {
     const adapter = makeAdapter();
-    expect(
-      adapter.buildCommandPlan({ type: "provider/health", cwd: "/workspace" }),
-    ).toMatchObject({ kind: "noop" });
-
-    completeHandshake(adapter, {
-      experimentalProviderHealth: true,
-      experimentalProviderUsage: true,
-    });
-
     expect(
       adapter.buildCommandPlan({ type: "provider/health", cwd: "/workspace" }),
     ).toEqual({

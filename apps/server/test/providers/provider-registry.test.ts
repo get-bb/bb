@@ -3,6 +3,8 @@ import { createProviderRegistryService } from "../../src/services/providers/prov
 
 const CURSOR_LIKE_INFO = {
   available: true,
+  experimental_providerHealth: true,
+  experimental_providerUsage: true,
   capabilities: {
     supportsThreadArchive: false,
     supportsThreadRename: false,

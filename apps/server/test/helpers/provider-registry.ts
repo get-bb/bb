@@ -240,6 +240,8 @@ export function registerFakeProviders(
           id: providerId,
           displayName: providerId,
           capabilities: {
+            experimental_providerHealth: true,
+            experimental_providerUsage: true,
             supportsServiceTier: true,
             supportsNativeUserQuestion: false,
             fork: "checkpoint",

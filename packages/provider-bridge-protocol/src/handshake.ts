@@ -53,10 +53,6 @@ export const bridgeCapabilitiesSchema = z
      * settings.
      */
     approvalEnforcedBy: z.enum(["runtime", "provider"]).default("runtime"),
-    /** The bridge implements the optional sessionless provider/health query. */
-    experimentalProviderHealth: z.boolean().default(false),
-    /** The bridge implements the optional sessionless provider/usage query. */
-    experimentalProviderUsage: z.boolean().default(false),
   })
   .passthrough();
 

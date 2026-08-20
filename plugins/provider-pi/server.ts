@@ -12,6 +12,9 @@ export default function plugin(bb: BbPluginApi) {
     displayName: "Pi",
     icon: "./icons/pi.svg",
     capabilities: {
+      experimental_providerHealth: true,
+      // Pi handles the method and currently answers `supported: false`.
+      experimental_providerUsage: true,
       supportsServiceTier: false,
       supportsNativeUserQuestion: false,
       fork: "checkpoint",

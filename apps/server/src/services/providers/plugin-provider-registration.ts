@@ -27,9 +27,11 @@ export function buildPluginProviderRegistration(args: {
 }): Omit<ProviderRegistration, "source"> {
   const { declaration } = args;
   const { capabilities } = declaration;
-  // The declaration and `ProviderInfo` now share one noun set, so these carry
-  // over by name; only `fork` still needs a projection (below).
+  // The declaration and `ProviderInfo` share one noun set, so these carry over
+  // by name; only `fork` still needs a projection (below).
   const {
+    experimental_providerHealth,
+    experimental_providerUsage,
     supportsThreadArchive,
     supportsThreadRename,
     supportsServiceTier,
@@ -61,6 +63,8 @@ export function buildPluginProviderRegistration(args: {
     id: declaration.id,
     displayName: declaration.displayName,
     available: args.available,
+    experimental_providerHealth,
+    experimental_providerUsage,
     // Served by the provider-logo route from the icon byte snapshot on the
     // registration (see registerProvider in plugin-runtime.ts). The raw
     // plugin-assets route serves only branding variants and built bundles, so

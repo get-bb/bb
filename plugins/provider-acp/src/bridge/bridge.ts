@@ -2393,8 +2393,6 @@ async function handleRequest(
           threadGoalClear: false,
           fork: "tip",
           approvalEnforcedBy: "runtime",
-          experimentalProviderHealth: true,
-          experimentalProviderUsage: true,
         },
       };
       sendResult(request.id, result);

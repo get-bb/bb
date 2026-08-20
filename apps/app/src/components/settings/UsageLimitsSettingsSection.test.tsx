@@ -25,12 +25,18 @@ const remoteHost: Host = {
   name: "Build machine",
 };
 
-function provider(id: string, displayName: string): ProviderInfo {
+function provider(
+  id: string,
+  displayName: string,
+  supportsUsage = true,
+): ProviderInfo {
   return {
     id,
     displayName,
     logoUrl: null,
     available: true,
+    experimental_providerHealth: true,
+    experimental_providerUsage: supportsUsage,
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,
@@ -171,7 +177,7 @@ describe("UsageLimitsSettingsSectionContent", () => {
       usage: {},
       providers: [
         provider("codex", "Codex"),
-        provider("echo-agent", "Echo Agent"),
+        provider("echo-agent", "Echo Agent", false),
       ],
       isLoading: true,
       isError: false,
@@ -181,7 +187,8 @@ describe("UsageLimitsSettingsSectionContent", () => {
 
     expect(screen.getByRole("heading", { name: "Codex" })).toBeDefined();
     expect(screen.getByRole("heading", { name: "Echo Agent" })).toBeDefined();
-    expect(screen.getAllByText("Loading usage…")).toHaveLength(2);
+    expect(screen.getByText("Loading usage…")).toBeDefined();
+    expect(screen.getByText("Usage not provided.")).toBeDefined();
   });
 
   it("shows an initial loading message before the provider list arrives", () => {

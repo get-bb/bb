@@ -14,6 +14,8 @@ export default function plugin(bb: BbPluginApi) {
     displayName: "Cursor",
     icon: "./icons/cursor.svg",
     capabilities: {
+      experimental_providerHealth: true,
+      experimental_providerUsage: true,
       supportsServiceTier: true,
       supportsNativeUserQuestion: false,
       fork: "tip",

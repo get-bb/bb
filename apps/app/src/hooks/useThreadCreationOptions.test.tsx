@@ -53,6 +53,8 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         displayName: "Global Provider",
         logoUrl: null,
         available: true,
+        experimental_providerHealth: true,
+        experimental_providerUsage: true,
         composerActions: [
           { kind: "skills", trigger: "/" },
           {
@@ -75,6 +77,8 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         displayName: "Project Provider",
         logoUrl: null,
         available: true,
+        experimental_providerHealth: true,
+        experimental_providerUsage: true,
         composerActions: [{ kind: "skills", trigger: "/" }],
         capabilities: {
           supportsThreadArchive: true,
@@ -165,6 +169,8 @@ function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
         displayName: "Claude Code",
         logoUrl: null,
         available: true,
+        experimental_providerHealth: true,
+        experimental_providerUsage: true,
         composerActions: [],
         capabilities: {
           supportsThreadArchive: true,

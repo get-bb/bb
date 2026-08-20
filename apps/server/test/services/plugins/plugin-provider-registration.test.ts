@@ -62,6 +62,8 @@ const REGISTER_PROVIDER_SOURCE = (id: string): string => `
       displayName: "My Remote Agent",
       icon: "./icons/agent.svg",
       capabilities: {
+        experimental_providerHealth: true,
+        experimental_providerUsage: true,
         supportsServiceTier: true,
         supportsNativeUserQuestion: true,
         fork: "tip",
@@ -110,6 +112,8 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
           displayName: "My Remote Agent",
           available: true,
           logoUrl: "/api/v1/system/providers/my-remote-agent/logo",
+          experimental_providerHealth: true,
+          experimental_providerUsage: true,
           capabilities: {
             supportsThreadArchive: false,
             supportsThreadRename: false,

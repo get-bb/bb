@@ -1050,9 +1050,11 @@ bb.agents.experimental_registerProvider({
   //   2. the fact is needed before / without a live session (picker
   //      rendering, route gating, cross-plugin tool composition — including
   //      with the host offline).
-  // Everything else is a HANDSHAKE fact reported by the bridge at
-  // `initialize`, where it cannot drift from behavior: the code that
-  // implements the feature is the code that reports it.
+  // Maintenance-method availability is also declared here because core calls
+  // those methods without a live provider session. Everything else is a
+  // HANDSHAKE fact reported by the bridge at `initialize`, where it cannot
+  // drift from behavior: the code that implements the feature is the code
+  // that reports it.
   capabilities: {
     permissionModes: ["accept-edits", "auto", "full"],
     reasoningLevels: ["low", "medium", "high", "xhigh", "ultracode", "max"],
@@ -1065,6 +1067,8 @@ bb.agents.experimental_registerProvider({
     supportsNativeFork: true, // fork affordance in the UI
     supportsNativeSessionRewind: true, // edit-past-message affordance
     supportsManualCompaction: true, // compact affordance
+    experimental_providerHealth: true, // bridge implements provider/health
+    experimental_providerUsage: true, // bridge implements provider/usage
     // MERGE CANDIDATE: fork + rewind may collapse into
     // `fork: "none" | "tip" | "checkpoint"` (rewind ≙ checkpoint fork) —
     // verify per provider how edit-message rewind is implemented before

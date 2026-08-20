@@ -1226,8 +1226,6 @@ function handleInitialize(id: string | number): void {
       threadGoalClear: true,
       fork: "checkpoint",
       approvalEnforcedBy: "runtime",
-      experimentalProviderHealth: true,
-      experimentalProviderUsage: true,
     },
   };
   sendResult(id, result);

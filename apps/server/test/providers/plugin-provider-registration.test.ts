@@ -11,6 +11,8 @@ function declaration(
     displayName: "My Remote Agent",
     icon: "./icons/agent.svg",
     capabilities: {
+      experimental_providerHealth: true,
+      experimental_providerUsage: false,
       supportsServiceTier: true,
       supportsNativeUserQuestion: true,
       fork: "checkpoint",
@@ -40,6 +42,8 @@ describe("buildPluginProviderRegistration", () => {
       displayName: "My Remote Agent",
       available: true,
       logoUrl: "/api/v1/system/providers/my-remote-agent/logo",
+      experimental_providerHealth: true,
+      experimental_providerUsage: false,
       capabilities: {
         supportsThreadArchive: true,
         supportsThreadRename: true,

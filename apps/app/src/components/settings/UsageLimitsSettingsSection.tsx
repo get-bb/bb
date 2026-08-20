@@ -35,12 +35,13 @@ import { cn } from "@bb/shared-ui/lib/utils";
 interface ProviderConfig {
   name: string;
   providerId: string;
+  supportsUsage: boolean;
   signInHint: string;
   expiredHint: string;
 }
 
 const FIRST_PARTY_PROVIDER_CONFIGS: Readonly<
-  Partial<Record<string, Omit<ProviderConfig, "providerId">>>
+  Partial<Record<string, Omit<ProviderConfig, "providerId" | "supportsUsage">>>
 > = {
   codex: {
     name: "Codex",
@@ -64,12 +65,14 @@ const FIRST_PARTY_PROVIDER_CONFIGS: Readonly<
 function providerConfig(
   providerId: string,
   displayName: string | undefined,
+  supportsUsage: boolean,
 ): ProviderConfig {
   const firstParty = FIRST_PARTY_PROVIDER_CONFIGS[providerId];
   const name = displayName ?? firstParty?.name ?? providerId;
   return {
     providerId,
     name,
+    supportsUsage,
     signInHint:
       firstParty?.signInHint ?? `Sign in to ${name}, then reload usage.`,
     expiredHint:
@@ -316,6 +319,9 @@ function ProviderUsageBody({
   isLoading,
   isError,
 }: ProviderUsageBlockProps) {
+  if (!usage && !config.supportsUsage) {
+    return <p className="text-xs text-muted-foreground">Usage not provided.</p>;
+  }
   if (isError) {
     return (
       <p className="text-xs text-muted-foreground">
@@ -393,7 +399,11 @@ export function UsageLimitsSettingsSectionContent({
     ),
   ];
   const providerConfigs = orderedProviderIds.map((providerId) =>
-    providerConfig(providerId, providerById.get(providerId)?.displayName),
+    providerConfig(
+      providerId,
+      providerById.get(providerId)?.displayName,
+      providerById.get(providerId)?.experimental_providerUsage ?? true,
+    ),
   );
   const emptyMessage =
     isLoading || isProviderListLoading

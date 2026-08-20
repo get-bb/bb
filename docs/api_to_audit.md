@@ -17,20 +17,23 @@ content-block vocabulary; decide whether legacy aggregate fields still need to
 be accepted; and define any image MIME validation, decoding, or payload-size
 policy at the server boundary before making the helper stable.
 
-## Provider bridge maintenance (`BRIDGE_REQUEST_METHODS.experimentalProviderHealth`, `BRIDGE_REQUEST_METHODS.experimentalProviderUsage`, `experimentalProviderHealth`, `experimentalProviderUsage`, `experimental_providerMaintenanceParamsSchema`, `experimental_providerHealthSchema`, `experimental_providerHealthResultSchema`, `experimental_providerUsageSchema`, `experimental_providerUsageWindowSchema`, and `experimental_providerUsageResultSchema`)
+## Provider bridge maintenance (`PluginProviderCapabilities.experimental_providerHealth`, `PluginProviderCapabilities.experimental_providerUsage`, `ProviderInfo.experimental_providerHealth`, `ProviderInfo.experimental_providerUsage`, `BRIDGE_REQUEST_METHODS.experimentalProviderHealth`, `BRIDGE_REQUEST_METHODS.experimentalProviderUsage`, `experimental_providerMaintenanceParamsSchema`, `experimental_providerHealthSchema`, `experimental_providerHealthResultSchema`, `experimental_providerUsageSchema`, `experimental_providerUsageWindowSchema`, and `experimental_providerUsageResultSchema`)
 
 **What it does.** Adds optional, sessionless `provider/health` and
-`provider/usage` requests to provider bridges. Health reports cheap host-local
-readiness and supported recovery actions; usage reports provider-normalized
-subscription windows. The maintenance runtime supplies the provider id,
-working directory when one exists, and the same provider-scoped launch options
-used by a real session.
+`provider/usage` requests to provider bridges. Each provider declares method
+support at registration so the server can skip unsupported host probes and the
+app can render unsupported usage before starting a bridge. Health reports
+cheap host-local readiness and supported recovery actions; usage reports
+provider-normalized subscription windows. The maintenance runtime supplies the
+provider id, working directory when one exists, and the same provider-scoped
+launch options used by a real session.
 
 **Audit before stabilizing.** Confirm the readiness vocabulary covers API-only
 and router providers, that health remains free of network usage/update checks,
-that account metadata has appropriate privacy treatment, and that ACP's shared
-bridge can continue distinguishing built-in, known, and custom agents without
-exposing provider-specific launch details to clients.
+that account metadata has appropriate privacy treatment, that omitted fields
+from plugins built against the older experimental API continue to mean false,
+and that ACP's shared bridge can continue distinguishing built-in, known, and
+custom agents without exposing provider-specific launch details to clients.
 
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 

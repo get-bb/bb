@@ -510,10 +510,19 @@ export type PluginProviderComposerAction = "plan" | "goal";
  * live session (picker rendering, route gating, cross-plugin tool
  * composition — including with the host offline). Every boolean is a
  * provider-native fact — the provider implements the feature; the flag only
- * tells external consumers it exists. Everything else is a handshake fact the
- * bridge reports at `initialize`, where it cannot drift from behavior.
+ * tells external consumers it exists. Session-behavior facts remain handshake
+ * capabilities reported by the running bridge. Sessionless maintenance
+ * methods are declared here so callers can decide whether to probe without
+ * starting the bridge first.
  */
 export interface PluginProviderCapabilities {
+  /** The provider bridge implements the sessionless `provider/health`
+   * request. This is host-local readiness, not a network health check. */
+  experimental_providerHealth: boolean;
+  /** The provider bridge implements the sessionless `provider/usage`
+   * request. A supported method may still report that usage is unavailable
+   * for a particular provider or return no usage windows. */
+  experimental_providerUsage: boolean;
   /** The provider accepts a fast/priority service-tier choice — shows the
    * service-tier toggle in the picker. */
   supportsServiceTier: boolean;

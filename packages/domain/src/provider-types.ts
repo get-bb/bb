@@ -72,6 +72,9 @@ export const providerInfoSchema = z.object({
   id: z.string(),
   displayName: z.string(),
   logoUrl: z.string().min(1).nullable(),
+  /** Sessionless maintenance methods declared by the provider plugin. */
+  experimental_providerHealth: z.boolean(),
+  experimental_providerUsage: z.boolean(),
   capabilities: providerCapabilitiesSchema,
   composerActions: z.array(providerComposerActionSchema),
   available: z.boolean(),

@@ -156,6 +156,8 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
     id: "codex",
     displayName: "Codex",
     logoUrl: null,
+    experimental_providerHealth: true,
+    experimental_providerUsage: true,
     capabilities: {
       supportsThreadArchive: true,
       supportsThreadRename: true,
@@ -182,6 +184,8 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
     id: "claude-code",
     displayName: "Claude Code",
     logoUrl: null,
+    experimental_providerHealth: true,
+    experimental_providerUsage: true,
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,
@@ -204,6 +208,8 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
     id: "pi",
     displayName: "Pi",
     logoUrl: null,
+    experimental_providerHealth: true,
+    experimental_providerUsage: true,
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,
@@ -220,6 +226,8 @@ const PLACEHOLDER_PROVIDER_INFOS: ProviderInfo[] = [
     id: "acp-cursor",
     displayName: "Cursor",
     logoUrl: null,
+    experimental_providerHealth: true,
+    experimental_providerUsage: true,
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,

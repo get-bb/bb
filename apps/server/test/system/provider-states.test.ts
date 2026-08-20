@@ -77,6 +77,87 @@ describe("getProviderStates", () => {
     });
   });
 
+  it("does not start a health probe the provider did not declare", async () => {
+    await withTestHarness(async (harness) => {
+      harness.deps.providerRegistry.register({
+        pluginId: "provider-no-health",
+        info: {
+          id: "no-health",
+          displayName: "No Health",
+          logoUrl: null,
+          available: true,
+          experimental_providerHealth: false,
+          experimental_providerUsage: false,
+          capabilities: {
+            supportsThreadArchive: false,
+            supportsThreadRename: false,
+            supportsServiceTier: false,
+            supportsNativeUserQuestion: false,
+            supportsFork: false,
+            supportsSessionRewind: false,
+            permissionModes: ["full"],
+          },
+          composerActions: [],
+        },
+        serverCapabilities: {
+          supportsWorkflows: false,
+          reasoningLevels: ["medium"],
+          fork: "none",
+          supportsManualCompaction: false,
+        },
+      });
+      const { host, session } = seedHostSession(harness.deps);
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "known_acp_agents.status") {
+            return {
+              ok: true,
+              result: {
+                agents: request.command.agents.map((agent) => ({
+                  ...agent,
+                  installed: false,
+                  executablePath: null,
+                })),
+              },
+            };
+          }
+          if (request.command.type === "provider.health") {
+            return {
+              ok: true,
+              result: {
+                supported: true,
+                health: readyHealth(request.command.providerId),
+              },
+            };
+          }
+          throw new Error(`Unexpected command ${request.command.type}`);
+        },
+      });
+
+      const result = await getProviderStates(harness.deps, {
+        hostId: host.id,
+      });
+
+      expect(
+        result.providers.find(
+          (provider) => provider.providerId === "no-health",
+        ),
+      ).toMatchObject({
+        status: "unknown",
+        statusMessage: "This provider does not report readiness.",
+      });
+      expect(
+        responder.requests.some(
+          (request) =>
+            request.command.type === "provider.health" &&
+            request.command.providerId === "no-health",
+        ),
+      ).toBe(false);
+    });
+  });
+
   it("resolves a reused environment and its cwd to the environment host", async () => {
     await withTestHarness(async (harness) => {
       const primary = seedHostSession(harness.deps, {

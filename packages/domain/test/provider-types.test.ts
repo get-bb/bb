@@ -6,6 +6,8 @@ describe("provider info schema", () => {
     id: "codex",
     displayName: "Codex",
     logoUrl: null,
+    experimental_providerHealth: true,
+    experimental_providerUsage: true,
     capabilities: {
       supportsThreadArchive: true,
       supportsThreadRename: true,

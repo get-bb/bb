@@ -5,8 +5,9 @@
  * (@bb/provider-bridge-protocol) needs no bespoke adapter: commands map to
  * canonical methods, events arrive as already-translated ThreadEvents, and
  * session-behavior capabilities come from the initialize handshake — captured
- * here per process and consulted for gated methods, so a method a bridge did
- * not advertise is never sent.
+ * here per process and consulted for gated session methods. Sessionless
+ * maintenance methods are gated by the provider registration before a command
+ * reaches this adapter.
  *
  * This adapter never diffs execution options (`classifyExecutionSettingsChange`
  * always reports "live"): options ride every command and the bridge
@@ -285,7 +286,7 @@ export function createBridgeProtocolAdapter(
             },
           };
         case "provider/health":
-          return gate("experimentalProviderHealth", {
+          return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.experimentalProviderHealth,
             params: {
@@ -295,9 +296,9 @@ export function createBridgeProtocolAdapter(
                 ? { providerOptions: options.staticProviderOptions }
                 : {}),
             },
-          });
+          };
         case "provider/usage":
-          return gate("experimentalProviderUsage", {
+          return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.experimentalProviderUsage,
             params: {
@@ -307,7 +308,7 @@ export function createBridgeProtocolAdapter(
                 ? { providerOptions: options.staticProviderOptions }
                 : {}),
             },
-          });
+          };
         case "skills/configure":
           return {
             kind: "request",

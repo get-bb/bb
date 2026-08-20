@@ -139,6 +139,8 @@ function provider(id: string, displayName: string): ProviderInfo {
     displayName,
     logoUrl: null,
     available: true,
+    experimental_providerHealth: true,
+    experimental_providerUsage: true,
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,

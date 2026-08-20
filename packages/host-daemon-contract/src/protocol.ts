@@ -32,6 +32,12 @@
 // for the first-run onboarding flow's project step, which is deleted; no server
 // sends it any more. A newer daemon no longer answers it, so an older server
 // paired with a new daemon would fail that command instead of returning repos.
+// It also adds generic provider.health, changes provider.usage from one
+// fixed three-provider result into a provider-targeted bridge query, and makes
+// provider registration authoritative for whether a bridge implements either
+// method. Older daemons cannot parse the new command shapes and would still
+// gate the requests on initialize results, silently suppressing calls to new
+// bridges that no longer advertise the methods there.
 //
 // Version 137 removes the `claudeCodeMockCliTraffic` runtime option and the
 // Claude Code mock CLI traffic experiment behind it. Current servers no longer
@@ -42,10 +48,7 @@
 // speak `thread/delta` only — the `thread/event` lane is gone. An old daemon's
 // runtime would ignore the delta notifications and render empty timelines, and
 // old runtimes predate the bridge-handshake version check, so this daemon
-// protocol version is the only gate that forces those daemons to update. It
-// also adds generic provider.health and changes provider.usage from one fixed
-// three-provider result into a provider-targeted bridge query; older daemons
-// cannot parse either command shape.
+// protocol version is the only gate that forces those daemons to update.
 //
 // Version 135 adds the `compaction-skipped` provider warning category. The Pi
 // bridge now reports a refused manual compaction ("Nothing to compact") as

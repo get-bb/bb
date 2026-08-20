@@ -37,6 +37,12 @@ async function getProviderState(
   deps: AppDeps,
   args: { cwd?: string; hostId: string; provider: ProviderInfo },
 ): Promise<SystemProviderState> {
+  if (!args.provider.experimental_providerHealth) {
+    return unknownProviderState(
+      args.provider,
+      "This provider does not report readiness.",
+    );
+  }
   const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, args.provider.id);
   if (bridgeLaunch === null) {
     return unknownProviderState(
@@ -64,7 +70,7 @@ async function getProviderState(
     if (!result.supported) {
       return unknownProviderState(
         args.provider,
-        "This provider does not report readiness.",
+        "Provider readiness was not reported.",
       );
     }
     return {

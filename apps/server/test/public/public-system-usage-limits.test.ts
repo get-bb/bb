@@ -53,6 +53,57 @@ function handleUsageRequest(
 }
 
 describe("GET /api/v1/system/usage-limits", () => {
+  it("does not start a usage probe the provider did not declare", async () => {
+    await withTestHarness(async (harness) => {
+      harness.deps.providerRegistry.register({
+        pluginId: "provider-no-usage",
+        info: {
+          id: "no-usage",
+          displayName: "No Usage",
+          logoUrl: null,
+          available: true,
+          experimental_providerHealth: false,
+          experimental_providerUsage: false,
+          capabilities: {
+            supportsThreadArchive: false,
+            supportsThreadRename: false,
+            supportsServiceTier: false,
+            supportsNativeUserQuestion: false,
+            supportsFork: false,
+            supportsSessionRewind: false,
+            permissionModes: ["full"],
+          },
+          composerActions: [],
+        },
+        serverCapabilities: {
+          supportsWorkflows: false,
+          reasoningLevels: ["medium"],
+          fork: "none",
+          supportsManualCompaction: false,
+        },
+      });
+      const primary = seedHostSession(harness.deps, { id: "host-primary" });
+      seedPrimaryHost(harness.deps, primary.host.id);
+      const responder = registerHostRpcResponder(harness, {
+        hostId: primary.host.id,
+        sessionId: primary.session.id,
+        handle: handleUsageRequest,
+      });
+
+      const response = await harness.app.request("/api/v1/system/usage-limits");
+
+      expect(response.status).toBe(200);
+      expect(await readJson(response)).toEqual(USAGE_RESPONSE);
+      expect(
+        responder.requests.some(
+          (request) =>
+            request.command.type === "provider.usage" &&
+            request.command.providerId === "no-usage",
+        ),
+      ).toBe(false);
+    });
+  });
+
   it("continues to use the primary machine when no host is selected", async () => {
     await withTestHarness(async (harness) => {
       const primary = seedHostSession(harness.deps, { id: "host-primary" });

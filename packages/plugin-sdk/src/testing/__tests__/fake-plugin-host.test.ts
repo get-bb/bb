@@ -1004,6 +1004,8 @@ describe("agents.experimental_registerProvider", () => {
       displayName: "My Agent",
       icon: "./icons/agent.svg",
       capabilities: {
+        experimental_providerHealth: true,
+        experimental_providerUsage: false,
         supportsServiceTier: false,
         supportsNativeUserQuestion: true,
         fork: "tip",
@@ -1062,6 +1064,16 @@ describe("agents.experimental_registerProvider", () => {
       ),
     ).toThrow(/capabilities.fork must be one of none, tip, checkpoint/);
     expect(() =>
+      register(
+        agentDeclaration({
+          capabilities: {
+            ...agentDeclaration().capabilities,
+            experimental_providerUsage: "yes",
+          },
+        }),
+      ),
+    ).toThrow(/experimental_providerUsage must be a boolean/);
+    expect(() =>
       register(agentDeclaration({ icon: "./../outside.svg" })),
     ).toThrow(/icon must not escape the plugin directory/);
     // The `bb.branding.icon` grammar: "./" means a plugin file, anything else
@@ -1108,6 +1120,28 @@ describe("agents.experimental_registerProvider", () => {
         (declaration) => declaration.displayName,
       ),
     ).toEqual(["Second Declaration"]);
+  });
+
+  it("defaults maintenance support omitted by older plugins to false", () => {
+    const { bb, harness } = createFakePluginHost();
+    const declaration = agentDeclaration();
+    Reflect.deleteProperty(
+      declaration.capabilities,
+      "experimental_providerHealth",
+    );
+    Reflect.deleteProperty(
+      declaration.capabilities,
+      "experimental_providerUsage",
+    );
+
+    bb.agents.experimental_registerProvider(declaration);
+
+    expect(
+      harness.registrations.providerRegistrations[0]?.capabilities,
+    ).toMatchObject({
+      experimental_providerHealth: false,
+      experimental_providerUsage: false,
+    });
   });
 
   it("clears registrations on dispose", async () => {
