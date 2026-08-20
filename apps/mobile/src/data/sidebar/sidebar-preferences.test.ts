@@ -33,6 +33,7 @@ describe("createSidebarPreferencesStore", () => {
       collapsedSectionKeys: [],
       collapsedMachineKeys: [],
       collapsedBuiltInSections: [],
+      sectionOrder: { project: [], manual: [], machine: [] },
     });
     const store = createSidebarPreferencesStore(
       memoryStorage({
@@ -41,6 +42,7 @@ describe("createSidebarPreferencesStore", () => {
         "bb.sidebar.collapsedProjects": '["p1","p1",7,"p2"]',
         "bb.sidebar.collapsedSections": '["pinned","bogus"]',
         "bb.sidebar.collapsedThreads": "not json",
+        "bb.sidebar.manualSectionOrder": '["pinned","sections","threads"]',
       }),
     );
     expect(store.getSnapshot()).toMatchObject({
@@ -49,7 +51,34 @@ describe("createSidebarPreferencesStore", () => {
       collapsedProjectIds: ["p1", "p2"],
       collapsedBuiltInSections: ["pinned"],
       collapsedThreadIds: [],
+      sectionOrder: {
+        project: [],
+        manual: ["pinned", "sections", "threads"],
+        machine: [],
+      },
     });
+  });
+
+  it("stores each mode's section order under the web key and drops an empty order", () => {
+    const storage = memoryStorage();
+    const store = createSidebarPreferencesStore(storage);
+    const listener = vi.fn();
+    store.subscribe(listener);
+    store.setSectionOrder("project", ["threads", "project:p1", "pinned"]);
+    expect(storage.getString("bb.sidebar.sectionOrder")).toBe(
+      '["threads","project:p1","pinned"]',
+    );
+    expect(store.getSnapshot().sectionOrder.project).toEqual([
+      "threads",
+      "project:p1",
+      "pinned",
+    ]);
+    // Same order again: no write, no notification.
+    store.setSectionOrder("project", ["threads", "project:p1", "pinned"]);
+    expect(listener).toHaveBeenCalledTimes(1);
+    store.setSectionOrder("project", []);
+    expect(storage.getString("bb.sidebar.sectionOrder")).toBeUndefined();
+    expect(store.getSnapshot().sectionOrder.manual).toEqual([]);
   });
 
   it("persists writes, notifies subscribers once per change, and removes defaults", () => {

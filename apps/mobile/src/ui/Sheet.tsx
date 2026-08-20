@@ -79,6 +79,7 @@ export interface SheetProps extends Pick<
   | "onDismiss"
   | "name"
   | "stackBehavior"
+  | "enableContentPanningGesture"
 > {
   controller: SheetController;
   children: ReactNode;
@@ -117,6 +118,7 @@ export function Sheet({
   onOpenChange,
   name,
   stackBehavior,
+  enableContentPanningGesture,
   deferContent = true,
 }: SheetProps) {
   const modalRef = useRef<BottomSheetModal>(null);
@@ -203,6 +205,9 @@ export function Sheet({
       enableDynamicSizing={dynamic}
       maxDynamicContentSize={maxDynamicContentSize}
       enablePanDownToClose
+      // Off while the body hosts its own vertical drag (reorder lists), so
+      // the sheet does not follow the finger; the handle still closes it.
+      enableContentPanningGesture={enableContentPanningGesture}
       // The library marks the content container as one accessibility element
       // ("Bottom Sheet"), which hides every row from VoiceOver and from UI
       // automation. Expose the children instead.

@@ -51,7 +51,6 @@ function toThreadRow(thread: ThreadListEntry): SidebarThreadRow {
       hasHiddenChildren: false,
       childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
     }),
-    groupProjectId: null,
   };
 }
 

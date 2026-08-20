@@ -25,6 +25,7 @@ export interface SidebarPreferenceActions {
   setCollapsed(kind: SidebarCollapseKind, id: string, collapsed: boolean): void;
   toggleCollapsed(kind: SidebarCollapseKind, id: string): void;
   expand(kind: SidebarCollapseKind, ids: Iterable<string>): void;
+  setSectionOrder(mode: SidebarOrganizeMode, order: readonly string[]): void;
 }
 
 /** Persisted organize/sort/collapsed state plus the setters (stable identity). */
@@ -43,6 +44,7 @@ export function useSidebarPreferences(
       setCollapsed: store.setCollapsed,
       toggleCollapsed: store.toggleCollapsed,
       expand: store.expand,
+      setSectionOrder: store.setSectionOrder,
     }),
     [store],
   );

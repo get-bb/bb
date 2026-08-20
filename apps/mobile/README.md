@@ -9,7 +9,8 @@ M5 (SPA-in-WebView plugin surfaces, tablet layout, store releases) is
 deferred. Direct-mode and bb connect server profiles (QR / code pairing, desktop-session
 cookie, re-pair), the app shell (root stack, connection banner, settings),
 theme/design system, the per-profile SDK/realtime/query layer, the grouped
-thread list (home, long-press menus, organize/sort, search, archived),
+thread list (home, long-press menus, organize/sort, drag-to-reorder
+sections per organize mode under the web localStorage keys, search, archived),
 thread creation on the shared composer (mentions, attachments, voice, fork /
 handoff seeds), the thread detail screen (`/threads/[id]`: the virtualized
 timeline with every row kind, markdown, inline diffs, terminal output, images +

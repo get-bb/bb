@@ -8,6 +8,7 @@ import {
   useSidebarCollapsedSets,
   useSidebarModel,
   useSidebarPreferences,
+  useSidebarSectionOrder,
 } from "@/data/sidebar";
 import { Button, EmptyStatePanel, Skeleton, Text } from "@/ui";
 import { useSidebarActions } from "./SidebarActionsProvider";
@@ -15,7 +16,6 @@ import {
   SidebarEmptyRowView,
   SidebarEnvironmentRowView,
   SidebarHeaderRowView,
-  projectSubtitle,
   SidebarThreadRowView,
 } from "./SidebarRows";
 import {
@@ -80,9 +80,14 @@ export function SidebarThreadList({
   const actions = useSidebarActions();
   const [refreshing, setRefreshing] = useState(false);
 
+  const sectionOrder = useSidebarSectionOrder(
+    model,
+    preferences,
+    preferenceActions,
+  );
   const rows = useMemo(
-    () => buildSidebarListRows({ model, collapsed }),
-    [model, collapsed],
+    () => buildSidebarListRows({ model, collapsed, sectionOrder }),
+    [model, collapsed, sectionOrder],
   );
 
   const bootstrapRefetch = bootstrap.refetch;
@@ -120,10 +125,19 @@ export function SidebarThreadList({
   );
   const onHeaderLongPress = useCallback(
     (row: SidebarHeaderRow) => {
-      if (row.target.kind === "project")
-        actions.openProjectMenu(row.target.project);
-      else if (row.target.kind === "section") {
-        actions.openSectionMenu(row.target.section);
+      switch (row.target.kind) {
+        case "project":
+          actions.openProjectMenu(row.target.project);
+          return;
+        case "section":
+          actions.openSectionMenu(row.target.section);
+          return;
+        case "pinned":
+        case "threads":
+        case "machine":
+          // No menu of their own: a long-press goes straight to reordering.
+          actions.openSectionReorder();
+          return;
       }
     },
     [actions],
@@ -148,9 +162,6 @@ export function SidebarThreadList({
     [actions],
   );
 
-  const organize = preferences.organize;
-  const projectNamesById = model.projectNamesById;
-
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<SidebarListRow>) => {
       switch (item.type) {
@@ -167,26 +178,18 @@ export function SidebarThreadList({
               }
             />
           );
-        case "thread": {
-          const { thread } = item;
-          const showProject =
-            (item.groupProjectId === null || organize !== "project") &&
-            thread.projectId !== PERSONAL_PROJECT_ID &&
-            item.depth === 0;
+        case "thread":
+          // One line per row, like the web sidebar: the project name lives
+          // on the group header, not under every thread.
           return (
             <SidebarThreadRowView
               row={item}
-              subtitle={projectSubtitle(
-                showProject
-                  ? (projectNamesById.get(thread.projectId) ?? null)
-                  : null,
-              )}
+              subtitle={null}
               onPress={onThreadPress}
               onLongPress={onThreadLongPress}
               onToggleCollapsed={onToggleThread}
             />
           );
-        }
         case "environment":
           return (
             <SidebarEnvironmentRowView
@@ -206,8 +209,6 @@ export function SidebarThreadList({
       onToggleEnvironment,
       onToggleHeader,
       onToggleThread,
-      organize,
-      projectNamesById,
     ],
   );
 
@@ -253,7 +254,6 @@ export function SidebarThreadList({
       keyExtractor={keyExtractor}
       getItemType={getItemType}
       renderItem={renderItem}
-      extraData={{ organize }}
       maintainVisibleContentPosition={DISABLE_MAINTAIN_POSITION}
       refreshing={refreshing}
       onRefresh={onRefresh}

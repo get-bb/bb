@@ -1,6 +1,8 @@
 import { NO_MACHINE_GROUP_KEY } from "@bb/client-core";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { buildSidebarModel } from "@/data/sidebar/sidebar-model";
+import { resolveSidebarSectionOrder } from "@/data/sidebar/sidebar-section-order";
 import {
   host,
   project,
@@ -8,12 +10,25 @@ import {
   threadListEntry,
 } from "@/data/test/fixtures";
 import {
-  buildSidebarListRows,
+  buildSidebarListRows as buildRows,
   getHeaderCollapseTarget,
   resolveThreadRowIndicator,
   type SidebarCollapsedState,
   type SidebarListRow,
 } from "./sidebar-list-rows";
+
+type BuildRowsArgs = Parameters<typeof buildRows>[0];
+
+/** The rows in the model's natural section order (no stored order). */
+function buildSidebarListRows(
+  args: Omit<BuildRowsArgs, "sectionOrder"> &
+    Partial<Pick<BuildRowsArgs, "sectionOrder">>,
+): SidebarListRow[] {
+  return buildRows({
+    sectionOrder: resolveSidebarSectionOrder(args.model, []),
+    ...args,
+  });
+}
 
 function collapsedState(
   overrides: Partial<SidebarCollapsedState> = {},
@@ -136,7 +151,6 @@ describe("buildSidebarListRows", () => {
     const worktreeThread = rows.find((row) => row.key === "thread:t_wt_a");
     expect(worktreeThread).toMatchObject({
       depth: 1,
-      groupProjectId: "proj_1",
     });
     // The personal "Threads" bucket is empty and there are other groups: hidden.
     expect(rowKeys(rows)).not.toContain("header:threads");
@@ -366,5 +380,63 @@ describe("resolveThreadRowIndicator", () => {
         childActivity,
       }),
     ).toBe("runtime");
+  });
+});
+
+describe("buildSidebarListRows section order", () => {
+  it("emits top-level sections in the stored order and keeps unknown ones after", () => {
+    const model = buildSidebarModel({
+      bootstrap: sidebarBootstrap({
+        projects: [
+          project({
+            id: "proj_1",
+            name: "One",
+            threads: [threadListEntry({ id: "t_pinned", pinnedAt: 100 })],
+          }),
+          project({
+            id: "proj_2",
+            name: "Two",
+            threads: [threadListEntry({ id: "t_two", projectId: "proj_2" })],
+          }),
+        ],
+        personalProject: project({
+          id: PERSONAL_PROJECT_ID,
+          kind: "personal",
+          name: "Personal",
+          threads: [
+            threadListEntry({
+              id: "t_personal",
+              projectId: PERSONAL_PROJECT_ID,
+            }),
+          ],
+        }),
+      }),
+      hosts: [],
+      organize: "project",
+      sort: "updated",
+    });
+    const headers = (order: readonly string[]) =>
+      buildRows({
+        model,
+        collapsed: collapsedState(),
+        sectionOrder: resolveSidebarSectionOrder(model, order),
+      })
+        .filter((row) => row.type === "header")
+        .map((row) => row.key);
+    // Threads moved above the projects; Pinned stays first by default.
+    expect(headers(["threads", "project:proj_2", "project:proj_1"])).toEqual([
+      "header:pinned",
+      "header:threads",
+      "header:project:proj_2",
+      "header:project:proj_1",
+    ]);
+    // Pinned can move too, and a section the order never named joins right
+    // after the last entity section the order does name.
+    expect(headers(["project:proj_2", "pinned", "threads"])).toEqual([
+      "header:project:proj_2",
+      "header:project:proj_1",
+      "header:pinned",
+      "header:threads",
+    ]);
   });
 });

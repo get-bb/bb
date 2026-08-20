@@ -12,6 +12,7 @@ import {
   type ProjectThreadItem,
   type ProjectThreadNode,
   type SidebarSectionDefinition,
+  type SidebarSectionId,
   type ThreadListIndicatorKind,
   type ThreadListIndicatorState,
 } from "@bb/client-core";
@@ -71,8 +72,6 @@ export interface SidebarThreadRow {
   collapsed: boolean;
   /** The single trailing status glyph for this row (own state + hidden children). */
   indicator: ThreadListIndicatorKind;
-  /** Project the row renders under in project mode; null in other modes. */
-  groupProjectId: string | null;
 }
 
 export interface SidebarEnvironmentRow {
@@ -204,7 +203,6 @@ export function resolveThreadRowIndicator({
 
 interface FlattenContext {
   collapsed: SidebarCollapsedState;
-  groupProjectId: string | null;
   rows: SidebarListRow[];
 }
 
@@ -228,7 +226,6 @@ function pushThreadNode(
       hasHiddenChildren: collapsed,
       childActivity: node.stats.childActivity,
     }),
-    groupProjectId: context.groupProjectId,
   });
   if (childCount > 0 && !collapsed) {
     pushItems(node.children, depth + 1, context);
@@ -334,6 +331,11 @@ function headerTarget(group: SidebarGroup): SidebarHeaderTarget {
 export interface BuildSidebarListRowsArgs {
   model: SidebarModel;
   collapsed: SidebarCollapsedState;
+  /**
+   * Top-level section order (`resolveSidebarSectionOrder`). Sections the
+   * order does not name keep the model's order after the named ones.
+   */
+  sectionOrder: readonly SidebarSectionId[];
   /** Copy under an expanded project with no threads. */
   emptyProjectLabel?: string;
 }
@@ -342,76 +344,107 @@ export interface BuildSidebarListRowsArgs {
 export function buildSidebarListRows({
   model,
   collapsed,
+  sectionOrder,
   emptyProjectLabel = "No threads yet",
 }: BuildSidebarListRowsArgs): SidebarListRow[] {
   const rows: SidebarListRow[] = [];
   if (!model.isReady) return rows;
 
-  if (model.pinned) {
-    const pinnedCollapsed = collapsed.builtInSections.has(PINNED_SECTION_KEY);
-    rows.push({
-      type: "header",
-      key: "header:pinned",
-      label: "Pinned",
-      target: { kind: "pinned" },
-      depth: 0,
-      collapsed: pinnedCollapsed,
-      threadCount: model.pinned.threads.length,
-      activity: pinnedCollapsed
-        ? model.pinned.activity
-        : NO_COLLAPSED_CHILD_ACTIVITY,
-    });
-    if (!pinnedCollapsed) {
-      const context: FlattenContext = {
-        collapsed,
-        groupProjectId: null,
-        rows,
-      };
-      for (const node of model.pinned.rootNodes) {
-        pushThreadNode(node, 0, context);
-      }
-    }
+  for (const sectionId of orderTopLevelSections(model, sectionOrder)) {
+    if (sectionId === "pinned") pushPinnedRows(model, collapsed, rows);
+    else pushGroupRows(model, sectionId, collapsed, emptyProjectLabel, rows);
   }
-
-  for (const group of model.groups) {
-    // The built-in trailing bucket only earns a header when it has rows, except
-    // when it is the only thing the sidebar could show.
-    if (
-      group.kind === "threads" &&
-      group.items.length === 0 &&
-      (model.groups.length > 1 || model.pinned !== null)
-    ) {
-      continue;
-    }
-    const isCollapsed = isGroupCollapsed(group, collapsed);
-    rows.push({
-      type: "header",
-      key: `header:${group.id}`,
-      label: group.label,
-      target: headerTarget(group),
-      depth: 0,
-      collapsed: isCollapsed,
-      threadCount: group.threads.length,
-      activity: isCollapsed ? group.activity : NO_COLLAPSED_CHILD_ACTIVITY,
-    });
-    if (isCollapsed) continue;
-    if (group.items.length === 0) {
-      rows.push({
-        type: "empty",
-        key: `empty:${group.id}`,
-        label: emptyProjectLabel,
-        depth: 0,
-      });
-      continue;
-    }
-    pushItems(group.items, 0, {
-      collapsed,
-      groupProjectId: group.kind === "project" ? group.project.id : null,
-      rows,
-    });
-  }
-
   return rows;
+}
+
+/** Pinned (when shown) plus every group, sorted by the section order. */
+function orderTopLevelSections(
+  model: SidebarModel,
+  sectionOrder: readonly SidebarSectionId[],
+): SidebarSectionId[] {
+  const present: SidebarSectionId[] = [
+    ...(model.pinned ? (["pinned"] as const) : []),
+    ...model.groups.map((group) => group.id),
+  ];
+  const rank = new Map(sectionOrder.map((id, index) => [id, index]));
+  return present
+    .map((id, index) => ({ id, index }))
+    .sort((left, right) => {
+      const leftRank = rank.get(left.id) ?? Number.POSITIVE_INFINITY;
+      const rightRank = rank.get(right.id) ?? Number.POSITIVE_INFINITY;
+      return leftRank === rightRank
+        ? left.index - right.index
+        : leftRank - rightRank;
+    })
+    .map((entry) => entry.id);
+}
+
+function pushPinnedRows(
+  model: SidebarModel,
+  collapsed: SidebarCollapsedState,
+  rows: SidebarListRow[],
+): void {
+  if (!model.pinned) return;
+  const pinnedCollapsed = collapsed.builtInSections.has(PINNED_SECTION_KEY);
+  rows.push({
+    type: "header",
+    key: "header:pinned",
+    label: "Pinned",
+    target: { kind: "pinned" },
+    depth: 0,
+    collapsed: pinnedCollapsed,
+    threadCount: model.pinned.threads.length,
+    activity: pinnedCollapsed
+      ? model.pinned.activity
+      : NO_COLLAPSED_CHILD_ACTIVITY,
+  });
+  if (pinnedCollapsed) return;
+  const context: FlattenContext = { collapsed, rows };
+  for (const node of model.pinned.rootNodes) {
+    pushThreadNode(node, 0, context);
+  }
+}
+
+function pushGroupRows(
+  model: SidebarModel,
+  sectionId: SidebarSectionId,
+  collapsed: SidebarCollapsedState,
+  emptyProjectLabel: string,
+  rows: SidebarListRow[],
+): void {
+  const group = model.groups.find((candidate) => candidate.id === sectionId);
+  if (!group) return;
+  // The built-in trailing bucket only earns a header when it has rows, except
+  // when it is the only thing the sidebar could show.
+  if (
+    group.kind === "threads" &&
+    group.items.length === 0 &&
+    (model.groups.length > 1 || model.pinned !== null)
+  ) {
+    return;
+  }
+  const isCollapsed = isGroupCollapsed(group, collapsed);
+  rows.push({
+    type: "header",
+    key: `header:${group.id}`,
+    label: group.label,
+    target: headerTarget(group),
+    depth: 0,
+    collapsed: isCollapsed,
+    threadCount: group.threads.length,
+    activity: isCollapsed ? group.activity : NO_COLLAPSED_CHILD_ACTIVITY,
+  });
+  if (isCollapsed) return;
+  if (group.items.length === 0) {
+    rows.push({
+      type: "empty",
+      key: `empty:${group.id}`,
+      label: emptyProjectLabel,
+      depth: 0,
+    });
+    return;
+  }
+  pushItems(group.items, 0, { collapsed, rows });
 }
 
 /** Collapse toggle target for a header row (kind + persisted id). */

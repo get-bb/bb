@@ -39,6 +39,13 @@ export {
   type SidebarSortMode,
 } from "./sidebar-preferences";
 export {
+  listSidebarSectionOrderEntries,
+  mergeHiddenSectionOrder,
+  resolveSidebarSectionOrder,
+  useSidebarSectionOrder,
+  type SidebarSectionOrderEntry,
+} from "./sidebar-section-order";
+export {
   getSidebarPreferencesStore,
   useSidebarCollapsedSets,
   useSidebarPreferences,

@@ -31,6 +31,12 @@ export interface SidebarPreferences {
   /** Host ids plus `NO_MACHINE_GROUP_KEY`. */
   collapsedMachineKeys: readonly string[];
   collapsedBuiltInSections: readonly CollapsibleSidebarSectionId[];
+  /**
+   * Top-level section order per organize mode, as the web stores it (raw
+   * section ids plus legacy anchors); `resolveSidebarSectionOrder` reconciles
+   * it with the live sections.
+   */
+  sectionOrder: Readonly<Record<SidebarOrganizeMode, readonly string[]>>;
 }
 
 export interface SidebarPreferencesStorage {
@@ -48,9 +54,19 @@ export interface SidebarPreferencesStore {
   toggleCollapsed(kind: SidebarCollapseKind, id: string): void;
   /** Ensure every id is expanded (used to reveal the selected thread). */
   expand(kind: SidebarCollapseKind, ids: Iterable<string>): void;
+  setSectionOrder(mode: SidebarOrganizeMode, order: readonly string[]): void;
 }
 
 export const SIDEBAR_ORGANIZE_STORAGE_KEY = "bb.sidebar.organizationMode";
+/** Web `sidebarCollapsedAtoms.ts`: one order per organize mode. */
+export const SIDEBAR_SECTION_ORDER_STORAGE_KEYS: Record<
+  SidebarOrganizeMode,
+  string
+> = {
+  project: "bb.sidebar.sectionOrder",
+  manual: "bb.sidebar.manualSectionOrder",
+  machine: "bb.sidebar.machineSectionOrder",
+};
 export const SIDEBAR_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
 const COLLAPSED_STORAGE_KEYS: Record<SidebarCollapseKind, string> = {
   project: "bb.sidebar.collapsedProjects",
@@ -189,6 +205,17 @@ function readPreferences(
     collapsedBuiltInSections: parseStringList(
       storage.getString(COLLAPSED_STORAGE_KEYS.builtIn),
     ).filter(isCollapsibleSidebarSectionId),
+    sectionOrder: {
+      project: parseStringList(
+        storage.getString(SIDEBAR_SECTION_ORDER_STORAGE_KEYS.project),
+      ),
+      manual: parseStringList(
+        storage.getString(SIDEBAR_SECTION_ORDER_STORAGE_KEYS.manual),
+      ),
+      machine: parseStringList(
+        storage.getString(SIDEBAR_SECTION_ORDER_STORAGE_KEYS.machine),
+      ),
+    },
   };
 }
 
@@ -264,6 +291,22 @@ export function createSidebarPreferencesStore(
       const next = current.filter((item) => !remove.has(item));
       if (next.length === current.length) return;
       writeList(kind, next);
+    },
+    setSectionOrder(mode, order) {
+      const current = snapshot.sectionOrder[mode];
+      if (
+        current.length === order.length &&
+        current.every((id, index) => id === order[index])
+      ) {
+        return;
+      }
+      const key = SIDEBAR_SECTION_ORDER_STORAGE_KEYS[mode];
+      if (order.length === 0) storage.remove(key);
+      else storage.set(key, JSON.stringify(order));
+      commit({
+        ...snapshot,
+        sectionOrder: { ...snapshot.sectionOrder, [mode]: [...order] },
+      });
     },
   };
 }

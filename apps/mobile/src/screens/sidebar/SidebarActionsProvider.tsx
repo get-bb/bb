@@ -1,4 +1,8 @@
-import { isThreadRead, type SidebarSectionDefinition } from "@bb/client-core";
+import {
+  isThreadRead,
+  type SidebarSectionDefinition,
+  type SidebarSectionId,
+} from "@bb/client-core";
 import type { ThreadListEntry } from "@bb/domain";
 import { BbHttpError } from "@bb/sdk/browser";
 import { useRouter } from "expo-router";
@@ -18,9 +22,15 @@ import {
   useRenameSection,
 } from "@/data/sections";
 import {
+  listSidebarSectionOrderEntries,
+  mergeHiddenSectionOrder,
   useSidebarBootstrap,
+  useSidebarModel,
   useSidebarPreferences,
+  useSidebarSectionOrder,
   type SidebarOrganizeMode,
+  type SidebarPreferenceActions,
+  type SidebarPreferences,
   type SidebarProject,
   type SidebarSortMode,
 } from "@/data/sidebar";
@@ -54,6 +64,7 @@ import {
   projectSettingsHref,
   threadHref,
 } from "../shell/hrefs";
+import { SectionReorderList } from "./SectionReorderList";
 import { SheetNameForm } from "./SheetNameForm";
 
 /**
@@ -86,13 +97,16 @@ type SheetState =
       moveThread: ThreadListEntry | null;
     }
   | { kind: "section-delete"; section: SidebarSectionDefinition }
-  | { kind: "display-options" };
+  | { kind: "display-options" }
+  | { kind: "section-reorder" };
 
 export interface SidebarActions {
   openThreadMenu(thread: ThreadListEntry): void;
   openProjectMenu(project: SidebarProject): void;
   openSectionMenu(section: SidebarSectionDefinition): void;
   openDisplayOptions(): void;
+  /** The drag-to-reorder list of top-level sections for the current mode. */
+  openSectionReorder(): void;
   openCreateSection(): void;
   /** Navigate to the thread detail. */
   openThread(thread: Pick<ThreadListEntry, "id">): void;
@@ -345,6 +359,7 @@ export function SidebarActionsProvider({
       openProjectMenu: (project) => present({ kind: "project-menu", project }),
       openSectionMenu: (section) => present({ kind: "section-menu", section }),
       openDisplayOptions: () => present({ kind: "display-options" }),
+      openSectionReorder: () => present({ kind: "section-reorder" }),
       openCreateSection: () =>
         present({ kind: "section-create", moveThread: null }),
       openThread: (thread) => navigate(threadHref(thread.id)),
@@ -638,6 +653,12 @@ export function SidebarActionsProvider({
             },
           },
           {
+            key: "reorder",
+            label: "Reorder sections",
+            icon: "ArrowUpDown",
+            onPress: () => setState({ kind: "section-reorder" }),
+          },
+          {
             key: "remove",
             label: "Remove",
             icon: "Trash2",
@@ -708,6 +729,12 @@ export function SidebarActionsProvider({
             label: "Rename",
             icon: "Edit",
             onPress: () => setState({ kind: "section-rename", section }),
+          },
+          {
+            key: "reorder",
+            label: "Reorder sections",
+            icon: "ArrowUpDown",
+            onPress: () => setState({ kind: "section-reorder" }),
           },
           {
             key: "delete",
@@ -858,10 +885,36 @@ export function SidebarActionsProvider({
               }
               testID="sidebar-new-section"
             />
+            <ListRow
+              title="Reorder sections…"
+              leading="ArrowUpDown"
+              onPress={() => setState({ kind: "section-reorder" })}
+              testID="sidebar-reorder-sections"
+            />
             <CenteredRow
               label="Done"
               onPress={dismiss}
               testID="sidebar-display-done"
+            />
+          </>
+        );
+      case "section-reorder":
+        return (
+          <>
+            <SheetHeader
+              title="Reorder sections"
+              message="Drag a section to move it. The order is saved for this organize mode."
+            />
+            <SectionReorderSheetBody
+              organize={preferences.organize}
+              sort={preferences.sort}
+              preferences={preferences}
+              preferenceActions={preferenceActions}
+            />
+            <CenteredRow
+              label="Done"
+              onPress={dismiss}
+              testID="sidebar-reorder-done"
             />
           </>
         );
@@ -873,7 +926,10 @@ export function SidebarActionsProvider({
       {children}
       <Sheet
         controller={sheet}
-        layout="scroll"
+        // The reorder list owns vertical drags, so it gets a plain view body
+        // and the sheet stops following the finger.
+        layout={state?.kind === "section-reorder" ? "view" : "scroll"}
+        enableContentPanningGesture={state?.kind !== "section-reorder"}
         deferContent={false}
         onDismiss={() => {
           setState(null);
@@ -884,5 +940,42 @@ export function SidebarActionsProvider({
         {renderContent()}
       </Sheet>
     </SidebarActionsContext.Provider>
+  );
+}
+
+/**
+ * Mounted only while the reorder sheet is open: builds the model for the
+ * current mode to label the sections, and writes each drop back to the
+ * per-mode order.
+ */
+function SectionReorderSheetBody({
+  organize,
+  sort,
+  preferences,
+  preferenceActions,
+}: {
+  organize: SidebarOrganizeMode;
+  sort: SidebarSortMode;
+  preferences: SidebarPreferences;
+  preferenceActions: SidebarPreferenceActions;
+}) {
+  const { model } = useSidebarModel({ organize, sort });
+  const order = useSidebarSectionOrder(model, preferences, preferenceActions);
+  const entries = useMemo(
+    () => listSidebarSectionOrderEntries(model, order),
+    [model, order],
+  );
+  const onReorder = useCallback(
+    (visibleOrder: SidebarSectionId[]) =>
+      preferenceActions.setSectionOrder(
+        organize,
+        mergeHiddenSectionOrder(order, visibleOrder),
+      ),
+    [order, organize, preferenceActions],
+  );
+  return (
+    <View className="py-2">
+      <SectionReorderList entries={entries} onReorder={onReorder} />
+    </View>
   );
 }
