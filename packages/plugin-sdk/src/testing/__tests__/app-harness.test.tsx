@@ -153,6 +153,9 @@ function UrlNavigationProbe() {
   return (
     <div>
       <UrlLink href="https://example.com/from-link">Open link</UrlLink>
+      <UrlLink href="https://example.com/native" target="preview-pane">
+        Open in explicit target
+      </UrlLink>
       <button
         type="button"
         onClick={() =>
@@ -186,6 +189,20 @@ function FileNavigationProbe() {
         Open file externally
       </button>
     </div>
+  );
+}
+
+function SchemeLikeFileLinkProbe() {
+  return (
+    <FileLink
+      target={{
+        kind: "workspace",
+        environmentId: "env_42",
+        path: "vscode:foo",
+      }}
+    >
+      Open scheme-like file
+    </FileLink>
   );
 }
 
@@ -1153,12 +1170,41 @@ describe("renderSlot", () => {
       { openUrl: () => true },
     );
     fireEvent.click(slot.getByRole("link", { name: "Open link" }));
+    const explicitTargetLink = slot.getByRole("link", {
+      name: "Open in explicit target",
+    });
+    expect(explicitTargetLink.getAttribute("target")).toBe("preview-pane");
+    expect(fireEvent.click(explicitTargetLink)).toBe(true);
     fireEvent.click(slot.getByRole("button", { name: "Open imperatively" }));
     expect(slot.inspection.navigateCalls).toEqual([
       { method: "experimental_openUrl", url: "https://example.com/from-link" },
       {
         method: "experimental_openUrl",
         url: "https://example.com/imperative",
+      },
+    ]);
+  });
+
+  it("exposes a scheme-safe href for file links", () => {
+    const slot = renderSlot(
+      { component: SchemeLikeFileLinkProbe },
+      {},
+      { openFilePreview: () => true },
+    );
+    const link = slot.getByRole("link", { name: "Open scheme-like file" });
+    expect(link.getAttribute("href")).toBe("./vscode%3Afoo");
+    fireEvent.click(link);
+    expect(slot.inspection.navigateCalls).toEqual([
+      {
+        method: "experimental_openFilePreview",
+        options: {
+          target: {
+            kind: "workspace",
+            environmentId: "env_42",
+            path: "vscode:foo",
+          },
+          location: null,
+        },
       },
     ]);
   });

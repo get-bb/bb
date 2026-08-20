@@ -351,7 +351,8 @@ function TestUrlLink({
           event.ctrlKey ||
           event.metaKey ||
           event.shiftKey ||
-          event.currentTarget.hasAttribute("download")
+          event.currentTarget.hasAttribute("download") ||
+          event.currentTarget.hasAttribute("target")
         ) {
           return;
         }
@@ -373,7 +374,7 @@ function TestFileLink({
   return (
     <a
       {...anchorProps}
-      href={target.path}
+      href={`./${encodeURIComponent(target.path)}`}
       onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
         onClick?.(event);
         if (

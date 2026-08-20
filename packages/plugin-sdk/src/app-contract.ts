@@ -1597,8 +1597,9 @@ export interface MarkdownProps {
 
 /**
  * Props for BB's semantic URL link. The host owns ordinary activation while
- * retaining native anchor behavior for app routes, modifiers, copying, and
- * unsupported schemes. Experimental: see docs/api_to_audit.md.
+ * retaining native anchor behavior for app routes, modifiers, explicit
+ * targets, copying, and unsupported schemes. Experimental: see
+ * docs/api_to_audit.md.
  */
 export interface ExperimentalUrlLinkProps extends Omit<
   ComponentPropsWithoutRef<"a">,
@@ -1624,7 +1625,10 @@ export interface ExperimentalFileOpenOptions {
   location: ExperimentalFileLocation | null;
 }
 
-/** Props for BB's host-rendered semantic file link. */
+/**
+ * Props for BB's host-rendered semantic file link. Valid targets receive a
+ * scheme-safe anchor href; malformed runtime targets remain inert.
+ */
 export interface ExperimentalFileLinkProps extends Omit<
   ComponentPropsWithoutRef<"a">,
   "href" | "target"

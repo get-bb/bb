@@ -61,8 +61,10 @@ export function ExperimentalFileLink({
     },
     [intent, navigation, onClick],
   );
+  const href =
+    intent === null ? undefined : `./${encodeURIComponent(intent.target.path)}`;
   const anchor = (
-    <RouteAnchor {...anchorProps} href={target.path} onClick={handleClick} />
+    <RouteAnchor {...anchorProps} href={href} onClick={handleClick} />
   );
 
   if (intent === null) return anchor;

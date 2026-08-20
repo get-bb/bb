@@ -56,7 +56,28 @@ describe("ExperimentalFileLink", () => {
     expect(openFilePreview).not.toHaveBeenCalled();
   });
 
-  it("does not dispatch a malformed target supplied across a JavaScript boundary", () => {
+  it("uses a scheme-safe href for a valid scheme-like file name", () => {
+    const openFilePreview = vi.fn(() => true);
+    render(
+      <MemoryRouter>
+        <AppNavigationHostProvider capabilities={{ openFilePreview }}>
+          <ExperimentalFileLink target={{ ...target, path: "vscode:foo" }}>
+            vscode:foo
+          </ExperimentalFileLink>
+        </AppNavigationHostProvider>
+      </MemoryRouter>,
+    );
+    const link = screen.getByRole("link", { name: "vscode:foo" });
+    expect(link.getAttribute("href")).toBe("./vscode%3Afoo");
+
+    fireEvent.click(link);
+    expect(openFilePreview).toHaveBeenCalledWith({
+      target: { ...target, path: "vscode:foo" },
+      location: null,
+    });
+  });
+
+  it("renders a malformed target supplied across a JavaScript boundary as inert", () => {
     const openFilePreview = vi.fn(() => true);
     render(
       <MemoryRouter>
@@ -67,7 +88,10 @@ describe("ExperimentalFileLink", () => {
         </AppNavigationHostProvider>
       </MemoryRouter>,
     );
-    fireEvent.click(screen.getByRole("link", { name: "invalid" }));
+    const invalid = screen.getByText("invalid");
+    expect(screen.queryByRole("link", { name: "invalid" })).toBeNull();
+    expect(invalid.getAttribute("href")).toBeNull();
+    fireEvent.click(invalid);
     expect(openFilePreview).not.toHaveBeenCalled();
   });
 });

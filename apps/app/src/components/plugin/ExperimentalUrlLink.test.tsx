@@ -44,6 +44,26 @@ describe("ExperimentalUrlLink", () => {
     expect(openUrl).not.toHaveBeenCalled();
   });
 
+  it.each(["_blank", "preview-pane"])(
+    "leaves the explicit %s target native when the URL host would accept it",
+    (target) => {
+      const openUrl = vi.fn(() => true);
+      render(
+        <MemoryRouter>
+          <AppNavigationHostProvider capabilities={{ openUrl }}>
+            <ExperimentalUrlLink href="https://example.com" target={target}>
+              Example
+            </ExperimentalUrlLink>
+          </AppNavigationHostProvider>
+        </MemoryRouter>,
+      );
+      const link = screen.getByRole("link", { name: "Example" });
+      expect(link.getAttribute("target")).toBe(target);
+      expect(fireEvent.click(link)).toBe(true);
+      expect(openUrl).not.toHaveBeenCalled();
+    },
+  );
+
   it("routes internal links through browser history before URL preferences", () => {
     const openUrl = vi.fn(() => true);
     render(
@@ -60,6 +80,31 @@ describe("ExperimentalUrlLink", () => {
     );
     fireEvent.click(screen.getByRole("link", { name: "Settings" }));
     expect(screen.getByText("Settings route")).toBeTruthy();
+    expect(openUrl).not.toHaveBeenCalled();
+  });
+
+  it("keeps an explicit target on an internal route native", () => {
+    const openUrl = vi.fn(() => true);
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <RouteNavigationProvider>
+          <AppNavigationHostProvider capabilities={{ openUrl }}>
+            <ExperimentalUrlLink href="/settings" target="_blank">
+              Settings in new context
+            </ExperimentalUrlLink>
+            <Routes>
+              <Route path="/settings" element={<div>Settings route</div>} />
+            </Routes>
+          </AppNavigationHostProvider>
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+    const link = screen.getByRole("link", {
+      name: "Settings in new context",
+    });
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(fireEvent.click(link)).toBe(true);
+    expect(screen.queryByText("Settings route")).toBeNull();
     expect(openUrl).not.toHaveBeenCalled();
   });
 });

@@ -31,7 +31,10 @@ an `openUrl` behavior option.
 Use `experimental_FileLink` for an explicit live workspace, host, or
 thread-storage file. Ordinary activation opens the shared BB preview and its
 context menu exposes built-in/plugin viewers, preferred external opening, and
-copy actions. Buttons and menus can call
+copy actions. Valid targets expose an encoded, scheme-safe anchor href so
+modifier clicks, downloads, and copied links cannot reinterpret a file name as
+an external URL scheme; malformed runtime targets have no active href. Buttons
+and menus can call
 `experimental_openFilePreview({ target, location })` or
 `experimental_openFileExternally({ target, location })`; both return whether
 the current host accepted the intent. Targets never infer an ambient workspace.

@@ -83,7 +83,8 @@ external method resolves the current client's preferred file target, absolute
 path, local/remote-SSH context, and line/column support. The boolean methods
 report host acceptance; later OS failures remain host-owned. The host id added
 to file-opener sources preserves explicit host identity when a plugin page
-opens a host file without ambient thread context.
+opens a host file without ambient thread context. Valid link targets expose a
+scheme-safe href, while malformed runtime targets remain inert.
 
 **Audit before stabilizing.**
 
