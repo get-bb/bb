@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { createSentMessageEditOperationId } from "./sent-message-edit-operation-id";
-import { useCachedProviderInfo } from "@/hooks/queries/system-queries";
+import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
@@ -973,11 +973,21 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     },
     [forkThreadFromMessage],
   );
-  // Subscribed, not a bare cache read: this view never mounts the
-  // execution-options query itself (its composer child does), so a render-time
-  // snapshot would leave capability-gated affordances hidden until an
-  // unrelated query re-rendered the tree.
-  const threadProviderInfo = useCachedProviderInfo(thread?.providerId);
+  // Provider capabilities do not depend on model discovery. Load them from the
+  // lightweight provider roster so fork/edit affordances are not held behind
+  // the composer's slower execution-options probe.
+  const threadProviderInfo = useSystemProviderInfo(
+    thread?.environmentId
+      ? {
+          enabled: true,
+          environmentId: thread.environmentId,
+          providerId: thread.providerId,
+        }
+      : {
+          enabled: thread !== undefined,
+          providerId: thread?.providerId,
+        },
+  );
   const isForkAvailable = isThreadForkable(
     thread ?? null,
     threadProviderInfo?.capabilities.supportsFork ?? false,

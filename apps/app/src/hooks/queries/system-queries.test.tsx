@@ -25,6 +25,7 @@ import {
   useHostProviderCliStatus,
   useOnboardingAgents,
   useSystemExecutionOptions,
+  useSystemProviderInfo,
   useSystemUsageLimits,
 } from "./system-queries";
 
@@ -32,6 +33,7 @@ vi.mock("@/lib/sdk", () => ({
   BbHttpError: class BbHttpError extends Error {},
   sdk: {
     hosts: { providerCliStatus: vi.fn() },
+    providers: { list: vi.fn() },
     system: {
       executionOptions: vi.fn(),
       onboardingAgents: vi.fn(),
@@ -76,6 +78,52 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   window.localStorage.clear();
+});
+
+describe("useSystemProviderInfo", () => {
+  it("loads routed provider capabilities without waiting for model discovery", async () => {
+    const providers: ProviderInfo[] = [
+      {
+        id: "codex",
+        displayName: "Codex",
+        logoUrl: null,
+        available: true,
+        composerActions: [],
+        capabilities: {
+          supportsThreadArchive: true,
+          supportsThreadRename: true,
+          supportsServiceTier: true,
+          supportsNativeUserQuestion: false,
+          supportsFork: true,
+          supportsSessionRewind: true,
+          permissionModes: ["accept-edits", "auto", "full"],
+        },
+      },
+    ];
+    vi.mocked(sdk.providers.list).mockResolvedValue(providers);
+    vi.mocked(sdk.system.executionOptions).mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () =>
+        useSystemProviderInfo({
+          environmentId: "env-remote",
+          providerId: "codex",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current?.capabilities.supportsSessionRewind).toBe(true);
+    });
+    expect(sdk.providers.list).toHaveBeenCalledWith({
+      environmentId: "env-remote",
+      signal: expect.any(AbortSignal),
+    });
+    expect(sdk.system.executionOptions).not.toHaveBeenCalled();
+  });
 });
 
 describe("useSystemExecutionOptions", () => {
