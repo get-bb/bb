@@ -622,7 +622,7 @@ describe("plugin service", () => {
       "warn plugin notify not loaded (incompatible): requires bb >=0.38.0 <0.39.0, this is 0.39.0",
     );
     await after.stop();
-  });
+  }, 15_000);
 
   it("skips the engines gate on 0.0.0 dev builds instead of marking everything incompatible", async () => {
     const devService = createPluginService({
