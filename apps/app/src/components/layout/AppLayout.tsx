@@ -735,9 +735,11 @@ export function AppLayout({ children }: AppLayoutProps) {
     : "none";
   useFaviconBadge(faviconBadge);
 
-  // Drag-time document state is deliberately minimal. `preventDefault` on the
-  // mousedown stops a text selection from starting, and the drag-guard overlay
-  // (the pointer target for the whole drag) carries the resize cursor. Setting
+  // Drag-time document state is deliberately minimal: only the
+  // `sidebar-resizing` body class (matched by selector, so its invalidation is
+  // scoped to `[data-sidebar]` elements). `preventDefault` on the mousedown
+  // stops a text selection from starting, and the drag-guard overlay (the
+  // pointer target for the whole drag) carries the resize cursor. Setting
   // `user-select` or `cursor` on `body` instead would change an inherited
   // property on the document root and restyle every element on mousedown and
   // again on mouseup.
@@ -810,6 +812,9 @@ export function AppLayout({ children }: AppLayoutProps) {
         window.cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
+      // Unmount mid-drag: drop the in-flight width so a remount shows the
+      // committed one.
+      store.set(sidebarLiveWidthAtom, null);
       resetSidebarResizeDocumentState();
     };
   }, [finishSidebarResize, isSidebarResizing, store]);

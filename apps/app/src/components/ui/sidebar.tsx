@@ -836,10 +836,7 @@ const Sidebar = React.forwardRef<
     } = useSidebar();
     const width = React.useContext(SidebarWidthContext);
     // Written on the consuming elements themselves (see SidebarWidthContext).
-    const widthStyle = React.useMemo<React.CSSProperties>(
-      () => ({ "--sidebar-width": width }) as React.CSSProperties,
-      [width],
-    );
+    const widthStyle = { "--sidebar-width": width } as React.CSSProperties;
     const handleOpenMobileChange = React.useCallback(
       (nextOpen: boolean) => {
         if (nextOpen) {
