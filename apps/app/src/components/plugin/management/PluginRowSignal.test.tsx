@@ -20,7 +20,7 @@ describe("PluginRowSignalView", () => {
     expect(
       screen
         .getByRole("button", {
-          name: "Update available: version 1.9.0",
+          name: "Update to 1.9.0",
         })
         .querySelector('[data-icon="Download"]'),
     ).not.toBeNull();
