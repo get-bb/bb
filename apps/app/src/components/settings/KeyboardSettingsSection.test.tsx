@@ -327,6 +327,21 @@ describe("KeyboardSettingsSection", () => {
     );
   });
 
+  it("explains that the platform Select All shortcut is reserved", () => {
+    render(<KeyboardSettingsSection />);
+    const recorder = screen.getByRole("button", {
+      name: "Record shortcut for New thread, current shortcut Ctrl + Shift + O",
+    });
+
+    fireEvent.click(recorder);
+    fireEvent.keyDown(recorder, { key: "a", ctrlKey: true });
+
+    expect(
+      screen.getByText("Command/Ctrl+A is reserved for Select All."),
+    ).toBeDefined();
+    expect(testState.mutate).not.toHaveBeenCalled();
+  });
+
   it("renders only rows whose presentation changes during a settings transaction", () => {
     const { rerender } = render(<KeyboardSettingsSection />);
     const recorder = screen.getByRole("button", {

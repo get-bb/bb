@@ -133,6 +133,7 @@ describe("desktop context menu", () => {
     const template = buildDesktopContextMenuTemplate({
       webContents,
       selectAll: vi.fn(),
+      selectAllLabel: "Select All",
       params: createContextMenuParams({
         isEditable: true,
         spellcheckEnabled: true,
@@ -154,6 +155,7 @@ describe("desktop context menu", () => {
     const template = buildDesktopContextMenuTemplate({
       webContents,
       selectAll: vi.fn(),
+      selectAllLabel: "Select All",
       params: createContextMenuParams({
         isEditable: true,
         selectionText: "recieve",
@@ -229,6 +231,7 @@ describe("desktop context menu", () => {
     const template = buildDesktopContextMenuTemplate({
       webContents,
       selectAll: vi.fn(),
+      selectAllLabel: "Select All",
       params: createContextMenuParams({
         isEditable: true,
         spellcheckEnabled: true,
@@ -254,6 +257,7 @@ describe("desktop context menu", () => {
     const template = buildDesktopContextMenuTemplate({
       webContents,
       selectAll: vi.fn(),
+      selectAllLabel: "Select All",
       params: createContextMenuParams({
         isEditable: true,
         editFlags: {
@@ -284,6 +288,7 @@ describe("desktop context menu", () => {
     const template = buildDesktopContextMenuTemplate({
       webContents,
       selectAll,
+      selectAllLabel: "Tout sélectionner",
       params: createContextMenuParams({
         editFlags: { ...DEFAULT_EDIT_FLAGS, canSelectAll: true },
       }),
@@ -291,9 +296,10 @@ describe("desktop context menu", () => {
 
     const item = template.find(
       (candidate) =>
-        candidate.label === "Select All" || candidate.role === "selectAll",
+        candidate.label === "Tout sélectionner" ||
+        candidate.role === "selectAll",
     );
-    expect(item?.label).toBe("Select All");
+    expect(item?.label).toBe("Tout sélectionner");
     expect(item?.role).toBeUndefined();
 
     clickMenuItem(item);
@@ -308,6 +314,7 @@ describe("desktop context menu", () => {
       buildDesktopContextMenuTemplate({
         webContents,
         selectAll: vi.fn(),
+        selectAllLabel: "Select All",
         params: createContextMenuParams(),
       }),
     ).toEqual([]);
@@ -319,7 +326,11 @@ describe("desktop context menu", () => {
       on: vi.fn(),
     } satisfies DesktopContextMenuWebContents;
 
-    registerDesktopContextMenu({ selectAll: vi.fn(), webContents });
+    registerDesktopContextMenu({
+      selectAll: vi.fn(),
+      selectAllLabel: "Select All",
+      webContents,
+    });
 
     expect(webContents.spellCheckerEnabledValues).toEqual([true]);
 

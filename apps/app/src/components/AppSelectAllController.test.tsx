@@ -380,6 +380,33 @@ describe("AppSelectAllController", () => {
     unregister();
   });
 
+  it("preserves a scoped copy override while opening its context menu", () => {
+    render(<AppSelectAllController />);
+    const fixture = createFixture();
+    const unregister = registerSelectAllCopyText(
+      fixture.mainRegion,
+      () => "AUTHORITATIVE_VIRTUALIZED_TEXT",
+    );
+
+    fireEvent.pointerDown(fixture.mainMessage);
+    dispatchSelectAll(fixture.mainMessage);
+    fireEvent.pointerDown(fixture.mainMessage, { button: 2 });
+
+    const setData = vi.fn();
+    const copyEvent = new Event("copy", { bubbles: true, cancelable: true });
+    Object.defineProperty(copyEvent, "clipboardData", {
+      value: { setData },
+    });
+    document.dispatchEvent(copyEvent);
+
+    expect(setData).toHaveBeenCalledWith(
+      "text/plain",
+      "AUTHORITATIVE_VIRTUALIZED_TEXT",
+    );
+    expect(copyEvent.defaultPrevented).toBe(true);
+    unregister();
+  });
+
   it("retains a scoped copy override across an unrelated legacy copy", () => {
     render(<AppSelectAllController />);
     const fixture = createFixture();
@@ -595,7 +622,9 @@ describe("AppSelectAllController", () => {
       () => "AUTHORITATIVE_SHADOW_TEXT",
     );
 
-    fireEvent.pointerDown(shadowCode);
+    shadowCode.dispatchEvent(
+      new Event("pointerdown", { bubbles: true, composed: true }),
+    );
     shadowCode.dispatchEvent(
       new KeyboardEvent("keydown", {
         bubbles: true,
@@ -668,6 +697,92 @@ describe("AppSelectAllController", () => {
       configurable: true,
       value: originalHighlight,
     });
+  });
+
+  it("treats WebKit's painted shadow selection as native when it has text", () => {
+    render(<AppSelectAllController />);
+    const fixture = createFixture();
+    const scope = document.createElement("section");
+    scope.dataset.selectAllScope = "";
+    const shadowHost = document.createElement("div");
+    shadowHost.attachShadow({ mode: "open" }).innerHTML =
+      "<code>shadow-root file contents</code>";
+    scope.append(shadowHost);
+    fixture.mainRegion.append(scope);
+    const shadowCode = shadowHost.shadowRoot!.querySelector("code")!;
+    const selection = window.getSelection()!;
+    const setBaseAndExtent = vi
+      .spyOn(selection, "setBaseAndExtent")
+      .mockImplementation(() => {
+        selection.removeAllRanges();
+      });
+    const selectionText = vi
+      .spyOn(selection, "toString")
+      .mockReturnValue("shadow-root file contents");
+    const highlightSet = vi.fn();
+    const originalCss = globalThis.CSS;
+    Object.defineProperty(globalThis, "CSS", {
+      configurable: true,
+      value: { highlights: { delete: vi.fn(), set: highlightSet } },
+    });
+    const unregister = registerSelectAllCopyText(
+      scope,
+      () => "AUTHORITATIVE_SHADOW_TEXT",
+    );
+
+    shadowCode.dispatchEvent(
+      new Event("pointerdown", { bubbles: true, composed: true }),
+    );
+    dispatchSelectAll(scope);
+
+    expect(highlightSet).not.toHaveBeenCalled();
+    selectionText.mockRestore();
+    setBaseAndExtent.mockRestore();
+    selection.setBaseAndExtent(
+      fixture.standaloneText.firstChild!,
+      0,
+      fixture.standaloneText.firstChild!,
+      fixture.standaloneText.textContent!.length,
+    );
+    const setData = vi.fn();
+    const copyEvent = new Event("copy", { bubbles: true, cancelable: true });
+    Object.defineProperty(copyEvent, "clipboardData", {
+      value: { setData },
+    });
+    document.dispatchEvent(copyEvent);
+    expect(copyEvent.defaultPrevented).toBe(false);
+    expect(setData).not.toHaveBeenCalled();
+
+    unregister();
+    Object.defineProperty(globalThis, "CSS", {
+      configurable: true,
+      value: originalCss,
+    });
+  });
+
+  it("clears a previous selection when Select All has no active scope", () => {
+    render(<AppSelectAllController />);
+    const fixture = createFixture();
+
+    fireEvent.pointerDown(fixture.mainMessage);
+    dispatchSelectAll(fixture.mainMessage);
+    expect(window.getSelection()?.toString()).toContain(
+      "Main timeline message",
+    );
+
+    fixture.sidebar.tabIndex = 0;
+    fixture.sidebar.focus();
+    window
+      .getSelection()
+      ?.setBaseAndExtent(
+        fixture.mainMessage.firstChild!,
+        0,
+        fixture.mainMessage.firstChild!,
+        fixture.mainMessage.textContent!.length,
+      );
+    dispatchSelectAll(fixture.sidebar);
+
+    expect(window.getSelection()?.toString()).toBe("");
   });
 
   it("selects a shadow-only scope when interaction starts on its light-DOM padding", () => {
@@ -795,6 +910,62 @@ describe("AppSelectAllController", () => {
     dispatchSelectAll(visible);
 
     expect(window.getSelection()?.toString()).toBe("VISIBLE CONTENT");
+  });
+
+  it("requests opacity and visibility checks for scoped text", () => {
+    render(<AppSelectAllController />);
+    const scope = document.createElement("section");
+    scope.dataset.selectAllScope = "";
+    const visible = document.createElement("p");
+    visible.textContent = "VISIBLE CONTENT";
+    const transparent = document.createElement("p");
+    transparent.textContent = "TRANSPARENT CONTENT";
+    const checkVisibility = vi.fn(
+      (options?: CheckVisibilityOptions) =>
+        !(options?.checkOpacity && options.checkVisibilityCSS),
+    );
+    Object.defineProperty(transparent, "checkVisibility", {
+      configurable: true,
+      value: checkVisibility,
+    });
+    scope.append(visible, transparent);
+    document.body.append(scope);
+
+    fireEvent.pointerDown(visible);
+    dispatchSelectAll(visible);
+
+    expect(checkVisibility).toHaveBeenCalledWith({
+      checkOpacity: true,
+      checkVisibilityCSS: true,
+      opacityProperty: true,
+      visibilityProperty: true,
+    });
+    expect(window.getSelection()?.toString()).toBe("VISIBLE CONTENT");
+  });
+
+  it("reuses a shadow selection policy already supplied by its renderer", () => {
+    render(<AppSelectAllController />);
+    const scope = document.createElement("section");
+    scope.dataset.selectAllScope = "";
+    const shadowHost = document.createElement("div");
+    const shadowRoot = shadowHost.attachShadow({ mode: "open" });
+    const rendererStyle = document.createElement("style");
+    rendererStyle.textContent =
+      "/* bb-select-all-shadow-policy */ ::highlight(bb-select-all-scope) {}";
+    const shadowCode = document.createElement("code");
+    shadowCode.textContent = "shadow code";
+    shadowRoot.append(rendererStyle, shadowCode);
+    scope.append(shadowHost);
+    document.body.append(scope);
+
+    shadowCode.dispatchEvent(
+      new Event("pointerdown", { bubbles: true, composed: true }),
+    );
+    dispatchSelectAll(scope);
+
+    expect(
+      shadowRoot.querySelectorAll("style[data-bb-select-all-shadow-policy]"),
+    ).toHaveLength(0);
   });
 
   it("does not mutate an active open shadow root", () => {

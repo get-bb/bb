@@ -14,6 +14,7 @@ interface RenderedOptions {
   disableLineNumbers: boolean;
   disableFileHeader: boolean;
   expansionLineCount?: number;
+  unsafeCSS: string;
 }
 
 const pierre = vi.hoisted(() => ({
@@ -134,5 +135,9 @@ describe("BbDiff", () => {
     expect(pierre.lastOptions?.disableLineNumbers).toBe(true);
     // The card header owns the file name; the renderer must never draw a second.
     expect(pierre.lastOptions?.disableFileHeader).toBe(true);
+    expect(pierre.lastOptions?.unsafeCSS).toContain(
+      "bb-select-all-shadow-policy",
+    );
+    expect(pierre.lastOptions?.unsafeCSS).toContain("[data-expand-button]");
   });
 });

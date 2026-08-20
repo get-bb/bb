@@ -50,6 +50,28 @@ function commandPair(left: string, right: string): string {
 }
 
 describe("app keybindings", () => {
+  it("ignores a stored Select All override and restores command defaults", () => {
+    const defaults = DEFAULT_APP_KEYBINDINGS.filter(
+      (binding) => binding.command === "thread.new",
+    );
+
+    expect(
+      applyAppKeybindingOverrides(defaults, [
+        {
+          command: "thread.new",
+          shortcut: {
+            key: "a",
+            mod: true,
+            meta: false,
+            control: false,
+            alt: false,
+            shift: false,
+          },
+        },
+      ]),
+    ).toEqual(defaults.filter((binding) => binding.shortcut !== null));
+  });
+
   it("limits overlapping default chords to intentional scoped navigation", () => {
     const assignedDefaults = applyAppKeybindingOverrides(
       DEFAULT_APP_KEYBINDINGS,

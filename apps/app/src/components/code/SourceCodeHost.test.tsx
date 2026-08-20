@@ -9,6 +9,7 @@ import {
 } from "@/lib/plugin-slots";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
+import { getSelectAllCopyText } from "@/lib/select-all-scope";
 import { SourceCodeHost } from "./SourceCodeHost";
 
 const bbSourceCode = vi.hoisted(() => ({
@@ -106,6 +107,20 @@ describe("SourceCodeHost", () => {
     expect(Object.keys(props ?? {})).not.toContain("cacheKey");
     expect(Object.keys(props ?? {})).not.toContain("onSelectionAddToChat");
     expect(Object.keys(props ?? {})).not.toContain("scrollToHighlightedLines");
+  });
+
+  it("provides complete source text to Select All for plugin renderers", async () => {
+    registerSourceCodeRenderer(() => (
+      <div data-testid="plugin-source">visible virtualized rows</div>
+    ));
+
+    render(<SourceCodeHost content={CONTENT} path="src/app.ts" />);
+
+    const scope = (await screen.findByTestId("plugin-source")).closest(
+      "[data-select-all-scope]",
+    );
+    expect(scope).not.toBeNull();
+    expect(getSelectAllCopyText(scope as HTMLElement)).toBe(CONTENT);
   });
 
   it("loads BB's renderer only when the replacement delegates", async () => {

@@ -53,7 +53,10 @@ import {
   stopForeignRuntime,
 } from "./foreign-runtime.js";
 import { createLocalViewUrl } from "./local-view.js";
-import { installApplicationMenu } from "./menu.js";
+import {
+  getLocalizedSelectAllMenuLabel,
+  installApplicationMenu,
+} from "./menu.js";
 import {
   DEFAULT_APPLICATION_MENU_ACCELERATORS,
   resolveApplicationMenuAccelerators,
@@ -743,6 +746,7 @@ function installCurrentApplicationMenu(): void {
       }
       selectAllInWebContents(focusedWebContents);
     },
+    selectAllLabel: getLocalizedSelectAllMenuLabel(),
     closeWindowOrSideTab(browserWindow) {
       if (browserWindow === undefined) {
         // A focused detached DevTools window is the key window but never
@@ -990,6 +994,7 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
   registerApplicationRendererReloadShortcut(nativeWebContents);
   registerDesktopContextMenu({
     selectAll: () => selectAllInWebContents(nativeWebContents),
+    selectAllLabel: getLocalizedSelectAllMenuLabel(),
     webContents: browserWindow.webContents,
   });
   browserWindow.on("enter-full-screen", () => {

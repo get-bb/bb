@@ -35,6 +35,7 @@ function menuArgs(
     openSettings: () => {},
     reloadWindow,
     selectAll: () => {},
+    selectAllLabel: "Select All",
     selectServer: () => {},
     serverDaemonLogsMenuEnabled: false,
     servers: [{ checked: true, id: "builtin", name: "This Mac" }],
@@ -123,6 +124,18 @@ describe("application menu", () => {
     expect(selectAllCommand).toHaveBeenCalledOnce();
   });
 
+  it("keeps Electron's localized Select All label on the custom command", () => {
+    const template = buildApplicationMenuTemplate(
+      menuArgs(() => {}, { selectAllLabel: "Tout sélectionner" }),
+    );
+    const editMenu = template.find((item) => item.label === "Edit");
+    const submenu = editMenu?.submenu as MenuItemConstructorOptions[];
+
+    expect(
+      submenu.find((item) => item.accelerator === "CommandOrControl+A")?.label,
+    ).toBe("Tout sélectionner");
+  });
+
   it("builds a Window ▸ Server radio submenu with a Set Server URL item", () => {
     const selectServer = vi.fn();
     const setServerUrl = vi.fn();
@@ -158,8 +171,7 @@ describe("application menu", () => {
     );
     const appMenu = template[0]?.submenu as MenuItemConstructorOptions[];
     const windowMenu = template.find((item) => item.label === "Window");
-    const windowSubmenu =
-      windowMenu?.submenu as MenuItemConstructorOptions[];
+    const windowSubmenu = windowMenu?.submenu as MenuItemConstructorOptions[];
     const viewMenu = template.find((item) => item.label === "View");
     const viewSubmenu = viewMenu?.submenu as MenuItemConstructorOptions[];
     const fileMenu = template.find((item) => item.label === "File");

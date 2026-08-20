@@ -1,5 +1,6 @@
 const SELECT_ALL_SCOPE_SELECTOR = "[data-select-all-scope]";
 export const SELECT_ALL_HIGHLIGHT_NAME = "bb-select-all-scope";
+const SELECT_ALL_SHADOW_POLICY_MARKER = "bb-select-all-shadow-policy";
 
 const selectAllCopyTextProviders = new WeakMap<HTMLElement, () => string>();
 
@@ -20,6 +21,7 @@ export const SELECTION_CONTROL_SELECTORS = [
 const SELECTION_CONTROL_SELECTOR = SELECTION_CONTROL_SELECTORS.join(", ");
 
 export const SELECT_ALL_SHADOW_POLICY_CSS = `
+/* ${SELECT_ALL_SHADOW_POLICY_MARKER} */
 :where(${SELECTION_CONTROL_SELECTOR}):not(.select-text) {
   -webkit-user-select: none;
   user-select: none;
@@ -125,7 +127,13 @@ function isSkippedSelectionSubtree(element: Element): boolean {
 }
 
 function ensureShadowSelectionPolicy(root: ShadowRoot): void {
-  if (root.querySelector("style[data-bb-select-all-shadow-policy]") !== null) {
+  if (
+    Array.from(root.querySelectorAll("style")).some(
+      (style) =>
+        style.hasAttribute("data-bb-select-all-shadow-policy") ||
+        style.textContent?.includes(SELECT_ALL_SHADOW_POLICY_MARKER),
+    )
+  ) {
     return;
   }
   const style = root.ownerDocument.createElement("style");
@@ -156,7 +164,12 @@ function isRenderedTextNode(
   const cached = visibilityByParent.get(parent);
   if (cached !== undefined) return cached;
   const rendered =
-    parent.checkVisibility() ||
+    parent.checkVisibility({
+      checkOpacity: true,
+      checkVisibilityCSS: true,
+      opacityProperty: true,
+      visibilityProperty: true,
+    }) ||
     parent.ownerDocument.defaultView?.getComputedStyle(parent).display ===
       "contents";
   visibilityByParent.set(parent, rendered);
@@ -281,13 +294,14 @@ export function selectAllScopeContents(
   if (selectionRoot instanceof ShadowRoot) {
     ensureShadowSelectionPolicy(selectionRoot);
   }
+  selection.removeAllRanges();
   selection.setBaseAndExtent(
     endpoints.first,
     0,
     endpoints.last,
     endpoints.last.data.length,
   );
-  if (selection.rangeCount > 0 && !selection.getRangeAt(0).collapsed) {
+  if (selection.toString().length > 0) {
     return { kind: "native", fallbackCopyText: null };
   }
   if (selectionRoot instanceof ShadowRoot) {

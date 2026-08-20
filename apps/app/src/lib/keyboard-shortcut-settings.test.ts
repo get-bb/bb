@@ -140,6 +140,15 @@ describe("keyboard shortcut settings", () => {
     expect(
       canAssignAppShortcut("thread.new", { ...selectAll, alt: true }),
     ).toBe(true);
+    expect(
+      getCommandShortcut(
+        defaults,
+        [{ command: "thread.new", shortcut: selectAll }],
+        "thread.new",
+        false,
+        "Win32",
+      ),
+    ).toEqual(defaults[0]!.shortcut);
   });
 
   it("stores disable overrides and removes redundant default overrides", () => {

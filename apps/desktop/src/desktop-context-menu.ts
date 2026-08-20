@@ -33,6 +33,7 @@ export interface DesktopContextMenuSpellcheckContext {
 export interface BuildDesktopContextMenuTemplateArgs {
   params: ContextMenuParams;
   selectAll: () => void;
+  selectAllLabel: string;
   spellcheckContext?: DesktopContextMenuSpellcheckContext | null;
   webContents: Pick<
     DesktopContextMenuWebContents,
@@ -47,6 +48,7 @@ type ResolveDesktopSpellcheckFallbackArgs = Pick<
 
 export interface RegisterDesktopContextMenuArgs {
   selectAll: () => void;
+  selectAllLabel: string;
   webContents: DesktopContextMenuWebContents;
 }
 
@@ -129,6 +131,7 @@ export async function resolveDesktopSpellcheckFallback({
 export function buildDesktopContextMenuTemplate({
   params,
   selectAll,
+  selectAllLabel,
   spellcheckContext,
   webContents,
 }: BuildDesktopContextMenuTemplateArgs): MenuItemConstructorOptions[] {
@@ -191,7 +194,7 @@ export function buildDesktopContextMenuTemplate({
   }
   if (params.editFlags.canSelectAll) {
     pushSeparatorIfNeeded(template);
-    template.push({ label: "Select All", click: selectAll });
+    template.push({ label: selectAllLabel, click: selectAll });
   }
 
   return trimTrailingSeparator(template);
@@ -200,6 +203,7 @@ export function buildDesktopContextMenuTemplate({
 async function showDesktopContextMenu({
   params,
   selectAll,
+  selectAllLabel,
   webContents,
 }: RegisterDesktopContextMenuArgs & {
   params: ContextMenuParams;
@@ -211,6 +215,7 @@ async function showDesktopContextMenu({
   const template = buildDesktopContextMenuTemplate({
     params,
     selectAll,
+    selectAllLabel,
     spellcheckContext,
     webContents,
   });
@@ -222,10 +227,16 @@ async function showDesktopContextMenu({
 
 export function registerDesktopContextMenu({
   selectAll,
+  selectAllLabel,
   webContents,
 }: RegisterDesktopContextMenuArgs): void {
   webContents.session.setSpellCheckerEnabled(true);
   webContents.on("context-menu", (_event, params) => {
-    void showDesktopContextMenu({ params, selectAll, webContents });
+    void showDesktopContextMenu({
+      params,
+      selectAll,
+      selectAllLabel,
+      webContents,
+    });
   });
 }

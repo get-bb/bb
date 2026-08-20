@@ -28,6 +28,8 @@ import {
   useRequirePierreWorkerPool,
 } from "@/lib/pierre-worker-pool-gate";
 import { usePierreStrictModeRecoveryOptions } from "@/lib/pierre-strict-mode-recovery";
+import { applyPierreSelectionPolicy } from "@/lib/pierre-selection-policy";
+import { registerSelectAllCopyText } from "@/lib/select-all-scope";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   hashSourceContents,
@@ -143,12 +145,8 @@ function findTargetLine(
   return null;
 }
 
-function findVirtualizedViewport(
-  container: HTMLElement,
-): HTMLElement | null {
-  return container.querySelector<HTMLElement>(
-    "[data-bb-source-code-viewport]",
-  );
+function findVirtualizedViewport(container: HTMLElement): HTMLElement | null {
+  return container.querySelector<HTMLElement>("[data-bb-source-code-viewport]");
 }
 
 /**
@@ -170,8 +168,7 @@ function approachVirtualizedTargetLine(
   const renderedBounds = getRenderedLineBounds(container);
   if (renderedBounds === null) {
     const estimatedTop =
-      SOURCE_GAP_BLOCK_PX +
-      (lineNumber - 1) * SOURCE_LINE_HEIGHT_PX;
+      SOURCE_GAP_BLOCK_PX + (lineNumber - 1) * SOURCE_LINE_HEIGHT_PX;
     viewport.scrollTop = Math.max(0, estimatedTop - centerOffset);
     return;
   }
@@ -320,6 +317,7 @@ export function BbSourceCode({
   const preferredTheme = usePreferredTheme();
   const codeTheme = useResolvedCodeThemePair();
   const containerRef = useRef<HTMLDivElement>(null);
+  const unregisterSelectAllCopyTextRef = useRef<(() => void) | null>(null);
   // `PierreFile` captures the worker pool when it creates its instance, so
   // wait for the workspace to build the pool before the first render.
   const isWorkerPoolReady = useRequirePierreWorkerPool();
@@ -329,10 +327,7 @@ export function BbSourceCode({
     useState<SourceCodeWorkerPoolStats | null>(null);
   const [, rerenderAfterWorkerPoolChange] = useState(0);
   const fileIdentity = file.cacheKey ?? file.name;
-  const truncation = useMemo(
-    () => truncateSourceCode(content),
-    [content],
-  );
+  const truncation = useMemo(() => truncateSourceCode(content), [content]);
   // Which file the user asked to see in full. Keyed by identity rather than a
   // boolean so opening a different large file goes back to the capped view
   // without an effect resetting state.
@@ -355,6 +350,7 @@ export function BbSourceCode({
       themeType: preferredTheme,
       theme: codeTheme,
       overflow,
+      unsafeCSS: applyPierreSelectionPolicy(),
       disableFileHeader: true,
       enableGutterUtility: onSelectionAddToChat !== undefined,
       enableLineSelection:
@@ -413,6 +409,16 @@ export function BbSourceCode({
       contents: truncation.contents,
     };
   }, [file, showsFullFile, truncation]);
+  const setSelectAllScopeRef = useCallback(
+    (scope: HTMLDivElement | null) => {
+      unregisterSelectAllCopyTextRef.current?.();
+      unregisterSelectAllCopyTextRef.current =
+        scope === null
+          ? null
+          : registerSelectAllCopyText(scope, () => renderedFile.contents);
+    },
+    [renderedFile.contents],
+  );
   // Pierre's virtualized file instance keeps the contents it was hydrated
   // with (`VirtualizedFile.render` ignores a later `file`), so a content swap
   // — the capped prefix giving way to the full file, or a refetch — needs a
@@ -555,7 +561,7 @@ export function BbSourceCode({
   return (
     <div
       ref={containerRef}
-      className={cn("flex min-h-0 flex-1 flex-col", className)}
+      className={cn("flex min-h-0 flex-1 select-text flex-col", className)}
       style={SOURCE_VIEW_STYLE}
       data-bb-source-code-line-number={targetLineNumber ?? undefined}
       onPointerDownCapture={lineSelectionActions.onPointerDownCapture}
@@ -564,14 +570,16 @@ export function BbSourceCode({
     >
       <PierreWorkerPoolBoundary>
         <SourceCodeViewport>
-          <PierreFile
-            key={renderedFileMountKey}
-            disableWorkerPool={workerPoolStats?.workersFailed === true}
-            file={renderedFile}
-            metrics={SOURCE_VIRTUAL_FILE_METRICS}
-            options={options}
-            selectedLines={selectedLines}
-          />
+          <div ref={setSelectAllScopeRef} data-select-all-scope="">
+            <PierreFile
+              key={renderedFileMountKey}
+              disableWorkerPool={workerPoolStats?.workersFailed === true}
+              file={renderedFile}
+              metrics={SOURCE_VIRTUAL_FILE_METRICS}
+              options={options}
+              selectedLines={selectedLines}
+            />
+          </div>
           {truncation !== null && !showsFullFile ? (
             <SourceCodeTruncationNotice
               truncation={truncation}
@@ -629,7 +637,10 @@ function SourceCodeTruncationNotice({
   onLoadFullFile: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-3 text-xs text-muted-foreground">
+    <div
+      className="select-text flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-3 text-xs text-muted-foreground"
+      data-select-all-scope=""
+    >
       <span>
         Showing the first {truncation.renderedLineCount.toLocaleString()} of{" "}
         {truncation.totalLineCount.toLocaleString()} lines.

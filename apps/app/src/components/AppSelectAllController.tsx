@@ -43,8 +43,8 @@ export function AppSelectAllController() {
       anchorOffset: number;
       focusNode: Node | null;
       focusOffset: number;
+      selectionText: string;
       text: string;
-      selectionKind: "native" | "logical";
     }
 
     let activeScope: HTMLElement | null = null;
@@ -55,29 +55,26 @@ export function AppSelectAllController() {
     function selectionMatchesCopyOverride(override: CopyOverride): boolean {
       const selection = window.getSelection();
       return (
-        override.selectionKind === "logical" ||
-        (selection !== null &&
-          selection.anchorNode === override.anchorNode &&
-          selection.anchorOffset === override.anchorOffset &&
-          selection.focusNode === override.focusNode &&
-          selection.focusOffset === override.focusOffset)
+        selection !== null &&
+        selection.anchorNode === override.anchorNode &&
+        selection.anchorOffset === override.anchorOffset &&
+        selection.focusNode === override.focusNode &&
+        selection.focusOffset === override.focusOffset &&
+        selection.toString() === override.selectionText
       );
     }
 
-    function captureCopyOverride(
-      text: string | null,
-      selectionKind: "native" | "logical" | null,
-    ): void {
+    function captureCopyOverride(text: string | null): void {
       const selection = window.getSelection();
       copyOverride =
-        text !== null && selection !== null && selectionKind !== null
+        text !== null && selection !== null
           ? {
               anchorNode: selection.anchorNode,
               anchorOffset: selection.anchorOffset,
               focusNode: selection.focusNode,
               focusOffset: selection.focusOffset,
+              selectionText: selection.toString(),
               text,
-              selectionKind,
             }
           : null;
     }
@@ -114,9 +111,13 @@ export function AppSelectAllController() {
           selectedScope === null
             ? null
             : (registeredCopyText ?? selectedScope.fallbackCopyText),
-          selectedScope?.kind ?? null,
         );
+        if (selectedScope === null) {
+          window.getSelection()?.removeAllRanges();
+        }
+        return true;
       }
+      window.getSelection()?.removeAllRanges();
       return true;
     }
 
@@ -153,7 +154,25 @@ export function AppSelectAllController() {
       selectActiveScopeOrEditor();
     }
 
+    let preserveCopyOverrideThroughFocus = false;
+
     function updateActiveScope(event: Event) {
+      if (
+        event.type === "pointerdown" &&
+        "button" in event &&
+        typeof event.button === "number" &&
+        event.button !== 0
+      ) {
+        preserveCopyOverrideThroughFocus = true;
+        queueMicrotask(() => {
+          preserveCopyOverrideThroughFocus = false;
+        });
+        return;
+      }
+      if (event.type === "focusin" && preserveCopyOverrideThroughFocus) {
+        return;
+      }
+      preserveCopyOverrideThroughFocus = false;
       copyOverride = null;
       clearSelectAllHighlight();
       const target = closestEventElement(

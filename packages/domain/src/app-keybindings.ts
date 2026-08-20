@@ -108,6 +108,15 @@ export const appShortcutSchema = z
   .strict();
 export type AppShortcut = z.infer<typeof appShortcutSchema>;
 
+export function isReservedAppShortcut(shortcut: AppShortcut): boolean {
+  return (
+    shortcut.key.toLowerCase() === "a" &&
+    !shortcut.alt &&
+    !shortcut.shift &&
+    (shortcut.mod || shortcut.meta || shortcut.control)
+  );
+}
+
 export interface AppShortcutInput {
   altKey: boolean;
   /** The physical key (`KeyboardEvent.code`), layout- and modifier-independent. */
@@ -276,7 +285,10 @@ export function applyAppKeybindingOverrides(
       (candidate) => candidate.command === binding.command,
     );
     const shortcut =
-      override === undefined ? binding.shortcut : override.shortcut;
+      override === undefined ||
+      (override.shortcut !== null && isReservedAppShortcut(override.shortcut))
+        ? binding.shortcut
+        : override.shortcut;
     return shortcut === null ? [] : [{ ...binding, shortcut }];
   });
 }

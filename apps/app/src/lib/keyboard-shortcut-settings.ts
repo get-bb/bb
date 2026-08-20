@@ -3,6 +3,7 @@ import {
   QUESTION_SELECT_APP_COMMAND_IDS,
   isAppKeybindingAvailableForClient,
   isMacKeyboardPlatform,
+  isReservedAppShortcut,
   normalizeAppShortcutInputKey,
   type AppCommandId,
   type AppDefaultKeybindings,
@@ -62,20 +63,24 @@ export function canAssignAppShortcut(
   command: AppCommandId,
   shortcut: AppShortcut,
 ): boolean {
-  const isReservedSelectAll =
-    shortcut.key.toLowerCase() === "a" &&
-    !shortcut.alt &&
-    !shortcut.shift &&
-    (shortcut.mod || shortcut.meta || shortcut.control);
-  return (
-    !isReservedSelectAll &&
-    (shortcut.mod ||
-      shortcut.meta ||
-      shortcut.control ||
-      shortcut.alt ||
-      /^F(?:[1-9]|1[0-9]|2[0-4])$/u.test(shortcut.key) ||
-      QUESTION_COMMANDS.has(command))
-  );
+  return getAppShortcutAssignmentError(command, shortcut) === null;
+}
+
+export function getAppShortcutAssignmentError(
+  command: AppCommandId,
+  shortcut: AppShortcut,
+): string | null {
+  if (isReservedAppShortcut(shortcut)) {
+    return "Command/Ctrl+A is reserved for Select All.";
+  }
+  return shortcut.mod ||
+    shortcut.meta ||
+    shortcut.control ||
+    shortcut.alt ||
+    /^F(?:[1-9]|1[0-9]|2[0-4])$/u.test(shortcut.key) ||
+    QUESTION_COMMANDS.has(command)
+    ? null
+    : "Use Command, Control, or Alt with a key.";
 }
 
 export function getCommandShortcut(
@@ -101,7 +106,10 @@ export function getCommandShortcut(
   }
   if (!available) return null;
   const override = overrides.find((candidate) => candidate.command === command);
-  return override === undefined ? defaultShortcut : override.shortcut;
+  return override === undefined ||
+    (override.shortcut !== null && isReservedAppShortcut(override.shortcut))
+    ? defaultShortcut
+    : override.shortcut;
 }
 
 export function isAppCommandAvailableForClient(

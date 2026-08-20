@@ -19,6 +19,7 @@ import {
 } from "@/lib/plugin-replacement-preference";
 import { diffRendererProviderAtom } from "./codeRendererProvider";
 import { DiffHost } from "./DiffHost";
+import { getSelectAllCopyText } from "@/lib/select-all-scope";
 
 /**
  * Records whether BB's default renderer chunk was ever pulled. `vi.mock`
@@ -77,9 +78,7 @@ function registerDiffRenderer(
     sidebarFooterActions: [],
     fileOpeners: [],
     messageDirectives: [],
-    diffRenderers: [
-      { id: "diffs", title: "Demo diffs", component },
-    ],
+    diffRenderers: [{ id: "diffs", title: "Demo diffs", component }],
   });
 }
 
@@ -105,9 +104,7 @@ describe("DiffHost", () => {
       return <div data-testid="plugin-diff">plugin diff</div>;
     });
 
-    render(
-      <DiffHost file={parseFixture()} patchText={PATCH} view="split" />,
-    );
+    render(<DiffHost file={parseFixture()} patchText={PATCH} view="split" />);
 
     expect(await screen.findByTestId("plugin-diff")).toBeDefined();
     // A microtask/frame is enough for a lazy() import to settle if one were
@@ -179,6 +176,29 @@ describe("DiffHost", () => {
     expect(bbDiff.loaded).toBe(true);
     // Delegation must reach BB's renderer with the host-only inputs intact.
     expect(bbDiff.lastProps?.file).toBeDefined();
+  });
+
+  it("builds complete Select All copy text only when requested", async () => {
+    const parsed = parseFixture();
+    let hunkReads = 0;
+    const file = new Proxy(parsed, {
+      get(target, property, receiver) {
+        if (property === "hunks") hunkReads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    render(<DiffHost file={file} />);
+
+    const scope = (await screen.findByTestId("bb-diff")).closest(
+      "[data-select-all-scope]",
+    );
+    expect(scope).not.toBeNull();
+    expect(hunkReads).toBe(0);
+    expect(getSelectAllCopyText(scope as HTMLElement)).toContain(
+      "-const b = 2;\n+const b = 3;",
+    );
+    expect(hunkReads).toBeGreaterThan(0);
   });
 
   it("honours a pin to BB's renderer without disabling the plugin", async () => {

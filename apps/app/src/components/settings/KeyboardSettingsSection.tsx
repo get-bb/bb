@@ -26,8 +26,8 @@ import {
 import {
   areAppShortcutsEqual,
   appShortcutFromInput,
-  canAssignAppShortcut,
   getCommandShortcut,
+  getAppShortcutAssignmentError,
   getShortcutConflicts,
   isAppCommandAvailableForClient,
   resetCommandShortcutOverride,
@@ -122,8 +122,9 @@ const ShortcutRecorder = memo(
         setError("Press a non-modifier key.");
         return;
       }
-      if (!canAssignAppShortcut(command, next)) {
-        setError("Use Command, Control, or Alt with a key.");
+      const assignmentError = getAppShortcutAssignmentError(command, next);
+      if (assignmentError !== null) {
+        setError(assignmentError);
         return;
       }
       setError(null);
