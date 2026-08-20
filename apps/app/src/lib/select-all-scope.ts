@@ -19,6 +19,18 @@ export const SELECTION_CONTROL_SELECTORS = [
 
 const SELECTION_CONTROL_SELECTOR = SELECTION_CONTROL_SELECTORS.join(", ");
 
+export const SELECT_ALL_SHADOW_POLICY_CSS = `
+:where(${SELECTION_CONTROL_SELECTOR}):not(.select-text) {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+::highlight(${SELECT_ALL_HIGHLIGHT_NAME}) {
+  background-color: Highlight;
+  color: HighlightText;
+}
+`;
+
 const NON_EDITING_INPUT_TYPES = new Set([
   "button",
   "checkbox",
@@ -38,6 +50,12 @@ export function closestEventElement(
   return target instanceof Node ? target.parentElement : null;
 }
 
+/**
+ * Whether native Select All has useful editor semantics for this target.
+ * This is deliberately narrower than the app-command layer's generic
+ * editable-target check: buttons and single-select controls stay attached to
+ * their surrounding reading scope.
+ */
 export function isEditableTarget(target: Element | null): boolean {
   if (target === null) return false;
   if (target.closest("select[multiple]") !== null) return true;
@@ -100,8 +118,20 @@ function isSkippedSelectionSubtree(element: Element): boolean {
   return (
     (element.matches(SELECTION_CONTROL_SELECTOR) &&
       !element.classList.contains("select-text")) ||
-    element.matches('script, style, template, [hidden], [aria-hidden="true"]')
+    element.matches(
+      'script, style, template, .sr-only, [hidden], [aria-hidden="true"]',
+    )
   );
+}
+
+function ensureShadowSelectionPolicy(root: ShadowRoot): void {
+  if (root.querySelector("style[data-bb-select-all-shadow-policy]") !== null) {
+    return;
+  }
+  const style = root.ownerDocument.createElement("style");
+  style.dataset.bbSelectAllShadowPolicy = "";
+  style.textContent = SELECT_ALL_SHADOW_POLICY_CSS;
+  root.append(style);
 }
 
 function getComposedChildren(node: Node): readonly Node[] {
@@ -248,6 +278,9 @@ export function selectAllScopeContents(
   );
   const selection = window.getSelection();
   if (endpoints === null || selection === null) return null;
+  if (selectionRoot instanceof ShadowRoot) {
+    ensureShadowSelectionPolicy(selectionRoot);
+  }
   selection.setBaseAndExtent(
     endpoints.first,
     0,

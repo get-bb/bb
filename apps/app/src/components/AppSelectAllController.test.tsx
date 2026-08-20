@@ -472,6 +472,55 @@ describe("AppSelectAllController", () => {
     );
   });
 
+  it("suppresses repeated Select All work without reopening native selection", () => {
+    render(<AppSelectAllController />);
+    const fixture = createFixture();
+    const setBaseAndExtent = vi.spyOn(
+      window.getSelection()!,
+      "setBaseAndExtent",
+    );
+    fireEvent.pointerDown(fixture.mainMessage);
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "a",
+      metaKey: true,
+      repeat: true,
+    });
+
+    fixture.mainMessage.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(setBaseAndExtent).not.toHaveBeenCalled();
+  });
+
+  it("selects a user-question prompt only once when its accessible legend repeats it", () => {
+    render(<AppSelectAllController />);
+    const scope = document.createElement("section");
+    scope.dataset.selectAllScope = "";
+    scope.innerHTML =
+      '<fieldset><legend class="sr-only">Choose a path</legend><div data-testid="visible-question">Choose a path</div></fieldset>';
+    document.body.append(scope);
+    const visibleQuestion = scope.querySelector<HTMLElement>(
+      '[data-testid="visible-question"]',
+    )!;
+    const visibleText = visibleQuestion.firstChild!;
+    const setBaseAndExtent = vi.spyOn(
+      window.getSelection()!,
+      "setBaseAndExtent",
+    );
+
+    fireEvent.pointerDown(visibleQuestion);
+    dispatchSelectAll(visibleQuestion);
+
+    expect(setBaseAndExtent).toHaveBeenCalledWith(
+      visibleText,
+      0,
+      visibleText,
+      "Choose a path".length,
+    );
+  });
+
   it("selects the active shadow-root content without crossing tree boundaries", () => {
     render(<AppSelectAllController />);
     const fixture = createFixture();
@@ -558,6 +607,16 @@ describe("AppSelectAllController", () => {
     );
 
     expect(highlightSet).toHaveBeenCalledTimes(1);
+    expect(
+      shadowHost.shadowRoot!.querySelector(
+        "style[data-bb-select-all-shadow-policy]",
+      )?.textContent,
+    ).toMatch(/::highlight\(bb-select-all-scope\)/);
+    expect(
+      shadowHost.shadowRoot!.querySelector(
+        "style[data-bb-select-all-shadow-policy]",
+      )?.textContent,
+    ).toContain("button");
     expect(createdHighlights[0]?.map((range) => range.toString())).toEqual([
       "shadow-root file contents",
       "shadow tail",

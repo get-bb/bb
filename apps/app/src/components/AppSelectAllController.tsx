@@ -149,6 +149,7 @@ export function AppSelectAllController() {
       }
 
       event.preventDefault();
+      if (event.repeat) return;
       selectActiveScopeOrEditor();
     }
 

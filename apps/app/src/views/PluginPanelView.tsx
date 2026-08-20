@@ -55,7 +55,10 @@ export function PluginPanelView(props: PluginPanelViewProps = {}) {
     }
     return (
       <PageShell contentClassName="pt-4 md:pt-5">
-        <EmptyStatePanel className="rounded-lg p-6 text-sm">
+        <EmptyStatePanel
+          className="select-text rounded-lg p-6 text-sm"
+          data-select-all-scope=""
+        >
           This plugin panel is not available. The plugin may have been disabled
           or removed.
         </EmptyStatePanel>

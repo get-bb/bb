@@ -34,4 +34,10 @@ describe("app text selection policy", () => {
       `body.bb-app-shell .select-text :where( ${SELECTION_CONTROL_SELECTORS.join(", ")} ):not(.select-text) { user-select: none; }`,
     );
   });
+
+  it("keeps screen-reader-only duplicate labels out of content selection", () => {
+    expect(compactCss).toContain(
+      "body.bb-app-shell .select-text .sr-only { user-select: none; }",
+    );
+  });
 });

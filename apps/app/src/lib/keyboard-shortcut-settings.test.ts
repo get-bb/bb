@@ -123,6 +123,25 @@ describe("keyboard shortcut settings", () => {
     );
   });
 
+  it("reserves the unshifted Select All chord for platform selection", () => {
+    const selectAll = {
+      key: "a",
+      mod: true,
+      meta: false,
+      control: false,
+      alt: false,
+      shift: false,
+    };
+
+    expect(canAssignAppShortcut("thread.new", selectAll)).toBe(false);
+    expect(
+      canAssignAppShortcut("thread.new", { ...selectAll, shift: true }),
+    ).toBe(true);
+    expect(
+      canAssignAppShortcut("thread.new", { ...selectAll, alt: true }),
+    ).toBe(true);
+  });
+
   it("stores disable overrides and removes redundant default overrides", () => {
     const disabled = setCommandShortcutOverride(
       defaults,

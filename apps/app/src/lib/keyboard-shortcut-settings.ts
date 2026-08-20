@@ -62,13 +62,19 @@ export function canAssignAppShortcut(
   command: AppCommandId,
   shortcut: AppShortcut,
 ): boolean {
+  const isReservedSelectAll =
+    shortcut.key.toLowerCase() === "a" &&
+    !shortcut.alt &&
+    !shortcut.shift &&
+    (shortcut.mod || shortcut.meta || shortcut.control);
   return (
-    shortcut.mod ||
-    shortcut.meta ||
-    shortcut.control ||
-    shortcut.alt ||
-    /^F(?:[1-9]|1[0-9]|2[0-4])$/u.test(shortcut.key) ||
-    QUESTION_COMMANDS.has(command)
+    !isReservedSelectAll &&
+    (shortcut.mod ||
+      shortcut.meta ||
+      shortcut.control ||
+      shortcut.alt ||
+      /^F(?:[1-9]|1[0-9]|2[0-4])$/u.test(shortcut.key) ||
+      QUESTION_COMMANDS.has(command))
   );
 }
 

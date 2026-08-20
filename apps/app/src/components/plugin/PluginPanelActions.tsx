@@ -402,7 +402,7 @@ function FileOpenerTabContent({
 
 function UnavailableFileOpenerTab() {
   return (
-    <div className="p-4">
+    <div className="select-text p-4" data-select-all-scope="">
       <EmptyStatePanel className="rounded-lg p-6 text-sm">
         This file opener is not available. The plugin may still be loading, or
         it has been disabled or removed — reopen the file to use the built-in

@@ -84,6 +84,12 @@
     user-select: none;
   }
 
+  /* Screen-reader-only labels often repeat nearby visible content. They stay
+   * in the accessibility tree but should not be serialized by drag selection. */
+  body.bb-app-shell .select-text .sr-only {
+    user-select: none;
+  }
+
   @media (display-mode: standalone) {
     :root {
       --bb-shell-height: 100lvh;

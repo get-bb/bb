@@ -14,6 +14,8 @@ import type {
   DiffFileContentsResult,
   RequestDiffFileContents,
 } from "@/components/git-diff/GitDiffCardBody";
+import { createDiffSelectAllCopyTextProvider } from "@/components/git-diff/GitDiffCardBody";
+import { parseGitDiffFiles } from "@/components/git-diff/git-diff-parsing";
 import { getSelectAllCopyText } from "@/lib/select-all-scope";
 import { DiffFileCard } from "./DiffFileCard";
 
@@ -186,6 +188,23 @@ describe("DiffFileCard context expansion", () => {
     cleanup();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it("materializes the complete patch only when Select All copy text is requested", () => {
+    const parsed = parseGitDiffFiles(MODIFIED_PATCH)[0]!;
+    let hunkReads = 0;
+    const fileDiff = new Proxy(parsed, {
+      get(target, property, receiver) {
+        if (property === "hunks") hunkReads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    const getCopyText = createDiffSelectAllCopyTextProvider(fileDiff);
+
+    expect(hunkReads).toBe(0);
+    expect(getCopyText()).toContain("-const b = 2;\n+const b = 3;");
+    expect(hunkReads).toBeGreaterThan(0);
   });
 
   it("renders a modified text diff from the patch alone on coarse pointers and fetches contents only on demand", async () => {
