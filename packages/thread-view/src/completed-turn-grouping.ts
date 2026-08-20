@@ -7,8 +7,6 @@ import { getMessageStartedAt } from "./format-helpers.js";
 import {
   findLastTerminalTimelineMessage,
   isSingletonContextManagementOperation,
-  isTimelineTerminalMessage,
-  isMidTurnUserInputBoundaryMessage,
   isTimelineUngroupableMessage,
 } from "./timeline-message-helpers.js";
 
@@ -169,9 +167,6 @@ function groupCompletedTurnSummaryMessages(
   let groupedMessages: EventProjectionMessage[] = [];
   let segmentIndex = 0;
   let externalBoundaryIndex = 0;
-  let preserveNextTerminalMessage = false;
-  let sawMidTurnUserInput = false;
-  const phase = { sawTurnOutput: false };
 
   function appendSummaryGroup(sourceMessages: EventProjectionMessage[]): void {
     if (sourceMessages.length === 0) {
@@ -195,14 +190,9 @@ function groupCompletedTurnSummaryMessages(
       return;
     }
 
-    // Mid-turn human follow-ups split one provider turn into multiple visible
-    // exchange segments. Keep each segment's last assistant/error message
-    // beside the user row instead of burying it inside that segment's
-    // collapsed summary. The first assistant/error message after mid-turn user
-    // input is kept too — it is the direct reply the user already read while
-    // the turn was streaming. Initial user rows (before any output) must not
-    // trigger any of this, or every ordinary turn would surface its interim
-    // messages.
+    // Human follow-ups split one provider turn into multiple visible exchange
+    // segments. Keep each segment's last assistant/error message beside the
+    // user row instead of burying it inside that segment's collapsed summary.
     const sourceMessages = groupedMessages;
     groupedMessages = [];
     const terminalMessage = preserveLastTerminalMessage
@@ -232,40 +222,19 @@ function groupCompletedTurnSummaryMessages(
     ) {
       flushGroupedMessages(true);
       externalBoundaryIndex += 1;
-      preserveNextTerminalMessage = true;
-      sawMidTurnUserInput = true;
     }
   }
 
   for (const message of summaryMessages) {
     flushExternalBoundariesBefore(message);
     if (isTimelineUngroupableMessage(message)) {
-      const isMidTurnUserInput = isMidTurnUserInputBoundaryMessage(
-        message,
-        phase,
+      flushGroupedMessages(
+        message.kind === "user" && message.initiator === "user",
       );
-      flushGroupedMessages(isMidTurnUserInput);
       items.push({
         kind: "ungrouped-message",
         message,
       });
-      if (isMidTurnUserInput) {
-        preserveNextTerminalMessage = true;
-        sawMidTurnUserInput = true;
-        // An answered question is provider output too; a user request that
-        // follows it is a mid-turn follow-up even with no assistant text yet.
-        phase.sawTurnOutput = true;
-      }
-      continue;
-    }
-    phase.sawTurnOutput = true;
-    if (preserveNextTerminalMessage && isTimelineTerminalMessage(message)) {
-      flushGroupedMessages();
-      items.push({
-        kind: "ungrouped-message",
-        message,
-      });
-      preserveNextTerminalMessage = false;
       continue;
     }
     groupedMessages.push(message);
@@ -275,7 +244,7 @@ function groupCompletedTurnSummaryMessages(
     flushGroupedMessages(true);
     externalBoundaryIndex += 1;
   }
-  flushGroupedMessages(sawMidTurnUserInput);
+  flushGroupedMessages();
   return applySingleSummaryTurnBounds(turn, items);
 }
 

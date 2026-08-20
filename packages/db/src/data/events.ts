@@ -2529,10 +2529,6 @@ export function listStoredConversationOutlineEventRows(
     "system/thread/interrupted",
     "system/error",
     "provider/error",
-    // An answered question splits a completed turn's folded summary exactly
-    // like accepted user input does; the outline must see it to keep the
-    // assistant rows it exposes in step with the main timeline.
-    "system/userQuestion/lifecycle",
     "item/agentMessage/delta",
     "item/plan/delta",
   ] satisfies ThreadEventType[];

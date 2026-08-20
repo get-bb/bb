@@ -19,7 +19,6 @@ import type {
   ThreadEventWarningCategory,
   ThreadTurnInitiator,
   TurnRequestTarget,
-  UserQuestionPendingInteractionResolution,
 } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import type {
@@ -258,16 +257,6 @@ interface PermissionGrantLifecycleArgs extends DefaultTurnEventOptions {
   toolName?: string;
 }
 
-interface UserQuestionLifecycleArgs extends DefaultTurnEventOptions {
-  interactionId?: string;
-  providerId?: string;
-  providerRequestId?: string;
-  questionPrompt?: string;
-  resolution?: UserQuestionPendingInteractionResolution | null;
-  status?: "pending" | "resolving" | "resolved" | "interrupted";
-  statusReason?: string | null;
-}
-
 interface LegacyUserMessageArgs extends EventFactoryRowOptions {
   text: string;
   turnId?: string;
@@ -337,9 +326,6 @@ export interface TimelineEventFactory {
   providerError(
     args: ProviderErrorArgs,
   ): ThreadEventRowOfType<"provider/error">;
-  userQuestionLifecycle(
-    args?: UserQuestionLifecycleArgs,
-  ): ThreadEventRowOfType<"system/userQuestion/lifecycle">;
   providerUnhandled(
     args?: ProviderUnhandledArgs,
   ): ThreadEventRowOfType<"provider/unhandled">;
@@ -819,42 +805,6 @@ export function createTimelineEventFactory(
                 write: [],
               },
             },
-          },
-        },
-      };
-    },
-    userQuestionLifecycle(args = {}) {
-      const base = nextDefaultTurnScopedRowBase(
-        "user-question-lifecycle",
-        args,
-      );
-      return {
-        ...base,
-        type: "system/userQuestion/lifecycle",
-        data: {
-          interactionId: args.interactionId ?? "pi-user-question",
-          providerId: args.providerId ?? "claude-code",
-          providerRequestId: args.providerRequestId ?? "request-user-question",
-          status: args.status ?? "pending",
-          resolution: args.resolution ?? null,
-          statusReason: args.statusReason ?? null,
-          payload: {
-            kind: "user_question",
-            questions: [
-              {
-                id: "question-1",
-                prompt:
-                  args.questionPrompt ??
-                  "Which deployment target should I use?",
-                shortLabel: "Target",
-                multiSelect: false,
-                options: [
-                  { value: "staging", label: "Staging" },
-                  { value: "production", label: "Production" },
-                ],
-                allowFreeText: true,
-              },
-            ],
           },
         },
       };

@@ -623,20 +623,47 @@ function permissionGrantLifecycleEvent({
 }
 
 function userQuestionLifecycleEvent({
+  interactionId = "pi-user-question",
+  questionPrompt,
+  resolution = null,
   seq,
-  ...args
+  status = "pending",
+  statusReason = null,
 }: UserQuestionLifecycleEventArgs): ThreadEventWithMeta {
-  const [event] = fromRows([
-    createTimelineEventFactory({ threadId: "thread-1" }).userQuestionLifecycle({
-      ...args,
+  return {
+    event: {
+      type: "system/userQuestion/lifecycle",
+      threadId: "thread-1",
+      scope: turnScope("turn-1"),
+      interactionId,
+      providerId: "claude-code",
+      providerRequestId: "request-user-question",
+      status,
+      resolution,
+      statusReason,
+      payload: {
+        kind: "user_question",
+        questions: [
+          {
+            id: "question-1",
+            prompt: questionPrompt ?? "Which deployment target should I use?",
+            shortLabel: "Target",
+            multiSelect: false,
+            options: [
+              { value: "staging", label: "Staging" },
+              { value: "production", label: "Production" },
+            ],
+            allowFreeText: true,
+          },
+        ],
+      },
+    },
+    meta: {
       id: `event-${seq}`,
       seq,
-    }),
-  ]);
-  if (!event) {
-    throw new Error("Expected a decoded user-question lifecycle event");
-  }
-  return event;
+      createdAt: seq,
+    },
+  };
 }
 
 function buildContextWindowUsage(
