@@ -1,14 +1,6 @@
-import {
-  environments,
-  events,
-  getAppSettings,
-  getExperiments,
-  threads,
-} from "@bb/db";
+import { environments, events, getAppSettings, threads } from "@bb/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
-  type ClaudeCodeMockCliTrafficConfig,
   PromptInput,
   ProjectExecutionDefaults,
   PermissionEscalation,
@@ -99,7 +91,6 @@ export interface ThreadStartCommandArgs {
 }
 
 interface PreparedTurnSubmitCommandBuildArgs {
-  claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
   deps: Pick<
     AppDeps,
     "config" | "db" | "providerRegistry" | "pluginHostArtifacts"
@@ -138,7 +129,6 @@ export type PreparedTurnSubmitCommandPayload = Omit<
 >;
 
 interface RuntimeExecutionOptionsArgs {
-  claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
   deps: Pick<AppDeps, "db" | "providerRegistry">;
   execution: ResolvedThreadExecutionOptions;
   hostId: string;
@@ -203,15 +193,6 @@ function providerSupportsThreadArchiveForwarding(
   return registration.info.capabilities.supportsThreadArchive;
 }
 
-function resolveClaudeCodeMockCliTrafficConfig(
-  deps: Pick<AppDeps, "db">,
-): ClaudeCodeMockCliTrafficConfig {
-  return {
-    enabled: getExperiments(deps.db).claudeCodeMockCliTraffic,
-    endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
-  };
-}
-
 function resolveProviderMemoryEnabled(
   deps: Pick<AppDeps, "db">,
   providerId: string,
@@ -272,7 +253,6 @@ function toRuntimeExecutionOptions(
     ...(claudeCodePermissionMode !== undefined
       ? { claudeCodePermissionMode }
       : {}),
-    claudeCodeMockCliTraffic: args.claudeCodeMockCliTraffic,
     workflowsEnabled: args.workflowsEnabled,
     memoryEnabled: args.memoryEnabled,
     providerSubagentsEnabled: args.providerSubagentsEnabled,
@@ -361,7 +341,6 @@ export async function buildThreadStartCommand(
       ...args,
       deps,
       hostId: args.environment.hostId,
-      claudeCodeMockCliTraffic: resolveClaudeCodeMockCliTrafficConfig(deps),
       memoryEnabled: resolveProviderMemoryEnabled(deps, args.providerId),
       providerSubagentsEnabled: resolveProviderSubagentsEnabled(
         deps,
@@ -402,7 +381,6 @@ function buildPreparedTurnSubmitCommandPayload(
       : {}),
     options: toRuntimeExecutionOptions({
       ...args,
-      claudeCodeMockCliTraffic: args.claudeCodeMockCliTraffic,
       input: args.input,
       providerId: args.runtimeContext.providerId,
       memoryEnabled: resolveProviderMemoryEnabled(
@@ -461,7 +439,6 @@ export async function prepareTurnSubmitCommandPayload(
     model: args.execution.model,
   });
   return buildPreparedTurnSubmitCommandPayload({
-    claudeCodeMockCliTraffic: resolveClaudeCodeMockCliTrafficConfig(deps),
     deps,
     environmentId: args.environment.id,
     hostId: args.environment.hostId,

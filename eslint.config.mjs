@@ -91,6 +91,9 @@ export default [
       "**/coverage/**",
       "**/routeTree.gen.ts",
       "packages/core/src/generated/**",
+      "apps/mobile/ios/**",
+      "apps/mobile/android/**",
+      "apps/mobile/.expo/**",
       // Build-time generated modules (gitignored; see turbo.json generators).
       "packages/templates/src/generated/**",
       "packages/plugin-build/src/generated/**",
@@ -139,6 +142,30 @@ export default [
     files: ["apps/server/src/**/*.ts"],
     ignores: ["**/*.test.ts", "**/__tests__/**"],
     rules: serverNoWorkspaceAccessRules,
+  },
+  {
+    files: ["apps/mobile/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@bb/sdk",
+              message:
+                "Import @bb/sdk/browser: the root entry resolves to the Node SDK under Metro's source condition.",
+            },
+          ],
+          patterns: [
+            {
+              group: ["@bb/shared-ui", "@bb/shared-ui/*"],
+              message:
+                "@bb/shared-ui is React DOM + Radix. Use the mobile primitives instead.",
+            },
+          ],
+        },
+      ],
+    },
   },
   {
     files: ["apps/app/src/**/*.{ts,tsx}"],

@@ -1,0 +1,96 @@
+# Phase 6 workspace panel shell: add the harness server → open the thread
+# named by THREAD_TITLE → the header's panel button presents the bottom
+# sheet → the Info tab shows Directory / Branch / Git status → "Changed files"
+# selects the Diff tab (its body may still be a placeholder: the flow asserts
+# the tab, not the content) → Files / Terminal launcher entries exist → swipe
+# the sheet away.
+#
+# Setup (the Info rows need a git worktree with changes): create a
+# managed-worktree thread through the API, write a file into its checkout,
+# and pass the title:
+#   maestro test -e THREAD_TITLE="P6 panel thread" e2e/flows/phase6-panel.yaml
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+  THREAD_TITLE: "P6 panel thread"
+---
+- runFlow: ../subflows/launch-to-home.yaml
+- extendedWaitUntil:
+    visible: "${THREAD_TITLE}"
+    timeout: 30000
+- tapOn: "${THREAD_TITLE}"
+- extendedWaitUntil:
+    visible:
+      id: "thread-detail-title"
+      text: "${THREAD_TITLE}"
+    timeout: 30000
+# The header's panel button presents the sheet on the Info tab.
+- extendedWaitUntil:
+    visible:
+      id: "thread-panel-button"
+    timeout: 10000
+- tapOn:
+    id: "thread-panel-button"
+- extendedWaitUntil:
+    visible:
+      id: "workspace-panel-tab-strip"
+    timeout: 15000
+- assertVisible:
+    id: "panel-tab-thread-info"
+- assertVisible:
+    id: "panel-tab-files"
+- assertVisible:
+    id: "panel-tab-terminal"
+- extendedWaitUntil:
+    visible:
+      id: "panel-info-directory-path"
+    timeout: 20000
+- assertVisible:
+    id: "panel-info-branch-name"
+- assertVisible:
+    id: "panel-info-git-status"
+- extendedWaitUntil:
+    visible:
+      id: "panel-info-changed-files"
+    timeout: 20000
+- takeScreenshot: phase6-panel-info
+# Changed files → the Diff tab becomes the selected strip entry.
+- tapOn:
+    id: "panel-info-changed-files-uncommitted"
+- extendedWaitUntil:
+    visible:
+      id: "panel-tab-git-diff"
+      selected: true
+    timeout: 10000
+- assertNotVisible:
+    id: "panel-info"
+- takeScreenshot: phase6-panel-diff-tab
+# Back to Info through the strip, then the Files launcher.
+- tapOn:
+    id: "panel-tab-thread-info"
+- extendedWaitUntil:
+    visible:
+      id: "panel-info"
+    timeout: 10000
+- tapOn:
+    id: "panel-tab-files"
+- extendedWaitUntil:
+    visible:
+      id: "panel-tab-files"
+      selected: true
+    timeout: 10000
+- assertNotVisible:
+    id: "panel-info"
+- takeScreenshot: phase6-panel-files
+# Swipe the sheet away; the thread screen is back.
+- swipe:
+    start: "50%, 20%"
+    end: "50%, 95%"
+    duration: 400
+- extendedWaitUntil:
+    notVisible:
+      id: "workspace-panel-tab-strip"
+    timeout: 10000
+- assertVisible:
+    id: "thread-detail-title"

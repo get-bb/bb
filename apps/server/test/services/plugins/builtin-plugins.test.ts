@@ -22,6 +22,7 @@ import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import {
   createPluginService,
+  dispatchPluginSourceWatchChange,
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
 import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
@@ -178,6 +179,14 @@ describe("builtin plugin reconciliation", () => {
   let db: DbConnection;
   let workDir: string;
   let service: PluginService | undefined;
+
+  it("reloads when the source watcher omits the changed filename", () => {
+    const changes: string[] = [];
+
+    dispatchPluginSourceWatchChange((path) => changes.push(path), null);
+
+    expect(changes).toEqual(["."]);
+  });
 
   beforeEach(async () => {
     delete globals.__builtinFixtureLoads;

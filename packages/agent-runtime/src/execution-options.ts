@@ -8,10 +8,7 @@ import type {
   AgentRuntimeSkillRoot,
 } from "./types.js";
 import type { ProviderExecutionContext } from "./provider-adapter.js";
-import {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-  type RuntimePermissionPolicy,
-} from "@bb/domain";
+import type { RuntimePermissionPolicy } from "@bb/domain";
 
 interface AssertProviderSupportsExecutionOptionsArgs {
   adapter: ProviderAdapter;
@@ -67,12 +64,6 @@ export function assertProviderSupportsExecutionOptions(
 export function sameExecutionSettings(
   args: SameExecutionSettingsArgs,
 ): boolean {
-  const leftMockCliTraffic =
-    args.left.claudeCodeMockCliTraffic ??
-    DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG;
-  const rightMockCliTraffic =
-    args.right.claudeCodeMockCliTraffic ??
-    DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG;
   return (
     args.left.model === args.right.model &&
     args.left.serviceTier === args.right.serviceTier &&
@@ -83,8 +74,6 @@ export function sameExecutionSettings(
       args.right.providerSubagentsEnabled &&
     args.left.claudeCodePermissionMode ===
       args.right.claudeCodePermissionMode &&
-    leftMockCliTraffic.enabled === rightMockCliTraffic.enabled &&
-    leftMockCliTraffic.endpoint === rightMockCliTraffic.endpoint &&
     args.left.permissionMode === args.right.permissionMode &&
     args.left.permissionScope === args.right.permissionScope &&
     args.left.approvalReviewer === args.right.approvalReviewer &&
@@ -103,17 +92,9 @@ export function classifySessionExecutionSettingsChange(
 function sameClaudeSessionSettings(
   args: ClassifyProviderExecutionSettingsChangeArgs,
 ): boolean {
-  const currentMockCliTraffic =
-    args.current.claudeCodeMockCliTraffic ??
-    DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG;
-  const nextMockCliTraffic =
-    args.next.claudeCodeMockCliTraffic ??
-    DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG;
   return (
     args.current.claudeCodePermissionMode ===
       args.next.claudeCodePermissionMode &&
-    currentMockCliTraffic.enabled === nextMockCliTraffic.enabled &&
-    currentMockCliTraffic.endpoint === nextMockCliTraffic.endpoint &&
     args.current.permissionMode === args.next.permissionMode &&
     args.current.permissionScope === args.next.permissionScope &&
     args.current.approvalReviewer === args.next.approvalReviewer
@@ -164,9 +145,6 @@ export function toProviderExecutionContext(
     ...(args.execOpts.claudeCodePermissionMode !== undefined
       ? { claudeCodePermissionMode: args.execOpts.claudeCodePermissionMode }
       : {}),
-    claudeCodeMockCliTraffic:
-      args.execOpts.claudeCodeMockCliTraffic ??
-      DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
     workflowsEnabled: args.execOpts.workflowsEnabled,
     memoryEnabled: args.execOpts.memoryEnabled,
     providerSubagentsEnabled: args.execOpts.providerSubagentsEnabled,

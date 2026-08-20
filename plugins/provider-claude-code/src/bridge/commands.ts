@@ -1,5 +1,4 @@
 import {
-  claudeCodeMockCliTrafficConfigSchema,
   instructionModeValues,
   permissionEscalationValues,
   reasoningLevelValues,
@@ -59,7 +58,6 @@ export const claudeThreadStartParamsSchema = z.object({
   permissionScope: bridgePermissionScopeSchema,
   permissionEscalation: bridgePermissionEscalationSchema,
   config: z.record(z.string(), z.unknown()).optional(),
-  claudeCodeMockCliTraffic: claudeCodeMockCliTrafficConfigSchema,
   model: z.string().optional(),
   reasoningLevel: bridgeReasoningLevelSchema.optional(),
   workflowsEnabled: z.boolean(),

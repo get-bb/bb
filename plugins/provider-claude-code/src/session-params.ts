@@ -5,11 +5,8 @@
  */
 
 import {
-  claudeCodeMockCliTrafficConfigSchema,
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   jsonValueSchema,
   removeCommandMentionsFromPromptInput,
-  type ClaudeCodeMockCliTrafficConfig,
   type DynamicTool,
   type InstructionMode,
   type PromptInput,
@@ -114,7 +111,6 @@ export type ClaudeSessionExecutionOptions = RuntimePermissionPolicy & {
   instructions?: string | undefined;
   envVars?: Record<string, string> | undefined;
   claudeCodePermissionMode?: "plan" | undefined;
-  claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
   workflowsEnabled: boolean;
   memoryEnabled?: boolean | undefined;
   providerSubagentsEnabled?: boolean | undefined;
@@ -164,7 +160,6 @@ function buildInternalSessionParams(
     threadId: args.threadId,
     cwd: args.cwd,
     instructionMode: args.instructionMode,
-    claudeCodeMockCliTraffic: args.options.claudeCodeMockCliTraffic,
     permissionMode: resolveClaudeSessionPermissionMode(args.options),
     approvedPlanPermissionMode: toClaudePermissionMode(permissionPolicy),
     permissionScope: permissionPolicy.permissionScope,
@@ -200,7 +195,6 @@ function buildInternalSessionParams(
 const claudeProviderOptionsSchema = z
   .object({
     claudeCodePermissionMode: z.literal("plan").optional(),
-    claudeCodeMockCliTraffic: claudeCodeMockCliTrafficConfigSchema.optional(),
     workflowsEnabled: z.boolean().optional(),
     memoryEnabled: z.boolean().optional(),
     providerSubagentsEnabled: z.boolean().optional(),
@@ -269,9 +263,6 @@ export function buildClaudeSessionParams(
       ...args.options,
       skillRoots: args.skillRoots,
       claudeCodePermissionMode: providerOptions.claudeCodePermissionMode,
-      claudeCodeMockCliTraffic:
-        providerOptions.claudeCodeMockCliTraffic ??
-        DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
       workflowsEnabled: providerOptions.workflowsEnabled ?? false,
       memoryEnabled: providerOptions.memoryEnabled,
       providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,

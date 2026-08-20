@@ -12,7 +12,6 @@ import { z } from "zod";
  */
 export const experimentKeys = [
   "changelogPreview",
-  "claudeCodeMockCliTraffic",
   "editMessages",
   "mobileApp",
   "newOnboarding",
@@ -30,7 +29,6 @@ export type Experiments = z.infer<typeof experimentsSchema>;
  */
 export const defaultExperiments: Experiments = {
   changelogPreview: false,
-  claudeCodeMockCliTraffic: false,
   editMessages: true,
   mobileApp: false,
   newOnboarding: false,

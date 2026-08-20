@@ -22,7 +22,6 @@ const unavailableSystemConfig: SystemConfigResponse = {
   keybindingOverrides: [],
   experiments: {
     changelogPreview: false,
-    claudeCodeMockCliTraffic: false,
     editMessages: false,
     mobileApp: false,
     newOnboarding: false,

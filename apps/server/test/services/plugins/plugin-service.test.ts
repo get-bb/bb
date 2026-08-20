@@ -9,7 +9,12 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createConnection, migrate, type DbConnection } from "@bb/db";
+import {
+  createConnection,
+  migrate,
+  upsertInstalledPlugin,
+  type DbConnection,
+} from "@bb/db";
 import type { SystemChangeKind } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import {
@@ -594,6 +599,7 @@ describe("plugin service", () => {
         dataDir: join(workDir, "data"),
         appVersion,
         loadTimeoutMs: 2000,
+        bundledPlugins: [],
       });
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-notify",
@@ -602,13 +608,26 @@ describe("plugin service", () => {
       serverSource: `export default function plugin() {}`,
     });
 
-    // bb 0.38.5: the plugin installs, loads, and the server logs it.
-    const before = makeService("0.38.5");
-    const installed = await before.installPath(rootDir);
-    expect(installed.status).toBe("running");
-    expect(lines).toContain("info plugin notify@0.2.1 loaded");
-    await before.stop();
-    lines.length = 0;
+    // Persist the registration left behind by bb 0.38.5. Loading plugin source
+    // belongs to install-path coverage; this regression is specifically about
+    // compatibility being re-evaluated when the host version changes.
+    upsertInstalledPlugin(db, {
+      id: "notify",
+      source: `path:${rootDir}`,
+      provenance: { kind: "direct" },
+      sourceIntent: { kind: "path", canonicalPath: rootDir },
+      exactResolution: { kind: "path" },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir,
+      version: "0.2.1",
+      enabled: true,
+    });
 
     // bb 0.39.0 starts against the same database (= the user upgraded bb).
     const after = makeService("0.39.0");

@@ -782,8 +782,6 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start and turn.submit omit inputGroups for ordinary single user-message turns; presence preserves grouped user messages within one turn.",
   "hostDaemonCommandSchema.disallowedTools":
     "thread runtime context may omit provider-specific built-in tool removals for providers that do not need them.",
-  "hostDaemonCommandSchema.options.claudeCodeMockCliTraffic":
-    "thread runtime options may omit mock CLI traffic settings unless the server explicitly enables Claude traffic replay.",
   "hostDaemonCommandSchema.options.claudeCodePermissionMode":
     "thread runtime options may omit the Claude Code native permission override unless a provider command requests plan mode.",
   "hostDaemonCommandSchema.options.memoryEnabled":
@@ -1125,6 +1123,8 @@ describe("host-daemon command schemas", () => {
   // Version 134 keeps replayed Codex resume/fork usage snapshots off turn ids
   // bb never stored a turn/started for (token usage dropped, context usage
   // thread-scoped).
+  // Version 137 removes the `claudeCodeMockCliTraffic` runtime option with
+  // the Claude Code mock CLI traffic experiment.
   // Version 136 ships the narrow-grammar provider bridges: served bridge
   // artifacts speak bridge-protocol v2 (`thread/delta` only), which an older
   // daemon's runtime would ignore as unknown notifications and render empty
@@ -1147,7 +1147,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(136);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(137);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

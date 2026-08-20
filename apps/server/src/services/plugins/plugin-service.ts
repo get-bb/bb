@@ -160,6 +160,18 @@ export interface PluginSkillRootContribution {
   rootPath: string;
 }
 
+/**
+ * `fs.watch` is allowed to omit the changed filename. The dev loop still has
+ * to reload in that case; `.` is a non-ignored synthetic path representing an
+ * unknown change somewhere below the watched plugin root.
+ */
+export function dispatchPluginSourceWatchChange(
+  handleChange: (relativePath: string) => void,
+  filename: string | null,
+): void {
+  handleChange(filename === null || filename.length === 0 ? "." : filename);
+}
+
 export interface PluginService {
   /** Whether this installed plugin has builtin provenance. */
   isBuiltin(id: string): boolean;
@@ -1573,9 +1585,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             bundled.rootDir,
             { recursive: true },
             (_event, filename) => {
-              if (typeof filename === "string" && filename.length > 0) {
-                loop.handleChange(filename);
-              }
+              dispatchPluginSourceWatchChange(loop.handleChange, filename);
             },
           );
           watcher.on("close", () => loop.dispose());

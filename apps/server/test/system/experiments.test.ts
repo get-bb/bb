@@ -15,7 +15,6 @@ describe("experiments settings", () => {
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.experiments).toEqual({
         changelogPreview: false,
-        claudeCodeMockCliTraffic: false,
         editMessages: true,
         mobileApp: false,
         newOnboarding: false,
@@ -31,7 +30,6 @@ describe("experiments settings", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           changelogPreview: true,
-          claudeCodeMockCliTraffic: true,
           editMessages: true,
           mobileApp: true,
           newOnboarding: true,
@@ -41,7 +39,6 @@ describe("experiments settings", () => {
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         changelogPreview: true,
-        claudeCodeMockCliTraffic: true,
         editMessages: true,
         mobileApp: true,
         newOnboarding: true,
@@ -49,7 +46,6 @@ describe("experiments settings", () => {
       });
       expect(getExperiments(harness.db)).toEqual({
         changelogPreview: true,
-        claudeCodeMockCliTraffic: true,
         editMessages: true,
         mobileApp: true,
         newOnboarding: true,
@@ -61,7 +57,6 @@ describe("experiments settings", () => {
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
       ).toEqual({
         changelogPreview: true,
-        claudeCodeMockCliTraffic: true,
         editMessages: true,
         mobileApp: true,
         newOnboarding: true,
@@ -89,7 +84,6 @@ describe("experiments settings", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           changelogPreview: false,
-          claudeCodeMockCliTraffic: false,
           editMessages: true,
           mobileApp: false,
           newOnboarding: false,
@@ -115,7 +109,6 @@ describe("experiments settings", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           changelogPreview: false,
-          claudeCodeMockCliTraffic: false,
           editMessages: false,
           mobileApp: false,
           newOnboarding: false,

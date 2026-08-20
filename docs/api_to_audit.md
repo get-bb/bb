@@ -296,9 +296,7 @@ build inlines the SDK's published, self-contained bundle.
    plugin, and the `cloneReasoningEfforts` helper out of `@bb/domain` into
    claude-code's model catalog. The other named candidates turned out not to
    be movable: they are `@bb/domain`/protocol definitions with core consumers
-   — `claudeCodeMockCliTrafficConfigSchema` is the source of the
-   core-consumed `ClaudeCodeMockCliTrafficConfig`/default (agent-runtime,
-   server), the `claudeTaskTool*` schemas share their contract file with
+   — the `claudeTaskTool*` schemas share their contract file with
    thread-view, the `acp*Cli`/`acpNativeReasoning` schemas are parsed by
    host-daemon-contract and config, and the workflow snapshot types are
    rendered by the app. The surface is still large; any further shrink is a

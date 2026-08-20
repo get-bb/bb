@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -35,18 +36,65 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("MarkdownPreview", () => {
-  it("observes content width only when the preview renders a table", () => {
-    const observed: Element[] = [];
-    class ResizeObserverMock {
-      constructor(_callback: ResizeObserverCallback) {}
-      observe(target: Element) {
-        observed.push(target);
-      }
-      unobserve() {}
-      disconnect() {}
+function mockResizeObserverDeliveries(): {
+  notifyResize: () => void;
+  observerCount: () => number;
+  observed: Element[];
+} {
+  const observed: Element[] = [];
+  const observers: Array<{
+    callback: ResizeObserverCallback;
+    instance: ResizeObserver;
+    targets: Set<Element>;
+  }> = [];
+
+  class ResizeObserverMock {
+    private readonly record: (typeof observers)[number];
+    constructor(callback: ResizeObserverCallback) {
+      this.record = {
+        callback,
+        instance: this as unknown as ResizeObserver,
+        targets: new Set(),
+      };
+      observers.push(this.record);
     }
-    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    observe(target: Element): void {
+      observed.push(target);
+      this.record.targets.add(target);
+    }
+    unobserve(target: Element): void {
+      this.record.targets.delete(target);
+    }
+    disconnect(): void {
+      this.record.targets.clear();
+    }
+  }
+
+  vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+  return {
+    observed,
+    observerCount: () => observers.length,
+    notifyResize: () => {
+      act(() => {
+        for (const { callback, instance, targets } of observers) {
+          if (targets.size === 0) continue;
+          callback(
+            Array.from(
+              targets,
+              (target) => ({ target }) as unknown as ResizeObserverEntry,
+            ),
+            instance,
+          );
+        }
+      });
+    },
+  };
+}
+
+describe("MarkdownPreview", () => {
+  it("shares one observer and observes content width only for table previews", () => {
+    const { notifyResize, observed, observerCount } =
+      mockResizeObserverDeliveries();
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
       bottom: 100,
       height: 100,
@@ -64,24 +112,39 @@ describe("MarkdownPreview", () => {
     plain.unmount();
 
     const { container } = render(
-      <MarkdownPreview content={"| A |\n| - |\n| B |"} />,
+      <>
+        <MarkdownPreview content={"| A |\n| - |\n| B |"} />
+        <MarkdownPreview content={"| C |\n| - |\n| D |"} />
+      </>,
     );
-    const table = container.querySelector("table");
-    const breakout = table?.parentElement?.parentElement;
+    const breakouts = Array.from(
+      container.querySelectorAll("table"),
+      (table) => table.parentElement?.parentElement,
+    );
 
-    expect(observed).toHaveLength(1);
-    expect(observed[0]?.hasAttribute("data-markdown-preview")).toBe(true);
-    expect(breakout?.style.getPropertyValue("--md-content-w")).toBe("320px");
+    expect(observerCount()).toBe(1);
+    expect(observed).toHaveLength(2);
+    expect(
+      observed.every((element) =>
+        element.hasAttribute("data-markdown-preview"),
+      ),
+    ).toBe(true);
+    expect(
+      breakouts.every(
+        (breakout) => breakout?.style.getPropertyValue("--md-content-w") === "",
+      ),
+    ).toBe(true);
+    notifyResize();
+    expect(
+      breakouts.every(
+        (breakout) =>
+          breakout?.style.getPropertyValue("--md-content-w") === "320px",
+      ),
+    ).toBe(true);
   });
 
   it("caps the table breakout at the nearest horizontally clipped ancestor", () => {
-    class ResizeObserverMock {
-      constructor(_callback: ResizeObserverCallback) {}
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    const { notifyResize } = mockResizeObserverDeliveries();
     // Every element is 300px wide at x=100 unless it sets data-left/data-width.
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
       function (this: HTMLElement) {
@@ -121,6 +184,7 @@ describe("MarkdownPreview", () => {
     const flush = renderClipped(400);
     const flushBreakout =
       flush.container.querySelector("table")?.parentElement?.parentElement;
+    notifyResize();
     expect(
       flushBreakout?.style.getPropertyValue("--md-table-breakout-max"),
     ).toBe("300px");
@@ -130,6 +194,7 @@ describe("MarkdownPreview", () => {
     const roomy = renderClipped(600);
     const roomyBreakout =
       roomy.container.querySelector("table")?.parentElement?.parentElement;
+    notifyResize();
     expect(
       roomyBreakout?.style.getPropertyValue("--md-table-breakout-max"),
     ).toBe("500px");
@@ -149,6 +214,7 @@ describe("MarkdownPreview", () => {
     );
     const rootedBreakout =
       rooted.container.querySelector("table")?.parentElement?.parentElement;
+    notifyResize();
     expect(
       rootedBreakout?.style.getPropertyValue("--md-table-breakout-max"),
     ).toBe("300px");
@@ -156,16 +222,7 @@ describe("MarkdownPreview", () => {
   });
 
   it("skips height-only resize events for tables", () => {
-    let callback: ResizeObserverCallback | null = null;
-    class ResizeObserverMock {
-      constructor(cb: ResizeObserverCallback) {
-        callback = cb;
-      }
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    const { notifyResize } = mockResizeObserverDeliveries();
     let width = 320;
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
       () => ({
@@ -186,17 +243,18 @@ describe("MarkdownPreview", () => {
     );
     const breakout = container.querySelector("table")?.parentElement
       ?.parentElement as HTMLElement;
+    expect(breakout.style.getPropertyValue("--md-content-w")).toBe("");
+    notifyResize();
     expect(breakout.style.getPropertyValue("--md-content-w")).toBe("320px");
-    expect(callback).not.toBeNull();
 
     // Same width, different height: no style write.
     breakout.style.setProperty("--md-content-w", "sentinel");
-    callback!([], {} as ResizeObserver);
+    notifyResize();
     expect(breakout.style.getPropertyValue("--md-content-w")).toBe("sentinel");
 
     // A width change re-measures.
     width = 480;
-    callback!([], {} as ResizeObserver);
+    notifyResize();
     expect(breakout.style.getPropertyValue("--md-content-w")).toBe("480px");
   });
 

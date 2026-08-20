@@ -1,3 +1,7 @@
+// Version 137 removes the `claudeCodeMockCliTraffic` runtime option and the
+// Claude Code mock CLI traffic experiment behind it. Current servers no longer
+// send the field, and current bridges no longer accept it.
+//
 // Version 136 carries the narrow-grammar provider bridge protocol (bridge
 // protocol v2): the provider bridge artifacts a server serves to daemons now
 // speak `thread/delta` only — the `thread/event` lane is gone. An old daemon's
@@ -51,7 +55,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 136 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 137 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

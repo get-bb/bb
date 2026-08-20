@@ -14,7 +14,6 @@ function renderSection(overrides?: {
   return render(
     <ExperimentsSettingsSection
       changelogPreviewEnabled={false}
-      claudeCodeMockCliTrafficEnabled={false}
       disabled={false}
       editMessagesEnabled={false}
       mobileAppEnabled={false}
@@ -23,7 +22,6 @@ function renderSection(overrides?: {
       onChangelogPreviewEnabledChange={
         overrides?.onChangelogPreviewEnabledChange ?? vi.fn()
       }
-      onClaudeCodeMockCliTrafficEnabledChange={vi.fn()}
       onEditMessagesEnabledChange={vi.fn()}
       onMobileAppEnabledChange={overrides?.onMobileAppEnabledChange ?? vi.fn()}
       onNewOnboardingEnabledChange={

@@ -61,6 +61,12 @@ import {
 } from "./threads.js";
 
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
+/**
+ * Keep the scalar byte-total fast path above the default 1,500-event timeline
+ * window without letting a client-selected details range aggregate an entire
+ * thread before the byte-limited iterator gets a chance to stop early.
+ */
+export const STORED_TIMELINE_BYTE_PREFLIGHT_EVENT_LIMIT = 2_000;
 const SQLITE_MAX_VARIABLE_NUMBER = 32_766;
 // This OR query prepares with 995 keys. A 996th key reaches the configured
 // SQLite expression-depth limit of 1,000.
@@ -2897,6 +2903,32 @@ export function getStoredTimelineWindowEventDataBytes(
   return row?.dataBytes ?? 0;
 }
 
+function getStoredTimelineWindowEventDataBytesPreflight(
+  db: DbConnection,
+  args: GetStoredTimelineWindowEventDataBytesArgs,
+): { dataBytes: number; isComplete: boolean } {
+  const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);
+  const boundedWindow = db
+    .select({ data: sql<string>`${data}`.as("data") })
+    .from(events)
+    .where(and(...storedTimelineWindowConditions(args)))
+    .orderBy(desc(events.sequence))
+    .limit(STORED_TIMELINE_BYTE_PREFLIGHT_EVENT_LIMIT + 1)
+    .as("bounded_timeline_byte_window");
+  const row = db
+    .select({
+      dataBytes: sql<number>`COALESCE(SUM(length(CAST(${boundedWindow.data} AS BLOB))), 0)`,
+      eventCount: sql<number>`COUNT(*)`,
+    })
+    .from(boundedWindow)
+    .get();
+  return {
+    dataBytes: row?.dataBytes ?? 0,
+    isComplete:
+      (row?.eventCount ?? 0) <= STORED_TIMELINE_BYTE_PREFLIGHT_EVENT_LIMIT,
+  };
+}
+
 /**
  * Finds the oldest row in the newest suffix that fits the byte budget.
  * Iteration returns only a sequence and a byte count for each row, and stops
@@ -2906,19 +2938,20 @@ export function findStoredTimelineWindowByteBudgetFloor(
   db: DbConnection,
   args: FindStoredTimelineWindowByteBudgetFloorArgs,
 ): StoredTimelineWindowByteBudgetFloor {
-  // The common case is a window that fits. Let SQLite total it and return one
-  // scalar instead of crossing the native boundary once per event merely to
-  // rediscover that no floor is needed. Oversized windows still take the
-  // ordered iterator below so they retain the exact cutoff/placeholder rules.
-  const windowDataBytes = getStoredTimelineWindowEventDataBytes(db, {
+  // The common case is a normal-sized window that fits. Let SQLite total it
+  // and return one scalar instead of crossing the native boundary once per
+  // event merely to rediscover that no floor is needed. Client-selected detail
+  // ranges can span a whole thread, so cap this preflight and let oversized or
+  // unusually long ranges take the early-stopping iterator below.
+  const preflight = getStoredTimelineWindowEventDataBytesPreflight(db, {
     beforeSequence: args.beforeSequence,
     excludedTypes: args.excludedTypes,
     maxInlineOutputChars: args.maxInlineOutputChars,
     sequenceStart: args.sequenceStart,
     threadId: args.threadId,
   });
-  if (windowDataBytes <= args.maxDataBytes) {
-    return { eventDataBytes: windowDataBytes, kind: "fits" };
+  if (preflight.isComplete && preflight.dataBytes <= args.maxDataBytes) {
+    return { eventDataBytes: preflight.dataBytes, kind: "fits" };
   }
 
   const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);

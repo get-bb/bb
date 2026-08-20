@@ -569,17 +569,23 @@ async function buildTailwindCss(
  * Absolute paths of every file esbuild bundled into app.js, from its
  * metafile. Runtime shims and disabled modules are virtual and skipped.
  */
-function bundledInputPaths(
+async function bundledInputPaths(
   metafile: Metafile,
   absWorkingDir: string,
-): Set<string> {
+): Promise<Set<string>> {
   const paths = new Set<string>();
-  for (const input of Object.keys(metafile.inputs)) {
-    if (input.startsWith(`${SHIM_NAMESPACE}:`) || input.startsWith("(")) {
-      continue;
-    }
-    paths.add(resolve(absWorkingDir, input));
-  }
+  await Promise.all(
+    Object.keys(metafile.inputs).map(async (input) => {
+      if (input.startsWith(`${SHIM_NAMESPACE}:`) || input.startsWith("(")) {
+        return;
+      }
+      // The Tailwind scanner resolves dependency roots through realpath.
+      // Normalize esbuild's inputs the same way so OS path aliases (macOS
+      // exposes /tmp through /private/tmp) and symlinked plugin roots cannot
+      // make a bundled dependency look absent from the metafile.
+      paths.add(await realpath(resolve(absWorkingDir, input)));
+    }),
+  );
   return paths;
 }
 
@@ -679,7 +685,7 @@ export async function buildPluginApp(
         rootDir,
         pluginId,
         toolchain,
-        bundledInputPaths(bundle.metafile, rootDir),
+        await bundledInputPaths(bundle.metafile, rootDir),
       )
     ).trimEnd();
     // Tailwind's own optimizer (lightningcss, the same pass the host's Vite

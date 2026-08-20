@@ -180,8 +180,6 @@ export type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 // ---------------------------------------------------------------------------
 
 export {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   HIGH_REASONING_EFFORT,
   LOCAL_BASH_TASK_TYPE,
   LOCAL_WORKFLOW_TASK_TYPE,
@@ -196,7 +194,6 @@ export {
   acpPermissionCliSchema,
   acpReasoningCliSchema,
   backgroundTaskItemStatus,
-  claudeCodeMockCliTrafficConfigSchema,
   claudeTaskToolNameSchema,
   claudeTaskToolOutputSchema,
   dynamicToolSchema,
@@ -204,7 +201,6 @@ export {
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
   isBackgroundAgentTaskType,
-  isClaudeCodeMockCliTrafficEndpoint,
   isSettledBackgroundTaskStatus,
   isStandaloneBuiltinCompactCommand,
   isUserQuestionPendingInteractionPayload,
@@ -230,7 +226,6 @@ export type {
   AvailableModel,
   BackgroundTaskStatus,
   BackgroundTaskUsage,
-  ClaudeCodeMockCliTrafficConfig,
   ClaudeTaskToolOutput,
   ClientTurnRequestId,
   DynamicTool,

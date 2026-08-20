@@ -1,5 +1,4 @@
 import type { ThreadEvent } from "@bb/domain";
-import { DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import type { ProviderExecutionContext } from "./provider-adapter.js";
@@ -34,7 +33,6 @@ const fullModeOptions: ProviderExecutionContext = {
   permissionScope: "full",
   approvalReviewer: null,
   permissionEscalation: null,
-  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   workflowsEnabled: false,
 };
 
@@ -61,12 +59,10 @@ describe("handshake version gate", () => {
     expect(requests).toHaveLength(1);
     // A bridge that answers initialize with garbage must be a legible startup
     // failure, not a session silently running on default capabilities.
-    expect(() =>
-      requests[0]?.onResult({ nonsense: true }),
-    ).toThrowError(/malformed result.*fake-bridge/s);
-    expect(() => requests[0]?.onResult(null)).toThrowError(
-      /malformed result/,
+    expect(() => requests[0]?.onResult({ nonsense: true })).toThrowError(
+      /malformed result.*fake-bridge/s,
     );
+    expect(() => requests[0]?.onResult(null)).toThrowError(/malformed result/);
   });
 });
 
@@ -215,8 +211,6 @@ describe("options mapping", () => {
           providerOptions: {
             workflowsEnabled: true,
             memoryEnabled: false,
-            claudeCodeMockCliTraffic:
-              DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
           },
         },
       },

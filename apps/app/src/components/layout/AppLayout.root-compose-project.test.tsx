@@ -33,7 +33,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
     data: {
       experiments: {
         changelogPreview: false,
-        claudeCodeMockCliTraffic: false,
         editMessages: false,
         mobileApp: false,
         newOnboarding: false,
