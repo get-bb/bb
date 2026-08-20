@@ -595,6 +595,10 @@ argument drives a dev client through Metro instead.
 
 ## bb connect (Phase 5)
 
+- The pairing surfaces on the bb side (Settings → Remote access → Add mobile
+  device, `bb connect machine-code`) sit behind the `mobileApp` experiment
+  while the app is in early access: turn it on in Settings → Experiments or
+  with `bb settings experiment mobileApp true` before you mint a code.
 - Enrollment (`src/screens/connect`, `src/data/connect`, route `/connect`):
   "Add server" offers "Connect with bb connect" above the Direct URL form.
   The screen scans the pairing QR (`expo-camera`; payload = the connect

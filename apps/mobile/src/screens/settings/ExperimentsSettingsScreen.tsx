@@ -28,6 +28,12 @@ const EXPERIMENT_ROWS: readonly ExperimentRow[] = [
       "Edit a sent message and replace the conversation from that point. Workspace changes are kept.",
   },
   {
+    key: "mobileApp",
+    label: "Mobile app",
+    description:
+      "Pair the bb mobile app over bb connect: shows Add mobile device under Remote access (web and desktop) and enables bb connect machine-code.",
+  },
+  {
     key: "newOnboarding",
     label: "New onboarding",
     description:

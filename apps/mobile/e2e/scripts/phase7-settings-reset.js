@@ -7,6 +7,7 @@ const experiments = http.put(`${SERVER_URL}/api/v1/settings/experiments`, {
   body: JSON.stringify({
     claudeCodeMockCliTraffic: false,
     editMessages: true,
+    mobileApp: false,
     newOnboarding: false,
     providerSessionReaping: false,
   }),
