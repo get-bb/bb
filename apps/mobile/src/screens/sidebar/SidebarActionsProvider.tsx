@@ -94,7 +94,7 @@ export interface SidebarActions {
   openSectionMenu(section: SidebarSectionDefinition): void;
   openDisplayOptions(): void;
   openCreateSection(): void;
-  /** Navigate to the thread detail (closes the drawer first when hosted there). */
+  /** Navigate to the thread detail. */
   openThread(thread: Pick<ThreadListEntry, "id">): void;
   /** Navigate to the composer, preselecting a project and/or section. */
   createThread(target?: { projectId?: string; sectionId?: string }): void;
@@ -288,8 +288,6 @@ function ConfirmRows({
 
 export interface SidebarActionsProviderProps {
   children: ReactNode;
-  /** Runs before every navigation (the drawer closes itself here). */
-  onBeforeNavigate?: () => void;
   /**
    * Handles "new thread" in place of navigating home with params (the home
    * screen opens its own dock directly). Return `false` to navigate.
@@ -301,7 +299,6 @@ export interface SidebarActionsProviderProps {
 
 export function SidebarActionsProvider({
   children,
-  onBeforeNavigate,
   onCreateThread,
 }: SidebarActionsProviderProps) {
   const router = useRouter();
@@ -338,11 +335,8 @@ export function SidebarActionsProvider({
   const dismiss = useCallback(() => sheet.dismiss(), [sheet]);
 
   const navigate = useCallback(
-    (href: Parameters<typeof router.push>[0]) => {
-      onBeforeNavigate?.();
-      router.push(href);
-    },
-    [onBeforeNavigate, router],
+    (href: Parameters<typeof router.push>[0]) => router.push(href),
+    [router],
   );
 
   const actions = useMemo<SidebarActions>(
@@ -358,12 +352,11 @@ export function SidebarActionsProvider({
         if (onCreateThread?.(target)) return;
         // Home already sits at the bottom of the stack: navigate (not push)
         // returns to it with the new params.
-        onBeforeNavigate?.();
         router.navigate(newThreadHref(target));
       },
       createProject: () => navigate(newProjectHref()),
     }),
-    [navigate, onBeforeNavigate, onCreateThread, present, router],
+    [navigate, onCreateThread, present, router],
   );
 
   const unarchiveMany = useCallback(

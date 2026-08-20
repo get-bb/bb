@@ -11,16 +11,8 @@ env:
   SERVER_URL: "http://127.0.0.1:41999"
 ---
 - runFlow: ../subflows/launch-to-home.yaml
-# Drawer → Settings.
-- swipe:
-    start: 2%, 50%
-    end: 70%, 50%
-- extendedWaitUntil:
-    visible:
-      id: "drawer-settings"
-    timeout: 10000
-- tapOn:
-    id: "drawer-settings"
+# Workspace menu → Settings.
+- runFlow: ../subflows/open-settings.yaml
 - extendedWaitUntil:
     visible:
       id: "settings-screen"

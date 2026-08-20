@@ -2,9 +2,9 @@ import { Stack } from "expo-router";
 import { useTheme } from "@/theme";
 
 /**
- * Root native stack: the drawer (home) at the bottom, settings/dev screens
- * pushed on top with native headers in bb's colors. Screen titles live in
- * the route files.
+ * Root native stack: home (the thread list) at the bottom, thread /
+ * settings / dev screens pushed on top with native headers in bb's colors.
+ * Home sets its own title and header buttons.
  */
 export function RootNavigator() {
   const { tokens, fonts } = useTheme();
@@ -24,7 +24,7 @@ export function RootNavigator() {
         contentStyle: { backgroundColor: tokens.background },
       }}
     >
-      <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
+      <Stack.Screen name="index" options={{ title: "bb" }} />
       <Stack.Screen name="threads/[id]" options={{ title: "Thread" }} />
       <Stack.Screen name="threads/search" options={{ title: "Search" }} />
       <Stack.Screen name="threads/[id]/files" options={{ title: "Files" }} />

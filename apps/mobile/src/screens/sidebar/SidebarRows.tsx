@@ -54,7 +54,6 @@ export type SidebarRowSubtitle =
 
 export interface SidebarThreadRowViewProps {
   row: SidebarThreadRow;
-  selected: boolean;
   /**
    * Second line: the project name outside project mode (with a folder icon
    * so it reads as a project, not a second title), a search snippet, or
@@ -68,7 +67,6 @@ export interface SidebarThreadRowViewProps {
 
 export const SidebarThreadRowView = memo(function SidebarThreadRowView({
   row,
-  selected,
   subtitle,
   onPress,
   onLongPress,
@@ -83,14 +81,10 @@ export const SidebarThreadRowView = memo(function SidebarThreadRowView({
       accessibilityRole="button"
       accessibilityLabel={title}
       accessibilityHint={subtitleText(subtitle)}
-      accessibilityState={{ selected }}
       onPress={() => onPress(row)}
       onLongPress={() => onLongPress(row)}
       delayLongPress={350}
-      className={cn(
-        "flex-row items-center gap-2 pr-3 active:bg-state-hover",
-        selected && "bg-surface-selected",
-      )}
+      className="flex-row items-center gap-2 pr-3 active:bg-state-hover"
       style={{
         minHeight: ROW_MIN_HEIGHT,
         paddingLeft: rowPaddingLeft(row.depth),

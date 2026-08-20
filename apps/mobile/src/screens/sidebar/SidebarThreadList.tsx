@@ -51,8 +51,6 @@ function SidebarListSkeleton() {
 }
 
 export interface SidebarThreadListProps {
-  /** Highlights the row of the thread that is open. */
-  selectedThreadId?: string | null;
   /** Rendered above the first section (scrolls with the list). */
   ListHeaderComponent?: ReactElement | null;
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -61,13 +59,12 @@ export interface SidebarThreadListProps {
 
 /**
  * The grouped thread list (pinned, then projects / machines / sections per
- * the organize preference) as a FlashList. Shared by the drawer and the home
- * screen; the row menus come from the enclosing `SidebarActionsProvider`.
+ * the organize preference) as a FlashList, the body of the home screen; the
+ * row menus come from the enclosing `SidebarActionsProvider`.
  * Data stays put across realtime refetches (the bootstrap query keeps its
  * previous data), so rows update in place instead of flashing.
  */
 export function SidebarThreadList({
-  selectedThreadId = null,
   ListHeaderComponent,
   contentContainerStyle,
   testID,
@@ -179,7 +176,6 @@ export function SidebarThreadList({
           return (
             <SidebarThreadRowView
               row={item}
-              selected={thread.id === selectedThreadId}
               subtitle={projectSubtitle(
                 showProject
                   ? (projectNamesById.get(thread.projectId) ?? null)
@@ -212,7 +208,6 @@ export function SidebarThreadList({
       onToggleThread,
       organize,
       projectNamesById,
-      selectedThreadId,
     ],
   );
 
@@ -258,7 +253,7 @@ export function SidebarThreadList({
       keyExtractor={keyExtractor}
       getItemType={getItemType}
       renderItem={renderItem}
-      extraData={{ selectedThreadId, organize }}
+      extraData={{ organize }}
       maintainVisibleContentPosition={DISABLE_MAINTAIN_POSITION}
       refreshing={refreshing}
       onRefresh={onRefresh}

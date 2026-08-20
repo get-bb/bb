@@ -7,9 +7,9 @@ Status: Phase 7 (settings, machines, updates, plugins, skills, share,
 haptics, CI) — M4, the last build milestone, over Direct mode and bb connect;
 M5 (SPA-in-WebView plugin surfaces, tablet layout, store releases) is
 deferred. Direct-mode and bb connect server profiles (QR / code pairing, desktop-session
-cookie, re-pair), the app shell (drawer + stack, connection banner, settings),
+cookie, re-pair), the app shell (root stack, connection banner, settings),
 theme/design system, the per-profile SDK/realtime/query layer, the grouped
-thread list (drawer + home, long-press menus, organize/sort, search, archived),
+thread list (home, long-press menus, organize/sort, search, archived),
 thread creation on the shared composer (mentions, attachments, voice, fork /
 handoff seeds), the thread detail screen (`/threads/[id]`: the virtualized
 timeline with every row kind, markdown, inline diffs, terminal output, images +
@@ -39,7 +39,8 @@ app/                     Expo Router routes (thin: each file re-exports a screen
                          KeyboardProvider › PaletteProvider › ThemeProvider ›
                          ProfilesProvider (QueryClientProvider per profile) ›
                          SheetProvider › RootNavigator + Toaster
-  (drawer)/              Drawer (expo-router/drawer) with the home screen (thread list)
+  index.tsx              home: the thread list + compose dock; the workspace menu (server
+                         switcher / archived / Settings) opens from the header avatar
   threads/[id].tsx       thread detail (Phase 4a, read-only); threads/search.tsx;
                          threads/[id]/terminal/ (index: the thread's terminals,
                          [terminalId]: one terminal full screen, any orientation);
@@ -329,7 +330,7 @@ cd apps/mobile && pnpm e2e:ios
 ```
 
 `phase1-shell.yaml` drives the real first-run flow (Add server → home →
-drawer → Settings → Server status shows realtime connected); `smoke.yaml`
+workspace menu → Settings → Server status shows realtime connected); `smoke.yaml`
 opens the Phase 0 diagnostics screen; `phase3-threads.yaml` exercises the
 thread list (rename, pin, archive, Settings → Archived → unarchive, search);
 `phase3-compose.yaml` creates a thread from the home dock (`bb://compose`
@@ -434,11 +435,7 @@ expires the session (`POST /__stub/expire-session`: banner, then the app
 re-mints and reconnects by itself) → the stub revokes the machine
 (`/__stub/revoke-machine`: "needs to be paired again" banner) → tap the
 banner → "Sign in again" re-pairs the same profile with a new code → home
-connected again. After enrollment the flow opens the drawer from the header
-toggle ("Show navigation menu") instead of the edge swipe: on a bb connect
-profile the swipe that opens the drawer also presses the home row under the
-touch and pushes that thread (see the Phase 7 integration entry in
-`plans/bb-mobile-progress.md`). The flow needs the stub started with
+connected again. The flow needs the stub started with
 `BB_MOBILE_E2E_SIMULATOR=<udid>` once (it installs its root certificate in
 that simulator) and drives the stub through `e2e/scripts/connect-stub-control.js`
 (plain-HTTP control port 42997).
@@ -841,5 +838,6 @@ palette, run `pnpm --filter @bb/mobile theme:generate` and commit the result;
   `keyboardShouldPersistTaps="handled"` on its scroll body so rows are
   reachable by VoiceOver/Maestro and a tap lands while the keyboard is up.
 - Maestro on iOS: `back` is not a thing; tap `id: BackButton`. The dev
-  client's floating gear sits over the header's right icons on larger
-  simulators, so flows reach search/options through the drawer rows.
+  client's floating gear can sit over the header's right icons on larger
+  simulators; Settings is reached through the header avatar on the left
+  (`e2e/subflows/open-settings.yaml`).

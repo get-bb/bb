@@ -16,16 +16,8 @@ env:
 - runScript: ../scripts/phase7-settings-reset.js
 - runScript: ../scripts/phase7-machine-name.js
 - runFlow: ../subflows/launch-to-home.yaml
-# Drawer → Settings.
-- swipe:
-    start: 2%, 50%
-    end: 70%, 50%
-- extendedWaitUntil:
-    visible:
-      id: "drawer-settings"
-    timeout: 10000
-- tapOn:
-    id: "drawer-settings"
+# Workspace menu → Settings.
+- runFlow: ../subflows/open-settings.yaml
 - extendedWaitUntil:
     visible:
       id: "settings-experiments"

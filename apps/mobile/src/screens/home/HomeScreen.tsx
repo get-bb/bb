@@ -34,6 +34,7 @@ import {
 } from "../compose";
 import { threadHref, threadSearchHref } from "../shell/hrefs";
 import { Screen } from "../shell/Screen";
+import { WorkspaceMenuButton } from "../shell/WorkspaceMenu";
 import {
   SidebarActionsProvider,
   SidebarThreadList,
@@ -45,10 +46,27 @@ const SCRIM_DURATION_MS = 180;
 const SCRIM_ALPHA = 0.35;
 
 /**
- * Search + display-options buttons in the drawer header (set from inside
- * the provider). While the dock is expanded the header is painted the same
- * gray as the scrim (it is navigator chrome above the screen, so the scrim
- * view cannot cover it) and its controls are muted.
+ * Home header: the server label as the title, the workspace menu (server
+ * switcher / archived / Settings) on the left. Rendered in every ready state
+ * so the menu is reachable before a server connects.
+ */
+function HomeHeaderShell({ dimmed = false }: { dimmed?: boolean }) {
+  const navigation = useNavigation();
+  const { activeProfile } = useProfiles();
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: activeProfile?.label ?? "bb",
+      headerLeft: () => <WorkspaceMenuButton dimmed={dimmed} />,
+    });
+  }, [activeProfile?.label, dimmed, navigation]);
+  return null;
+}
+
+/**
+ * Search + display-options buttons in the home header (set from inside the
+ * provider). While the dock is expanded the header is painted the same gray
+ * as the scrim (it is navigator chrome above the screen, so the scrim view
+ * cannot cover it) and its controls are muted.
  */
 function HomeHeaderActions({ dimmed }: { dimmed: boolean }) {
   const navigation = useNavigation();
@@ -212,7 +230,7 @@ function HomeBody() {
     },
     [animateScrim],
   );
-  // A routed request (a project's "+" from the drawer, a deep link, a fork /
+  // A routed request (a project's "+" in the list, a deep link, a fork /
   // handoff seed) opens the dock; the params stay on the route until the
   // thread is created — or the dock is dismissed, which drops the request
   // (a fork hint would otherwise pin the card open).
@@ -245,6 +263,7 @@ function HomeBody() {
 
   return (
     <SidebarActionsProvider onCreateThread={createThreadInDock}>
+      <HomeHeaderShell dimmed={expanded} />
       <HomeHeaderActions dimmed={expanded} />
       <KeyboardPaddingView
         style={{ flex: 1 }}
@@ -306,10 +325,11 @@ function HomeBody() {
 }
 
 /**
- * Home: the thread list for the active server (the same grouped list the
- * drawer shows, full width), pull-to-refresh, the new-thread dock at the
- * bottom, and search / display options in the header. With no saved server
- * it hands off to the add-server flow (first run).
+ * Home: the root screen. The grouped thread list for the active server,
+ * pull-to-refresh, the new-thread dock at the bottom, the workspace menu
+ * (servers / archived / Settings) on the header's left and search / display
+ * options on its right. With no saved server it hands off to the add-server
+ * flow (first run).
  */
 export function HomeScreen() {
   const { status, profiles, activeProfile, connection } = useProfiles();
@@ -338,9 +358,10 @@ export function HomeScreen() {
   if (!connection || !activeProfile) {
     return (
       <Screen testID="home-screen">
+        <HomeHeaderShell />
         <EmptyStatePanel>
           <Text className="text-center text-sm text-muted-foreground">
-            Pick a server from the drawer to see its threads.
+            Pick a server to see its threads.
           </Text>
         </EmptyStatePanel>
         <Button

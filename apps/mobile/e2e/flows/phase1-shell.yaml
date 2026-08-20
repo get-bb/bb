@@ -1,5 +1,5 @@
 # Phase 1 shell: first run → real Add-server screen → home (thread list) →
-# drawer → Settings → Server status shows a live realtime connection against
+# workspace menu → Settings → Server status shows a live realtime connection against
 # the harness backend → Servers list.
 #
 # Requires Metro started with EXPO_PUBLIC_BB_E2E=1 (the app wipes saved
@@ -36,20 +36,22 @@ env:
 - assertNotVisible:
     id: "connection-banner"
 - takeScreenshot: phase1-home
-# Drawer: server switcher header, New thread / Search rows, Settings footer.
-- swipe:
-    start: 2%, 50%
-    end: 70%, 50%
+# Workspace menu (the header's server avatar): the active server with its
+# realtime label, the server rows, Add server, Settings.
+- tapOn:
+    id: "home-workspace-menu"
 - extendedWaitUntil:
     visible:
-      id: "drawer-settings"
+      id: "workspace-settings"
     timeout: 10000
 - assertVisible:
-    id: "drawer-server-switcher"
+    id: "workspace-profile-label"
+- assertVisible: "Connected"
 - assertVisible:
-    id: "drawer-new-thread"
+    id: "workspace-add-server"
+- takeScreenshot: phase1-workspace-menu
 - tapOn:
-    id: "drawer-settings"
+    id: "workspace-settings"
 - extendedWaitUntil:
     visible:
       id: "settings-server-status"

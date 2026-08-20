@@ -21,15 +21,7 @@ env:
     visible: ".*Connect to a bb server.*"
     timeout: 60000
 - runFlow: ../subflows/launch-to-home.yaml
-- swipe:
-    start: 2%, 50%
-    end: 70%, 50%
-- extendedWaitUntil:
-    visible:
-      id: "drawer-settings"
-    timeout: 10000
-- tapOn:
-    id: "drawer-settings"
+- runFlow: ../subflows/open-settings.yaml
 - extendedWaitUntil:
     visible:
       id: "settings-screen"
