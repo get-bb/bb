@@ -413,15 +413,21 @@ function pastePlainText(text: string) {
 }
 
 function pasteClipboard({
+  files = [],
   html = "",
   plainText = "",
 }: {
+  files?: File[];
   html?: string;
   plainText?: string;
 }) {
   fireEvent.paste(getPromptEditorElement(), {
     clipboardData: {
-      items: [],
+      items: files.map((file) => ({
+        getAsFile: () => file,
+        kind: "file",
+        type: file.type,
+      })),
       getData: (type: string) => {
         if (type === "text/html") return html;
         if (type === "text/plain") return plainText;
@@ -3046,6 +3052,34 @@ describe("PromptBoxInternal prompt actions", () => {
       coordsAtPosSpy.mockRestore();
       scrollRectSpy.mockRestore();
     }
+  });
+
+  it("names an unnamed Android IME image before attaching it", async () => {
+    const onAttachFiles = vi.fn<(files: File[]) => void>();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          attachments: { onAttachFiles },
+          promptActions,
+        })}
+      />,
+    );
+    const image = new File([new Uint8Array([137, 80, 78, 71])], "", {
+      type: "image/png",
+      lastModified: 123,
+    });
+
+    pasteClipboard({ files: [image] });
+
+    await waitFor(() => expect(onAttachFiles).toHaveBeenCalledOnce());
+    const attachedFiles = onAttachFiles.mock.calls[0]?.[0];
+    expect(attachedFiles).toHaveLength(1);
+    expect(attachedFiles[0]).toMatchObject({
+      name: "pasted-image.png",
+      type: "image/png",
+      size: image.size,
+      lastModified: 123,
+    });
   });
 
   it("preserves blockquote structure when pasting copied blockquote html", async () => {

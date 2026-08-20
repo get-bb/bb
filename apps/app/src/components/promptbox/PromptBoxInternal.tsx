@@ -168,6 +168,32 @@ const RICH_PASTE_IGNORED_TAGS = new Set([
   "TITLE",
 ]);
 
+const PASTED_IMAGE_EXTENSIONS: Readonly<Record<string, string>> = {
+  "image/avif": "avif",
+  "image/bmp": "bmp",
+  "image/gif": "gif",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/svg+xml": "svg",
+  "image/webp": "webp",
+};
+
+function nameUnnamedPastedFile(file: File, index: number): File {
+  if (file.name.trim().length > 0) return file;
+
+  // Android IME media insertion provides valid image bytes without a filename.
+  const isImage = file.type.startsWith("image/");
+  const extension = isImage ? PASTED_IMAGE_EXTENSIONS[file.type] : undefined;
+  const sequence = index === 0 ? "" : `-${index + 1}`;
+  const extensionSuffix = extension ? `.${extension}` : "";
+  const name = `pasted-${isImage ? "image" : "file"}${sequence}${extensionSuffix}`;
+
+  return new File([file], name, {
+    type: file.type,
+    lastModified: file.lastModified,
+  });
+}
+
 function hasWhitespaceAfterPosition(
   doc: ProseMirrorNode,
   position: number,
@@ -1875,7 +1901,8 @@ export function PromptBoxInternal({
           const pastedFiles = clipboardItems
             .filter((item) => item.kind === "file")
             .map((item) => item.getAsFile())
-            .filter((file): file is File => file !== null);
+            .filter((file): file is File => file !== null)
+            .map(nameUnnamedPastedFile);
 
           if (attachFiles && pastedFiles.length > 0) {
             event.preventDefault();
