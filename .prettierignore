@@ -32,6 +32,7 @@ apps/mobile/ios/
 apps/mobile/android/
 apps/mobile/.expo/
 apps/mobile/expo-env.d.ts
+apps/mobile/build-output/
 
 # These templates intentionally use aligned plain-text command columns.
 packages/templates/src/templates/

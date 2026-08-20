@@ -190,9 +190,18 @@ jobs:
 
       # Release: the Xcode "Bundle React Native code and images" phase runs
       # `expo export:embed` with the env below (EXPO_PUBLIC_* values are
-      # inlined at bundle time), the app is installed on the simulator and
-      # launched once; the flows cold-start it themselves.
-      - name: Build and install the Release app
+      # inlined at bundle time).
+      #
+      # `--device generic` builds for the generic iOS Simulator destination
+      # and copies the product to `--output`; `--device <udid>` must not be
+      # used here. The app declares `associatedDomains` (universal links), and
+      # `expo run:ios` insists on a development signing identity whenever the
+      # entitlements contain `com.apple.developer.associated-domains` — even
+      # for a simulator build — which a runner without a certificate cannot
+      # provide. Simulator products need no signature, so the binary is
+      # installed with simctl instead. DerivedData is still the default
+      # location, so the cache below keeps working.
+      - name: Build the Release app
         id: build
         working-directory: apps/mobile
         env:
@@ -203,7 +212,21 @@ jobs:
           EXPO_PUBLIC_BB_SERVER_URL: http://127.0.0.1:${{ env.BB_MOBILE_E2E_PORT }}
         run: |
           set -x
-          time npx expo run:ios --configuration Release --no-bundler --device "$SIMULATOR_UDID"
+          rm -rf build-output
+          time npx expo run:ios --configuration Release --no-bundler \
+            --device generic --output build-output
+
+      # The flows cold-start the app themselves; installing it here also
+      # primes the simulator so the first flow does not pay for it.
+      - name: Install the app on the simulator
+        working-directory: apps/mobile
+        run: |
+          set -x
+          app=$(find build-output -maxdepth 1 -name '*.app' | head -1)
+          if [ -z "$app" ]; then
+            echo "No .app product in apps/mobile/build-output"; ls -la build-output; exit 1
+          fi
+          xcrun simctl install "$SIMULATOR_UDID" "$app"
           xcrun simctl listapps "$SIMULATOR_UDID" | grep -A3 app.getbb.mobile || true
 
       - name: Save CocoaPods

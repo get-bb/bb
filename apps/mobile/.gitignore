@@ -39,3 +39,5 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+# `expo run:ios --output` product (CI installs it with simctl).
+/build-output
