@@ -22,92 +22,16 @@ import {
 } from "@pierre/diffs/react";
 import {
   forwardRef,
-  useEffect,
-  useRef,
-  useState,
   type ComponentPropsWithoutRef,
   type ComponentType,
   type ElementRef,
   type ReactNode,
 } from "react";
-import type { WorkerPoolManager, WorkerStats } from "@pierre/diffs/worker";
 import { PierreWorkerPoolBoundary } from "./pierre-worker-pool-boundary";
 import {
   usePierreWorkerPool,
   useRequirePierreWorkerPool,
 } from "./pierre-worker-pool-gate";
-
-function isWorkerPoolSettled(stats: WorkerStats): boolean {
-  return (
-    stats.managerState === "initialized" &&
-    stats.busyWorkers === 0 &&
-    stats.queuedTasks === 0 &&
-    stats.activeTasks === 0
-  );
-}
-
-/**
- * Re-render one time after this mount's worker work settles.
- *
- * In development, React Strict Mode releases pierre's first renderer and
- * attaches a replacement to the same custom element. The first renderer may
- * already have painted a plain AST. Pierre then delivers the highlighted AST
- * to the replacement, but its fresh cache starts with `highlighted: true`, so
- * it does not request the repaint that would replace that retained plain DOM.
- * Production has no simulated remount, which is why the failure is dev-only.
- *
- * Changing pierre's options after the worker settles forces the retained
- * renderer to paint its highlighted AST. The private option is ignored by
- * pierre's rendering options, so it has no visual effect of its own. Stop
- * listening after that first settled state: a page can have many plugin
- * diffs, and every pool event must not re-render every one of them.
- */
-function useRerenderAfterWorkerPoolSettles(
-  pool: WorkerPoolManager | undefined,
-): number {
-  const settledPoolRef = useRef<WorkerPoolManager | undefined>(undefined);
-  const [settleVersion, setSettleVersion] = useState(0);
-
-  useEffect(() => {
-    if (pool === undefined || settledPoolRef.current === pool) return;
-
-    let unsubscribe: (() => void) | undefined;
-    let subscriptionInstalled = false;
-    const handleStats = (stats: WorkerStats) => {
-      if (!isWorkerPoolSettled(stats)) return;
-      settledPoolRef.current = pool;
-      if (subscriptionInstalled) unsubscribe?.();
-      setSettleVersion((version) => version + 1);
-    };
-
-    // Pierre calls the subscriber immediately. If the pool already settled,
-    // unsubscribe as soon as subscribeToStatChanges returns.
-    unsubscribe = pool.subscribeToStatChanges(handleStats);
-    subscriptionInstalled = true;
-    if (settledPoolRef.current === pool) unsubscribe();
-    return unsubscribe;
-  }, [pool]);
-
-  return settleVersion;
-}
-
-function addWorkerSettlementOption<P extends object>(
-  props: P,
-  settleVersion: number,
-) {
-  if (settleVersion === 0) return props;
-  const options =
-    "options" in props && typeof props.options === "object"
-      ? props.options
-      : undefined;
-  return {
-    ...props,
-    options: {
-      ...options,
-      __bbWorkerSettlementVersion: settleVersion,
-    },
-  };
-}
 
 /**
  * The `@pierre/diffs/react` surface handed to plugin bundles through the
@@ -136,12 +60,9 @@ function gatePierreComponent<P extends object>(
 ) {
   function PierreWorkerPoolGated(props: P) {
     const ready = useRequirePierreWorkerPool();
-    const pool = usePierreWorkerPool();
-    const settleVersion = useRerenderAfterWorkerPoolSettles(pool);
-    const renderProps = addWorkerSettlementOption(props, settleVersion);
     return (
       <PierreWorkerPoolBoundary>
-        {ready ? <Component {...renderProps} /> : null}
+        {ready ? <Component {...props} /> : null}
       </PierreWorkerPoolBoundary>
     );
   }
@@ -156,12 +77,9 @@ type CodeViewHandle = ElementRef<typeof CodeView>;
 const GatedCodeView = forwardRef<CodeViewHandle, CodeViewProps>(
   function PierreWorkerPoolGatedCodeView(props, ref) {
     const ready = useRequirePierreWorkerPool();
-    const pool = usePierreWorkerPool();
-    const settleVersion = useRerenderAfterWorkerPoolSettles(pool);
-    const renderProps = addWorkerSettlementOption(props, settleVersion);
     return (
       <PierreWorkerPoolBoundary>
-        {ready ? <CodeView {...renderProps} ref={ref} /> : null}
+        {ready ? <CodeView {...props} ref={ref} /> : null}
       </PierreWorkerPoolBoundary>
     );
   },

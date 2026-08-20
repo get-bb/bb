@@ -1,138 +1,68 @@
-// @vitest-environment jsdom
-import { act, cleanup, render, waitFor } from "@testing-library/react";
-import type { WorkerPoolManager, WorkerStats } from "@pierre/diffs/worker";
-import { StrictMode, type ComponentType } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  PierreWorkerPoolGateContext,
-  type PierreWorkerPoolGate,
-} from "./pierre-worker-pool-gate";
+  DEFAULT_THEMES,
+  DiffHunksRenderer,
+  parsePatchFiles,
+  type RenderDiffOptions,
+  type ThemedDiffResult,
+} from "@pierre/diffs";
+import type { WorkerPoolManager } from "@pierre/diffs/worker";
+import { describe, expect, it, vi } from "vitest";
 
-const pierreMock = vi.hoisted(
-  (): {
-    fileDiffMountCount: number;
-    fileDiffRenderCount: number;
-    workerSettlementVersion: number | undefined;
-  } => ({
-    fileDiffMountCount: 0,
-    fileDiffRenderCount: 0,
-    workerSettlementVersion: undefined,
-  }),
-);
+const renderOptions: RenderDiffOptions = {
+  theme: DEFAULT_THEMES,
+  useTokenTransformer: false,
+  tokenizeMaxLineLength: 1_000,
+  lineDiffType: "word-alt",
+  maxLineDiffLength: 1_000,
+};
 
-vi.mock("@pierre/diffs/react", async () => {
-  const react = await import("react");
-  const WorkerPoolContext = react.createContext<WorkerPoolManager | undefined>(
-    undefined,
-  );
-  const NullComponent = () => null;
-  const FileDiff = ({ options }: { options?: Record<string, unknown> }) => {
-    pierreMock.fileDiffRenderCount += 1;
-    const settlementVersion = options?.__bbWorkerSettlementVersion;
-    pierreMock.workerSettlementVersion =
-      typeof settlementVersion === "number" ? settlementVersion : undefined;
-    react.useEffect(() => {
-      pierreMock.fileDiffMountCount += 1;
-    }, []);
-    return react.createElement("div", {
-      "data-render-count": pierreMock.fileDiffRenderCount,
-      "data-testid": "pierre-file-diff",
-    });
-  };
-  return {
-    CodeView: NullComponent,
-    File: NullComponent,
-    FileDiff,
-    GutterUtilitySlotStyles: {},
-    MergeConflictSlotStyles: {},
-    MultiFileDiff: NullComponent,
-    PatchDiff: NullComponent,
-    UnresolvedFile: NullComponent,
-    Virtualizer: NullComponent,
-    VirtualizerContext: react.createContext(undefined),
-    WorkerPoolContext,
-    WorkerPoolContextProvider: NullComponent,
-    noopRender: vi.fn(),
-    renderDiffChildren: vi.fn(),
-    renderFileChildren: vi.fn(),
-    templateRender: vi.fn(),
-    useFileDiffInstance: vi.fn(),
-    useFileInstance: vi.fn(),
-    useStableCallback: vi.fn(),
-    useVirtualizer: vi.fn(),
-    useWorkerPool: () => react.useContext(WorkerPoolContext),
-  };
-});
+const highlightedResult: ThemedDiffResult = {
+  code: {
+    additionLines: [],
+    deletionLines: [],
+  },
+  themeStyles: "",
+  baseThemeType: undefined,
+};
 
-import { createGatedPierreDiffsReact } from "./plugin-pierre-diffs-react";
+describe("Pierre diff hydration", () => {
+  it("repaints adopted DOM when its pending worker highlight completes", () => {
+    const fileDiff = parsePatchFiles(
+      "diff --git a/example.ts b/example.ts\n" +
+        "--- a/example.ts\n" +
+        "+++ b/example.ts\n" +
+        "@@ -1 +1 @@\n" +
+        "-const answer = 41;\n" +
+        "+const answer = 42;\n",
+    )[0]?.files[0];
+    if (fileDiff === undefined) throw new Error("Expected a parsed file diff");
 
-afterEach(() => {
-  cleanup();
-  pierreMock.fileDiffMountCount = 0;
-  pierreMock.fileDiffRenderCount = 0;
-  pierreMock.workerSettlementVersion = undefined;
-  vi.clearAllMocks();
-});
-
-describe("plugin pierre diff worker settlement", () => {
-  it("revisits a Strict Mode plugin diff once after its worker task settles", async () => {
-    let stats: WorkerStats = {
-      managerState: "initialized",
-      totalWorkers: 2,
-      workersFailed: false,
-      busyWorkers: 1,
-      queuedTasks: 0,
-      activeTasks: 1,
-      themeSubscribers: 1,
-      fileCacheSize: 0,
-      diffCacheSize: 0,
-    };
-    const subscribers = new Set<(next: WorkerStats) => unknown>();
-    const pool = {
-      subscribeToStatChanges(callback: (next: WorkerStats) => unknown) {
-        subscribers.add(callback);
-        callback(stats);
-        return () => subscribers.delete(callback);
-      },
+    const highlightDiffAST = vi.fn();
+    const workerPool = {
+      getDiffRenderOptions: () => renderOptions,
+      getDiffResultCache: () => undefined,
+      highlightDiffAST,
+      isWorkingPool: () => true,
     } as unknown as WorkerPoolManager;
-    const gate: PierreWorkerPoolGate = {
-      pool,
-      ready: true,
-      request: vi.fn(),
-    };
-    const GatedFileDiff = createGatedPierreDiffsReact()
-      .FileDiff as ComponentType;
-
-    render(
-      <StrictMode>
-        <PierreWorkerPoolGateContext.Provider value={gate}>
-          <GatedFileDiff />
-        </PierreWorkerPoolGateContext.Provider>
-      </StrictMode>,
+    const onRenderUpdate = vi.fn();
+    const renderer = new DiffHunksRenderer(
+      undefined,
+      onRenderUpdate,
+      workerPool,
     );
 
-    await waitFor(() => expect(subscribers.size).toBe(1));
-    const mountsBeforeSettlement = pierreMock.fileDiffMountCount;
-    const rendersBeforeSettlement = pierreMock.fileDiffRenderCount;
+    // React Strict Mode replays Pierre's ref callback against the existing
+    // custom element. The replacement renderer hydrates that retained DOM
+    // instead of rendering a fresh plain AST.
+    renderer.hydrate(fileDiff);
+    expect(highlightDiffAST).toHaveBeenCalledWith(renderer, fileDiff);
 
-    stats = {
-      ...stats,
-      busyWorkers: 0,
-      activeTasks: 0,
-    };
-    act(() => {
-      for (const subscriber of subscribers) subscriber(stats);
-    });
-
-    await waitFor(() =>
-      expect(pierreMock.fileDiffRenderCount).toBeGreaterThan(
-        rendersBeforeSettlement,
-      ),
+    renderer.onHighlightSuccess(
+      fileDiff,
+      highlightedResult,
+      renderOptions,
     );
-    expect(pierreMock.workerSettlementVersion).toBe(1);
-    expect(pierreMock.fileDiffMountCount).toBe(mountsBeforeSettlement);
-    // The recovery is one-shot; later pool traffic must not fan out into a
-    // rerender of every plugin diff on the page.
-    expect(subscribers.size).toBe(0);
+
+    expect(onRenderUpdate).toHaveBeenCalledOnce();
   });
 });
