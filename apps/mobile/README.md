@@ -781,15 +781,17 @@ push key); nobody needs a local Xcode signing setup to ship.
   App Store Connect → Users and Access → Integrations → App Store Connect API
   (role App Manager, one-time download). Both commands also work with
   `--non-interactive`.
-- **Nightly**: the `nightly-mobile-ios` job in
-  `.github/workflows/publish-bb-app.yml` runs after the npm nightly publish.
-  It sets `app.json` `version` to the numeric base of the nightly version,
-  writes the `.p8` from the `ASC_API_KEY_P8` secret, and runs
-  `eas build -p ios --profile production --no-wait --auto-submit` with
+- **CI**: `.github/workflows/mobile-ios-eas.yml` writes the `.p8` from the
+  `ASC_API_KEY_P8` secret, optionally sets `app.json` `version`, and runs
+  `eas build -p ios --profile <profile> --no-wait [--auto-submit]` with
   `EXPO_TOKEN`. EAS builds, then uploads to TestFlight; logs are on expo.dev
-  under the project's Builds and Submissions. Repo secrets: `EXPO_TOKEN` (a
-  robot token from the `bb-team` Expo org) and `ASC_API_KEY_P8` (the `.p8`
-  contents).
+  under the project's Builds and Submissions (the run summary links them).
+  Run it alone from the Actions tab ("Mobile iOS (EAS)") or
+  `gh workflow run mobile-ios-eas.yml -f profile=production -f submit=true`.
+  The nightly `publish-bb-app.yml` calls the same workflow after the npm
+  nightly publish with the numeric base of the nightly version. Repo
+  secrets: `EXPO_TOKEN` (a robot token from the `bb-team` Expo org) and
+  `ASC_API_KEY_P8` (the `.p8` contents).
 - The `expo-modules-jsi` pnpm patch and the `lightningcss` override ship
   with the repo and apply on EAS; the default build image provides
   Xcode 26.x.
