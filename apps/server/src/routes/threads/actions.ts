@@ -75,6 +75,7 @@ import {
 import {
   requireThreadCommandEnvironment,
   requireThreadHostCommandEnvironment,
+  resolveThreadHostCommandEnvironment,
 } from "../../services/threads/thread-command-environment.js";
 import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
@@ -462,13 +463,10 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.stop, async (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const environment =
-      thread.environmentId === null
-        ? null
-        : requireThreadHostCommandEnvironment({
-            db: deps.db,
-            thread,
-          });
+    const environment = resolveThreadHostCommandEnvironment({
+      db: deps.db,
+      thread,
+    });
     await stopThreadForCurrentState(deps, thread, environment);
     return context.json({ ok: true });
   });
@@ -652,7 +650,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       environmentId: thread.environmentId,
       excludeThreadId: thread.id,
     });
-    const environment = requireThreadHostCommandEnvironment({
+    const environment = resolveThreadHostCommandEnvironment({
       db: deps.db,
       thread,
     });

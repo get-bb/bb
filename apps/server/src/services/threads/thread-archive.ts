@@ -20,13 +20,13 @@ import {
   requestActiveRuntimeThreadStopIfNeeded,
 } from "./thread-lifecycle.js";
 import { archiveThreadAndReleaseChildren } from "./thread-ownership.js";
-import { requireThreadHostCommandEnvironment } from "./thread-command-environment.js";
+import { resolveThreadHostCommandEnvironment } from "./thread-command-environment.js";
 
 interface ArchiveThreadWithLifecycleEffectsArgs {
   environment: {
     hostId: string;
     id: string;
-  };
+  } | null;
   thread: Pick<Thread, "environmentId" | "id" | "status">;
 }
 
@@ -53,12 +53,15 @@ export function archiveThreadWithLifecycleEffects(
     threadId: archivedThread.id,
   });
   // Archive only stops active runtime work; manual stop is the pre-start
-  // provisioning cancellation entrypoint.
-  requestActiveRuntimeThreadStopIfNeeded(
-    deps,
-    archivedThread,
-    args.environment,
-  );
+  // provisioning cancellation entrypoint. A thread whose environment row was
+  // pruned has no runtime left to stop.
+  if (args.environment !== null) {
+    requestActiveRuntimeThreadStopIfNeeded(
+      deps,
+      archivedThread,
+      args.environment,
+    );
+  }
   dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
     threadId: archivedThread.id,
   });
@@ -90,7 +93,7 @@ export function archiveThreadAndHiddenSourceForks(
     sourceThreadId: archivedThread.id,
   })) {
     archiveThreadWithLifecycleEffects(deps, {
-      environment: requireThreadHostCommandEnvironment({
+      environment: resolveThreadHostCommandEnvironment({
         db: deps.db,
         thread: fork,
       }),
@@ -160,7 +163,7 @@ export function archiveThreadAndChildren(
   const affectedEnvironmentIds = new Set<string>();
 
   for (const thread of threads) {
-    const environment = requireThreadHostCommandEnvironment({
+    const environment = resolveThreadHostCommandEnvironment({
       db: deps.db,
       thread,
     });
@@ -172,7 +175,9 @@ export function archiveThreadAndChildren(
       continue;
     }
     archivedThreadIds.push(result.id);
-    affectedEnvironmentIds.add(environment.id);
+    if (environment !== null) {
+      affectedEnvironmentIds.add(environment.id);
+    }
   }
 
   for (const environmentId of affectedEnvironmentIds) {
