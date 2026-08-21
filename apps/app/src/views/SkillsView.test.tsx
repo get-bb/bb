@@ -21,16 +21,20 @@ import type { SkillSummary } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { sdk } from "@/lib/sdk";
-import { buildRegistrySkillReferencePrompt } from "@/lib/skills-registry";
-import { SkillDetailView } from "../components/tools/SkillDetailView";
-import { RegistrySkillDetailView } from "../components/tools/SkillsBrowse";
 import {
-  RegistrySkillsBrowsePage,
-  SkillDetailDialogView,
-  SkillsLibrary,
-  SkillsOverview,
+  buildRegistrySkillReferencePrompt,
   type RegistrySkill,
-} from "./SkillsView";
+} from "@/lib/skills-registry";
+import { SkillDetailView } from "../components/tools/SkillDetailView";
+import {
+  RegistrySkillDetailView,
+  RegistrySkillsBrowsePage,
+} from "../components/tools/SkillsBrowse";
+import {
+  SkillDetailDialogView,
+  SkillsOverview,
+} from "../components/tools/SkillsCollection";
+import { SkillsLibrary } from "../components/tools/SkillsLibrary";
 
 afterEach(() => {
   focusManager.setFocused(undefined);

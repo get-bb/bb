@@ -80,16 +80,4 @@ export interface IndexedPromptMention {
   serializedText: string;
 }
 
-export function isBbPromptMentionNode(node: Node): node is BbPromptMentionNode {
-  return node.type === "bbPromptMention";
-}
-
-export function isBbThreadMentionNode(node: Node): node is BbThreadMentionNode {
-  return node.type === "bbThreadMention";
-}
-
-export function isBbDirectiveNode(node: Node): node is BbDirectiveNode {
-  return node.type === "bbDirective";
-}
-
 export type { Literal, PhrasingContent, RootContent };

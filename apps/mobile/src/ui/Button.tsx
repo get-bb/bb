@@ -176,5 +176,3 @@ export function Button({
     </Pressable>
   );
 }
-
-export { buttonVariants, buttonTextVariants };

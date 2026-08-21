@@ -56,7 +56,7 @@ interface UseThreadGitActionsParams {
   workspaceStatus?: WorkspaceStatus;
 }
 
-interface ThreadHeaderGitAction {
+export interface ThreadHeaderGitAction {
   label: string;
   target: ThreadGitActionDialogTarget;
 }
@@ -71,8 +71,6 @@ function getGitActionSuccessTitle(action: GitActionKind): string {
       return "Commit created";
     case "squash_merge":
       return "Squash merge completed";
-    default:
-      return action;
   }
 }
 
@@ -82,8 +80,6 @@ function getGitActionLoadingTitle(action: GitActionKind): string {
       return "Creating commit";
     case "squash_merge":
       return "Squash merging";
-    default:
-      return action;
   }
 }
 
@@ -93,8 +89,6 @@ function getGitActionQueuedTitle(action: GitActionKind): string {
       return "Commit queued";
     case "squash_merge":
       return "Squash merge queued";
-    default:
-      return action;
   }
 }
 
@@ -104,8 +98,6 @@ function getGitActionErrorTitle(action: GitActionKind): string {
       return "Commit failed";
     case "squash_merge":
       return "Squash merge failed";
-    default:
-      return action;
   }
 }
 

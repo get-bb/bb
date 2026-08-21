@@ -9,7 +9,6 @@ import {
   Thread,
   ClientTurnRequestId,
   EnvironmentStatus,
-  WorkspaceProvisionType,
   promptInputHasCommandMention,
 } from "@bb/domain";
 import {
@@ -46,21 +45,13 @@ import {
   resolveBridgeLaunchForProviderId,
 } from "../system/provider-bridge-launch.js";
 
-export type ExecutionOptionsRequest = ExistingThreadExecutionInputRequest;
+type ExecutionOptionsRequest = ExistingThreadExecutionInputRequest;
 
 export interface ThreadStopCommandArgs {
   environmentId: string;
   hostId: string;
   intent: ThreadStopIntent;
   threadId: string;
-}
-
-interface ThreadStartCommandEnvironment {
-  hostId: string;
-  id: string;
-  path: string | null;
-  status: EnvironmentStatus;
-  workspaceProvisionType: WorkspaceProvisionType;
 }
 
 interface ThreadHostCommandEnvironment {
@@ -75,7 +66,7 @@ interface ThreadUnarchiveCommandEnvironment {
 }
 
 export interface ThreadStartCommandArgs {
-  environment: ThreadStartCommandEnvironment;
+  environment: ThreadRuntimeCommandEnvironment;
   execution: ResolvedThreadExecutionOptions;
   // Non-null ⇒ clone the parent's provider session at its branch point (native
   // fork) instead of starting fresh. null ⇒ a normal start.
@@ -146,11 +137,6 @@ interface BuildExecutionOptionsArgs {
   projectDefaults?: ProjectExecutionDefaults | null;
   threadId: string;
 }
-
-type BuildExecutionOptionsSource =
-  | "client/thread/start"
-  | "client/turn/requested"
-  | "client/turn/start";
 
 interface DispatchThreadRenameCommandArgs {
   environment: ThreadHostCommandEnvironment;
@@ -288,14 +274,13 @@ export async function buildExecutionOptions(
   deps: Pick<AppDeps, "db" | "hub" | "providerRegistry">,
   request: ExecutionOptionsRequest,
   args: BuildExecutionOptionsArgs,
-  source: BuildExecutionOptionsSource,
 ): Promise<ResolvedThreadExecutionOptions> {
   const plan = await resolveExistingThreadExecutionPlan(deps, {
     ...(args.projectDefaults !== undefined
       ? { projectDefaults: args.projectDefaults }
       : {}),
     ...(args.hostId !== undefined ? { hostId: args.hostId } : {}),
-    executionSource: source,
+    executionSource: "client/turn/requested",
     input: buildExistingThreadExecutionInput(request),
     threadId: args.threadId,
   });

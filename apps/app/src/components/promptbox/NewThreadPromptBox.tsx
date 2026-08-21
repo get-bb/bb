@@ -67,7 +67,7 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import {
   permissionDisplayForPromptMode,
   shouldDisablePermissionPickerForPromptMode,
-} from "./effective-prompt-mode";
+} from "@bb/client-core";
 
 const NEW_THREAD_PROMPT_BOX_MIN_HEIGHT = 80;
 const DEFAULT_NEW_THREAD_COMPOSER_SCOPE = {
@@ -99,7 +99,6 @@ export interface NewThreadBranchConfig {
   hidden?: boolean;
   options: readonly string[];
   remoteOptions?: readonly string[];
-  priorityOptions?: readonly string[];
   loading?: boolean;
   placeholder?: string;
   triggerLabel?: string;
@@ -335,7 +334,7 @@ interface DefaultNewThreadComposerProps extends Omit<
 }
 
 /** BB's presentation for a host-owned new-thread Composer controller. */
-export const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
+const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   id,
   value,
   mentionRanges,
@@ -515,7 +514,6 @@ export function ThreadEnvSlot({
           isCreatingNew={branch.isNew}
           options={branch.options}
           remoteOptions={branch.remoteOptions}
-          priorityOptions={branch.priorityOptions}
           loading={branch.loading}
           placeholder={branch.placeholder}
           triggerLabel={branch.triggerLabel}
@@ -594,45 +592,17 @@ export function ProjectlessMachineSlot({
   );
 }
 
-export interface NewThreadConnectedEnvironmentConfig {
-  value: string;
-  onChange: (value: string) => void;
-  sources: readonly ProjectSource[];
-  /** Opens the guided machine-setup flow for a machine without a project
-   * source (multi-machine menu only). */
-  onRequestMachineSetup?: (host: Host) => void;
-  /** When true, the "Reuse existing worktree" entry in the env picker is
-   * disabled — caller signals the project has no worktree envs available. */
-  reuseDisabled?: boolean;
-  worktreeDisabledReason?: string | null;
-  disabled?: boolean;
-}
+export type NewThreadConnectedEnvironmentConfig = Omit<
+  NewThreadEnvironmentConfig,
+  "host" | "isLocal" | "machines"
+>;
 
-export interface NewThreadConnectedBranchConfig {
-  value: string | null;
-  currentBranch?: string | null;
-  isNew: boolean;
-  hidden?: boolean;
-  options: readonly string[];
-  remoteOptions?: readonly string[];
-  loading?: boolean;
-  placeholder?: string;
-  triggerLabel?: string;
-  triggerTitle?: string;
-  currentOptionLabel?: string | null;
-  currentOptionTitle?: string;
-  optionDisabledReason?: string | null;
-  optionDisabledTitle?: string;
-  createDisabledReason?: string | null;
-  createDisabledTitle?: string;
-  onChange: (value: string) => void;
-  onClear?: () => void;
-  onOpenChange?: (open: boolean) => void;
-  onSearchQueryChange?: (query: string) => void;
-  onCreateBaseChange?: (value: string) => void;
-  disabled?: boolean;
+export type NewThreadConnectedBranchConfig = Omit<
+  NewThreadBranchConfig,
+  "onCreate"
+> & {
   onCreate: () => void;
-}
+};
 
 export interface NewThreadConnectedModeConfig {
   environment: NewThreadConnectedEnvironmentConfig;
@@ -650,29 +620,14 @@ export interface NewThreadPromptBoxProps extends Omit<
   modeConfig: NewThreadConnectedModeConfig;
 }
 
-type ConnectedThreadModeConfig = NewThreadConnectedModeConfig;
-
-type NewThreadPromptBoxRest = Omit<NewThreadPromptBoxProps, "modeConfig">;
-
 /**
  * The composed prompt area for creating a new thread in a project — used by
- * RootComposeView. It wires host queries through `ConnectedThreadModeBranch`.
+ * RootComposeView. It wires host queries into the UI mode config.
  */
 export function NewThreadPromptBox({
-  modeConfig,
+  modeConfig: threadConfig,
   ...rest
 }: NewThreadPromptBoxProps) {
-  return <ConnectedThreadModeBranch {...rest} threadConfig={modeConfig} />;
-}
-
-interface ConnectedThreadModeBranchProps extends NewThreadPromptBoxRest {
-  threadConfig: ConnectedThreadModeConfig;
-}
-
-function ConnectedThreadModeBranch({
-  threadConfig,
-  ...rest
-}: ConnectedThreadModeBranchProps) {
   const { data: hosts } = useHosts();
   const systemConfigQuery = useSystemConfig();
   const primaryHostId = systemConfigQuery.data?.primaryHostId ?? null;
@@ -715,29 +670,9 @@ function ConnectedThreadModeBranch({
   const uiBranch = useMemo<NewThreadBranchConfig>(() => {
     const branch = threadConfig.branch;
     return {
-      value: branch.value,
-      currentBranch: branch.currentBranch,
+      ...branch,
       isNew: allowCreate && branch.isNew,
-      hidden: branch.hidden,
-      options: branch.options,
-      remoteOptions: branch.remoteOptions,
-      loading: branch.loading,
-      placeholder: branch.placeholder,
-      triggerLabel: branch.triggerLabel,
-      triggerTitle: branch.triggerTitle,
-      currentOptionLabel: branch.currentOptionLabel,
-      currentOptionTitle: branch.currentOptionTitle,
-      optionDisabledReason: branch.optionDisabledReason,
-      optionDisabledTitle: branch.optionDisabledTitle,
-      createDisabledReason: branch.createDisabledReason,
-      createDisabledTitle: branch.createDisabledTitle,
-      onChange: branch.onChange,
-      onClear: branch.onClear,
-      onOpenChange: branch.onOpenChange,
-      onSearchQueryChange: branch.onSearchQueryChange,
-      onCreateBaseChange: branch.onCreateBaseChange,
-      disabled: branch.disabled,
-      ...(allowCreate ? { onCreate: branch.onCreate } : {}),
+      onCreate: allowCreate ? branch.onCreate : undefined,
     };
   }, [allowCreate, threadConfig.branch]);
 

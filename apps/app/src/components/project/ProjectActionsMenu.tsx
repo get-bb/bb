@@ -32,7 +32,6 @@ interface ProjectActionsMenuBaseProps {
 
 interface ProjectActionsMenuProps extends ProjectActionsMenuBaseProps {
   triggerClassName?: string;
-  align?: "start" | "center" | "end";
   onOpenChange?: (open: boolean) => void;
 }
 
@@ -176,7 +175,6 @@ function ProjectActionsMenuItems({
 export function ProjectActionsMenu({
   project,
   triggerClassName,
-  align = "end",
   onOpenChange,
 }: ProjectActionsMenuProps) {
   return (
@@ -203,7 +201,7 @@ export function ProjectActionsMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        align={align}
+        align="end"
         onClick={stopProjectActionsMenuClickPropagation}
       >
         <ProjectActionsMenuItems project={project} surface="dropdown" />

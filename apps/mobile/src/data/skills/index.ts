@@ -9,7 +9,6 @@ export {
   formatRegistrySource,
   groupSkillsByScope,
   isSkillDeletable,
-  isSkillEditable,
   pickRegistrySkillFile,
   resolveInstalledRegistrySkill,
   skillScopeLabel,
@@ -18,7 +17,6 @@ export {
   type SkillLibraryGroup,
 } from "./skill-model";
 export {
-  REGISTRY_PAGE_SIZE,
   useProjectSkill,
   useProjectSkills,
   useRegistrySkillDetail,

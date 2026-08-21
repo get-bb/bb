@@ -11,7 +11,7 @@ import {
   type SidebarSortableDragBindings,
 } from "./sortableMotion";
 import { useSidebarReorderDnd } from "./useSidebarReorderDnd";
-import type { ProjectThreadNode } from "./projectThreadGroups";
+import type { ProjectThreadNode } from "@bb/client-core";
 import {
   useNeighborReorderSortable,
   type UseNeighborReorderSortableArgs,

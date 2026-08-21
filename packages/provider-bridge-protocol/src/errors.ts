@@ -21,6 +21,3 @@ export const BRIDGE_JSON_RPC_ERRORS = {
   /** thread/fork with a checkpoint on a bridge that only forks at the tip. */
   FORK_CHECKPOINT_UNSUPPORTED: -32003,
 } as const;
-
-export type BridgeJsonRpcErrorCode =
-  (typeof BRIDGE_JSON_RPC_ERRORS)[keyof typeof BRIDGE_JSON_RPC_ERRORS];

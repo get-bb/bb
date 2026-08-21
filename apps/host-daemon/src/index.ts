@@ -34,13 +34,7 @@ function resolveEntrypointBridgeBundleDir(): string | undefined {
 }
 
 function resolveDiagnosticsLogsDir(): string {
-  const hostDaemonStartConfig = loadHostDaemonStartConfig({
-    enableLocalApi: true,
-  });
-
-  if (hostDaemonStartConfig.dataDir === undefined) {
-    throw new Error("Host daemon data directory is required");
-  }
+  const hostDaemonStartConfig = loadHostDaemonStartConfig({});
 
   return join(hostDaemonStartConfig.dataDir, "logs");
 }

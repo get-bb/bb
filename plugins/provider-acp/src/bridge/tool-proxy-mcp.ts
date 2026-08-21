@@ -40,16 +40,7 @@ interface BridgeRequestBase {
   token: string;
 }
 
-type BridgeRequest = BridgeRequestBase &
-  (
-    | { kind: "initialized"; toolCount: number }
-    | {
-        kind: "toolCall";
-        arguments: Record<string, unknown>;
-        callId: string;
-        tool: string;
-      }
-  );
+type BridgeRequest = BridgeRequestBase & BridgeRequestPayload;
 
 type BridgeRequestPayload =
   | { kind: "initialized"; toolCount: number }
@@ -237,13 +228,11 @@ export function readProgressToken(params: unknown): string | number | null {
 export function startProgressHeartbeat(args: {
   intervalMs?: number;
   progressToken: string | number;
-  write?: (message: unknown) => void;
 }): () => void {
-  const write = args.write ?? writeJson;
   let progress = 0;
   const timer = setInterval(() => {
     progress += 1;
-    write({
+    writeJson({
       jsonrpc: "2.0",
       method: "notifications/progress",
       params: { progressToken: args.progressToken, progress },

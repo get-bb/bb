@@ -7,8 +7,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useSystemConfig } from "@/data/system/system-queries";
 import { useProfiles } from "./ProfilesProvider";
-import { useSystemConfigQuery } from "./queries";
 
 interface PaletteContextValue {
   palette: BuiltInThemeId;
@@ -44,13 +44,13 @@ function usePaletteSetter(): (palette: BuiltInThemeId) => void {
   return value.setPalette;
 }
 
-export function paletteFromThemeId(themeId: string): BuiltInThemeId {
+function paletteFromThemeId(themeId: string): BuiltInThemeId {
   return isBuiltInThemeId(themeId) ? themeId : "default";
 }
 
 function ActiveServerPaletteSync() {
   const setPalette = usePaletteSetter();
-  const config = useSystemConfigQuery();
+  const config = useSystemConfig();
   const themeId = config.data?.appearance.themeId;
   useEffect(() => {
     if (themeId !== undefined) setPalette(paletteFromThemeId(themeId));

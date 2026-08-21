@@ -4,19 +4,15 @@
  */
 
 import type { DynamicTool, InstructionMode, ReasoningLevel } from "@bb/domain";
-import { z } from "zod";
 import { buildShellEnvOverrides } from "@bb/provider-bridge-protocol/bridge-kit";
 
-export const piReasoningLevelValues = [
-  "off",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-] as const;
-export const piReasoningLevelSchema = z.enum(piReasoningLevelValues);
-export type PiReasoningLevel = z.infer<typeof piReasoningLevelSchema>;
+export type PiReasoningLevel =
+  | "off"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max";
 
 // BB's reasoning ladder is a superset of Pi's thinking levels. The only name
 // that differs is BB's "none" (no extended thinking), which Pi calls "off".

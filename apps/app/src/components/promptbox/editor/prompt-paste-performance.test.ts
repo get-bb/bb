@@ -52,8 +52,8 @@ import {
   promptEditorValueFromDoc,
 } from "./prompt-editor-serialization";
 import { findUltracodeRanges } from "./prompt-decoration-extension";
-import { findActiveTrigger } from "../mentions/find-active-trigger";
-import type { TypeaheadTrigger } from "../mentions/types";
+import { findActiveTrigger } from "@bb/client-core";
+import type { TypeaheadTrigger } from "@bb/client-core";
 import { serializePromptDraftStorage } from "@/lib/prompt-draft";
 import { generateMinifiedJsFixture } from "@/test/fixtures/minified-js-paste-fixture";
 

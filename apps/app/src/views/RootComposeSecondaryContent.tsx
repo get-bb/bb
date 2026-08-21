@@ -63,7 +63,6 @@ interface RootComposeSecondaryContentProps {
   contentClassName?: string;
   isSecondaryPanelOpen: boolean;
   onToggleSecondaryPanel: () => void;
-  panelTogglePositionClassName: string;
   secondaryPanel: RootSecondaryPanelProps;
 }
 
@@ -85,7 +84,6 @@ export function RootComposeSecondaryContent({
   contentClassName,
   isSecondaryPanelOpen,
   onToggleSecondaryPanel,
-  panelTogglePositionClassName,
   secondaryPanel,
 }: RootComposeSecondaryContentProps) {
   const paneContext = useOptionalPaneContext();
@@ -117,7 +115,7 @@ export function RootComposeSecondaryContent({
               data-testid="root-compose-drag-strip-toggle-cutout"
               className={cn(
                 "absolute",
-                panelTogglePositionClassName,
+                ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
                 COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
                 MACOS_APP_REGION_NO_DRAG_CLASS,
               )}

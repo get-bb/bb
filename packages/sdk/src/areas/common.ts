@@ -1,7 +1,6 @@
-import type { BbSdkContext, BbSdkTransport } from "../transport.js";
+import type { BbSdkTransport } from "../transport.js";
 
 export interface CreateSdkAreaArgs {
-  context: BbSdkContext;
   transport: BbSdkTransport;
 }
 

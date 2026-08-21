@@ -54,8 +54,6 @@ export interface RemotePathBrowserProps {
   disabled?: boolean;
   /** Inside a `Sheet` the text fields must be sheet-aware. */
   inSheet?: boolean;
-  /** Height of the scrolling entry list (ignored inside a sheet, which scrolls itself). */
-  listHeight?: number;
   testID?: string;
 }
 
@@ -72,7 +70,6 @@ export function RemotePathBrowser({
   onDirectoryChange,
   disabled = false,
   inSheet = false,
-  listHeight = 260,
   testID = "remote-path-browser",
 }: RemotePathBrowserProps) {
   const { sdk } = useProfileClient();
@@ -388,7 +385,7 @@ export function RemotePathBrowser({
         <View className={cn(isPlaceholderData && "opacity-60")}>{body}</View>
       ) : (
         <ScrollView
-          style={{ height: listHeight }}
+          style={{ height: 260 }}
           className={cn(isPlaceholderData && "opacity-60")}
           keyboardShouldPersistTaps="handled"
           nestedScrollEnabled

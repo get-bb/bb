@@ -35,7 +35,7 @@ export function summarizeDiffFileEntries(
  * - The file's **patch load state** is not stored — it comes from
  *   `useEnvironmentDiffPatches().getPatchState(path)`.
  */
-export interface DiffFileCardUiState {
+interface DiffFileCardUiState {
   collapsed: boolean;
 }
 
@@ -44,7 +44,7 @@ export interface DiffFileCardUiState {
  * diffs (over {@link GIT_DIFF_AUTO_COLLAPSE_FILE_THRESHOLD}) and deleted files
  * open collapsed.
  */
-export interface DiffFileCardInitialStateArgs {
+interface DiffFileCardInitialStateArgs {
   entry: DiffFileEntry;
   fileCount: number;
 }
@@ -71,7 +71,7 @@ export function resolveDiffFileCardInitialState({
  * a fresh, independent state slice rather than leaking a previous diff's
  * collapse choices onto an unrelated file at the same path.
  */
-export interface DiffFileCardStateKey {
+interface DiffFileCardStateKey {
   diffIdentity: string;
   path: string;
 }
@@ -87,10 +87,6 @@ export const diffFileCardStateAtomFamily = atomFamily(
   (_key: DiffFileCardStateKey) => atom<DiffFileCardUiState | null>(null),
   diffFileCardStateKeyEquals,
 );
-
-export type DiffFileCardStateAtom = ReturnType<
-  typeof diffFileCardStateAtomFamily
->;
 
 /**
  * Resolve a card's current collapsed flag: the per-card atom value if the user
@@ -109,7 +105,7 @@ export function resolveCardCollapsed(
   );
 }
 
-export interface DiffFilesCollapseControls {
+interface DiffFilesCollapseControls {
   /** True when every current TOC file is collapsed (none are expanded). */
   areAllCollapsed: boolean;
   /** Collapse every file when any is expanded; otherwise expand every file. */
@@ -213,7 +209,7 @@ const DIFF_CARD_MAX_ESTIMATED_LINES = 80;
  * virtualizer's `measureElement` still corrects the exact height on mount and
  * when the user toggles the card open.
  */
-export interface EstimateCardHeightArgs {
+interface EstimateCardHeightArgs {
   entry: DiffFileEntry;
   collapsed: boolean;
 }

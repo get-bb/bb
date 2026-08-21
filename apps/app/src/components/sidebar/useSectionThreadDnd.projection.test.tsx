@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildSectionThreadList,
   CHRONOLOGICAL_CONTAINER_ID,
-} from "./projectThreadGroups";
+} from "@bb/client-core";
 import {
   collectSectionThreadDndLookup,
   SectionThreadProjectionGate,

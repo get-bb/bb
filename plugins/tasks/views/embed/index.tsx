@@ -12,7 +12,7 @@ import { useTasksRpc } from "../../shell/data.js";
 import { TasksRefreshProvider } from "../../shell/refresh.js";
 import { PANEL_PATH, tasksRouteToSubPath } from "../../shell/routes.js";
 import { DetailView } from "../detail/index.js";
-import { PRIORITY_LABELS, STATUS_LABELS } from "../detail/meta.js";
+import { PRIORITY_LABELS, STATUS_LABELS } from "../list/lib.js";
 import { PriorityIcon, StatusIcon } from "../list/icons.js";
 
 /**
@@ -38,7 +38,7 @@ type TaskEmbedState =
  * error) any event refetches — the task may have just been created or
  * renamed into existence.
  */
-export function useTaskEmbed(taskKey: string): {
+function useTaskEmbed(taskKey: string): {
   state: TaskEmbedState;
   retry: () => void;
 } {

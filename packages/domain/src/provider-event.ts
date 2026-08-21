@@ -34,7 +34,7 @@ export const threadEventItemStatusSchema = z.enum([
 ]);
 export type ThreadEventItemStatus = z.infer<typeof threadEventItemStatusSchema>;
 
-export const threadEventItemApprovalStatusSchema = z
+const threadEventItemApprovalStatusSchema = z
   .enum(["waiting_for_approval", "denied"])
   .nullable();
 export type ThreadEventItemApprovalStatus = z.infer<
@@ -48,7 +48,7 @@ export const threadEventTurnStatusSchema = z.enum([
 ]);
 export type ThreadEventTurnStatus = z.infer<typeof threadEventTurnStatusSchema>;
 
-export const providerErrorCategoryValues = [
+const providerErrorCategoryValues = [
   "active-turn-not-steerable",
   "bad-request",
   "connection-failed",
@@ -79,7 +79,7 @@ export const providerErrorInfoSchema = z.object({
 });
 export type ProviderErrorInfo = z.infer<typeof providerErrorInfoSchema>;
 
-export const providerRateLimitStatusSchema = z.enum([
+const providerRateLimitStatusSchema = z.enum([
   "allowed",
   "warning",
   "blocked",
@@ -89,7 +89,7 @@ export type ProviderRateLimitStatus = z.infer<
   typeof providerRateLimitStatusSchema
 >;
 
-export const providerRateLimitWindowSchema = z.object({
+const providerRateLimitWindowSchema = z.object({
   /** Opaque provider-issued key. New provider windows must not break parsing. */
   providerKey: z.string().min(1).nullable(),
   label: z.string().min(1).nullable(),
@@ -115,13 +115,9 @@ export type ProviderRateLimitState = z.infer<
   typeof providerRateLimitStateSchema
 >;
 
-export const threadEventFileChangeKindSchema = z.enum([
-  "add",
-  "delete",
-  "update",
-]);
+const threadEventFileChangeKindSchema = z.enum(["add", "delete", "update"]);
 
-export const threadEventFileChangeSchema = z.object({
+const threadEventFileChangeSchema = z.object({
   path: z.string(),
   kind: threadEventFileChangeKindSchema,
   movePath: z.string().optional(),
@@ -129,15 +125,12 @@ export const threadEventFileChangeSchema = z.object({
 });
 export type ThreadEventFileChange = z.infer<typeof threadEventFileChangeSchema>;
 
-export const threadEventPlanStepStatusSchema = z.enum([
+const threadEventPlanStepStatusSchema = z.enum([
   "pending",
   "active",
   "completed",
   "failed",
 ]);
-export type ThreadEventPlanStepStatus = z.infer<
-  typeof threadEventPlanStepStatusSchema
->;
 
 export const threadEventPlanStepSchema = z.object({
   step: z.string(),
@@ -145,7 +138,7 @@ export const threadEventPlanStepSchema = z.object({
 });
 export type ThreadEventPlanStep = z.infer<typeof threadEventPlanStepSchema>;
 
-export const threadEventWebSearchItemSchema = z.object({
+const threadEventWebSearchItemSchema = z.object({
   type: z.literal("webSearch"),
   id: z.string(),
   queries: z.array(z.string()).min(1),
@@ -156,7 +149,7 @@ export type ThreadEventWebSearchItem = z.infer<
   typeof threadEventWebSearchItemSchema
 >;
 
-export const threadEventWebFetchItemSchema = z.object({
+const threadEventWebFetchItemSchema = z.object({
   type: z.literal("webFetch"),
   id: z.string(),
   url: z.string(),
@@ -169,30 +162,27 @@ export type ThreadEventWebFetchItem = z.infer<
   typeof threadEventWebFetchItemSchema
 >;
 
-export const threadEventImageViewItemSchema = z.object({
+const threadEventImageViewItemSchema = z.object({
   type: z.literal("imageView"),
   id: z.string(),
   path: z.string(),
   parentToolCallId: z.string().optional(),
 });
-export type ThreadEventImageViewItem = z.infer<
-  typeof threadEventImageViewItemSchema
->;
 
-export const threadEventTextTruncationSchema = z.object({
+const threadEventTextTruncationSchema = z.object({
   originalLength: z.number(),
   retainedHeadLength: z.number(),
   retainedTailLength: z.number(),
   truncatedAt: z.number(),
 });
 
-export const threadEventItemTruncationSchema = z.object({
+const threadEventItemTruncationSchema = z.object({
   aggregatedOutput: threadEventTextTruncationSchema.optional(),
   result: threadEventTextTruncationSchema.optional(),
   resultText: threadEventTextTruncationSchema.optional(),
 });
 
-export const threadEventUserContentSchema = z.discriminatedUnion("type", [
+const threadEventUserContentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string() }),
   z.object({ type: z.literal("image"), url: z.string() }),
   z.object({ type: z.literal("localImage"), path: z.string() }),
@@ -213,7 +203,7 @@ export type ThreadEventTokenUsageBreakdown = z.infer<
   typeof threadEventTokenUsageBreakdownSchema
 >;
 
-export const threadEventContextWindowUsageSchema = z.object({
+const threadEventContextWindowUsageSchema = z.object({
   usedTokens: z.number().nullable(),
   modelContextWindow: z.number().nullable(),
   estimated: z.boolean(),
@@ -222,12 +212,11 @@ export type ThreadEventContextWindowUsage = z.infer<
   typeof threadEventContextWindowUsageSchema
 >;
 
-export const threadEventTokenUsageSchema = z.object({
+const threadEventTokenUsageSchema = z.object({
   total: threadEventTokenUsageBreakdownSchema,
   last: threadEventTokenUsageBreakdownSchema,
   modelContextWindow: z.number().nullable(),
 });
-export type ThreadEventTokenUsage = z.infer<typeof threadEventTokenUsageSchema>;
 
 export const threadEventWarningCategorySchema = z.enum([
   "deprecation",
@@ -251,7 +240,7 @@ export const providerRawEventSchema = z.object({
 });
 export type ProviderRawEvent = z.infer<typeof providerRawEventSchema>;
 
-export const providerUnhandledEventSchema = z.object({
+const providerUnhandledEventSchema = z.object({
   type: z.literal("provider/unhandled"),
   threadId: z.string(),
   providerThreadId: z.string(),
@@ -261,7 +250,7 @@ export const providerUnhandledEventSchema = z.object({
   parentToolCallId: z.string().optional(),
 });
 
-export const toolCallProgressEventSchema = z.object({
+const toolCallProgressEventSchema = z.object({
   type: z.literal("item/toolCall/progress"),
   threadId: z.string(),
   providerThreadId: z.string(),
@@ -626,15 +615,15 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
 const scopedEventDataSchema = z.object({
   scope: threadEventScopeSchema,
 });
-export const providerEventSchema = unscopedProviderEventSchema.and(
+const providerEventSchema = unscopedProviderEventSchema.and(
   scopedEventDataSchema,
 );
-export type ProviderEvent = z.infer<typeof providerEventSchema>;
+type ProviderEvent = z.infer<typeof providerEventSchema>;
 export type ProviderUnhandledEvent = Extract<
   ProviderEvent,
   { type: "provider/unhandled" }
 >;
-export const providerEventTypeValues = unscopedProviderEventSchema.options.map(
+const providerEventTypeValues = unscopedProviderEventSchema.options.map(
   (option) => option.shape.type.value,
 );
 
@@ -716,9 +705,7 @@ const unscopedSystemEventSchema = z.discriminatedUnion("type", [
     })
     .merge(systemProviderTurnWatchdogEventDataSchema),
 ]);
-export const systemEventSchema = unscopedSystemEventSchema.and(
-  scopedEventDataSchema,
-);
+const systemEventSchema = unscopedSystemEventSchema.and(scopedEventDataSchema);
 
 const legacyClientRequestKey = ["clientRequest", "Sequence"].join("");
 

@@ -31,8 +31,8 @@ import { DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS } from "../../constants.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import { resolveProviderPlanCommand } from "../providers/provider-plan-command.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
-import { parseStoredEvent } from "./thread-data.js";
 import { canThreadSpawnChild } from "./thread-parent.js";
+import { toThreadEventWithMeta } from "./timeline.js";
 
 type ThreadRuntimeDisplayHub = Pick<
   NotificationHub,
@@ -242,7 +242,7 @@ function resolveThreadEnvironmentHostId(
   return getEnvironment(deps.db, thread.environmentId)?.hostId ?? null;
 }
 
-export function toThreadResponseWithHost(
+function toThreadResponseWithHost(
   deps: ThreadRuntimeDisplayDeps,
   args: ToThreadResponseWithHostArgs,
 ): ThreadWithRuntime {
@@ -272,17 +272,6 @@ export function toThreadResponseFromThread(
         threadIds: [args.thread.id],
       })[0]?.activeBackgroundAgentCount ?? 0,
     canSpawnChild: canThreadSpawnChild(deps, { thread: args.thread }),
-  };
-}
-
-function toThreadEventWithMeta(row: StoredEventRow): ThreadEventWithMeta {
-  return {
-    event: parseStoredEvent(row),
-    meta: {
-      id: row.id,
-      seq: row.sequence,
-      createdAt: row.createdAt,
-    },
   };
 }
 

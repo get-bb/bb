@@ -15,6 +15,5 @@ export {
 } from "@bb/client-core";
 export type {
   ThreadListIndicatorState,
-  ThreadListIndicatorKind,
   CollapsedChildActivity,
 } from "@bb/client-core";

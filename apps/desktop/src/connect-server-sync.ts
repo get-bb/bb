@@ -134,7 +134,6 @@ export interface CreateConnectServerSyncArgs {
   fetchImpl?: ConnectServerSyncFetch;
   log?: ConnectServerSyncLog;
   now?: () => number;
-  intervalMs?: number;
   minIntervalMs?: number;
   setIntervalFn?: (handler: () => void, timeout: number) => unknown;
   clearIntervalFn?: (handle: unknown) => void;
@@ -162,7 +161,7 @@ export interface ConnectServerSync {
 export function createConnectServerSync(
   args: CreateConnectServerSyncArgs,
 ): ConnectServerSync {
-  const intervalMs = args.intervalMs ?? CONNECT_SERVER_SYNC_INTERVAL_MS;
+  const intervalMs = CONNECT_SERVER_SYNC_INTERVAL_MS;
   const minIntervalMs =
     args.minIntervalMs ?? CONNECT_SERVER_SYNC_MIN_INTERVAL_MS;
   const now = args.now ?? Date.now;

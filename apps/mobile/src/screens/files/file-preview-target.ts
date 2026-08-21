@@ -40,7 +40,7 @@ export type FilePreviewTarget =
 export type FilePreviewTargetKind = FilePreviewTarget["kind"];
 
 /** `kind` route param values. */
-export const FILE_PREVIEW_ROUTE_KINDS = {
+const FILE_PREVIEW_ROUTE_KINDS = {
   "workspace-file": "workspace",
   "host-file": "host",
   "storage-file": "storage",
@@ -69,12 +69,6 @@ export interface FilePreviewRouteParams {
   source?: string;
   /** `deleted` (workspace files). */
   status?: string;
-}
-
-export function workspaceFileSource(
-  source: EnvironmentFilePreviewSource = { kind: "working-tree" },
-): EnvironmentFilePreviewSource {
-  return source;
 }
 
 function serializeSource(source: EnvironmentFilePreviewSource): string {
@@ -109,7 +103,7 @@ export function parseLineParam(
   });
 }
 
-export function serializeLineParam(
+function serializeLineParam(
   lineRange: FilePreviewLineRange | null,
 ): string | undefined {
   return lineRange === null
@@ -164,13 +158,6 @@ export function parseFilePreviewRouteParams(
     case "project-file":
       return { target: { kind: targetKind, path }, lineRange };
   }
-}
-
-/** Stable identity for caches / recents (`kind:path`). */
-export function filePreviewTargetKey(target: FilePreviewTarget): string {
-  return target.kind === "workspace-file"
-    ? `${target.kind}:${serializeSource(target.source)}:${target.path}`
-    : `${target.kind}:${target.path}`;
 }
 
 /** Source label for the header pill. */

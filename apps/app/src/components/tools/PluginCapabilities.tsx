@@ -516,19 +516,16 @@ function PluginRuntimeStatusAlert({
   runtimeStatus,
   onReload,
   reloadPending,
-  reloadable,
 }: {
   plugin: PluginListItem;
   runtimeStatus: PluginRuntimeStatusPresentation;
   onReload: () => void;
   reloadPending: boolean;
-  reloadable?: boolean;
 }) {
   const canReload =
-    reloadable ??
-    (plugin.status === "error" ||
-      plugin.status === "degraded" ||
-      (plugin.status === "needs-configuration" && !plugin.hasSettings));
+    plugin.status === "error" ||
+    plugin.status === "degraded" ||
+    (plugin.status === "needs-configuration" && !plugin.hasSettings);
   const condition =
     plugin.status === "needs-configuration" && plugin.statusDetail?.trim()
       ? plugin.statusDetail
@@ -583,11 +580,9 @@ function PluginRuntimeStatusAlert({
 export function PluginHealthBanner({
   plugin,
   runtimeStatus,
-  reloadable,
 }: {
   plugin: PluginListItem;
   runtimeStatus: PluginRuntimeStatusPresentation | null;
-  reloadable?: boolean;
 }) {
   const queryClient = useQueryClient();
   const reload = useMutation({
@@ -606,7 +601,6 @@ export function PluginHealthBanner({
       plugin={plugin}
       runtimeStatus={runtimeStatus}
       reloadPending={reload.isPending}
-      reloadable={reloadable}
       onReload={() => reload.mutate()}
     />
   );

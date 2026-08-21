@@ -67,6 +67,10 @@ export interface HandleServerSessionInvalidatedArgs {
   source: ServerSessionInvalidationSource;
 }
 
+type SessionCloseHandler = (
+  reason: HostDaemonSessionCloseReason,
+) => void | Promise<void>;
+
 const SERVER_MESSAGE_PAYLOAD_PREVIEW_CHARS = 512;
 const TERMINAL_SOCKET_HIGH_WATER_BYTES = 1024 * 1024;
 // A 16 MiB raw burst expands to about 21.4 MiB as base64 + JSON. Keep
@@ -152,7 +156,7 @@ export class ServerConnection {
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private lastHeartbeatTickAt: number | null = null;
   private stopped = false;
-  private sessionCloseHandler: ServerConnectionOptions["onSessionClose"];
+  private sessionCloseHandler: SessionCloseHandler | undefined;
   private fatalConnectError: ServerResponseError | null = null;
   private protocolMismatchObserved = false;
   private sessionInvalidationInProgress = false;
@@ -167,7 +171,6 @@ export class ServerConnection {
   >();
 
   constructor(private readonly options: ServerConnectionOptions) {
-    this.sessionCloseHandler = options.onSessionClose;
     this.createWebSocket =
       options.createWebSocket ?? createDefaultReconnectingWebSocket;
     this.minReconnectionDelay =
@@ -342,9 +345,7 @@ export class ServerConnection {
     this.pendingTerminalSocketBytes = 0;
   }
 
-  setSessionCloseHandler(
-    handler: ServerConnectionOptions["onSessionClose"],
-  ): void {
+  setSessionCloseHandler(handler: SessionCloseHandler | undefined): void {
     this.sessionCloseHandler = handler;
   }
 

@@ -1,4 +1,3 @@
-import { isRunningThreadRuntimeDisplayStatus } from "@bb/client-core";
 import type {
   Environment,
   Host,
@@ -68,12 +67,6 @@ export function describeThreadStatusPill({
     default:
       return assertNever(runtimeDisplayStatus);
   }
-}
-
-export function isThreadRuntimeBusy(
-  runtimeDisplayStatus: ThreadRuntimeDisplayStatus,
-): boolean {
-  return isRunningThreadRuntimeDisplayStatus(runtimeDisplayStatus);
 }
 
 function lastPathSegment(path: string): string {

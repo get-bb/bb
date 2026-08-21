@@ -101,9 +101,6 @@ export const hostDaemonPluginHostGenerationSchema = z
     generation: z.string().min(1),
   })
   .strict();
-export type HostDaemonPluginHostGeneration = z.infer<
-  typeof hostDaemonPluginHostGenerationSchema
->;
 
 export const hostDaemonSessionOpenRequestSchema = z.object({
   hostId: z.string().min(1),
@@ -654,9 +651,6 @@ const hostDaemonConnectTunnelIdentityMessageSchema = z
     identity: hostDaemonConnectTunnelIdentitySchema,
   })
   .strict();
-export type HostDaemonConnectTunnelIdentityMessage = z.infer<
-  typeof hostDaemonConnectTunnelIdentityMessageSchema
->;
 
 const pluginHostWorkerExitedMessageSchema = z
   .object({
@@ -665,9 +659,6 @@ const pluginHostWorkerExitedMessageSchema = z
     generation: z.string().min(1),
   })
   .strict();
-export type PluginHostWorkerExitedMessage = z.infer<
-  typeof pluginHostWorkerExitedMessageSchema
->;
 
 const pluginHostSignalMessageSchema = z
   .object({
@@ -678,9 +669,6 @@ const pluginHostSignalMessageSchema = z
     payload: jsonValueSchema,
   })
   .strict();
-export type PluginHostSignalMessage = z.infer<
-  typeof pluginHostSignalMessageSchema
->;
 
 const hostDaemonTerminalOpenedMessageSchema = z
   .object({

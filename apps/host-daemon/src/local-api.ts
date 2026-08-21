@@ -105,10 +105,6 @@ function isSelfEvidentLocalHostname(hostname: string): boolean {
   return /^\d{1,3}(?:\.\d{1,3}){3}$/u.test(hostname);
 }
 
-function isNoEntryError(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
-}
-
 function createClientConfigLoader(
   dataDir: string | undefined,
   nowMs: () => number = Date.now,
@@ -142,7 +138,7 @@ async function readClientConfig(dataDir: string): Promise<ClientConfig> {
       JSON.parse(await fs.readFile(formatClientConfigPath(dataDir), "utf8")),
     );
   } catch (error) {
-    if (!isNoEntryError(error)) {
+    if (!isFsErrorWithCode(error, "ENOENT")) {
       throw error;
     }
     return EMPTY_CLIENT_CONFIG;
@@ -195,8 +191,6 @@ async function resolveOpenPathInTargetArgs({
     columnNumber: request.columnNumber,
     context: {
       kind: "remote-ssh",
-      serverOrigin,
-      hostId: request.context.hostId,
       sshAuthority,
     },
     lineNumber: request.lineNumber,

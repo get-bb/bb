@@ -9,7 +9,6 @@ import {
   threadEventItemSchema,
   turnScope,
   type ApprovalPendingInteractionPayload,
-  type AvailableModel,
   type PendingInteractionUserQuestionOption,
   type ProviderCapabilities,
   type ThreadEvent,
@@ -28,10 +27,7 @@ import type {
   ProviderInteractiveResponse,
   ProviderRuntimeEvent,
 } from "@bb/provider-bridge-protocol/bridge-kit";
-import {
-  flattenPromptInputGroups,
-  noPreparedProviderCommandDispatch,
-} from "../provider-adapter.js";
+import { flattenPromptInputGroups } from "../provider-adapter.js";
 import { parseAvailableModelList } from "../shared/available-models.js";
 import { classifySessionExecutionSettingsChange } from "../execution-options.js";
 type FakeUserQuestionCapability =
@@ -608,13 +604,6 @@ function buildInteractiveResponse(
   return args.resolution;
 }
 
-function parseModelListResult(result: unknown): {
-  models: AvailableModel[];
-  selectedOnlyModels: AvailableModel[];
-} {
-  return parseAvailableModelList(result);
-}
-
 export function createFakeAdapter(
   options: CreateFakeProviderExecutionContext = {},
 ): ProviderAdapter {
@@ -657,15 +646,12 @@ export function createFakeAdapter(
     ),
     displayName: options.displayName ?? DEFAULT_DISPLAY_NAME,
     id: options.id ?? DEFAULT_ADAPTER_ID,
-    parseModelListResult,
-    prepareTurnStart: noPreparedProviderCommandDispatch,
+    parseModelListResult: parseAvailableModelList,
     process: {
       args: buildNodeScriptArgs(options.scriptPath ?? fakeProviderScriptPath),
       command: "node",
     },
-    translateEvent(event) {
-      return translateEventMessage(event);
-    },
+    translateEvent: translateEventMessage,
     translateAcceptedCommand() {
       return [];
     },

@@ -15,10 +15,6 @@ export {
   allThreadDefaultExecutionOptionsQueryKeyPrefix,
   threadDefaultExecutionOptionsQueryKey,
 } from "./query-keys";
-export type {
-  ThreadDefaultExecutionOptionsQueryKey,
-  ThreadDefaultExecutionOptionsQueryKeyPrefix,
-} from "./query-keys";
 
 interface ThreadDefaultExecutionOptionsQueryOptions {
   enabled?: boolean;
@@ -30,7 +26,7 @@ function requireThreadId(id: string, hookName: string): string {
   return requireEnabledQueryArg({ value: id, hookName, argName: "thread id" });
 }
 
-export async function fetchThreadDefaultExecutionOptions(
+async function fetchThreadDefaultExecutionOptions(
   threadId: string,
   signal?: AbortSignal,
 ): Promise<ResolvedThreadExecutionOptions | null> {

@@ -82,7 +82,6 @@ import {
 import { buildClaudeProviderErrorInfo } from "./error-info.js";
 import {
   hasCompletionBlockingClaudeTasks,
-  hasOpenClaudeBackgroundTasks,
   buildInterruptedClaudeTaskDeltas,
   translateClaudeTaskMessage,
   type ClaudeTaskMap,
@@ -570,8 +569,6 @@ interface ClaudeThreadDialectState {
   startedToolShapes: Map<string, DeltaItemShape>;
   /** Thread-lifetime background-task machine; outlives turns by design. */
   tasksById: ClaudeTaskMap;
-  /** Live monitor and future task types that create no timeline rows. */
-  opaqueTaskIds: Set<string>;
 }
 
 function createThreadState(): ClaudeThreadDialectState {
@@ -586,7 +583,6 @@ function createThreadState(): ClaudeThreadDialectState {
     openCompaction: undefined,
     startedToolShapes: new Map(),
     tasksById: new Map(),
-    opaqueTaskIds: new Set(),
   };
 }
 
@@ -921,7 +917,6 @@ export function createClaudeDeltaTranslator() {
 
     const taskDeltas = translateClaudeTaskMessage({
       event,
-      opaqueTaskIds: state.opaqueTaskIds,
       tasks: state.tasksById,
       turnStartSuppressed: isTurnStartSuppressed(state),
     });
@@ -1517,26 +1512,12 @@ export function createClaudeDeltaTranslator() {
     deltas.push(
       ...buildInterruptedClaudeTaskDeltas({ tasks: state.tasksById }),
     );
-    state.opaqueTaskIds.clear();
     return deltas;
   }
 
   /** Whether the mirror believes a bb turn is open for the thread. */
   function hasOpenTurn(threadId: string): boolean {
     return statesByThreadId.get(threadId)?.mirror.turnOpen === true;
-  }
-
-  /**
-   * Whether unsettled background work — visible or opaque — should keep the
-   * thread's provider session pinned (the old isEvictable/open-work rule).
-   */
-  function hasOpenBackgroundWork(threadId: string): boolean {
-    const state = statesByThreadId.get(threadId);
-    return (
-      state !== undefined &&
-      (hasOpenClaudeBackgroundTasks(state.tasksById) ||
-        state.opaqueTaskIds.size > 0)
-    );
   }
 
   /**
@@ -1556,7 +1537,6 @@ export function createClaudeDeltaTranslator() {
   return {
     acceptInput,
     buildSessionSettlementDeltas,
-    hasOpenBackgroundWork,
     hasOpenTurn,
     setClaudeModelContextWindowHint,
     translate,

@@ -92,7 +92,6 @@ const THREAD_STOP_ACTIVE_TURN_WAIT_MS = 5_000;
 export {
   CommandDispatchError,
   getErrorCode,
-  noopEventSink,
   type CommandDispatchOptions,
 } from "./command-dispatch-support.js";
 

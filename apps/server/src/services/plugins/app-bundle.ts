@@ -5,7 +5,7 @@ import semver from "semver";
 import { PLUGIN_SDK_MAJOR } from "@bb/domain";
 import { assertValidPluginCompactIconSvg } from "@bb/plugin-build";
 
-export interface PluginArtifactMeta {
+interface PluginArtifactMeta {
   sdkMajor: number;
   sdkVersion: string;
   artifactFormatVersion?: 1;
@@ -17,7 +17,7 @@ export interface PluginArtifactMeta {
   };
 }
 
-export interface PluginArtifactMetaParseResult {
+interface PluginArtifactMetaParseResult {
   meta: PluginArtifactMeta | null;
   error: string | null;
 }
@@ -30,7 +30,7 @@ export interface PluginArtifactMetaParseResult {
  */
 
 /** Wire shape of one plugin's loadable frontend bundle (GET /api/v1/plugins). */
-export interface PluginAppBundleInfo {
+interface PluginAppBundleInfo {
   /** App-relative asset URL, content-hash query included. */
   jsUrl: string;
   /** Null when the plugin ships no dist/app.css (host loads JS only). */
@@ -51,7 +51,7 @@ export interface PluginAppBundleInfo {
 }
 
 /** App-bundle slice of a GET /api/v1/plugins entry. */
-export interface PluginAppState {
+interface PluginAppState {
   /** Whether the manifest declares a `bb.app` frontend entry. */
   hasApp: boolean;
   /** Null when dist/app.js or dist/app.meta.json is missing/unreadable. */
@@ -59,7 +59,7 @@ export interface PluginAppState {
 }
 
 /** On-disk asset record backing GET /plugins/:id/assets/*. */
-export interface PluginAppAssets {
+interface PluginAppAssets {
   jsPath: string;
   cssPath: string | null;
   hash: string;
@@ -86,7 +86,7 @@ const BRANDING_ASSET_CONTENT_TYPES: Record<string, string> = {
 export type PluginBrandingAssetVariant = "icon" | "logo" | "logo-dark";
 
 /** Immutable byte snapshot backing one GET /plugins/:id/assets/<variant>. */
-export interface PluginBrandingAssetSnapshot {
+interface PluginBrandingAssetSnapshot {
   /** App-relative asset URL, content-hash query included. */
   url: string;
   /** The exact bytes used to compute `hash`; never re-read from source. */
@@ -166,9 +166,7 @@ export async function loadPluginBrandingAssets(
  * and the two must agree (semver.major(sdkVersion) === sdkMajor) — an
  * inconsistent sidecar would make the compatibility gate lie.
  */
-export function parsePluginArtifactMeta(
-  raw: string,
-): PluginArtifactMetaParseResult {
+function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
   let json: unknown;
   try {
     json = JSON.parse(raw);

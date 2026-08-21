@@ -19,7 +19,7 @@ import {
   ProjectRow,
   type ProjectThreadListState,
 } from "./ProjectRow";
-import { buildSidebarEntitySectionId } from "./sidebarSectionOrder";
+import { buildSidebarEntitySectionId } from "@bb/client-core";
 
 const mockUpdateEnvironment = vi.hoisted(() => ({
   mutate: vi.fn(),

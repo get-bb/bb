@@ -3,6 +3,7 @@ import {
   countProjectSources,
   findOrCreateProjectByLocalPathSource,
   getPersonalProject,
+  getProjectExecutionDefaults,
   getPublicProjectByLocalPathSource,
   createProjectSource,
   deleteProjectSource,
@@ -47,7 +48,6 @@ import {
 } from "../services/lib/entity-lookup.js";
 import { PROMPT_HISTORY_ENTRY_LIMIT } from "@bb/domain";
 import { resolveCreateThreadExecutionDefaults } from "../services/threads/thread-default-policy.js";
-import { resolveProjectCreateDefaultExecutionPlan } from "../services/threads/thread-execution-plan.js";
 import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { runLiveHostCommand } from "../services/hosts/live-command.js";
@@ -399,10 +399,12 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   get(routes.defaultExecutionOptions, (context, query) => {
     const projectId = context.req.param("id");
     requirePublicProject(deps.db, projectId);
-    const plan = resolveProjectCreateDefaultExecutionPlan(deps, {
-      projectId,
-    });
-    return context.json(plan.defaultView);
+    const storedDefaults = getProjectExecutionDefaults(deps.db, { projectId });
+    return context.json(
+      resolveCreateThreadExecutionDefaults(deps.providerRegistry, {
+        storedDefaults,
+      }).executionDefaults,
+    );
   });
 
   get(routes.promptHistory, (context, query) => {

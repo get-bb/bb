@@ -86,9 +86,6 @@ export type ExistingThreadExecutionInputSources = z.infer<
 // first message), mirroring the `client/turn/requested` event whose
 // `senderThreadId` is non-null only for agent/system starts.
 export const startedOnBehalfOfInitiatorSchema = z.enum(["agent", "system"]);
-export type StartedOnBehalfOfInitiator = z.infer<
-  typeof startedOnBehalfOfInitiatorSchema
->;
 
 export const startedOnBehalfOfSchema = z.object({
   initiator: startedOnBehalfOfInitiatorSchema,
@@ -307,9 +304,6 @@ export const threadMentionResolutionSchema = z
     label: z.string().min(1),
   })
   .strict();
-export type ThreadMentionResolution = z.infer<
-  typeof threadMentionResolutionSchema
->;
 
 export const resolveThreadMentionsResponseSchema = z.array(
   threadMentionResolutionSchema,
@@ -799,9 +793,6 @@ export const timelineTurnSummaryDetailsRequestSchema = z.object({
   sourceSeqStart: z.number().int().nonnegative(),
   sourceSeqEnd: z.number().int().nonnegative(),
 });
-export type TimelineTurnSummaryDetailsRequest = z.infer<
-  typeof timelineTurnSummaryDetailsRequestSchema
->;
 
 export const timelineTurnSummaryDetailsResponseSchema = z.object({
   rows: z.array(timelineRowSchema),

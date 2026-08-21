@@ -49,11 +49,6 @@ export function threadSearchHref(): Href {
   return untypedHref("/threads/search");
 }
 
-/** The thread's terminal sessions (`/threads/[id]/terminal`). */
-export function threadTerminalsHref(threadId: string): Href {
-  return untypedHref("/threads/[id]/terminal", { id: threadId });
-}
-
 /** One terminal, full screen (`/threads/[id]/terminal/[terminalId]`). */
 export function threadTerminalHref(threadId: string, terminalId: string): Href {
   return untypedHref("/threads/[id]/terminal/[terminalId]", {

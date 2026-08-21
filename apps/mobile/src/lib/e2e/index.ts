@@ -1,5 +1,4 @@
 export {
-  E2E_RESET_PATH,
   isE2eModeEnabled,
   resetAppState,
   shouldResetOnLaunch,

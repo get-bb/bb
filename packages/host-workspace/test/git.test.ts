@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getCheckoutRef,
   getWorkspaceGitOperation,
-  parseBranchStatus,
   parseNameStatusEntries,
   parseNumstatEntriesZ,
   parsePorcelainEntries,
@@ -426,29 +425,6 @@ describe("readGitBlob", () => {
     ).rejects.toMatchObject({
       code: "blob_too_large",
       message: "Blob size 11 bytes exceeds the 0 MB limit",
-    });
-  });
-});
-
-describe("parseBranchStatus", () => {
-  it("parses branch names and ahead/behind counts", () => {
-    expect(
-      parseBranchStatus("## main...origin/main [ahead 2, behind 1]"),
-    ).toEqual({
-      branchName: "main",
-      aheadCount: 2,
-      behindCount: 1,
-    });
-  });
-
-  it("returns zero counts for missing or non-header lines", () => {
-    expect(parseBranchStatus(undefined)).toEqual({
-      aheadCount: 0,
-      behindCount: 0,
-    });
-    expect(parseBranchStatus(" M README.md")).toEqual({
-      aheadCount: 0,
-      behindCount: 0,
     });
   });
 });

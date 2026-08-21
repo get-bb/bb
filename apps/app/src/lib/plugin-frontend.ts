@@ -85,7 +85,7 @@ import {
  */
 
 /** Mirror of the `app.bundle` slice of a GET /api/v1/plugins entry. */
-export interface PluginFrontendBundle {
+interface PluginFrontendBundle {
   jsUrl: string;
   cssUrl: string | null;
   /** dist/app.js size; smaller bundles load first (see reconcile). */
@@ -101,7 +101,7 @@ export interface PluginFrontendCandidate {
   bundle: PluginFrontendBundle;
 }
 
-export type PluginFrontendRecord =
+type PluginFrontendRecord =
   | {
       pluginId: string;
       status: "loaded";
@@ -116,13 +116,13 @@ export type PluginFrontendRecord =
       sdkVersion: string;
     };
 
-export interface PluginFrontendFailure {
+interface PluginFrontendFailure {
   phase: "load" | "setup" | "mount" | "dispose";
   message: string;
   scriptId: string | null;
 }
 
-export interface PluginFrontendActiveGenerationDiagnostic {
+interface PluginFrontendActiveGenerationDiagnostic {
   generation: number;
   hash: string;
   contentScriptIds: readonly string[];
@@ -151,7 +151,7 @@ export type PluginFrontendDiagnostic =
       lastFailure: null;
     };
 
-export interface PluginFrontendLoaderDeps {
+interface PluginFrontendLoaderDeps {
   importModule: (url: string) => Promise<unknown>;
   injectCss: (pluginId: string, url: string) => void;
   warn: (message: string) => void;
@@ -373,7 +373,7 @@ export function orderPluginFrontendCandidates(
  * order. The reconcile worker contains per-plugin failures itself; an
  * unexpected throw rejects this promise like `Promise.all` did before.
  */
-export async function runWithConcurrencyLimit<T>(
+async function runWithConcurrencyLimit<T>(
   items: readonly T[],
   limit: number,
   worker: (item: T) => Promise<void>,
@@ -396,7 +396,7 @@ export async function runWithConcurrencyLimit<T>(
 // Reconcile: boot + live reload share one injectable state transition.
 // ---------------------------------------------------------------------------
 
-export interface PluginFrontendReconcileState {
+interface PluginFrontendReconcileState {
   records: Map<string, PluginFrontendRecord>;
   /** Bundle hash last applied per plugin; an unchanged hash is a no-op. */
   appliedHashes: Map<string, string>;
@@ -1053,12 +1053,12 @@ export function subscribePluginFrontendDiagnostics(
   };
 }
 
-/** App-window teardown path; exported for lifecycle tests. */
-export function teardownPluginFrontends(): Promise<void> {
+/** App-window teardown path. */
+function teardownPluginFrontends(): Promise<void> {
   return disposePluginFrontends(state, browserReconcileDeps);
 }
 
-export interface PluginFrontendPageLifecycleDeps {
+interface PluginFrontendPageLifecycleDeps {
   isTornDown: () => boolean;
   /** Fresh boot after a teardown: resets boot state and reconciles. */
   reboot: () => void;

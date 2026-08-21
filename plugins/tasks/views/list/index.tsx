@@ -5,7 +5,7 @@ import { useTasksNavigation } from "../../shell/routes.js";
 import { NewTaskDialog } from "../manage/index.js";
 import { DetailToasts, useDetailToasts } from "../detail/toast.js";
 import { Button } from "@bb/shared-ui/button";
-import { DelayedLoading } from "../../components/delayed-loading.js";
+import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { useLabels, useListTasks, useTaskListMeta } from "./data.js";
@@ -37,7 +37,7 @@ import { editedTasks, matchesFilters } from "./optimistic.js";
 import { useListTaskEdits } from "./use-task-edits.js";
 import { TaskRow } from "./row.js";
 
-export interface ListViewProps {
+interface ListViewProps {
   /** null renders the cross-project "All tasks" list. */
   projectId: string | null;
   /** Only tasks with agents currently working (the Active route). */

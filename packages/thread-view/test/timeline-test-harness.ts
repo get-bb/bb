@@ -395,30 +395,6 @@ export function fromRows(rows: ThreadEventRow[]): ThreadEventWithMeta[] {
   );
 }
 
-export function flattenEventProjectionMessages(
-  projection: EventProjection,
-): EventProjectionMessage[] {
-  const messages: EventProjectionMessage[] = [];
-  for (const entry of projection.entries) {
-    if (entry.kind === "projected-message") {
-      messages.push(entry.message);
-      continue;
-    }
-    if (entry.turn.messages) {
-      messages.push(...entry.turn.messages);
-      continue;
-    }
-    if (entry.turn.terminalMessage) {
-      messages.push(entry.turn.terminalMessage);
-    }
-  }
-  return messages;
-}
-
-export function unique<T>(values: T[]): T[] {
-  return [...new Set(values)];
-}
-
 function withExplicitApprovalStatus(row: ThreadEventRow): ThreadEventRow {
   if (row.type !== "item/started" && row.type !== "item/completed") {
     return row;

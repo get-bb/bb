@@ -104,12 +104,6 @@ export function isSecondaryFileTab(
   }
 }
 
-export function isFixedPanelViewTab(
-  tab: FixedPanelTab,
-): tab is FixedPanelViewTab {
-  return !isSecondaryFileTab(tab);
-}
-
 export function reconcileFixedPanelViewTabsInState({
   fixedTabs,
   openFirstFixedTabWhenEmpty = false,

@@ -19,7 +19,6 @@ import {
   systemExecutionOptionsQueryKey,
   systemProviderStatesQueryKey,
   systemProvidersQueryKey,
-  systemUsageLimitsQueryKey,
 } from "./query-keys";
 import {
   useHostProviderCliStatus,
@@ -28,7 +27,6 @@ import {
   useSystemProviderUsageLimits,
   useSystemProviders,
   useSystemProviderStates,
-  useSystemUsageLimits,
 } from "./system-queries";
 
 vi.mock("@/lib/sdk", () => ({
@@ -74,12 +72,6 @@ function providerStates(providerId: string): SystemProviderStatesResponse {
     ],
   };
 }
-
-const PROVIDER_USAGE_RESPONSE: ProviderUsageResponse = {
-  codex: { status: "unauthenticated" },
-  "claude-code": { status: "unauthenticated" },
-  "acp-cursor": { status: "unauthenticated" },
-};
 
 afterEach(() => {
   cleanup();
@@ -741,38 +733,6 @@ describe("useSystemProviderStates", () => {
         signal: expect.any(AbortSignal),
       });
     });
-  });
-});
-
-describe("useSystemUsageLimits", () => {
-  it("refreshes stale usage data on focus and reconnect", async () => {
-    vi.mocked(sdk.system.usageLimits).mockResolvedValue(
-      PROVIDER_USAGE_RESPONSE,
-    );
-    const { queryClient, wrapper } = createQueryClientTestHarness();
-
-    renderHook(() => useSystemUsageLimits({ hostId: "host-1" }), { wrapper });
-
-    await waitFor(() => {
-      expect(sdk.system.usageLimits).toHaveBeenCalledTimes(1);
-    });
-
-    expect(sdk.system.usageLimits).toHaveBeenCalledWith({
-      hostId: "host-1",
-      signal: expect.any(AbortSignal),
-    });
-
-    const query = queryClient.getQueryCache().find({
-      queryKey: systemUsageLimitsQueryKey("host-1"),
-    });
-
-    expect(query?.options).toEqual(
-      expect.objectContaining({
-        refetchOnReconnect: true,
-        refetchOnWindowFocus: true,
-        staleTime: 30_000,
-      }),
-    );
   });
 });
 

@@ -28,7 +28,7 @@ import {
   type TimelineTitleLinkResolver,
 } from "./TimelineTitleView.js";
 
-export interface ExpandableTimelineRowProps {
+interface ExpandableTimelineRowProps {
   autoExpanded?: boolean;
   forceExpanded?: boolean;
   /**
@@ -36,7 +36,6 @@ export interface ExpandableTimelineRowProps {
    * state until the user toggles the row or the row unmounts.
    */
   terminalAutoExpanded?: boolean;
-  onBeforeExpand?: () => void;
   renderBody: () => ReactNode;
   title: TimelineTitle;
   /** Replaces the generic timeline-title renderer for a specialized header. */
@@ -87,7 +86,6 @@ function ExpandableTimelineRowComponent({
   forceExpanded = false,
   horizontalPadding = "default",
   leadingIcon,
-  onBeforeExpand,
   onTitleAction,
   renderBody,
   resolveSegmentLinkHref,
@@ -119,11 +117,8 @@ function ExpandableTimelineRowComponent({
   const horizontalPaddingClass =
     timelineRowHorizontalPaddingClassName(horizontalPadding);
   const handleToggle = useCallback((): void => {
-    if (!isExpanded) {
-      onBeforeExpand?.();
-    }
     setManualExpansionOverride(!isExpanded);
-  }, [isExpanded, onBeforeExpand]);
+  }, [isExpanded]);
   const handleCollapsedPreviewClick = useCallback(
     (event: CollapsedPreviewClickEvent): void => {
       if (

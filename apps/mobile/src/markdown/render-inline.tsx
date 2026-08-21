@@ -61,7 +61,7 @@ function spanStyle(state: InlineState): TextStyle {
 }
 
 /** Mono span style for inline code / inline math. */
-export function inlineCodeStyle(
+function inlineCodeStyle(
   ctx: MarkdownContextValue,
   state: InlineState,
 ): TextStyle {
@@ -79,10 +79,7 @@ export function inlineCodeStyle(
 }
 
 /** Opens a link per the context callbacks; exported for the pills/blocks. */
-export function pressMarkdownLink(
-  ctx: MarkdownContextValue,
-  href: string,
-): void {
+function pressMarkdownLink(ctx: MarkdownContextValue, href: string): void {
   const target = classifyMarkdownLink(href, {
     rewriteLocalhostLinks: ctx.rewriteLocalhostLinks,
     serverHostname: ctx.serverHostname,

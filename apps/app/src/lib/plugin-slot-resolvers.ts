@@ -30,7 +30,7 @@ export interface ResolvedComposerAction extends ResolvedComposerContribution {
   action: ComposerAction;
 }
 
-export interface ResolvedComposerBanner extends ResolvedComposerContribution {
+interface ResolvedComposerBanner extends ResolvedComposerContribution {
   banner: ComposerBanner;
 }
 
@@ -39,12 +39,12 @@ export interface ResolvedComposerPlusMenuItem extends ResolvedComposerContributi
 }
 
 /** One plugin customization's ordered effect rules. */
-export interface ResolvedComposerEditorEffects extends ResolvedComposerContribution {
+interface ResolvedComposerEditorEffects extends ResolvedComposerContribution {
   effects: readonly ComposerEditorEffect[];
 }
 
 /** One plugin customization's draft observer callback. */
-export interface ResolvedComposerDraftObserver extends ResolvedComposerContribution {
+interface ResolvedComposerDraftObserver extends ResolvedComposerContribution {
   onDraftChange: ComposerDraftObserver;
 }
 
@@ -72,7 +72,7 @@ function resolvedComposerContribution(
   };
 }
 
-export function composerCustomizationApplies(
+function composerCustomizationApplies(
   customization: PluginComposerCustomizationSlot,
   scopeKind: PluginComposerScope["kind"],
 ): boolean {
@@ -208,15 +208,6 @@ function resolveMessageDirectiveClaimants(
       ...new Set(claimants.map((claimant) => claimant.pluginId)),
     ].sort(),
   };
-}
-
-export function resolveMessageDirective(
-  registrations: readonly PluginMessageDirectiveSlot[],
-  directiveId: string,
-): ResolvedMessageDirective | null {
-  return resolveMessageDirectiveClaimants(
-    registrations.filter((registration) => registration.id === directiveId),
-  );
 }
 
 export function resolveMessageDirectiveRegistry(

@@ -66,7 +66,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   GitPullRequestClosed: "Closed pull request glyph",
   GitPullRequestDraft: "Draft pull request glyph",
   Info: "Right panel “thread info” tab, informational banners",
-  Laptop: "Persistent host icon (resolved via getHostIconName)",
+  Laptop: "Persistent host icon (resolved via PersistentHostIconName)",
   ListTodo: "Plan prompt action, todo prompt-stack card header",
   Loading: "Loading03 thread row working spinner",
   Mail: "Mark unread thread action",

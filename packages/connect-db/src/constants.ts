@@ -130,9 +130,6 @@ export const CONNECT_CODE_TTL_MS = 10 * 60 * 1000;
 /** A server is shown "offline" if no heartbeat within this window. */
 export const SERVER_OFFLINE_AFTER_MS = 90 * 1000;
 
-/** Token prefixes (mirrors bb's host-key convention; distinct namespaces). */
-export const CLOUD_PAT_PREFIX = "bbc_";
-
 export type HandleValidationError =
   | "too-short"
   | "too-long"
@@ -160,10 +157,6 @@ export function validateHandle(handle: string): HandleValidationError | null {
  */
 export const validateLabel = validateHandle;
 export const validateSubdomain = validateHandle;
-
-/** Alias of {@link HandleValidationError}; the two namespaces share one grammar. */
-export type LabelValidationError = HandleValidationError;
-export type SubdomainValidationError = HandleValidationError;
 
 /** Decimal port 1–65535 with no leading zeros (v1 share target grammar). */
 const SHARE_PORT_TARGET = /^[1-9]\d{0,4}$/;

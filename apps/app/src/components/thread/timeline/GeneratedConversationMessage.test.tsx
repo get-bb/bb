@@ -16,7 +16,7 @@ import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadT
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import type { TimelineTitleActionResolver } from "./TimelineTitleView";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP } from "./conversation-message-limits";
+import { GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP } from "@bb/client-core";
 import { generatedConversationCollapsedPreview } from "./GeneratedConversationMessage";
 
 function resolveThreadLink(link: TimelineTitleLink): string | null {

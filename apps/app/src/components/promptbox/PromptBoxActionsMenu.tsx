@@ -18,7 +18,7 @@ import { useOptionalPluginComposerView } from "@/components/plugin/plugin-compos
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CREATE_PLUGIN_PROMPT } from "@/lib/create-resource-prompts";
-import type { ProviderPromptActionCommand } from "./mentions/command-trigger";
+import type { ProviderPromptActionCommand } from "@bb/client-core";
 
 export type PromptBoxActionKind =
   | "skills"

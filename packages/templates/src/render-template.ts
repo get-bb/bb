@@ -46,11 +46,6 @@ export function renderTemplate<TTemplateId extends TemplateId>(
   return getCompiledTemplate(templateId)(variables).trim();
 }
 
-export function getTemplateMetadata(templateId: TemplateId): TemplateMetadata {
-  const { body: _body, ...metadata } = templateRegistry[templateId];
-  return metadata;
-}
-
 export function listTemplates(): TemplateMetadata[] {
   return Object.values(templateRegistry).map(
     ({ body: _body, ...metadata }) => metadata,

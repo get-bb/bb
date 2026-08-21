@@ -138,13 +138,6 @@ function subscriptionKeysForMessage(message: ChangedMessage): string[] {
 }
 
 interface ThreadEventWaiter {
-  reject: (reason?: Error) => void;
-  resolve: (notified: boolean) => void;
-  timeout: ReturnType<typeof setTimeout>;
-}
-
-interface HostEventWaiter {
-  reject: (reason?: Error) => void;
   resolve: (notified: boolean) => void;
   timeout: ReturnType<typeof setTimeout>;
 }
@@ -214,7 +207,6 @@ export class NotificationHub implements DbNotifier {
     Set<DaemonRegistrationWaiter>
   >();
   private readonly daemonSessionIdsByHost = new Map<string, string>();
-  private readonly hostEventWaiters = new Map<string, Set<HostEventWaiter>>();
   private readonly hostOnlineRpcWaiters = new Map<
     string,
     HostOnlineRpcWaiter
@@ -696,23 +688,6 @@ export class NotificationHub implements DbNotifier {
     return promise;
   }
 
-  async waitForHostEvent(hostId: string, timeoutMs: number): Promise<boolean> {
-    return new Promise<boolean>((resolve, reject) => {
-      const waiter: HostEventWaiter = {
-        reject,
-        resolve: (notified) => resolve(notified),
-        timeout: setTimeout(() => {
-          this.deleteHostEventWaiter(hostId, waiter);
-          resolve(false);
-        }, timeoutMs),
-      };
-      const waiters =
-        this.hostEventWaiters.get(hostId) ?? new Set<HostEventWaiter>();
-      waiters.add(waiter);
-      this.hostEventWaiters.set(hostId, waiters);
-    });
-  }
-
   requestHostOnlineRpc(args: {
     hostId: string;
     message: HostDaemonOnlineRpcRequestMessage;
@@ -773,9 +748,8 @@ export class NotificationHub implements DbNotifier {
     timeoutMs: number,
   ): { promise: Promise<boolean>; cancel: () => void } {
     let waiter: ThreadEventWaiter;
-    const promise = new Promise<boolean>((resolve, reject) => {
+    const promise = new Promise<boolean>((resolve) => {
       waiter = {
-        reject,
         resolve: (notified) => resolve(notified),
         timeout: setTimeout(() => {
           this.deleteThreadEventWaiter(threadId, waiter);
@@ -922,17 +896,6 @@ export class NotificationHub implements DbNotifier {
       id: hostId,
       changes,
     });
-
-    const waiters = this.hostEventWaiters.get(hostId);
-    if (!waiters) {
-      return;
-    }
-
-    for (const waiter of waiters) {
-      clearTimeout(waiter.timeout);
-      waiter.resolve(true);
-    }
-    this.hostEventWaiters.delete(hostId);
   }
 
   requestHostProtocolUpdateRetry(hostId: string): void {
@@ -967,18 +930,6 @@ export class NotificationHub implements DbNotifier {
     waiters.delete(waiter);
     if (waiters.size === 0) {
       this.threadEventWaiters.delete(threadId);
-    }
-  }
-
-  private deleteHostEventWaiter(hostId: string, waiter: HostEventWaiter): void {
-    clearTimeout(waiter.timeout);
-    const waiters = this.hostEventWaiters.get(hostId);
-    if (!waiters) {
-      return;
-    }
-    waiters.delete(waiter);
-    if (waiters.size === 0) {
-      this.hostEventWaiters.delete(hostId);
     }
   }
 

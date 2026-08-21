@@ -2,7 +2,4 @@
 export { RegistrySkillDetailScreen } from "./RegistrySkillDetailScreen";
 export { RegistrySkillsScreen } from "./RegistrySkillsScreen";
 export { SkillDetailScreen } from "./SkillDetailScreen";
-export {
-  SkillsLibraryScreen,
-  useProviderDisplayNames,
-} from "./SkillsLibraryScreen";
+export { SkillsLibraryScreen } from "./SkillsLibraryScreen";

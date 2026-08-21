@@ -91,7 +91,6 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
       commitSubject: "commit",
     })),
     reset: vi.fn(async () => undefined),
-    fetch: vi.fn(async () => undefined),
     squashMerge: vi.fn(async () => ({
       merged: true,
       commitSha: "commit-1",

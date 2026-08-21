@@ -36,13 +36,6 @@ export const BRIDGE_REQUEST_METHODS = {
   skillsConfigure: "skills/configure",
 } as const;
 
-export type BridgeRequestMethod =
-  (typeof BRIDGE_REQUEST_METHODS)[keyof typeof BRIDGE_REQUEST_METHODS];
-
-export const bridgeRequestMethodValues = Object.values(
-  BRIDGE_REQUEST_METHODS,
-) as readonly BridgeRequestMethod[];
-
 const sessionConstructionFields = {
   threadId: z.string().min(1),
   cwd: z.string().min(1),
@@ -172,8 +165,6 @@ export const skillsConfigureParamsSchema = z
     roots: z.array(skillsConfigureRootSchema),
   })
   .passthrough();
-
-export type SkillsConfigureParams = z.infer<typeof skillsConfigureParamsSchema>;
 
 // ---------------------------------------------------------------------------
 // Results

@@ -11,18 +11,15 @@ export type {
 
 export * from "./schema.js";
 export {
-  createQueuedThreadMessageClaimToken,
   createQueuedThreadMessageId,
   createEnvironmentId,
   createEventId,
   createEnvironmentProvisioningId,
   createHostDaemonSessionId,
   createHostId,
-  createPendingInteractionId,
   createProjectId,
   createPromptHistoryEntryId,
   createProjectSourceId,
-  createTerminalSessionId,
   createThreadId,
   createThreadProvisioningId,
 } from "./ids.js";

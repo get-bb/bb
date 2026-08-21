@@ -1,3 +1,3 @@
-import { ConnectEnrollScreen } from "@/screens/connect";
+import { ConnectEnrollScreen } from "@/screens/connect/ConnectEnrollScreen";
 
 export default ConnectEnrollScreen;

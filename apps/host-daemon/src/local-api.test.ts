@@ -370,12 +370,7 @@ describe("local API server", () => {
 
       expect(response.status).toBe(200);
       expect(openInTarget).toHaveBeenCalledWith({
-        context: {
-          kind: "remote-ssh",
-          serverOrigin: "https://remote-bb.example.test",
-          hostId: "host_remote",
-          sshAuthority: "devbox",
-        },
+        context: { kind: "remote-ssh", sshAuthority: "devbox" },
         columnNumber: 4,
         lineNumber: 10,
         path: "/home/me/project/src/file.ts",

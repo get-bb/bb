@@ -14,7 +14,7 @@ import {
   OPTION_INTERACTIVE_CLASS_NAME,
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
-} from "./OptionPicker";
+} from "@bb/shared-ui/option-display";
 
 export interface ProjectSelectorOption {
   id: string;

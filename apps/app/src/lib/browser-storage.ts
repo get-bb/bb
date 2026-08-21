@@ -29,7 +29,7 @@ interface StoredValueCodec<T> {
   serialize: (value: T) => string;
 }
 
-function getLocalStorage(): Storage | null {
+export function getLocalStorage(): Storage | null {
   if (typeof window === "undefined") {
     return null;
   }

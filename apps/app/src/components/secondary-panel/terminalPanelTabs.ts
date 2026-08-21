@@ -14,11 +14,6 @@ interface BuildTerminalSyncedSecondaryFileTabsArgs {
   terminalSessions: readonly TerminalSession[];
 }
 
-interface FindActiveTerminalIdInSecondaryFileTabsArgs {
-  activeTabId: string | null;
-  tabs: readonly SecondaryFileFixedPanelTab[];
-}
-
 interface SyncTerminalTabsInFixedPanelStateArgs {
   retainedTerminalId: string | null;
   state: FixedPanelTabsState;
@@ -115,23 +110,6 @@ export function buildTerminalSyncedSecondaryFileTabs({
   }
 
   return syncedTabs;
-}
-
-export function findActiveTerminalIdInSecondaryFileTabs({
-  activeTabId,
-  tabs,
-}: FindActiveTerminalIdInSecondaryFileTabsArgs): string | null {
-  if (activeTabId === null) {
-    return null;
-  }
-
-  for (const tab of tabs) {
-    if (tab.id === activeTabId && tab.kind === "terminal") {
-      return tab.terminalId;
-    }
-  }
-
-  return null;
 }
 
 export function syncTerminalTabsInFixedPanelState({

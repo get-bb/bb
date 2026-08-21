@@ -73,9 +73,6 @@ function createBridgeProtocolAdapterForId(
         ? { env: options.bridgeNodeEnv }
         : {}),
     },
-    ...(options.textDeltaFlushMs === undefined
-      ? {}
-      : { textDeltaFlushMs: options.textDeltaFlushMs }),
     ...buildPluginStaticProviderOptions(providerId, options),
   });
 }

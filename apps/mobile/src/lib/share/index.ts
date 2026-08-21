@@ -1,5 +1,4 @@
 export {
-  buildSharePayload,
   shareThreadLink,
   type SharePayload,
   type ShareOutcome,
@@ -8,7 +7,6 @@ export {
 export {
   composeSeedFromShareIntent,
   loadShareIntentModule,
-  setShareIntentModuleForTests,
   type InboundShareIntent,
   type ShareIntentHookResult,
   type ShareIntentKind,

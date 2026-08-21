@@ -116,14 +116,14 @@ type DiffFileEnrichmentState =
  * - `loading` / `error`: show progress or a retry.
  * - `ready`: pierre now owns expansion; the affordance retires.
  */
-export type DiffContextExpansionStatus =
+type DiffContextExpansionStatus =
   | "unavailable"
   | "idle"
   | "loading"
   | "ready"
   | "error";
 
-export interface DiffContextExpansionState {
+interface DiffContextExpansionState {
   status: DiffContextExpansionStatus;
   request: () => void;
 }
@@ -263,7 +263,7 @@ function getImageSizeStat(
   return getGitDiffCardImageSizeStat(enrichment, changeKind);
 }
 
-export interface UseGitDiffCardBodyArgs {
+interface UseGitDiffCardBodyArgs {
   fileDiff: ParsedGitDiffFile;
   changeKind: GitDiffFileChangeKind;
   /** When true, holds the body at a skeleton (queued render slots). */
@@ -273,7 +273,7 @@ export interface UseGitDiffCardBodyArgs {
   patchText?: string;
 }
 
-export interface GitDiffCardBodyState {
+interface GitDiffCardBodyState {
   bodySentinelRef: RefCallback<HTMLDivElement>;
   enrichment: DiffFileEnrichmentState;
   enrichedFileDiff: ParsedGitDiffFile;
@@ -564,7 +564,7 @@ function getDiffContextExpansionStatus({
   }
 }
 
-function GitDiffCardBodySkeleton() {
+export function GitDiffCardBodySkeleton() {
   return (
     <div className="space-y-1.5 px-3 py-3">
       <Skeleton className="h-3 w-full rounded-sm" />
@@ -648,7 +648,7 @@ export function getGitDiffCardImageSizeStat(
   return { addedBytes, removedBytes };
 }
 
-export interface GitDiffCardImagePreviewBodyProps {
+interface GitDiffCardImagePreviewBodyProps {
   preview: GitDiffCardImagePreview;
   fileDiffLabel: string;
   fitToFrame?: boolean;
@@ -807,7 +807,7 @@ function GitDiffCardSvgBody({
   );
 }
 
-export interface GitDiffCardBodyProps {
+interface GitDiffCardBodyProps {
   state: GitDiffCardBodyState;
   presentation: DiffPresentation;
   svgDisplayMode: GitDiffCardSvgDisplayMode;

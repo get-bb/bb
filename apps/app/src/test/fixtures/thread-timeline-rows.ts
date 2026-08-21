@@ -38,7 +38,7 @@ export interface RowBaseOverrideArgs {
   threadId?: string;
 }
 
-export interface BaseRowArgs extends RowBaseOverrideArgs {
+interface BaseRowArgs extends RowBaseOverrideArgs {
   id: string;
   seq?: number;
   sourceSeqEnd?: number;
@@ -46,7 +46,7 @@ export interface BaseRowArgs extends RowBaseOverrideArgs {
   turnId?: string | null;
 }
 
-export interface ConversationRowArgs extends RowBaseOverrideArgs {
+interface ConversationRowArgs extends RowBaseOverrideArgs {
   attachments?: TimelineConversationAttachments | null;
   id?: string;
   initiator?: ThreadTurnInitiator;
@@ -62,7 +62,7 @@ export interface ConversationRowArgs extends RowBaseOverrideArgs {
   turnRequest?: TimelineConversationTurnRequest;
 }
 
-export interface CommandRowArgs extends RowBaseOverrideArgs {
+interface CommandRowArgs extends RowBaseOverrideArgs {
   activityIntents?: TimelineActivityIntent[];
   approvalStatus?: TimelineApprovalStatus;
   callId?: string;
@@ -80,7 +80,7 @@ export interface CommandRowArgs extends RowBaseOverrideArgs {
   turnId?: string | null;
 }
 
-export interface ToolRowArgs extends RowBaseOverrideArgs {
+interface ToolRowArgs extends RowBaseOverrideArgs {
   activityIntents?: TimelineActivityIntent[];
   approvalStatus?: TimelineApprovalStatus;
   callId?: string;
@@ -96,7 +96,7 @@ export interface ToolRowArgs extends RowBaseOverrideArgs {
   turnId?: string | null;
 }
 
-export interface FileChangeRowArgs extends RowBaseOverrideArgs {
+interface FileChangeRowArgs extends RowBaseOverrideArgs {
   approvalStatus?: TimelineApprovalStatus;
   callId?: string;
   change?: TimelineFileChange;
@@ -115,7 +115,7 @@ export interface FileChangeRowArgs extends RowBaseOverrideArgs {
   turnId?: string | null;
 }
 
-export interface WebSearchRowArgs extends RowBaseOverrideArgs {
+interface WebSearchRowArgs extends RowBaseOverrideArgs {
   callId?: string;
   durationMs?: number | null;
   id?: string;
@@ -127,7 +127,7 @@ export interface WebSearchRowArgs extends RowBaseOverrideArgs {
   turnId?: string | null;
 }
 
-export interface WebFetchRowArgs extends RowBaseOverrideArgs {
+interface WebFetchRowArgs extends RowBaseOverrideArgs {
   callId?: string;
   durationMs?: number | null;
   id?: string;
@@ -141,7 +141,7 @@ export interface WebFetchRowArgs extends RowBaseOverrideArgs {
   url?: string;
 }
 
-export interface ImageViewRowArgs extends RowBaseOverrideArgs {
+interface ImageViewRowArgs extends RowBaseOverrideArgs {
   callId?: string;
   durationMs?: number | null;
   id?: string;
@@ -153,7 +153,7 @@ export interface ImageViewRowArgs extends RowBaseOverrideArgs {
   turnId?: string | null;
 }
 
-export interface WorkflowRowArgs extends RowBaseOverrideArgs {
+interface WorkflowRowArgs extends RowBaseOverrideArgs {
   description?: string;
   durationMs?: number | null;
   error?: string | null;
@@ -173,7 +173,7 @@ export interface WorkflowRowArgs extends RowBaseOverrideArgs {
   workflowName?: string | null;
 }
 
-export interface ApprovalRowArgs extends RowBaseOverrideArgs {
+interface ApprovalRowArgs extends RowBaseOverrideArgs {
   approvalKind?: TimelineApprovalWorkRow["approvalKind"];
   id?: string;
   interactionId?: string;
@@ -189,7 +189,7 @@ export interface ApprovalRowArgs extends RowBaseOverrideArgs {
   turnId?: string | null;
 }
 
-export interface QuestionRowArgs extends RowBaseOverrideArgs {
+interface QuestionRowArgs extends RowBaseOverrideArgs {
   answers?: TimelineQuestionWorkRow["answers"];
   id?: string;
   interactionId?: string;
@@ -210,7 +210,7 @@ type PermissionGrantApprovalLifecycle = Extract<
 
 type QuestionLifecycle = TimelineQuestionWorkRow["lifecycle"];
 
-export interface SystemRowArgs extends RowBaseOverrideArgs {
+interface SystemRowArgs extends RowBaseOverrideArgs {
   completedAt?: number | null;
   detail?: string | null;
   durationMs?: number | null;
@@ -226,7 +226,7 @@ export interface SystemRowArgs extends RowBaseOverrideArgs {
   turnId?: string | null;
 }
 
-export interface NonOperationSystemRowArgs extends Omit<
+interface NonOperationSystemRowArgs extends Omit<
   SystemRowArgs,
   "completedAt" | "durationMs" | "parentChange" | "operationKind" | "systemKind"
 > {
@@ -240,7 +240,7 @@ interface SystemRowBase extends TimelineRowBase {
   title: string;
 }
 
-export interface DelegationRowArgs extends RowBaseOverrideArgs {
+interface DelegationRowArgs extends RowBaseOverrideArgs {
   callId?: string;
   childRows?: TimelineRow[];
   description?: string | null;
@@ -256,7 +256,7 @@ export interface DelegationRowArgs extends RowBaseOverrideArgs {
   turnId?: string | null;
 }
 
-export interface TurnRowArgs extends RowBaseOverrideArgs {
+interface TurnRowArgs extends RowBaseOverrideArgs {
   children?: TimelineRow[] | null;
   durationMs?: number | null;
   id?: string;
@@ -268,17 +268,8 @@ export interface TurnRowArgs extends RowBaseOverrideArgs {
   turnId?: string;
 }
 
-export interface ReadIntentArgs {
+interface ReadIntentArgs {
   path: string;
-}
-
-export interface SearchIntentArgs {
-  path: string | null;
-  query: string;
-}
-
-export interface UnknownIntentArgs {
-  command: string;
 }
 
 interface RowSequenceArgs {
@@ -379,7 +370,7 @@ function commandExitCode({
   return status === "completed" ? 0 : null;
 }
 
-export function baseRow({
+function baseRow({
   createdAt,
   id,
   seq,
@@ -470,27 +461,6 @@ export function readIntent({ path }: ReadIntentArgs): TimelineActivityIntent {
     command: `cat ${path}`,
     name: path.split("/").pop() ?? path,
     path,
-  };
-}
-
-export function searchIntent({
-  query,
-  path,
-}: SearchIntentArgs): TimelineActivityIntent {
-  return {
-    type: "search",
-    command: path ? `rg ${query} ${path}` : `rg ${query}`,
-    query,
-    path,
-  };
-}
-
-export function unknownIntent({
-  command,
-}: UnknownIntentArgs): TimelineActivityIntent {
-  return {
-    type: "unknown",
-    command,
   };
 }
 

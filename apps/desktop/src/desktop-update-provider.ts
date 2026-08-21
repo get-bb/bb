@@ -51,7 +51,6 @@ export const DESKTOP_RELEASE_INFO = createDesktopReleaseInfo(
 );
 export const DESKTOP_UPDATE_RELEASE_BASE_URL =
   DESKTOP_RELEASE_INFO.updateReleaseBaseUrl;
-export const DESKTOP_UPDATE_CHANNEL = DESKTOP_RELEASE_CHANNEL;
 
 export function createDesktopUpdateFeedUrl(
   platform: BbDesktopVersionFeedPlatform,
@@ -66,7 +65,7 @@ export interface DesktopAutoUpdateFeedConfig {
 }
 
 export const DESKTOP_AUTO_UPDATE_FEED_CONFIG: DesktopAutoUpdateFeedConfig = {
-  channel: DESKTOP_UPDATE_CHANNEL,
+  channel: DESKTOP_RELEASE_CHANNEL,
   provider: "generic",
   url: DESKTOP_UPDATE_RELEASE_BASE_URL,
 };

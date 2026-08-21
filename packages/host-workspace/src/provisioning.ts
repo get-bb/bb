@@ -742,10 +742,6 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
   }
 }
 
-export async function removeDirectory(args: { path: string }): Promise<void> {
-  await fs.rm(args.path, { recursive: true, force: true });
-}
-
 async function removeDirectoryIfEmpty(pathToRemove: string): Promise<void> {
   try {
     await fs.rmdir(pathToRemove);

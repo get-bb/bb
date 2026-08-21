@@ -7,7 +7,7 @@ import {
   render,
   waitFor,
 } from "@testing-library/react";
-import { useLayoutEffect } from "react";
+import { useContext, useLayoutEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type { Active, DroppableContainer } from "@dnd-kit/core";
@@ -21,7 +21,7 @@ import {
   snapGroupBoundaryDragTransform,
 } from "./QueuedMessagesList";
 import {
-  useQueuedEditorTypeaheadLayoutReporter,
+  QueuedEditorTypeaheadLayoutContext,
   type QueuedEditorTypeaheadLayout,
 } from "@/components/promptbox/queued-editor-typeahead-layout";
 
@@ -45,7 +45,7 @@ function TypeaheadLayoutFixture({
 }: {
   layout: QueuedEditorTypeaheadLayout;
 }) {
-  const reportLayout = useQueuedEditorTypeaheadLayoutReporter();
+  const reportLayout = useContext(QueuedEditorTypeaheadLayoutContext);
   useLayoutEffect(() => {
     reportLayout?.(layout);
   }, [layout, reportLayout]);

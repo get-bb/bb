@@ -476,7 +476,7 @@ function validatePresetEnvironment(input: {
   return { environmentKind: input.environmentKind, baseBranch, machineId };
 }
 
-function escapeLike(value: string): string {
+export function escapeLike(value: string): string {
   return value
     .replaceAll("\\", "\\\\")
     .replaceAll("%", "\\%")

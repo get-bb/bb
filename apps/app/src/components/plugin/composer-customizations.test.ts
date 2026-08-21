@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PluginComposerCustomizationSlot } from "@/lib/plugin-slots";
-import { composerCustomizationsForScope } from "./composer-customizations";
+import { resolveComposerCustomizations } from "@/lib/plugin-slot-resolvers";
 
 function customization(
   id: string,
@@ -14,7 +14,7 @@ function customization(
   };
 }
 
-describe("composerCustomizationsForScope", () => {
+describe("resolveComposerCustomizations", () => {
   it("preserves order and treats omitted scopes as all and empty scopes as none", () => {
     const all = customization("all");
     const thread = customization("thread", ["thread"]);
@@ -22,7 +22,7 @@ describe("composerCustomizationsForScope", () => {
     const newThread = customization("new-thread", ["new-thread"]);
 
     expect(
-      composerCustomizationsForScope([all, thread, none, newThread], "thread"),
+      resolveComposerCustomizations([all, thread, none, newThread], "thread"),
     ).toEqual([all, thread]);
   });
 });

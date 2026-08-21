@@ -6,6 +6,7 @@ import { CronExpressionParser } from "cron-parser";
 import type { Context } from "hono";
 import {
   CUSTOM_THEME_CSS_MAX_LENGTH,
+  derivePluginId,
   formatPluginThemeId,
   type DeclaredCodeTheme,
   type JsonValue,
@@ -74,11 +75,7 @@ import {
   parsePluginSource,
   recoverInterruptedGitPluginPromotion,
 } from "./install-sources.js";
-import {
-  derivePluginId,
-  readPluginManifest,
-  type PluginManifest,
-} from "./manifest.js";
+import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import { listBundledPluginRegistrations } from "./builtin-registry.js";
 import {
   type BbPluginApi,
@@ -134,24 +131,9 @@ import type {
 } from "./plugin-service-internal.js";
 export type {
   PluginAgentToolContribution,
-  PluginApplyUpdateOutcome,
-  PluginApplyUpdateResult,
-  PluginHandlerStats,
-  PluginInstructionContribution,
-  PluginResolvedAgentConfiguration,
-  PluginListEntry,
-  PluginMentionProviderContribution,
   PluginMentionResolveResult,
-  PluginMentionSearchGroup,
-  PluginMentionSearchItem,
-  PluginRuntimeStatus,
-  PluginScheduleEntry,
   PluginServiceDeps,
-  PluginServiceEntry,
-  PluginServiceState,
-  PluginSourceView,
   PluginThreadEventEmitter,
-  PluginUpdateCheckEntry,
   PluginWireLookup,
 } from "./plugin-service-internal.js";
 
@@ -877,17 +859,16 @@ function normalizePluginAgentToolSelections(args: {
 }
 
 function normalizePluginAgentSelectionIds(args: {
-  field: "skills";
   knownIds: ReadonlySet<string>;
   pluginId: string;
   value: unknown;
 }): string[] {
   if (!Array.isArray(args.value)) {
-    throw new Error(`configure() output.${args.field} must be an array`);
+    throw new Error("configure() output.skills must be an array");
   }
   if (args.value.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
     throw new Error(
-      `configure() output.${args.field} exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
+      `configure() output.skills exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
     );
   }
   const selected: string[] = [];
@@ -896,12 +877,12 @@ function normalizePluginAgentSelectionIds(args: {
     const id = args.value[index];
     if (typeof id !== "string" || id.length === 0) {
       throw new Error(
-        `configure() output.${args.field}[${index}] must be a non-empty string`,
+        `configure() output.skills[${index}] must be a non-empty string`,
       );
     }
     if (seen.has(id)) {
       throw new Error(
-        `configure() output.${args.field} contains duplicate id ${JSON.stringify(id)}`,
+        `configure() output.skills contains duplicate id ${JSON.stringify(id)}`,
       );
     }
     if (!args.knownIds.has(id)) {
@@ -962,7 +943,6 @@ function normalizePluginAgentConfiguration(args: {
     toolIds: toolSelections.toolIds,
     toolParameterOverrides: toolSelections.parameterOverrides,
     skillIds: normalizePluginAgentSelectionIds({
-      field: "skills",
       knownIds: args.knownSkillIds,
       pluginId: args.pluginId,
       value: output.skills,
@@ -1017,7 +997,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     identities,
     invokeWrapped,
     isBuiltinPluginId,
-    isPackagedBuiltinAppEntry,
+    isPackagedBuiltinEntry,
     loadAll,
     loaded,
     loadOne,
@@ -1099,7 +1079,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     sourceKind,
     checkEngineRange,
     checkPluginSdkRange,
-    isPackagedBuiltinAppEntry,
+    isPackagedBuiltinEntry,
     registerInstalled,
     assertInstallRegistrationAvailable,
     refuseBuiltinShadow,

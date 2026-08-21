@@ -9,8 +9,7 @@ import type { MultipartRequest } from "./multipart-upload";
  * minimum, transcript whitespace normalization, and error wording.
  */
 
-export const VOICE_MIN_RECORDING_DURATION_MS = 1_000;
-export const VOICE_MAX_BYTES = 25 * 1024 * 1024;
+const VOICE_MIN_RECORDING_DURATION_MS = 1_000;
 
 export type VoiceInputState = "idle" | "recording" | "transcribing" | "error";
 
@@ -20,7 +19,7 @@ export interface VoiceRecordingFile {
   name: string;
 }
 
-export function buildVoiceTranscriptionUrl(serverUrl: string): string {
+function buildVoiceTranscriptionUrl(serverUrl: string): string {
   return `${serverUrl.replace(/\/+$/u, "")}/api/v1/system/voice-transcription`;
 }
 
@@ -81,7 +80,7 @@ export const VOICE_TOO_SHORT_MESSAGE = "Recording too short (minimum 1 second)";
 export const VOICE_PERMISSION_DENIED_MESSAGE = "Microphone permission denied";
 export const VOICE_EMPTY_TRANSCRIPT_MESSAGE =
   "Voice transcription returned an empty result.";
-export const VOICE_GENERIC_FAILURE_MESSAGE = "Voice input failed";
+const VOICE_GENERIC_FAILURE_MESSAGE = "Voice input failed";
 
 const HTML_DOCUMENT_PATTERN = /<!doctype html|<html[\s>]/iu;
 

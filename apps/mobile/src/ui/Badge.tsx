@@ -60,5 +60,3 @@ export function Badge({
     </View>
   );
 }
-
-export { badgeVariants, badgeTextVariants };

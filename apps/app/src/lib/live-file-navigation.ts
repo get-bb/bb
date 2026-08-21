@@ -1,6 +1,5 @@
 import type { ExperimentalFileLocation } from "@get-bb/plugin-sdk";
 export {
-  normalizeExperimentalFileLocation,
   normalizeExperimentalFileOpenOptions,
   normalizeExperimentalLiveFileTarget,
 } from "@get-bb/plugin-sdk/internal/file-navigation-validation";

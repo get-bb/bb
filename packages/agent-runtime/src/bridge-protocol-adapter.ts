@@ -51,7 +51,6 @@ import type {
   BuildInteractiveResponseArgs,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { decodeNormalizedProviderToolCallRequest } from "@bb/provider-bridge-protocol/bridge-kit";
-import { noPreparedProviderCommandDispatch } from "./provider-adapter.js";
 import { parseAvailableModelList } from "./shared/available-models.js";
 import type { AgentRuntimeSkillRoot } from "./types.js";
 
@@ -81,11 +80,6 @@ export interface BridgeProtocolAdapterOptions {
    * interpret — e.g. the ACP launch spec.
    */
   staticProviderOptions?: Record<string, unknown>;
-  /**
-   * Override for the delta assembler's streamed-text coalescing window
-   * (default 100ms; 0 disables batching). One knob for every provider.
-   */
-  textDeltaFlushMs?: number;
 }
 
 const threadIdentityNotificationParamsSchema = z
@@ -233,12 +227,7 @@ export function createBridgeProtocolAdapter(
   const threadIdsWithOpenWork = new Set<string>();
   // The narrow grammar: bridges emit parsed semantic deltas (`thread/delta`)
   // and this assembler constructs every canonical timeline event.
-  const deltaAssembler = createDeltaAssembler({
-    providerId: options.id,
-    ...(options.textDeltaFlushMs === undefined
-      ? {}
-      : { textDeltaFlushMs: options.textDeltaFlushMs }),
-  });
+  const deltaAssembler = createDeltaAssembler({ providerId: options.id });
 
   function gate(
     capability: keyof BridgeCapabilities & string,
@@ -590,8 +579,6 @@ export function createBridgeProtocolAdapter(
         },
       ];
     },
-
-    prepareTurnStart: noPreparedProviderCommandDispatch,
 
     /**
      * The bridge is the only side that knows about provider work bb models as

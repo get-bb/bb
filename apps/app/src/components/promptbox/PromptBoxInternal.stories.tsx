@@ -5,7 +5,7 @@ import { ExecutionControls } from "@/components/promptbox/ExecutionControls";
 import type {
   PromptMentionSuggestion,
   ProviderCommandSuggestion,
-} from "@/components/promptbox/mentions/types";
+} from "@bb/client-core";
 import {
   PromptBoxInternal,
   type HistoryConfig,

@@ -1,4 +1,4 @@
-import type { TypeaheadMenuState } from "@/components/promptbox/mentions/types";
+import type { TypeaheadMenuState } from "@bb/client-core";
 
 const COMMAND_LOAD_MORE_DISTANCE_PX = 48;
 
@@ -16,18 +16,16 @@ export function canLoadMoreCommandResults({
 
 export function shouldLoadMoreCommandResults({
   trigger,
-  hasLoadMoreCallback,
   scrollHeight,
   scrollTop,
   clientHeight,
 }: {
   trigger: TypeaheadMenuState["trigger"];
-  hasLoadMoreCallback: boolean;
   scrollHeight: number;
   scrollTop: number;
   clientHeight: number;
 }): boolean {
-  if (trigger !== "command" || !hasLoadMoreCallback) {
+  if (trigger !== "command") {
     return false;
   }
 

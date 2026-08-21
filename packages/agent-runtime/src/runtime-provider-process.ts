@@ -76,8 +76,6 @@ export interface RuntimeProviderProcessManagerArgs {
   ) => void;
   onStderr: AgentRuntimeOptions["onStderr"];
   skillRoots: readonly AgentRuntimeSkillRoot[];
-  /** Streamed-text coalescing window override for the delta assembler. */
-  textDeltaFlushMs?: number;
   workspacePath: string;
 }
 
@@ -172,7 +170,7 @@ function bridgeConfigurationKey(parts: BridgeProcessKeyParts): string {
   return `${parts.base}\u0000${parts.suffix}`;
 }
 
-export class ProviderProcessExitedError extends Error {
+class ProviderProcessExitedError extends Error {
   constructor(args: ProviderProcessExitedErrorArgs) {
     const stderr = formatProviderStderr(args.stderrTail);
     super(
@@ -480,9 +478,6 @@ export class RuntimeProviderProcessManager {
       ...(this.args.bridgeNodeExecutablePath !== undefined
         ? { bridgeNodeExecutablePath: this.args.bridgeNodeExecutablePath }
         : {}),
-      ...(this.args.textDeltaFlushMs !== undefined
-        ? { textDeltaFlushMs: this.args.textDeltaFlushMs }
-        : {}),
     };
 
     if (this.args.adapterFactory) {
@@ -755,7 +750,7 @@ export class RuntimeProviderProcessManager {
  * (`exitCode`) and signal terminations (`signalCode`). Node reports a
  * signal-killed child with a null `exitCode` and a set `signalCode`.
  */
-export function hasChildProcessExited(child: ChildProcess): boolean {
+function hasChildProcessExited(child: ChildProcess): boolean {
   return child.exitCode !== null || child.signalCode !== null;
 }
 

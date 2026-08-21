@@ -13,7 +13,6 @@ import type {
   DiffFilesResult,
   DiffPatchArgs,
   DiffPatchEntry,
-  FetchOptions,
   PullRequestActionOptions,
   StatusOptions,
   SquashMergeOptions,
@@ -164,7 +163,6 @@ export interface HostWorkspace {
   // Git mutations
   commit(options: CommitOptions): Promise<CommitResult>;
   reset(): Promise<void>;
-  fetch(options?: FetchOptions): Promise<void>;
   squashMerge(options: SquashMergeOptions): Promise<SquashMergeResult>;
 
   // Lifecycle
@@ -288,10 +286,6 @@ class ProvisionedHostWorkspace implements HostWorkspace {
 
   reset(): Promise<void> {
     return this.ws.reset();
-  }
-
-  fetch(options?: FetchOptions): Promise<void> {
-    return this.ws.fetch(options);
   }
 
   squashMerge(options: SquashMergeOptions): Promise<SquashMergeResult> {

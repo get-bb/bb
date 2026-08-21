@@ -14,7 +14,6 @@ import {
   resolveComposerEditorEffects,
   resolveComposerPlusMenuItems,
   resolveFileOpenerReplacement,
-  resolveMessageDirective,
   resolveMessageDirectiveRegistry,
   resolvePendingInteraction,
   resolveReplacement,
@@ -128,15 +127,6 @@ describe("keyed renderer resolvers", () => {
     const beta = { ...alpha, pluginId: "alpha" };
     const chart = { ...alpha, id: "chart" };
 
-    expect(resolveMessageDirective([alpha, chart], "chart")).toEqual({
-      status: "ok",
-      slot: chart,
-    });
-    expect(resolveMessageDirective([alpha, beta], "card")).toEqual({
-      status: "collision",
-      pluginIds: ["alpha", "zeta"],
-    });
-    expect(resolveMessageDirective([], "card")).toBeNull();
     expect(
       resolveMessageDirectiveRegistry([alpha, beta, chart]).get("card"),
     ).toEqual({ status: "collision", pluginIds: ["alpha", "zeta"] });

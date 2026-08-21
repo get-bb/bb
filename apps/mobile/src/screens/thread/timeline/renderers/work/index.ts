@@ -24,27 +24,8 @@ registerTimelineRowRenderer("work:question", QuestionWorkRow);
 registerTimelineRowRenderer("work:delegation", DelegationWorkRow);
 registerTimelineRowRenderer("work:workflow", WorkflowWorkRow);
 
-export { ApprovalWorkRow } from "./ApprovalWorkRow";
-export { CommandWorkRow } from "./CommandWorkRow";
-export { DelegationWorkRow } from "./DelegationWorkRow";
-export { FileChangeWorkRow } from "./FileChangeWorkRow";
-export { ImageViewWorkRow } from "./ImageViewWorkRow";
-export { QuestionWorkRow } from "./QuestionWorkRow";
-export {
-  ToolCallDetailBlock,
-  type ToolCallDetailBlockProps,
-} from "./ToolCallDetailBlock";
-export { ToolWorkRow } from "./ToolWorkRow";
-export { WebFetchWorkRow, WebSearchWorkRow } from "./WebWorkRows";
 export {
   WorkflowPhaseStrip,
   WorkflowProgressView,
-  type WorkflowProgressViewProps,
 } from "./WorkflowProgressView";
-export { WorkflowWorkRow } from "./WorkflowWorkRow";
-export {
-  WORK_ROW_ICON_SIZE,
-  WorkRowShell,
-  type WorkRowShellProps,
-} from "./WorkRowShell";
-export * from "./work-row-model";
+export { workflowBodyKind } from "./work-row-model";

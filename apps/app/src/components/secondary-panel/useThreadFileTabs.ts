@@ -54,7 +54,7 @@ import {
   reorderSecondaryPanelFileTabInState,
   setSecondaryPanelTabsInState,
   updateSecondaryPanelTabInState,
-} from "./secondaryPanelTabState";
+} from "@bb/client-core";
 import { pruneTerminalTabsForSessions } from "./terminalPanelTabs";
 
 interface UseThreadFileTabsParams {
@@ -74,12 +74,12 @@ interface ThreadStorageFileListItem {
   path: string;
 }
 
-export interface FileSearchWorkspaceSelection {
+interface FileSearchWorkspaceSelection {
   source: "workspace";
   path: string;
 }
 
-export interface FileSearchThreadStorageSelection {
+interface FileSearchThreadStorageSelection {
   source: "thread-storage";
   path: string;
 }
@@ -652,10 +652,6 @@ export function useThreadFileTabs({
       activeHostFileTab?.environmentId ??
       activeHostFileOpener?.source.environmentId ??
       null,
-    activeHostFileHostId:
-      activeHostFileTab?.hostId ??
-      activeHostFileOpener?.source.experimental_hostId ??
-      null,
     activeHostFileLineRange:
       activeHostFileTab?.lineRange ??
       (activeFileOpenerOwner?.kind === "host-file-preview"
@@ -697,16 +693,6 @@ export function useThreadFileTabs({
       activeWorkspaceFileTab?.projectId ??
       activeWorkspaceFileOpener?.source.projectId ??
       null,
-    activeWorkspaceFileSource:
-      activeWorkspaceFileTab?.source ??
-      (activeFileOpenerOwner?.kind === "workspace-file-preview"
-        ? activeFileOpenerOwner.tab.source
-        : null),
-    activeWorkspaceFileStatusLabel:
-      activeWorkspaceFileTab?.statusLabel ??
-      (activeFileOpenerOwner?.kind === "workspace-file-preview"
-        ? activeFileOpenerOwner.tab.statusLabel
-        : null),
     activePluginPanelTab,
     browserTabs,
     clearActiveFileTabs,

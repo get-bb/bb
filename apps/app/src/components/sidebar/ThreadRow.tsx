@@ -137,10 +137,6 @@ interface ThreadRowProps {
   hasComposerDraft: boolean;
   onProjectSelect?: () => void;
   options: ThreadRowOptions;
-  // Visible row text override. Defaults to the thread title.
-  displayTitle?: string;
-  // Accessible name + hover tooltip override. Defaults to the thread title.
-  accessibleTitle?: string;
 }
 
 type ThreadRowClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
@@ -509,8 +505,6 @@ function ThreadRowComponent({
   hasComposerDraft,
   onProjectSelect,
   options,
-  displayTitle,
-  accessibleTitle,
 }: ThreadRowProps) {
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
@@ -533,9 +527,7 @@ function ThreadRowComponent({
   const threadUnreadError = threadUnreadDone && thread.status === "error";
   const threadUnreadSuccess = threadUnreadDone && !threadUnreadError;
   const threadTitle = getThreadDisplayTitle(thread);
-  // Inside a section the row shows the leaf but keeps the full path for a11y.
-  const visibleTitle = displayTitle ?? threadTitle;
-  const labelTitle = useThreadTitleDisplayText(accessibleTitle ?? threadTitle);
+  const labelTitle = useThreadTitleDisplayText(threadTitle);
   const crossProjectName = useSidebarProjectName(crossProjectId);
   const crossProjectLabel =
     crossProjectId === null
@@ -738,7 +730,7 @@ function ThreadRowComponent({
             title={labelTitle}
             onDoubleClick={startTitleEditing}
           >
-            <SidebarThreadTitle title={visibleTitle} />
+            <SidebarThreadTitle title={threadTitle} />
           </span>
         )}
         {crossProjectLabel !== null ? (

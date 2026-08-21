@@ -1,8 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 
-export type AutomationSignalKind =
-  | "automations-changed"
-  | "automation-runs-changed";
+type AutomationSignalKind = "automations-changed" | "automation-runs-changed";
 
 export function publishAutomationChange(
   bb: Pick<BbPluginApi, "realtime">,

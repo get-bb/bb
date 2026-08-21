@@ -669,5 +669,4 @@ export async function getClaudeProviderUsage(): Promise<ExperimentalProviderUsag
 export const __testing = {
   buildProviderInstallationRun: buildClaudeProviderInstallationRun,
   normalizeUsage,
-  planLabel,
 };

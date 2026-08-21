@@ -16,7 +16,6 @@ import {
 } from "@bb/server-contract";
 import {
   hostDaemonEnrollKeyResponseSchema,
-  type HostDaemonEnrollKeyRequest,
   type HostDaemonEnrollKeyResponse,
 } from "@bb/host-daemon-contract";
 import { z } from "zod";
@@ -359,14 +358,13 @@ export async function createProject(
 
 export async function createHostEnrollKey(
   serverUrl: string,
-  body: HostDaemonEnrollKeyRequest = {},
 ): Promise<HostDaemonEnrollKeyResponse> {
   const response = await fetch(`${serverUrl}/internal/hosts/enroll-key`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({}),
   });
   if (!response.ok) {
     throw new Error(
@@ -374,12 +372,6 @@ export async function createHostEnrollKey(
     );
   }
   return hostDaemonEnrollKeyResponseSchema.parse(await response.json());
-}
-
-export async function createStandaloneHostEnrollKey(
-  serverUrl: string,
-): Promise<HostDaemonEnrollKeyResponse> {
-  return createHostEnrollKey(serverUrl);
 }
 
 export async function killProcess(

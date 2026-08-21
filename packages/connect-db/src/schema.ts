@@ -105,7 +105,6 @@ export const profile = sqliteTable("profile", {
 });
 
 export const labelClaimKinds = ["handle", "server", "machine"] as const;
-export type LabelClaimKind = (typeof labelClaimKinds)[number];
 
 /**
  * The authoritative global routing-label namespace. Product rows retain their
@@ -242,7 +241,6 @@ export const connectCodePurposes = [
   "manual-pair",
   "machine-pair",
 ] as const;
-export type ConnectCodePurpose = (typeof connectCodePurposes)[number];
 
 export const schema = {
   user,

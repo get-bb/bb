@@ -8,9 +8,6 @@ export {
   type ThemeProviderProps,
 } from "./ThemeProvider";
 export {
-  FONT_FAMILIES,
-  FONT_WEIGHT_VALUES,
-  ITALIC_FONT_FAMILIES,
   resolveFont,
   resolveItalicFont,
   type FontFamilyKind,
@@ -18,18 +15,12 @@ export {
   type ResolvedFont,
 } from "./fonts";
 export {
-  parseThemePreference,
-  resolveThemeMode,
-  THEME_PREFERENCE_STORAGE_KEY,
   type ThemeMode,
   type ThemeModePreference,
   type ThemePreferenceStorage,
 } from "./theme-preference";
 export { scrimBaseColor } from "./scrim";
-export { buildThemeVars, tokenKeyToCssVar } from "./theme-vars";
 export {
-  nativeRadii,
-  nativeThemes,
   nativeTypography,
   type NativeTextSize,
   type NativeTextStyle,

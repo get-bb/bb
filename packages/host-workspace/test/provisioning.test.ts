@@ -8,7 +8,6 @@ import { Workspace } from "../src/workspace.js";
 import {
   buildSetupScriptCommand,
   createWorktree,
-  removeDirectory,
   removeWorktree,
   runSetupScript,
 } from "../src/provisioning.js";
@@ -594,11 +593,6 @@ describe("workspace provisioning", () => {
       cwd: sourceRepo,
     });
     expect(worktrees.stdout).not.toContain(targetPath);
-
-    const directoryPath = await makeTempDir("bb-remove-dir-");
-    await fs.writeFile(path.join(directoryPath, "file.txt"), "data\n", "utf8");
-    await removeDirectory({ path: directoryPath });
-    await expect(fs.stat(directoryPath)).rejects.toThrow();
   });
 
   it("removes orphaned worktree directories after the .git file is gone", async () => {

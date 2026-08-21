@@ -1,3 +1,3 @@
-import { FilePreviewScreen } from "@/screens/files";
+import { FilePreviewScreen } from "@/screens/files/FilePreviewScreen";
 
 export default FilePreviewScreen;

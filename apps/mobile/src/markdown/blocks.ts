@@ -114,14 +114,6 @@ export function splitParagraphSegments(
   return segments;
 }
 
-/** True when a paragraph is nothing but images (and whitespace). */
-export function isImageOnlyParagraph(paragraph: Paragraph): boolean {
-  const segments = splitParagraphSegments(paragraph);
-  return (
-    segments.length > 0 && segments.every((segment) => segment.kind === "image")
-  );
-}
-
 export interface MarkdownDefinition {
   url: string;
   title: string | null;

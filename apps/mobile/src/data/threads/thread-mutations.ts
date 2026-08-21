@@ -57,11 +57,6 @@ export interface DeleteThreadRequest extends ThreadIdRequest {
   childThreadsConfirmed: boolean;
 }
 
-export interface ReorderPinnedThreadRequest extends ThreadIdRequest {
-  previousThreadId: string | null;
-  nextThreadId: string | null;
-}
-
 export function useRenameThread() {
   const { sdk } = useProfileClient();
   const queryClient = useQueryClient();
@@ -154,33 +149,6 @@ export function useUnpinThread() {
       invalidateThreadDetail(queryClient, id);
       invalidateThreadLists(queryClient);
     },
-  });
-}
-
-/**
- * Move a pinned root between its pinned neighbours (`PATCH /threads/:id/pin-order`).
- * The response is the full ordered pinned root list; the sidebar refetches to
- * pick up the new `pinSortKey`s.
- */
-export function useReorderPinnedThread() {
-  const { sdk } = useProfileClient();
-  const queryClient = useQueryClient();
-  return useMutation({
-    meta: {
-      errorMessage: "Failed to reorder pinned threads.",
-      showErrorToast: false,
-    },
-    mutationFn: ({
-      id,
-      previousThreadId,
-      nextThreadId,
-    }: ReorderPinnedThreadRequest) =>
-      sdk.threads.reorderPinned({
-        threadId: id,
-        previousThreadId,
-        nextThreadId,
-      }),
-    onSettled: () => invalidateThreadLists(queryClient),
   });
 }
 

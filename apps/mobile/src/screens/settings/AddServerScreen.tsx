@@ -7,6 +7,7 @@ import {
   probeServer,
   validateDirectServerUrl,
 } from "@/lib/profiles";
+import { describeError } from "@/lib/describe-error";
 import { useTheme } from "@/theme";
 import { Button, Icon, Input, ListRow, Text, toast } from "@/ui";
 import { connectEnrollHref, rawPathHref } from "../shell/hrefs";
@@ -24,10 +25,6 @@ function defaultLabel(serverUrl: string): string {
   } catch {
     return serverUrl;
   }
-}
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /**

@@ -20,7 +20,7 @@ import { BB_LOOPBACK_HOST, parsePortValue } from "./runtime.js";
 
 export type ServerBindHost = "127.0.0.1" | "0.0.0.0";
 
-export function parseBooleanEnvValue(args: EnvVarParseArgs): boolean {
+function parseBooleanEnvValue(args: EnvVarParseArgs): boolean {
   const normalizedValue = args.value.trim().toLowerCase();
   if (
     normalizedValue === "true" ||
@@ -42,7 +42,7 @@ export function parseBooleanEnvValue(args: EnvVarParseArgs): boolean {
   throw new Error(`${args.name} must be a boolean`);
 }
 
-export function parseAppSurfaceEnvValue(args: EnvVarParseArgs): AppSurface {
+function parseAppSurfaceEnvValue(args: EnvVarParseArgs): AppSurface {
   const parsed = parseAppSurface(args.value);
   if (parsed !== undefined) {
     return parsed;
@@ -50,9 +50,7 @@ export function parseAppSurfaceEnvValue(args: EnvVarParseArgs): AppSurface {
   throw new Error(`${args.name} must be one of ${formatAppSurfaceValues()}`);
 }
 
-export function parseOptionalPortEnvValue(
-  args: EnvVarParseArgs,
-): number | undefined {
+function parseOptionalPortEnvValue(args: EnvVarParseArgs): number | undefined {
   if (args.value === "0") {
     return undefined;
   }
@@ -63,7 +61,7 @@ export function parseOptionalPortEnvValue(
   });
 }
 
-export function parseOptionalTrimmedStringEnvValue(
+function parseOptionalTrimmedStringEnvValue(
   args: EnvVarParseArgs,
 ): string | undefined {
   const trimmedValue = args.value.trim();

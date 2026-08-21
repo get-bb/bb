@@ -50,7 +50,7 @@ import {
   boundedMarkdownPreview,
   closeUnterminatedMarkdownCodeSpan,
   USER_MESSAGE_CHAR_CAP,
-} from "./conversation-message-limits.js";
+} from "@bb/client-core";
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
 import { splitStreamingMarkdown } from "./streaming-markdown-split.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
@@ -78,7 +78,7 @@ interface ConversationMessageContentBaseProps {
   text: string;
 }
 
-export interface ConversationMessageContentUserProps extends ConversationMessageContentBaseProps {
+interface ConversationMessageContentUserProps extends ConversationMessageContentBaseProps {
   role: "user";
   /** Mobile presentation for the regular user message's action footer. */
   mobileActionDisplay?: "inline" | "overflow";
@@ -144,7 +144,7 @@ const STREAMING_SETTLED_MARKDOWN_CLASS_NAME = "[&>p:last-child]:mb-2";
 const STREAMING_TAIL_MARKDOWN_CLASS_NAME =
   "[&>h1:first-child]:mt-4 [&>h2:first-child]:mt-4 [&>h3:first-child]:mt-3 [&>h4:first-child]:mt-3 [&>h5:first-child]:mt-2 [&>h6:first-child]:mt-2";
 
-export interface ConversationMessageContentAssistantProps
+interface ConversationMessageContentAssistantProps
   extends ConversationMessageContentBaseProps, AssistantMessageRowIdentity {
   role: "assistant";
   // Assistant content and generated system rows render through MarkdownPreview,
@@ -198,7 +198,7 @@ export interface ConversationMessageContentAssistantProps
  * fields to hide defaults") and lets the renderer drop optional-chain
  * defenses on contract-required fields.
  */
-export type ConversationMessageContentProps =
+type ConversationMessageContentProps =
   | ConversationMessageContentUserProps
   | ConversationMessageContentAssistantProps;
 

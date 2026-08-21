@@ -21,18 +21,18 @@ import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { useClipboardCopy } from "@/lib/clipboard";
 
-export type SkillDetailTitleBadge = {
+type SkillDetailTitleBadge = {
   label: string;
   tooltip: ReactNode;
   accessibleLabel?: string;
 };
 
-export type SkillDetailContentState =
+type SkillDetailContentState =
   | { kind: "loading" }
   | { kind: "error"; message: string; onRetry: () => void }
   | { kind: "ready"; content: string };
 
-export interface SkillDetailViewProps {
+interface SkillDetailViewProps {
   leading?: ReactNode;
   title: string;
   path: string;
@@ -45,27 +45,8 @@ export interface SkillDetailViewProps {
   selectedPath: string;
   onSelectFile: (path: string) => void;
   contentState: SkillDetailContentState;
-  contentActions?: ReactNode;
   editor?: ReactNode;
   footer?: ReactNode;
-}
-
-export function SkillOwnershipBadge({
-  label,
-  tooltip,
-  accessibleLabel,
-}: {
-  label: string;
-  tooltip: ReactNode;
-  accessibleLabel?: string;
-}) {
-  return (
-    <ProvenancePill
-      label={label}
-      accessibleLabel={accessibleLabel}
-      tooltip={tooltip}
-    />
-  );
 }
 
 function SkillPath({ path, href }: { path: string; href?: string }) {
@@ -252,7 +233,6 @@ export function SkillDetailView({
   selectedPath,
   onSelectFile,
   contentState,
-  contentActions,
   editor,
   footer,
 }: SkillDetailViewProps) {
@@ -261,7 +241,7 @@ export function SkillDetailView({
   const selectedFileIsMarkdown = selectedPath.toLowerCase().endsWith(".md");
   const titleMeta =
     titleBadge === undefined ? undefined : (
-      <SkillOwnershipBadge
+      <ProvenancePill
         label={titleBadge.label}
         tooltip={titleBadge.tooltip}
         accessibleLabel={titleBadge.accessibleLabel}
@@ -287,10 +267,7 @@ export function SkillDetailView({
           </ResourceDetailIncludesSection>
         ) : null}
 
-        <ResourceDefinitionSection
-          label={selectedDisplayPath}
-          actions={contentActions}
-        >
+        <ResourceDefinitionSection label={selectedDisplayPath}>
           {editor ??
             (contentState.kind === "loading" ? (
               <ResourceDetailPanel

@@ -22,17 +22,15 @@ import {
 } from "@/hooks/mutations/thread-state-mutations";
 import type { NeighborReorderRequest } from "@/lib/neighbor-reorder";
 import {
+  buildSidebarEntitySectionId,
   getSidebarDndItemId,
+  reorderSidebarSectionOrder,
   type ProjectThreadItem,
-} from "./projectThreadGroups";
+} from "@bb/client-core";
 import {
   sidebarCollapsedThreadSectionsAtom,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
-import {
-  buildSidebarEntitySectionId,
-  reorderSidebarSectionOrder,
-} from "./sidebarSectionOrder";
 import {
   sidebarReorderCollisionDetection,
   useSidebarReorderDnd,
@@ -70,7 +68,7 @@ interface UseSectionThreadDndArgs {
   ) => void;
 }
 
-export interface SectionThreadDndLookup {
+interface SectionThreadDndLookup {
   sectionParentKeyBySectionId: Map<string, string>;
   sectionSectionIdByParentKey: Map<string, SidebarSectionId>;
   sectionIdByParentKey: Map<string, string | null>;
@@ -80,13 +78,13 @@ export interface SectionThreadDndLookup {
   threadByItemId: Map<string, ThreadListEntry>;
 }
 
-export interface SectionThreadDropTarget {
+interface SectionThreadDropTarget {
   activeId: string;
   fromParentKey: string;
   toParentKey: string;
 }
 
-export type SectionThreadDropDecision =
+type SectionThreadDropDecision =
   | { kind: "move"; activeId: string; sectionId: string | null }
   | { kind: "pin"; activeId: string }
   | {

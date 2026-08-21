@@ -1017,11 +1017,6 @@ export interface FindStoredEventRowArgs {
   type: ThreadEventType;
 }
 
-export interface GetLatestStoredEventRowByTypeArgs {
-  threadId: string;
-  type: ThreadEventType;
-}
-
 export interface ListStoredEventRowsInRangeArgs {
   seqEnd: number;
   seqStart: number;
@@ -1040,11 +1035,6 @@ export interface ListStoredEventRowsByParentToolCallIdsArgs {
 
 export type GetStoredEventRowsByParentToolCallIdsDataBytesArgs =
   ListStoredEventRowsByParentToolCallIdsArgs;
-
-export interface ListStoredEventRowsByThreadIdsAndTypesArgs {
-  threadIds: readonly string[];
-  types: readonly ThreadEventType[];
-}
 
 export interface ListLatestGoalEventRowsByThreadIdsArgs {
   threadIds: readonly string[];
@@ -1088,17 +1078,7 @@ export interface ListStoredClientTurnRequestIdsInRangeArgs {
   threadId: string;
 }
 
-export interface FindStoredClientTurnRequestSequenceByRequestIdArgs {
-  requestId: ClientTurnRequestId;
-  threadId: string;
-}
-
 export interface GetStoredTurnRequestEventForTurnArgs {
-  threadId: string;
-  turnId: string;
-}
-
-export interface GetRootStoredTurnStartedSequenceArgs {
   threadId: string;
   turnId: string;
 }
@@ -1328,27 +1308,6 @@ export function listStoredEventRows(
   return merged;
 }
 
-export function listStoredEventRowsByThreadIdsAndTypes(
-  db: DbConnection,
-  args: ListStoredEventRowsByThreadIdsAndTypesArgs,
-): StoredEventRow[] {
-  if (args.threadIds.length === 0 || args.types.length === 0) {
-    return [];
-  }
-
-  return db
-    .select(storedEventRowFields)
-    .from(events)
-    .where(
-      and(
-        inArray(events.threadId, [...args.threadIds]),
-        inArray(events.type, [...args.types]),
-      ),
-    )
-    .orderBy(events.threadId, events.sequence)
-    .all();
-}
-
 export function listLatestGoalEventRowsByThreadIds(
   db: DbQueryConnection,
   args: ListLatestGoalEventRowsByThreadIdsArgs,
@@ -1500,21 +1459,6 @@ export function findStoredEventRow(
           : and(eq(events.threadId, args.threadId), eq(events.type, args.type)),
       )
       .orderBy(events.sequence)
-      .limit(1)
-      .get() ?? null
-  );
-}
-
-export function getLatestStoredEventRowByType(
-  db: DbQueryConnection,
-  args: GetLatestStoredEventRowByTypeArgs,
-): StoredEventRow | null {
-  return (
-    db
-      .select(storedEventRowFields)
-      .from(events)
-      .where(and(eq(events.threadId, args.threadId), eq(events.type, args.type)))
-      .orderBy(desc(events.sequence))
       .limit(1)
       .get() ?? null
   );
@@ -1878,28 +1822,6 @@ export function listStoredClientTurnRequestIdsInRange(
     .all();
 
   return rows.map((row) => clientTurnRequestIdSchema.parse(row.requestId));
-}
-
-export function findStoredClientTurnRequestSequenceByRequestId(
-  db: DbQueryConnection,
-  args: FindStoredClientTurnRequestSequenceByRequestIdArgs,
-): number | null {
-  const row =
-    db
-      .select({
-        sequence: events.sequence,
-      })
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, args.threadId),
-          eq(events.type, "client/turn/requested"),
-          sql`json_extract(${events.data}, '$.requestId') = ${args.requestId}`,
-        ),
-      )
-      .limit(1)
-      .get() ?? null;
-  return row?.sequence ?? null;
 }
 
 export function getStoredTurnRequestEventForTurn(
@@ -2489,28 +2411,6 @@ export function hasRootStoredTurnStarted(
     .get();
 
   return row !== undefined;
-}
-
-export function getRootStoredTurnStartedSequence(
-  db: DbQueryConnection,
-  args: GetRootStoredTurnStartedSequenceArgs,
-): number | null {
-  const row = db
-    .select({ sequence: events.sequence })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        eq(events.type, "turn/started"),
-        eq(events.turnId, args.turnId),
-        isRootTurnStartedEventData,
-      ),
-    )
-    .orderBy(events.sequence)
-    .limit(1)
-    .get();
-
-  return row?.sequence ?? null;
 }
 
 export function listRecentStoredEventRows(

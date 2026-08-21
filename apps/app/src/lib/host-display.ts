@@ -1,4 +1,3 @@
-import type { Host } from "@bb/domain";
 import type { IconName } from "@bb/shared-ui/icon";
 
 /**
@@ -8,8 +7,3 @@ import type { IconName } from "@bb/shared-ui/icon";
  * referencing the underlying icon name directly.
  */
 export const PersistentHostIconName: IconName = "Laptop";
-
-/** Icon name for a persistent host. */
-export function getHostIconName(_host: Host | undefined | null): IconName {
-  return PersistentHostIconName;
-}

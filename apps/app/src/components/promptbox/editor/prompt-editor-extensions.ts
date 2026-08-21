@@ -44,7 +44,6 @@ export function promptEditorExtensions({
   getDraftObservers,
   draftObserverDebounceMs,
   onRuleError,
-  onDraftObserverError,
 }: PromptEditorExtensionsOptions): AnyExtension[] {
   return [
     StarterKit.configure({
@@ -75,7 +74,6 @@ export function promptEditorExtensions({
         ? { draftObserverDebounceMs }
         : {}),
       ...(onRuleError !== undefined ? { onRuleError } : {}),
-      ...(onDraftObserverError !== undefined ? { onDraftObserverError } : {}),
     }),
   ];
 }

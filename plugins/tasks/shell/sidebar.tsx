@@ -13,7 +13,7 @@ import {
   savePresetDraft,
 } from "../views/manage/preset-dialog.js";
 import { Icon } from "@bb/shared-ui/icon";
-import { DelayedLoading } from "../components/delayed-loading.js";
+import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   Tooltip,
@@ -157,7 +157,7 @@ function SidebarSkeleton() {
   );
 }
 
-export interface TasksSidebarProps {
+interface TasksSidebarProps {
   route: TasksRoute;
   folders: Folder[] | undefined;
   projects: Project[] | undefined;

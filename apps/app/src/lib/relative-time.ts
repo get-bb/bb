@@ -1,4 +1,4 @@
-export interface FormatRelativeTimeArgs {
+interface FormatRelativeTimeArgs {
   /** The past instant being described, in epoch milliseconds. */
   timestamp: number;
   /** The reference "now", in epoch milliseconds. Passed in for testability. */
@@ -44,20 +44,4 @@ export function formatRelativeTime({
     month: "short",
     day: "numeric",
   });
-}
-
-/**
- * Formats an elapsed span as a compact duration ("1m", "12m", "3h", "2d") for
- * a label that says how long something has been going on rather than when it
- * started. Anything under a minute rounds up to "1m": a status that has to be
- * read is not helped by watching seconds tick.
- */
-export function formatCompactDuration({ ms }: { ms: number }): string {
-  if (ms < HOUR_MS) {
-    return `${Math.max(1, Math.floor(ms / MINUTE_MS))}m`;
-  }
-  if (ms < DAY_MS) {
-    return `${Math.floor(ms / HOUR_MS)}h`;
-  }
-  return `${Math.floor(ms / DAY_MS)}d`;
 }

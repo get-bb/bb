@@ -587,5 +587,3 @@ export function TaskActivity({ taskId }: TaskActivityProps) {
     </section>
   );
 }
-
-export default TaskActivity;

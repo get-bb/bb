@@ -80,11 +80,6 @@ export interface CommitResult {
   commitSubject: string;
 }
 
-export interface FetchOptions {
-  remote?: string;
-  branch?: string;
-}
-
 export interface SquashMergeOptions {
   targetBranch: string;
   commitMessage: string;
@@ -1111,18 +1106,6 @@ export class Workspace {
     });
   }
 
-  async fetch(options: FetchOptions = {}): Promise<void> {
-    await ensureGitRepo(this.path);
-
-    const remote = options.remote ?? "origin";
-    const args = ["fetch", remote];
-    if (options.branch) {
-      args.push(options.branch);
-    }
-
-    await runGit(args, { cwd: this.path });
-  }
-
   async checkoutBranch(branchName: string): Promise<void> {
     await ensureGitRepo(this.path);
 
@@ -1148,48 +1131,6 @@ export class Workspace {
       }
 
       await runGit(["checkout", "-B", branchName], { cwd: this.path });
-    });
-  }
-
-  async detachHead(): Promise<void> {
-    await ensureGitRepo(this.path);
-
-    await this.withMutation(async () => {
-      if ((await this.currentBranch) === undefined) {
-        return;
-      }
-
-      await runGit(["checkout", "--detach"], { cwd: this.path });
-    });
-  }
-
-  async stash(message = "bb-workspace-stash"): Promise<string | null> {
-    await ensureGitRepo(this.path);
-
-    return this.withMutation(async () => {
-      if (!(await hasUncommittedChanges(this.path))) {
-        return null;
-      }
-
-      await runGit(["stash", "push", "--include-untracked", "-m", message], {
-        cwd: this.path,
-      });
-      const ref = await runGit(["stash", "list", "-1", "--format=%gd"], {
-        cwd: this.path,
-      });
-      return ref.stdout.trim() || null;
-    });
-  }
-
-  async stashPop(ref?: string): Promise<void> {
-    await ensureGitRepo(this.path);
-
-    const args = ["stash", "pop"];
-    if (ref) {
-      args.push(ref);
-    }
-    await this.withMutation(async () => {
-      await runGit(args, { cwd: this.path });
     });
   }
 

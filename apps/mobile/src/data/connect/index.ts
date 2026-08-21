@@ -1,7 +1,5 @@
 export {
   DEFAULT_CONNECT_APEX_URL,
-  isValidConnectCode,
-  normalizeConnectCode,
   parseConnectPairingPayload,
   resolveEnrollmentTarget,
   type ConnectPairingInput,

@@ -23,7 +23,6 @@ export interface DiffTabFileCardProps {
   retry: LoadDiffPatchPath;
   /** Quote this file's patch (or path) into the composer; hidden when absent. */
   onAddToChat?: (text: string) => void;
-  onOpenFilePreview?: (path: string) => void;
   workspaceRootPath?: string | null;
   testID?: string;
 }
@@ -108,16 +107,9 @@ interface CardBodyProps {
   state: Exclude<DiffFileBodyState, { kind: "loaded" }>;
   onLoadPatch: () => void;
   onRetry: () => void;
-  onOpenFilePreview?: (path: string) => void;
 }
 
-function CardBody({
-  entry,
-  state,
-  onLoadPatch,
-  onRetry,
-  onOpenFilePreview,
-}: CardBodyProps) {
+function CardBody({ entry, state, onLoadPatch, onRetry }: CardBodyProps) {
   const changedLines = (entry.additions + entry.deletions).toLocaleString(
     "en-US",
   );
@@ -139,12 +131,6 @@ function CardBody({
           <Text variant="caption">
             Too large to display ({changedLines} changed lines).
           </Text>
-          {onOpenFilePreview ? (
-            <LinkButton
-              label="Open file"
-              onPress={() => onOpenFilePreview(entry.path)}
-            />
-          ) : null}
         </Notice>
       );
     case "load-on-demand":
@@ -183,7 +169,6 @@ export const DiffTabFileCard = memo(
     loadPath,
     retry,
     onAddToChat,
-    onOpenFilePreview,
     workspaceRootPath,
     testID,
   }: DiffTabFileCardProps) {
@@ -243,12 +228,6 @@ export const DiffTabFileCard = memo(
         bodyState.kind === "loaded" ? (
           <Notice testID="diff-tab-file-unrenderable">
             <Text variant="caption">No renderable diff for this file.</Text>
-            {onOpenFilePreview ? (
-              <LinkButton
-                label="Open file"
-                onPress={() => onOpenFilePreview(entry.path)}
-              />
-            ) : null}
           </Notice>
         ) : (
           <CardBody
@@ -256,7 +235,6 @@ export const DiffTabFileCard = memo(
             state={bodyState}
             onLoadPatch={onLoadPatch}
             onRetry={onRetry}
-            onOpenFilePreview={onOpenFilePreview}
           />
         );
     }
@@ -289,7 +267,6 @@ export const DiffTabFileCard = memo(
     previous.loadPath === next.loadPath &&
     previous.retry === next.retry &&
     previous.onAddToChat === next.onAddToChat &&
-    previous.onOpenFilePreview === next.onOpenFilePreview &&
     previous.workspaceRootPath === next.workspaceRootPath &&
     previous.testID === next.testID &&
     arePatchStatesEqual(previous.patchState, next.patchState),

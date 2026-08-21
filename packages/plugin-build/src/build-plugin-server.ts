@@ -9,7 +9,7 @@ import {
 } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
-import { validatePluginBuildManifest } from "./plugin-manifest.js";
+import { isRecord, validatePluginBuildManifest } from "./plugin-manifest.js";
 import { type PluginBuildToolchain } from "./toolchain.js";
 
 /**
@@ -66,10 +66,6 @@ interface PluginServerConfig {
   serverEntry: string;
   packageName: string;
   pluginVersion: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Read `<rootDir>/package.json` and resolve its `bb.server` entry, or throw. */

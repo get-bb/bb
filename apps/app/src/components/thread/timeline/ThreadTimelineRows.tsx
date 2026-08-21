@@ -51,7 +51,7 @@ import {
   isNonExpandableSummary,
   isRowExpandable,
 } from "./timeline-auto-expand.js";
-import { isRunningThreadRuntimeDisplayStatus } from "./thread-runtime-status.js";
+import { isRunningThreadRuntimeDisplayStatus } from "@bb/client-core";
 import type {
   ThreadTimelineAddToChatHandler,
   ThreadTimelineEditMessageHandler,
@@ -362,10 +362,7 @@ interface ActiveSummaryTreatmentArgs {
 
 interface TimelineRowTitleRenderStateArgs extends ActiveSummaryTreatmentArgs {
   compactActivityIntents: boolean;
-  spacing: TimelineRowsListSpacing;
 }
-
-interface TimelineRowTitleOptionsArgs extends ActiveSummaryTreatmentArgs {}
 
 interface TimelineRowTitleRenderStateCache {
   key: string;
@@ -507,7 +504,6 @@ function buildTimelineRowTitleRenderState({
   compactActivityIntents,
   row,
   scopeActive,
-  spacing,
 }: TimelineRowTitleRenderStateArgs): TimelineRowTitleRenderState {
   if (compactActivityIntents && shouldRenderCompactActivityIntentRows(row)) {
     const titles = buildTimelineActivityIntentTitles(row);
@@ -734,7 +730,7 @@ function timelineRowTitleOptions({
   activeLatestBundleId,
   row,
   scopeActive,
-}: TimelineRowTitleOptionsArgs): BuildTimelineRowTitleOptions {
+}: ActiveSummaryTreatmentArgs): BuildTimelineRowTitleOptions {
   const useActiveBundleLabel = isActiveLatestBundleSummary({
     activeLatestBundleId,
     row,
@@ -819,7 +815,7 @@ function isForkSeedAnchorRow(row: TimelineConversationViewRow): boolean {
  * timeline. Completed turn details and delegated-agent output intentionally do
  * not expose message actions, so they cannot claim the mobile inline footer.
  */
-export function findLastActionableAssistantMessageId(
+function findLastActionableAssistantMessageId(
   rows: readonly ThreadTimelineViewRow[],
 ): string | null {
   let lastMessageId: string | null = null;
@@ -887,7 +883,7 @@ export function findStreamingAssistantMessageId(
 }
 
 /** Finds the final regular user-authored message with a mobile action footer. */
-export function findLastActionableUserMessageId(
+function findLastActionableUserMessageId(
   rows: readonly ThreadTimelineViewRow[],
   canAddAttachments: boolean,
 ): string | null {
@@ -1772,7 +1768,6 @@ function TimelineRowView({
     compactActivityIntents,
     row,
     scopeActive,
-    spacing,
   });
 
   if (row.kind === "conversation") {

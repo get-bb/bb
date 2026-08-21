@@ -34,7 +34,6 @@ import { MergeBasePickerSheet } from "../thread/banner/MergeBasePickerSheet";
 import { DiffTabFileCard } from "./DiffTabFileCard";
 import { DiffTabHeader } from "./DiffTabHeader";
 import { DiffTargetPickerSheet } from "./DiffTargetPickerSheet";
-import { useDiffTabHost } from "./diff-tab-host";
 
 /** Rows beyond the viewport whose `auto` patches are prefetched. */
 const DIFF_FILES_OVERSCAN = 3;
@@ -43,8 +42,6 @@ const DIFF_ROW_GAP = 8;
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 1 };
 
 export interface DiffTabContentProps {
-  /** The thread the panel belongs to (root compose passes null). */
-  threadId: string | null;
   /** The thread's environment; null shows the "no workspace" state. */
   environmentId: string | null;
   /**
@@ -66,6 +63,12 @@ export interface DiffTabContentProps {
    * list scroll cooperate.
    */
   renderScrollComponent?: FlashListProps<DiffFileEntry>["renderScrollComponent"];
+  /**
+   * Quote text into the thread's composer ("Add to chat"). The host is
+   * expected to close its panel / sheet and focus the composer afterwards.
+   * The action hides when absent.
+   */
+  quoteIntoComposer?: (text: string) => void;
   testID?: string;
 }
 
@@ -114,7 +117,7 @@ function Notice({
  * in as the list scrolls (`useEnvironmentDiffPatches`). Header: file count
  * and +/- totals, the target picker (with the merge-base row), collapse-all,
  * refresh. "Add to chat" on a card quotes its patch into the composer through
- * the `DiffTabHost`.
+ * `quoteIntoComposer`.
  */
 export function DiffTabContent({
   environmentId,
@@ -122,9 +125,9 @@ export function DiffTabContent({
   onFocusedPath,
   active = true,
   renderScrollComponent,
+  quoteIntoComposer,
   testID = "diff-tab",
 }: DiffTabContentProps) {
-  const host = useDiffTabHost();
   const queryClient = useQueryClient();
   const environmentQuery = useEnvironment(environmentId);
   const environment = environmentQuery.data;
@@ -233,8 +236,7 @@ export function DiffTabContent({
     void filesQuery.refetch().finally(() => setRefreshing(false));
   }, [environmentId, filesQuery, queryClient]);
 
-  const { quoteIntoComposer, openFilePreview, workspaceRootPath } = host;
-  const displayRoot = workspaceRootPath ?? environment?.path ?? null;
+  const displayRoot = environment?.path ?? null;
 
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<DiffFileEntry>): ReactElement => (
@@ -247,7 +249,6 @@ export function DiffTabContent({
           loadPath={loadPath}
           retry={retry}
           onAddToChat={quoteIntoComposer}
-          onOpenFilePreview={openFilePreview}
           workspaceRootPath={displayRoot}
           testID="diff-tab-file"
         />
@@ -259,7 +260,6 @@ export function DiffTabContent({
       files.length,
       getPatchState,
       loadPath,
-      openFilePreview,
       quoteIntoComposer,
       retry,
     ],

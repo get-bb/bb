@@ -23,10 +23,6 @@ import { useThreadDetailRealtimeSubscription } from "../shared/use-realtime-subs
  * (`applyTerminalSessionUpsert`).
  */
 
-interface QueryOptions {
-  enabled?: boolean;
-}
-
 const EMPTY_SESSIONS: readonly TerminalSession[] = [];
 const DISABLED_SCOPE: TerminalQueryScope = {
   kind: "host_path",
@@ -34,12 +30,9 @@ const DISABLED_SCOPE: TerminalQueryScope = {
 };
 
 /** `GET /terminals?…` for one scope; `null` disables the query. */
-export function useTerminals(
-  scope: TerminalQueryScope | null,
-  options?: QueryOptions,
-) {
+export function useTerminals(scope: TerminalQueryScope | null) {
   const { sdk } = useProfileClient();
-  const enabled = (options?.enabled ?? true) && scope !== null;
+  const enabled = scope !== null;
   // `terminals-changed` rides the thread-detail subscription.
   useThreadDetailRealtimeSubscription(
     scope?.kind === "thread" ? scope.threadId : null,
@@ -61,14 +54,6 @@ export function useTerminals(
   });
 }
 
-/** `GET /terminals?threadId=`: the thread's terminal sessions. */
-export function useThreadTerminals(
-  threadId: string | null | undefined,
-  options?: QueryOptions,
-) {
-  return useTerminals(threadId ? { kind: "thread", threadId } : null, options);
-}
-
 /** The sessions of a terminal list query (stable empty list). */
 export function getTerminalSessions(
   data: TerminalListResponse | undefined,
@@ -80,13 +65,10 @@ export function getTerminalSessions(
  * `GET /terminals/:id`: one session record (the full-screen route and the
  * panel tab only carry the id). Seeded from any cached list.
  */
-export function useTerminalSession(
-  terminalId: string | null | undefined,
-  options?: QueryOptions,
-) {
+export function useTerminalSession(terminalId: string | null | undefined) {
   const { sdk } = useProfileClient();
   const queryClient = useQueryClient();
-  const enabled = (options?.enabled ?? true) && Boolean(terminalId);
+  const enabled = Boolean(terminalId);
   return useQuery<TerminalSession>({
     queryKey: terminalSessionQueryKey(terminalId ?? ""),
     queryFn: ({ signal }) => {

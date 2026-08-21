@@ -196,9 +196,7 @@ export function describePluginRow(
   return parts.join(" · ");
 }
 
-export function pluginIsLocalSource(
-  plugin: Pick<InstalledPlugin, "source">,
-): boolean {
+function pluginIsLocalSource(plugin: Pick<InstalledPlugin, "source">): boolean {
   return plugin.source.startsWith("path:");
 }
 

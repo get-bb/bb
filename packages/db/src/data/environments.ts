@@ -138,21 +138,6 @@ export function listEnvironments(db: DbConnection, projectId?: string) {
   return db.select().from(environments).all();
 }
 
-export function listEnvironmentsByIds(
-  db: DbConnection,
-  environmentIds: readonly string[],
-) {
-  if (environmentIds.length === 0) {
-    return [];
-  }
-
-  return db
-    .select()
-    .from(environments)
-    .where(inArray(environments.id, [...environmentIds]))
-    .all();
-}
-
 interface EnvironmentMetadataUpdateColumns {
   baseBranch?: string | null;
   branchName?: string | null;
@@ -410,8 +395,8 @@ export function requireEnvironmentLifecycleEventApplied(
   return outcome.environment;
 }
 
-function applyEnvironmentLifecycleEventRecord(
-  db: EnvironmentWriteConnection,
+export function applyEnvironmentLifecycleEventInTransaction(
+  db: DbTransaction,
   args: ApplyEnvironmentLifecycleEventArgs,
 ): ApplyEnvironmentLifecycleEventOutcome {
   const environment = getEnvironment(db, args.environmentId);
@@ -523,18 +508,11 @@ export function applyEnvironmentLifecycleEvent(
   args: ApplyEnvironmentLifecycleEventArgs,
 ): ApplyEnvironmentLifecycleEventOutcome {
   const outcome = db.transaction(
-    (tx) => applyEnvironmentLifecycleEventRecord(tx, args),
+    (tx) => applyEnvironmentLifecycleEventInTransaction(tx, args),
     { behavior: "immediate" },
   );
   if (outcome.applied) {
     notifier.notifyEnvironment(args.environmentId, outcome.changes);
   }
   return outcome;
-}
-
-export function applyEnvironmentLifecycleEventInTransaction(
-  tx: DbTransaction,
-  args: ApplyEnvironmentLifecycleEventArgs,
-): ApplyEnvironmentLifecycleEventOutcome {
-  return applyEnvironmentLifecycleEventRecord(tx, args);
 }

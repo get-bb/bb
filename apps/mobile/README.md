@@ -86,8 +86,7 @@ src/
                          useConnectionBanner), useAppBoot, PaletteProvider,
                          client-registry (per-profile clients + the global
                          mutation-error toast), e2e reset wiring,
-                         waitForActiveConnection, useOpenThreadInProfile
-                         (switch profile → wait → push thread),
+                         waitForActiveConnection,
                          ThreadOpenSignalHandler (realtime `thread-open` →
                          navigate, like the web's wsManager.onThreadOpen)
   notifications/         push notifications arrive in a later PR (RN glue:
@@ -166,10 +165,9 @@ src/
                          DiffTabFileCard over @/diff DiffFileCard with
                          skeleton / "Load diff" / too large / error bodies
                          and per-file "Add to chat"), DiffTargetPickerSheet,
-                         DiffTabHost context (quoteIntoComposer /
-                         openFilePreview), register.tsx (the `git-diff`
-                         panel registration: scroll-to path, close-then-quote
-                         into the thread's composer host);
+                         register.tsx (the `git-diff` panel registration:
+                         scroll-to path, close-then-quote into the thread's
+                         composer host via the `quoteIntoComposer` prop);
                          terminal/ — the terminal (Phase 6): TerminalView
                          (xterm in a react-native-webview page + the RN-owned
                          attach socket), TerminalTabContent (terminal +
@@ -519,9 +517,8 @@ argument drives a dev client through Metro instead.
   `kind` (`workspace` | `host` | `storage` | `project`), `path`, `line`
   (`12` or `12-20`), `source` (`working-tree` | `head` | `merge-base:<ref>`)
   and `status` (`deleted`).
-- **Opening files**: `useThreadFileOpener(threadId)` — an explicit
-  `FileOpenerProvider` override, else the mounted workspace panel
-  (`panel.openFile`, the file becomes a tab), else the route. Every open of a
+- **Opening files**: `useThreadFileOpener(threadId)` — the mounted workspace
+  panel (`panel.openFile`, the file becomes a tab), else the route. Every open of a
   workspace / storage file lands in the thread's Recent list (MMKV
   `bb.thread.recentItems-<threadId>-1`, the web's key and JSON shape).
 - **Local file links**: `useThreadLocalFileLinks` routes markdown
@@ -589,8 +586,8 @@ argument drives a dev client through Metro instead.
   key and, full screen, a "…" that opens the same menu as the header
   (rename / restart / new / close). Cursor keys follow DECCKM (SS3 in
   application mode), Ctrl+arrow sends `CSI 1;5<final>`.
-- **Data** (`src/data/terminals`): `useTerminals(scope)` /
-  `useThreadTerminals(threadId)` (`GET /terminals?threadId|environmentId|hostId`),
+- **Data** (`src/data/terminals`): `useTerminals(scope)`
+  (`GET /terminals?threadId|environmentId|hostId`),
   `useTerminalSession(id)`, `useCreateTerminal` / `useRestartTerminal` /
   `useCloseTerminal` / `useRenameTerminal`, `useFetchTerminalOutput`. Realtime
   `terminals-changed` (thread scope) invalidates the lists; the attach

@@ -1,9 +1,7 @@
 // Moved to @bb/client-core (shared with the native app); re-exported here so web imports keep resolving.
 export {
   createFilePreviewLineRange,
-  areFilePreviewLineRangesEqual,
   getFilePreviewLineRangeStart,
-  areEnvironmentFilePreviewSourcesEqual,
   isHtmlFilePreviewPath,
   normalizeFilePreviewMimeType,
   isMarkdownFilePreview,
@@ -12,19 +10,12 @@ export {
 } from "@bb/client-core";
 export type {
   FilePreviewTarget,
-  ImageFilePreview,
-  VideoFilePreview,
   TextFilePreview,
-  UnsupportedFilePreview,
   FilePreview,
   EnvironmentFilePreviewSource,
   WorkspaceFilePreviewStatusLabel,
   FilePreviewLineRange,
-  CreateFilePreviewLineRangeArgs,
-  AreFilePreviewLineRangesEqualArgs,
-  GetFilePreviewLineRangeStartArgs,
   WorkspaceFileTabState,
   HostFileTabState,
   ThreadStorageFileTabState,
-  BuildFilePreviewArgs,
 } from "@bb/client-core";

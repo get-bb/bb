@@ -3,9 +3,4 @@ export {
   buildNeighborReorderRequest,
   applyNeighborReorder,
 } from "@bb/client-core";
-export type {
-  NeighborReorderItem,
-  NeighborReorderRequest,
-  BuildNeighborReorderRequestArgs,
-  ApplyNeighborReorderArgs,
-} from "@bb/client-core";
+export type { NeighborReorderRequest } from "@bb/client-core";

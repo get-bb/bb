@@ -67,8 +67,6 @@ export interface PluginManifest {
   rootDir: string;
 }
 
-export { derivePluginId } from "@bb/domain";
-
 /** Resolve a manifest-relative entry path, rejecting escapes out of rootDir. */
 function resolveEntry(rootDir: string, entry: string, label: string): string {
   if (isAbsolute(entry)) {

@@ -181,9 +181,6 @@ export const pullRequestMergeOptionsSchema = z
     method: pullRequestMergeMethodSchema,
   })
   .strict();
-export type PullRequestMergeOptions = z.infer<
-  typeof pullRequestMergeOptionsSchema
->;
 
 export const environmentActionRequestSchema = z.discriminatedUnion("action", [
   z
@@ -296,9 +293,6 @@ export type EnvironmentActionApiError = z.infer<
 export const environmentWorkspaceNotApplicableReasonSchema = z.enum([
   "non_git_environment",
 ]);
-export type EnvironmentWorkspaceNotApplicableReason = z.infer<
-  typeof environmentWorkspaceNotApplicableReasonSchema
->;
 
 const environmentWorkspaceNotApplicableOutcomeSchema = z
   .object({

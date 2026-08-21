@@ -7,10 +7,6 @@ import type { AdapterCommand } from "./provider-adapter.js";
 import type { ProviderCommandPlan } from "@bb/provider-bridge-protocol/bridge-kit";
 import { promptTextInput } from "./test/prompt-input.js";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
-import {
-  classifyClaudeExecutionSettingsChange,
-  normalizeClaudeExecutionOptions,
-} from "./execution-options.js";
 import { fakeProviderScriptPath } from "./test/index.js";
 import {
   createFakeAdapter,
@@ -512,9 +508,7 @@ rl.on("line", (line) => {
         }),
         adapterFactory: () => ({
           ...createRecordingAdapter({ recordedCommands, scriptPath }),
-          classifyExecutionSettingsChange:
-            classifyClaudeExecutionSettingsChange,
-          normalizeExecutionOptions: normalizeClaudeExecutionOptions,
+          classifyExecutionSettingsChange: () => "live",
         }),
       });
 
@@ -532,7 +526,7 @@ rl.on("line", (line) => {
           approvalReviewer: "automatic",
           permissionEscalation: "ask",
           providerSubagentsEnabled: true,
-          serviceTier: "fast",
+          serviceTier: "default",
         },
       });
 
@@ -551,7 +545,7 @@ rl.on("line", (line) => {
           permissionEscalation: "deny",
           providerSubagentsEnabled: false,
           reasoningLevel: "high",
-          serviceTier: "fast",
+          serviceTier: "default",
           workflowsEnabled: true,
         },
       });
@@ -1485,8 +1479,8 @@ rl.on("line", (line) => {
           const adapter = createFakeAdapter(scriptPath);
           return {
             ...adapter,
-            translateEvent(event, context) {
-              const translated = adapter.translateEvent(event, context);
+            translateEvent(event) {
+              const translated = adapter.translateEvent(event);
               // Ride along on whatever the fake bridge said: a delta for an
               // item id no item/started ever opened.
               const first = translated[0];

@@ -1,3 +1,4 @@
+import { isRunningThreadRuntimeDisplayStatus } from "@bb/client-core";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import { BbHttpError } from "@bb/sdk/browser";
 import {
@@ -59,7 +60,6 @@ import { ThreadHeaderActions, ThreadHeaderTitle } from "./ThreadDetailHeader";
 import {
   describeThreadEnvironment,
   describeThreadStatusPill,
-  isThreadRuntimeBusy,
 } from "./thread-detail-header-model";
 import {
   buildTimelineListEntries,
@@ -160,7 +160,7 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
   );
 
   const runtimeDisplayStatus = thread?.runtime.displayStatus ?? "idle";
-  const scopeActive = isThreadRuntimeBusy(runtimeDisplayStatus);
+  const scopeActive = isRunningThreadRuntimeDisplayStatus(runtimeDisplayStatus);
   // The client-only "Stop requested" row while the server has not yet
   // written its own interrupted row.
   const threadStopping = thread?.status === "stopping";

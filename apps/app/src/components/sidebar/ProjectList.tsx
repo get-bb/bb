@@ -80,15 +80,21 @@ import {
 import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
 import type { ProjectThreadListState } from "./ProjectRow";
 import {
+  buildMachineThreadGroups,
+  buildPinnedSidebarState,
+  CHRONOLOGICAL_CONTAINER_ID,
   compareByCreatedAtDescending,
   compareStandardThreads,
   createSidebarProjectIdResolver,
   isSidebarProjectThread,
+  NO_MACHINE_GROUP_KEY,
   resolveSidebarProjectId,
+  sectionKeyForThreadSection,
+  buildSidebarEntitySectionId,
   type ProjectThreadItem,
   type SidebarSectionDefinition,
   type ThreadComparator,
-} from "./projectThreadGroups";
+} from "@bb/client-core";
 import {
   SortableProjectRow,
   type ProjectListRowModel,
@@ -98,7 +104,6 @@ import {
   type PinnedThreadTreeProps,
 } from "./PinnedThreadTree";
 import { useThreadTitleMentionResources } from "@/components/thread/ThreadTitleMentions";
-import { buildPinnedSidebarState } from "./pinnedSidebarThreads";
 import {
   collapsedEnvironmentIdsAtom,
   collapsedThreadIdsAtom,
@@ -113,12 +118,6 @@ import {
   type SidebarOrganizationMode,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
-import { sectionKeyForThreadSection } from "./sectionKeys";
-import {
-  buildMachineThreadGroups,
-  NO_MACHINE_GROUP_KEY,
-} from "./machineThreadGroups";
-import { CHRONOLOGICAL_CONTAINER_ID } from "./projectThreadGroups";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -144,7 +143,6 @@ import {
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { usePaneContentSplitIndicator } from "./paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
-import { buildSidebarEntitySectionId } from "./sidebarSectionOrder";
 import {
   renderBuiltInSidebarSection,
   SortableSidebarSection,

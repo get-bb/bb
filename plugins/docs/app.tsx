@@ -58,7 +58,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@bb/shared-ui/button";
-import { DelayedLoading } from "./delayed-loading.js";
+import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import {
   Dialog,
   DialogContent,
@@ -131,77 +131,6 @@ type SaveResult =
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseNotesData(value: unknown): NotesData {
-  if (
-    !isRecord(value) ||
-    !Array.isArray(value.vaults) ||
-    !isRecord(value.vault) ||
-    !Array.isArray(value.entryOrder) ||
-    value.entryOrder.some((entry) => typeof entry !== "string")
-  ) {
-    throw new Error("Docs returned an invalid notebook response");
-  }
-  // RPC is the untyped boundary. The backend owns and validates this exact
-  // JSON contract; keep the cast here rather than spreading unknown values.
-  return value as unknown as NotesData;
-}
-
-function parseNoteContent(value: unknown): NoteContent {
-  if (
-    !isRecord(value) ||
-    typeof value.content !== "string" ||
-    typeof value.sha256 !== "string"
-  ) {
-    throw new Error("Docs returned invalid file content");
-  }
-  return { content: value.content, sha256: value.sha256 };
-}
-
-function parsePreviewLease(value: unknown): PreviewLease {
-  if (
-    !isRecord(value) ||
-    typeof value.baseUrl !== "string" ||
-    typeof value.expiresAtMs !== "number"
-  ) {
-    throw new Error("Docs returned an invalid preview lease");
-  }
-  return { baseUrl: value.baseUrl, expiresAtMs: value.expiresAtMs };
-}
-
-function parseSaveResult(value: unknown): SaveResult {
-  if (
-    !isRecord(value) ||
-    (value.outcome !== "written" && value.outcome !== "conflict")
-  ) {
-    throw new Error("Docs returned an invalid save response");
-  }
-  if (value.outcome === "written" && typeof value.sha256 === "string") {
-    return { outcome: "written", sha256: value.sha256 };
-  }
-  if (
-    value.outcome === "conflict" &&
-    (typeof value.currentSha256 === "string" || value.currentSha256 === null)
-  ) {
-    return { outcome: "conflict", currentSha256: value.currentSha256 };
-  }
-  throw new Error("Docs returned an invalid save response");
-}
-
-function parseOpenedFile(value: unknown): {
-  file: NoteContent;
-  preview: PreviewLease;
-  previewPath: string;
-} {
-  if (!isRecord(value) || typeof value.previewPath !== "string") {
-    throw new Error("Docs returned an invalid opened file");
-  }
-  return {
-    file: parseNoteContent(value.file),
-    preview: parsePreviewLease(value.preview),
-    previewPath: value.previewPath,
-  };
 }
 
 function encodePath(value: string): string {
@@ -652,7 +581,7 @@ function refreshNotebookStore(
         notebookStores.get(store.vaultId) !== store
       )
         return;
-      store.data = parseNotesData(value);
+      store.data = value;
       store.error = null;
       notifyNotebookStore(store);
     })
@@ -891,7 +820,6 @@ function HtmlDocumentPanelBody({ document }: { document: DocumentRef }) {
         vaultId: document.vaultId,
         path: document.path,
       })
-      .then(parsePreviewLease)
       .then((lease) => {
         if (active) setState(lease);
       })
@@ -996,10 +924,8 @@ function NotePane({
     let active = true;
     setState(null);
     Promise.all([
-      rpc.call("readNote", { vaultId, path: notePath }).then(parseNoteContent),
-      rpc
-        .call("preparePreview", { vaultId, path: notePath })
-        .then(parsePreviewLease),
+      rpc.call("readNote", { vaultId, path: notePath }),
+      rpc.call("preparePreview", { vaultId, path: notePath }),
     ])
       .then(([file, lease]) => {
         if (!active) return;
@@ -1039,7 +965,7 @@ function NotePane({
             ? { expectedSha256: shaRef.current }
             : {}),
         });
-        const result = parseSaveResult(value);
+        const result = value;
         if (result.outcome === "conflict") {
           setConflict(true);
           return;
@@ -1053,11 +979,7 @@ function NotePane({
             vaultId,
             path: pathRef.current,
           });
-          if (
-            isRecord(renamed) &&
-            typeof renamed.path === "string" &&
-            renamed.path !== pathRef.current
-          ) {
+          if (renamed.path !== pathRef.current) {
             pathRef.current = renamed.path;
             renamedRef.current(renamed.path);
           }
@@ -1122,8 +1044,6 @@ function NotePane({
             name: file.name,
             content,
           });
-          if (!isRecord(value) || typeof value.markdownPath !== "string")
-            throw new Error("Upload returned an invalid path");
           return { markdownPath: value.markdownPath };
         }}
         onFirstRender={(markdown) => {
@@ -1205,7 +1125,6 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
     setSaveError(null);
     void rpc
       .call("openFile", { source: openerSource, path: filePath })
-      .then(parseOpenedFile)
       .then(({ file, preview, previewPath }) => {
         if (!active) return;
         markdownRef.current = file.content;
@@ -1236,16 +1155,14 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
       setSaveError(null);
       const content = markdownRef.current;
       try {
-        const result = parseSaveResult(
-          await rpc.call("saveOpenedFile", {
-            source: openerSource,
-            path: filePath,
-            content,
-            ...(!force && shaRef.current
-              ? { expectedSha256: shaRef.current }
-              : {}),
-          }),
-        );
+        const result = await rpc.call("saveOpenedFile", {
+          source: openerSource,
+          path: filePath,
+          content,
+          ...(!force && shaRef.current
+            ? { expectedSha256: shaRef.current }
+            : {}),
+        });
         if (result.outcome === "conflict") {
           setConflict(true);
           return;
@@ -1365,7 +1282,7 @@ function HtmlPane({
     setError(null);
     void rpc
       .call("preparePreview", { vaultId, path: filePath })
-      .then((value) => setLease(parsePreviewLease(value)))
+      .then((value) => setLease(value))
       .catch((reason: unknown) =>
         setError(reason instanceof Error ? reason.message : String(reason)),
       );
@@ -1961,11 +1878,7 @@ function NotesWorkspace({
         name: "Untitled",
       })
       .then((value) => {
-        if (
-          isCurrentVault(activeVaultId) &&
-          isRecord(value) &&
-          typeof value.path === "string"
-        ) {
+        if (isCurrentVault(activeVaultId)) {
           refresh();
           open(value.path);
         }
@@ -1997,8 +1910,6 @@ function NotesWorkspace({
         rootPath,
         ...(vaultHostId === "primary" ? {} : { hostId: vaultHostId }),
       });
-      if (!isRecord(value) || typeof value.id !== "string")
-        throw new Error("Create vault returned an invalid response");
       if (!isCurrentVault(activeVaultId)) return;
       setVaultName("");
       setVaultRootPath("");

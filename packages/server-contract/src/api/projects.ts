@@ -400,11 +400,9 @@ export type SkillProvider = z.infer<typeof skillProviderSchema>;
 
 /** Opaque, deterministic identity issued by authoritative host discovery. */
 export const installedSkillIdSchema = z.string().regex(/^skill_[a-f0-9]{64}$/u);
-export type InstalledSkillId = z.infer<typeof installedSkillIdSchema>;
 
 /** SHA-256 of the exact bytes read from SKILL.md. */
 export const skillRevisionSchema = z.string().regex(/^[a-f0-9]{64}$/u);
-export type SkillRevision = z.infer<typeof skillRevisionSchema>;
 
 export const skillSummarySchema = z.object({
   id: installedSkillIdSchema,

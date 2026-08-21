@@ -2,7 +2,6 @@ import type {
   CustomAcpAgent,
   CustomProviderModel,
 } from "@bb/config/bb-app-managed-config";
-import type { AppSurface } from "@bb/config/app-surface";
 import type { DbConnection } from "@bb/db";
 import type { FeatureFlags, ProviderNativeSkillRoots } from "@bb/domain";
 import type { Logger } from "@bb/logger";
@@ -25,7 +24,6 @@ export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 
 export interface ServerRuntimeConfig {
   appVersion: string;
-  appSurface: AppSurface;
   builtinSkillsRootPath: string;
   customAcpAgents: CustomAcpAgent[];
   customModels: CustomProviderModel[];
@@ -48,7 +46,6 @@ export interface ServerRuntimeConfig {
   openAiApiKey: string;
   serverPort: number;
   sharedSkillRoots: ProviderNativeSkillRoots;
-  threadStorageRootPath: string;
   transcriptionModel: string;
   appUrl?: string;
   devAppPort?: number;

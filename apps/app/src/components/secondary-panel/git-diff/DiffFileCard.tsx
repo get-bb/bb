@@ -5,6 +5,7 @@ import type { DiffPresentation } from "@/components/code/code-rendering";
 import {
   getGitDiffCardImageSizeStat,
   GitDiffCardBody,
+  GitDiffCardBodySkeleton,
   GitDiffCardImagePreviewBody,
   useGitDiffCardBody,
   type DiffFileContentsResult,
@@ -28,7 +29,6 @@ import {
 } from "@/components/git-diff/git-diff-parsing";
 import { Button } from "@bb/shared-ui/button";
 import { FilePathLink } from "@/components/ui/file-path-link.js";
-import { Skeleton } from "@bb/shared-ui/skeleton";
 import type { DiffPatchState } from "@/hooks/queries/use-environment-diff-patches";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -439,19 +439,6 @@ interface DiffFileCardBodyProps {
 const DIFF_FILE_CARD_NOTICE_CLASS =
   "flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-3 text-xs text-muted-foreground";
 
-function DiffFileCardBodySkeleton() {
-  return (
-    <div className="space-y-1.5 px-3 py-3">
-      <Skeleton className="h-3 w-full rounded-sm" />
-      <Skeleton className="h-3 w-[96%] rounded-sm" />
-      <Skeleton className="h-3 w-[93%] rounded-sm" />
-      <Skeleton className="h-3 w-[90%] rounded-sm" />
-      <Skeleton className="h-3 w-[87%] rounded-sm" />
-      <Skeleton className="h-3 w-[84%] rounded-sm" />
-    </div>
-  );
-}
-
 function DiffFileCardLoadDiffNotice({
   changedLines,
   entry,
@@ -500,7 +487,7 @@ function DiffFileCardBody({
       binaryImagePreviewState.status === "idle" ||
       binaryImagePreviewState.status === "loading"
     ) {
-      return <DiffFileCardBodySkeleton />;
+      return <GitDiffCardBodySkeleton />;
     }
     if (binaryImagePreviewState.status === "ready") {
       return (
@@ -590,7 +577,7 @@ function DiffFileCardBody({
       );
     }
 
-    return <DiffFileCardBodySkeleton />;
+    return <GitDiffCardBodySkeleton />;
   }
 
   return (

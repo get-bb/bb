@@ -69,26 +69,26 @@ function requireProductDefaultProviderId(
   return providerId;
 }
 
-export interface ResolveCreateThreadExecutionDefaultsArgs {
+interface ResolveCreateThreadExecutionDefaultsArgs {
   requestedProviderId?: string;
   storedDefaults: ProjectExecutionDefaults | null;
 }
 
-export interface CreateThreadExecutionDefaultsResolved {
+interface CreateThreadExecutionDefaultsResolved {
   executionDefaults: ProjectExecutionDefaults | null;
   providerId: string;
 }
 
-export interface IsManagedChildThreadArgs {
+interface IsManagedChildThreadArgs {
   parentThread?: ParentThread | null;
   thread: Pick<Thread, "parentThreadId" | "projectId">;
 }
 
-export interface ResolveThreadDefaultPermissionModeArgs {
+interface ResolveThreadDefaultPermissionModeArgs {
   thread: Pick<Thread, "providerId">;
 }
 
-export interface ResolveThreadExecutionPermissionModeArgs {
+interface ResolveThreadExecutionPermissionModeArgs {
   lastExecutionPermissionMode?: RecordedPermissionMode;
   parentThread?: ParentThread | null;
   parentThreadExecutionPermissionMode?: RecordedPermissionMode;
@@ -100,15 +100,15 @@ export interface ResolveThreadExecutionPermissionModeArgs {
   >;
 }
 
-export interface ResolveCreateThreadEnvironmentArgs {
+interface ResolveCreateThreadEnvironmentArgs {
   parentThread?: ParentThread | null;
   projectId: string;
   requestedEnvironment: EnvironmentArgs;
 }
 
-export interface ResolveSupportedPermissionModeArgs {
+interface ResolveSupportedPermissionModeArgs {
   preferredPermissionMode: PermissionMode;
-  providerId?: string;
+  providerId: string;
 }
 
 type ImplicitHostDefaultEnvironment = Extract<
@@ -164,10 +164,6 @@ function resolveSupportedPermissionMode(
   registry: ProviderRegistryService,
   args: ResolveSupportedPermissionModeArgs,
 ): PermissionMode {
-  if (!args.providerId) {
-    return args.preferredPermissionMode;
-  }
-
   const permissionModes = registry.getSupportedPermissionModes(args.providerId);
   if (!permissionModes) {
     return args.preferredPermissionMode;
@@ -204,17 +200,7 @@ export function resolveCreateThreadExecutionDefaults(
 
   const storedDefaults =
     args.storedDefaults?.providerId === providerId ? args.storedDefaults : null;
-  if (storedDefaults) {
-    return {
-      executionDefaults: storedDefaults,
-      providerId,
-    };
-  }
-
-  return {
-    executionDefaults: null,
-    providerId,
-  };
+  return { executionDefaults: storedDefaults, providerId };
 }
 
 export function buildProviderThreadExecutionDefaults(
@@ -355,9 +341,9 @@ export function resolveThreadExecutionPermissionMode(
   const ceiling = normalizeRecordedPermissionMode(
     args.parentThreadExecutionPermissionMode,
   );
-  const supported = args.thread.providerId
-    ? registry.getSupportedPermissionModes(args.thread.providerId)
-    : null;
+  const supported = registry.getSupportedPermissionModes(
+    args.thread.providerId,
+  );
   // A null clamp means the provider supports nothing at or below the parent's
   // mode; returning the ceiling lets provider validation reject the pairing.
   return (
@@ -404,7 +390,7 @@ function resolvePreferredThreadExecutionPermissionMode(
  * workspace-write keeps its workspace boundary, while legacy readonly falls
  * back to Accept Edits instead of being accepted as a public writable alias.
  */
-export function normalizeRecordedPermissionMode(
+function normalizeRecordedPermissionMode(
   permissionMode: RecordedPermissionMode,
 ): PermissionMode {
   switch (permissionMode) {

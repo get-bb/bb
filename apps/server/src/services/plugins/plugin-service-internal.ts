@@ -22,24 +22,13 @@ import type { HostSharedPortCoordinator } from "../../ws/host-shared-ports.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import type { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
 export type {
-  PluginApplyUpdateResult,
   PluginHandlerStats,
   PluginRuntimeStatus,
-  PluginServiceEntry,
   PluginUpdateCheckEntry,
 } from "@bb/server-contract";
 
 /** Live state of one registered background service. */
 export type PluginServiceState = "running" | "backoff" | "stopped";
-
-export interface PluginScheduleEntry {
-  name: string;
-  cron: string;
-  nextRunAt: number;
-  lastRunAt: number | null;
-  lastStatus: "running" | "ok" | "error" | null;
-  lastError: string | null;
-}
 
 export type PluginListEntry = InstalledPlugin;
 
@@ -63,8 +52,6 @@ export interface LoadedPlugin {
   manifest: PluginManifest;
   handle: PluginApiHandle;
   services: ServiceRuntime[];
-  isBuiltin: boolean;
-  builtinName: string | null;
 }
 
 export interface PluginHostArtifactSnapshot {

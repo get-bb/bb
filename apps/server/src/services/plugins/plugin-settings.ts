@@ -10,24 +10,10 @@ import type {
   PluginSettingDescriptors,
   PluginSettingValue,
 } from "@get-bb/plugin-sdk";
-import {
-  registerSettingDescriptors,
-  validateSettingsUpdate,
-} from "@get-bb/plugin-sdk/internal/host-policy";
+import { validateSettingsUpdate } from "@get-bb/plugin-sdk/internal/host-policy";
 import { deleteSecretFile, writeSecretFile } from "@bb/secret-storage";
 
-export {
-  registerSettingDescriptors,
-  validateSettingsUpdate as validatePluginSettingsUpdate,
-};
-
-// The descriptor types are part of the backend plugin contract in
-// @get-bb/plugin-sdk; re-exported so server code keeps one import site.
-export type {
-  PluginSettingDescriptor,
-  PluginSettingDescriptors,
-  PluginSettingValue,
-} from "@get-bb/plugin-sdk";
+export { validateSettingsUpdate as validatePluginSettingsUpdate };
 
 /** A settings update the routes rejected: unknown key or wrong value type. */
 export class PluginSettingsValidationError extends Error {
@@ -68,7 +54,7 @@ async function readSecret(
   }
 }
 
-export interface PluginSettingsStoreArgs {
+interface PluginSettingsStoreArgs {
   db: DbConnection;
   dataDir: string;
   pluginId: string;

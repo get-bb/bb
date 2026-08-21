@@ -9,41 +9,14 @@
 //   parseMarkdown, markdownToPlainText, extractMarkdownHeadings,
 //   classifyMarkdownLink, tokenizeCodeLines, substitutePromptMentions, …
 export {
-  buildTableModel,
-  collectDefinitions,
-  getNodeSource,
-  splitParagraphSegments,
   type MarkdownDefinition,
   type ParagraphSegment,
   type TableModel,
 } from "./blocks";
+export { type CodeLine, type CodeSpan, type CodeTokenType } from "./code";
+export { type CodeBlockProps } from "./CodeBlock";
 export {
-  CODE_HIGHLIGHT_CHAR_LIMIT,
-  CODE_TOKEN_COLORS,
-  codeTokenColor,
-  normalizeCodeLanguage,
-  tokenizeCodeLines,
-  type CodeLine,
-  type CodeSpan,
-  type CodeTokenType,
-} from "./code";
-export {
-  CodeBlock,
-  copyCodeToClipboard,
-  type CodeBlockProps,
-} from "./CodeBlock";
-export { withAlpha } from "./colors";
-export {
-  MARKDOWN_DIRECTIVE_LIMIT,
-  normalizeDirectiveAttributes,
-  reconstructDirectiveSource,
-  remarkBbDirectives,
-} from "./directives";
-export {
-  classifyMarkdownLink,
-  parseLocalFileHref,
   parseLocalFileLineSuffix,
-  resolveInlineCodeMarkdownFileHref,
   type ClassifyMarkdownLinkOptions,
   type MarkdownExternalLink,
   type MarkdownLinkTarget,
@@ -52,7 +25,6 @@ export {
 } from "./links";
 export { Markdown, type MarkdownProps } from "./Markdown";
 export {
-  useMarkdownContext,
   type MarkdownBlockPress,
   type MarkdownCallbacks,
   type MarkdownContextValue,
@@ -62,13 +34,9 @@ export {
   type MarkdownThreadMentionPress,
   type MarkdownThreadMentions,
 } from "./MarkdownContext";
-export { MarkdownImage, type MarkdownImageProps } from "./MarkdownImage";
-export { MarkdownTable } from "./MarkdownTable";
+export { type MarkdownImageProps } from "./MarkdownImage";
 export { MarkdownText, type MarkdownTextProps } from "./MarkdownText";
 export {
-  isBbDirectiveNode,
-  isBbPromptMentionNode,
-  isBbThreadMentionNode,
   type BbDirectiveKind,
   type BbDirectiveNode,
   type BbMarkdownNode,
@@ -76,18 +44,8 @@ export {
   type BbThreadMentionNode,
   type IndexedPromptMention,
 } from "./mdast-nodes";
+export { type MentionPillProps } from "./MentionPill";
 export {
-  promptMentionAccessibilityLabel,
-  promptMentionIconName,
-  promptMentionKindLabel,
-} from "./mention-display";
-export { MentionPill, type MentionPillProps } from "./MentionPill";
-export {
-  clearParseMarkdownCache,
-  DEFAULT_PARSE_MARKDOWN_OPTIONS,
-  parseMarkdown,
-  parseMarkdownUncached,
-  splitMarkdownFrontmatter,
   type ParseMarkdownOptions,
   type SplitMarkdownFrontmatterResult,
 } from "./parse";
@@ -96,14 +54,4 @@ export {
   markdownToPlainText,
   type MarkdownHeading,
 } from "./plain-text";
-export {
-  normalizePromptTextMentions,
-  remarkPromptMentions,
-  substitutePromptMentions,
-  type SubstitutePromptMentionsResult,
-} from "./prompt-mentions";
-export {
-  remarkThreadMentions,
-  splitRawThreadIdsInText,
-  type RawThreadIdTextSegment,
-} from "./thread-mentions";
+export { type SubstitutePromptMentionsResult } from "./prompt-mentions";

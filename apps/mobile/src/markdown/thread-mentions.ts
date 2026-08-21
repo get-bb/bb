@@ -17,7 +17,6 @@ const THREAD_MENTION_PATTERN = new RegExp(
   `@thread:([A-Za-z0-9_-]+)|(${RAW_THREAD_ID_PATTERN_SOURCE})`,
   "gu",
 );
-const RAW_THREAD_ID_PATTERN = new RegExp(RAW_THREAD_ID_PATTERN_SOURCE, "gu");
 const THREAD_MENTION_PREFIX = "@thread";
 const THREAD_MENTION_ID_PATTERN = /^[A-Za-z0-9_-]+$/u;
 
@@ -195,45 +194,6 @@ function isMentionEndBoundary(text: string, index: number): boolean {
 
 function isRawThreadIdEndBoundary(text: string, index: number): boolean {
   return text[index] !== "\\" && isMentionEndBoundary(text, index);
-}
-
-export interface RawThreadIdTextSegment {
-  rawThreadId: string | null;
-  text: string;
-}
-
-/** Splits prose-only text using the same exact raw-id boundaries as Markdown. */
-export function splitRawThreadIdsInText(
-  text: string,
-): RawThreadIdTextSegment[] {
-  RAW_THREAD_ID_PATTERN.lastIndex = 0;
-  const segments: RawThreadIdTextSegment[] = [];
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-  while ((match = RAW_THREAD_ID_PATTERN.exec(text)) !== null) {
-    const matchEnd = match.index + match[0].length;
-    if (
-      !isRawThreadIdBoundary(text, match.index) ||
-      !isRawThreadIdEndBoundary(text, matchEnd)
-    ) {
-      continue;
-    }
-    if (match.index > cursor) {
-      segments.push({
-        rawThreadId: null,
-        text: text.slice(cursor, match.index),
-      });
-    }
-    segments.push({ rawThreadId: match[0], text: match[0] });
-    cursor = matchEnd;
-  }
-  if (segments.length === 0) {
-    return [{ rawThreadId: null, text }];
-  }
-  if (cursor < text.length) {
-    segments.push({ rawThreadId: null, text: text.slice(cursor) });
-  }
-  return segments;
 }
 
 function isDirectiveMentionEndBoundary(parent: Parent, index: number): boolean {

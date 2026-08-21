@@ -154,21 +154,19 @@ export class EnvironmentReadCache<
  * foreground produces; short enough that an unsubscribed environment (no
  * events) never shows a stale tree for long.
  */
-export const WORKSPACE_STATUS_CACHE_TTL_MS = 3_000;
+const WORKSPACE_STATUS_CACHE_TTL_MS = 3_000;
 /**
  * How long a `workspace.pull_request` result may be reused without a daemon
  * event. Remote check runs change without any local event, so this bounds
  * how stale a check status can be between polls.
  */
-export const WORKSPACE_PULL_REQUEST_CACHE_TTL_MS = 10_000;
+const WORKSPACE_PULL_REQUEST_CACHE_TTL_MS = 10_000;
 
 interface WorkspaceReadCachesDeps {
   hub: {
     onChangedMessage(listener: (message: ChangedMessage) => void): () => void;
   };
   now?: () => number;
-  pullRequestTtlMs?: number;
-  statusTtlMs?: number;
 }
 
 export class WorkspaceReadCaches {
@@ -183,11 +181,11 @@ export class WorkspaceReadCaches {
     const now = deps.now ?? Date.now;
     this.status = new EnvironmentReadCache({
       now,
-      ttlMs: deps.statusTtlMs ?? WORKSPACE_STATUS_CACHE_TTL_MS,
+      ttlMs: WORKSPACE_STATUS_CACHE_TTL_MS,
     });
     this.pullRequest = new EnvironmentReadCache({
       now,
-      ttlMs: deps.pullRequestTtlMs ?? WORKSPACE_PULL_REQUEST_CACHE_TTL_MS,
+      ttlMs: WORKSPACE_PULL_REQUEST_CACHE_TTL_MS,
     });
     deps.hub.onChangedMessage((message) => {
       this.handleChangedMessage(message);

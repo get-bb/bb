@@ -21,7 +21,7 @@ export function pluginArtifactStorageRoot(
   }
   const checkoutRoot = pluginArtifactGitCheckoutRoot(artifact);
   if (checkoutRoot === null) return null;
-  return artifact.path === checkoutRoot ? checkoutRoot : artifact.path;
+  return artifact.path;
 }
 
 /**

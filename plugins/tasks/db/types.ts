@@ -1,44 +1,17 @@
 import type { TaskSort } from "../shared/pagination.js";
-import type { PresetPermissionMode } from "../shared/contract.js";
+import type {
+  PRESET_ENVIRONMENT_KINDS,
+  PresetPermissionMode,
+  TASK_THREAD_LIVE_STATUSES,
+  TaskPriority,
+  TaskStatus,
+} from "../shared/contract.js";
 
-export const TASK_STATUSES = [
-  "backlog",
-  "todo",
-  "in_progress",
-  "in_review",
-  "done",
-  "canceled",
-] as const;
+export type { TaskPriority, TaskStatus };
 
-export type TaskStatus = (typeof TASK_STATUSES)[number];
-
-export const TASK_PRIORITIES = [
-  "urgent",
-  "high",
-  "medium",
-  "low",
-  "none",
-] as const;
-
-export type TaskPriority = (typeof TASK_PRIORITIES)[number];
-
-export const COMMENT_KINDS = ["user", "agent", "system"] as const;
-export type CommentKind = (typeof COMMENT_KINDS)[number];
-
-export const TASK_THREAD_LIVE_STATUSES = [
-  "starting",
-  "working",
-  "idle",
-  "completed",
-  "failed",
-] as const;
+type CommentKind = "user" | "agent" | "system";
 
 export type TaskThreadLiveStatus = (typeof TASK_THREAD_LIVE_STATUSES)[number];
-
-export const PRESET_ENVIRONMENT_KINDS = [
-  "project-default",
-  "new-worktree",
-] as const;
 
 export type PresetEnvironmentKind = (typeof PRESET_ENVIRONMENT_KINDS)[number];
 

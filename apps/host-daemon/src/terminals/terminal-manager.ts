@@ -94,11 +94,8 @@ export interface TerminalManagerOptions {
   logger: HostDaemonLogger;
   platform?: NodeJS.Platform;
   ptyAdapter?: TerminalPtyAdapter;
-  outputBatchDelayMs?: number;
   resolveShell?: ResolveTerminalShell;
   runtimeManager: RuntimeManager;
-  scrollbackMaxBytes?: number;
-  scrollbackMaxChunks?: number;
   sendMessage: (message: HostDaemonDaemonWsMessage) => boolean;
 }
 
@@ -201,7 +198,7 @@ interface TerminalOperationCompletion {
   resolve: () => void;
 }
 
-export const nodePtyAdapter: TerminalPtyAdapter = {
+const nodePtyAdapter: TerminalPtyAdapter = {
   spawn(args) {
     ensureNodePtySpawnHelperExecutable(args.logger);
     const pty = spawnPty(args.file, args.args, {
@@ -244,7 +241,7 @@ interface EnsureNodePtySpawnHelperExecutableInPackageArgs {
 
 type NodePtySpawnHelperPathList = string[];
 
-export function resolveNodePtySpawnHelperCandidatePaths(
+function resolveNodePtySpawnHelperCandidatePaths(
   args: ResolveNodePtySpawnHelperPathArgs,
 ): NodePtySpawnHelperPathList {
   const helperPaths: string[] = [];
@@ -335,7 +332,7 @@ function isNonEmptyString(value: string | undefined): value is string {
   return value !== undefined && value.length > 0;
 }
 
-export async function resolveDefaultTerminalShell(): Promise<string> {
+async function resolveDefaultTerminalShell(): Promise<string> {
   const candidates = [
     process.env.SHELL,
     "/bin/zsh",
@@ -463,12 +460,9 @@ function consumePrimaryDeviceAttributesQueries(
 
 export class TerminalManager {
   private readonly closeGracePeriodMs: number;
-  private readonly outputBatchDelayMs: number;
   private readonly platform: NodeJS.Platform;
   private readonly ptyAdapter: TerminalPtyAdapter;
   private readonly resolveShell: ResolveTerminalShell;
-  private readonly scrollbackMaxBytes: number;
-  private readonly scrollbackMaxChunks: number;
   private readonly terminalOperations = new Map<string, Promise<void>>();
   private readonly openingTerminalEnvironmentIds = new Map<
     string,
@@ -479,15 +473,9 @@ export class TerminalManager {
   constructor(private readonly options: TerminalManagerOptions) {
     this.closeGracePeriodMs =
       options.closeGracePeriodMs ?? DEFAULT_TERMINAL_CLOSE_GRACE_PERIOD_MS;
-    this.outputBatchDelayMs =
-      options.outputBatchDelayMs ?? DEFAULT_OUTPUT_BATCH_DELAY_MS;
     this.platform = options.platform ?? process.platform;
     this.ptyAdapter = options.ptyAdapter ?? nodePtyAdapter;
     this.resolveShell = options.resolveShell ?? resolveDefaultTerminalShell;
-    this.scrollbackMaxBytes =
-      options.scrollbackMaxBytes ?? DEFAULT_SCROLLBACK_MAX_BYTES;
-    this.scrollbackMaxChunks =
-      options.scrollbackMaxChunks ?? DEFAULT_SCROLLBACK_MAX_CHUNKS;
   }
 
   async handleMessage(message: HostDaemonServerTerminalMessage): Promise<void> {
@@ -905,7 +893,7 @@ export class TerminalManager {
     session.outputFlushTimeout = setTimeout(() => {
       session.outputFlushTimeout = null;
       this.flushTerminalOutput(session);
-    }, this.outputBatchDelayMs);
+    }, DEFAULT_OUTPUT_BATCH_DELAY_MS);
   }
 
   private flushTerminalOutput(session: TerminalSession): void {
@@ -956,8 +944,8 @@ export class TerminalManager {
 
   private pruneScrollback(session: TerminalSession): void {
     while (
-      session.scrollbackBytes > this.scrollbackMaxBytes ||
-      session.scrollback.length > this.scrollbackMaxChunks
+      session.scrollbackBytes > DEFAULT_SCROLLBACK_MAX_BYTES ||
+      session.scrollback.length > DEFAULT_SCROLLBACK_MAX_CHUNKS
     ) {
       const removed = session.scrollback.shift();
       if (!removed) {

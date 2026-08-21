@@ -159,7 +159,7 @@ import {
   type ThreadSecondaryPanelWorkspaceFileOpenHandler,
   type ThreadSecondaryPanelFileOpenOptions,
 } from "./useThreadSecondaryPanelVisibility";
-import type { HostConnectionNotice } from "./ThreadTimelinePane";
+import type { HostConnectionNotice } from "@/components/thread/timeline/ThreadTimelineSurface";
 import {
   shouldLoadThreadStorageFileList,
   useThreadStorageViewer,
@@ -225,7 +225,7 @@ import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
-import { isSecondaryFileTab } from "@/components/secondary-panel/secondaryPanelTabState";
+import { isSecondaryFileTab } from "@bb/client-core";
 import { useThreadOpenFileSignal } from "@/components/secondary-panel/useThreadOpenFileSignal";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import type {
@@ -399,7 +399,7 @@ interface BuildMarkdownPreviewLinkRoutingArgs {
   rootPath: string | null | undefined;
 }
 
-export interface ResolveHostFilePreviewLinkRootPathArgs {
+interface ResolveHostFilePreviewLinkRootPathArgs {
   baseDir: string | undefined;
   threadStorageRootPath: string | null;
   workspaceRootPath: string | null;
@@ -471,7 +471,7 @@ function buildOpenTargetMenuItemLabel(target: WorkspaceOpenTarget): string {
   return `Open in ${target.label}`;
 }
 
-export function resolveHostFilePreviewLinkRootPath({
+function resolveHostFilePreviewLinkRootPath({
   baseDir,
   threadStorageRootPath,
   workspaceRootPath,
@@ -543,7 +543,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const navigate = useNavigate();
   useFixedPanelTabsStorageMaintenance();
   const systemConfigQuery = useSystemConfig();
-  const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId ?? "");
+  const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId);
   const hasThreadDetailBootstrapSettled =
     threadDetailBootstrapQuery.isSuccess || threadDetailBootstrapQuery.isError;
   const {
@@ -551,7 +551,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     isFetching,
     isLoadingError,
     error,
-  } = useThread(threadId ?? "", {
+  } = useThread(threadId, {
     enabled: hasThreadDetailBootstrapSettled,
     // A successful bootstrap just populated this exact query with a fresh
     // thread response; refetching it immediately adds redundant tunnel work.
@@ -712,7 +712,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     filePreviewEnabled: false,
     threadId,
   });
-  const terminalsListQuery = useThreadTerminals(threadId ?? "", {
+  const terminalsListQuery = useThreadTerminals(threadId, {
     enabled: isSecondaryPanelOpen,
   });
   const {
@@ -904,7 +904,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     timelineLoading,
     timelineRows,
   } = useThreadTimelineController({
-    threadId: threadId ?? "",
+    threadId,
   });
   const sendMessage = useSendThreadMessage();
   const editMessage = useEditThreadMessage();
@@ -1032,7 +1032,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   // no duplicated draft state.
   // This view only needs draft actions at event time. Subscribing to the draft
   // here made every composer write re-render the surrounding thread tree.
-  const selectionPromptDraftProjectId = thread?.projectId ?? projectId ?? "";
+  const selectionPromptDraftProjectId = thread?.projectId ?? projectId;
   const selectionPromptDraftThreadId = thread?.id ?? "";
   const selectionPromptDraft = useMemo(
     () =>
@@ -1265,7 +1265,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     environment?.status === "ready" &&
     connectedHostIds.has(environment.hostId);
   const createThreadInWorktree = useCreateThreadInWorktree({
-    projectId: projectId ?? "",
+    projectId,
     environmentId: thread?.environmentId ?? "",
   });
   const environmentMergeBaseBranch =
@@ -1279,7 +1279,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     openCommitDiff: openPersistedCommitDiff,
     openDiffFile: openPersistedDiffFile,
     openThreadDiffPanel: openPersistedDiffPanel,
-    openThreadSecondaryPanel: openPersistedSecondaryPanel,
     pendingGitDiffCommitSha,
     pendingGitDiffScrollPath,
     requestedMergeBaseBranch,
@@ -1318,7 +1317,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     openPersistedDiffFile,
     openPersistedDiffPanel,
     openPersistedHostFile,
-    openPersistedPanel: openPersistedSecondaryPanel,
+    openPersistedPanel: setThreadSecondaryPanelForSurface,
     openPersistedStorageFile,
     openPersistedWorkspaceFile,
     togglePersistedPanel: toggleDefaultPersistedSecondaryPanel,
@@ -2224,10 +2223,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             handleOpenTimelinePluginPanel({
               pluginId: SIDE_CHAT_PLUGIN_ID,
               actionId: SIDE_CHAT_PLUGIN_PANEL_ACTION_ID,
-              params:
-                threadId === undefined
-                  ? { threadId: action.threadId }
-                  : { threadId: action.threadId, sourceThreadId: threadId },
+              params: { threadId: action.threadId, sourceThreadId: threadId },
             });
           };
         default:

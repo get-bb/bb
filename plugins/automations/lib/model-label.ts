@@ -18,7 +18,7 @@
  */
 
 /** Verbatim from selection-state.ts:310. */
-export function formatModelLabel(value: string): string {
+function formatModelLabel(value: string): string {
   return value
     .split("-")
     .map((part) => {
@@ -39,10 +39,7 @@ export function formatModelLabel(value: string): string {
  * this matches on prefix rather than exact equality. Remove the widening once
  * the stored id space is reconciled.
  */
-export function stripModelBrandPrefix(
-  label: string,
-  providerId: string,
-): string {
+function stripModelBrandPrefix(label: string, providerId: string): string {
   if (providerId.startsWith("claude")) {
     return label.replace(/^Claude\s+/i, "");
   }

@@ -17,12 +17,7 @@
  * to spell `max-h-[…px]` out explicitly. The numeric pixel values stay
  * adjacent so a future tier change touches one block.
  */
-export const detailScrollSizeValues = [
-  "summary",
-  "base",
-  "delegation",
-] as const;
-export type DetailScrollSize = (typeof detailScrollSizeValues)[number];
+export type DetailScrollSize = "summary" | "base" | "delegation";
 
 const DETAIL_SCROLL_MAX_HEIGHT_CLASS_BY_SIZE: Record<DetailScrollSize, string> =
   {

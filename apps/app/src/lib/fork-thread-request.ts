@@ -4,7 +4,4 @@ export {
   isThreadForkable,
   buildForkThreadRequest,
 } from "@bb/client-core";
-export type {
-  ForkThreadCreateSeed,
-  BuildForkThreadRequestArgs,
-} from "@bb/client-core";
+export type { ForkThreadCreateSeed } from "@bb/client-core";

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   createTerminalOutputLineReader,
   isActiveTerminalSessionStatus,
-  isVisibleTerminalSessionStatus,
   readTerminalOutputLines,
   type TerminalSessionStatus,
 } from "../src/index.js";
@@ -10,15 +9,14 @@ import {
 interface TerminalSessionStatusExpectation {
   active: boolean;
   status: TerminalSessionStatus;
-  visible: boolean;
 }
 
 const TERMINAL_SESSION_STATUS_EXPECTATIONS: TerminalSessionStatusExpectation[] =
   [
-    { active: true, status: "starting", visible: true },
-    { active: true, status: "running", visible: true },
-    { active: false, status: "disconnected", visible: true },
-    { active: false, status: "exited", visible: false },
+    { active: true, status: "starting" },
+    { active: true, status: "running" },
+    { active: false, status: "disconnected" },
+    { active: false, status: "exited" },
   ];
 
 describe("terminal session status helpers", () => {
@@ -26,14 +24,6 @@ describe("terminal session status helpers", () => {
     for (const expectation of TERMINAL_SESSION_STATUS_EXPECTATIONS) {
       expect(isActiveTerminalSessionStatus(expectation.status)).toBe(
         expectation.active,
-      );
-    }
-  });
-
-  it("keeps disconnected terminals visible without counting them as active", () => {
-    for (const expectation of TERMINAL_SESSION_STATUS_EXPECTATIONS) {
-      expect(isVisibleTerminalSessionStatus(expectation.status)).toBe(
-        expectation.visible,
       );
     }
   });

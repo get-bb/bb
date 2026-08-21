@@ -18,7 +18,7 @@ import {
   openSecondaryPanelTabInState,
   reconcileFixedPanelViewTabsInState,
   replaceNewTabWithSecondaryPanelTabInState,
-} from "./secondaryPanelTabState";
+} from "@bb/client-core";
 
 function makeWorkspaceTab(environmentId: string) {
   return createWorkspaceFilePreviewFixedPanelTab({

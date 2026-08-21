@@ -1,5 +1,4 @@
 import type { Host } from "@bb/domain";
-import type { CreateHostJoinCodeResponse } from "@bb/server-contract";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
 import {
@@ -12,23 +11,6 @@ import {
   updateHostPermissionCeiling,
   type UpdateHostPermissionCeilingRequest,
 } from "./permission-ceiling";
-
-/**
- * Mint a join code for enrolling a new machine (`POST /hosts/join-codes`).
- * The code is shown to the user for `bb host join`; the host row appears
- * (via realtime) once the daemon connects.
- */
-export function useCreateHostJoinCode() {
-  const { sdk } = useProfileClient();
-  const queryClient = useQueryClient();
-  return useMutation<CreateHostJoinCodeResponse, Error, void>({
-    meta: { showErrorToast: false },
-    mutationFn: () => sdk.hosts.createJoinCode(),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: hostsQueryKey() });
-    },
-  });
-}
 
 interface RenameHostRequest {
   hostId: string;

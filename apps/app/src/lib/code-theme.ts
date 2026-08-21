@@ -59,7 +59,7 @@ export function getResolvedCodeTheme(): ResolvedCodeTheme {
   return currentResolvedCodeTheme;
 }
 
-export function subscribeResolvedCodeTheme(callback: () => void): () => void {
+function subscribeResolvedCodeTheme(callback: () => void): () => void {
   subscribers.add(callback);
   return () => {
     subscribers.delete(callback);
@@ -101,19 +101,4 @@ export function useResolvedCodeThemePair(): {
     () => ({ dark: resolved.dark, light: resolved.light }),
     [resolved.dark, resolved.light],
   );
-}
-
-/** Read the host-published names. Plugins that render FileDiff should use this. */
-export function readHostCodeThemePair(): { dark: string; light: string } {
-  if (typeof document === "undefined") {
-    return {
-      dark: defaultResolvedCodeTheme.dark,
-      light: defaultResolvedCodeTheme.light,
-    };
-  }
-  const root = document.documentElement.dataset;
-  return {
-    dark: root[CODE_THEME_DARK_DATASET] ?? defaultResolvedCodeTheme.dark,
-    light: root[CODE_THEME_LIGHT_DATASET] ?? defaultResolvedCodeTheme.light,
-  };
 }

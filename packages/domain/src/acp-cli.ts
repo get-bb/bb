@@ -39,7 +39,7 @@ export type ProviderNativeSkillRoots = z.infer<
   typeof providerNativeSkillRootsSchema
 >;
 
-export const acpReasoningCliLevelValueOverridesSchema = z.partialRecord(
+const acpReasoningCliLevelValueOverridesSchema = z.partialRecord(
   reasoningLevelSchema,
   z.string().min(1),
 );
@@ -72,7 +72,6 @@ export const acpReasoningCliSchema = z
       });
     }
   });
-export type AcpReasoningCli = z.infer<typeof acpReasoningCliSchema>;
 
 export const acpNativeReasoningSchema = z
   .object({
@@ -102,7 +101,6 @@ export const acpNativeReasoningSchema = z
       });
     }
   });
-export type AcpNativeReasoning = z.infer<typeof acpNativeReasoningSchema>;
 
 const acpPermissionCliArgsSchema = z.array(z.string().min(1)).min(1);
 
@@ -126,4 +124,3 @@ export const acpPermissionCliSchema = z
       });
     }
   });
-export type AcpPermissionCli = z.infer<typeof acpPermissionCliSchema>;

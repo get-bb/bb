@@ -7,8 +7,8 @@ import {
   buildDaemonRestartCommand,
   buildStandaloneRuntimeEnv,
   cleanupStandaloneOrphans,
+  createHostEnrollKey,
   createProject,
-  createStandaloneHostEnrollKey,
   createTestGitRepo,
   killProcess,
   loadDotEnv,
@@ -98,7 +98,7 @@ async function main() {
       );
     }
 
-    const enrollKey = await createStandaloneHostEnrollKey(serverUrl);
+    const enrollKey = await createHostEnrollKey(serverUrl);
 
     daemonProcess = spawnLoggedProcess({
       command: "node",

@@ -229,7 +229,7 @@ export class CommandRouter {
       }
       return this.options.pluginHostManager.dispose(command);
     }
-    const environmentLaneMode = this.getEnvironmentLaneMode(command);
+    const environmentLaneMode = hostDaemonEnvironmentLaneForCommand(command);
     const result =
       environmentLaneMode && "environmentId" in command
         ? this.runInEnvironmentLane(
@@ -247,7 +247,7 @@ export class CommandRouter {
   private executeLiveDaemonCommand(
     command: HostDaemonCommand,
   ): Promise<HostDaemonCommandResultForCommand> {
-    const environmentLaneMode = this.getEnvironmentLaneMode(command);
+    const environmentLaneMode = hostDaemonEnvironmentLaneForCommand(command);
     const providerLane = this.resolveProviderLane(command);
     const task = this.runAfterThreadUnarchiveBarrier(command, () =>
       this.runInThreadTurnLane(command, () =>
@@ -733,11 +733,5 @@ export class CommandRouter {
       default:
         return null;
     }
-  }
-
-  private getEnvironmentLaneMode(
-    command: HostDaemonCommand | HostDaemonOnlineRpcCommand,
-  ): EnvironmentLaneMode | null {
-    return hostDaemonEnvironmentLaneForCommand(command);
   }
 }

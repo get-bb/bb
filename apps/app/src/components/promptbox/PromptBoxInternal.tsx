@@ -10,6 +10,7 @@ import { TextSelection } from "@tiptap/pm/state";
 import { useEditor, type Editor } from "@tiptap/react";
 import {
   useCallback,
+  useContext,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -24,6 +25,8 @@ import {
   type Ref,
 } from "react";
 import {
+  commandPillDismissedRangeEnd,
+  findActiveTrigger,
   orderCommandSuggestions,
   type ActiveTrigger,
   type CommandMenuState,
@@ -33,14 +36,12 @@ import {
   type PromptMentionSuggestion,
   type TypeaheadMenuState,
   type TypeaheadTrigger,
-} from "@/components/promptbox/mentions/types";
+} from "@bb/client-core";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import {
   useAppCommandKeyDispatch,
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
-import { commandPillDismissedRangeEnd } from "@/components/promptbox/mentions/command-trigger";
-import { findActiveTrigger } from "@/components/promptbox/mentions/find-active-trigger";
 import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
@@ -119,7 +120,7 @@ import { applyPromptParagraphNewline } from "./editor/prompt-editor-paragraph";
 import { MentionMenu, type TypeaheadSuggestion } from "./mentions/MentionMenu";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 import { ComposerEditorSlot } from "./ComposerEditorSlot";
-import { useQueuedEditorTypeaheadLayoutReporter } from "./queued-editor-typeahead-layout";
+import { QueuedEditorTypeaheadLayoutContext } from "./queued-editor-typeahead-layout";
 
 const PROMPTBOX_MIN_HEIGHT = 68;
 const PROMPTBOX_SELECTION_REVEAL_MARGIN = 12;
@@ -1302,8 +1303,9 @@ export function PromptBoxInternal({
   const shouldAvoidSoftKeyboardAutofocus = isPointerCoarse;
   const formRef = useRef<HTMLFormElement>(null);
   const typeaheadMenuRef = useRef<HTMLDivElement>(null);
-  const reportQueuedEditorTypeaheadLayout =
-    useQueuedEditorTypeaheadLayoutReporter();
+  const reportQueuedEditorTypeaheadLayout = useContext(
+    QueuedEditorTypeaheadLayoutContext,
+  );
   const blurAfterPointerSubmitRef = useRef(false);
   const heightAnimationFromRef = useRef<number | null>(null);
   const capturePromptBoxHeight = useCallback(() => {
@@ -3296,7 +3298,7 @@ export function PromptBoxInternal({
             <div
               data-promptbox-expanded-only=""
               inert={showVoiceActionGroup ? true : undefined}
-              className={cn("pl-4 pr-14 pt-3", compact && "pr-14")}
+              className="pl-4 pr-14 pt-3"
             >
               {header}
             </div>
@@ -3366,7 +3368,6 @@ export function PromptBoxInternal({
               scrollContainerRef={editorScrollContainerRef}
               inputLocked={composerInputLocked}
               isZenMode={isZenMode}
-              hasCompactControls={compact !== undefined}
               isCompactLayout={showCompactLayout}
               minHeight={minHeight}
               layout={zenModeLayout}

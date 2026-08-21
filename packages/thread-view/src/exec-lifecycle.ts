@@ -8,7 +8,6 @@ import {
 import { getEventParentToolCallId, type EventMeta } from "./event-decode.js";
 import type {
   EventProjectionApprovalLifecycleStatus,
-  EventProjectionFileEditMessage,
   EventProjectionToolCallMessage,
   EventProjectionToolParsedIntent,
 } from "./event-projection-types.js";
@@ -44,7 +43,7 @@ function parseToolArgs(
 
 type ExecItemViewStatus = EventProjectionToolCallMessage["status"];
 
-function itemStatusToExecStatus(
+export function itemStatusToExecStatus(
   status: ThreadEventItemStatus,
 ): ExecItemViewStatus {
   switch (status) {
@@ -72,19 +71,7 @@ export function itemStatusToApprovalStatus(
   }
 }
 
-export function itemStatusToToolStatus(
-  status: ThreadEventItemStatus,
-): EventProjectionToolCallMessage["status"] {
-  return itemStatusToExecStatus(status);
-}
-
-export function itemStatusToFileEditStatus(
-  status: ThreadEventItemStatus,
-): EventProjectionFileEditMessage["status"] {
-  return itemStatusToExecStatus(status);
-}
-
-export interface ExecutionUpdateBase {
+interface ExecutionUpdateBase {
   callId: string;
   output?: string;
   /**
@@ -134,7 +121,7 @@ export interface ExecutionOutputUpdate {
   parentToolCallId?: string;
 }
 
-export type ExecLifecycleEvent =
+type ExecLifecycleEvent =
   | {
       kind: "begin" | "end";
       call: ProviderExecutionUpdate;
@@ -145,13 +132,6 @@ export type ExecLifecycleEvent =
       appendOutput?: boolean;
       replaceOutput?: boolean;
     };
-
-function toExecDefaultStatus(
-  kind: "begin" | "end",
-): EventProjectionToolCallMessage["status"] {
-  if (kind === "begin") return "pending";
-  return "completed";
-}
 
 function buildStructuredReadIntents(
   toolName: string,
@@ -288,8 +268,7 @@ export function parseExecLifecycleEvent(
     const status =
       exitCode !== undefined && exitCode !== 0
         ? "error"
-        : (itemStatusToToolStatus(decoded.item.status) ??
-          toExecDefaultStatus(kind));
+        : itemStatusToExecStatus(decoded.item.status);
     const completedAt = kind === "end" ? meta.createdAt : null;
 
     const command = extractShellCommandFromString(decoded.item.command);
@@ -341,16 +320,14 @@ export function parseToolCallLifecycleEvent(
 
     const callId = decoded.item.id;
     if (!callId) return null;
-    const toolName = decoded.item.tool ?? "tool";
+    const toolName = decoded.item.tool;
     const serverPrefix = decoded.item.server ? `${decoded.item.server}:` : "";
     const fullToolName = `${serverPrefix}${toolName}`;
     const parsedArgs = decoded.item.arguments ?? null;
 
     const kind = decoded.type === "item/started" ? "begin" : "end";
     const status =
-      kind === "end"
-        ? (itemStatusToToolStatus(decoded.item.status) ?? "completed")
-        : "pending";
+      kind === "end" ? itemStatusToExecStatus(decoded.item.status) : "pending";
     const completedAt = kind === "end" ? meta.createdAt : null;
     const result = decoded.item.result;
     const rawOutput =

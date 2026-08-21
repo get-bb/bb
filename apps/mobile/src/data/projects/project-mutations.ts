@@ -11,7 +11,6 @@ import {
 } from "@tanstack/react-query";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
 import {
-  allHostPathExistenceQueryKeyPrefix,
   projectDefaultExecutionOptionsQueryKey,
   projectPathsQueryKeyPrefix,
   projectSourceBranchesQueryKeyPrefix,
@@ -41,9 +40,6 @@ function invalidateProjectSourceQueries(
   projectId: string,
 ): void {
   invalidateProjectLists(queryClient);
-  void queryClient.invalidateQueries({
-    queryKey: allHostPathExistenceQueryKeyPrefix(),
-  });
   void queryClient.invalidateQueries({
     queryKey: projectPathsQueryKeyPrefix(projectId),
   });
@@ -196,34 +192,6 @@ export function useRemoveProjectSource() {
       await sdk.projects.sources.delete({ projectId, sourceId });
     },
     onSuccess: (_data, { projectId }) =>
-      invalidateProjectSourceQueries(queryClient, projectId),
-  });
-}
-
-export interface UpdateProjectSourcePathRequest {
-  projectId: string;
-  sourceId: string;
-  path: string;
-}
-
-/** Repoint an existing local source at another folder on the same host. */
-export function useUpdateProjectSourcePath() {
-  const { sdk } = useProfileClient();
-  const queryClient = useQueryClient();
-  return useMutation({
-    meta: { errorMessage: "Failed to update source." },
-    mutationFn: ({
-      projectId,
-      sourceId,
-      path,
-    }: UpdateProjectSourcePathRequest) =>
-      sdk.projects.sources.update({
-        projectId,
-        sourceId,
-        type: "local_path",
-        path,
-      }),
-    onSuccess: (_source, { projectId }) =>
       invalidateProjectSourceQueries(queryClient, projectId),
   });
 }

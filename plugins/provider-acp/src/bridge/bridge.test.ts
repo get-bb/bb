@@ -1688,7 +1688,7 @@ describe("acp bridge", () => {
 
   it("performs client fs writes inside the workspace and reports them", async () => {
     const targetPath = join(workspaceDir, "agent-output.txt");
-    const { bbThreadId, providerThreadId } = await startThread({
+    const { providerThreadId } = await startThread({
       permissionMode: "accept-edits",
       permissionEscalation: "ask",
       envVars: { FAKE_ACP_WRITE_PATH: targetPath },
@@ -1798,7 +1798,7 @@ describe("acp bridge", () => {
   });
 
   it("cancels a hung prompt and continues the same turn with steer input", async () => {
-    const { bbThreadId, providerThreadId } = await startThread();
+    const { providerThreadId } = await startThread();
     const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "hang", mentions: [] }],
     });
@@ -1819,7 +1819,7 @@ describe("acp bridge", () => {
   });
 
   it("keeps partial output from the cancelled prompt then continues", async () => {
-    const { bbThreadId, providerThreadId } = await startThread();
+    const { providerThreadId } = await startThread();
     const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "slow first", mentions: [] }],
     });
@@ -1847,7 +1847,7 @@ describe("acp bridge", () => {
   });
 
   it("delivers stacked steers on the same turn", async () => {
-    const { bbThreadId, providerThreadId } = await startThread();
+    const { providerThreadId } = await startThread();
     const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "hang", mentions: [] }],
     });
@@ -1873,7 +1873,7 @@ describe("acp bridge", () => {
   });
 
   it("cancels a stacked steer prompt that also hangs", async () => {
-    const { bbThreadId, providerThreadId } = await startThread();
+    const { providerThreadId } = await startThread();
     const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "hang", mentions: [] }],
     });
@@ -2022,7 +2022,7 @@ describe("acp bridge", () => {
   });
 
   it("cancels the active turn on thread/stop", async () => {
-    const { bbThreadId, providerThreadId } = await startThread();
+    const { providerThreadId } = await startThread();
     const turnId = sendTurnRequest("turn/start", providerThreadId, {
       input: [{ type: "text", text: "hang", mentions: [] }],
     });

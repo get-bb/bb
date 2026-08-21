@@ -8,6 +8,7 @@ import {
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   anchorPointFromMouseEvent,
+  firstClientRect,
   selectionAnchorFromPointerRelease,
   type MessageProseSelection,
   type SelectionAnchor,
@@ -19,21 +20,6 @@ interface SecondaryPanelSelectionActionsProps {
   children: ReactNode;
   className?: string;
   onSelectionAddToChat?: (text: string) => void;
-}
-
-function firstClientRect(range: Range): DOMRect | null {
-  const rects = range.getClientRects();
-  for (let index = 0; index < rects.length; index += 1) {
-    const rect = rects.item(index);
-    if (rect === null) {
-      continue;
-    }
-    if (rect.width > 0 || rect.height > 0) {
-      return rect;
-    }
-  }
-  const rect = range.getBoundingClientRect();
-  return rect.width > 0 || rect.height > 0 ? rect : null;
 }
 
 function isEventTargetWithinNode(

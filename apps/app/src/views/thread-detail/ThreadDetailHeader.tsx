@@ -40,17 +40,13 @@ import {
 } from "@/components/ui/context-selection";
 import { usePaneContext } from "./PaneContext";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
+import type { ThreadHeaderGitAction } from "./useThreadGitActions";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS = cn(
   COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS,
   "border-border/70 bg-transparent font-normal hover:bg-state-hover",
 );
 const NARROW_SPLIT_HEADER_MAX_WIDTH = 560;
-
-interface ThreadHeaderGitAction {
-  label: string;
-  target: ThreadGitActionDialogTarget;
-}
 
 interface ThreadDetailHeaderProps {
   /**

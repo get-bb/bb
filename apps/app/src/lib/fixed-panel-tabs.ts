@@ -13,8 +13,10 @@ import { atomFamily } from "jotai-family";
 import type { TerminalCreateTarget } from "@bb/server-contract";
 import { createLocalStorageSyncStorage } from "./browser-storage";
 import { useThreadTabs } from "@/hooks/queries/thread-tabs-query";
-import { closeSecondaryPanelTabInState } from "@/components/secondary-panel/secondaryPanelTabState";
-import { reconcileFixedPanelViewTabsInState } from "@/components/secondary-panel/secondaryPanelTabState";
+import {
+  closeSecondaryPanelTabInState,
+  reconcileFixedPanelViewTabsInState,
+} from "@bb/client-core";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
   createGitDiffFixedPanelTab,
@@ -44,7 +46,7 @@ const FIXED_PANEL_TABS_TOUCH_THROTTLE_MS = 60 * 1000;
 type FixedPanelTabsPanelStateId = string | null | undefined;
 type FixedPanelTabsSyncThreadId = string | null | undefined;
 
-export type FixedPanelTabsStateUpdater = (
+type FixedPanelTabsStateUpdater = (
   state: FixedPanelTabsState,
 ) => FixedPanelTabsState;
 

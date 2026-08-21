@@ -4,11 +4,10 @@ import type {
   HostDaemonCommandResult,
   HostDaemonSettledCommandType,
 } from "@bb/host-daemon-contract";
-import type { InteractiveLifecycleCoordinationDeps } from "../lifecycle-coordination-deps.js";
-import type { AppDeps } from "../types.js";
+import type { LoggedPendingInteractionWorkSessionDeps } from "../types.js";
 
 export type CommandResultSideEffectsDeps =
-  InteractiveLifecycleCoordinationDeps & Pick<AppDeps, "terminalSessions">;
+  LoggedPendingInteractionWorkSessionDeps;
 
 export type CommandResultSettlementDeps = Omit<
   CommandResultSideEffectsDeps,
@@ -60,15 +59,7 @@ export type CommandResultFailureReportForType<
   TType extends HostDaemonSettledCommandType,
 > = Extract<CommandResultReportForType<TType>, { ok: false }>;
 
-interface CommandResultPostCommitActionContext {
-  environmentId?: string | null;
-  hostId?: string;
-  threadId?: string;
-}
-
 export interface CommandResultPostCommitAction {
-  context?: CommandResultPostCommitActionContext;
-  name: string;
   run(deps: CommandResultSideEffectsDeps): Promise<void> | void;
 }
 

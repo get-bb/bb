@@ -91,10 +91,3 @@ export function clampLightboxTranslation({
     y: Math.min(Math.max(translation.y, -maxY), maxY) + 0,
   };
 }
-
-/** Double tap toggles between fit and the zoomed scale. */
-export function nextDoubleTapScale(currentScale: number): number {
-  return currentScale > LIGHTBOX_MIN_SCALE + 0.01
-    ? LIGHTBOX_MIN_SCALE
-    : LIGHTBOX_DOUBLE_TAP_SCALE;
-}

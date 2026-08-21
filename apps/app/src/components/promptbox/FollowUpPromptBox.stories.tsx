@@ -63,7 +63,7 @@ import type {
 } from "@/components/promptbox/ExecutionControls";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { promptDraftToInput, type PromptDraftState } from "@/lib/prompt-draft";
-import { queuedInputToDraft } from "@/views/thread-detail/threadQueuedMessages";
+import { queuedInputToDraft } from "@bb/client-core";
 
 export default {
   title: "promptbox/Follow Up Prompt Box",

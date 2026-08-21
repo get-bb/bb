@@ -18,14 +18,14 @@ import {
 } from "@/components/promptbox/mentions/prompt-mention-display";
 import { shouldLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type {
   ComposerCommandSuggestion,
   PromptMentionSuggestion,
   TypeaheadMenuState,
-} from "@/components/promptbox/mentions/types";
+} from "@bb/client-core";
 
 /**
  * A row the menu can render — an `@`-mention suggestion or a command
@@ -176,10 +176,6 @@ function getPathSectionLabel(kind: PathMentionSectionKind): string {
   return "Workspace";
 }
 
-function getMentionIconName(item: PromptMentionSuggestion): IconName | null {
-  return promptMentionIconName(promptMentionResourceFromSuggestion(item));
-}
-
 function getMentionTitle(item: PromptMentionSuggestion): string {
   if (item.kind === "thread") {
     const title = item.title || item.path;
@@ -271,12 +267,12 @@ function getMentionIcon(item: PromptMentionSuggestion): ReactNode {
       />
     );
   }
-  const iconName = getMentionIconName(item);
-  if (iconName === null) {
-    return null;
-  }
   return (
-    <Icon name={iconName} className={ROW_ICON_CLASS} aria-hidden />
+    <Icon
+      name={promptMentionIconName(promptMentionResourceFromSuggestion(item))}
+      className={ROW_ICON_CLASS}
+      aria-hidden
+    />
   );
 }
 
@@ -532,7 +528,6 @@ export function MentionMenu({
       if (
         shouldLoadMoreCommandResults({
           trigger: state.trigger,
-          hasLoadMoreCallback: true,
           scrollHeight: target.scrollHeight,
           scrollTop: target.scrollTop,
           clientHeight: target.clientHeight,

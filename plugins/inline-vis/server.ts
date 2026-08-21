@@ -16,12 +16,7 @@ export const MAX_HTML_BYTES = 5 * 1024 * 1024;
 
 const HTML_EXTENSIONS = new Set([".html", ".htm"]);
 
-export interface PrepareHtmlPreviewInput {
-  threadId: string;
-  file: string;
-}
-
-export interface PrepareHtmlPreviewResult {
+interface PrepareHtmlPreviewResult {
   file: string;
 }
 
@@ -92,23 +87,6 @@ export function resolveContainedHtmlPath(
     throw new Error(`"file" must not escape the workspace: ${relativeFile}`);
   }
   return absolute;
-}
-
-function parsePrepareHtmlPreviewInput(input: unknown): PrepareHtmlPreviewInput {
-  if (!isRecord(input)) {
-    throw new Error("expected { threadId: string, file: string }");
-  }
-  // Reject unknown keys so the contract stays explicit.
-  const allowed = new Set(["threadId", "file"]);
-  for (const key of Object.keys(input)) {
-    if (!allowed.has(key)) {
-      throw new Error(`unknown input field: ${JSON.stringify(key)}`);
-    }
-  }
-  return {
-    threadId: requireNonEmptyString(input.threadId, "threadId"),
-    file: requireWorkspaceHtmlFile(input.file),
-  };
 }
 
 function httpStatus(error: unknown): number | null {

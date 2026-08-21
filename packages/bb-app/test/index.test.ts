@@ -17,34 +17,32 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import {
-  createHostEnrollKeyRequestBody,
-  isMainModule,
-  parseLauncherArgs,
-  resolveBbAppRuntimeContext,
-  resolveBbAppRuntimeState,
-  resolveDataDir,
-  resolvePort,
-  resolveBbAppStartContext,
-  resolveBbAppCommand,
-  resolveWorktreeRuntimePolicy,
-  runBbApp,
-} from "../src/index.js";
+import { resolvePortFromEnv } from "@bb/config/runtime";
 import {
   completeFullStackSupervision,
   createDaemonEnv,
+  createHostEnrollKeyRequestBody,
   createServerEnv,
   createHostDaemonJoinEnv,
+  isMainModule,
+  parseLauncherArgs,
   readBbAppPackageVersion,
+  resolveBbAppRuntimeContext,
+  resolveBbAppRuntimeState,
+  resolveDataDir,
+  resolveBbAppStartContext,
+  resolveBbAppCommand,
   resolveServerListenerUrl,
+  resolveWorktreeRuntimePolicy,
+  runBbApp,
   runBundledCliCommand,
   superviseFullStackProcesses,
   terminateManagedFullStackProcesses,
   waitForHostDaemonStatus,
   waitForProcessExit,
 } from "../src/launcher.js";
-import type { BbAppStartContext } from "../src/index.js";
 import type {
+  BbAppStartContext,
   DelayMillisecondsArgs,
   DelayMillisecondsFn,
   FullStackSupervisionResult,
@@ -637,11 +635,11 @@ describe("bb-app launcher", () => {
     expect(resolveDataDir({ env, homeDir: "/home/tester" })).toBe(
       "/home/tester/custom-bb",
     );
-    expect(resolvePort({ defaultPort: 1, env, name: "BB_SERVER_PORT" })).toBe(
-      48886,
-    );
     expect(
-      resolvePort({ defaultPort: 1, env, name: "BB_HOST_DAEMON_PORT" }),
+      resolvePortFromEnv({ defaultPort: 1, env, name: "BB_SERVER_PORT" }),
+    ).toBe(48886);
+    expect(
+      resolvePortFromEnv({ defaultPort: 1, env, name: "BB_HOST_DAEMON_PORT" }),
     ).toBe(48887);
   });
 

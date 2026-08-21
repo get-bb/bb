@@ -13,7 +13,6 @@ export {
   normalizeMarketplaceSourceInput,
   normalizePluginSourceInput,
   pluginDisplayName,
-  pluginIsLocalSource,
   pluginRemovalDescription,
   pluginRemovalLabel,
   pluginRowSignal,
@@ -34,10 +33,7 @@ export {
   type PluginUpdateSummary,
 } from "./plugin-model";
 export {
-  buildPluginLogsUrl,
-  fetchPluginLogs,
   PLUGIN_LOGS_DEFAULT_TAIL,
-  PLUGIN_LOGS_MAX_TAIL,
   toPluginLogLines,
   type PluginLogLine,
 } from "./plugin-logs";
@@ -75,9 +71,4 @@ export {
   type SetPluginEnabledArgs,
   type UpdatePluginSettingsArgs,
 } from "./plugin-mutations";
-export {
-  fetchSvgAsset,
-  isSvgDocument,
-  resolveServerAssetUrl,
-  useServerSvgAsset,
-} from "./server-svg-asset";
+export { useServerSvgAsset } from "./server-svg-asset";

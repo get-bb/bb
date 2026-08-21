@@ -277,7 +277,7 @@ function renderEmbeddedChat({
   isActive = true,
   surfaceTone = "background",
 }: {
-  threadId?: string | null;
+  threadId?: string;
   isActive?: boolean;
   surfaceTone?: "background" | "sidebar";
 } = {}) {
@@ -286,7 +286,6 @@ function renderEmbeddedChat({
       variant="compact"
       surfaceTone={surfaceTone}
       threadId={threadId}
-      surfaceFallbackKey="tab-1"
       projectId="proj-1"
       providerId="provider-1"
       promptContextEnvironmentId={null}
@@ -299,9 +298,9 @@ function renderEmbeddedChat({
         draftScope: {
           kind: "thread",
           projectId: "proj-1",
-          threadId: threadId ?? "thr_parent",
+          threadId,
         },
-        executionDefaultsThreadId: threadId ?? "thr_parent",
+        executionDefaultsThreadId: threadId,
         executionResetKey: "thr_parent",
         permissionPolicy: "snapshot",
         environmentSummary: null,

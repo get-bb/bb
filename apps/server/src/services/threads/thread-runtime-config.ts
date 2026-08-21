@@ -58,25 +58,24 @@ export interface ThreadRuntimeCommandEnvironment {
   workspaceProvisionType: WorkspaceProvisionType;
 }
 
-export interface ResolveExecutionOptionsArgs {
+interface ResolveExecutionOptionsArgs {
   projectDefaults?: ProjectExecutionDefaults | null;
   requestedExecution: RequestedExecutionOptions;
   threadId: string;
 }
 
-export interface RequestedExecutionOptions extends ThreadExecutionOptions {
+interface RequestedExecutionOptions extends ThreadExecutionOptions {
   source: ThreadExecutionSource;
 }
 
-export interface ResolveThreadRuntimeCommandConfigArgs {
+interface ResolveThreadRuntimeCommandConfigArgs {
   environment: ThreadRuntimeCommandEnvironment;
   model: string;
   thread: Thread;
 }
 
-export interface ResolvePermissionEscalationArgs {
+interface ResolvePermissionEscalationArgs {
   initiator: ThreadTurnInitiator;
-  thread: Thread;
 }
 
 export interface ResolvedThreadRuntimeCommandConfig {

@@ -40,11 +40,6 @@ export interface IssueHostEnrollKeyArgs {
   enrollSource: "loopback" | "public-multi-machine";
 }
 
-export interface RevokeHostEnrollKeysArgs {
-  hostId: string;
-  hostType: HostType;
-}
-
 export interface RevokeHostAuthKeysArgs {
   hostId: string;
   hostType: HostType;
@@ -99,7 +94,6 @@ export interface CreateMachineAuthServiceArgs {
 }
 
 export interface MachineAuthService {
-  disableMachineKey(args: DisableMachineKeyArgs): Promise<void>;
   ensureReady(): Promise<void>;
   enrollHost(args: EnrollHostArgs): Promise<EnrollHostResult | null>;
   issueDaemonHostKey(args: IssueDaemonHostKeyArgs): Promise<string>;
@@ -107,7 +101,6 @@ export interface MachineAuthService {
     args: IssueHostEnrollKeyArgs,
   ): Promise<IssueHostEnrollKeyResult>;
   pruneExpiredKeys(): Promise<void>;
-  revokeHostEnrollKeys(args: RevokeHostEnrollKeysArgs): Promise<void>;
   revokeHostAuthKeys(args: RevokeHostAuthKeysArgs): Promise<void>;
   rotateDaemonHostKey(args: RotateDaemonHostKeyArgs): Promise<string>;
   verifyDaemonHostKey(token: string): Promise<VerifyMachineKeyResult | null>;
@@ -351,9 +344,6 @@ export async function createMachineAuthService(
   }
 
   return {
-    async disableMachineKey(disableArgs: DisableMachineKeyArgs): Promise<void> {
-      await disableMachineKey(disableArgs);
-    },
     async ensureReady(): Promise<void> {
       await ensureReady();
     },
@@ -444,15 +434,6 @@ export async function createMachineAuthService(
     },
     async pruneExpiredKeys(): Promise<void> {
       await pruneExpiredKeys();
-    },
-    async revokeHostEnrollKeys({
-      hostId,
-      hostType,
-    }: RevokeHostEnrollKeysArgs): Promise<void> {
-      await disableActiveEnrollKeysForHost({
-        hostId,
-        hostType,
-      });
     },
     async revokeHostAuthKeys({
       hostId,

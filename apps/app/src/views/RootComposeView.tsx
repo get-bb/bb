@@ -35,7 +35,6 @@ import {
   type ProjectMachineSetupCompletion,
   type ProjectMachineSetupDialogTarget,
 } from "@/components/dialogs/ProjectMachineSetupDialog";
-import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type {
@@ -147,7 +146,7 @@ import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
-import { isSecondaryFileTab } from "@/components/secondary-panel/secondaryPanelTabState";
+import { isSecondaryFileTab } from "@bb/client-core";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
 import {
   DEFAULT_TERMINAL_COLS,
@@ -179,7 +178,6 @@ import {
   RootComposePanelTabContent,
   type RootComposeTerminalTarget,
 } from "./RootComposePanelTabContent";
-export { resolveRootComposeProjectFileRouting } from "./RootComposePanelTabContent";
 
 const ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY = "bb.promptbox.zen-mode.root-compose";
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
@@ -209,7 +207,7 @@ export function readSectionIdFromLocationState(state: unknown): string | null {
   return sectionId.length > 0 ? sectionId : null;
 }
 
-export type RootComposeSectionTarget =
+type RootComposeSectionTarget =
   | { kind: "clear" }
   | { sectionId: string; kind: "set" };
 
@@ -239,10 +237,6 @@ export function shouldStartComposingFromLocationState(state: unknown): boolean {
   return "focusPrompt" in state && state.focusPrompt === true;
 }
 
-export function requestRootComposePluginFocus(storageKey: string | null): void {
-  requestComposerFocus(storageKey);
-}
-
 interface BuildMobileRecentThreadsArgs {
   sidebarNavigation: SidebarBootstrapResponse | undefined;
 }
@@ -250,11 +244,6 @@ interface BuildMobileRecentThreadsArgs {
 interface ShouldNavigateAfterThreadCreateArgs {
   isForkDraft: boolean;
   navigateToThreadAfterCreate: boolean;
-}
-
-interface ResolveRootComposePanelThreadIdArgs {
-  environmentId: string | null;
-  reuseThreadOptions: readonly ReuseThreadOption[];
 }
 
 interface CanCreateRootComposeTerminalArgs {
@@ -273,22 +262,6 @@ interface BuildRootComposeTerminalSessionsArgs {
 interface RootComposeRightPanelToggleProps {
   isOpen: boolean;
   onToggle: () => void;
-}
-
-export function resolveRootComposePanelTogglePlacement(args: {
-  isHosted: boolean;
-  isOpen: boolean;
-}): {
-  inlinePanelToggle: "button" | "reserved";
-  showPinnedToggle: boolean;
-} {
-  if (args.isHosted) {
-    return { inlinePanelToggle: "button", showPinnedToggle: false };
-  }
-  return {
-    inlinePanelToggle: "button",
-    showPinnedToggle: !args.isOpen,
-  };
 }
 
 interface RightPanelFileTabIconProps {
@@ -471,20 +444,6 @@ export function buildMobileRecentThreads({
     threads.push(...project.threads);
   }
   return threads;
-}
-
-export function resolveRootComposePanelThreadId({
-  environmentId,
-  reuseThreadOptions,
-}: ResolveRootComposePanelThreadIdArgs): string | null {
-  if (environmentId === null) {
-    return null;
-  }
-
-  const reuseOption = reuseThreadOptions.find(
-    (option) => option.environmentId === environmentId,
-  );
-  return reuseOption?.threads[0]?.id ?? null;
 }
 
 export function canCreateRootComposeTerminal({
@@ -736,7 +695,7 @@ function RootComposeSurface({
       // Root may be showing the empty welcome instead of a mounted editor.
       // Route focus through the shared request channel so the subscription
       // below first reveals the composer and then focuses it.
-      focus: () => requestRootComposePluginFocus(promptDraft.storageKey),
+      focus: () => requestComposerFocus(promptDraft.storageKey),
     }),
     [promptDraft.storageKey, sharedPluginComposerHost],
   );
@@ -1825,14 +1784,12 @@ function RootComposeSurface({
   // The shared position class keeps this footprint paired with the no-drag
   // cutout the macOS window-drag strip carves for it while the panel is closed
   // (see RootComposeSecondaryContent).
-  const panelTogglePositionClassName =
-    ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS;
-  const panelTogglePlacement = resolveRootComposePanelTogglePlacement({
-    isHosted: (paneContext?.secondaryPanelHost ?? null) !== null,
-    isOpen: isSecondaryPanelOpen,
-  });
-  const rootPanelToggle = panelTogglePlacement.showPinnedToggle ? (
-    <div className={`fixed z-40 ${panelTogglePositionClassName}`}>
+  const showPinnedToggle =
+    (paneContext?.secondaryPanelHost ?? null) === null && !isSecondaryPanelOpen;
+  const rootPanelToggle = showPinnedToggle ? (
+    <div
+      className={`fixed z-40 ${ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS}`}
+    >
       <RootComposeRightPanelToggle
         isOpen={isSecondaryPanelOpen}
         onToggle={handleToggleSecondaryPanel}
@@ -2048,7 +2005,6 @@ function RootComposeSurface({
               }
               isSecondaryPanelOpen={isSecondaryPanelOpen}
               onToggleSecondaryPanel={handleToggleSecondaryPanel}
-              panelTogglePositionClassName={panelTogglePositionClassName}
               secondaryPanel={{
                 activeTab: activeFixedSecondaryTab,
                 canUseGitUi: false,
@@ -2068,7 +2024,6 @@ function RootComposeSurface({
                 // shared with threads. Info, Diff, and conversation full-screen
                 // stay thread-only because no thread exists on this surface yet.
                 showConversationCollapseControl: false,
-                inlinePanelToggle: panelTogglePlacement.inlinePanelToggle,
                 onClose: closeSecondaryPanel,
                 onCollapse: closeSecondaryPanel,
                 onTabReorder: reorderTab,

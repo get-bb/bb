@@ -22,7 +22,6 @@ import {
   removeEnvironmentDiffPatchQueries,
 } from "./diff-patch-cache";
 import {
-  allEnvironmentDiffFileQueryKeyPrefix,
   allEnvironmentDiffFilesQueryKeyPrefix,
   allEnvironmentMergeBaseBranchesQueryKeyPrefix,
   allEnvironmentPullRequestQueryKeyPrefix,
@@ -30,7 +29,6 @@ import {
   allEnvironmentWorkStatusQueryKeyPrefix,
   allHostCloneDefaultPathQueryKeyPrefix,
   allHostDirectoryQueryKeyPrefix,
-  allHostPathExistenceQueryKeyPrefix,
   allHostProviderCliStatusQueryKeyPrefix,
   allHostQueryKeyPrefix,
   allSystemUsageLimitsQueryKeyPrefix,
@@ -50,7 +48,6 @@ import {
   pluginUpdatesQueryKey,
   allPluginCatalogSearchQueryKeyPrefix,
   allProjectSkillsQueryKeyPrefix,
-  environmentDiffFileQueryKeyPrefix,
   environmentDiffFilesQueryKeyPrefix,
   environmentMergeBaseBranchesQueryKeyPrefix,
   environmentPathsQueryKeyPrefix,
@@ -197,7 +194,6 @@ export function queryKeysForChangedMessage(
           allProjectPathsQueryKeyPrefix(),
           allProjectSourceBranchesQueryKeyPrefix(),
           allProjectDefaultExecutionOptionsQueryKeyPrefix(),
-          allHostPathExistenceQueryKeyPrefix(),
           allProjectCommandsQueryKeyPrefix(),
           // Project file previews read through the (changed) source root.
           message.id === undefined
@@ -218,7 +214,6 @@ export function queryKeysForChangedMessage(
           allEnvironmentPullRequestQueryKeyPrefix(),
           allEnvironmentMergeBaseBranchesQueryKeyPrefix(),
           allEnvironmentDiffFilesQueryKeyPrefix(),
-          allEnvironmentDiffFileQueryKeyPrefix(),
         ];
       }
       const id = message.id;
@@ -249,7 +244,6 @@ export function queryKeysForChangedMessage(
         // observer-less patch cache is evicted separately
         // (`diffPatchEvictionForChangedMessage`).
         environmentDiffFilesQueryKeyPrefix(id),
-        environmentDiffFileQueryKeyPrefix(id),
       );
       if (kinds.has("work-status-changed")) {
         // Files appeared / vanished / changed in the worktree: path mentions
@@ -296,7 +290,6 @@ export function queryKeysForChangedMessage(
         sidebarNavigationQueryKey(),
         allHostDirectoryQueryKeyPrefix(),
         allHostCloneDefaultPathQueryKeyPrefix(),
-        allHostPathExistenceQueryKeyPrefix(),
         // A (re)connected daemon can answer the provider-CLI / CLI-skills /
         // usage probes again (and an offline one no longer can).
         message.id === undefined
@@ -356,7 +349,7 @@ export function queryKeysForChangedMessage(
  * generation, and the diff list re-requests the visible paths once its own
  * table-of-contents query refetches. `"all"` for a global environment change.
  */
-export function diffPatchEvictionForChangedMessage(
+function diffPatchEvictionForChangedMessage(
   message: ChangedMessage,
 ): "all" | string | null {
   if (message.entity !== "environment") return null;
@@ -482,7 +475,7 @@ interface PendingInvalidation {
  * `cancelRefetch: true` would abort those partially downloaded responses and
  * start every one over.
  */
-export function invalidateQueriesStaleSince(
+function invalidateQueriesStaleSince(
   queryClient: QueryClient,
   disconnectedAt: number,
 ): void {

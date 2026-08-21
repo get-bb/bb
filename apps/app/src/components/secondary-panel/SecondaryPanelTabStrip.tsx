@@ -101,11 +101,9 @@ export interface SecondaryPanelTabStripProps {
    * every page.
    */
   isPanelOpen: boolean;
-  activeTreatment?: "fill" | "underline";
 }
 
 interface SortablePanelTabProps {
-  activeTreatment: "fill" | "underline";
   isActive: boolean;
   activeTabRef: RefObject<HTMLDivElement | null>;
   dragDisabled: boolean;
@@ -133,7 +131,6 @@ export function SecondaryPanelTabStrip({
   onReorderTab,
   usesDesktopChrome,
   isPanelOpen,
-  activeTreatment = "fill",
 }: SecondaryPanelTabStripProps) {
   const stripRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -438,7 +435,6 @@ export function SecondaryPanelTabStrip({
           {tabs.map((tab) => (
             <SortablePanelTab
               key={tab.tab.id}
-              activeTreatment={activeTreatment}
               activeTabRef={activeTabRef}
               dragDisabled={dragDisabled}
               isActive={tab.tab.id === activeTabId}
@@ -456,7 +452,6 @@ export function SecondaryPanelTabStrip({
           <DragOverlay className="cursor-grabbing">
             {draggingTab === null ? null : (
               <PanelTab
-                activeTreatment={activeTreatment}
                 isActive={draggingTab.tab.id === activeTabId}
                 tab={draggingTab}
               />
@@ -478,7 +473,6 @@ export function SecondaryPanelTabStrip({
       onBeginTabDrag,
       draggingTab,
       activeTabId,
-      activeTreatment,
     ],
   );
 
@@ -551,7 +545,6 @@ export function SecondaryPanelTabStrip({
 }
 
 function SortablePanelTab({
-  activeTreatment,
   activeTabRef,
   dragDisabled,
   isActive,
@@ -601,11 +594,7 @@ function SortablePanelTab({
       }}
       {...sortableListeners}
     >
-      <PanelTab
-        tab={tab}
-        activeTreatment={activeTreatment}
-        isActive={isActive}
-      />
+      <PanelTab tab={tab} isActive={isActive} />
     </div>
   );
 }
@@ -657,11 +646,9 @@ function TabStripScrollButton({
 
 function PanelTab({
   tab,
-  activeTreatment,
   isActive,
 }: {
   tab: SecondaryPanelRenderableTab;
-  activeTreatment: "fill" | "underline";
   isActive: boolean;
 }) {
   const title =
@@ -673,7 +660,6 @@ function PanelTab({
       secondaryLabel={tab.statusLabel === null ? null : `(${tab.statusLabel})`}
       title={title}
       isActive={isActive}
-      activeTreatment={activeTreatment}
       onSelect={tab.onSelect}
       labelMaxWidthClass="max-w-[160px]"
       closeAction={
@@ -682,7 +668,6 @@ function PanelTab({
           : {
               onClose: tab.onClose,
               closeLabel: `Close ${tab.label}`,
-              closeTooltip: "Close tab",
             }
       }
     />

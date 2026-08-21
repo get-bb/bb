@@ -11,12 +11,11 @@ import {
   utilityPrompt,
 } from "@/components/plugin/browse-hero/browse-hero-archetypes";
 import {
-  CREATE_AUTOMATION_PROMPT,
   CREATE_PLUGIN_PROMPT,
   CREATE_SKILL_PROMPT,
 } from "@/lib/create-resource-prompts";
 
-export type CreateViaPromptKind = "skill" | "plugin" | "automation";
+export type CreateViaPromptKind = "skill" | "plugin";
 
 interface Example {
   label: string;
@@ -29,7 +28,6 @@ interface Example {
 
 interface KindConfig {
   prefix: string;
-  explainer: string;
   examples: readonly Example[];
 }
 
@@ -39,8 +37,6 @@ interface KindConfig {
 const CONFIG: Record<CreateViaPromptKind, KindConfig> = {
   skill: {
     prefix: CREATE_SKILL_PROMPT,
-    explainer:
-      "Write a skill once, and every agent in bb can run it, whatever the provider.",
     examples: [
       {
         label: "PR review",
@@ -64,8 +60,6 @@ const CONFIG: Record<CreateViaPromptKind, KindConfig> = {
   },
   plugin: {
     prefix: CREATE_PLUGIN_PROMPT,
-    explainer:
-      "Add app surfaces, commands, background work, or agent tools through a plugin.",
     // The Browse hero's use-case archetypes verbatim, so the New plugin menu
     // and the Browse page can never show two divergent example lists. The
     // one-line hook is the card text; the full brief rides in `prompt`.
@@ -75,37 +69,6 @@ const CONFIG: Record<CreateViaPromptKind, KindConfig> = {
       description: archetype.hook,
       prompt: archetypePrompt(archetype),
     })),
-  },
-  automation: {
-    prefix: CREATE_AUTOMATION_PROMPT,
-    explainer:
-      "Run scripts on a schedule and spawn agent threads only when there is real work.",
-    examples: [
-      {
-        label: "CI failure triage",
-        icon: "AlertCircle",
-        description:
-          "runs every weekday morning, checks failed main-branch CI, and opens fixer threads only for new failures",
-      },
-      {
-        label: "Dependency drift",
-        icon: "ElectricPlugs",
-        description:
-          "checks weekly for stale dependencies and opens an update thread when risk is low",
-      },
-      {
-        label: "Release readiness",
-        icon: "Target",
-        description:
-          "checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes",
-      },
-      {
-        label: "Stale worktrees",
-        icon: "FolderGit",
-        description:
-          "checks daily for stale worktrees and opens cleanup threads only after they exceed the team's retention window",
-      },
-    ],
   },
 };
 
@@ -118,17 +81,15 @@ export interface CreateExample {
 }
 
 /**
- * The shared create-via-prompt content for a kind: the marketing one-liner and
- * the examples with their full seeded prompts. Surfaces render it how they like
- * (cards, chips) without duplicating the copy.
+ * The shared create-via-prompt content for a kind: the examples with their
+ * full seeded prompts. Surfaces render it how they like (cards, chips) without
+ * duplicating the copy.
  */
 export function getCreateExamples(kind: CreateViaPromptKind): {
-  explainer: string;
   examples: CreateExample[];
 } {
   const config = CONFIG[kind];
   return {
-    explainer: config.explainer,
     examples: config.examples.map((example) => ({
       label: example.label,
       icon: example.icon,

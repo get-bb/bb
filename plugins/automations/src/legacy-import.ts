@@ -130,8 +130,6 @@ export const legacyImportFileSchema = z
   })
   .strict();
 
-export type LegacyImportFile = z.infer<typeof legacyImportFileSchema>;
-
 type LegacyImportApi = {
   storage: { kv: Pick<BbPluginApi["storage"]["kv"], "get" | "set"> };
   log: Pick<BbPluginApi["log"], "info">;

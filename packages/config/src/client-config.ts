@@ -1,31 +1,29 @@
 import { join } from "node:path";
 import { z } from "zod";
 
-export const CLIENT_CONFIG_FILE_NAME = "client.json";
+const CLIENT_CONFIG_FILE_NAME = "client.json";
 
-export const clientSshHostConfigSchema = z
+const clientSshHostConfigSchema = z
   .object({
     sshAuthority: z.string().trim().min(1).regex(/^\S+$/u),
   })
   .strict();
 
-export const clientServerConfigSchema = z
+const clientServerConfigSchema = z
   .object({
     hosts: z.record(z.string().min(1), clientSshHostConfigSchema).default({}),
   })
   .strict();
 
-export const clientConfigFileSchema = z
+const clientConfigFileSchema = z
   .object({
     servers: z.record(z.string().min(1), clientServerConfigSchema).default({}),
   })
   .strict();
 
-export type ClientSshHostConfig = z.infer<typeof clientSshHostConfigSchema>;
-export type ClientServerConfig = z.infer<typeof clientServerConfigSchema>;
 export type ClientConfig = z.infer<typeof clientConfigFileSchema>;
 
-export interface ClientSshHostKey {
+interface ClientSshHostKey {
   hostId: string;
   serverOrigin: string;
 }

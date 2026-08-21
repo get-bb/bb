@@ -22,26 +22,6 @@ const DEFAULT_HEIGHT_PX = 224;
 const MIN_HEIGHT_PX = 120;
 const MAX_HEIGHT_PX = 1_200;
 
-interface PrepareHtmlPreviewRpcResult {
-  file: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parsePrepareHtmlPreviewRpcResult(
-  value: unknown,
-): PrepareHtmlPreviewRpcResult {
-  if (!isRecord(value)) {
-    throw new Error("Plugin returned an unexpected response.");
-  }
-  if (typeof value.file !== "string") {
-    throw new Error("Plugin returned an unexpected response.");
-  }
-  return { file: value.file };
-}
-
 function encodePathSegments(file: string): string {
   return file.split("/").map(encodeURIComponent).join("/");
 }
@@ -99,12 +79,10 @@ function InlineVisDirective({
 
     void (async () => {
       try {
-        const result = parsePrepareHtmlPreviewRpcResult(
-          await rpc.call("prepareHtmlPreview", {
-            threadId: message.threadId,
-            file: fileAttr,
-          }),
-        );
+        const result = await rpc.call("prepareHtmlPreview", {
+          threadId: message.threadId,
+          file: fileAttr,
+        });
         if (cancelled) return;
         setState({
           status: "ready",

@@ -9,11 +9,9 @@ import type { FileTabViewerOverride } from "@/components/plugin/file-opener-tabs
 
 type ThreadSecondaryPanelThreadId = string | undefined;
 
-export type ThreadSecondaryPanelOpenHandler = (
-  panel: ThreadSecondaryPanel,
-) => void;
-export type ThreadSecondaryPanelDiffFileOpenHandler = (path: string) => void;
-export type ThreadSecondaryPanelCommitDiffOpenHandler = (sha: string) => void;
+type ThreadSecondaryPanelOpenHandler = (panel: ThreadSecondaryPanel) => void;
+type ThreadSecondaryPanelDiffFileOpenHandler = (path: string) => void;
+type ThreadSecondaryPanelCommitDiffOpenHandler = (sha: string) => void;
 export interface ThreadSecondaryPanelFileOpenOptions {
   /** Per-open viewer choice (link context menu); absent = extension default. */
   viewer?: FileTabViewerOverride;
@@ -46,19 +44,19 @@ export interface UseThreadSecondaryPanelVisibilityArgs {
   togglePersistedPanel: () => void;
 }
 
-export interface UseThreadSecondaryPanelDrawerVisibilityArgs {
+interface UseThreadSecondaryPanelDrawerVisibilityArgs {
   isCompactViewport: boolean;
   threadId: ThreadSecondaryPanelThreadId;
 }
 
-export interface ThreadSecondaryPanelDrawerVisibility {
+interface ThreadSecondaryPanelDrawerVisibility {
   closeDrawer: () => void;
   isDrawerVisible: boolean;
   openDrawer: () => void;
   toggleDrawer: () => void;
 }
 
-export interface ThreadSecondaryPanelVisibility {
+interface ThreadSecondaryPanelVisibility {
   closePanel: () => void;
   isOpen: boolean;
   openCommitDiff: ThreadSecondaryPanelCommitDiffOpenHandler;

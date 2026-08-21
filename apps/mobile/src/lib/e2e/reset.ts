@@ -1,8 +1,5 @@
 import type { ProfileStore } from "../profiles/profile-store";
 
-/** Deep-link path (`bb://e2e/reset`) that wipes local state for Maestro flows. */
-export const E2E_RESET_PATH = "/e2e/reset";
-
 /** The one env knob the e2e harness sets (`EXPO_PUBLIC_BB_E2E=1`). */
 export interface E2eEnv {
   EXPO_PUBLIC_BB_E2E?: string;

@@ -158,7 +158,6 @@ const sidebarOpenAtom = atomWithStorage<boolean>(
 );
 
 interface SidebarStateBridgeProps {
-  className?: string;
   providerRef: Ref<HTMLDivElement>;
   children: ReactNode;
 }
@@ -167,7 +166,6 @@ type SidebarResizeMouseEvent = ReactMouseEvent<HTMLDivElement>;
 type SidebarOpenChangeHandler = (open: boolean) => void;
 
 function SidebarStateBridge({
-  className,
   providerRef,
   children,
 }: SidebarStateBridgeProps) {
@@ -189,7 +187,6 @@ function SidebarStateBridge({
     <SidebarProvider
       ref={providerRef}
       width={`${sidebarLiveWidth ?? sidebarWidth}px`}
-      className={className}
       data-testid="app-layout-root"
       open={open}
       onOpenChange={handleOpenChange}
@@ -283,16 +280,14 @@ function SidebarTriggerOverlay({
   );
 }
 
-const routeTitles: Record<string, { title: string; subtitle?: string }> = {
+const routeTitles: Record<string, { title: string }> = {
   "/": { title: "bb" },
   "/settings": { title: "Settings" },
   "/automations": { title: "Automations" },
   "/skills": { title: "Skills" },
 };
 
-function resolveRouteTitle(
-  pathname: string,
-): { title: string; subtitle?: string } | undefined {
+function resolveRouteTitle(pathname: string): { title: string } | undefined {
   // The global settings page owns /settings/:section. Legacy plugin settings
   // links still match briefly before AppRoutes redirects them to Tools.
   if (matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname)) {
@@ -321,7 +316,6 @@ interface AppHeaderProps {
   pluginPanelSubPath?: string;
   meta: {
     title: string;
-    subtitle?: string;
     breadcrumbs?: Array<{ label: string; to?: string }>;
   };
 }
@@ -341,10 +335,7 @@ function AppHeader({
   const headerTitle =
     headerBreadcrumbs || usesProjectChromeStyle ? undefined : meta.title;
 
-  const hasCenterContent =
-    Boolean(headerBreadcrumbs) ||
-    Boolean(headerTitle) ||
-    Boolean(meta.subtitle);
+  const hasCenterContent = Boolean(headerBreadcrumbs) || Boolean(headerTitle);
 
   const center = headerBreadcrumbs ? (
     <div className="min-w-0 flex-1">
@@ -359,11 +350,6 @@ function AppHeader({
     <div className="min-w-0 flex-1">
       {headerTitle ? (
         <p className="truncate text-sm font-semibold">{headerTitle}</p>
-      ) : null}
-      {meta.subtitle ? (
-        <p className="truncate text-xs text-muted-foreground">
-          {meta.subtitle}
-        </p>
       ) : null}
     </div>
   ) : null;
@@ -620,29 +606,24 @@ export function AppLayout({ children }: AppLayoutProps) {
   const documentTitleBreadcrumbs = toolsBreadcrumbs ?? automationBreadcrumbs;
   const toolsAreaHeaderMeta = resolveToolsAreaHeaderMeta(
     location.pathname,
-    // Extensions graduated from experiments (#1360): the hub is always on.
-    true,
     resourceRouteLabel,
     location.search,
   );
   const meta = isThreadView
     ? {
         title: thread ? getThreadDisplayTitle(thread) : "Thread",
-        subtitle: undefined,
       }
     : toolsAreaHeaderMeta?.kind === "extensions-title"
-      ? { title: toolsAreaHeaderMeta.title, subtitle: undefined }
+      ? { title: toolsAreaHeaderMeta.title }
       : toolsAreaHeaderMeta?.kind === "breadcrumbs"
         ? {
             title: "",
-            subtitle: undefined,
             breadcrumbs: toolsAreaHeaderMeta.breadcrumbs,
           }
         : isArchivedView && projectId
           ? isProjectlessProjectId(projectId)
             ? {
                 title: "",
-                subtitle: undefined,
                 breadcrumbs: [
                   { label: "Threads", to: getRootComposeRoutePath() },
                   ...(archivedSectionName
@@ -653,7 +634,6 @@ export function AppLayout({ children }: AppLayoutProps) {
               }
             : {
                 title: "",
-                subtitle: undefined,
                 breadcrumbs: [
                   {
                     label: projectLabel ?? projectId,
@@ -665,7 +645,6 @@ export function AppLayout({ children }: AppLayoutProps) {
           : isSettingsView && projectId
             ? {
                 title: "",
-                subtitle: undefined,
                 breadcrumbs: [
                   {
                     label: projectLabel ?? projectId,
@@ -677,7 +656,6 @@ export function AppLayout({ children }: AppLayoutProps) {
             : projectId
               ? {
                   title: projectLabel ?? projectId,
-                  subtitle: undefined,
                 }
               : (resolveRouteTitle(location.pathname) ?? { title: "" });
 

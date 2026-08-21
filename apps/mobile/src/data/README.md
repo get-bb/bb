@@ -56,7 +56,7 @@ Conventions:
   PRs with pending checks), `useEnvironmentMergeBaseBranches`,
   `useEnvironmentAction` (commit / squash merge / PR ready / draft / merge;
   owns the loading → success / 409 "blocked" warning / error toasts),
-  `useUpdateEnvironment` / `useRenameEnvironment`. Pure, tested:
+  `useUpdateEnvironment`. Pure, tested:
   `workspace-status.ts` (change tally + summary, changed-files section, git
   status display), `pull-request-display.ts` (state / checks / attention
   tones, banner action, freshness policy), `merge-base.ts`,
@@ -78,8 +78,7 @@ Conventions:
   `[environmentDiffPatch, env, targetType, targetKey, path]`; per-path
   loading / error state, `loadPath` for `on_demand`, `retry`; responses for
   a switched target or an evicted cache are dropped),
-  `useEnvironmentDiffFile` (one side of a file at the resolved merge-base
-  sha), `useDiffTarget` (the picker: all / committed / uncommitted / a
+  `useDiffTarget` (the picker: all / committed / uncommitted / a
   commit over `useEnvironmentWorkspace`'s merge base; a stale pick derives
   back to the default), `useDiffCardCollapsed` / `useDiffCollapseAll` over
   the in-memory `diffCardStateStore` keyed by diff identity + path. Pure,
@@ -95,8 +94,8 @@ Conventions:
   minutes after its last reader unmounts.
 - `terminals/` backs the workspace panel's Terminal tab and the full-screen
   terminal route (mirror of the web `thread-terminal-queries` +
-  `terminal-cache-owner`): `useTerminals(scope)` /
-  `useThreadTerminals(threadId)` (`GET /terminals?threadId|environmentId|hostId`,
+  `terminal-cache-owner`): `useTerminals(scope)`
+  (`GET /terminals?threadId|environmentId|hostId`,
   realtime-owned), `useTerminalSession(id)` (seeded from any cached list),
   `useCreateTerminal` / `useRestartTerminal` / `useCloseTerminal` /
   `useRenameTerminal`, and `useFetchTerminalOutput`
@@ -154,8 +153,7 @@ Conventions:
   `useRemoveHost`, `useRetryHostUpdate`, `useUpdateHostPermissionCeiling`
   (`PATCH /hosts/:id/permission-ceiling` through the profile fetch in
   `permission-ceiling.ts` — the route is owner-session-only and deliberately
-  absent from the SDK), `useHostDependentAvailability` (loading / no-host /
-  offline / ready for the daemon-backed screens), `useAddMachineSession`
+  absent from the SDK), `useAddMachineSession`
   (`begin()` from the press handler snapshots the known hosts and mints the
   join code + the connect machine code through the connect plugin RPC, a 1 s
   expiry clock, the new machine detected live from the `host-list`
@@ -163,7 +161,7 @@ Conventions:
   (`use-provider-cli-install.ts`: one module-level store bound to each
   profile's SDK so an install outlives the screen; success / failure toasts
   with "View log"; status + execution-option invalidation on finish). Pure,
-  tested: `select-primary-host.ts`, `host-availability.ts`,
+  tested: `select-primary-host.ts`,
   `host-update-status.ts` (stranded-daemon rules against the server's
   protocol version from `useServerProtocolVersion` / `GET /install/version`,
   never this build's `HOST_DAEMON_PROTOCOL_VERSION`: the phone ships

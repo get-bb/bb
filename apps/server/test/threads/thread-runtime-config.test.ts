@@ -1100,77 +1100,9 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("derives ask escalation for user-initiated work on root and child threads", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-runtime-permission-escalation",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const rootThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-      const childThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        parentThreadId: rootThread.id,
-      });
-      const sideChatThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        originKind: "fork",
-        originPluginId: "side-chat",
-        visibility: "hidden",
-        sourceThreadId: rootThread.id,
-      });
-      const parentThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-
-      expect(
-        resolvePermissionEscalation({
-          thread: rootThread,
-          initiator: "user",
-        }),
-      ).toBe("ask");
-      expect(
-        resolvePermissionEscalation({
-          thread: rootThread,
-          initiator: "system",
-        }),
-      ).toBe("deny");
-      expect(
-        resolvePermissionEscalation({
-          thread: childThread,
-          initiator: "user",
-        }),
-      ).toBe("ask");
-      expect(
-        resolvePermissionEscalation({
-          thread: childThread,
-          initiator: "system",
-        }),
-      ).toBe("deny");
-      expect(
-        resolvePermissionEscalation({
-          thread: sideChatThread,
-          initiator: "user",
-        }),
-      ).toBe("ask");
-      expect(
-        resolvePermissionEscalation({
-          thread: parentThread,
-          initiator: "user",
-        }),
-      ).toBe("ask");
-    });
+  it("derives ask escalation only for user-initiated work", () => {
+    expect(resolvePermissionEscalation({ initiator: "user" })).toBe("ask");
+    expect(resolvePermissionEscalation({ initiator: "system" })).toBe("deny");
   });
 
   it("resolves the workspace, storage path, and environment directory dynamic tool", async () => {

@@ -64,8 +64,6 @@ export interface PromptDecorationExtensionOptions {
   draftObserverDebounceMs?: number;
   /** Optional host logger for an isolated rich-text match failure. */
   onRuleError?: (sourceId: string, ruleId: string, error: unknown) => void;
-  /** Optional host logger for an isolated draft observer failure. */
-  onDraftObserverError?: (observerId: string, error: unknown) => void;
 }
 
 interface PromptDecorationPluginState {
@@ -123,7 +121,7 @@ export function findUltracodeRanges(text: string): PromptDecorationRange[] {
 }
 
 /** Built-in host rule, intentionally shaped exactly like a public effect. */
-export const PROMPT_ULTRACODE_DECORATION_RULE: PromptDecorationRule = {
+const PROMPT_ULTRACODE_DECORATION_RULE: PromptDecorationRule = {
   id: "ultracode",
   match: findUltracodeRanges,
   className: ULTRACODE_HIGHLIGHT_CLASS,
@@ -310,7 +308,7 @@ function structuredMention(
   };
 }
 
-export function composerStructuredDraftFromDoc(
+function composerStructuredDraftFromDoc(
   doc: ProseMirrorNode,
 ): ComposerStructuredDraft {
   const value = promptEditorSerializationFromDoc(doc);
@@ -441,9 +439,7 @@ export const PromptDecorationExtension =
                   try {
                     observer.onDraftChange(draft, observer.getView());
                   } catch (error) {
-                    (
-                      options.onDraftObserverError ?? defaultObserverErrorLogger
-                    )(observer.id, error);
+                    defaultObserverErrorLogger(observer.id, error);
                   }
                 }
               }, options.draftObserverDebounceMs ?? 100);

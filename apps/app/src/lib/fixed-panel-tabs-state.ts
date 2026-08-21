@@ -9,9 +9,9 @@ import {
   shouldPruneStoredFixedPanelTabsState,
   type BrowserFixedPanelTab,
 } from "@bb/client-core";
+import { getLocalStorage } from "./browser-storage";
 
 export {
-  FIXED_PANEL_TABS_STATE_STORAGE_PREFIX,
   FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
   FIXED_PANEL_TABS_IDLE_EXPIRY_MS,
   buildFixedPanelTabId,
@@ -25,21 +25,15 @@ export {
   createNewTabFixedPanelTab,
   ensureOpenFixedPanelHasActiveTab,
   createTerminalFixedPanelTab,
-  normalizeFixedPanelTabsState,
   createEmptyFixedPanelTabsState,
   EMPTY_FIXED_PANEL_TABS_STATE,
   getFixedPanelTabsStateStorageKey,
   isFixedPanelTabsStateStorageKey,
-  isFixedPanelTabsStateExpired,
   parseFixedPanelTabsState,
-  parseFixedPanelTabsStateForStorage,
   serializeFixedPanelTabsState,
-  shouldPruneStoredFixedPanelTabsState,
   areFixedPanelTabsEquivalent,
 } from "@bb/client-core";
 export type {
-  ThreadInfoFixedPanelTab,
-  GitDiffFixedPanelTab,
   PluginPageFixedPanelTab,
   FixedPanelViewTab,
   PluginPanelFixedPanelTab,
@@ -52,11 +46,7 @@ export type {
   SecondaryFixedPanelTab,
   SecondaryFileFixedPanelTab,
   FixedPanelTab,
-  FixedPanelTabGroupState,
-  FixedSecondaryPanelTabGroupState,
   FixedPanelTabsState,
-  ParseFixedPanelTabsStateArgs,
-  ParseFixedPanelTabsStateForStorageResult,
 } from "@bb/client-core";
 
 interface CreateBrowserFixedPanelTabArgs {
@@ -66,13 +56,6 @@ interface CreateBrowserFixedPanelTabArgs {
 
 interface PruneFixedPanelTabsStorageArgs {
   now: number;
-}
-
-function getLocalStorage(): Storage | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  return window.localStorage;
 }
 
 /**

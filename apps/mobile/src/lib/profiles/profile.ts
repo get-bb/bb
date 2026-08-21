@@ -19,11 +19,11 @@ const profileBaseSchema = z.object({
   createdAt: z.number().int().nonnegative(),
 });
 
-export const directServerProfileSchema = profileBaseSchema
+const directServerProfileSchema = profileBaseSchema
   .extend({ mode: z.literal("direct") })
   .strict();
 
-export const connectServerProfileSchema = profileBaseSchema
+const connectServerProfileSchema = profileBaseSchema
   .extend({
     mode: z.literal("connect"),
     handle: z.string().min(1),
@@ -50,9 +50,3 @@ export type NewServerProfile =
 export type ServerProfilePatch = Partial<
   Pick<ConnectServerProfile, "label" | "serverUrl" | "handle" | "credential">
 >;
-
-export function isConnectProfile(
-  profile: ServerProfile,
-): profile is ConnectServerProfile {
-  return profile.mode === "connect";
-}

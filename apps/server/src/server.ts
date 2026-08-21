@@ -7,11 +7,7 @@ import { Hono } from "hono";
 import { terminalWebSocketQuerySchema } from "@bb/server-contract";
 import { compress } from "hono/compress";
 import { cors } from "hono/cors";
-import {
-  buildLocalAppOrigins,
-  type BuildLocalAppOriginsArgs,
-} from "@bb/config/local-app-origins";
-import type { AppDeps, ServerAppDeps } from "./types.js";
+import type { ServerAppDeps } from "./types.js";
 import { ApiError, errorToResponse } from "./errors.js";
 import { registerEnvironmentRoutes } from "./routes/environments.js";
 import { registerFileRoutes } from "./routes/files.js";
@@ -75,7 +71,10 @@ import {
 } from "./services/plugin-catalog/plugin-catalog-service.js";
 import type { ProviderRegistryService } from "./services/providers/provider-registry.js";
 import { callHostRetryableOnlineRpc } from "./services/hosts/online-rpc.js";
-import { browserRequestProblem } from "./browser-request-guard.js";
+import {
+  allowedAppOrigins,
+  browserRequestProblem,
+} from "./browser-request-guard.js";
 import {
   callPluginHostRpc,
   disposePluginHostWorkers,
@@ -247,20 +246,6 @@ async function findPrecompressedStaticFile(args: {
   return null;
 }
 
-function buildAllowedCorsOrigins(deps: AppDeps): Set<string> {
-  const originArgs: BuildLocalAppOriginsArgs = {
-    serverPort: deps.config.serverPort,
-  };
-  if (deps.config.appUrl !== undefined) {
-    originArgs.appUrl = deps.config.appUrl;
-  }
-  if (deps.config.devAppPort !== undefined) {
-    originArgs.devAppPort = deps.config.devAppPort;
-  }
-
-  return new Set<string>(buildLocalAppOrigins(originArgs));
-}
-
 function closeWebSocketServer(args: CloseWebSocketServerArgs): Promise<void> {
   for (const client of args.server.clients) {
     client.close(WEB_SOCKET_SHUTDOWN_CODE, args.reason);
@@ -317,7 +302,7 @@ export function createApp(
     "*",
     cors({
       origin: (origin, context) => {
-        const allowedCorsOrigins = buildAllowedCorsOrigins(deps);
+        const allowedCorsOrigins = allowedAppOrigins(deps);
         const requestOrigin = new URL(context.req.url).origin;
         if (origin === requestOrigin || allowedCorsOrigins.has(origin)) {
           return origin;

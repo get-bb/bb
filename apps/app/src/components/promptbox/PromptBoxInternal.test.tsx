@@ -68,7 +68,7 @@ import {
 import type {
   PromptMentionSuggestion,
   ProviderCommandSuggestion,
-} from "./mentions/types";
+} from "@bb/client-core";
 
 type PromptBoxProps = ComponentProps<typeof PromptBoxInternal>;
 

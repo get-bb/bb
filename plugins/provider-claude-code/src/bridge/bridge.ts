@@ -30,9 +30,7 @@ import {
   BRIDGE_NOTIFICATION_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_NOTIFICATION_METHOD,
-  threadDiscardParamsSchema as canonicalThreadDiscardParamsSchema,
   threadStartParamsSchema as canonicalThreadStartParamsSchema,
-  threadStopParamsSchema as canonicalThreadStopParamsSchema,
   turnStartParamsSchema as canonicalTurnStartParamsSchema,
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
   type InitializeResult,
@@ -118,11 +116,8 @@ import {
   type ClaudeUserQuestionInput,
   type ClaudeUserQuestionRequestParams,
   CLAUDE_EXIT_PLAN_MODE_TOOL_NAME,
-  CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
-  CLAUDE_USER_QUESTION_REQUEST_METHOD,
   CLAUDE_USER_QUESTION_TOOL_NAME,
   claudeExitPlanModeInputSchema,
-  claudeInteractiveResponseSchema,
   claudeSuggestedPermissionUpdateSchema,
   claudeUserQuestionInputSchema,
   shouldRequestClaudePermissionApproval,
@@ -280,12 +275,6 @@ interface CreateThreadSessionArgs {
   threadIdRef: ThreadIdRef;
 }
 
-type CanonicalThreadStopParams = z.infer<
-  typeof canonicalThreadStopParamsSchema
->;
-type CanonicalThreadDiscardParams = z.infer<
-  typeof canonicalThreadDiscardParamsSchema
->;
 type CanonicalTurnStartParams = z.infer<typeof canonicalTurnStartParamsSchema>;
 type CanonicalTurnSteerParams = z.infer<typeof canonicalTurnSteerParamsSchema>;
 
@@ -475,16 +464,12 @@ async function closeThreadSessionsGracefully(message: string): Promise<void> {
   );
 }
 
-function normalizePermissionPath(path: string): string {
-  return resolvePath(path);
-}
-
 function permissionPathCovers(
   grantPath: string,
   requestedPath: string,
 ): boolean {
-  const normalizedGrantPath = normalizePermissionPath(grantPath);
-  const normalizedRequestedPath = normalizePermissionPath(requestedPath);
+  const normalizedGrantPath = resolvePath(grantPath);
+  const normalizedRequestedPath = resolvePath(requestedPath);
   if (normalizedGrantPath === normalizedRequestedPath) {
     return true;
   }

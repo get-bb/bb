@@ -96,7 +96,7 @@ export type PendingInteractionRequestedPermissionProfile = z.infer<
   typeof pendingInteractionRequestedPermissionProfileSchema
 >;
 
-export const pendingInteractionGrantablePermissionProfileSchema = z
+const pendingInteractionGrantablePermissionProfileSchema = z
   .object({
     network: pendingInteractionNetworkPermissionsSchema.nullable(),
     fileSystem: pendingInteractionFileSystemPermissionsSchema.nullable(),
@@ -112,7 +112,7 @@ export type PendingInteractionGrantedPermissionProfile = z.infer<
   typeof pendingInteractionGrantedPermissionProfileSchema
 >;
 
-export const pendingInteractionApprovalDecisionSchema = z.enum([
+const pendingInteractionApprovalDecisionSchema = z.enum([
   "allow_once",
   "allow_for_session",
   "deny",
@@ -121,9 +121,9 @@ export type PendingInteractionApprovalDecision = z.infer<
   typeof pendingInteractionApprovalDecisionSchema
 >;
 
-export const pendingInteractionFileChangeWriteScopeSchema = z.string().min(1);
+const pendingInteractionFileChangeWriteScopeSchema = z.string().min(1);
 
-export const pendingInteractionCommandApprovalSubjectSchema = z.object({
+const pendingInteractionCommandApprovalSubjectSchema = z.object({
   kind: z.literal("command"),
   itemId: z.string().min(1),
   command: z.string().min(1),
@@ -132,7 +132,7 @@ export const pendingInteractionCommandApprovalSubjectSchema = z.object({
   sessionGrant: pendingInteractionGrantablePermissionProfileSchema.nullable(),
 });
 
-export const pendingInteractionFileChangeApprovalSubjectSchema = z.object({
+const pendingInteractionFileChangeApprovalSubjectSchema = z.object({
   kind: z.literal("file_change"),
   itemId: z.string().min(1),
   writeScope: pendingInteractionFileChangeWriteScopeSchema.nullable(),
@@ -154,7 +154,7 @@ export type PendingInteractionPermissionGrantApprovalSubject = z.infer<
  * it. Unlike the other subjects this grants no permission: the decision only
  * says whether the agent leaves plan mode and starts the work.
  */
-export const pendingInteractionPlanApprovalSubjectSchema = z.object({
+const pendingInteractionPlanApprovalSubjectSchema = z.object({
   kind: z.literal("plan"),
   itemId: z.string().min(1),
   /** The plan body, as Markdown. */
@@ -162,24 +162,18 @@ export const pendingInteractionPlanApprovalSubjectSchema = z.object({
   /** Where the provider saved the plan, or null when it kept it in memory. */
   planFilePath: z.string().min(1).nullable(),
 });
-export type PendingInteractionPlanApprovalSubject = z.infer<
-  typeof pendingInteractionPlanApprovalSubjectSchema
->;
 
-export const pendingInteractionApprovalSubjectSchema = z.discriminatedUnion(
-  "kind",
-  [
-    pendingInteractionCommandApprovalSubjectSchema,
-    pendingInteractionFileChangeApprovalSubjectSchema,
-    pendingInteractionPermissionGrantApprovalSubjectSchema,
-    pendingInteractionPlanApprovalSubjectSchema,
-  ],
-);
+const pendingInteractionApprovalSubjectSchema = z.discriminatedUnion("kind", [
+  pendingInteractionCommandApprovalSubjectSchema,
+  pendingInteractionFileChangeApprovalSubjectSchema,
+  pendingInteractionPermissionGrantApprovalSubjectSchema,
+  pendingInteractionPlanApprovalSubjectSchema,
+]);
 export type PendingInteractionApprovalSubject = z.infer<
   typeof pendingInteractionApprovalSubjectSchema
 >;
 
-export const approvalPendingInteractionPayloadSchema = z.object({
+const approvalPendingInteractionPayloadSchema = z.object({
   kind: z.literal("approval"),
   subject: pendingInteractionApprovalSubjectSchema,
   reason: z.string().nullable(),
@@ -247,7 +241,7 @@ const pendingInteractionUserQuestionFreeTextSchema = z
     message: "User question free text cannot be blank",
   });
 
-export const pendingInteractionUserQuestionOptionSchema = z.object({
+const pendingInteractionUserQuestionOptionSchema = z.object({
   value: pendingInteractionUserQuestionOptionValueSchema,
   label: pendingInteractionUserQuestionOptionLabelSchema,
   description: pendingInteractionUserQuestionOptionDescriptionSchema.optional(),
@@ -326,12 +320,12 @@ export type UserQuestionPendingInteractionPayload = z.infer<
   typeof userQuestionPendingInteractionPayloadSchema
 >;
 
-export const pluginPendingInteractionPayloadSchema = z.object({
+const pluginPendingInteractionPayloadSchema = z.object({
   kind: z.literal("plugin"),
   title: z.string().trim().min(1).max(PLUGIN_INTERACTION_MAX_TITLE_LENGTH),
   data: jsonValueSchema,
 });
-export type PluginPendingInteractionPayload = z.infer<
+type PluginPendingInteractionPayload = z.infer<
   typeof pluginPendingInteractionPayloadSchema
 >;
 
@@ -342,7 +336,7 @@ export const pendingInteractionPayloadSchema = z.discriminatedUnion("kind", [
 export type PendingInteractionPayload = z.infer<
   typeof pendingInteractionPayloadSchema
 >;
-export type AnyPendingInteractionPayload =
+type AnyPendingInteractionPayload =
   | PendingInteractionPayload
   | PluginPendingInteractionPayload;
 
@@ -411,10 +405,10 @@ export type UserQuestionPendingInteractionResolution = z.infer<
   typeof userQuestionPendingInteractionResolutionSchema
 >;
 
-export const pluginPendingInteractionResolutionSchema = z.object({
+const pluginPendingInteractionResolutionSchema = z.object({
   kind: z.literal("plugin_submitted"),
 });
-export type PluginPendingInteractionResolution = z.infer<
+type PluginPendingInteractionResolution = z.infer<
   typeof pluginPendingInteractionResolutionSchema
 >;
 
@@ -448,32 +442,18 @@ export function isPluginPendingInteractionResolution(
   return "kind" in resolution && resolution.kind === "plugin_submitted";
 }
 
-export const pendingInteractionProviderOriginSchema = z.object({
+const pendingInteractionProviderOriginSchema = z.object({
   kind: z.literal("provider"),
   providerId: z.string().min(1),
   providerThreadId: z.string().min(1),
   providerRequestId: z.string().min(1),
 });
-export type PendingInteractionProviderOrigin = z.infer<
-  typeof pendingInteractionProviderOriginSchema
->;
 
-export const pendingInteractionPluginOriginSchema = z.object({
+const pendingInteractionPluginOriginSchema = z.object({
   kind: z.literal("plugin"),
   pluginId: z.string().min(1),
   rendererId: z.string().min(1),
 });
-export type PendingInteractionPluginOrigin = z.infer<
-  typeof pendingInteractionPluginOriginSchema
->;
-
-export const pendingInteractionOriginSchema = z.discriminatedUnion("kind", [
-  pendingInteractionProviderOriginSchema,
-  pendingInteractionPluginOriginSchema,
-]);
-export type PendingInteractionOrigin = z.infer<
-  typeof pendingInteractionOriginSchema
->;
 
 export const pendingInteractionCreateSchema = z.object({
   threadId: z.string().min(1),
@@ -500,35 +480,33 @@ const pendingInteractionBaseSchema = z.object({
   resolvedAt: z.number().int().nonnegative().nullable(),
 });
 
-export const providerPendingInteractionSchema =
-  pendingInteractionBaseSchema.extend({
-    turnId: z.string().min(1),
-    providerId: z.string().min(1),
-    providerThreadId: z.string().min(1),
-    providerRequestId: z.string().min(1),
-    origin: pendingInteractionProviderOriginSchema.optional(),
-    payload: z.union([
-      approvalPendingInteractionPayloadSchema,
-      userQuestionPendingInteractionPayloadSchema,
-    ]),
-    resolution: z
-      .union([
-        approvalPendingInteractionResolutionSchema,
-        userQuestionPendingInteractionResolutionSchema,
-      ])
-      .nullable(),
-  });
+const providerPendingInteractionSchema = pendingInteractionBaseSchema.extend({
+  turnId: z.string().min(1),
+  providerId: z.string().min(1),
+  providerThreadId: z.string().min(1),
+  providerRequestId: z.string().min(1),
+  origin: pendingInteractionProviderOriginSchema.optional(),
+  payload: z.union([
+    approvalPendingInteractionPayloadSchema,
+    userQuestionPendingInteractionPayloadSchema,
+  ]),
+  resolution: z
+    .union([
+      approvalPendingInteractionResolutionSchema,
+      userQuestionPendingInteractionResolutionSchema,
+    ])
+    .nullable(),
+});
 export type ProviderPendingInteraction = z.infer<
   typeof providerPendingInteractionSchema
 >;
 
-export const pluginPendingInteractionSchema =
-  pendingInteractionBaseSchema.extend({
-    turnId: z.string().min(1).nullable(),
-    origin: pendingInteractionPluginOriginSchema,
-    payload: pluginPendingInteractionPayloadSchema,
-    resolution: pluginPendingInteractionResolutionSchema.nullable(),
-  });
+const pluginPendingInteractionSchema = pendingInteractionBaseSchema.extend({
+  turnId: z.string().min(1).nullable(),
+  origin: pendingInteractionPluginOriginSchema,
+  payload: pluginPendingInteractionPayloadSchema,
+  resolution: pluginPendingInteractionResolutionSchema.nullable(),
+});
 export type PluginPendingInteraction = z.infer<
   typeof pluginPendingInteractionSchema
 >;

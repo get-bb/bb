@@ -5,7 +5,3 @@ export {
   readThreadHandoffCreateSeedFromLocationState,
   buildThreadHandoffPromptDraft,
 } from "@bb/client-core";
-export type {
-  ThreadHandoffCreateSeed,
-  ThreadHandoffLocationState,
-} from "@bb/client-core";

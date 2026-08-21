@@ -25,7 +25,6 @@ export interface EventSinkInput {
 export interface EventPostResult {
   acceptedEvents: HostDaemonEventBatchResponse["acceptedEvents"];
   rejectedEvents: HostDaemonEventBatchResponse["rejectedEvents"];
-  kind: "accepted";
 }
 
 export interface CreateEventSinkOptions {
@@ -39,7 +38,6 @@ export interface CreateEventSinkOptions {
 export interface EventSink {
   emit(event: EventSinkInput): void;
   flush(): Promise<void>;
-  flushRequired(): Promise<void>;
   dispose(): Promise<void>;
 }
 
@@ -71,7 +69,7 @@ function isWaitingForApprovalItemEvent(event: ThreadEvent): boolean {
   return event.item.approvalStatus === "waiting_for_approval";
 }
 
-export function shouldFlushThreadEventImmediately(event: ThreadEvent): boolean {
+function shouldFlushThreadEventImmediately(event: ThreadEvent): boolean {
   if (event.type === "turn/started" || event.type === "item/completed") {
     return true;
   }
@@ -298,7 +296,6 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
       );
     },
     flush,
-    flushRequired: flush,
     async dispose(): Promise<void> {
       disposed = true;
       clearScheduledFlush();

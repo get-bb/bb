@@ -15,9 +15,6 @@ export const BRIDGE_NOTIFICATION_METHODS = {
   error: "error",
 } as const;
 
-export type BridgeNotificationMethod =
-  (typeof BRIDGE_NOTIFICATION_METHODS)[keyof typeof BRIDGE_NOTIFICATION_METHODS];
-
 export const threadIdentityNotificationSchema = z
   .object({
     threadId: z.string().min(1),
@@ -26,10 +23,6 @@ export const threadIdentityNotificationSchema = z
     sessionRestorable: z.boolean().optional(),
   })
   .passthrough();
-
-export type ThreadIdentityNotification = z.infer<
-  typeof threadIdentityNotificationSchema
->;
 
 /**
  * A provider session was torn down and rebuilt. Mandatory whenever the bridge
@@ -51,10 +44,6 @@ export const sessionReplacedNotificationSchema = z
     contextLost: z.boolean().default(false),
   })
   .passthrough();
-
-export type SessionReplacedNotification = z.infer<
-  typeof sessionReplacedNotificationSchema
->;
 
 /**
  * Whether the thread still owns provider work that outlives its turn and that
@@ -78,10 +67,6 @@ export const threadOpenWorkNotificationSchema = z
   })
   .passthrough();
 
-export type ThreadOpenWorkNotification = z.infer<
-  typeof threadOpenWorkNotificationSchema
->;
-
 /**
  * Droppable diagnostics. The bridge classifies its provider's raw traffic
  * itself: "noise" is understood-and-intentionally-unrendered, "unknown" is
@@ -97,15 +82,9 @@ export const providerRawNotificationSchema = z
   })
   .passthrough();
 
-export type ProviderRawNotification = z.infer<
-  typeof providerRawNotificationSchema
->;
-
 export const errorNotificationSchema = z
   .object({
     threadId: z.string().min(1).optional(),
     message: z.string().min(1),
   })
   .passthrough();
-
-export type ErrorNotification = z.infer<typeof errorNotificationSchema>;

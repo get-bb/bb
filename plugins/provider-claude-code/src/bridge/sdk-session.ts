@@ -27,7 +27,6 @@ export interface SdkSessionOptions {
   mcpServers?: Record<string, McpSdkServerConfigWithInstance>;
   allowedTools?: string[];
   disallowedTools?: string[];
-  tools?: string[];
   canUseTool?: CanUseTool;
   env?: NodeJS.ProcessEnv;
   pathToClaudeCodeExecutable?: Options["pathToClaudeCodeExecutable"];
@@ -143,7 +142,6 @@ export class SdkSession {
   private readonly inputQueue: QueuedSdkInputMessage[] = [];
   private inputDone = false;
   private readonly abortController = new AbortController();
-  private isProcessing = false;
   private readonly completion: Promise<void>;
   private complete: (() => void) | null = null;
   private stderrTail = "";
@@ -160,10 +158,6 @@ export class SdkSession {
 
   getSessionId(): string | undefined {
     return this.sessionId;
-  }
-
-  getIsProcessing(): boolean {
-    return this.isProcessing;
   }
 
   canPushInput(): boolean {
@@ -247,7 +241,6 @@ export class SdkSession {
       ...(this.options.disallowedTools
         ? { disallowedTools: this.options.disallowedTools }
         : {}),
-      ...(this.options.tools ? { tools: this.options.tools } : {}),
       ...(this.options.canUseTool
         ? { canUseTool: this.options.canUseTool }
         : {}),
@@ -330,7 +323,6 @@ export class SdkSession {
     this.abortController.abort();
     this.query?.close();
     this.query = undefined;
-    this.isProcessing = false;
   }
 
   async closeGracefully(timeoutMs: number): Promise<void> {
@@ -424,13 +416,10 @@ export class SdkSession {
     try {
       for await (const message of q) {
         this.captureSessionId(message);
-        this.trackProcessingState(message);
         this.onMessage(message);
       }
-      this.isProcessing = false;
       this.onDone();
     } catch (error) {
-      this.isProcessing = false;
       this.onDone(
         new Error(
           buildSdkDoneErrorMessage({
@@ -456,15 +445,6 @@ export class SdkSession {
     const providerThreadId = session_id?.trim() ?? "";
     if (providerThreadId.length > 0) {
       this.sessionId = providerThreadId;
-    }
-  }
-
-  private trackProcessingState(message: SDKMessage): void {
-    if (message.type === "assistant" || message.type === "stream_event") {
-      this.isProcessing = true;
-    }
-    if (message.type === "result") {
-      this.isProcessing = false;
     }
   }
 }

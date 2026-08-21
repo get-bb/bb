@@ -9,11 +9,13 @@ import type {
   TasksStore,
   TaskThreadLiveStatus,
 } from "../db";
-import type { TasksApiStore } from "../api";
+import {
+  publishCommentsChanged,
+  publishTasksChanged,
+  type TasksApiStore,
+} from "../api";
 import {
   presetPermissionModeSchema,
-  type CommentsChangedEvent,
-  type TasksChangedEvent,
   type ThreadsChangedEvent,
 } from "../shared/contract";
 import { delegationRpcContract } from "./contract";
@@ -40,9 +42,9 @@ const presetExecutionSchema = z
   })
   .strict();
 
-export type DelegationErrorCode = "project_not_linked" | "spawn_target_invalid";
+type DelegationErrorCode = "project_not_linked" | "spawn_target_invalid";
 
-export class DelegationError extends Error {
+class DelegationError extends Error {
   constructor(
     readonly code: DelegationErrorCode,
     message: string,
@@ -52,7 +54,7 @@ export class DelegationError extends Error {
   }
 }
 
-export interface SeedPromptInput {
+interface SeedPromptInput {
   task: Task;
   project: Project;
   subtasks: readonly Task[];
@@ -278,20 +280,6 @@ export function createSystemComment(
 export function publishThreadsChanged(bb: BbPluginApi, taskId: string): void {
   const payload: ThreadsChangedEvent = { taskId };
   bb.realtime.publish("threads:changed", payload);
-}
-
-function publishTasksChanged(
-  bb: BbPluginApi,
-  taskId: string,
-  projectId: string,
-): void {
-  const payload: TasksChangedEvent = { taskId, projectId };
-  bb.realtime.publish("tasks:changed", payload);
-}
-
-export function publishCommentsChanged(bb: BbPluginApi, taskId: string): void {
-  const payload: CommentsChangedEvent = { taskId };
-  bb.realtime.publish("comments:changed", payload);
 }
 
 type SdkThread = Awaited<ReturnType<BbPluginApi["sdk"]["threads"]["get"]>>;

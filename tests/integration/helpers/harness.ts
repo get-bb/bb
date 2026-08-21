@@ -224,7 +224,6 @@ export async function loadProjectEnvFile(): Promise<string | null> {
 
 async function startIntegrationServer(
   tmpRoot: string,
-  threadStorageRootPath: string,
   options: CreateHarnessOptions,
 ): Promise<RunningTestServer> {
   const serverDataDir = path.join(tmpRoot, "server-data");
@@ -241,7 +240,6 @@ async function startIntegrationServer(
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const workspaceReadCaches = new WorkspaceReadCaches({ hub });
   const config: ServerRuntimeConfig = {
-    appSurface: "web",
     appVersion: "0.0.0-dev",
     builtinSkillsRootPath,
     customAcpAgents: [],
@@ -259,7 +257,6 @@ async function startIntegrationServer(
     appUrl: "https://bb.example.test",
     serverPort: 0,
     sharedSkillRoots: { user: [], project: [] },
-    threadStorageRootPath,
     transcriptionModel: "test/mock-transcription",
     isDevelopment: false,
     // The integration harness runs no periodic sweep and has no time control, so
@@ -570,11 +567,7 @@ export async function createIntegrationHarness(
   }
 
   try {
-    server = await startIntegrationServer(
-      tmpRoot,
-      threadStorageRootPath,
-      options,
-    );
+    server = await startIntegrationServer(tmpRoot, options);
     const api = createPublicApiClient(server.baseUrl, {
       fetch: createIntegrationFetch(),
     });

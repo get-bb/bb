@@ -141,10 +141,6 @@ async function waitForBridgeJsonRpcResponse(
   throw new Error(`Timed out waiting for JSON-RPC response ${String(args.id)}`);
 }
 
-async function flushBridgeJsonRpcWork(): Promise<void> {
-  await waitForNextBridgeTick();
-}
-
 function bridgeJsonRpcResponseExists(
   args: BridgeJsonRpcResponseExistsArgs,
 ): boolean {
@@ -157,7 +153,7 @@ export function createBridgeJsonRpcTestHarness(
   const output = captureBridgeJsonRpcOutput();
   return {
     messages: output.messages,
-    flushWork: flushBridgeJsonRpcWork,
+    flushWork: waitForNextBridgeTick,
     hasResponse(id: BridgeJsonRpcId): boolean {
       return bridgeJsonRpcResponseExists({ id, output });
     },

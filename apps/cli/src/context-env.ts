@@ -64,15 +64,6 @@ export function resolveExplicitIdFlag(
   return undefined;
 }
 
-export function requireProjectId(flagValue?: string): string {
-  const projectId = resolveExplicitIdFlag({
-    flagName: "--project flag",
-    value: flagValue,
-  });
-  if (projectId) return projectId;
-  throw new Error("Missing project ID. Pass --project <id>.");
-}
-
 export function requireThreadId(positionalId?: string): string {
   const threadId = resolveExplicitIdFlag({
     flagName: "<threadId> argument",

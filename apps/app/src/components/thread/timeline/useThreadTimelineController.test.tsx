@@ -5,15 +5,13 @@ import type {
   ThreadTimelineResponse,
   TimelineUserConversationRow,
 } from "@bb/server-contract";
+import { mergeLatestTimelineRows } from "@bb/client-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "@/lib/optimistic-timeline-row";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import {
-  mergeLatestTimelineRows,
-  useThreadTimelineController,
-} from "./useThreadTimelineController";
+import { useThreadTimelineController } from "./useThreadTimelineController";
 
 vi.mock("@/lib/sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/sdk")>();

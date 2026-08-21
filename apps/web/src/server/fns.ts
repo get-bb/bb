@@ -3,7 +3,6 @@ import {
   checkAvailability,
   claimHandle,
   createConnectCode,
-  createMachineCode,
   createServer,
   depsFromEnv,
   disconnectServer,
@@ -75,16 +74,6 @@ export const createCodeFn = createServerFn({ method: "POST" })
     const userId = await getSessionUserId();
     if (!userId) return { error: "unauthenticated" as const };
     return createConnectCode(depsFromEnv(getEnv()), userId, data);
-  });
-
-export const createMachineCodeFn = createServerFn({ method: "POST" })
-  .validator((input: { serverId?: string } | undefined) => ({
-    serverId: typeof input?.serverId === "string" ? input.serverId : undefined,
-  }))
-  .handler(async ({ data }) => {
-    const userId = await getSessionUserId();
-    if (!userId) return { error: "unauthenticated" as const };
-    return createMachineCode(depsFromEnv(getEnv()), userId, data.serverId);
   });
 
 export const disconnectFn = createServerFn({ method: "POST" })

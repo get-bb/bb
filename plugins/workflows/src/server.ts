@@ -3,7 +3,6 @@ import { z } from "zod";
 import { registerWorkflowCli } from "./cli.js";
 import { migrations } from "./data.js";
 import { toJsonValue } from "./json-value.js";
-import { executeWorkflowScript } from "./runtime.js";
 import { createWorkflowService } from "./service.js";
 import {
   DEFAULT_WORKFLOW_SETTINGS,
@@ -13,10 +12,6 @@ import type { JsonValue } from "./types.js";
 import { prepareWorkflowSource } from "./workflow-input.js";
 import { workflowUiRpcContract } from "./ui-contract.js";
 import { buildWorkflowRunView } from "./ui-view.js";
-
-// The named export lets the packaged-artifact smoke test execute the exact
-// runtime BB loads, including its embedded QuickJS WASM.
-export { executeWorkflowScript };
 
 const sourceInputFields = {
   script: z

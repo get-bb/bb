@@ -20,8 +20,6 @@ import { usePickerSheetMaxHeight } from "./OptionSheet";
 import { PickerTrigger } from "./PickerTrigger";
 import { describeEnvironmentSelection } from "./environment-picker-model";
 
-export { describeEnvironmentSelection } from "./environment-picker-model";
-
 /** The mode rows the picker offers; reuse rows carry their environment id. */
 export type EnvironmentPickerMode =
   | "project-default"

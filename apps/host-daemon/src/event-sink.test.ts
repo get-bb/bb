@@ -27,7 +27,6 @@ function createLogger(): CreateEventSinkOptions["logger"] {
 
 function acceptingPostEvents() {
   return vi.fn<CreateEventSinkOptions["postEvents"]>(async (events) => ({
-    kind: "accepted",
     acceptedEvents: events.map((event, eventIndex) => ({
       eventIndex,
       sequence: eventIndex + 1,
@@ -90,7 +89,6 @@ describe("event sink", () => {
       .fn<CreateEventSinkOptions["postEvents"]>()
       .mockRejectedValueOnce(new Error("response lost"))
       .mockImplementation(async (events) => ({
-        kind: "accepted",
         acceptedEvents: events.map((event, eventIndex) => ({
           eventIndex,
           sequence: eventIndex + 1,
@@ -117,17 +115,18 @@ describe("event sink", () => {
 
   it("drops rejected events with a warning without throwing", async () => {
     const logger = createLogger();
-    const postEvents = vi.fn<CreateEventSinkOptions["postEvents"]>(async () => ({
-      kind: "accepted",
-      acceptedEvents: [],
-      rejectedEvents: [
-        {
-          eventIndex: 0,
-          reason: "thread_not_owned_by_host",
-          threadId: "thr_1",
-        },
-      ],
-    }));
+    const postEvents = vi.fn<CreateEventSinkOptions["postEvents"]>(
+      async () => ({
+        acceptedEvents: [],
+        rejectedEvents: [
+          {
+            eventIndex: 0,
+            reason: "thread_not_owned_by_host",
+            threadId: "thr_1",
+          },
+        ],
+      }),
+    );
     const sink = createEventSink({
       isSessionOpen: () => true,
       logger,
@@ -203,7 +202,6 @@ describe("event sink", () => {
           );
         }
         return {
-          kind: "accepted",
           acceptedEvents: events.map((event, eventIndex) => ({
             eventIndex,
             sequence: eventIndex + 1,
@@ -247,7 +245,6 @@ describe("event sink", () => {
         }
         delivered.push(...events.map((event) => event.threadId));
         return {
-          kind: "accepted",
           acceptedEvents: events.map((event, eventIndex) => ({
             eventIndex,
             sequence: eventIndex + 1,
@@ -303,7 +300,6 @@ describe("event sink", () => {
         }),
       )
       .mockImplementation(async (events) => ({
-        kind: "accepted",
         acceptedEvents: events.map((event, eventIndex) => ({
           eventIndex,
           sequence: eventIndex + 1,
@@ -345,7 +341,6 @@ describe("event sink", () => {
         }),
       )
       .mockImplementation(async (events) => ({
-        kind: "accepted",
         acceptedEvents: events.map((event, eventIndex) => ({
           eventIndex,
           sequence: eventIndex + 1,

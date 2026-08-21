@@ -168,8 +168,8 @@ describe("createAgentRuntime process lifecycle", () => {
       ...adapter,
       displayName: "Codex",
       id: "codex",
-      translateEvent(event, context) {
-        const translated = adapter.translateEvent(event, context);
+      translateEvent(event) {
+        const translated = adapter.translateEvent(event);
         const params = parseProviderAccountErrorParams(event);
         if (!params) {
           return translated;

@@ -40,13 +40,12 @@ export interface LoadHostDaemonConfigArgs
   extends LoadCommonConfigArgs, LoadHostDaemonConnectionConfigArgs {}
 
 export interface HostDaemonStartConfig {
-  dataDir?: string;
-  connectionConfig?: HostDaemonConnectionConfig;
+  dataDir: string;
+  connectionConfig: HostDaemonConnectionConfig;
 }
 
 export interface LoadHostDaemonStartConfigArgs extends LoadHostDaemonConfigArgs {
   dataDir?: string;
-  enableLocalApi: boolean;
 }
 
 function resolveHostDaemonPort(
@@ -124,14 +123,8 @@ export function loadHostDaemonStartConfig(
     };
   }
 
-  if (args.serverUrl === undefined || args.enableLocalApi) {
-    return {
-      connectionConfig: loadHostDaemonConnectionConfig(args),
-      dataDir: args.dataDir,
-    };
-  }
-
   return {
+    connectionConfig: loadHostDaemonConnectionConfig(args),
     dataDir: args.dataDir,
   };
 }

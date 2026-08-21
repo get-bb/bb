@@ -1,26 +1,16 @@
 export {
-  MERGE_BASE_BRANCHES_LIMIT,
   useEnvironment,
   useEnvironmentMergeBaseBranches,
   useEnvironmentPullRequest,
-  useEnvironmentStatus,
   type UseEnvironmentMergeBaseBranchesOptions,
 } from "./environment-queries";
 export {
-  invalidateEnvironmentActionQueries,
   useEnvironmentAction,
-  useRenameEnvironment,
-  useUpdateEnvironment,
-  type RenameEnvironmentRequest,
   type RequestEnvironmentActionRequest,
   type UpdateEnvironmentMutationRequest,
 } from "./environment-mutations";
 export {
   buildThreadHeaderGitActions,
-  describeEnvironmentActionFailure,
-  describeEnvironmentActionSuccess,
-  ENVIRONMENT_ACTION_COPY,
-  getPullRequestMergeLoadingTitle,
   getThreadGitActionSheetCopy,
   type EnvironmentActionCopy,
   type EnvironmentActionFailure,
@@ -30,14 +20,10 @@ export {
   type ThreadHeaderGitAction,
 } from "./environment-action-model";
 export {
-  CHANGED_FILES_KIND_PREFIX,
   formatChangedFilesSectionLabel,
   formatChangeSummary,
-  formatWorkspaceChangedFilesLabel,
   formatWorkspaceFileStatus,
   getGitStatusDisplay,
-  getWorkspaceStatusFromResponse,
-  getWorkspaceUnavailableFailure,
   selectWorkspaceChangedFilesSection,
   selectWorkspaceChangedFilesSections,
   toChangeTally,
@@ -52,13 +38,8 @@ export {
 export {
   formatPullRequestRowLabel,
   getEnvironmentPullRequestFromResponse,
-  getEnvironmentPullRequestRefetchInterval,
-  getEnvironmentPullRequestStaleTime,
   getPullRequestAttentionDisplay,
-  getPullRequestChecksDisplay,
   getPullRequestGithubCheckStatus,
-  getPullRequestMergeabilityDisplay,
-  getPullRequestReviewDisplay,
   PULL_REQUEST_MERGE_ACTIONS,
   PULL_REQUEST_STATE_DISPLAY,
   resolvePullRequestBannerAction,
@@ -70,10 +51,6 @@ export {
 } from "./pull-request-display";
 export {
   getMergeBaseBranchCandidateGroups,
-  resolveEffectiveMergeBaseBranch,
-  resolveImplicitMergeBaseBranch,
-  resolveMergeBaseVisibility,
-  resolvePersistedMergeBaseBranch,
   type MergeBaseBranchCandidateGroups,
   type MergeBaseVisibility,
 } from "./merge-base";

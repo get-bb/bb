@@ -442,7 +442,6 @@ describe("createServerClient", () => {
           threadId: "thr_123",
         },
       ],
-      kind: "accepted",
       rejectedEvents: [],
     });
   });

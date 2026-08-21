@@ -24,7 +24,6 @@ import { createProviderRegistryService } from "./services/providers/provider-reg
 import { resolveAcpAgentCapabilitiesForProviderId } from "./services/system/acp-launch-spec.js";
 import { createTelemetryService } from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
-import { resolveThreadStorageRootPath } from "./services/threads/thread-storage.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
 import { MANAGED_ENVIRONMENT_RETIRE_GRACE_MS } from "./constants.js";
 import type { ServerRuntimeConfig } from "./types.js";
@@ -61,9 +60,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const workspaceReadCaches = new WorkspaceReadCaches({ hub });
   const lifecycleDedupers = createLifecycleDedupers();
   const appUrl = toOptionalString(serverConfig.BB_APP_URL);
-  const threadStorageRootPath = resolveThreadStorageRootPath({
-    dataDir: serverConfig.BB_DATA_DIR,
-  });
 
   const selfDir = dirname(fileURLToPath(import.meta.url));
   const appDir = resolve(selfDir, "../../app");
@@ -72,7 +68,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const staticDir =
     isProduction && existsSync(appDistDir) ? appDistDir : undefined;
   const runtimeConfig: ServerRuntimeConfig = {
-    appSurface: serverConfig.BB_APP_SURFACE,
     appVersion: serverConfig.BB_APP_VERSION,
     builtinSkillsRootPath: resolveBuiltinSkillsRootPath(),
     marketplaceUrl: serverConfig.BB_MARKETPLACE_URL,
@@ -89,7 +84,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     openAiApiKey: serverConfig.OPENAI_API_KEY,
     serverPort: serverConfig.BB_SERVER_PORT,
     sharedSkillRoots: { user: [], project: [] },
-    threadStorageRootPath,
     transcriptionModel: serverConfig.BB_TRANSCRIPTION,
   };
 
@@ -204,7 +198,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     pluginHostArtifacts,
     skillTreeRegistry,
     pluginSchedules: pluginService,
-    pluginService,
     telemetry,
     terminalSessions,
   };

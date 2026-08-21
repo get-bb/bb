@@ -14,14 +14,11 @@ import { useNavigate, type NavigateOptions } from "react-router-dom";
 import { isRoutePath, resolveRouteHref } from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 
-export interface RouteNavigationProviderProps {
+interface RouteNavigationProviderProps {
   children: ReactNode;
 }
 
-export interface RouteAnchorProps extends Omit<
-  ComponentPropsWithoutRef<"a">,
-  "href"
-> {
+interface RouteAnchorProps extends Omit<ComponentPropsWithoutRef<"a">, "href"> {
   href: string | undefined;
 }
 
@@ -29,16 +26,13 @@ interface ShouldHandleRouteAnchorClickArgs {
   event: ReactMouseEvent<HTMLAnchorElement>;
 }
 
-export interface RouteNavigateOptions {
+interface RouteNavigateOptions {
   replace?: boolean;
   state?: NavigateOptions["state"];
 }
 
 /** Navigate to an absolute app route (`/projects/...`); see {@link useRouteNavigate}. */
-export type RouteNavigate = (
-  path: string,
-  options?: RouteNavigateOptions,
-) => void;
+type RouteNavigate = (path: string, options?: RouteNavigateOptions) => void;
 
 const RouteNavigationContext = createContext<RouteNavigate | null>(null);
 

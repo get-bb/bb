@@ -19,7 +19,6 @@ import {
   getCall,
   getCallByChildThread,
   getLatestRunForOriginThread,
-  getResumeCall,
   getRun,
   getRunRequired,
   incrementRepairAttempts,
@@ -344,7 +343,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-export interface StartWorkflowInput {
+interface StartWorkflowInput {
   projectId: string;
   originThreadId: string;
   source: string;
@@ -783,11 +782,7 @@ export function createWorkflowService(
             replay.prefix = false;
           }
           if (replay.prefix) {
-            const candidate = getResumeCall(
-              db,
-              run.resumedFromRunId,
-              callIndex,
-            );
+            const candidate = getCall(db, run.resumedFromRunId, callIndex);
             const result =
               candidate?.resultJson === null || candidate === null
                 ? null

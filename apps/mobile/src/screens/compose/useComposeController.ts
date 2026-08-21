@@ -4,7 +4,6 @@ import {
   type Host,
   type PermissionMode,
   type ProjectSource,
-  type PromptInput,
   type ProviderInfo,
   type ReasoningLevel,
   type ServiceTier,
@@ -19,7 +18,6 @@ import {
   buildForkThreadRequest,
   buildThreadHandoffPromptDraft,
   type PromptDraftAttachment,
-  type ThreadHandoffCreateSeed,
 } from "@bb/client-core";
 import {
   composerValueFromDraftState,
@@ -113,13 +111,9 @@ export interface ComposeController {
   setValue: (value: ComposerValue) => void;
   attachments: PromptDraftAttachment[];
   setAttachments: (attachments: PromptDraftAttachment[]) => void;
-  /** `PromptInput[]` the request will carry (text + mentions, attachments). */
-  promptInput: PromptInput[];
   sectionId: string | null;
   /** Set when the screen was opened by "Fork from here" (see compose-seed-params). */
   forkSeed: ComposeForkSeed | null;
-  /** Set when the screen was opened by "Handoff to new thread". */
-  handoffSeed: ThreadHandoffCreateSeed | null;
 
   // Project
   projectId: string;
@@ -170,7 +164,6 @@ export interface ComposeController {
 
   // Submit
   navigateAfterCreate: boolean;
-  setNavigateAfterCreate: (value: boolean) => void;
   canSubmit: boolean;
   submitBlockerMessage: string | null;
   isSubmitting: boolean;
@@ -727,10 +720,6 @@ export function useComposeController(params: ComposeParams): ComposeController {
   // --- Submit -------------------------------------------------------------
   const createThread = useCreateThread();
   const navigateAfterCreate = prefs.navigateAfterCreate;
-  const setNavigateAfterCreate = useCallback(
-    (value: boolean) => prefStore.setNavigateAfterCreate(value),
-    [prefStore],
-  );
   const submitBlockerMessage = !hasPromptContent(promptInput)
     ? THREAD_CREATION_BLOCKER_MESSAGES["empty-prompt"]
     : environment.type === "reuse" && environment.environmentId === null
@@ -846,10 +835,8 @@ export function useComposeController(params: ComposeParams): ComposeController {
     setValue: draft.setValue,
     attachments: draft.attachments,
     setAttachments: draft.setAttachments,
-    promptInput,
     sectionId,
     forkSeed,
-    handoffSeed,
     projectId,
     project,
     projects,
@@ -900,7 +887,6 @@ export function useComposeController(params: ComposeParams): ComposeController {
     defaultWorkspacePath,
     setWorkspacePath,
     navigateAfterCreate,
-    setNavigateAfterCreate,
     canSubmit,
     submitBlockerMessage,
     isSubmitting: createThread.isPending,

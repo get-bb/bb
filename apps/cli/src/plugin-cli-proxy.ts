@@ -56,7 +56,7 @@ const RETRYABLE_CODES = new Set([
  * something very different from ECONNREFUSED (nothing listening). `attempts`
  * records how many probes were spent so the message can say so.
  */
-export type PluginCliContributionsResult =
+type PluginCliContributionsResult =
   | { outcome: "ok"; contributions: PluginCliContributionEntry[] }
   | {
       outcome: "unreachable";
@@ -67,7 +67,7 @@ export type PluginCliContributionsResult =
   | { outcome: "invalid" };
 
 /** What a failed probe tells us about the server, independent of wording. */
-export interface UnreachableDiagnosis {
+interface UnreachableDiagnosis {
   blockedCode: "EPERM" | "EACCES" | undefined;
   timedOut: boolean;
   refused: boolean;
@@ -81,9 +81,7 @@ export interface UnreachableDiagnosis {
  * AggregateError — and report every signal it carries. Kept separate from the
  * wording so the retry decision and the message cannot drift apart.
  */
-export function diagnoseUnreachableServer(
-  cause: unknown,
-): UnreachableDiagnosis {
+function diagnoseUnreachableServer(cause: unknown): UnreachableDiagnosis {
   let blockedCode: "EPERM" | "EACCES" | undefined;
   let timedOut = false;
   let retryableCode = false;
@@ -201,7 +199,7 @@ export function describeUnreachableServer(
   }`;
 }
 
-export interface FetchPluginCliContributionsOptions {
+interface FetchPluginCliContributionsOptions {
   /** Injected so tests exercise the retry schedule without real delays. */
   sleep?: (ms: number) => Promise<void>;
 }

@@ -9,14 +9,11 @@ import { formatWorkspaceFileStatus } from "@/components/workspace/workspace-chan
 export type WorkspaceChangedFile =
   WorkspaceStatus["workingTree"]["files"][number];
 
-export type WorkspaceChangedFileClickHandler = (
-  file: WorkspaceChangedFile,
-) => void;
+type WorkspaceChangedFileClickHandler = (file: WorkspaceChangedFile) => void;
 
-export interface WorkspaceChangesListProps {
+interface WorkspaceChangesListProps {
   files: readonly WorkspaceChangedFile[];
   className?: string;
-  emptyMessage?: string;
   onFileClick?: WorkspaceChangedFileClickHandler;
   /**
    * When set, the list caps at `limit` files behind a "Show N more" / "Show
@@ -100,12 +97,11 @@ function WorkspaceChangesListItem({
 export function WorkspaceChangesList({
   files,
   className = "max-h-32",
-  emptyMessage = "No changed files detected.",
   onFileClick,
   limit,
 }: WorkspaceChangesListProps) {
   if (!files || files.length === 0) {
-    return <EmptyState message={emptyMessage} />;
+    return <EmptyState message="No changed files detected." />;
   }
 
   if (limit !== undefined) {

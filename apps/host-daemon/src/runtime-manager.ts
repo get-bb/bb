@@ -923,13 +923,6 @@ export class RuntimeManager {
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
   }
 
-  async openWorkspace(path: string): Promise<HostWorkspace> {
-    return this.provisionWorkspace({
-      workspaceProvisionType: "unmanaged",
-      path,
-    });
-  }
-
   async ensureProviderMaintenanceRuntime(args: {
     dataDir: string;
   }): Promise<AgentRuntime> {

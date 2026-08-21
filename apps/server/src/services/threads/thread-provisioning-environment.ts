@@ -39,9 +39,8 @@ import {
 } from "./thread-create-helpers.js";
 import { dispatchThreadRenameCommand } from "./thread-commands.js";
 import { inferThreadMetadata } from "./thread-metadata-inference.js";
-import { deriveBranchSlugFromTitle } from "./title-generation.js";
+import { sanitizeGeneratedBranchSlug } from "./title-generation.js";
 import {
-  attachedEnvironmentIdForContext,
   createEnvironmentAttachedContext,
   createEnvironmentPendingContext,
   createEnvironmentPreparedContext,
@@ -112,18 +111,13 @@ interface EnsureWorkspaceReadyEventArgs {
  * `appendedSequence: null` ⇒ workspace-ready was reached without appending a
  * `system/thread-provisioning` row, because nothing was provisioned.
  */
-export type EnsureWorkspaceReadyEventResult =
+type EnsureWorkspaceReadyEventResult =
   | { reached: true; appendedSequence: number | null }
   | { reached: false };
 
 interface ThreadProvisionTransactionDeps {
   db: DbTransaction;
   hub: DbNotifier;
-}
-
-interface SaveThreadProvisionContextArgs {
-  context: ThreadProvisionContext;
-  threadId: string;
 }
 
 interface FailThreadProvisioningArgs {
@@ -294,15 +288,6 @@ export function loadActiveThreadProvisionContext(
   return context;
 }
 
-export function saveThreadProvisionContext(
-  args: SaveThreadProvisionContextArgs,
-): void {
-  rememberActiveThreadProvisionContext({
-    threadId: args.threadId,
-    context: args.context,
-  });
-}
-
 export function ensureWorkspaceReadyEvent(
   deps: Pick<AppDeps, "db" | "hub">,
   args: EnsureWorkspaceReadyEventArgs,
@@ -359,7 +344,7 @@ function ensureWorkspaceReadyEventRecord(
           status: "active",
           entries: args.entries,
         });
-  saveThreadProvisionContext({
+  rememberActiveThreadProvisionContext({
     threadId: args.threadId,
     context: createWorkspaceReadyContext(provisionableContext, {
       workspaceReadyEventSequence: appendedSequence,
@@ -439,7 +424,7 @@ async function resolveMetadataIfNeeded(
     const resolvedContext = resolvePreparedEnvironmentMetadata(args.context, {
       branchSlug: metadata.branchSlug,
     });
-    saveThreadProvisionContext({
+    rememberActiveThreadProvisionContext({
       threadId: args.thread.id,
       context: resolvedContext,
     });
@@ -507,7 +492,7 @@ async function resolveMetadataIfNeeded(
     const resolvedContext = createEnvironmentPendingContext(args.context, {
       branchSlug: null,
     });
-    saveThreadProvisionContext({
+    rememberActiveThreadProvisionContext({
       threadId: args.thread.id,
       context: resolvedContext,
     });
@@ -517,10 +502,10 @@ async function resolveMetadataIfNeeded(
   if (args.context.request.titleProvided) {
     const resolvedContext = createEnvironmentPendingContext(args.context, {
       branchSlug: args.thread.title
-        ? deriveBranchSlugFromTitle(args.thread.title)
+        ? sanitizeGeneratedBranchSlug(args.thread.title)
         : null,
     });
-    saveThreadProvisionContext({
+    rememberActiveThreadProvisionContext({
       threadId: args.thread.id,
       context: resolvedContext,
     });
@@ -540,7 +525,7 @@ async function resolveMetadataIfNeeded(
   const resolvedContext = createEnvironmentPendingContext(args.context, {
     branchSlug: metadata.branchSlug,
   });
-  saveThreadProvisionContext({
+  rememberActiveThreadProvisionContext({
     threadId: args.thread.id,
     context: resolvedContext,
   });
@@ -565,7 +550,7 @@ function attachThreadToEnvironment(
   const attachedContext = createEnvironmentAttachedContext(args.context, {
     attachedEnvironmentId: args.environment.id,
   });
-  saveThreadProvisionContext({
+  rememberActiveThreadProvisionContext({
     threadId: args.thread.id,
     context: attachedContext,
   });
@@ -591,7 +576,7 @@ function appendProvisioningStartedEvent(
   const updatedContext = createEnvironmentProvisioningContext(args.context, {
     provisionEventSequence: appendedSequence,
   });
-  saveThreadProvisionContext({
+  rememberActiveThreadProvisionContext({
     threadId: args.thread.id,
     context: updatedContext,
   });
@@ -614,8 +599,7 @@ function createProvisioningEnvironment(
       ) {
         throw new Error("Thread provisioning context is no longer active");
       }
-      const activeAttachedEnvironmentId =
-        attachedEnvironmentIdForContext(activeContext);
+      const activeAttachedEnvironmentId = activeContext.state.environmentId;
       if (activeAttachedEnvironmentId) {
         const existingEnvironment = getEnvironment(
           tx,
@@ -654,7 +638,7 @@ function createProvisioningEnvironment(
       const context = createEnvironmentProvisioningContext(attachedContext, {
         provisionEventSequence: appendedSequence,
       });
-      saveThreadProvisionContext({
+      rememberActiveThreadProvisionContext({
         threadId: args.thread.id,
         context,
       });
@@ -721,7 +705,7 @@ function createPreparedProvisioningEnvironment(
         attachedEnvironmentId: environment.id,
         provisionEventSequence: appendedSequence,
       });
-      saveThreadProvisionContext({
+      rememberActiveThreadProvisionContext({
         threadId: args.thread.id,
         context,
       });
@@ -778,10 +762,7 @@ function buildCheckoutUnmanagedEnvironmentProvisionRequest(
     checkout,
   });
 
-  return buildDirectEnvironmentProvisionRequest({
-    command,
-    provisioningId: args.context.state.provisioningId,
-  });
+  return buildDirectEnvironmentProvisionRequest({ command });
 }
 
 function buildDirectUnmanagedEnvironmentPlan(
@@ -818,7 +799,6 @@ function buildDirectUnmanagedEnvironmentPlan(
           workspaceProvisionType: "unmanaged",
           ...(checkout ? { checkout } : {}),
         }),
-        provisioningId: context.state.provisioningId,
       });
     },
   };
@@ -859,10 +839,7 @@ function buildManagedEnvironmentPlan(
         setupTimeoutMs: SETUP_TIMEOUT_MS,
       });
 
-      return buildDirectEnvironmentProvisionRequest({
-        command,
-        provisioningId: context.state.provisioningId,
-      });
+      return buildDirectEnvironmentProvisionRequest({ command });
     },
   };
 }
@@ -893,7 +870,6 @@ function buildPersonalEnvironmentPlan(
           }),
           workspaceProvisionType: args.workspaceProvisionType,
         }),
-        provisioningId: context.state.provisioningId,
       }),
   };
 }
@@ -982,7 +958,7 @@ function requestCheckoutUnmanagedEnvironmentProvision(
         thread: args.thread,
       });
 
-      saveThreadProvisionContext({
+      rememberActiveThreadProvisionContext({
         threadId: args.thread.id,
         context,
       });
@@ -1086,7 +1062,7 @@ async function requestPreparedEnvironmentProvision(
       const context = createEnvironmentProvisioningContext(activeContext, {
         provisionEventSequence: activeContext.state.provisionEventSequence,
       });
-      saveThreadProvisionContext({
+      rememberActiveThreadProvisionContext({
         threadId: args.thread.id,
         context,
       });
@@ -1275,7 +1251,7 @@ async function ensureEnvironmentRequested(
     return { context, environment };
   }
 
-  const attachedEnvironmentId = attachedEnvironmentIdForContext(args.context);
+  const attachedEnvironmentId = args.context.state.environmentId;
   if (attachedEnvironmentId) {
     const environment = getEnvironment(deps.db, attachedEnvironmentId);
     if (!environment) {

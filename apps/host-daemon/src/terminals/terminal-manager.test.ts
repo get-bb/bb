@@ -286,7 +286,6 @@ function createFakeWorkspace(path: string): HostWorkspace {
       commitSubject: "commit",
     })),
     reset: vi.fn(async () => undefined),
-    fetch: vi.fn(async () => undefined),
     squashMerge: vi.fn(async () => ({
       commitSha: "commit-1",
       commitSubject: "commit",

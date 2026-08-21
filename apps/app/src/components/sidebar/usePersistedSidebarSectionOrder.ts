@@ -3,7 +3,7 @@ import type { SidebarSectionId } from "./sidebarCollapsedAtoms";
 import {
   normalizeSidebarSectionOrder,
   type LegacySidebarEntityAnchor,
-} from "./sidebarSectionOrder";
+} from "@bb/client-core";
 
 interface UsePersistedSidebarSectionOrderArgs {
   entitySectionIds: readonly SidebarSectionId[];

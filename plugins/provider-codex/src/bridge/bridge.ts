@@ -1213,8 +1213,6 @@ async function withChildForThread<T>(
 // ---------------------------------------------------------------------------
 
 type ThreadStartParamsShape = z.infer<typeof threadStartParamsSchema>;
-type ThreadResumeParamsShape = z.infer<typeof threadResumeParamsSchema>;
-type ThreadForkParamsShape = z.infer<typeof threadForkParamsSchema>;
 type TurnStartParamsShape = z.infer<typeof turnStartParamsSchema>;
 type TurnSteerParamsShape = z.infer<typeof turnSteerParamsSchema>;
 type ThreadStopParamsShape = z.infer<typeof threadStopParamsSchema>;

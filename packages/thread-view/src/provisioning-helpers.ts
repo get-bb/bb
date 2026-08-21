@@ -14,10 +14,10 @@ export function readProvisioningTranscript(
 
   const result: EventProjectionProvisioningTranscriptEntry[] = [];
   for (const entry of entries) {
-    const key = entry.key?.trim();
+    const key = entry.key.trim();
     if (!key) continue;
 
-    const text = (entry.text ?? "").trim();
+    const text = entry.text.trim();
     if (!text) continue;
 
     if (entry.type === "step") {

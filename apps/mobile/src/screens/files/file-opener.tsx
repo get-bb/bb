@@ -1,6 +1,6 @@
 import type { FilePreviewLineRange } from "@bb/client-core";
 import { useRouter } from "expo-router";
-import { createContext, useCallback, useContext } from "react";
+import { useCallback } from "react";
 import { useThreadRecentFiles } from "@/data/files";
 import { toast } from "@/ui";
 import { useOptionalPanel } from "../panel/PanelProvider";
@@ -19,7 +19,7 @@ export interface FileOpenRequest {
 export type FileOpenHandler = (request: FileOpenRequest) => void;
 
 /** The workspace panel's open-file request for a preview target. */
-export function toPanelOpenFileRequest(
+function toPanelOpenFileRequest(
   request: FileOpenRequest,
 ): PanelOpenFileRequest {
   const line = request.lineRange?.startLineNumber ?? null;
@@ -46,17 +46,12 @@ export function toPanelOpenFileRequest(
 }
 
 /**
- * Where tapping a file goes: an explicit override from context, else the
- * workspace panel when one is mounted above (the file becomes a panel tab,
- * like the web's secondary panel), else the full-screen preview route.
- * Every path records workspace / storage files in the thread's recent list.
+ * Where tapping a file goes: the workspace panel when one is mounted above
+ * (the file becomes a panel tab, like the web's secondary panel), else the
+ * full-screen preview route. Every path records workspace / storage files in
+ * the thread's recent list.
  */
-const FileOpenerContext = createContext<FileOpenHandler | null>(null);
-
-export const FileOpenerProvider = FileOpenerContext.Provider;
-
 export function useThreadFileOpener(threadId: string | null): FileOpenHandler {
-  const override = useContext(FileOpenerContext);
   const panel = useOptionalPanel();
   const router = useRouter();
   const recent = useThreadRecentFiles(threadId);
@@ -68,10 +63,6 @@ export function useThreadFileOpener(threadId: string | null): FileOpenHandler {
         record("workspace", request.target.path);
       } else if (request.target.kind === "storage-file") {
         record("thread-storage", request.target.path);
-      }
-      if (override) {
-        override(request);
-        return;
       }
       if (panelOpenFile) {
         panelOpenFile(toPanelOpenFileRequest(request));
@@ -88,6 +79,6 @@ export function useThreadFileOpener(threadId: string | null): FileOpenHandler {
         ),
       );
     },
-    [override, panelOpenFile, record, router, threadId],
+    [panelOpenFile, record, router, threadId],
   );
 }

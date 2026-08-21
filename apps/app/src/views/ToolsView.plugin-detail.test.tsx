@@ -19,13 +19,13 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { PluginDetail, ToolsView } from "./ToolsView";
+import { ToolsView } from "./ToolsView";
 import {
   CatalogPluginDetail,
   CatalogPluginDetailBanner,
+  PluginDetail,
   PluginDetailBanners,
   PluginProvenancePill,
-  pluginDetailBannerKind,
   pluginFrontendDiagnosticRequiresFailureBanner,
 } from "@/components/tools/PluginDetail";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
@@ -658,50 +658,6 @@ describe("PluginDetail banner precedence", () => {
       },
     },
   };
-
-  it("maps implementation sources into five operational states", () => {
-    // The current server-reported state wins over browser diagnostics and
-    // release metadata because it is the plugin's present-tense condition.
-    expect(pluginDetailBannerKind(collision, true)).toBe("degraded");
-    expect(pluginDetailBannerKind(collision, false)).toBe("degraded");
-
-    const runningPlugin: PluginListItem = {
-      ...collision,
-      status: "running",
-      statusDetail: null,
-      handlerStats: managedPlugin.handlerStats,
-    };
-    expect(pluginDetailBannerKind(runningPlugin, true)).toBe("failed");
-    expect(
-      pluginDetailBannerKind(
-        {
-          ...runningPlugin,
-          handlerStats: { ...runningPlugin.handlerStats, errorCount: 3 },
-        },
-        false,
-      ),
-    ).toBeNull();
-
-    for (const [status, kind] of [
-      ["error", "failed"],
-      ["incompatible", "incompatible"],
-      ["missing", "missing"],
-      ["needs-configuration", "needs-configuration"],
-    ] as const) {
-      expect(pluginDetailBannerKind({ ...runningPlugin, status }, false)).toBe(
-        kind,
-      );
-    }
-
-    // Release opportunities and history never enter the health-banner slot.
-    expect(pluginDetailBannerKind(runningPlugin, false)).toBeNull();
-    expect(
-      pluginDetailBannerKind(
-        { ...runningPlugin, enabled: false, status: "disabled" },
-        true,
-      ),
-    ).toBeNull();
-  });
 
   it("renders only current health and keeps diagnostics out of user copy", () => {
     const { wrapper } = createQueryClientTestHarness();

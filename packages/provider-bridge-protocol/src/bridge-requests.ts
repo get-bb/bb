@@ -1,7 +1,4 @@
-import {
-  pendingInteractionPayloadSchema,
-  pendingInteractionResolutionSchema,
-} from "@bb/domain";
+import { pendingInteractionPayloadSchema } from "@bb/domain";
 import { z } from "zod";
 
 /**
@@ -13,9 +10,6 @@ export const BRIDGE_INBOUND_REQUEST_METHODS = {
   toolCall: "item/tool/call",
   interactionRequest: "interaction/request",
 } as const;
-
-export type BridgeInboundRequestMethod =
-  (typeof BRIDGE_INBOUND_REQUEST_METHODS)[keyof typeof BRIDGE_INBOUND_REQUEST_METHODS];
 
 /**
  * A dynamic (plugin-contributed) tool call. `turnId` is the bridge-minted
@@ -33,8 +27,6 @@ export const toolCallRequestParamsSchema = z
   })
   .passthrough();
 
-export type ToolCallRequestParams = z.infer<typeof toolCallRequestParamsSchema>;
-
 export const toolCallResultSchema = z
   .object({
     success: z.boolean(),
@@ -49,8 +41,6 @@ export const toolCallResultSchema = z
     ),
   })
   .passthrough();
-
-export type ToolCallResult = z.infer<typeof toolCallResultSchema>;
 
 /**
  * An interactive request (permission approval, user question, plan-mode
@@ -79,6 +69,3 @@ export const interactionRequestParamsSchema = z
 export type InteractionRequestParams = z.infer<
   typeof interactionRequestParamsSchema
 >;
-
-export const interactionResolutionResultSchema =
-  pendingInteractionResolutionSchema;

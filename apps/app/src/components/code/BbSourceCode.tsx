@@ -235,31 +235,8 @@ function getRenderedLineBounds(
   return bounds;
 }
 
-function findScrollViewport(container: HTMLElement): HTMLElement | null {
-  const virtualizedViewport = findVirtualizedViewport(container);
-  if (virtualizedViewport !== null) {
-    return virtualizedViewport;
-  }
-  const view = container.ownerDocument.defaultView;
-  if (view === null) return null;
-
-  let candidate = container.parentElement;
-  while (candidate !== null) {
-    const overflowY = view.getComputedStyle(candidate).overflowY;
-    if (
-      overflowY === "auto" ||
-      overflowY === "scroll" ||
-      overflowY === "overlay"
-    ) {
-      return candidate;
-    }
-    candidate = candidate.parentElement;
-  }
-  return null;
-}
-
 function scrollTargetLine(container: HTMLElement, line: HTMLElement) {
-  const viewport = findScrollViewport(container);
+  const viewport = findVirtualizedViewport(container);
   if (viewport === null) return;
 
   const lineRect = line.getBoundingClientRect();
@@ -303,7 +280,7 @@ function buildLineSelectionText({
   return `${path}:${formatLineRange(startLineNumber, endLineNumber)}\n${selectedText}`;
 }
 
-export function BbSourceCode({
+function BbSourceCode({
   content,
   path,
   cacheKey,

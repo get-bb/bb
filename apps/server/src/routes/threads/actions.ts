@@ -312,14 +312,9 @@ async function createQueuedMessageForThread(
     input: payload.input,
     projectId: thread.projectId,
   });
-  const execution = await buildExecutionOptions(
-    deps,
-    payload,
-    {
-      threadId: thread.id,
-    },
-    "client/turn/requested",
-  );
+  const execution = await buildExecutionOptions(deps, payload, {
+    threadId: thread.id,
+  });
   const senderThreadId = resolveMessageSenderThreadId(deps, {
     senderThreadId: payload.senderThreadId,
     targetThread: thread,
@@ -598,7 +593,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       deps,
       {},
       { threadId: thread.id },
-      "client/turn/requested",
     );
     const preparedRuntimeCommand = await prepareTurnSubmitCommandPayload(deps, {
       environment,

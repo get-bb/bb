@@ -10,7 +10,7 @@ import type { Node as ProseMirrorNode, Schema, Slice } from "@tiptap/pm/model";
 import type {
   PromptMentionSuggestion,
   ProviderCommandSuggestion,
-} from "@/components/promptbox/mentions/types";
+} from "@bb/client-core";
 
 export interface PromptEditorValue {
   text: string;

@@ -1,7 +1,7 @@
 import type { FixedPanelTabsState } from "@bb/client-core";
 import { BbHttpError } from "@bb/sdk/browser";
 import { threadTabsSchema, type ThreadTabsResponse } from "@bb/server-contract";
-import { useMutation, type QueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
 import type { ProfileClient } from "@/lib/sdk";
@@ -116,15 +116,6 @@ function getThreadTabsSyncer(client: ProfileClient): ThreadTabsSyncer {
   };
   syncers.set(client, wrapped);
   return wrapped;
-}
-
-export function invalidateThreadTabsQuery(
-  queryClient: QueryClient,
-  threadId: string,
-): void {
-  void queryClient.invalidateQueries({
-    queryKey: threadTabsQueryKey(threadId),
-  });
 }
 
 export interface UseSyncedPanelTabsArgs {

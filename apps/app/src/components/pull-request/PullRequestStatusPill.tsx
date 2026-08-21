@@ -4,43 +4,28 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { getPullRequestGithubCheckStatus } from "@/lib/pull-request-display";
 import { GithubFaviconIcon } from "./GithubFaviconIcon";
 
-const PR_STATUS_COLOR: Record<PullRequestState, { textClassName: string }> = {
-  open: {
-    textClassName: "text-success",
-  },
-  closed: {
-    textClassName: "text-destructive",
-  },
-  merged: {
-    textClassName: "text-pr-merged",
-  },
-  draft: {
-    textClassName: "text-muted-foreground",
-  },
-};
-
 const PR_STATUS_ICON: Record<
   PullRequestState,
   { icon: IconName; className: string; title: string }
 > = {
   open: {
     icon: "GitPullRequestArrow",
-    className: PR_STATUS_COLOR.open.textClassName,
+    className: "text-success",
     title: "Open Pull Request",
   },
   closed: {
     icon: "GitPullRequestClosed",
-    className: PR_STATUS_COLOR.closed.textClassName,
+    className: "text-destructive",
     title: "Closed Pull Request",
   },
   merged: {
     icon: "GitMerge",
-    className: PR_STATUS_COLOR.merged.textClassName,
+    className: "text-pr-merged",
     title: "Merged Pull Request",
   },
   draft: {
     icon: "GitPullRequestDraft",
-    className: PR_STATUS_COLOR.draft.textClassName,
+    className: "text-muted-foreground",
     title: "Draft Pull Request",
   },
 };

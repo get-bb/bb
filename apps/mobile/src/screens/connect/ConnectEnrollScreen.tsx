@@ -12,6 +12,7 @@ import {
   type EnrollmentFailure,
   type EnrollmentTargetInput,
 } from "@/data/connect";
+import { describeError } from "@/lib/describe-error";
 import type { SessionState } from "@/lib/session";
 import { useTheme } from "@/theme";
 import { Button, Icon, Input, Spinner, Text, toast } from "@/ui";
@@ -34,21 +35,6 @@ type Phase =
 interface FieldError {
   field: "code" | "server" | "apexUrl";
   message: string;
-}
-
-export interface ConnectEnrollParams {
-  /** Pairing code (from a deep link / QR handoff). */
-  code?: string;
-  /** `https://<handle>.getbb.app` hint; derives the apex and pre-fills. */
-  serverUrl?: string;
-  /** Explicit apex (self-hosted gates). */
-  apex?: string;
-  /** Re-pair this existing connect profile instead of adding a new one. */
-  profileId?: string;
-}
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /**

@@ -87,7 +87,7 @@ export function isForkSeedAnchorRow(
 // ---------------------------------------------------------------------------
 // Mentions
 
-export function shiftMentionsToTextRange({
+function shiftMentionsToTextRange({
   mentions,
   rangeEnd,
   rangeStart,
@@ -215,7 +215,7 @@ export interface GeneratedConversationBodySlice {
 }
 
 /** Strips the `[bb …]` prefix and the whitespace after it. */
-export function generatedConversationBodySlice({
+function generatedConversationBodySlice({
   initiator,
   text,
 }: {
@@ -246,7 +246,7 @@ export interface GeneratedConversationCollapsedPreview {
  * manufactures a token: it retreats to whitespace, and a single unbroken
  * token stays plain text until expanded.
  */
-export function generatedConversationCollapsedPreview(
+function generatedConversationCollapsedPreview(
   text: string,
 ): GeneratedConversationCollapsedPreview {
   const previewWindow = text.slice(
@@ -420,7 +420,7 @@ function threadSubjectTitleSegments(
   ];
 }
 
-export function systemMessageTitleSegments(
+function systemMessageTitleSegments(
   systemMessageKind: SystemMessageKind,
   subject: SystemMessageSubject | null,
 ): TimelineTitleSegment[] {
@@ -505,9 +505,7 @@ export function generatedConversationTitle({
   };
 }
 
-export function systemMessageIconName(
-  systemMessageKind: SystemMessageKind,
-): IconName {
+function systemMessageIconName(systemMessageKind: SystemMessageKind): IconName {
   switch (systemMessageKind) {
     case "ownership-assigned":
       return "UserRoundPlus";
@@ -583,7 +581,7 @@ export interface ConversationAttachmentItems {
   imageItems: readonly ConversationImageItem[];
 }
 
-export const EMPTY_ATTACHMENT_ITEMS: ConversationAttachmentItems = {
+const EMPTY_ATTACHMENT_ITEMS: ConversationAttachmentItems = {
   filePaths: [],
   imageItems: [],
 };

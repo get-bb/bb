@@ -36,7 +36,7 @@ import {
   OPTION_INTERACTIVE_CLASS_NAME,
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
-} from "./OptionPicker";
+} from "@bb/shared-ui/option-display";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { GitBranchRefClassification } from "@bb/domain";
 
@@ -664,8 +664,6 @@ export interface BranchPickerProps {
   value: string | null;
   options: readonly string[];
   remoteOptions?: readonly string[];
-  /** Branch refs to keep near the top when they are present. The selected value still wins. */
-  priorityOptions?: readonly string[];
   currentBranch?: string | null;
   loading?: boolean;
   disabled?: boolean;
@@ -714,7 +712,6 @@ export function BranchPicker({
   value,
   options,
   remoteOptions = EMPTY_BRANCH_OPTIONS,
-  priorityOptions = EMPTY_BRANCH_OPTIONS,
   currentBranch,
   loading = false,
   disabled,
@@ -807,19 +804,19 @@ export function BranchPicker({
     () =>
       orderBranchPickerOptions({
         options: filteredLocalBranchOptions,
-        priorityOptions,
+        priorityOptions: EMPTY_BRANCH_OPTIONS,
         selectedValue: value,
       }),
-    [filteredLocalBranchOptions, priorityOptions, value],
+    [filteredLocalBranchOptions, value],
   );
   const filteredBranchOptions = useMemo(
     () =>
       orderBranchPickerOptions({
         options: filteredCombinedBranchOptions,
-        priorityOptions,
+        priorityOptions: EMPTY_BRANCH_OPTIONS,
         selectedValue: value,
       }),
-    [filteredCombinedBranchOptions, priorityOptions, value],
+    [filteredCombinedBranchOptions, value],
   );
   const activeEnterOptions =
     isCheckoutMenu && activeCheckoutIntent === "checkout"

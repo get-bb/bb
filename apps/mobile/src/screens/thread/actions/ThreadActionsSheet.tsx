@@ -18,6 +18,7 @@ import {
   useUnarchiveThread,
   useUnpinThread,
 } from "@/data/threads";
+import { describeError } from "@/lib/describe-error";
 import { shareThreadLink } from "@/lib/share";
 import { useTheme } from "@/theme";
 import {
@@ -41,8 +42,6 @@ import { buildThreadWebUrl } from "./thread-links";
  * a small state machine — the same shape as the sidebar's long-press menu
  * (web ThreadActionsMenu), plus Copy link / Open in web.
  */
-
-export type ThreadActionsView = "menu" | "rename" | "move" | "delete";
 
 type SheetState =
   | { view: "menu" }
@@ -196,10 +195,6 @@ function CenteredRow({
       <Text variant="label">{label}</Text>
     </Pressable>
   );
-}
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 const ARCHIVE_UNDO_TOAST_DURATION_MS = 8000;

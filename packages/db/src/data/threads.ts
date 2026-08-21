@@ -644,10 +644,6 @@ export interface HasPendingThreadShutdownInEnvironmentArgs {
   environmentId: string;
 }
 
-export interface HasNonTerminalThreadInEnvironmentArgs {
-  environmentId: string;
-}
-
 const NON_TERMINAL_THREAD_STATUSES: readonly ThreadStatus[] = [
   "starting",
   "idle",
@@ -1452,19 +1448,6 @@ export function hasPendingThreadShutdownInEnvironment(
   return row !== undefined;
 }
 
-export function hasNonTerminalThreadInEnvironment(
-  db: DbConnection,
-  args: HasNonTerminalThreadInEnvironmentArgs,
-): boolean {
-  return hasThreadWhere(
-    db,
-    nonDeletedThreads(
-      eq(threads.environmentId, args.environmentId),
-      inArray(threads.status, [...NON_TERMINAL_THREAD_STATUSES]),
-    ),
-  );
-}
-
 export function pinThread(
   db: ThreadWriteConnection,
   notifier: DbNotifier,
@@ -1948,8 +1931,8 @@ export function requireThreadLifecycleEventApplied(
   return outcome.thread;
 }
 
-function applyThreadLifecycleEventRecord(
-  db: ThreadWriteConnection,
+export function applyThreadLifecycleEventInTransaction(
+  db: DbTransaction,
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
   const thread = db
@@ -2027,7 +2010,7 @@ export function applyThreadLifecycleEvent(
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
   const outcome = db.transaction(
-    (tx) => applyThreadLifecycleEventRecord(tx, args),
+    (tx) => applyThreadLifecycleEventInTransaction(tx, args),
     { behavior: "immediate" },
   );
   if (outcome.applied) {
@@ -2036,11 +2019,4 @@ export function applyThreadLifecycleEvent(
     });
   }
   return outcome;
-}
-
-export function applyThreadLifecycleEventInTransaction(
-  tx: DbTransaction,
-  args: ApplyThreadLifecycleEventArgs,
-): ApplyThreadLifecycleEventOutcome {
-  return applyThreadLifecycleEventRecord(tx, args);
 }

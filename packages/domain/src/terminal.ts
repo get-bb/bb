@@ -9,7 +9,7 @@ export const TERMINAL_DATA_MAX_BASE64_LENGTH =
 const terminalBase64DataPattern =
   /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u;
 
-export const terminalSessionStatusValues = [
+const terminalSessionStatusValues = [
   "starting",
   "running",
   "disconnected",
@@ -35,20 +35,7 @@ export function isActiveTerminalSessionStatus(
   }
 }
 
-export function isVisibleTerminalSessionStatus(
-  status: TerminalSessionStatus,
-): boolean {
-  switch (status) {
-    case "starting":
-    case "running":
-    case "disconnected":
-      return true;
-    case "exited":
-      return false;
-  }
-}
-
-export const terminalSessionCloseReasonValues = [
+const terminalSessionCloseReasonValues = [
   "user",
   "process-exit",
   "daemon-disconnect",
@@ -64,7 +51,7 @@ export type TerminalSessionCloseReason = z.infer<
   typeof terminalSessionCloseReasonSchema
 >;
 
-export interface TerminalOutputLineReader {
+interface TerminalOutputLineReader {
   flush(): string[];
   push(text: string): string[];
 }

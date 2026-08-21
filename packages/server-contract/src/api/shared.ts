@@ -158,7 +158,6 @@ export const branchListQuerySchema = z.object({
   query: z.string().min(1).max(BRANCH_LIST_QUERY_MAX_LENGTH).optional(),
   limit: z.string().regex(/^\d+$/).optional(),
 });
-export type BranchListQuery = z.infer<typeof branchListQuerySchema>;
 
 export const serverMessageSchema = changedMessageSchema;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;

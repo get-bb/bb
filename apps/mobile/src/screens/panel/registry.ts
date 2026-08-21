@@ -115,9 +115,3 @@ export function getPanelLauncherContent(
 ): PanelLauncherContentEntry | null {
   return launcherContents.get(launcher) ?? null;
 }
-
-/** Test seam. */
-export function resetPanelContentRegistryForTest(): void {
-  tabContents.clear();
-  launcherContents.clear();
-}

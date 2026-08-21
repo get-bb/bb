@@ -1,7 +1,7 @@
 import type { ThreadEvent, ThreadEventFileChange } from "@bb/domain";
 import {
   itemStatusToApprovalStatus,
-  itemStatusToFileEditStatus,
+  itemStatusToExecStatus,
 } from "./exec-lifecycle.js";
 import { getEventParentToolCallId } from "./event-decode.js";
 import type {
@@ -10,7 +10,7 @@ import type {
   EventProjectionFileEditMessage,
 } from "./event-projection-types.js";
 
-export function mapFileChanges(
+function mapFileChanges(
   changes: ThreadEventFileChange[],
 ): EventProjectionFileEditChange[] {
   return changes.map((change) => ({
@@ -28,13 +28,13 @@ interface FileEditPartialBase {
   parentToolCallId?: string;
 }
 
-export interface FileEditOutputPartial extends FileEditPartialBase {
+interface FileEditOutputPartial extends FileEditPartialBase {
   stdout: string;
   appendStdout: true;
   status: Extract<FileEditStatus, "pending">;
 }
 
-export interface FileEditChangesPartial extends FileEditPartialBase {
+interface FileEditChangesPartial extends FileEditPartialBase {
   changes: EventProjectionFileEditChange[];
   approvalStatus: EventProjectionApprovalLifecycleStatus | null;
   status: FileEditStatus;
@@ -69,15 +69,13 @@ export function parseFileEditFromItemEvent(
   const callId = decoded.item.id;
   if (!callId) return null;
 
-  const defaultStatus =
-    decoded.type === "item/completed" ? "completed" : "pending";
   const changes = mapFileChanges(decoded.item.changes);
 
   return {
     callId,
     changes,
     approvalStatus: itemStatusToApprovalStatus(decoded.item.approvalStatus),
-    status: itemStatusToFileEditStatus(decoded.item.status) ?? defaultStatus,
+    status: itemStatusToExecStatus(decoded.item.status),
     ...(parentToolCallId ? { parentToolCallId } : {}),
   };
 }

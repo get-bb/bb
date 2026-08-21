@@ -5,13 +5,13 @@ import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   toProviderCommandSuggestion,
   type ProviderCommandSuggestion,
-} from "@/components/promptbox/mentions/types";
+} from "@bb/client-core";
 import {
   projectCommandsQueryOptions,
   useProjectCommands,
 } from "./queries/project-queries";
 
-export interface UseCommandSuggestionsArgs {
+interface UseCommandSuggestionsArgs {
   projectId: string | undefined;
   providerId: string | undefined;
   /** Composer surface used to exclude commands that require an existing thread. */
@@ -39,9 +39,9 @@ export interface UseCommandSuggestionsArgs {
 }
 
 /** How long a focus-time prefetch of the command catalog is reused. */
-export const COMMAND_CATALOG_PREFETCH_STALE_TIME_MS = 30_000;
+const COMMAND_CATALOG_PREFETCH_STALE_TIME_MS = 30_000;
 
-export interface UseCommandSuggestionsResult {
+interface UseCommandSuggestionsResult {
   /** The provider's command trigger char, or `null` when the feature is inert. */
   trigger: PromptMentionCommandTrigger | null;
   suggestions: ProviderCommandSuggestion[];
@@ -57,7 +57,7 @@ export interface UseCommandSuggestionsResult {
   loadMore: () => void;
 }
 
-export interface CommandSuggestionPromptAction {
+interface CommandSuggestionPromptAction {
   text?: string;
   command?: {
     trigger: PromptMentionCommandTrigger;

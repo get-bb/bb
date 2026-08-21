@@ -11,7 +11,7 @@ import {
   type MessageDirectiveRegistry,
 } from "@/components/ui/markdown-message-directives";
 import { ConversationMessageContent } from "./ConversationMessageContent";
-import { USER_MESSAGE_CHAR_CAP } from "./conversation-message-limits";
+import { USER_MESSAGE_CHAR_CAP } from "@bb/client-core";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 
 afterEach(cleanup);

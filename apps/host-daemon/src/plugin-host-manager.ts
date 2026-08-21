@@ -103,7 +103,6 @@ export interface PluginHostManagerOptions {
     signal: string;
     payload: JsonValue;
   }) => void;
-  workerEntryPath?: string;
   /** User shell additions used for executable discovery by host plugins. */
   shellEnv?: () => NodeJS.ProcessEnv;
   /** Native path observation shared by core and host plugins. */
@@ -463,7 +462,7 @@ export class PluginHostManager {
     let child: ChildProcess;
     try {
       child = fork(
-        this.options.workerEntryPath ?? defaultWorkerEntryPath(),
+        defaultWorkerEntryPath(),
         [artifactPath, command.pluginId, command.generation, dataDir, tempDir],
         {
           // Same answer every daemon-spawned child gets, plus the user's

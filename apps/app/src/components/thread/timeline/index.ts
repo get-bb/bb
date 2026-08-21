@@ -1,4 +1,4 @@
-export { isRunningThreadRuntimeDisplayStatus } from "./thread-runtime-status.js";
+export { isRunningThreadRuntimeDisplayStatus } from "@bb/client-core";
 export { ThreadTimelineRows } from "./ThreadTimelineRows.js";
 export type { ThreadTimelineRowsProps } from "./ThreadTimelineRows.js";
 export {
@@ -12,7 +12,6 @@ export {
 } from "./ThreadTimelineSurface.js";
 export {
   useThreadTimelineController,
-  type ThreadTimelineRowFilter,
   type UseThreadTimelineControllerArgs,
   type UseThreadTimelineControllerResult,
 } from "./useThreadTimelineController.js";

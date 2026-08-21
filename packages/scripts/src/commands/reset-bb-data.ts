@@ -16,19 +16,15 @@ import {
 import {
   resolveCurrentDevInstanceConfig,
   resolveRuntimeDataDir,
+  resolveRuntimeMode,
   type BbRuntimeMode,
 } from "@bb/config/runtime";
-import { resolveScriptMode } from "../lib/script-config.js";
 
 const commandDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(commandDir, "..", "..");
 const repoRoot = resolve(packageRoot, "..", "..");
 
-function resolveMode(): BbRuntimeMode {
-  return resolveScriptMode();
-}
-
-export function resolveResetDataDir(mode: BbRuntimeMode): string {
+function resolveResetDataDir(mode: BbRuntimeMode): string {
   if (mode === "dev") {
     return resolveCurrentDevInstanceConfig(repoRoot).dataDir;
   }
@@ -45,7 +41,7 @@ function uniquePaths(paths: string[]): string[] {
 }
 
 export function resolveResetTargets(args: Set<string>): string[] {
-  const mode = resolveMode();
+  const mode = resolveRuntimeMode();
 
   if (args.has("--all")) {
     return uniquePaths([

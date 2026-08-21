@@ -12,15 +12,8 @@ import {
 // import path; the tool input/result shapes below stay plugin-private.
 export {
   ASK_USER_QUESTION_RENDERER_ID,
-  MAX_FREE_TEXT_LENGTH,
   MAX_OPTION_PREVIEW_LENGTH,
-  MAX_OPTIONS,
-  MAX_QUESTIONS,
-  MAX_SELECTED,
-  interactionAnswerSchema,
-  interactionOptionSchema,
   interactionPayloadSchema,
-  interactionQuestionSchema,
   interactionResponseSchema,
   type InteractionAnswer,
   type InteractionOption,
@@ -35,7 +28,7 @@ const nonBlank = (value: string) => value.trim().length > 0;
 // Tool input — the shape the model sends.
 // ---------------------------------------------------------------------------
 
-export const toolOptionSchema = z.object({
+const toolOptionSchema = z.object({
   label: z.string().min(1).refine(nonBlank, "Option labels cannot be blank"),
   description: z
     .string()
@@ -44,7 +37,7 @@ export const toolOptionSchema = z.object({
   preview: z.string().max(MAX_OPTION_PREVIEW_LENGTH).optional(),
 });
 
-export const toolQuestionSchema = z.object({
+const toolQuestionSchema = z.object({
   question: z.string().min(1).refine(nonBlank, "Questions cannot be blank"),
   header: z.string().min(1).refine(nonBlank, "Headers cannot be blank"),
   // Deliberately looser than the advertised `minItems: 2`. Claude rejects a
@@ -69,7 +62,7 @@ export type ToolInput = z.infer<typeof toolInputSchema>;
 // Tool result — what the model reads back.
 // ---------------------------------------------------------------------------
 
-export interface ToolResultQuestion {
+interface ToolResultQuestion {
   question: string;
   header: string;
   options: Array<{ label: string; description: string; preview?: string }>;

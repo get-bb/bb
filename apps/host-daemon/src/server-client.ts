@@ -589,7 +589,6 @@ export function createServerClient(
       const parsed = hostDaemonEventBatchResponseSchema.parse(json);
       return {
         acceptedEvents: parsed.acceptedEvents,
-        kind: "accepted",
         rejectedEvents: parsed.rejectedEvents,
       };
     },

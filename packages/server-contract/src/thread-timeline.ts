@@ -269,7 +269,6 @@ interface TimelineWorkRowBase extends TimelineRowBase {
 export const timelineOutputPreviewSchema = z.object({
   totalChars: z.number().int().nonnegative(),
 });
-export type TimelineOutputPreview = z.infer<typeof timelineOutputPreviewSchema>;
 
 export const timelineCommandWorkRowSchema = timelineWorkRowBaseSchema.extend({
   workKind: z.literal("command"),

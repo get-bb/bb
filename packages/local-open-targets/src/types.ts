@@ -11,8 +11,6 @@ export interface LocalOpenTargetContext {
 
 export interface RemoteSshOpenTargetContext {
   kind: "remote-ssh";
-  serverOrigin: string;
-  hostId: string;
   sshAuthority: string;
 }
 

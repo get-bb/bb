@@ -41,9 +41,7 @@ export function createSinglePaneLayout(
   };
 }
 
-export function createSinglePaneContentLayout(
-  content: PaneContent,
-): SplitLayout {
+function createSinglePaneContentLayout(content: PaneContent): SplitLayout {
   return {
     root: { type: "pane", paneId: FIRST_PANE_ID, content },
     focusedPaneId: FIRST_PANE_ID,
@@ -130,7 +128,7 @@ export function applyThreadOpenToLayout(
     : splitPane(layout, layout.focusedPaneId, decision.zone, content);
 }
 
-export interface ThreadPaneActionLayoutResult {
+interface ThreadPaneActionLayoutResult {
   layout: SplitLayout;
   maximizedPaneId: string | null;
   /** Explicit preference update requested by the action, or null when unchanged. */

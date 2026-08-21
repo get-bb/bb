@@ -582,7 +582,6 @@ describe("consumer-specific config", () => {
 
   it("builds host-daemon start config from full config when data dir is not provided", () => {
     const hostDaemonStartConfig = loadHostDaemonStartConfig({
-      enableLocalApi: true,
       env: {
         BB_DATA_DIR: "/tmp/bb-data",
         BB_HOST_DAEMON_PORT: "3999",
@@ -592,28 +591,12 @@ describe("consumer-specific config", () => {
     });
 
     expect(hostDaemonStartConfig.dataDir).toBe("/tmp/bb-data");
-    expect(hostDaemonStartConfig.connectionConfig?.BB_SERVER_URL).toBe(
+    expect(hostDaemonStartConfig.connectionConfig.BB_SERVER_URL).toBe(
       "http://localhost:9999",
     );
-    expect(hostDaemonStartConfig.connectionConfig?.BB_HOST_DAEMON_PORT).toBe(
+    expect(hostDaemonStartConfig.connectionConfig.BB_HOST_DAEMON_PORT).toBe(
       3999,
     );
-  });
-
-  it("skips host-daemon env loading when explicit start options are complete", () => {
-    const hostDaemonStartConfig = loadHostDaemonStartConfig({
-      dataDir: "/tmp/bb-data",
-      enableLocalApi: false,
-      env: {
-        BB_SERVER_URL: "not-a-url",
-        NODE_ENV: "development",
-      },
-      serverUrl: "http://localhost:9999",
-    });
-
-    expect(hostDaemonStartConfig).toEqual({
-      dataDir: "/tmp/bb-data",
-    });
   });
 
   it("builds logger config from an explicit data dir without resolving BB_DATA_DIR", () => {

@@ -3,11 +3,8 @@ import { useState } from "react";
 import { View } from "react-native";
 import { useProfiles } from "@/app-shell";
 import { accountServerProfile, useAccountServers } from "@/data/connect";
+import { describeError } from "@/lib/describe-error";
 import { Button, ListRow, Pill, Spinner, Text, toast } from "@/ui";
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /**
  * The other bb servers on the same getbb.app account, one tap to save each

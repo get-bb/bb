@@ -1,11 +1,7 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import type { TasksApiStore } from "../api";
+import { publishCommentsChanged, type TasksApiStore } from "../api";
 import type { TaskThread, TaskThreadLiveStatus } from "../db";
-import {
-  createSystemComment,
-  publishCommentsChanged,
-  publishThreadsChanged,
-} from "../delegate";
+import { createSystemComment, publishThreadsChanged } from "../delegate";
 
 const TERMINAL_LIVE_STATUSES = new Set<TaskThreadLiveStatus>([
   "completed",

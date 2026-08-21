@@ -11,7 +11,6 @@ import {
   type CreateAgentSessionOptions,
   type ModelRuntime,
   type PromptOptions,
-  type SessionStats,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
@@ -233,10 +232,6 @@ export class PiSdkSession {
 
   getIsCompacting(): boolean {
     return this.isCompacting;
-  }
-
-  getSessionStats(): SessionStats | undefined {
-    return this.session?.getSessionStats();
   }
 
   getContextUsage(): ContextUsage | undefined {

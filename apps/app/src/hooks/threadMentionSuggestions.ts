@@ -1,14 +1,14 @@
 import { fuzzyMatchText } from "@bb/fuzzy-match";
 import { PERSONAL_PROJECT_ID, type Thread } from "@bb/domain";
-import type { PromptMentionSuggestion } from "@/components/promptbox/mentions/types";
+import type { PromptMentionSuggestion } from "@bb/client-core";
 import { compareCodepoint } from "@/lib/codepoint-compare";
 
-export type ThreadMentionSuggestion = Extract<
+type ThreadMentionSuggestion = Extract<
   PromptMentionSuggestion,
   { kind: "thread" }
 >;
 
-export interface BuildThreadMentionSuggestionsArgs {
+interface BuildThreadMentionSuggestionsArgs {
   threads: readonly Thread[];
   query: string;
   currentProjectId?: string;

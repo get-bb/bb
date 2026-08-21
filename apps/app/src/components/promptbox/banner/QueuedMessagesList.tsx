@@ -66,7 +66,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   countQueuedMessageAttachments,
   formatQueuedMessagePreview,
-} from "@/views/thread-detail/threadQueuedMessages";
+} from "@bb/client-core";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { shiftMentionsToTextRange } from "@/components/thread/timeline/ConversationMessageMentions";

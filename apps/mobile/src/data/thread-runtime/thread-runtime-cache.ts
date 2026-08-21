@@ -143,19 +143,15 @@ function randomSuffix(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export function createOptimisticTimelineRowId(): string {
+function createOptimisticTimelineRowId(): string {
   return `${OPTIMISTIC_TIMELINE_ROW_ID_PREFIX}${randomSuffix()}`;
 }
 
 const OPTIMISTIC_QUEUED_MESSAGE_ID_PREFIX = "optimistic-queued-";
 
-export function isOptimisticQueuedMessageId(id: string): boolean {
-  return id.startsWith(OPTIMISTIC_QUEUED_MESSAGE_ID_PREFIX);
-}
-
 // --- Thread cache ------------------------------------------------------------
 
-export function updateCachedThread(
+function updateCachedThread(
   queryClient: QueryClient,
   threadId: string,
   updater: (thread: ThreadResponse) => ThreadResponse,
@@ -177,7 +173,7 @@ function isHostBlockedDisplayStatus(
  * optimistic user row. Host blockers are preserved: promoting them would
  * misrepresent host readiness.
  */
-export function applyOptimisticAcceptedTurnThreadState({
+function applyOptimisticAcceptedTurnThreadState({
   createdAt,
   queryClient,
   threadId,
@@ -197,7 +193,7 @@ export function applyOptimisticAcceptedTurnThreadState({
 
 // --- Timeline rows -----------------------------------------------------------
 
-export function insertOptimisticTimelineRow(
+function insertOptimisticTimelineRow(
   queryClient: QueryClient,
   threadId: string,
   row: TimelineRow,
@@ -211,7 +207,7 @@ export function insertOptimisticTimelineRow(
   );
 }
 
-export function removeOptimisticTimelineRow(
+function removeOptimisticTimelineRow(
   queryClient: QueryClient,
   threadId: string,
   rowId: string,
@@ -230,7 +226,7 @@ export function removeOptimisticTimelineRow(
 
 type OptimisticTurnRequestKind = "message" | "steer";
 
-export function optimisticTurnRequestKind({
+function optimisticTurnRequestKind({
   mode,
   threadStatus,
 }: {
@@ -340,7 +336,7 @@ function hasConfirmedStopRow(rows: readonly TimelineRow[]): boolean {
   );
 }
 
-export function buildStopRequestedTimelineRow({
+function buildStopRequestedTimelineRow({
   stoppingAnchorAt,
   threadId,
 }: {
@@ -397,7 +393,7 @@ function invalidateThreadListsAndSidebar(queryClient: QueryClient): void {
   });
 }
 
-export function invalidateThreadQueueQueries(
+function invalidateThreadQueueQueries(
   queryClient: QueryClient,
   threadId: string,
 ): void {
@@ -423,7 +419,7 @@ function invalidateThreadTimeline(
  * The next turn inherits the options of the last accepted run, so an
  * accepted message (or a rewrite) changes what the composer shows.
  */
-export function invalidateThreadDefaultExecutionOptions(
+function invalidateThreadDefaultExecutionOptions(
   queryClient: QueryClient,
   threadId: string,
 ): void {
@@ -433,7 +429,7 @@ export function invalidateThreadDefaultExecutionOptions(
 }
 
 /** Thread + timeline + lists: what a send/stop/banner action may change. */
-export function invalidateThreadActivityQueries(
+function invalidateThreadActivityQueries(
   queryClient: QueryClient,
   threadId: string,
 ): void {

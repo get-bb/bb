@@ -7,15 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  defaultAppSettings,
-  type PermissionMode,
-  type PromptInput,
-  type ReasoningLevel,
-  type ServiceTier,
-  type ThreadRuntimeDisplayStatus,
-} from "@bb/domain";
-import type { TimelineRow } from "@bb/server-contract";
+import { defaultAppSettings, type PromptInput } from "@bb/domain";
 import type {
   AttachmentsConfig,
   HistoryConfig,
@@ -46,10 +38,7 @@ import {
   type ThreadTimelineConsumerMessageAction,
   type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLinkHandler,
-  type ThreadTimelineRowFilter,
-  type ThreadTimelineSendToMainMessageHandler,
   type ThreadTimelineSurfaceProps,
-  type UseThreadTimelineControllerResult,
 } from "@/components/thread/timeline";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import {
@@ -75,7 +64,7 @@ import {
   buildSideChatSubmitMode,
   canSubmitFollowUpShortcut,
   shouldQueueFollowUpMessage,
-} from "@/views/thread-detail/threadDetailPromptSubmission";
+} from "@bb/client-core";
 import { useActiveComposerDraft } from "./useActiveComposerDraft";
 import { useComposerAttachmentUploads } from "./useComposerAttachmentUploads";
 import { useComposerTypeahead } from "./useComposerTypeahead";
@@ -89,27 +78,13 @@ function createPluginComposerHostIdentity(scopeIdentity: string): string {
   return `${scopeIdentity}:ownership:${pluginComposerHostOwnershipSequence}`;
 }
 
-/**
- * Hides thread-provisioning operation rows — an embedded chat panel renders its
- * own provisioning label, so the timeline row would duplicate it.
- */
-export const hideProvisioningTimelineRow: ThreadTimelineRowFilter = (row) =>
-  !(
-    row.kind === "system" &&
-    row.systemKind === "operation" &&
-    row.operationKind === "thread-provisioning"
-  );
-
-export interface EmbeddedThreadChatLabels {
+interface EmbeddedThreadChatLabels {
   /** Composer placeholder while the thread is idle/active. */
   placeholder: string;
   stopping: string;
   provisioning: string;
-  compactProvisioning?: string;
   missingThread: string;
   timelineError: string;
-  /** Ongoing-indicator label while submitting in draft mode (no thread yet). */
-  draftSubmitting: string;
   sendError: string;
 }
 
@@ -119,25 +94,8 @@ const DEFAULT_LABELS: EmbeddedThreadChatLabels = {
   provisioning: "Provisioning thread...",
   missingThread: "This thread is no longer available.",
   timelineError: "Failed to load timeline",
-  draftSubmitting: "Starting thread...",
   sendError: "Failed to send message",
 };
-
-export interface EmbeddedThreadChatExecutionContext {
-  model: string;
-  reasoningLevel: ReasoningLevel;
-  serviceTier: ServiceTier | undefined;
-  /** The resolved default (snapshot policy) or picked (editable policy) mode. */
-  permissionMode: PermissionMode | undefined;
-  /** Optional execution overrides in send/queue request field shape. */
-  executionRequestFields: {
-    model?: string;
-    permissionMode?: PermissionMode;
-    reasoningLevel?: ReasoningLevel;
-    serviceTier?: ServiceTier;
-  };
-  displayStatus: ThreadRuntimeDisplayStatus;
-}
 
 export interface EmbeddedThreadChatComposerProps {
   draftScope: PromptDraftScope;
@@ -147,32 +105,12 @@ export interface EmbeddedThreadChatComposerProps {
   executionEnvironmentId?: string;
   /** Machine of `executionEnvironmentId`; lets host-scoped catalogs share one query across environments. */
   executionEnvironmentHostId?: string;
-  /**
-   * Defer model/permission metadata loading until the surface first becomes
-   * active — lets a retained hidden panel's first paint win over host-backed
-   * model discovery.
-   */
-  deferExecutionOptionsUntilActive?: boolean;
   permissionPolicy: "editable" | "snapshot";
   environmentSummary: ReactNode;
   /** Plugin composer host scope for the bottom draft. Null disables the host. */
   pluginComposerBottomScope?: PluginComposerHost["scope"] | null;
   /** Identity string namespacing this composer among retained instances. */
   composerIdentity?: string;
-  /** ORed into queue-pending guards for consumer-owned submit mutations. */
-  isExternalSubmitPending?: boolean;
-  /**
-   * Consumer-owned bottom-draft submit (e.g. side chat lazy create-on-first-send).
-   * When omitted the component queues/sends to `threadId` itself.
-   */
-  onSendOrQueueInput?: (
-    input: PromptInput[],
-    context: EmbeddedThreadChatExecutionContext,
-  ) => Promise<void>;
-  /** Called with the submitted input right before the draft clears. */
-  onDraftSubmitted?: (input: PromptInput[]) => void;
-  /** Called when a bottom-draft submit fails, before the draft restores. */
-  onDraftSubmitError?: () => void;
   /**
    * External focus nonce: every change focuses the composer caret at the end
    * of the draft (the initial value does not). Combined with the component's
@@ -182,9 +120,7 @@ export interface EmbeddedThreadChatComposerProps {
 }
 
 interface EmbeddedThreadChatSharedProps {
-  threadId: string | null;
-  /** Stable surface identity while `threadId` is null (draft mode). */
-  surfaceFallbackKey?: string;
+  threadId: string;
   projectId: string;
   providerId: string;
   /** Environment context for mentions and command suggestions. */
@@ -192,8 +128,6 @@ interface EmbeddedThreadChatSharedProps {
   /** Retained hidden surfaces pass false to pause read tracking + composer customizations. */
   isActive?: boolean;
   resolveMentionLink: PromptMentionLinkResolver;
-  timeline?: UseThreadTimelineControllerResult;
-  rowFilter?: ThreadTimelineRowFilter;
   leadingContent?: ReactNode;
   /** Surface-scoped consumer actions for the per-message action bar. */
   consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
@@ -203,13 +137,8 @@ interface EmbeddedThreadChatSharedProps {
    * pass false; the main thread keeps the default.
    */
   includePluginMessageActions?: boolean;
-  /** Rows rendered while `threadId` is null (e.g. an optimistic first message). */
-  draftModeTimelineRows?: readonly TimelineRow[];
-  labels?: Partial<EmbeddedThreadChatLabels>;
-  showLoadOlderRows?: boolean;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
-  onSendToMainMessage?: ThreadTimelineSendToMainMessageHandler;
   /** Workspace root used to resolve relative links in timeline Markdown. */
   workspaceRootPath?: string;
   /**
@@ -295,48 +224,34 @@ function EmbeddedThreadChatHostedFooter({
 
 function EmbeddedThreadChatWithComposer({
   threadId,
-  surfaceFallbackKey,
   projectId,
   providerId,
   promptContextEnvironmentId,
   isActive = true,
   resolveMentionLink,
-  timeline,
-  rowFilter,
   leadingContent,
   consumerMessageActions,
   includePluginMessageActions,
-  draftModeTimelineRows,
-  labels: labelOverrides,
-  showLoadOlderRows = true,
   onOpenLink,
   onOpenLocalFileLink,
-  onSendToMainMessage,
   workspaceRootPath,
   layout = "contained",
   measure = "panel",
   surfaceTone = "background",
   composer,
 }: EmbeddedThreadChatComposerModeProps) {
-  const labels = { ...DEFAULT_LABELS, ...labelOverrides };
+  const labels = DEFAULT_LABELS;
   const systemConfigQuery = useSystemConfig();
   const steerActiveThreadOnEnter =
     systemConfigQuery.data?.generalSettings.steerActiveThreadOnEnter ??
     defaultAppSettings.steerActiveThreadOnEnter;
-  const surfaceKey = threadId ?? surfaceFallbackKey ?? "embedded-thread-chat";
+  const surfaceKey = threadId;
   const markThreadRead = useMarkThreadRead();
   const stopThread = useStopThread();
   const sendThreadMessage = useSendThreadMessage();
   const createQueuedMessage = useCreateThreadQueuedMessage();
-  const threadQuery = useThread(threadId ?? "", {
-    enabled: threadId !== null,
-  });
-  const pendingInteractionsQuery = useThreadPendingInteractions(
-    threadId ?? "",
-    {
-      enabled: threadId !== null,
-    },
-  );
+  const threadQuery = useThread(threadId);
+  const pendingInteractionsQuery = useThreadPendingInteractions(threadId);
   const activePendingInteraction = getLatestPendingInteraction(
     pendingInteractionsQuery.data,
   );
@@ -344,43 +259,15 @@ function EmbeddedThreadChatWithComposer({
     markThreadRead,
     thread: isActive ? threadQuery.data : undefined,
   });
-  const { data: queuedMessages = [] } = useThreadQueuedMessages(
-    threadId ?? "",
-    {
-      enabled: threadId !== null,
-    },
-  );
-
-  const [shouldLoadExecutionOptions, setShouldLoadExecutionOptions] = useState(
-    composer.deferExecutionOptionsUntilActive !== true,
-  );
-  const deferExecutionOptions =
-    composer.deferExecutionOptionsUntilActive === true;
-  useEffect(() => {
-    if (!deferExecutionOptions) {
-      return;
-    }
-    if (!isActive) {
-      setShouldLoadExecutionOptions(false);
-      return;
-    }
-    // The surface itself is useful before model metadata is. Let its first
-    // paint win over host-backed model discovery, which can take seconds on a
-    // remote mobile session.
-    const timeoutId = window.setTimeout(
-      () => setShouldLoadExecutionOptions(true),
-      0,
-    );
-    return () => window.clearTimeout(timeoutId);
-  }, [deferExecutionOptions, isActive]);
+  const { data: queuedMessages = [] } = useThreadQueuedMessages(threadId);
 
   const executionOptionsQuery = useThreadDefaultExecutionOptions(
     composer.executionDefaultsThreadId,
-    { enabled: shouldLoadExecutionOptions },
+    { enabled: true },
   );
   const defaultExecutionOptions = executionOptionsQuery.data;
   const threadCreationOptions = useThreadCreationOptions({
-    enabled: shouldLoadExecutionOptions,
+    enabled: true,
     scope: "component-local",
     environmentId: composer.executionEnvironmentId,
     environmentHostId: composer.executionEnvironmentHostId,
@@ -456,25 +343,6 @@ function EmbeddedThreadChatWithComposer({
       selectedExecutionServiceTier,
     ],
   );
-  const executionContext = useMemo<EmbeddedThreadChatExecutionContext>(
-    () => ({
-      model: selectedExecutionModel,
-      reasoningLevel,
-      serviceTier: selectedExecutionServiceTier,
-      permissionMode: effectivePermissionMode,
-      executionRequestFields,
-      displayStatus,
-    }),
-    [
-      displayStatus,
-      effectivePermissionMode,
-      executionRequestFields,
-      reasoningLevel,
-      selectedExecutionModel,
-      selectedExecutionServiceTier,
-    ],
-  );
-
   const [composerFocusNonce, setComposerFocusNonce] = useState(0);
   const [inlineComposerFocusNonce, setInlineComposerFocusNonce] = useState(0);
   const [isTurnSubmitting, setIsTurnSubmitting] = useState(false);
@@ -538,20 +406,16 @@ function EmbeddedThreadChatWithComposer({
     projectId,
     providerId,
     environmentId: promptContextEnvironmentId,
-    commandScope: threadId === null ? "new-thread" : "thread",
-    currentThreadId: threadId ?? composer.executionDefaultsThreadId,
+    commandScope: "thread",
+    currentThreadId: threadId,
     selectedProviderComposerActions,
     resolveMentionLink,
   });
 
   const isStopRequested =
-    threadId !== null &&
-    (threadQuery.data?.status === "stopping" ||
-      (stopThread.isPending && stopThread.variables === threadId));
+    threadQuery.data?.status === "stopping" ||
+    (stopThread.isPending && stopThread.variables === threadId);
   const handleStopThread = useCallback(() => {
-    if (threadId === null) {
-      return;
-    }
     stopThread.mutate(threadId);
   }, [stopThread, threadId]);
   const isProvisioning =
@@ -602,9 +466,6 @@ function EmbeddedThreadChatWithComposer({
 
   const defaultSendOrQueueInput = useCallback(
     async (input: PromptInput[]) => {
-      if (threadId === null) {
-        throw new Error("No thread to send to yet.");
-      }
       if (shouldQueueFollowUpMessage(displayStatus)) {
         await createQueuedMessage.mutateAsync({
           id: threadId,
@@ -628,29 +489,20 @@ function EmbeddedThreadChatWithComposer({
       threadId,
     ],
   );
-  const sendOrQueueInput = composer.onSendOrQueueInput;
-  const onDraftSubmitted = composer.onDraftSubmitted;
-  const onDraftSubmitError = composer.onDraftSubmitError;
   const handleSubmit = useCallback(() => {
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
     if (submittedInput.length === 0 || isTurnSubmitting) {
       return;
     }
-    onDraftSubmitted?.(submittedInput);
     promptDraft.clearIfCurrentMatches(submittedDraft);
     setBottomAttachmentError(null);
     setIsTurnSubmitting(true);
-    void (
-      sendOrQueueInput
-        ? sendOrQueueInput(submittedInput, executionContext)
-        : defaultSendOrQueueInput(submittedInput)
-    )
+    void defaultSendOrQueueInput(submittedInput)
       .catch((error) => {
         if (!isMountedRef.current) {
           return;
         }
-        onDraftSubmitError?.();
         promptDraft.restoreIfEmpty(submittedDraft);
         appToast.error(
           getMutationErrorMessage({
@@ -672,20 +524,14 @@ function EmbeddedThreadChatWithComposer({
     currentPromptDraftInput,
     defaultSendOrQueueInput,
     displayStatus,
-    executionContext,
     isTurnSubmitting,
     labels.sendError,
-    onDraftSubmitError,
-    onDraftSubmitted,
     promptDraft,
-    sendOrQueueInput,
     setBottomAttachmentError,
   ]);
 
   const isQueueMutationPending =
-    queuedMessageActionPending ||
-    createQueuedMessage.isPending ||
-    composer.isExternalSubmitPending === true;
+    queuedMessageActionPending || createQueuedMessage.isPending;
   const hasPromptDraftInput = currentPromptDraftInput.length > 0;
   const canSubmitModifierShortcut = canSubmitFollowUpShortcut({
     hasPromptDraftInput,
@@ -696,7 +542,7 @@ function EmbeddedThreadChatWithComposer({
     submitModeKind: submitMode.kind,
   });
   const handleModifierSubmit = useCallback(() => {
-    if (!canSubmitModifierShortcut || threadId === null) {
+    if (!canSubmitModifierShortcut) {
       return;
     }
 
@@ -956,11 +802,6 @@ function EmbeddedThreadChatWithComposer({
     : isProvisioning
       ? labels.provisioning
       : labels.placeholder;
-  const compactComposerPlaceholder = isStopRequested
-    ? labels.stopping
-    : isProvisioning
-      ? (labels.compactProvisioning ?? labels.provisioning)
-      : labels.placeholder;
 
   const bottomComposerConfig = useMemo<FollowUpComposerProps>(
     () => ({
@@ -978,7 +819,7 @@ function EmbeddedThreadChatWithComposer({
       onChangeMessage: promptDraft.setTextAndMentions,
       onModifierSubmit: handleBottomComposerModifierSubmit,
       onSubmit: handleBottomComposerSubmit,
-      compactPromptPlaceholder: compactComposerPlaceholder,
+      compactPromptPlaceholder: composerPlaceholder,
       promptPlaceholder: composerPlaceholder,
       canModifierSubmit: canSubmitModifierShortcut,
       steerActiveThreadOnEnter,
@@ -987,7 +828,6 @@ function EmbeddedThreadChatWithComposer({
     }),
     [
       canSubmitModifierShortcut,
-      compactComposerPlaceholder,
       composerPlaceholder,
       currentPromptDraft,
       displayStatus,
@@ -1015,7 +855,7 @@ function EmbeddedThreadChatWithComposer({
             onChangeMessage: handleChangeMessage,
             onModifierSubmit: handleInlineComposerSubmit,
             onSubmit: handleInlineComposerSubmit,
-            compactPromptPlaceholder: compactComposerPlaceholder,
+            compactPromptPlaceholder: composerPlaceholder,
             promptPlaceholder: composerPlaceholder,
             canModifierSubmit:
               activeComposerDraftInput.length > 0 &&
@@ -1028,7 +868,6 @@ function EmbeddedThreadChatWithComposer({
     [
       activeComposerDraft,
       activeComposerDraftInput.length,
-      compactComposerPlaceholder,
       composerPlaceholder,
       displayStatus,
       handleChangeMessage,
@@ -1260,9 +1099,7 @@ function EmbeddedThreadChatWithComposer({
           queuedMessages={queuedMessages}
           resolveMentionLink={resolveMentionLink}
           inlineEditor={inlineEditor}
-          sendDisabled={
-            threadId === null || isProvisioning || queuedMessageActionPending
-          }
+          sendDisabled={isProvisioning || queuedMessageActionPending}
           actionDisabled={queuedMessageActionPending}
           processingMessageId={processingQueuedMessage?.id ?? null}
           processingAction={processingQueuedMessage?.action ?? null}
@@ -1286,7 +1123,6 @@ function EmbeddedThreadChatWithComposer({
       queuedMessageActionPending,
       queuedMessages,
       resolveMentionLink,
-      threadId,
     ],
   );
 
@@ -1301,7 +1137,7 @@ function EmbeddedThreadChatWithComposer({
     activePendingInteraction.payload.kind === "plugin" ? null : (
       <ThreadPendingInteractionBanner
         interaction={activePendingInteraction}
-        threadId={threadId ?? ""}
+        threadId={threadId}
       />
     );
   const footer = (
@@ -1342,46 +1178,25 @@ function EmbeddedThreadChatWithComposer({
   );
 
   const maxWidthClassName = measure === "page" ? "max-w-[760px]" : "max-w-none";
-  const timelineBody =
-    threadId !== null ? (
-      <ThreadTimelinePanelContent
-        isTurnSubmitting={isTurnSubmitting}
-        leadingContent={leadingContent}
-        consumerMessageActions={consumerMessageActions}
-        includePluginMessageActions={includePluginMessageActions}
-        missingThreadLabel={labels.missingThread}
-        onOpenLink={onOpenLink}
-        onOpenLocalFileLink={onOpenLocalFileLink}
-        onSendToMainMessage={onSendToMainMessage}
-        onMessageAddToChat={handleAddToChat}
-        onSelectionAddToChat={handleAddToChat}
-        projectId={projectId}
-        provisioningLabel={labels.provisioning}
-        resolveMentionLink={resolveMentionLink}
-        rowFilter={rowFilter}
-        showLoadOlderRows={showLoadOlderRows}
-        threadId={threadId}
-        timeline={timeline}
-        timelineErrorLabel={labels.timelineError}
-        workspaceRootPath={workspaceRootPath}
-      />
-    ) : (
-      <ThreadTimelineSurface
-        activeThinking={null}
-        leadingContent={leadingContent}
-        isThreadTimelinePending={false}
-        timelineError={false}
-        showOngoingIndicator={isTurnSubmitting}
-        ongoingIndicatorLabel={labels.draftSubmitting}
-        onOpenLink={onOpenLink}
-        onOpenLocalFileLink={onOpenLocalFileLink}
-        resolveMentionLink={resolveMentionLink}
-        timelineRows={draftModeTimelineRows ? [...draftModeTimelineRows] : []}
-        threadId={surfaceKey}
-        threadRuntimeDisplayStatus="starting"
-        workspaceRootPath={workspaceRootPath}
-      />
-    );
+  const timelineBody = (
+    <ThreadTimelinePanelContent
+      isTurnSubmitting={isTurnSubmitting}
+      leadingContent={leadingContent}
+      consumerMessageActions={consumerMessageActions}
+      includePluginMessageActions={includePluginMessageActions}
+      missingThreadLabel={labels.missingThread}
+      onOpenLink={onOpenLink}
+      onOpenLocalFileLink={onOpenLocalFileLink}
+      onMessageAddToChat={handleAddToChat}
+      onSelectionAddToChat={handleAddToChat}
+      projectId={projectId}
+      provisioningLabel={labels.provisioning}
+      resolveMentionLink={resolveMentionLink}
+      threadId={threadId}
+      timelineErrorLabel={labels.timelineError}
+      workspaceRootPath={workspaceRootPath}
+    />
+  );
 
   if (layout === "document") {
     // Normal document flow: the page (or panel) scrolls, not this component.
@@ -1422,7 +1237,7 @@ function EmbeddedThreadChatWithComposer({
         }
         maxWidthClassName={maxWidthClassName}
         footer={footer}
-        scrollAnchorThreadId={threadId ?? undefined}
+        scrollAnchorThreadId={threadId}
       >
         {timelineBody}
       </BottomAnchoredScrollBody>

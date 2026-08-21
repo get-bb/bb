@@ -65,8 +65,8 @@ import {
   PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS,
   PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS,
   PLUGIN_HTTP_METHODS,
-  PLUGIN_MENTION_TRIGGER_VALUES,
   readRpcMethodContract,
+  registerSettingDescriptors,
   RESERVED_AGENT_TOOL_NAMES,
   RESERVED_BB_CLI_COMMANDS,
   RPC_METHOD_PATTERN,
@@ -78,60 +78,20 @@ import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
 import { appendPluginLogLine } from "./plugin-log.js";
-import {
-  readPluginSettingsValues,
-  registerSettingDescriptors,
-} from "./plugin-settings.js";
+import { readPluginSettingsValues } from "./plugin-settings.js";
 
 // The backend plugin API contract lives in @get-bb/plugin-sdk (plugin authors
 // compile against it); this module implements it. Re-exported so server code
 // keeps one import site for plugin API types.
 export type {
   BbPluginApi,
-  PluginAgentConfiguration,
   PluginAgentConfigurationContext,
-  PluginAgentToolContentPart,
   PluginAgentToolContext,
-  PluginAgentToolExperimentalStatusLabels,
-  PluginAgentToolRegistrationBase,
-  PluginAgentToolResult,
-  PluginAgents,
-  PluginBackground,
-  PluginCli,
   PluginCliCommandInfo,
   PluginCliContext,
-  PluginCliRegistration,
-  PluginCliResult,
-  PluginEvents,
-  PluginHttp,
-  PluginHttpAuthMode,
-  PluginHttpHandler,
-  PluginHosts,
-  PluginKvStorage,
-  PluginLogger,
-  PluginMentionItem,
-  PluginMentionProviderRegistration,
-  PluginMentionSearchContext,
   PluginMentionTrigger,
-  PluginRealtime,
-  PluginRpc,
-  PluginRpcContract,
-  PluginRpcError,
-  PluginRpcErrorCode,
-  PluginRpcHandlers,
-  PluginRpcMethodContract,
-  PluginRpcValidationIssue,
-  PluginServerApi,
-  PluginSettings,
-  PluginSettingsHandle,
-  PluginSettingsValues,
-  PluginStatusApi,
-  PluginStorage,
-  PluginThreadEventHandler,
   PluginThreadEventName,
   PluginThreadEventPayloads,
-  PluginUi,
-  StandardSchemaV1,
 } from "@get-bb/plugin-sdk";
 
 /**
@@ -139,7 +99,7 @@ export type {
  * reload/disable (pi's stale-context discipline): captured `bb` references
  * from a previous load fail loudly instead of acting on dead state.
  */
-export class PluginContextStaleError extends Error {
+class PluginContextStaleError extends Error {
   constructor(pluginId: string) {
     super(
       `plugin "${pluginId}" used a stale API handle — it was reloaded or disabled; ` +
@@ -150,26 +110,19 @@ export class PluginContextStaleError extends Error {
 }
 
 /**
- * Thrown from a background service's `start()` to mark the plugin
+ * An error thrown from a background service's `start()` to mark the plugin
  * `needs-configuration` (e.g. no API key yet) instead of crash-looping: the
  * service is not restarted until the plugin is reloaded or its settings are
- * saved (which reloads it). Matched by name too, so plugin code without a
+ * saved (which reloads it). Matched by name, so plugin code without a
  * runtime import can `throw Object.assign(new Error(msg), { name:
  * "NeedsConfigurationError" })`.
  */
-export class NeedsConfigurationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "NeedsConfigurationError";
-  }
-}
-
 export function isNeedsConfigurationError(error: unknown): error is Error {
   return error instanceof Error && error.name === "NeedsConfigurationError";
 }
 
 /** Per-event handler lists recorded by `bb.events.on`; dropped with the handle. */
-export type PluginThreadEventHandlers = {
+type PluginThreadEventHandlers = {
   [E in PluginThreadEventName]: Array<PluginThreadEventHandler<E>>;
 };
 
@@ -217,14 +170,10 @@ export interface PluginAgentToolRecord {
   ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
 }
 
-export {
-  PLUGIN_MENTION_TRIGGER_VALUES,
-  RESERVED_AGENT_TOOL_NAMES,
-  RESERVED_BB_CLI_COMMANDS,
-};
+export { RESERVED_AGENT_TOOL_NAMES };
 
 /** Runtime record of a registered mention provider. */
-export interface PluginMentionProviderRecord {
+interface PluginMentionProviderRecord {
   id: string;
   label: string;
   triggers: readonly PluginMentionTrigger[];
@@ -243,14 +192,14 @@ export interface PluginBackgroundServiceRecord {
 }
 
 /** Runtime record of a registered schedule; cron is validated at registration. */
-export interface PluginScheduleRecord {
+interface PluginScheduleRecord {
   name: string;
   cron: string;
   fn: () => void | Promise<void>;
 }
 
 /** Validated record of the plugin's `bb.cli.register` call. */
-export interface PluginCliRegistrationRecord {
+interface PluginCliRegistrationRecord {
   name: string;
   summary: string;
   commands: PluginCliCommandInfo[];
@@ -260,7 +209,7 @@ export interface PluginCliRegistrationRecord {
   ) => PluginCliResult | Promise<PluginCliResult>;
 }
 
-export type PluginSettingsListener = (
+type PluginSettingsListener = (
   next: Record<string, PluginSettingValue | undefined>,
   prev: Record<string, PluginSettingValue | undefined>,
 ) => void;
@@ -311,11 +260,11 @@ export interface PluginApiHandle {
   invalidate(): void;
 }
 
-export type PluginHostWorkerExitHandler = (event: {
+type PluginHostWorkerExitHandler = (event: {
   hostId: string;
 }) => void | Promise<void>;
 
-export interface PluginHostSignalHandler {
+interface PluginHostSignalHandler {
   signal: string;
   payloadSchema: StandardSchemaV1;
   handler: (event: {
@@ -325,13 +274,13 @@ export interface PluginHostSignalHandler {
 }
 
 /** Provider registered by `bb.agents.contributeInstructions`. */
-export type PluginInstructionProvider = (ctx: {
+type PluginInstructionProvider = (ctx: {
   threadId: string;
   projectId: string;
 }) => string | null;
 
 /** Provider registered by `bb.agents.configure`. */
-export type PluginAgentConfigurationProvider = (
+type PluginAgentConfigurationProvider = (
   context: PluginAgentConfigurationContext,
 ) => PluginAgentConfiguration;
 

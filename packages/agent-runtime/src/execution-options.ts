@@ -61,9 +61,7 @@ export function assertProviderSupportsExecutionOptions(
   }
 }
 
-export function sameExecutionSettings(
-  args: SameExecutionSettingsArgs,
-): boolean {
+function sameExecutionSettings(args: SameExecutionSettingsArgs): boolean {
   return (
     args.left.model === args.right.model &&
     args.left.serviceTier === args.right.serviceTier &&
@@ -87,51 +85,6 @@ export function classifySessionExecutionSettingsChange(
   return sameExecutionSettings({ left: args.current, right: args.next })
     ? "unchanged"
     : "session";
-}
-
-function sameClaudeSessionSettings(
-  args: ClassifyProviderExecutionSettingsChangeArgs,
-): boolean {
-  return (
-    args.current.claudeCodePermissionMode ===
-      args.next.claudeCodePermissionMode &&
-    args.current.permissionMode === args.next.permissionMode &&
-    args.current.permissionScope === args.next.permissionScope &&
-    args.current.approvalReviewer === args.next.approvalReviewer
-  );
-}
-
-function sameClaudeLiveSettings(
-  args: ClassifyProviderExecutionSettingsChangeArgs,
-): boolean {
-  return (
-    args.current.model === args.next.model &&
-    args.current.reasoningLevel === args.next.reasoningLevel &&
-    args.current.workflowsEnabled === args.next.workflowsEnabled &&
-    (args.current.memoryEnabled ?? true) ===
-      (args.next.memoryEnabled ?? true) &&
-    (args.current.providerSubagentsEnabled ?? true) ===
-      (args.next.providerSubagentsEnabled ?? true) &&
-    args.current.permissionEscalation === args.next.permissionEscalation
-  );
-}
-
-export function classifyClaudeExecutionSettingsChange(
-  args: ClassifyProviderExecutionSettingsChangeArgs,
-): ProviderExecutionSettingsChange {
-  if (!sameClaudeSessionSettings(args)) {
-    return "session";
-  }
-  return sameClaudeLiveSettings(args) ? "unchanged" : "live";
-}
-
-export function normalizeClaudeExecutionOptions(
-  options: AgentRuntimeExecutionOptions,
-): AgentRuntimeExecutionOptions {
-  if (options.serviceTier !== "fast") {
-    return options;
-  }
-  return { ...options, serviceTier: "default" };
 }
 
 export function toProviderExecutionContext(

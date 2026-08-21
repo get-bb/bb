@@ -77,9 +77,6 @@ export const registrySkillEntriesRequestSchema = z
       .max(REGISTRY_ENTRY_BATCH_LIMIT),
   })
   .strict();
-export type RegistrySkillEntriesRequest = z.infer<
-  typeof registrySkillEntriesRequestSchema
->;
 
 /**
  * Entries that could not be resolved (dead detail page, malformed id) are
@@ -98,9 +95,6 @@ export const registrySkillInstallRequestSchema = z
     registrySkillId: z.string().min(1),
   })
   .strict();
-export type RegistrySkillInstallRequest = z.infer<
-  typeof registrySkillInstallRequestSchema
->;
 
 export const registrySkillInstallResponseSchema = z.object({
   ok: z.literal(true),

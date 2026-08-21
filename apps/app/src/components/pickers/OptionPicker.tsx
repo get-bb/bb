@@ -18,15 +18,6 @@ import {
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
-export {
-  OptionDisplay,
-  OPTION_BASE_CLASS_NAME,
-  OPTION_CONTENT_CLASS_NAME,
-  OPTION_INTERACTIVE_CLASS_NAME,
-  OPTION_MENU_CONTENT_CLASS_NAME,
-  OPTION_MUTED_CLASS_NAME,
-  OPTION_TRIGGER_CONTENT_CLASS_NAME,
-} from "@bb/shared-ui/option-display";
 
 // Inline picker triggers keep flat resting chrome (no border/background/shadow
 // so they sit inline with surrounding text) but use the ghost button variant's

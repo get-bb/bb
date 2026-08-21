@@ -507,8 +507,6 @@ describe("workspace open targets", () => {
       {
         context: {
           kind: "remote-ssh",
-          serverOrigin: "https://bb.example.test",
-          hostId: "host_remote",
           sshAuthority: "devbox",
         },
         columnNumber: 8,
@@ -1060,8 +1058,6 @@ describe("workspace open targets", () => {
         {
           context: {
             kind: "remote-ssh",
-            serverOrigin: "https://example.test",
-            hostId: "host_1",
             sshAuthority: "mbp-intel",
           },
           columnNumber: 2,
@@ -1746,8 +1742,6 @@ describe("workspace open targets", () => {
       {
         context: {
           kind: "remote-ssh",
-          serverOrigin: "https://bb.example.test",
-          hostId: "host_remote",
           sshAuthority: "devbox",
         },
         columnNumber: 9,
@@ -1780,8 +1774,6 @@ describe("workspace open targets", () => {
       {
         context: {
           kind: "remote-ssh",
-          serverOrigin: "https://bb.example.test",
-          hostId: "host_remote",
           sshAuthority: "devbox",
         },
         columnNumber: 8,
@@ -1819,8 +1811,6 @@ describe("workspace open targets", () => {
       {
         context: {
           kind: "remote-ssh",
-          serverOrigin: "https://bb.example.test",
-          hostId: "host_remote",
           sshAuthority: "devbox",
         },
         columnNumber: null,
@@ -1859,8 +1849,6 @@ describe("workspace open targets", () => {
       {
         context: {
           kind: "remote-ssh",
-          serverOrigin: "https://bb.example.test",
-          hostId: "host_remote",
           sshAuthority: "devbox",
         },
         columnNumber: 3,
@@ -1883,8 +1871,6 @@ describe("workspace open targets", () => {
         {
           context: {
             kind: "remote-ssh",
-            serverOrigin: "https://bb.example.test",
-            hostId: "host_remote",
             sshAuthority: "devbox",
           },
           columnNumber: null,

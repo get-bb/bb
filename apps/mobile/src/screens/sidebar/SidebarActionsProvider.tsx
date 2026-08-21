@@ -47,6 +47,7 @@ import {
   useUnarchiveThread,
   useUnpinThread,
 } from "@/data/threads";
+import { describeError } from "@/lib/describe-error";
 import { useTheme } from "@/theme";
 import {
   Icon,
@@ -107,7 +108,6 @@ export interface SidebarActions {
   openDisplayOptions(): void;
   /** The drag-to-reorder list of top-level sections for the current mode. */
   openSectionReorder(): void;
-  openCreateSection(): void;
   /** Navigate to the thread detail. */
   openThread(thread: Pick<ThreadListEntry, "id">): void;
   /** Navigate to the composer, preselecting a project and/or section. */
@@ -148,10 +148,6 @@ const SORT_OPTIONS: readonly {
   { label: "Created at", sort: "created", icon: "Calendar" },
   { label: "Alphabetical", sort: "alpha", icon: "Sort" },
 ];
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function sectionErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof BbHttpError && error.code === "section_name_conflict") {
@@ -360,8 +356,6 @@ export function SidebarActionsProvider({
       openSectionMenu: (section) => present({ kind: "section-menu", section }),
       openDisplayOptions: () => present({ kind: "display-options" }),
       openSectionReorder: () => present({ kind: "section-reorder" }),
-      openCreateSection: () =>
-        present({ kind: "section-create", moveThread: null }),
       openThread: (thread) => navigate(threadHref(thread.id)),
       createThread: (target) => {
         if (onCreateThread?.(target)) return;

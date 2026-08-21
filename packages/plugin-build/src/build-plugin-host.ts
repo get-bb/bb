@@ -11,7 +11,7 @@ import {
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
-import { validatePluginBuildManifest } from "./plugin-manifest.js";
+import { isRecord, validatePluginBuildManifest } from "./plugin-manifest.js";
 import type { PluginBuildToolchain } from "./toolchain.js";
 
 const NODE_ESM_REQUIRE_BANNER = [
@@ -76,10 +76,6 @@ export const HOST_ARTIFACT_RUNTIME_STUBS: Record<string, string> = {
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 interface SourceToken {

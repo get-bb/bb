@@ -3,7 +3,7 @@ import type { Thread } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { throwParentThreadInvalid } from "../lib/lifecycle-api-errors.js";
 
-export const MAX_THREAD_HIERARCHY_DEPTH = 4;
+const MAX_THREAD_HIERARCHY_DEPTH = 4;
 
 /**
  * Whether a thread is an agent-delegated child. Forks and side chats keep
@@ -39,11 +39,11 @@ export type ParentThread = Pick<
 > &
   Partial<Pick<Thread, "originKind">>;
 
-export interface IsLiveParentThreadArgs {
+interface IsLiveParentThreadArgs {
   parentThread: ParentThread | null;
 }
 
-export interface AssertValidParentThreadArgs {
+interface AssertValidParentThreadArgs {
   childThreadId?: string;
   parentThreadId: string;
 }
@@ -56,10 +56,6 @@ interface ResolveParentDepthArgs {
 interface ResolveThreadSubtreeDepthArgs {
   threadId: string;
   visitedThreadIds: Set<string>;
-}
-
-function toParentThread(thread: Thread): ParentThread {
-  return thread;
 }
 
 /**
@@ -98,8 +94,7 @@ function resolveParentDepth(
       return depth;
     }
 
-    const nextParentThread = getThread(deps.db, parentThread.parentThreadId);
-    parentThread = nextParentThread ? toParentThread(nextParentThread) : null;
+    parentThread = getThread(deps.db, parentThread.parentThreadId);
   }
 
   return depth;
@@ -130,7 +125,7 @@ function resolveThreadSubtreeDepth(
   return maxChildDepth + 1;
 }
 
-export interface CanThreadSpawnChildArgs {
+interface CanThreadSpawnChildArgs {
   thread: ParentThread;
 }
 

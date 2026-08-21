@@ -7,8 +7,6 @@ const cachedModelCatalogSchema = z.object({
   selectedOnlyModels: z.array(availableModelSchema),
 });
 
-export type CachedModelCatalog = z.infer<typeof cachedModelCatalogSchema>;
-
 /**
  * The last catalog a successful probe returned, keyed by the same routing
  * dimensions as the execution-options query: two hosts can be signed into

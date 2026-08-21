@@ -1,11 +1,9 @@
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { CREATE_PLUGIN_PROMPT } from "@/lib/create-resource-prompts";
 import { ShowcaseExampleCard } from "@/components/showcase-hero/ShowcaseArchetypeCards";
-import type { ShowcaseArchetype } from "@/components/showcase-hero/showcase-archetype";
-import { showcaseArchetypePrompt } from "@/components/showcase-hero/showcase-archetype";
 import {
   BROWSE_ARCHETYPES,
   UTILITY_EXAMPLES,
+  archetypePrompt,
   utilityPrompt,
 } from "./browse-hero-archetypes";
 
@@ -20,12 +18,10 @@ import {
  */
 export function BrowseArchetypeCards({
   onCreate,
-  archetypes = BROWSE_ARCHETYPES,
   className,
 }: {
   /** Receives the full composer prompt for the chosen example. */
   onCreate: (prompt: string) => void;
-  archetypes?: readonly ShowcaseArchetype[];
   className?: string;
 }) {
   return (
@@ -37,18 +33,14 @@ export function BrowseArchetypeCards({
           Start from an example
         </h3>
         <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {archetypes.map((archetype) => (
+          {BROWSE_ARCHETYPES.map((archetype) => (
             <ShowcaseExampleCard
               key={archetype.id}
               icon={archetype.icon}
               title={archetype.title}
               description={archetype.hook}
               accentToken={archetype.accentToken}
-              onClick={() =>
-                onCreate(
-                  showcaseArchetypePrompt(CREATE_PLUGIN_PROMPT, archetype),
-                )
-              }
+              onClick={() => onCreate(archetypePrompt(archetype))}
             />
           ))}
         </div>

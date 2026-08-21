@@ -7,10 +7,6 @@ export {
   type RespondPluginInteractionRequest,
 } from "./interaction-mutations";
 export {
-  applyInteractionResult,
-  invalidateInteractionResolution,
-} from "./interaction-cache";
-export {
   approvalDecisionButtonVariant,
   approvalResolutionDecision,
   describeApprovalSubject,
@@ -25,11 +21,7 @@ export {
   buildUserAnswerResolution,
   createInitialFormState,
   isQuestionAnswered,
-  normalizeAskUserQuestion,
-  normalizeAskUserQuestions,
-  normalizeUserQuestion,
   normalizeUserQuestions,
-  questionHasOptions,
   setQuestionFreeText,
   toggleQuestionOption,
   toggleQuestionOther,
@@ -41,14 +33,11 @@ export {
 export {
   buildSecretRequestResponse,
   parsePluginInteractionForm,
-  SECRET_REQUEST_INVALID_VALUES_MESSAGE,
   type PluginInteractionForm,
   type SecretRequestFormResult,
 } from "./plugin-interaction-payloads";
 export {
   childThreadAttentionSource,
-  collectChildThreadPendingAttention,
-  pendingChildThreadIds,
   type ChildThreadPendingAttention,
   type ChildThreadPendingAttentionSource,
 } from "./child-thread-pending-interactions";

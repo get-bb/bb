@@ -117,7 +117,6 @@ export interface CreateHostDaemonAppOptions {
   machineCredential?: string;
   connectMachineId?: string;
   autoUpdate?: boolean;
-  installUpdateTarball?: (tarballPath: string) => Promise<void>;
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
   createRuntime?: RuntimeManagerOptions["createRuntime"];
@@ -298,13 +297,13 @@ export async function createHostDaemonApp(
   async function flushThreadEventsBeforeInteractiveRegistration(): Promise<void> {
     // Interactive registration creates server-owned turn-scoped timeline state,
     // so the server must first observe the provider turn/started for that turn.
-    await eventSink.flushRequired();
+    await eventSink.flush();
   }
 
   async function flushThreadEventsBeforeToolCall(): Promise<void> {
     // Dynamic tool calls can append server-owned turn-scoped events, so the
     // server must first observe any provider turn/started already emitted.
-    await eventSink.flushRequired();
+    await eventSink.flush();
   }
 
   const serverClient = createServerClient({
@@ -841,7 +840,6 @@ export async function createHostDaemonApp(
       dataDir: options.dataDir,
       enabled: options.autoUpdate ?? false,
       fetchFn: options.fetchFn,
-      installTarball: options.installUpdateTarball,
       logger: options.logger,
       serverUrl: options.serverUrl,
     }),

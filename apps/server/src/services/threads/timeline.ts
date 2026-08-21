@@ -71,13 +71,6 @@ import {
 } from "./timeline-pagination.js";
 import { DEFAULT_MAX_INLINE_OUTPUT_CHARS } from "./timeline-output-truncation.js";
 
-export type {
-  LatestThreadTimelinePageRequest,
-  OlderThreadTimelinePageRequest,
-  ThreadTimelinePageKind,
-  ThreadTimelinePageRequest,
-} from "./timeline-pagination.js";
-
 interface TimelineTurnSummarySelection {
   sourceSeqEnd: number;
   sourceSeqStart: number;
@@ -176,7 +169,7 @@ export const THREAD_TIMELINE_SEGMENT_LIMIT_MAX = 100;
  */
 export const THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT = 4 * 1024 * 1024;
 
-export type ThreadTimelineBuildProfileStage =
+type ThreadTimelineBuildProfileStage =
   | "event-query"
   | "accepted-client-request-context-query"
   | "event-json-decode"
@@ -184,12 +177,11 @@ export type ThreadTimelineBuildProfileStage =
   | "context-window-query"
   | "context-window-json-decode"
   | "thread-view-projection"
-  | "pagination-segmentation"
-  | "response-serialization";
+  | "pagination-segmentation";
 
-export type ThreadTimelineEventSelectionStrategy = "full" | "standard-window";
+type ThreadTimelineEventSelectionStrategy = "full" | "standard-window";
 
-export interface ThreadTimelineBuildProfileStageTiming {
+interface ThreadTimelineBuildProfileStageTiming {
   durationMs: number;
   stage: ThreadTimelineBuildProfileStage;
 }
@@ -203,14 +195,6 @@ export interface ThreadTimelineBuildProfile {
   eventRowCount: number;
   pageKind: ThreadTimelinePageKind;
   projectedRowCount: number;
-  /**
-   * Null unless `measureResponseBytes` was requested. Measuring it means
-   * serializing the whole response a second time, which on a large thread is
-   * megabytes of `JSON.stringify` — the exact cost this profile exists to
-   * diagnose. The slow-build log path leaves it off and relies on the cheap
-   * counters instead.
-   */
-  responseJsonBytes: number | null;
   responseRowCount: number;
   returnedSegmentCount: number;
   segmentLimit: number;
@@ -232,7 +216,6 @@ interface ThreadTimelineBuildProfileAccumulator {
   eventDataBytes: number;
   eventRowCount: number;
   projectedRowCount: number;
-  responseJsonBytes: number | null;
   responseRowCount: number;
   returnedSegmentCount: number;
   selectionStrategy: ThreadTimelineEventSelectionStrategy;
@@ -241,8 +224,6 @@ interface ThreadTimelineBuildProfileAccumulator {
 
 interface BuildThreadTimelineInternalOptions extends BuildThreadTimelineOptions {
   includeProfile: boolean;
-  /** See {@link ThreadTimelineBuildProfile.responseJsonBytes}. */
-  measureResponseBytes: boolean;
 }
 
 interface TimelineEventRowSelection {
@@ -1563,7 +1544,6 @@ function createThreadTimelineBuildProfileAccumulator(): ThreadTimelineBuildProfi
     eventDataBytes: 0,
     eventRowCount: 0,
     projectedRowCount: 0,
-    responseJsonBytes: null,
     responseRowCount: 0,
     returnedSegmentCount: 0,
     selectionStrategy: "full",
@@ -1592,15 +1572,7 @@ function measureThreadTimelineStage<TResult>(
 function completeThreadTimelineBuildProfile(
   accumulator: ThreadTimelineBuildProfileAccumulator,
   options: BuildThreadTimelineInternalOptions,
-  response: ThreadTimelineResponse,
 ): ThreadTimelineBuildProfile {
-  if (options.measureResponseBytes) {
-    accumulator.responseJsonBytes = measureThreadTimelineStage(
-      accumulator,
-      "response-serialization",
-      () => Buffer.byteLength(JSON.stringify(response), "utf8"),
-    );
-  }
   return {
     compactedEventCount: accumulator.compactedEventCount,
     contextWindowEventDataBytes: accumulator.contextWindowEventDataBytes,
@@ -1610,7 +1582,6 @@ function completeThreadTimelineBuildProfile(
     eventRowCount: accumulator.eventRowCount,
     pageKind: options.page.kind,
     projectedRowCount: accumulator.projectedRowCount,
-    responseJsonBytes: accumulator.responseJsonBytes,
     responseRowCount: accumulator.responseRowCount,
     returnedSegmentCount: accumulator.returnedSegmentCount,
     segmentLimit: options.page.segmentLimit,
@@ -1791,7 +1762,7 @@ function buildThreadTimelineInternal(
     profile:
       profile === null
         ? null
-        : completeThreadTimelineBuildProfile(profile, options, response),
+        : completeThreadTimelineBuildProfile(profile, options),
   };
 }
 
@@ -1806,7 +1777,6 @@ export function buildThreadTimeline(
       buildThreadTimelineInternal(db, thread, {
         ...options,
         includeProfile: false,
-        measureResponseBytes: false,
       }).response,
   );
 }
@@ -1825,7 +1795,6 @@ export function buildThreadTimelineWithProfile(
     const result = buildThreadTimelineInternal(db, thread, {
       ...options,
       includeProfile: true,
-      measureResponseBytes: false,
     });
     if (result.profile === null) {
       throw new Error("Profiled timeline build returned no profile");
@@ -1834,7 +1803,7 @@ export function buildThreadTimelineWithProfile(
   });
 }
 
-export interface BuildThreadConversationOutlineOptions {
+interface BuildThreadConversationOutlineOptions {
   /** Thread high-water event sequence this outline reflects (echoed to clients). */
   maxSeq: number;
   providerDisplayName?: string;

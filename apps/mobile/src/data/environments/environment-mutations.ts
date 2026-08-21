@@ -13,7 +13,6 @@ import { useCallback } from "react";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
 import { removeEnvironmentDiffPatchQueries } from "@/lib/query/diff-patch-cache";
 import {
-  environmentDiffFileQueryKeyPrefix,
   environmentDiffFilesQueryKeyPrefix,
   environmentMergeBaseBranchesQueryKeyPrefix,
   environmentPullRequestQueryKey,
@@ -45,7 +44,7 @@ export type UpdateEnvironmentMutationRequest = {
 } & UpdateEnvironmentRequest;
 
 /** Everything an environment action can move: workspace views and the thread lists' environment labels. */
-export function invalidateEnvironmentActionQueries(
+function invalidateEnvironmentActionQueries(
   queryClient: QueryClient,
   environmentId: string,
 ): void {
@@ -64,9 +63,6 @@ export function invalidateEnvironmentActionQueries(
   removeEnvironmentDiffPatchQueries(queryClient, environmentId);
   void queryClient.invalidateQueries({
     queryKey: environmentDiffFilesQueryKeyPrefix(environmentId),
-  });
-  void queryClient.invalidateQueries({
-    queryKey: environmentDiffFileQueryKeyPrefix(environmentId),
   });
   void queryClient.invalidateQueries({ queryKey: threadsQueryKey() });
 }
@@ -200,27 +196,4 @@ export function useUpdateEnvironment() {
       });
     },
   });
-}
-
-export interface RenameEnvironmentRequest {
-  id: string;
-  /** `null` clears the custom name (falls back to the branch / folder). */
-  name: string | null;
-}
-
-/** Thin wrapper over `useUpdateEnvironment` for the rename sheet. */
-export function useRenameEnvironment() {
-  const update = useUpdateEnvironment();
-  const { mutate, mutateAsync } = update;
-  const rename = useCallback(
-    (request: RenameEnvironmentRequest) =>
-      mutate({ id: request.id, name: request.name }),
-    [mutate],
-  );
-  const renameAsync = useCallback(
-    (request: RenameEnvironmentRequest) =>
-      mutateAsync({ id: request.id, name: request.name }),
-    [mutateAsync],
-  );
-  return { ...update, rename, renameAsync };
 }

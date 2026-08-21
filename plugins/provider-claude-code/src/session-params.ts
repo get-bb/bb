@@ -43,25 +43,12 @@ export interface ClaudeCodeSkillRoot {
   localPluginPath: string;
 }
 
-interface ClaudeSkillConfigEntryArgs {
-  skillRoot: ClaudeCodeSkillRoot;
-}
-
 function buildAdditionalWorkspaceWriteRootsParams(
   roots: readonly string[],
 ): AdditionalWorkspaceWriteRootsParams | undefined {
   return roots.length > 0
     ? { additionalWorkspaceWriteRoots: [...roots] }
     : undefined;
-}
-
-function buildClaudeSkillConfigEntry(
-  args: ClaudeSkillConfigEntryArgs,
-): ClaudeLocalPluginConfig {
-  return {
-    type: "local",
-    path: args.skillRoot.localPluginPath,
-  };
 }
 
 /**
@@ -78,8 +65,11 @@ function buildClaudeSkillConfigParams(
   }
 
   return {
-    plugins: skillRoots.map((skillRoot) =>
-      buildClaudeSkillConfigEntry({ skillRoot }),
+    plugins: skillRoots.map(
+      (skillRoot): ClaudeLocalPluginConfig => ({
+        type: "local",
+        path: skillRoot.localPluginPath,
+      }),
     ),
   };
 }
@@ -212,7 +202,7 @@ const claudeProviderOptionsSchema = z
  * satisfied by the canonical wire options (`bridgeExecutionOptionsSchema`
  * output).
  */
-export type ClaudeCanonicalExecutionOptions = RuntimePermissionPolicy & {
+type ClaudeCanonicalExecutionOptions = RuntimePermissionPolicy & {
   model?: string | undefined;
   reasoningLevel?: ReasoningLevel | undefined;
   instructions?: string | undefined;
@@ -220,7 +210,7 @@ export type ClaudeCanonicalExecutionOptions = RuntimePermissionPolicy & {
   providerOptions?: Record<string, unknown> | undefined;
 };
 
-export interface BuildClaudeSessionParamsArgs {
+interface BuildClaudeSessionParamsArgs {
   threadId: string;
   cwd: string;
   options: ClaudeCanonicalExecutionOptions;
@@ -289,7 +279,7 @@ function stripClaudePlanCommandMentions(args: {
   });
 }
 
-export interface BuildClaudeTurnParamsArgs {
+interface BuildClaudeTurnParamsArgs {
   threadId: string;
   providerThreadId: string | null;
   expectedTurnId?: string | undefined;

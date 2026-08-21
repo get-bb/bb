@@ -117,11 +117,6 @@ export function parentStorageDirectory(directoryPath: string): string {
   return segments.slice(0, -1).join("/");
 }
 
-/** Directory a file lives in ("" for a root-level file). */
-export function storageDirectoryOfFile(filePath: string): string {
-  return parentStorageDirectory(filePath);
-}
-
 export interface StorageFileMatch {
   file: WorkspaceFile;
   /** Character offsets in `file.path` that matched (for highlighting). */

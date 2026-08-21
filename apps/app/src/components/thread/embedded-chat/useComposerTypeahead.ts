@@ -4,7 +4,7 @@ import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/pr
 import type { PromptBoxAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import { withAppPromptActions } from "@/components/promptbox/PromptBoxActionsMenu";
 import type { ProviderComposerAction } from "@bb/domain";
-import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
+import { buildProviderPromptActionProps } from "@bb/client-core";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 
@@ -24,7 +24,7 @@ interface UseComposerTypeaheadArgs {
   resolveMentionLink: PromptMentionLinkResolver;
 }
 
-export interface UseComposerTypeaheadResult {
+interface UseComposerTypeaheadResult {
   typeaheadConfig: TypeaheadConfig;
   promptActions: readonly PromptBoxAction[];
 }

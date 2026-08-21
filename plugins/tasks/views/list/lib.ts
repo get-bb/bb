@@ -139,3 +139,17 @@ export function partitionLabels(
     hidden: labels.slice(maxVisible),
   };
 }
+
+export function localIsoDate(daysFromNow: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromNow);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+export const DUE_DATE_PRESETS: readonly [label: string, days: number][] = [
+  ["Today", 0],
+  ["Tomorrow", 1],
+  ["Next week", 7],
+];

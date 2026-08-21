@@ -11,13 +11,14 @@ import {
 } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { TasksEditor } from "../../editor/tasks-editor.js";
-import { TaskActivity } from "../activity/index.js";
+import { TaskActivity } from "../activity/task-activity.js";
 import { AttachmentsGrid, uploadAttachment } from "./attachments.js";
 import {
   createDescriptionSaver,
   type DescriptionSaver,
 } from "./description-save.js";
-import { STATUS_LABELS, StatusIcon } from "./meta.js";
+import { StatusIcon } from "./meta.js";
+import { STATUS_LABELS } from "../list/lib.js";
 import {
   InlineProperties,
   PropertiesRail,
@@ -25,11 +26,11 @@ import {
 } from "./rail.js";
 import { ThreadsSection } from "./threads.js";
 import { DetailToasts, useDetailToasts } from "./toast.js";
-import { DelayedLoading } from "../../components/delayed-loading.js";
+import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 
-export interface DetailViewProps {
+interface DetailViewProps {
   /** Task key like TSK-4 (not the ULID). */
   taskKey: string;
 }

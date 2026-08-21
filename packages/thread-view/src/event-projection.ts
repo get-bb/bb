@@ -6,7 +6,7 @@ import type {
   EventProjectionWorkflowMessage,
 } from "./event-projection-message.js";
 
-export const eventProjectionTurnStatusValues = [
+const eventProjectionTurnStatusValues = [
   "pending",
   "completed",
   "error",
@@ -15,10 +15,7 @@ export const eventProjectionTurnStatusValues = [
 export type EventProjectionTurnStatus =
   (typeof eventProjectionTurnStatusValues)[number];
 
-export const eventProjectionTurnMessageDetailValues = [
-  "summary",
-  "full",
-] as const;
+const eventProjectionTurnMessageDetailValues = ["summary", "full"] as const;
 /**
  * Controls how eagerly completed turns include their message arrays.
  * Summary projections may still include messages when row ordering,

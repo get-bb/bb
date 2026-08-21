@@ -25,7 +25,6 @@ import {
 import {
   ensureThreadCanStartRequest,
   prepareReadyThreadTurnCommand,
-  prepareReadyThreadTurnDispatch,
 } from "./thread-lifecycle.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import {
@@ -141,7 +140,7 @@ function splitRenderedParentSystemSlot(
   };
 }
 
-export function buildParentSystemInputFromSegments(
+function buildParentSystemInputFromSegments(
   args: BuildParentSystemInputFromSegmentsArgs,
 ): PromptInput[] {
   let text = "";
@@ -262,7 +261,6 @@ async function queueActiveParentSystemMessage(
 ): Promise<boolean> {
   const expectedSteerTurnId = getActiveTurnId(deps, args.thread.id);
   const permissionEscalation = resolvePermissionEscalation({
-    thread: args.thread,
     initiator: "system",
   });
   const session = await ensureHostSessionReadyForWork(deps, {
@@ -325,7 +323,6 @@ async function queueReadyParentSystemMessage(
   }
 
   const permissionEscalation = resolvePermissionEscalation({
-    thread: args.thread,
     initiator: "system",
   });
   const requestId = createClientTurnRequestId();
@@ -369,10 +366,7 @@ async function queueReadyParentSystemMessage(
         target: { kind: "new-turn" },
         requestId,
       });
-      const dispatchKind = prepareReadyThreadTurnDispatch({
-        command,
-        thread: args.thread,
-      });
+      const dispatchKind = command.mode;
       if (dispatchKind === "turn.submit") {
         requireThreadLifecycleEventApplied(
           applyLoggedThreadLifecycleEventInTransaction(
@@ -433,7 +427,6 @@ export async function queueParentSystemMessage(
     {
       threadId: parentThread.id,
     },
-    "client/turn/requested",
   );
   if (
     await dispatchTurnDuringReprovision({

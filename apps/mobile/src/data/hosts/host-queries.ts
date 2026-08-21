@@ -14,7 +14,6 @@ import { useProfileClient } from "@/app-shell/ProfilesProvider";
 import {
   hostCloneDefaultPathQueryKey,
   hostDirectoryQueryKey,
-  hostPathExistenceQueryKey,
   hostProviderCliStatusQueryKey,
   hostsQueryKey,
   serverProtocolVersionQueryKey,
@@ -25,10 +24,6 @@ import {
 } from "../shared/query-policies";
 import { useHostListRealtimeSubscription } from "../shared/use-realtime-subscription";
 import { useSystemConfig } from "../system/system-queries";
-import {
-  resolveHostDependentAvailability,
-  type HostDependentAvailability,
-} from "./host-availability";
 import { selectPrimaryHost } from "./select-primary-host";
 import { fetchServerProtocolVersion } from "./server-protocol-version";
 
@@ -126,50 +121,6 @@ export function useHostCloneDefaultPath(
   });
 }
 
-export type HostPathExistence = Record<string, boolean>;
-
-/**
- * Whether each path still exists on the host (`POST /hosts/:id/paths/exist`).
- * `{}` while loading/unavailable: a missing entry means "unknown", not
- * "exists" (see `isHostPathMissing`).
- */
-export function useHostPathsExist(
-  hostId: string | null,
-  paths: readonly string[],
-): HostPathExistence {
-  const { sdk } = useProfileClient();
-  const sortedPaths = useMemo(
-    () => (paths.length === 0 ? [] : [...new Set(paths)].sort()),
-    [paths],
-  );
-  const enabledHostId =
-    hostId !== null && sortedPaths.length > 0 ? hostId : null;
-  const query = useQuery({
-    queryKey: hostPathExistenceQueryKey(hostId, sortedPaths),
-    queryFn: enabledHostId
-      ? async ({ signal }) =>
-          (
-            await sdk.hosts.pathsExist({
-              hostId: enabledHostId,
-              paths: sortedPaths,
-              signal,
-            })
-          ).existence
-      : skipToken,
-    staleTime: 10_000,
-  });
-  return query.data ?? {};
-}
-
-/** True only on a definitive "missing" answer from the daemon. */
-export function isHostPathMissing(
-  existence: HostPathExistence,
-  path: string | null | undefined,
-): boolean {
-  if (path == null) return false;
-  return existence[path] === false;
-}
-
 /**
  * Provider CLI inventory of one connected machine
  * (`GET /hosts/:id/provider-clis/status`, a daemon RPC). Session-static: the
@@ -224,17 +175,4 @@ export function useHostsProviderCliStatus(
         dataUpdatedAt: result.dataUpdatedAt,
       })),
   });
-}
-
-export function useHostDependentAvailability(
-  options?: QueryOptions,
-): HostDependentAvailability {
-  const hostsQuery = useHosts(options);
-  const configQuery = useSystemConfig(options);
-  const hosts = hostsQuery.data;
-  const primaryHostId = configQuery.data?.primaryHostId;
-  return useMemo(
-    () => resolveHostDependentAvailability({ hosts, primaryHostId }),
-    [hosts, primaryHostId],
-  );
 }

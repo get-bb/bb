@@ -42,7 +42,7 @@ import type { githubRpcContract } from "./server.js";
 import { toast } from "sonner";
 import { Badge } from "@bb/shared-ui/badge";
 import { Button } from "@bb/shared-ui/button";
-import { DelayedLoading } from "./components/delayed-loading.js";
+import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,7 +65,6 @@ import { Tabs, TabsList, TabsTrigger } from "@bb/shared-ui/tabs";
 import { Textarea } from "@bb/shared-ui/textarea";
 import { EmptyState } from "@/components/empty-state";
 import { Markdown } from "@/components/markdown-lite";
-import { PageBody } from "@/components/page-body";
 
 interface IssueComment {
   author: string;
@@ -2069,7 +2068,7 @@ function GithubPanel({ subPath }: PluginNavPanelProps) {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
-      <PageBody className="max-w-5xl">
+      <div className="mx-auto w-full max-w-5xl space-y-4">
         <GithubPanelBody
           route={route}
           navigate={navigate}
@@ -2077,7 +2076,7 @@ function GithubPanel({ subPath }: PluginNavPanelProps) {
           query={query}
           setQuery={setQuery}
         />
-      </PageBody>
+      </div>
     </div>
   );
 }

@@ -27,7 +27,7 @@ type ReuseThreadRequestEnvironment = Extract<
   ThreadRequestEnvironment,
   { type: "reuse" }
 >;
-export interface ResolveStableThreadRequestEnvironmentArgs {
+interface ResolveStableThreadRequestEnvironmentArgs {
   /**
    * A directory switch can leave a personal-project source thread attached to
    * an unmanaged environment. Source-derived forks may reuse that exact
@@ -38,7 +38,7 @@ export interface ResolveStableThreadRequestEnvironmentArgs {
   projectId: string;
 }
 
-export interface ResolvedHostThreadRequestEnvironment {
+interface ResolvedHostThreadRequestEnvironment {
   hostId: string;
   localSource: LocalPathProjectSource | null;
   type: "host";
@@ -46,13 +46,13 @@ export interface ResolvedHostThreadRequestEnvironment {
   workspace: WorkspaceBackedHostWorkspace;
 }
 
-export interface ResolvedReuseThreadRequestEnvironment {
+interface ResolvedReuseThreadRequestEnvironment {
   environment: Environment;
   type: "reuse";
 }
 
-export interface ResolvedPersonalThreadRequestEnvironment {
-  hostId: string | null;
+interface ResolvedPersonalThreadRequestEnvironment {
+  hostId: string;
   type: "personal";
 }
 

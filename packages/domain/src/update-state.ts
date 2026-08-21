@@ -27,10 +27,8 @@ export const RUN_STATE_PRESENTATION = {
   { icon: string; label: string; inFlight: boolean }
 >;
 
-export type RunState = keyof typeof RUN_STATE_PRESENTATION;
-
 /** The update-specific ladder. */
-export const UPDATE_STATES = [
+const UPDATE_STATES = [
   "up-to-date",
   "in-progress",
   "update-available",
@@ -48,9 +46,9 @@ export type UpdateState = (typeof UPDATE_STATES)[number];
  * for everything the reader has no decision to make about, error for a
  * failure. Nothing here is orange — a state either failed or it did not.
  */
-export type UpdateStateTone = "muted" | "error";
+type UpdateStateTone = "muted" | "error";
 
-export interface UpdateStatePresentation {
+interface UpdateStatePresentation {
   /** `@bb/shared-ui` icon key, or null when the state is text-only. */
   icon: string | null;
   /** The sentence a UI puts on hover and the CLI prints in its State column. */

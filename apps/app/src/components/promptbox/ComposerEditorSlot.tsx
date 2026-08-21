@@ -30,7 +30,6 @@ export function ComposerEditorSlot({
   scrollContainerRef,
   inputLocked,
   isZenMode,
-  hasCompactControls,
   isCompactLayout,
   minHeight,
   layout,
@@ -40,7 +39,6 @@ export function ComposerEditorSlot({
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   inputLocked: boolean;
   isZenMode: boolean;
-  hasCompactControls: boolean;
   isCompactLayout: boolean;
   minHeight: number;
   layout: ComposerEditorLayout;
@@ -59,7 +57,6 @@ export function ComposerEditorSlot({
         // this, making Composer rows tighter than timeline messages.
         "leading-relaxed",
         isZenMode && "min-h-0 flex-1",
-        hasCompactControls && !isZenMode && "pr-14",
         isCompactLayout && "h-12 overflow-hidden pb-0 pr-14 pt-0",
       )}
       style={{

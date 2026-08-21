@@ -20,32 +20,6 @@ const FRONTMATTER_DELIMITER = "---";
 const MAX_SCAN_DEPTH = 24;
 const MAX_SCAN_ENTRY_COUNT = 1_000;
 
-/**
- * Scan shape for a root:
- * - `skill`: one level of `<root>/<dir>/SKILL.md`; the command name is the
- *   parent directory name. User-origin skill entries/files may be symlinks
- *   because personal provider skill installs commonly use them; project-origin
- *   skill entry/file symlinks are skipped.
- * - `skill-recursive`: every `SKILL.md` below `<root>`; the command name is the
- *   name of the directory that contains the file. Symlinks are not followed.
- * - `skill-directory`: a single `<root>/SKILL.md` skill directory; the command
- *   name is the root directory name.
- * - `skill-file`: a single `SKILL.md`; the command name comes from frontmatter
- *   `name`, with `fallbackName` when absent. This covers plugin-root skills.
- * - `command`: recursive `<root>/**​/*.md`; the command name is the path under
- *   the root with `/` replaced by `:` and the `.md` extension dropped
- *   (namespacing, e.g. `frontend/component.md` -> `frontend:component`).
- * - `command-file`: a single command markdown file; the command name is the
- *   file name without `.md`.
- */
-export type CommandScanShape =
-  | "skill"
-  | "skill-recursive"
-  | "skill-directory"
-  | "skill-file"
-  | "command"
-  | "command-file";
-
 interface CommandScanRootBase {
   /** Prefix prepended to the derived invocation name, e.g. `plugin-name:`. */
   namePrefix: string;
@@ -78,6 +52,24 @@ export interface CommandScanSkillFileRoot extends CommandScanRootBase {
   source: "skill";
 }
 
+/**
+ * Scan shape for a root:
+ * - `skill`: one level of `<root>/<dir>/SKILL.md`; the command name is the
+ *   parent directory name. User-origin skill entries/files may be symlinks
+ *   because personal provider skill installs commonly use them; project-origin
+ *   skill entry/file symlinks are skipped.
+ * - `skill-recursive`: every `SKILL.md` below `<root>`; the command name is the
+ *   name of the directory that contains the file. Symlinks are not followed.
+ * - `skill-directory`: a single `<root>/SKILL.md` skill directory; the command
+ *   name is the root directory name.
+ * - `skill-file`: a single `SKILL.md`; the command name comes from frontmatter
+ *   `name`, with `fallbackName` when absent. This covers plugin-root skills.
+ * - `command`: recursive `<root>/**​/*.md`; the command name is the path under
+ *   the root with `/` replaced by `:` and the `.md` extension dropped
+ *   (namespacing, e.g. `frontend/component.md` -> `frontend:component`).
+ * - `command-file`: a single command markdown file; the command name is the
+ *   file name without `.md`.
+ */
 export type CommandScanRoot =
   | CommandScanDirectoryRoot
   | CommandScanFileRoot

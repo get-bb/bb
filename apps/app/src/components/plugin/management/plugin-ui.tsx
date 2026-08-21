@@ -48,18 +48,6 @@ export function displayPluginVersion(version: string): string {
   return /^[0-9a-f]{12,}$/iu.test(version) ? version.slice(0, 7) : version;
 }
 
-/** Success verdict banner tint (sketch v2 `.banner`). */
-export const SUCCESS_BANNER_STYLE = {
-  background: "color-mix(in oklab, var(--success) 9%, var(--canvas))",
-  borderColor: "color-mix(in oklab, var(--success) 35%, var(--canvas))",
-} as const;
-
-/** Warning note tint (sketch `.notebox.warn`, full-trust warning). */
-export const WARNING_NOTE_STYLE = {
-  background: "color-mix(in oklab, var(--warning-text) 6%, var(--canvas))",
-  borderColor: "color-mix(in oklab, var(--warning-text) 35%, var(--canvas))",
-} as const;
-
 export const SUCCESS_TEXT_STYLE = {
   color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
 } as const;
@@ -160,7 +148,7 @@ export function CatalogEntryIcon({
  * the entry's initial and not a tile. The `className` sizes the footprint so
  * it aligns with sibling logo images.
  */
-export function PlaceholderBadge({
+function PlaceholderBadge({
   className,
   iconName = "Zap",
 }: {
@@ -188,7 +176,7 @@ export function formatAbsoluteDate(epochMs: number): string {
   });
 }
 
-export interface DetailsDisclosureProps {
+interface DetailsDisclosureProps {
   summary: string;
   children: ReactNode;
   /** Pre-expand when the details are the story (failure, skipped release). */

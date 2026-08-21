@@ -16,6 +16,7 @@ import {
   useRemovePlugin,
   useSetPluginEnabled,
 } from "@/data/plugins";
+import { describeError } from "@/lib/describe-error";
 import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
 import {
@@ -39,10 +40,6 @@ import { Screen } from "../shell/Screen";
 import { AddPluginSheet } from "./AddPluginSheet";
 import { PluginSignalPill, SettingsSection } from "./plugin-ui";
 import { PluginIcon } from "./ServerSvgIcon";
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /**
  * Installed plugins (`/settings/plugins`; web Extensions → Plugins →

@@ -49,9 +49,11 @@ import {
   buildTimelineTurnSummaryDetails,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   THREAD_TIMELINE_SEGMENT_LIMIT_MAX,
-  type ThreadTimelinePageKind,
-  type ThreadTimelinePageRequest,
 } from "../../services/threads/timeline.js";
+import type {
+  ThreadTimelinePageKind,
+  ThreadTimelinePageRequest,
+} from "../../services/threads/timeline-pagination.js";
 import { createSlowThreadTimelineBuildLogger } from "../../services/threads/timeline-build-log.js";
 import {
   buildThreadTimelineCacheKey,
@@ -193,7 +195,7 @@ function parseThreadTimelinePage(
   };
 }
 
-export async function requireThreadStorageTarget(
+async function requireThreadStorageTarget(
   deps: WorkSessionDeps,
   args: RequireThreadStorageTargetArgs,
 ): Promise<ThreadStorageTarget> {

@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext } from "react";
 
 export interface QueuedEditorTypeaheadLayout {
   height: number;
@@ -11,7 +11,3 @@ export type QueuedEditorTypeaheadLayoutReporter = (
 
 export const QueuedEditorTypeaheadLayoutContext =
   createContext<QueuedEditorTypeaheadLayoutReporter | null>(null);
-
-export function useQueuedEditorTypeaheadLayoutReporter(): QueuedEditorTypeaheadLayoutReporter | null {
-  return useContext(QueuedEditorTypeaheadLayoutContext);
-}

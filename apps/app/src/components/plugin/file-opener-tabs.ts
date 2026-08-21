@@ -1,7 +1,4 @@
-import type {
-  PluginFileOpenerProps,
-  PluginFileOpenerSource,
-} from "@get-bb/plugin-sdk";
+import type { PluginFileOpenerProps } from "@get-bb/plugin-sdk";
 import type { ThreadTabFileOpenerOwner } from "@bb/server-contract";
 import {
   createPluginPanelFixedPanelTab,
@@ -22,12 +19,9 @@ import type { OpenSecondaryPanelTabRequest } from "@/components/secondary-panel/
  * the opened file (`PluginFileOpenerProps`). Same identity semantics as
  * action tabs — same opener + same file focuses the existing tab.
  */
-export const FILE_OPENER_ACTION_ID_PREFIX = "file-opener:";
+const FILE_OPENER_ACTION_ID_PREFIX = "file-opener:";
 
-export type PluginFileOpenerFile = Pick<
-  PluginFileOpenerProps,
-  "path" | "source"
->;
+type PluginFileOpenerFile = Pick<PluginFileOpenerProps, "path" | "source">;
 
 export type FileOpenerOriginalTab = Extract<
   SecondaryFileFixedPanelTab,
@@ -161,7 +155,7 @@ export function createFileOpenerOriginalTab(
  */
 export type FileTabViewerOverride = FileOpenerOverride;
 
-export interface CreateFileOpenerTabForRequestArgs {
+interface CreateFileOpenerTabForRequestArgs {
   fileOpeners: readonly PluginFileOpenerSlot[];
   preference: FileOpenerPreferenceMap;
   projectHostId?: string | null;
@@ -291,39 +285,35 @@ function fileForOwnerRequest(
     case "workspace-file-preview":
       return {
         path: owner.tab.path,
-        source: buildSource("workspace", {
+        source: {
+          kind: "workspace",
           environmentId: owner.environmentId,
           projectId: owner.projectId,
           threadId: owner.threadId,
-        }),
+        },
       };
     case "host-file-preview":
       return {
         path: owner.tab.path,
-        source: buildSource("host", {
+        source: {
+          kind: "host",
           environmentId: owner.environmentId,
           ...(owner.hostId === null
             ? {}
             : { experimental_hostId: owner.hostId }),
           projectId: null,
           threadId: owner.threadId,
-        }),
+        },
       };
     case "thread-storage-file-preview":
       return {
         path: owner.tab.path,
-        source: buildSource("thread-storage", {
+        source: {
+          kind: "thread-storage",
           environmentId: owner.environmentId,
           projectId: null,
           threadId: owner.threadId,
-        }),
+        },
       };
   }
-}
-
-function buildSource(
-  kind: PluginFileOpenerSource["kind"],
-  fields: Omit<PluginFileOpenerSource, "kind">,
-): PluginFileOpenerSource {
-  return { kind, ...fields };
 }

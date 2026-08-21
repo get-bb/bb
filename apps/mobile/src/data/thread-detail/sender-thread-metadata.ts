@@ -96,9 +96,7 @@ export function buildSenderThreadMetadataById(
  * Only "updated" dispatches change `query.state.data`; observer churn fires
  * other events without a data change and would only rebuild equal maps.
  */
-export function shouldSyncSenderThreadMetadata(
-  event: QueryCacheNotifyEvent,
-): boolean {
+function shouldSyncSenderThreadMetadata(event: QueryCacheNotifyEvent): boolean {
   if (event.type !== "updated") return false;
   const root = event.query.queryKey[0];
   return (
@@ -120,7 +118,7 @@ function areSenderThreadMetadataEntriesEqual(
   );
 }
 
-export function areSenderThreadMetadataMapsEqual(
+function areSenderThreadMetadataMapsEqual(
   left: ReadonlyMap<string, SenderThreadMetadata>,
   right: ReadonlyMap<string, SenderThreadMetadata>,
 ): boolean {

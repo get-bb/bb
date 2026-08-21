@@ -1,7 +1,6 @@
 export {
   actionableProviderIssues,
   bbAppRowState,
-  buildUpdateInventory,
   summarizeMachineUpdates,
   type ActionableProviderIssue,
   type BbAppRowState,

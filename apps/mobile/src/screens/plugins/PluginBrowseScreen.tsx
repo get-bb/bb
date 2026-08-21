@@ -7,6 +7,7 @@ import {
   usePluginCatalogSearch,
   usePluginMarketplaces,
 } from "@/data/plugins";
+import { describeError } from "@/lib/describe-error";
 import { useTheme } from "@/theme";
 import {
   Button,
@@ -24,10 +25,6 @@ import { Screen } from "../shell/Screen";
 import { AddPluginSheet } from "./AddPluginSheet";
 import { SettingsSection } from "./plugin-ui";
 import { PluginIcon } from "./ServerSvgIcon";
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function entrySubtitle(entry: PluginCatalogSearchResult): string {
   const parts = [entry.category];

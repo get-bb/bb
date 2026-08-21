@@ -8,8 +8,8 @@ import {
 } from "@/components/sidebar/SectionSidebar";
 import {
   resolveToolsActivePage,
+  TOOLS_NAV_ITEMS,
   TOOLS_PAGES,
-  TOOLS_SECTIONS,
 } from "./tools-navigation";
 
 /**
@@ -48,30 +48,25 @@ export function ToolsSidebar({
       showTopReserve={showTopReserve}
       testIdPrefix="tools"
     >
-      {Object.values(TOOLS_SECTIONS)
-        .sort((left, right) =>
-          // Plugins first, matching TOOLS_PAGES order.
-          left.id === "plugins" ? -1 : right.id === "plugins" ? 1 : 0,
-        )
-        .map((section, index) => (
-          <div key={section.id} className={index > 0 ? "mt-4" : undefined}>
-            <SectionSidebarLabel>{section.label}</SectionSidebarLabel>
-            <div className="mt-1 space-y-0.5">
-              {TOOLS_PAGES.filter((page) => page.section === section.id).map(
-                (page) => (
-                  <SectionSidebarRow
-                    key={page.id}
-                    active={activePage === page.id}
-                    label={page.label}
-                    to={page.to}
-                  >
-                    <SectionSidebarIcon name={page.icon} />
-                  </SectionSidebarRow>
-                ),
-              )}
-            </div>
+      {TOOLS_NAV_ITEMS.map((section, index) => (
+        <div key={section.id} className={index > 0 ? "mt-4" : undefined}>
+          <SectionSidebarLabel>{section.label}</SectionSidebarLabel>
+          <div className="mt-1 space-y-0.5">
+            {TOOLS_PAGES.filter((page) => page.section === section.id).map(
+              (page) => (
+                <SectionSidebarRow
+                  key={page.id}
+                  active={activePage === page.id}
+                  label={page.label}
+                  to={page.to}
+                >
+                  <SectionSidebarIcon name={page.icon} />
+                </SectionSidebarRow>
+              ),
+            )}
           </div>
-        ))}
+        </div>
+      ))}
     </SectionSidebar>
   );
 }

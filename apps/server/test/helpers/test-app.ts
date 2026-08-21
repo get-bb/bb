@@ -21,7 +21,6 @@ import {
 import { createBbAppManagedConfigReloader } from "../../src/services/system/bb-app-managed-config.js";
 import { createNoopTelemetryService } from "../../src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-session-lifecycle.js";
-import { resolveThreadStorageRootPath } from "../../src/services/threads/thread-storage.js";
 import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../../src/types.js";
 import { MANAGED_ENVIRONMENT_RETIRE_GRACE_MS } from "../../src/constants.js";
@@ -166,7 +165,6 @@ export async function createTestAppHarness(
     },
   };
   const config: ServerRuntimeConfig = {
-    appSurface: "web",
     appVersion: "0.0.0-test",
     builtinSkillsRootPath: join(dataDir, "builtin-skills"),
     customAcpAgents: [],
@@ -183,10 +181,6 @@ export async function createTestAppHarness(
     openAiApiKey: "test-openai-key",
     serverPort: 3334,
     sharedSkillRoots: { user: [], project: [] },
-    threadStorageRootPath: resolveThreadStorageRootPath({
-      dataDir,
-      env: {},
-    }),
     transcriptionModel: "test/mock-transcription",
     appUrl: "https://bb.example.test",
     ...configOverrides,

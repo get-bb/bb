@@ -36,10 +36,6 @@ export function emptyComposerValue(): ComposerValue {
   return { text: "", mentions: EMPTY_MENTIONS };
 }
 
-export function isComposerValueEmpty(value: ComposerValue): boolean {
-  return value.text.length === 0 && value.mentions.length === 0;
-}
-
 export function hasComposerText(value: ComposerValue): boolean {
   return value.text.trim().length > 0;
 }
@@ -56,7 +52,7 @@ function compareMentions(
  * range, and sort what is left. Every operation normalizes its output so
  * callers can rely on ordered, disjoint, in-bounds ranges.
  */
-export function normalizeComposerMentions(
+function normalizeComposerMentions(
   mentions: readonly ComposerMention[],
   textLength: number,
 ): ComposerMention[] {
@@ -84,18 +80,6 @@ export function createComposerValue(
   mentions: readonly ComposerMention[] = EMPTY_MENTIONS,
 ): ComposerValue {
   return { text, mentions: normalizeComposerMentions(mentions, text.length) };
-}
-
-/** The mention whose range strictly contains `offset` (not at a boundary). */
-export function mentionContaining(
-  value: ComposerValue,
-  offset: number,
-): ComposerMention | null {
-  return (
-    value.mentions.find(
-      (mention) => mention.start < offset && offset < mention.end,
-    ) ?? null
-  );
 }
 
 /** The mention that ends exactly at `offset` (backspace-at-end target). */

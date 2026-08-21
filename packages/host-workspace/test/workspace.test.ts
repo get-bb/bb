@@ -1179,28 +1179,6 @@ describe("Workspace", () => {
     expect(timedOutWorkRan).toBe(false);
   });
 
-  it("supports checkout, detach, stash, and stashPop", async () => {
-    const repoPath = await initRepo();
-    await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
-    await fs.writeFile(path.join(repoPath, "README.md"), "stash me\n", "utf8");
-
-    const workspace = new Workspace(repoPath);
-    const stashRef = await workspace.stash("save changes");
-    expect(stashRef).toMatch(/^stash@\{/u);
-    expect((await workspace.getStatus()).workingTree.state).toBe("clean");
-
-    await workspace.detachHead();
-    expect(await workspace.currentBranch).toBeUndefined();
-
-    await workspace.checkoutBranch("feature");
-    expect(await workspace.currentBranch).toBe("feature");
-
-    await workspace.stashPop(stashRef ?? undefined);
-    expect((await workspace.getStatus()).workingTree.state).toBe(
-      "dirty_uncommitted",
-    );
-  });
-
   it("squash merges into the target branch using a temporary worktree", async () => {
     const repoPath = await initRepo();
     await initBareRemoteFrom(repoPath);

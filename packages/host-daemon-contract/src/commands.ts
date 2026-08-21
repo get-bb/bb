@@ -783,7 +783,6 @@ export const directoryListingSchema = z.object({
   parent: z.string().nullable(),
   entries: z.array(directoryEntrySchema),
 });
-export type DirectoryListing = z.infer<typeof directoryListingSchema>;
 
 export const hostCommandSourceSchema = z.enum(["skill", "command"]);
 export type HostCommandSource = z.infer<typeof hostCommandSourceSchema>;
@@ -1465,9 +1464,6 @@ const installGlobalSkillsResultSchema = z
     ),
   })
   .strict();
-export type HostInstallGlobalSkillsResult = z.infer<
-  typeof installGlobalSkillsResultSchema
->;
 
 const globalSkillsStatusResultSchema = z
   .object({

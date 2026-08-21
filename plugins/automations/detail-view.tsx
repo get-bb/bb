@@ -12,7 +12,7 @@ import type {
 import { AUTOMATION_PROMPT_MAX_LENGTH } from "./src/rpc-types";
 import { RUN_STATE_PRESENTATION } from "@bb/domain/update-state";
 import { Button } from "@bb/shared-ui/button";
-import { DelayedLoading } from "./delayed-loading.js";
+import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   ResourceActionButton,
@@ -66,7 +66,7 @@ import {
 import { AutomationProviderIcon } from "./lib/provider-icon";
 import { AutomationMetadataItem } from "./metadata";
 
-export interface AutomationRunsViewState {
+interface AutomationRunsViewState {
   runs: readonly AutomationRunResponse[];
   nextCursor: string | null;
   loading: boolean;
@@ -76,7 +76,7 @@ export interface AutomationRunsViewState {
   retry: () => void;
 }
 
-export interface AutomationDetailViewProps {
+interface AutomationDetailViewProps {
   automation: AutomationResponse;
   projectLabel: string;
   runsState: AutomationRunsViewState;
@@ -505,7 +505,7 @@ function isSilentRun(run: AutomationRunResponse): boolean {
  * colours success green because a succeeded run is its headline, where the
  * Updates page mutes it because up-to-date is its resting state.
  */
-export const AUTOMATION_RUN_STATUS_VISUALS: Record<
+const AUTOMATION_RUN_STATUS_VISUALS: Record<
   AutomationRunStatus,
   {
     label: string;

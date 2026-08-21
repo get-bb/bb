@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { OptionDisplay } from "@/components/pickers/OptionPicker";
+import { OptionDisplay } from "@bb/shared-ui/option-display";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {

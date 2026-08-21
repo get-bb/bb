@@ -184,9 +184,6 @@ export const providerCliInstallSourceValues = [
 export const providerCliInstallSourceSchema = z.enum(
   providerCliInstallSourceValues,
 );
-export type ProviderCliInstallSource = z.infer<
-  typeof providerCliInstallSourceSchema
->;
 
 export const providerCliInstallActionKindValues = [
   "install",

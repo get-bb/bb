@@ -49,8 +49,6 @@ export interface ThemeProviderProps {
   children: ReactNode;
   /** Defaults to `default`; the app passes the server's `appearance.themeId`. */
   palette?: BuiltInThemeId;
-  /** Injected in tests; defaults to the MMKV-backed store. */
-  storage?: ThemePreferenceStorage;
 }
 
 let defaultStorage: ThemePreferenceStorage | null = null;
@@ -69,9 +67,8 @@ function getDefaultStorage(): ThemePreferenceStorage {
 export function ThemeProvider({
   children,
   palette = "default",
-  storage,
 }: ThemeProviderProps) {
-  const [store] = useState(() => storage ?? getDefaultStorage());
+  const [store] = useState(getDefaultStorage);
   const [preference, setPreference] = useState<ThemeModePreference>(() =>
     readThemePreference(store),
   );

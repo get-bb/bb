@@ -285,7 +285,6 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
     onOpenNewTab,
     renderBrowserDeck,
     splitPanelStateId,
-    topChromeSurface,
   }: {
     activeTab: { id: string } | null;
     tabs: Array<{
@@ -316,7 +315,6 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
       pane: { isFocused: boolean; onFocusPane: () => void },
     ) => ReactNode;
     splitPanelStateId?: string;
-    topChromeSurface?: "panel" | "page";
   }) => {
     const pane = { isFocused: true, onFocusPane: () => undefined };
     const activeFixedTab = fixedTabs.find(
@@ -338,7 +336,6 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
         data-file-tab-content-fills-region={
           activeRenderableTab?.contentFillsRegion === true ? "true" : "false"
         }
-        data-top-chrome-surface={topChromeSurface ?? "panel"}
       >
         {tabs.map((tab) => (
           <div key={tab.tab.id}>
@@ -627,7 +624,6 @@ describe("PluginPanelRightPanelHost", () => {
     const collapsedPanel = await screen.findByTestId(
       "shared-thread-secondary-panel",
     );
-    expect(collapsedPanel.dataset.topChromeSurface).toBe("panel");
     await waitFor(() =>
       expect(
         screen

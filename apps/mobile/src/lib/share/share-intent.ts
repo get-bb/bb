@@ -60,13 +60,6 @@ export function loadShareIntentModule(): ShareIntentModule | null {
   return cached;
 }
 
-/** Test seam. */
-export function setShareIntentModuleForTests(
-  module: ShareIntentModule | null | undefined,
-): void {
-  cached = module;
-}
-
 /**
  * What a shared payload seeds the composer with. Text and web URLs become the
  * initial prompt (URL after the text when both are present); media / file

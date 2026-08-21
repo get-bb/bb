@@ -59,7 +59,6 @@ import {
   ACP_UPDATE_METHOD,
   ACP_WARNING_METHOD,
   acpBridgeCommandSchema,
-  type AcpBridgeAgentCommand,
   type AcpBridgeCommand,
   type AcpBridgeNativeReasoning,
   type AcpBridgePermissionCli,
@@ -78,6 +77,7 @@ import { acpProfileFromLaunchSpec, type AcpAgentProfile } from "../profiles.js";
 import {
   buildAcpModelListParams,
   buildAcpSessionParams,
+  type AcpAgentCommandParam,
   type AcpModelListParams,
   type AcpSessionParams,
   type AcpSkillRoot,
@@ -177,7 +177,6 @@ interface AcpThreadSession {
   /** Every session-scoped notification is translated through this. */
   translator: AcpDeltaTranslator;
   connection: AcpAgentConnection;
-  agentLabel: string;
   supportsImageInput: boolean;
   supportsLoadSession: boolean;
   policy: AcpSessionPolicy;
@@ -808,7 +807,7 @@ async function authenticateAcpAgent(args: {
  * the picker to the synthetic entry, session starts to the unresolved id.
  */
 async function loadAgentModelCatalog(
-  listCommand: AcpBridgeAgentCommand,
+  listCommand: AcpAgentCommandParam,
 ): Promise<AgentModelCatalog | null> {
   const stdout = await new Promise<string | null>((resolveExec, rejectExec) => {
     execFile(
@@ -858,7 +857,7 @@ async function loadAgentModelCatalog(
 }
 
 async function loadSessionDiscoveredModels(
-  agent: AcpBridgeAgentCommand,
+  agent: AcpAgentCommandParam,
 ): Promise<AvailableModel[] | null> {
   const key = JSON.stringify(agent);
   if (
@@ -1692,7 +1691,6 @@ async function startAgentSession(
     providerThreadId: "",
     translator,
     connection,
-    agentLabel,
     supportsImageInput: false,
     supportsLoadSession: false,
     policy: {

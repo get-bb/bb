@@ -100,7 +100,6 @@ import { hasProvisioningTimelineRow } from "./thread-provisioning-context.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 import { settleDanglingBackgroundTasksForStoppedThreadInTransaction } from "./background-task-reconciliation.js";
 
-type ReadyThreadTurnDispatchKind = "thread.start" | "turn.submit";
 type ThreadStartCommand = Awaited<ReturnType<typeof buildThreadStartCommand>>;
 type ThreadStopCommand = ReturnType<typeof buildThreadStopCommand>;
 type ThreadPlanCancelCommand = HostDaemonCommandForType<"thread.plan.cancel">;
@@ -121,26 +120,21 @@ type ThreadStopCommandResultReport = CommandResultReportForType<"thread.stop">;
 type ThreadPlanCancelCommandResultReport =
   CommandResultReportForType<"thread.plan.cancel">;
 
-export interface PreparedThreadStartCommand {
+interface PreparedThreadStartCommand {
   command: ThreadStartCommand;
   mode: "thread.start";
   sessionId: string;
 }
 
-export interface PreparedReadyTurnSubmitCommand {
+interface PreparedReadyTurnSubmitCommand {
   command: TurnSubmitCommand;
   mode: "turn.submit";
   sessionId: string;
 }
 
-export type PreparedReadyThreadTurnCommand =
+type PreparedReadyThreadTurnCommand =
   | PreparedThreadStartCommand
   | PreparedReadyTurnSubmitCommand;
-
-export interface PrepareReadyThreadTurnDispatchArgs {
-  command: PreparedReadyThreadTurnCommand;
-  thread: Thread;
-}
 
 const threadStartRequestDeduper = createAsyncDeduper<string, void>();
 // Concurrent awaited stops for one thread share a single RPC and a single
@@ -196,10 +190,6 @@ export function hasLiveThreadStopInFlight(threadId: string): boolean {
   return inFlightThreadRpcGuard.isHeld(threadId, "thread.stop");
 }
 
-interface CompleteThreadStartArgs {
-  threadId: string;
-}
-
 interface ThreadStartSuccessActivationArgs {
   commandStartedAt: number;
   providerThreadId: string;
@@ -222,10 +212,7 @@ interface HasProviderTurnCompletedEventAtOrAfterArgs {
  * interruption reason on the thread. The release intent has no caller here, so
  * it is not part of these args.
  */
-export interface RequestThreadStopArgs extends Omit<
-  ThreadStopCommandArgs,
-  "intent"
-> {
+interface RequestThreadStopArgs extends Omit<ThreadStopCommandArgs, "intent"> {
   interruptionReason: SystemThreadInterruptedReason;
 }
 
@@ -836,10 +823,6 @@ function settleThreadCommandFailure(
   if (isParentNotifiableChildThread(thread)) {
     const parentThreadId = thread.parentThreadId;
     postCommitActions.push({
-      name: "Child thread command failure notification",
-      context: {
-        threadId: thread.id,
-      },
       run: (deps) =>
         queueChildThreadTurnNotificationBestEffort(deps, {
           childThread: thread,
@@ -871,7 +854,7 @@ export function settleThreadStartCommandResult(
   const shouldSyncTitle =
     thread.title !== null &&
     inFlightThreadRpcGuard.isHeld(thread.id, "thread.start.title-sync");
-  completeThreadStart(args.deps, { threadId: thread.id });
+  forgetActiveThreadProvisionContext(thread.id);
   const currentThread = getThread(args.deps.db, args.command.threadId);
   if (currentThread && currentThread.deletedAt !== null) {
     const finalized = finalizeStoppedThreadInTransaction(args.deps, {
@@ -879,11 +862,6 @@ export function settleThreadStartCommandResult(
     });
     if (finalized) {
       postCommitActions.push({
-        name: "Environment cleanup advance after deleted thread start finalize",
-        context: {
-          environmentId: args.command.environmentId,
-          threadId: currentThread.id,
-        },
         run: (deps) =>
           runEnvironmentCleanupAdvance(deps, {
             environmentId: args.command.environmentId,
@@ -913,10 +891,6 @@ export function settleThreadStartCommandResult(
       args.deps.hub.notifyThread(currentThread.id, ["status-changed"]);
       if (shouldAutoSendQueuedMessagesAfterThreadStart(args.command)) {
         postCommitActions.push({
-          name: "Queued message auto-send after empty thread start",
-          context: {
-            threadId: currentThread.id,
-          },
           run: async (deps) => {
             const { runQueuedMessageAutoSendForThread } =
               await import("./queued-messages.js");
@@ -931,12 +905,6 @@ export function settleThreadStartCommandResult(
   const threadTitle = thread.title;
   if (threadTitle && shouldSyncTitle) {
     postCommitActions.push({
-      name: "Generated thread title provider rename",
-      context: {
-        environmentId: args.command.environmentId,
-        hostId: args.execution.hostId,
-        threadId: thread.id,
-      },
       run: (deps) =>
         dispatchThreadRenameCommand(deps, {
           environment: {
@@ -1013,27 +981,6 @@ export async function prepareReadyThreadTurnCommand(
   };
 }
 
-export function prepareReadyThreadTurnDispatch(
-  args: PrepareReadyThreadTurnDispatchArgs,
-): ReadyThreadTurnDispatchKind {
-  if (args.command.mode === "turn.submit") {
-    return "turn.submit";
-  }
-
-  ensureThreadCanStartRequest(args.thread);
-  return "thread.start";
-}
-
-export function completeThreadStart(
-  deps: ThreadLifecycleReadDeps,
-  args: CompleteThreadStartArgs,
-): boolean {
-  const thread = getThread(deps.db, args.threadId);
-  const hadContext = hasActiveThreadProvisioningContext(args.threadId);
-  forgetActiveThreadProvisionContext(args.threadId);
-  return hadContext || thread?.status === "active";
-}
-
 export function settleThreadStopCommandResult(
   args: SettleThreadStopCommandResultArgs,
 ): CommandResultSideEffectsResult {
@@ -1063,11 +1010,6 @@ export function settleThreadStopCommandResult(
       return {
         postCommitActions: [
           {
-            name: "Environment cleanup advance after missing runtime stop",
-            context: {
-              environmentId: args.command.environmentId,
-              threadId: args.command.threadId,
-            },
             run: (deps) =>
               runEnvironmentCleanupAdvance(deps, {
                 environmentId: args.command.environmentId,
@@ -1089,11 +1031,6 @@ export function settleThreadStopCommandResult(
   return {
     postCommitActions: [
       {
-        name: "Provider archive forwarding after thread stop",
-        context: {
-          environmentId: args.command.environmentId,
-          threadId: args.command.threadId,
-        },
         run: (deps) => {
           dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
             threadId: args.command.threadId,
@@ -1101,11 +1038,6 @@ export function settleThreadStopCommandResult(
         },
       },
       {
-        name: "Environment cleanup advance after thread stop",
-        context: {
-          environmentId: args.command.environmentId,
-          threadId: args.command.threadId,
-        },
         run: (deps) =>
           runEnvironmentCleanupAdvance(deps, {
             environmentId: args.command.environmentId,
@@ -1258,7 +1190,7 @@ async function requestThreadStartOnce(
   }
 }
 
-export function requestThreadStop(
+function requestThreadStop(
   deps: CommandResultSideEffectsDeps,
   args: RequestThreadStopArgs,
 ): void {
@@ -1661,7 +1593,7 @@ function interruptActiveTurnForThreadInTransaction(
  * longer reports them. Every supplied thread gets a thread interruption event;
  * threads with an open turn also get an interrupted turn completion event.
  */
-export function interruptActiveThreads(
+function interruptActiveThreads(
   deps: Pick<AppDeps, "db" | "hub" | "logger" | "pendingInteractions">,
   args: InterruptActiveThreadsArgs,
 ): InterruptActiveThreadsResult {
@@ -2071,8 +2003,6 @@ export async function reconcileDaemonReportedThreads(
       event: { type: "run.started" },
       threadId: thread.id,
     });
-    completeThreadStart(deps, {
-      threadId: thread.id,
-    });
+    forgetActiveThreadProvisionContext(thread.id);
   }
 }

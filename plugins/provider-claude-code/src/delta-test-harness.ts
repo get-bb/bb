@@ -12,10 +12,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ClientTurnRequestId, ThreadEvent } from "@bb/domain";
-import {
-  createDeltaAssembler,
-  type DeltaAssembler,
-} from "@bb/agent-runtime/test/bridge-delta-assembly";
+import { createDeltaAssembler } from "@bb/agent-runtime/test/bridge-delta-assembly";
 import {
   createClaudeDeltaTranslator,
   type ClaudeDeltaTranslationContext,
@@ -52,13 +49,12 @@ export function loadSessionFixture(name: string): Record<string, unknown>[] {
     });
 }
 
-export const CLAUDE_TEST_ENTROPY = "cl-test";
+const CLAUDE_TEST_ENTROPY = "cl-test";
 export const TURN_1 = "cl-test-t1";
 export const TURN_2 = "cl-test-t2";
 export const ITEM_ID_PATTERN = /^cl-test-i\d+$/;
 
-export interface ClaudeDeltaHarness {
-  assembler: DeltaAssembler;
+interface ClaudeDeltaHarness {
   translator: ClaudeDeltaTranslator;
   translate(
     event: unknown,
@@ -80,7 +76,6 @@ export function createClaudeDeltaHarness(): ClaudeDeltaHarness {
     textDeltaFlushMs: 0,
   });
   return {
-    assembler,
     translator,
     translate(event, context) {
       return assembler.assemble({

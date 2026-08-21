@@ -6,7 +6,7 @@ import {
   getGitDiffFileChangeKind,
   getOpenableGitDiffPath,
   parseGitDiffFiles,
-  summarizeGitDiff,
+  summarizeGitDiffFile,
 } from "./git-diff-parsing";
 
 const SAMPLE_DIFF = [
@@ -100,21 +100,12 @@ describe("threadDetailGitDiff", () => {
     expect(formatGitDiffFileLabel(file)).toBe("src/new.ts");
   });
 
-  it("falls back to raw diff counting before parsed files are available", () => {
-    expect(summarizeGitDiff([], SAMPLE_DIFF)).toEqual({
-      filesCount: 1,
-      insertions: 1,
-      deletions: 1,
-    });
-  });
-
   it("summarizes parsed diffs from changed lines, not hunk range sizes", () => {
     const [file] = parseGitDiffFiles(DIFF_WITH_CONTEXT);
     expect(file).toBeDefined();
     if (!file) return;
 
-    expect(summarizeGitDiff([file], DIFF_WITH_CONTEXT)).toEqual({
-      filesCount: 1,
+    expect(summarizeGitDiffFile(file)).toEqual({
       insertions: 1,
       deletions: 1,
     });

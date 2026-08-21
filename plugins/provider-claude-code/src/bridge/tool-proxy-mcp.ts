@@ -11,8 +11,6 @@ import {
 
 export const BRIDGE_MCP_SERVER_NAME = "bb-bridge";
 
-export type DynamicToolDefinition = DynamicTool;
-
 type BridgeToolCallContent =
   | { type: "text"; text: string }
   | { type: "image"; data: string; mimeType: string };
@@ -27,7 +25,7 @@ export type ToolCallForwarder = (
 }>;
 
 export function buildBridgeMcpServer(
-  dynamicTools: DynamicToolDefinition[],
+  dynamicTools: DynamicTool[],
   forwardToolCall: ToolCallForwarder,
 ): McpSdkServerConfigWithInstance {
   const toolsByName = new Map(dynamicTools.map((def) => [def.name, def]));
@@ -72,9 +70,7 @@ export function buildBridgeMcpServer(
   return { type: "sdk", name: BRIDGE_MCP_SERVER_NAME, instance };
 }
 
-export function getAllowedToolNames(
-  dynamicTools: DynamicToolDefinition[],
-): string[] {
+export function getAllowedToolNames(dynamicTools: DynamicTool[]): string[] {
   return dynamicTools.map(
     (def) => `mcp__${BRIDGE_MCP_SERVER_NAME}__${def.name}`,
   );

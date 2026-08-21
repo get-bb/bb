@@ -1,5 +1,5 @@
 import type { PluginMentionSearchGroup } from "./queries/plugin-contribution-queries";
-import type { PromptMentionSuggestion } from "@/components/promptbox/mentions/types";
+import type { PromptMentionSuggestion } from "@bb/client-core";
 
 /**
  * Map GET /plugins/mentions/search groups onto mention-menu suggestions

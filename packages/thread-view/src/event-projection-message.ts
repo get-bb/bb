@@ -17,7 +17,7 @@ import type {
 } from "@bb/domain";
 import type { EventProjection } from "./event-projection.js";
 
-export const eventProjectionMessageStatusValues = [
+const eventProjectionMessageStatusValues = [
   "streaming",
   "pending",
   "completed",
@@ -27,14 +27,14 @@ export const eventProjectionMessageStatusValues = [
 export type EventProjectionMessageStatus =
   (typeof eventProjectionMessageStatusValues)[number];
 
-export const eventProjectionApprovalLifecycleStatusValues = [
+const eventProjectionApprovalLifecycleStatusValues = [
   "waiting_for_approval",
   "denied",
 ] as const;
 export type EventProjectionApprovalLifecycleStatus =
   (typeof eventProjectionApprovalLifecycleStatusValues)[number];
 
-export const eventProjectionPermissionGrantLifecycleValues = [
+const eventProjectionPermissionGrantLifecycleValues = [
   "pending",
   "resolving",
   "granted",
@@ -43,7 +43,7 @@ export const eventProjectionPermissionGrantLifecycleValues = [
 ] as const;
 export type EventProjectionPermissionGrantLifecycle =
   (typeof eventProjectionPermissionGrantLifecycleValues)[number];
-export const eventProjectionUserQuestionLifecycleValues = [
+const eventProjectionUserQuestionLifecycleValues = [
   "pending",
   "resolving",
   "answered",
@@ -63,14 +63,11 @@ export interface EventProjectionMessageBase {
   parentToolCallId?: string;
 }
 
-export const eventProjectionTurnRequestKindValues = [
-  "message",
-  "steer",
-] as const;
+const eventProjectionTurnRequestKindValues = ["message", "steer"] as const;
 export type EventProjectionTurnRequestKind =
   (typeof eventProjectionTurnRequestKindValues)[number];
 
-export const eventProjectionTurnRequestStatusValues = [
+const eventProjectionTurnRequestStatusValues = [
   "pending",
   "accepted",
   "rejected",
@@ -136,7 +133,7 @@ export type EventProjectionToolParsedIntent =
       cmd: string;
     };
 
-export interface EventProjectionDelegationMetadata {
+interface EventProjectionDelegationMetadata {
   subagentType?: string;
   description?: string;
   model?: string;
@@ -230,7 +227,7 @@ export interface EventProjectionFileEditMessage extends EventProjectionMessageBa
   >;
 }
 
-export const eventProjectionOperationTypeValues = [
+const eventProjectionOperationTypeValues = [
   "provider-unhandled",
   "warning",
   "deprecation",
@@ -243,14 +240,14 @@ export const eventProjectionOperationTypeValues = [
 export type EventProjectionOperationType =
   (typeof eventProjectionOperationTypeValues)[number];
 
-export const eventProjectionThreadOperationKindValues = [
+const eventProjectionThreadOperationKindValues = [
   "ownership_change",
   "other",
 ] as const;
 export type EventProjectionThreadOperationKind =
   (typeof eventProjectionThreadOperationKindValues)[number];
 
-export const eventProjectionThreadOperationStatusValues = [
+const eventProjectionThreadOperationStatusValues = [
   "requested",
   "queued",
   "running",
@@ -272,7 +269,7 @@ export interface EventProjectionOwnershipChangeThreadOperationMetadata {
   metadata: OwnershipChangeOperationMetadata | null;
 }
 
-export interface EventProjectionOtherThreadOperationMetadata {
+interface EventProjectionOtherThreadOperationMetadata {
   operation: "other";
   rawOperation: string;
   status: EventProjectionThreadOperationStatus;

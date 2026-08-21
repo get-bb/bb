@@ -28,9 +28,7 @@ export function promptMentionIconName(
   }
 }
 
-export function promptMentionKindLabel(
-  resource: PromptMentionResource,
-): string {
+function promptMentionKindLabel(resource: PromptMentionResource): string {
   switch (resource.kind) {
     case "thread":
       return "Thread";

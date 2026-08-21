@@ -9,7 +9,7 @@ import {
   type ProjectThreadNode,
   type ProjectThreadItem,
   type ThreadComparator,
-} from "./projectThreadGroups";
+} from "@bb/client-core";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
 import type { ThreadTitleMentionResources } from "@/components/thread/ThreadTitleMentions";
 

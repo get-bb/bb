@@ -26,14 +26,14 @@ export interface PickerOption<T extends string = string> {
 }
 
 /** Fraction of the window a dynamic-height picker sheet may grow to. */
-export const PICKER_SHEET_MAX_HEIGHT_RATIO = 0.75;
+const PICKER_SHEET_MAX_HEIGHT_RATIO = 0.75;
 
 export function usePickerSheetMaxHeight(): number {
   const { height } = useWindowDimensions();
   return Math.round(height * PICKER_SHEET_MAX_HEIGHT_RATIO);
 }
 
-export interface OptionRowProps<T extends string> {
+interface OptionRowProps<T extends string> {
   option: PickerOption<T>;
   selected: boolean;
   onSelect: (value: T) => void;
@@ -41,7 +41,7 @@ export interface OptionRowProps<T extends string> {
 }
 
 /** One selectable row: glyph, label/description, check mark when selected. */
-export function OptionRow<T extends string>({
+function OptionRow<T extends string>({
   option,
   selected,
   onSelect,
@@ -97,14 +97,12 @@ export interface OptionSheetProps<T extends string> {
   emptyMessage?: string;
   /** Prefix for per-row testIDs (`<prefix>-<value>`). */
   testIDPrefix?: string;
-  /** Keep the sheet open after a pick (multi-field sheets). */
-  keepOpenOnSelect?: boolean;
   onDismiss?: () => void;
 }
 
 /**
  * A single-choice list in a bottom sheet with a check mark on the current
- * value. The sheet closes on selection unless `keepOpenOnSelect`.
+ * value. The sheet closes on selection.
  */
 export function OptionSheet<T extends string>({
   controller,
@@ -116,7 +114,6 @@ export function OptionSheet<T extends string>({
   footer,
   emptyMessage = "Nothing to pick yet.",
   testIDPrefix,
-  keepOpenOnSelect = false,
   onDismiss,
 }: OptionSheetProps<T>) {
   const maxHeight = usePickerSheetMaxHeight();
@@ -143,7 +140,7 @@ export function OptionSheet<T extends string>({
             selected={option.value === value}
             onSelect={(next) => {
               haptic("selection");
-              if (!keepOpenOnSelect) controller.dismiss();
+              controller.dismiss();
               onChange(next);
             }}
             testID={

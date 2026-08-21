@@ -121,24 +121,6 @@ const ATTENTION_DISPLAY: Record<
   none: PULL_REQUEST_STATE_DISPLAY.open,
 };
 
-export function getPullRequestChecksDisplay(
-  pullRequest: ThreadPullRequest,
-): PullRequestDisplay {
-  return CHECKS_DISPLAY[pullRequest.checks.state];
-}
-
-export function getPullRequestReviewDisplay(
-  pullRequest: ThreadPullRequest,
-): PullRequestDisplay {
-  return REVIEW_DISPLAY[pullRequest.review.state];
-}
-
-export function getPullRequestMergeabilityDisplay(
-  pullRequest: ThreadPullRequest,
-): PullRequestDisplay {
-  return MERGEABILITY_DISPLAY[pullRequest.mergeability.state];
-}
-
 export function getPullRequestAttentionDisplay(
   pullRequest: ThreadPullRequest,
 ): PullRequestDisplay {

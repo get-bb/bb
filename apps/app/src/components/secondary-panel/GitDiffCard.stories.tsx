@@ -1,11 +1,11 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type { FileContents } from "@pierre/diffs";
 import type { DiffPresentation } from "@/components/code/code-rendering";
-import {
-  GitDiffCard,
-  type DiffFileContentsResult,
-  type RequestDiffFileContents,
-} from "../git-diff/GitDiffCard";
+import { GitDiffCard } from "../git-diff/GitDiffCard";
+import type {
+  DiffFileContentsResult,
+  RequestDiffFileContents,
+} from "@/components/git-diff/GitDiffCardBody";
 import {
   DEFAULT_CODE_OVERFLOW_MODE,
   type CodeOverflowMode,
@@ -17,7 +17,7 @@ import {
 } from "./GitDiffToolbar";
 import {
   parseGitDiffFiles,
-  summarizeGitDiff,
+  summarizeGitDiffFile,
   type ParsedGitDiffFile,
 } from "../git-diff/git-diff-parsing";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
@@ -736,14 +736,16 @@ function InteractiveDiffPanel({
         ),
     [diffs],
   );
-  const aggregateStats = useMemo(
-    () =>
-      summarizeGitDiff(
-        parsed.map((p) => p.fileDiff),
-        parsed.map((p) => p.fullDiff).join("\n"),
-      ),
-    [parsed],
-  );
+  const aggregateStats = useMemo(() => {
+    let insertions = 0;
+    let deletions = 0;
+    for (const entry of parsed) {
+      const fileStats = summarizeGitDiffFile(entry.fileDiff);
+      insertions += fileStats.insertions;
+      deletions += fileStats.deletions;
+    }
+    return { filesCount: parsed.length, insertions, deletions };
+  }, [parsed]);
   const [selection, setSelection] = useState("working");
   const [displayMode, setDisplayMode] = useState<GitDiffDisplayMode>("unified");
   const [lineOverflowMode, setLineOverflowMode] = useState<CodeOverflowMode>(

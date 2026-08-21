@@ -245,14 +245,6 @@ export class RuntimeThreadIdentityRegistry {
     this.clearThread(args.threadId);
   }
 
-  clearProviderState(providerState: RuntimeProviderIdentityState): void {
-    providerState.pendingIdentityThreadIds = [];
-    for (const threadId of providerState.threadIds) {
-      this.clearThread(threadId);
-    }
-    this.resolvePendingIdentityWaiters(providerState);
-  }
-
   resolvePendingIdentityWaiters(
     providerState: RuntimeProviderIdentityState,
   ): void {

@@ -12,16 +12,15 @@ import type { ThreadEnvironmentSelection } from "./environment-selection";
  * store is the single writer and notifies subscribers in-process.
  */
 
-export const COMPOSE_PROVIDER_STORAGE_KEY = "bb.promptbox.provider";
-export const COMPOSE_MODEL_STORAGE_KEY = "bb.promptbox.model";
-export const COMPOSE_REASONING_STORAGE_KEY = "bb.promptbox.reasoning";
-export const COMPOSE_SERVICE_TIER_STORAGE_KEY = "bb.promptbox.service-tier";
-export const COMPOSE_PERMISSION_MODE_STORAGE_KEY =
-  "bb.promptbox.permission-mode";
-export const COMPOSE_ENVIRONMENT_STORAGE_KEY = "bb.promptbox.environment";
-export const COMPOSE_NAVIGATE_AFTER_CREATE_STORAGE_KEY =
+const COMPOSE_PROVIDER_STORAGE_KEY = "bb.promptbox.provider";
+const COMPOSE_MODEL_STORAGE_KEY = "bb.promptbox.model";
+const COMPOSE_REASONING_STORAGE_KEY = "bb.promptbox.reasoning";
+const COMPOSE_SERVICE_TIER_STORAGE_KEY = "bb.promptbox.service-tier";
+const COMPOSE_PERMISSION_MODE_STORAGE_KEY = "bb.promptbox.permission-mode";
+const COMPOSE_ENVIRONMENT_STORAGE_KEY = "bb.promptbox.environment";
+const COMPOSE_NAVIGATE_AFTER_CREATE_STORAGE_KEY =
   "bb.root-compose.navigate-after-create";
-export const COMPOSE_LAST_PROJECT_STORAGE_KEY = "bb.root-compose.project-id";
+const COMPOSE_LAST_PROJECT_STORAGE_KEY = "bb.root-compose.project-id";
 /** Suffix version the web app appends to provider/project-scoped keys. */
 const SCOPED_STORAGE_VERSION = "1";
 
@@ -79,7 +78,7 @@ export interface ComposePreferencesStore {
   ): void;
 }
 
-export const NAVIGATE_AFTER_CREATE_DEFAULT = true;
+const NAVIGATE_AFTER_CREATE_DEFAULT = true;
 
 function isReasoningLevel(value: string): value is ReasoningLevel {
   return (
@@ -102,7 +101,7 @@ function isServiceTier(value: string): value is ServiceTier {
   return value === "fast" || value === "default";
 }
 
-export function parseStoredReasoningLevel(
+function parseStoredReasoningLevel(
   value: string | undefined,
 ): StoredReasoningLevel {
   return value !== undefined && isReasoningLevel(value) ? value : "";
@@ -120,9 +119,7 @@ export function parseStoredPermissionMode(
   return value !== undefined && isPermissionMode(value) ? value : "";
 }
 
-export function parseStoredServiceTier(
-  value: string | undefined,
-): StoredServiceTier {
+function parseStoredServiceTier(value: string | undefined): StoredServiceTier {
   return value !== undefined && isServiceTier(value) ? value : "";
 }
 
@@ -131,7 +128,7 @@ function scopedKey(prefix: string, scope: string): string {
 }
 
 /** `host:<hostId>:<local|worktree>`, the web picker's persisted spelling. */
-export function encodeStoredEnvironment(
+function encodeStoredEnvironment(
   environment: StoredProjectEnvironment,
 ): string {
   return `host:${environment.hostId}:${environment.mode}`;

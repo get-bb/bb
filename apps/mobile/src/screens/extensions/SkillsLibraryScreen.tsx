@@ -9,6 +9,7 @@ import {
   type ProviderDisplayNames,
 } from "@/data/skills";
 import { useSystemProviders } from "@/data/system";
+import { describeError } from "@/lib/describe-error";
 import {
   Button,
   EmptyStatePanel,
@@ -21,10 +22,6 @@ import {
 import { SettingsSection } from "../plugins/plugin-ui";
 import { registrySkillsHref, skillDetailHref } from "../shell/hrefs";
 import { Screen } from "../shell/Screen";
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /**
  * Skill rows carry only a provider id (open-ended: every custom ACP agent is

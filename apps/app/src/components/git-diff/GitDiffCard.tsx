@@ -24,19 +24,13 @@ import {
   type ParsedGitDiffFile,
 } from "./git-diff-parsing";
 
-export type {
-  DiffFileContentsResult,
-  RequestDiffFileContents,
-} from "./GitDiffCardBody";
-
-export interface GitDiffCardProps {
+interface GitDiffCardProps {
   fileDiff: ParsedGitDiffFile;
   presentation: DiffPresentation;
   /** Raw per-file patch text, when the caller still has it. */
   patchText?: string;
   filePathRoot?: string | null;
   onOpenFileInEditor?: (path: string) => void;
-  onOpenFilePreview?: (path: string) => void;
   /**
    * When both isCollapsed and onToggleCollapsed are provided, the card renders
    * a chevron in the header and hides its body when collapsed. Omit both to
@@ -51,14 +45,8 @@ export interface GitDiffCardProps {
    * that edge when their own scroll area owns the fixed border.
    */
   stickyHeader?: boolean;
-  /** Override the sticky top offset when the scroll container owns surrounding chrome. */
-  stickyHeaderTopClassName?: string;
-  /** Whether crossing the sticky threshold changes header rounding/edge chrome. */
-  applyStuckHeaderChrome?: boolean;
   /** When true, replaces the body with a skeleton (for queued render slots). */
   isRendering?: boolean;
-  /** Forwarded to the outer card element — used for IntersectionObserver-based scheduling. */
-  cardRef?: (element: HTMLDivElement | null) => void;
   /** Extra classes for the outer card shell. */
   cardClassName?: string;
   /** Whether a stuck sticky header should draw its own replacement top edge. */
@@ -98,14 +86,10 @@ export const GitDiffCard = memo(function GitDiffCard({
   patchText,
   filePathRoot,
   onOpenFileInEditor,
-  onOpenFilePreview,
   isCollapsed,
   onToggleCollapsed,
   stickyHeader = false,
-  stickyHeaderTopClassName,
-  applyStuckHeaderChrome = true,
   isRendering = false,
-  cardRef,
   cardClassName,
   showStuckHeaderEdge = true,
   onRequestFileContents,
@@ -147,7 +131,6 @@ export const GitDiffCard = memo(function GitDiffCard({
 
   return (
     <div
-      ref={cardRef}
       className={cn(
         "rounded-lg border border-border bg-background",
         cardClassName,
@@ -157,10 +140,8 @@ export const GitDiffCard = memo(function GitDiffCard({
       <div
         className={gitDiffCardHeaderWrapperClass({
           stickyHeader,
-          stickyHeaderTopClassName,
           isBodyHidden,
           isStuck: isHeaderStuck,
-          applyStuckHeaderChrome,
           showStuckHeaderEdge,
         })}
       >
@@ -169,7 +150,6 @@ export const GitDiffCard = memo(function GitDiffCard({
           previousPath={previousPath}
           filePathRoot={filePathRoot}
           onOpenFileInEditor={onOpenFileInEditor}
-          onOpenFilePreview={onOpenFilePreview}
           isCollapsed={isCollapsed}
           onToggleCollapsed={onToggleCollapsed}
           hasChanges={hasChanges}

@@ -259,5 +259,4 @@ export {
   BottomSheetFlatList as SheetFlatList,
   BottomSheetScrollView as SheetScrollView,
   BottomSheetTextInput as SheetTextInput,
-  BottomSheetView as SheetView,
 };

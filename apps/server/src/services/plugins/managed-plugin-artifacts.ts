@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
+import { derivePluginId } from "@bb/domain";
 import {
   createPluginArtifact,
   getInstalledPlugin,
@@ -44,11 +45,7 @@ import {
   runInstallCommand,
 } from "./install-sources.js";
 import { gitSelectorRefName } from "./git-source-intent.js";
-import {
-  derivePluginId,
-  readPluginManifest,
-  type PluginManifest,
-} from "./manifest.js";
+import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import type {
   PluginListEntry,
   PluginServiceDeps,
@@ -117,16 +114,17 @@ interface ActivateManagedUpdateArgs {
   beforePersist?: () => Promise<void>;
 }
 
-export interface ManagedPluginArtifactsContext {
+interface ManagedPluginArtifactsContext {
   deps: PluginServiceDeps;
   withArtifactLock: <T>(key: string, fn: () => Promise<T>) => Promise<T>;
   sourceKind: (source: string) => "path" | "git" | "npm" | "builtin";
   checkEngineRange: (manifest: PluginManifest) => string | undefined;
   checkPluginSdkRange: (manifest: PluginManifest) => string | undefined;
-  isPackagedBuiltinAppEntry: (args: {
+  isPackagedBuiltinEntry: (args: {
     kind: "path" | "git" | "npm" | "builtin";
     manifest: PluginManifest;
     rootDir: string;
+    artifact: "app" | "server" | "host";
   }) => boolean;
   registerInstalled: (args: RegisterInstalledArgs) => Promise<PluginListEntry>;
   assertInstallRegistrationAvailable: (
@@ -240,7 +238,7 @@ export function createManagedPluginArtifacts(
     sourceKind,
     checkEngineRange,
     checkPluginSdkRange,
-    isPackagedBuiltinAppEntry,
+    isPackagedBuiltinEntry,
     registerInstalled,
     assertInstallRegistrationAvailable,
     refuseBuiltinShadow,
@@ -339,7 +337,12 @@ export function createManagedPluginArtifacts(
           );
         }
       } else if (
-        !isPackagedBuiltinAppEntry({ kind, manifest, rootDir: args.rootDir })
+        !isPackagedBuiltinEntry({
+          kind,
+          manifest,
+          rootDir: args.rootDir,
+          artifact: "app",
+        })
       ) {
         try {
           await buildPluginApp(

@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { View } from "react-native";
 import { Markdown } from "@/markdown";
 import { Text } from "@/ui";
@@ -23,8 +22,6 @@ export function DelegationWorkRow({
   const row = item.row;
   const output = row.output.trim();
   const hasChildren = row.childRows.length > 0;
-  // Stable callbacks/options: the markdown blocks memoize on context identity.
-  const threadMentions = useMemo(() => THREAD_MENTIONS, []);
   return (
     <WorkRowShell
       item={item}
@@ -42,7 +39,7 @@ export function DelegationWorkRow({
               Result
             </Text>
           ) : null}
-          <Markdown content={output} threadMentions={threadMentions} />
+          <Markdown content={output} threadMentions={THREAD_MENTIONS} />
         </View>
       ) : null}
     </WorkRowShell>

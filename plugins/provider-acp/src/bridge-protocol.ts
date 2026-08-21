@@ -30,14 +30,6 @@ import { acpSessionUpdateSchema, acpStopReasonSchema } from "./wire.js";
 // Runtime → bridge commands
 // ---------------------------------------------------------------------------
 
-const acpBridgeAgentCommandSchema = z.object({
-  command: z.string().min(1),
-  args: z.array(z.string()),
-  cwd: z.string().min(1).optional(),
-  envVars: z.record(z.string(), z.string()).optional(),
-});
-export type AcpBridgeAgentCommand = z.infer<typeof acpBridgeAgentCommandSchema>;
-
 /**
  * Id of the synthetic "Agent default" model the bridge serves when the agent's
  * model list cannot be read. Never forwarded to the agent.

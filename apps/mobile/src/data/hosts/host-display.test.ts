@@ -1,6 +1,5 @@
 import type { Host } from "@bb/domain";
 import { describe, expect, it } from "vitest";
-import { resolveHostDependentAvailability } from "./host-availability";
 import {
   countProjectsByHost,
   formatRelativeAge,
@@ -116,46 +115,5 @@ describe("countProjectsByHost", () => {
     expect(counts.get("a")).toBe(1);
     expect(counts.get("b")).toBe(2);
     expect(counts.get("c")).toBeUndefined();
-  });
-});
-
-describe("resolveHostDependentAvailability", () => {
-  it("is loading until both the host list and the config answered", () => {
-    expect(
-      resolveHostDependentAvailability({
-        hosts: undefined,
-        primaryHostId: "h1",
-      }).state,
-    ).toBe("loading");
-    expect(
-      resolveHostDependentAvailability({
-        hosts: [host()],
-        primaryHostId: undefined,
-      }).state,
-    ).toBe("loading");
-  });
-
-  it("reports no host, an offline primary, or ready", () => {
-    expect(
-      resolveHostDependentAvailability({ hosts: [], primaryHostId: null })
-        .state,
-    ).toBe("no-host");
-    // A primary id the list does not contain is not promoted to another host.
-    expect(
-      resolveHostDependentAvailability({
-        hosts: [host()],
-        primaryHostId: "other",
-      }).state,
-    ).toBe("no-host");
-    const offline = resolveHostDependentAvailability({
-      hosts: [host({ status: "disconnected" })],
-      primaryHostId: "h1",
-    });
-    expect(offline.state).toBe("offline");
-    expect(offline.host?.id).toBe("h1");
-    expect(
-      resolveHostDependentAvailability({ hosts: [host()], primaryHostId: "h1" })
-        .state,
-    ).toBe("ready");
   });
 });

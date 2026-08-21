@@ -24,11 +24,11 @@ export type MarkdownPreviewLocalFileLinkHandler = (
   link: MarkdownPreviewLocalFileLink,
 ) => boolean;
 
-export interface MarkdownTrustedAbsoluteLocalFileLinkRouting {
+interface MarkdownTrustedAbsoluteLocalFileLinkRouting {
   kind: "trusted-host";
 }
 
-export interface MarkdownContainedAbsoluteLocalFileLinkRouting {
+interface MarkdownContainedAbsoluteLocalFileLinkRouting {
   kind: "contained";
   rootPath: string;
 }
@@ -65,12 +65,11 @@ interface ParseLineRangeArgs {
   startValue: string;
 }
 
-export interface ResolveRelativeLocalFileHrefArgs
-  extends MarkdownRelativeLocalFileLinkRouting {
+interface ResolveRelativeLocalFileHrefArgs extends MarkdownRelativeLocalFileLinkRouting {
   href: string | undefined;
 }
 
-export interface ParseLocalFileHrefArgs {
+interface ParseLocalFileHrefArgs {
   absoluteLinks: MarkdownAbsoluteLocalFileLinkRouting;
   href: string | undefined;
 }
@@ -372,8 +371,7 @@ function isLinkContainedInRoot({
 export function parseLocalFileHref({
   absoluteLinks,
   href,
-}: ParseLocalFileHrefArgs,
-): MarkdownPreviewLocalFileLink | null {
+}: ParseLocalFileHrefArgs): MarkdownPreviewLocalFileLink | null {
   if (!href) {
     return null;
   }

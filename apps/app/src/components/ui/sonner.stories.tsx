@@ -4,10 +4,7 @@ import {
   type AppToastOptions,
   type AppToastTone,
 } from "./app-toast";
-import {
-  AppToastCommandDescription,
-  AppToastCommitDescription,
-} from "./app-toast-descriptions";
+import { AppToastCommitDescription } from "./app-toast-descriptions";
 import { ArchivedThreadToastTitle } from "../thread/ArchivedThreadToastTitle";
 import { Button } from "@bb/shared-ui/button";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
@@ -59,7 +56,6 @@ const GIT_SUCCESS_COMMIT_SUBJECT = "Update provider CLI health toasts";
 const SQUASH_MERGE_SUCCESS_COMMIT_SHA =
   "a83f4d2b055e5eed1234567890abcdef1234567";
 const SQUASH_MERGE_SUCCESS_COMMIT_SUBJECT = "Merge toast UX fixes";
-const PROVIDER_UPDATE_COMMAND = "npm install -g @openai/codex";
 
 function gitSuccessDescription({
   commitSha,
@@ -74,24 +70,6 @@ function gitSuccessDescription({
 }
 
 const TOAST_EXAMPLES: readonly ToastExample[] = [
-  {
-    id: "provider-update-loading",
-    group: "Provider CLI",
-    label: "provider update loading",
-    source: "useProviderCliInstallRunner",
-    usage: [
-      "After clicking Update",
-      "Replaces the update-available toast",
-      "Replaced by success/error",
-    ],
-    current: {
-      tone: "loading",
-      title: "Updating Codex",
-      description: (
-        <AppToastCommandDescription command={PROVIDER_UPDATE_COMMAND} />
-      ),
-    },
-  },
   {
     id: "provider-queued",
     group: "Provider CLI",

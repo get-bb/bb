@@ -96,30 +96,3 @@ export const CLAUDE_CODE_ACTIVE_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
     defaultReasoningEffort: "medium",
   },
 ];
-
-/**
- * The curated catalog as picker rows, for use before or instead of a successful
- * account-scoped probe:
- *
- * - the app renders it as react-query placeholder data on a cold cache, so the
- *   picker is populated immediately rather than waiting on a CLI process spawn
- * - the server substitutes it when the probe fails transiently
- *
- * These rows are pinned model ids, so an account without the matching
- * entitlement or CLI version will not be able to run every one of them. Neither
- * caller may treat this list as authoritative: absence from it is never proof
- * that a stored model was retired, and only a successful probe may trigger model
- * recovery. Once a probe succeeds, its result is what should be shown and
- * remembered.
- *
- * Returns fresh objects because these flow into mutable API responses.
- */
-export function listClaudeCodeFallbackModels(): AvailableModel[] {
-  return CLAUDE_CODE_ACTIVE_CATALOG.map((entry) => ({
-    ...entry,
-    supportedReasoningEfforts: cloneReasoningEfforts(
-      entry.supportedReasoningEfforts,
-    ),
-    isDefault: entry.model === DEFAULT_CLAUDE_CODE_MODEL,
-  }));
-}

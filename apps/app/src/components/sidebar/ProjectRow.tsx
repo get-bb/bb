@@ -79,6 +79,7 @@ import {
   type ThreadRowOptions,
 } from "./ThreadRow";
 import {
+  buildSidebarEntitySectionId,
   buildSectionThreadList,
   buildProjectThreadGroups,
   CHRONOLOGICAL_CONTAINER_ID,
@@ -95,7 +96,7 @@ import {
   type SidebarSectionDefinition,
   type SidebarSectionGroup,
   type ThreadComparator,
-} from "./projectThreadGroups";
+} from "@bb/client-core";
 import { SidebarWindowedItems } from "./SidebarWindowedItems";
 import { SidebarSectionRow } from "./SidebarSectionRow";
 import { TopLevelSidebarSection } from "./TopLevelSidebarSection";
@@ -119,7 +120,6 @@ import {
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import type { NeighborReorderRequest } from "@/lib/neighbor-reorder";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
-import { buildSidebarEntitySectionId } from "./sidebarSectionOrder";
 import { SidebarSectionOrderList } from "./SidebarSectionOrderList";
 import {
   collectSectionThreadDndLookup,
@@ -399,18 +399,18 @@ interface EnvironmentThreadGroupHeaderProps {
   parentLineDepth?: number;
   childActivity: CollapsedChildActivity;
   isCollapsed: boolean;
-  archiveThreadsPending?: boolean;
-  onArchiveThreads?: () => void;
-  onCreateNewThread?: () => void;
-  onRenameEnvironment?: () => void;
+  archiveThreadsPending: boolean;
+  onArchiveThreads: () => void;
+  onCreateNewThread: () => void;
+  onRenameEnvironment: () => void;
   onToggleCollapsed: (environmentId: string) => void;
 }
 
 interface EnvironmentThreadGroupHeaderActionsProps {
   archiveThreadsPending: boolean;
-  onArchiveThreads?: () => void;
-  onCreateNewThread?: () => void;
-  onRenameEnvironment?: () => void;
+  onArchiveThreads: () => void;
+  onCreateNewThread: () => void;
+  onRenameEnvironment: () => void;
   onOpenChange: (open: boolean) => void;
 }
 
@@ -858,10 +858,6 @@ function EnvironmentThreadGroupHeaderActions({
   onRenameEnvironment,
   onOpenChange,
 }: EnvironmentThreadGroupHeaderActionsProps) {
-  if (!onCreateNewThread && !onArchiveThreads && !onRenameEnvironment) {
-    return null;
-  }
-
   return (
     <span className="inline-flex shrink-0 items-center">
       <DropdownMenu onOpenChange={onOpenChange}>
@@ -884,37 +880,31 @@ function EnvironmentThreadGroupHeaderActions({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {onCreateNewThread ? (
-            <DropdownMenuItem onSelect={onCreateNewThread}>
-              <Icon name="MessageSquarePlus" aria-hidden="true" />
-              New thread
-            </DropdownMenuItem>
-          ) : null}
-          {onRenameEnvironment ? (
-            <DropdownMenuItem
-              onSelect={() => {
-                onRenameEnvironment();
-              }}
-            >
-              <Icon name="Edit" aria-hidden="true" />
-              Rename
-            </DropdownMenuItem>
-          ) : null}
-          {onArchiveThreads ? (
-            <DropdownMenuItem
-              disabled={archiveThreadsPending}
-              onSelect={(event) => {
-                if (archiveThreadsPending) {
-                  event.preventDefault();
-                  return;
-                }
-                onArchiveThreads();
-              }}
-            >
-              <Icon name="Archive" aria-hidden="true" />
-              Archive worktree
-            </DropdownMenuItem>
-          ) : null}
+          <DropdownMenuItem onSelect={onCreateNewThread}>
+            <Icon name="MessageSquarePlus" aria-hidden="true" />
+            New thread
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              onRenameEnvironment();
+            }}
+          >
+            <Icon name="Edit" aria-hidden="true" />
+            Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={archiveThreadsPending}
+            onSelect={(event) => {
+              if (archiveThreadsPending) {
+                event.preventDefault();
+                return;
+              }
+              onArchiveThreads();
+            }}
+          >
+            <Icon name="Archive" aria-hidden="true" />
+            Archive worktree
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </span>
@@ -929,7 +919,7 @@ function EnvironmentThreadGroupHeader({
   parentLineDepth,
   childActivity,
   isCollapsed,
-  archiveThreadsPending = false,
+  archiveThreadsPending,
   onArchiveThreads,
   onCreateNewThread,
   onRenameEnvironment,

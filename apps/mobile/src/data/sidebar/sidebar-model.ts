@@ -4,7 +4,6 @@ import {
   buildProjectThreadGroups,
   buildSectionThreadList,
   buildSidebarEntitySectionId,
-  CHRONOLOGICAL_CONTAINER_ID,
   compareByCreatedAtDescending,
   compareStandardThreads,
   createSidebarProjectIdResolver,
@@ -417,9 +416,6 @@ export function buildSidebarModel({
     groups,
   };
 }
-
-/** Container id for manual-mode section collapse keys. */
-export const SIDEBAR_SECTION_CONTAINER_ID = CHRONOLOGICAL_CONTAINER_ID;
 
 export interface SelectedThreadSidebarExpansion {
   /** Parents to expand so the selected thread's row is reachable. */

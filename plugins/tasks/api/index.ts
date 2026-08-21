@@ -196,7 +196,7 @@ function priorityName(priority: StoredTask["priority"]): string {
   return priority[0]?.toUpperCase() + priority.slice(1);
 }
 
-function publishTasksChanged(
+export function publishTasksChanged(
   bb: BbPluginApi,
   taskId: string,
   projectId: string,

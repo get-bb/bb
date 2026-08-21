@@ -1,9 +1,5 @@
-import { createNodeBbSdk, type BbSdk, type BbSdkContext } from "@bb/sdk/node";
+import { createNodeBbSdk, type BbSdk } from "@bb/sdk/node";
 import type { Dispatcher } from "undici";
-
-export interface CreateCliBbSdkOptions {
-  context?: BbSdkContext;
-}
 
 /**
  * Node's fetch accepts the non-standard undici `dispatcher` option so one call
@@ -18,13 +14,6 @@ export function cliFetch(
   return fetch(input, init);
 }
 
-export function createCliBbSdk(
-  baseUrl: string,
-  options: CreateCliBbSdkOptions = {},
-): BbSdk {
-  return createNodeBbSdk({
-    baseUrl,
-    context: options.context,
-    fetch: cliFetch,
-  });
+export function createCliBbSdk(baseUrl: string): BbSdk {
+  return createNodeBbSdk({ baseUrl, fetch: cliFetch });
 }

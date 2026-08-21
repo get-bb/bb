@@ -17,7 +17,6 @@ import type {
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type {
   AdapterCommand,
-  ProviderAdapter,
   ProviderAdapterFactory,
 } from "./provider-adapter.js";
 import {
@@ -99,13 +98,6 @@ interface RestartCodexThreadForNextTurnArgs {
 interface RunThreadOperationArgs<TResult> {
   threadId: string;
   work: () => Promise<TResult>;
-}
-
-function normalizeExecutionOptions(args: {
-  adapter: ProviderAdapter;
-  options: AgentRuntimeExecutionOptions;
-}): AgentRuntimeExecutionOptions {
-  return args.adapter.normalizeExecutionOptions?.(args.options) ?? args.options;
 }
 
 interface PreparedThreadRewind {
@@ -240,10 +232,6 @@ interface RuntimeParsedMessageArgs {
   proc: ProviderProcess;
 }
 
-interface RuntimeJsonRpcResponseArgs extends RuntimeParsedMessageArgs {
-  parsedId: string | number;
-}
-
 interface EmitTranslatedEventsArgs {
   events: ThreadEvent[];
   proc: ProviderProcess;
@@ -341,16 +329,10 @@ function resolveThreadStoragePath(
  * interactions.
  */
 export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
-  return createAgentRuntimeInternal(options);
+  return createAgentRuntimeWithAdapters(options);
 }
 
 export function createAgentRuntimeWithAdapters(
-  options: AgentRuntimeInternalOptions,
-): AgentRuntime {
-  return createAgentRuntimeInternal(options);
-}
-
-function createAgentRuntimeInternal(
   options: AgentRuntimeInternalOptions,
 ): AgentRuntime {
   const additionalWorkspaceWriteRoots =
@@ -412,15 +394,14 @@ function createAgentRuntimeInternal(
   // kit's rules, applied to every bridge including the third-party artifacts
   // nobody ran the kit against.
   const threadEventGrammar = new ThreadEventGrammar();
-  const bridgeNodeEnv = options.bridgeNodeEnv ?? defaultBridgeNodeEnv();
+  const bridgeNodeEnv = defaultBridgeNodeEnv();
 
   const providerProcesses = new RuntimeProviderProcessManager({
     additionalWorkspaceWriteRoots,
     adapterFactory: options.adapterFactory,
     bridgeBundleDir: options.bridgeBundleDir,
     ...(bridgeNodeEnv !== undefined ? { bridgeNodeEnv } : {}),
-    bridgeNodeExecutablePath:
-      options.bridgeNodeExecutablePath ?? process.execPath,
+    bridgeNodeExecutablePath: process.execPath,
     captureThreadExitState: (threadId) => ({
       activeTurnId: turnState.getActiveTurnId(threadId),
       pendingTurnStart: pendingTurnStartThreadIds.has(threadId),
@@ -439,19 +420,7 @@ function createAgentRuntimeInternal(
       threadIdentityRegistry.resolvePendingIdentityWaiters(
         providerProcess.identity,
       ),
-    onProviderThreadDetached: (threadId, providerProcess) => {
-      // Reconcile adapter state that dies with the provider process (open
-      // background tasks) before the thread's identity mappings are cleared —
-      // the synthesized events still need provider-thread stamping.
-      const detachEvents =
-        providerProcess.adapter.buildThreadDetachedEvents?.({ threadId }) ?? [];
-      if (detachEvents.length > 0) {
-        emitTranslatedEvents({
-          events: detachEvents,
-          proc: providerProcess,
-          sourceThreadId: threadId,
-        });
-      }
+    onProviderThreadDetached: (threadId) => {
       threadIdentityRegistry.clearThread(threadId);
       clearThreadRuntimeConfig(threadId);
       turnState.clearThread(threadId);
@@ -460,9 +429,6 @@ function createAgentRuntimeInternal(
     },
     onStderr: options.onStderr,
     skillRoots,
-    ...(options.textDeltaFlushMs !== undefined
-      ? { textDeltaFlushMs: options.textDeltaFlushMs }
-      : {}),
     workspacePath: options.workspacePath,
   });
 
@@ -1141,14 +1107,6 @@ function createAgentRuntimeInternal(
     });
   }
 
-  function handleJsonRpcResponse(args: RuntimeJsonRpcResponseArgs): void {
-    settleJsonRpcResponse({
-      id: args.parsedId,
-      pending: args.proc.pending,
-      response: args.parsed,
-    });
-  }
-
   function emitTranslatedEvents(args: EmitTranslatedEventsArgs): void {
     for (const event of args.events) {
       if (event.type !== "thread/identity" || !event.providerThreadId) {
@@ -1254,9 +1212,7 @@ function createAgentRuntimeInternal(
       return;
     }
     emitTranslatedEvents({
-      events: args.proc.adapter.translateEvent(args.parsed, {
-        threadId: sourceThreadId,
-      }),
+      events: args.proc.adapter.translateEvent(args.parsed),
       proc: args.proc,
       sourceThreadId,
     });
@@ -1273,10 +1229,10 @@ function createAgentRuntimeInternal(
     }
 
     if (parsedLine.kind === "response") {
-      handleJsonRpcResponse({
-        parsed: parsedLine.parsed,
-        parsedId: parsedLine.parsedId,
-        proc,
+      settleJsonRpcResponse({
+        id: parsedLine.parsedId,
+        pending: proc.pending,
+        response: parsedLine.parsed,
       });
       return;
     }
@@ -1472,7 +1428,6 @@ function createAgentRuntimeInternal(
       dynamicTools,
       disallowedTools,
       instructionMode = "append",
-      outputSchema,
       fork,
     }) {
       return runThreadOperation({
@@ -1492,10 +1447,7 @@ function createAgentRuntimeInternal(
           });
 
           const proc = requireProviderProcess({ processKey, providerId });
-          const effectiveExecOpts = normalizeExecutionOptions({
-            adapter: proc.adapter,
-            options: execOpts,
-          });
+          const effectiveExecOpts = execOpts;
           const providerSkillRoots = skillRootsForProvider(providerId);
           assertProviderSupportsExecutionOptions({
             adapter: proc.adapter,
@@ -1560,7 +1512,6 @@ function createAgentRuntimeInternal(
                 dynamicTools,
                 disallowedTools,
                 instructionMode,
-                ...(outputSchema !== undefined ? { outputSchema } : {}),
               };
           let resolved: string;
           try {
@@ -1873,10 +1824,7 @@ function createAgentRuntimeInternal(
           });
 
           const proc = requireProviderProcess({ processKey, providerId });
-          const effectiveExecOpts = normalizeExecutionOptions({
-            adapter: proc.adapter,
-            options: execOpts,
-          });
+          const effectiveExecOpts = execOpts;
           const providerSkillRoots = skillRootsForProvider(providerId);
           assertProviderSupportsExecutionOptions({
             adapter: proc.adapter,
@@ -1996,11 +1944,8 @@ function createAgentRuntimeInternal(
         threadId,
         work: async () => {
           const pid = resolveProviderForThread(threadId);
-          const currentProc = requireProviderProcessForThread(threadId);
-          const effectiveExecOpts = normalizeExecutionOptions({
-            adapter: currentProc.adapter,
-            options: execOpts,
-          });
+          requireProviderProcessForThread(threadId);
+          const effectiveExecOpts = execOpts;
           await restartCodexThreadForNextTurnIfNeeded({
             threadId,
             options: effectiveExecOpts,
@@ -2037,8 +1982,6 @@ function createAgentRuntimeInternal(
             plan: proc.adapter.buildCommandPlan(adapterCommand),
             providerId: pid,
           });
-          const preparedTurnStart =
-            proc.adapter.prepareTurnStart(adapterCommand);
           pendingTurnStartThreadIds.add(threadId);
           markProviderSessionNotIdle(threadId);
           try {
@@ -2055,7 +1998,6 @@ function createAgentRuntimeInternal(
           } catch (error) {
             pendingTurnStartThreadIds.delete(threadId);
             markHostedProviderSessionIdle(threadId);
-            preparedTurnStart?.rollback();
             throw error;
           }
           emitAcceptedCommandEvents({
@@ -2081,10 +2023,7 @@ function createAgentRuntimeInternal(
         work: async () => {
           const pid = resolveProviderForThread(threadId);
           const currentProc = requireProviderProcessForThread(threadId);
-          const effectiveExecOpts = normalizeExecutionOptions({
-            adapter: currentProc.adapter,
-            options: execOpts,
-          });
+          const effectiveExecOpts = execOpts;
           assertProviderSupportsExecutionOptions({
             adapter: currentProc.adapter,
             options: effectiveExecOpts,
@@ -2152,7 +2091,6 @@ function createAgentRuntimeInternal(
               error.code === BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN
             ) {
               turnState.clearThread(threadId);
-              proc.adapter.clearActiveTurnState?.(threadId);
               return { status: "stale", activeTurnId: null };
             }
             throw error;

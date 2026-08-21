@@ -1,11 +1,14 @@
 import { Command } from "commander";
 import { threadStatusSchema, threadStatusValues } from "@bb/domain";
-import { ThreadWaitTimeoutError, ThreadWaitUnreachableError } from "@bb/sdk";
+import {
+  DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
+  ThreadWaitTimeoutError,
+  ThreadWaitUnreachableError,
+} from "@bb/sdk";
 import { action, CliExitError } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { outputJson, requireThreadId } from "../helpers.js";
 import {
-  DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
   DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS,
   parseThreadWaitPollIntervalMs,
   parseThreadWaitTimeoutSeconds,

@@ -37,11 +37,7 @@ const GIT_DIFF_SKELETON_FILE_COUNT = 3;
 const PANEL_SCROLL_SLOT_CLASS =
   "min-h-0 flex-1 overflow-x-auto overflow-y-auto";
 
-interface ThreadDiffSkeletonProps {
-  count?: number;
-}
-
-export interface GitDiffTabContentProps {
+interface GitDiffTabContentProps {
   environmentId?: string;
   target: WorkspaceDiffTarget | undefined;
   isDiffPanelActive: boolean;
@@ -61,11 +57,11 @@ export interface GitDiffTabContentProps {
   workspaceRootPath?: string | null;
 }
 
-export interface ThreadInfoTabContentProps {
+interface ThreadInfoTabContentProps {
   metadataContent: ReactNode;
 }
 
-export interface WorkspaceFilePreviewTabContentProps {
+interface WorkspaceFilePreviewTabContentProps {
   activePath: string;
   /**
    * Whether the secondary panel is open. The preview stays mounted while the
@@ -87,7 +83,7 @@ export interface WorkspaceFilePreviewTabContentProps {
   threadId?: string | null;
 }
 
-export interface ProjectFilePreviewTabContentProps {
+interface ProjectFilePreviewTabContentProps {
   activePath: string;
   /**
    * Whether the secondary panel is open. The preview stays mounted while the
@@ -107,7 +103,7 @@ export interface ProjectFilePreviewTabContentProps {
   projectId: string;
 }
 
-export interface HostFilePreviewTabContentProps {
+interface HostFilePreviewTabContentProps {
   activePath: string;
   /**
    * Whether the secondary panel is open. The preview stays mounted while the
@@ -127,7 +123,7 @@ export interface HostFilePreviewTabContentProps {
   threadId: string;
 }
 
-export interface HostScopedFilePreviewTabContentProps {
+interface HostScopedFilePreviewTabContentProps {
   activePath: string;
   hostId: string;
   /**
@@ -139,7 +135,7 @@ export interface HostScopedFilePreviewTabContentProps {
   onOpenInEditor?: (path: string) => void;
 }
 
-export interface ThreadStorageFilePreviewTabContentProps {
+interface ThreadStorageFilePreviewTabContentProps {
   activePath: string;
   /**
    * Whether the secondary panel is open. The preview stays mounted while the
@@ -158,12 +154,10 @@ export interface ThreadStorageFilePreviewTabContentProps {
   threadId: string;
 }
 
-function ThreadDiffSkeleton({
-  count = GIT_DIFF_SKELETON_FILE_COUNT,
-}: ThreadDiffSkeletonProps) {
+function ThreadDiffSkeleton() {
   return (
     <div className="space-y-2 pt-2">
-      {Array.from({ length: count }).map((_, index) => (
+      {Array.from({ length: GIT_DIFF_SKELETON_FILE_COUNT }).map((_, index) => (
         <div
           key={`git-diff-skeleton-${index}`}
           className="rounded-lg border border-border bg-surface-raised"
@@ -250,8 +244,7 @@ export function GitDiffTabContent({
 
   const isPreparing =
     isQueryEnabled &&
-    (target === undefined ||
-      isDiffFilesLoading ||
+    (isDiffFilesLoading ||
       (diffFilesResponse === undefined && diffFilesError === null));
 
   if (isPreparing) {

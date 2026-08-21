@@ -57,7 +57,7 @@ import {
   permissionDisplayForPromptMode,
   shouldDisablePermissionPickerForActivePromptMode,
   shouldDisablePermissionPickerForPromptMode,
-} from "./effective-prompt-mode";
+} from "@bb/client-core";
 
 type PromptBoxWithScrollAnchorProps = ComponentProps<
   typeof PromptBoxInternal
@@ -822,7 +822,7 @@ interface DefaultFollowUpComposerProps {
 }
 
 /** BB's presentation for a host-owned follow-up Composer controller. */
-export function DefaultFollowUpComposer({
+function DefaultFollowUpComposer({
   active,
   composerElement,
   hasPluginComposerScope,

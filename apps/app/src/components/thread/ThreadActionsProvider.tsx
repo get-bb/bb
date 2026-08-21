@@ -43,7 +43,7 @@ import {
 } from "@/components/dialogs/ThreadDeleteDialog";
 import { ArchivedThreadToastTitle } from "@/components/thread/ArchivedThreadToastTitle";
 import { destroyPersistedBrowserViewsForThread } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
-import { getThreadReadToggleAction } from "@/components/sidebar/threadReadState";
+import { getThreadReadToggleAction } from "@bb/client-core";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";

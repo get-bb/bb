@@ -48,8 +48,8 @@ import {
   OPTION_INTERACTIVE_CLASS_NAME,
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
-  type PickerOption,
-} from "./OptionPicker";
+} from "@bb/shared-ui/option-display";
+import { type PickerOption } from "./OptionPicker";
 import type { ModelPickerOption } from "./model-picker-option";
 import {
   formatModelLoadErrorText,
@@ -234,7 +234,6 @@ interface ModelReasoningPickerProps {
   onFastModeChange: (enabled: boolean) => void;
   showFastModeToggle: boolean;
   serviceTierSupportByProvider?: Record<string, boolean>;
-  className?: string;
   /** Render with the dim, hover-to-foreground treatment used inside the prompt box. */
   muted?: boolean;
   /** Render with the popover open on mount. Story-only escape hatch. */
@@ -280,7 +279,6 @@ export function ModelReasoningPicker({
   onFastModeChange,
   showFastModeToggle,
   serviceTierSupportByProvider,
-  className,
   muted,
   defaultOpen = false,
   modal = true,
@@ -828,7 +826,6 @@ export function ModelReasoningPicker({
         LIST_HOVER_TRANSITION,
         muted && OPTION_MUTED_CLASS_NAME,
         disabled && "cursor-default disabled:opacity-100",
-        className,
       )}
     >
       <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME} title={triggerTitle}>

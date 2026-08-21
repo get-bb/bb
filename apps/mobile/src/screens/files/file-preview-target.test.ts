@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFilePreviewRouteParams,
-  filePreviewTargetKey,
   parseFilePreviewRouteParams,
   parseLineParam,
   type FilePreviewTarget,
@@ -64,19 +63,5 @@ describe("file preview route params", () => {
         source: "weird",
       }),
     ).toMatchObject({ target: { source: { kind: "working-tree" } } });
-  });
-
-  it("keys workspace targets by source", () => {
-    expect(
-      filePreviewTargetKey({
-        kind: "workspace-file",
-        path: "a",
-        source: { kind: "head" },
-        statusLabel: null,
-      }),
-    ).toBe("workspace-file:head:a");
-    expect(filePreviewTargetKey({ kind: "host-file", path: "/a" })).toBe(
-      "host-file:/a",
-    );
   });
 });

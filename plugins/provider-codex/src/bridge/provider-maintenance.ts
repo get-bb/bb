@@ -664,5 +664,4 @@ export const __testing = {
   compareVersions,
   minimumSupportedVersionForRequirement,
   normalizeUsage,
-  planLabel,
 };

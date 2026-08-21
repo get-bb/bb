@@ -21,8 +21,6 @@ import {
 import { delegationRpcContract } from "../delegate/contract";
 import { handlers as delegationHandlers } from "../delegate";
 import {
-  TASK_PRIORITIES,
-  TASK_STATUSES,
   tasksRpcContract,
   type Attachment,
   type Folder,
@@ -2095,5 +2093,3 @@ export function registerTasksCli(
     },
   });
 }
-
-export { TASK_PRIORITIES, TASK_STATUSES };

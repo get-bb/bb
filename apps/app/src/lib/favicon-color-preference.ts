@@ -24,8 +24,8 @@ export const FAVICON_COLOR_STORAGE_KEY = "bb.faviconColor";
 export const FAVICON_COLOR_SERVER_SYNCED_STORAGE_KEY =
   "bb.faviconColor.serverSynced";
 
-export const FAVICON_BADGES = ["none", "unread"] as const;
-export type FaviconBadge = (typeof FAVICON_BADGES)[number];
+const FAVICON_BADGES = ["none", "unread"] as const;
+type FaviconBadge = (typeof FAVICON_BADGES)[number];
 
 export const FAVICON_COLOR_VALUES: Record<FaviconColor, string> = {
   red: "#e5484d",
@@ -205,21 +205,17 @@ function getTintedAssetSuffix(colorPreference: FaviconColorPreference): string {
   return colorPreference === defaultFaviconColor ? "" : `-${colorPreference}`;
 }
 
-export function getPwaManifestHref(
-  colorPreference: FaviconColorPreference,
-): string {
+function getPwaManifestHref(colorPreference: FaviconColorPreference): string {
   return `/manifest${getTintedAssetSuffix(colorPreference)}.webmanifest`;
 }
 
-export function getAppleTouchIconHref(
+function getAppleTouchIconHref(
   colorPreference: FaviconColorPreference,
 ): string {
   return `/apple-touch-icon${getTintedAssetSuffix(colorPreference)}.png`;
 }
 
-export function applyInstallIconState(
-  colorPreference: FaviconColorPreference,
-): void {
+function applyInstallIconState(colorPreference: FaviconColorPreference): void {
   const manifestLink = getDocumentLink(WEB_MANIFEST_LINK_ID);
   if (manifestLink) manifestLink.href = getPwaManifestHref(colorPreference);
 

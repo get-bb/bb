@@ -1,6 +1,6 @@
 import { applyNeighborReorder } from "./neighbor-reorder";
 
-export interface QueuedMessageReorderItem {
+interface QueuedMessageReorderItem {
   id: string;
 }
 
@@ -11,9 +11,7 @@ export interface QueuedMessageReorderRequest {
   queuedMessageId: string;
 }
 
-export interface ApplyQueuedMessageReorderArgs<
-  Item extends QueuedMessageReorderItem,
-> {
+interface ApplyQueuedMessageReorderArgs<Item extends QueuedMessageReorderItem> {
   queuedMessages: readonly Item[];
   request: QueuedMessageReorderRequest;
 }

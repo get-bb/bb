@@ -66,8 +66,6 @@ export const initializeParamsSchema = z
   })
   .passthrough();
 
-export type InitializeParams = z.infer<typeof initializeParamsSchema>;
-
 /** Bridge → runtime `initialize` result. */
 export const initializeResultSchema = z
   .object({

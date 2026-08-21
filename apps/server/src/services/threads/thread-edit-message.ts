@@ -458,12 +458,9 @@ export async function editThreadMessage(
   await ensureHostSessionReadyForWork(deps, {
     hostId: readyEnvironment.hostId,
   });
-  const execution = await buildExecutionOptions(
-    deps,
-    args.payload,
-    { threadId: editableThread.id },
-    "client/turn/requested",
-  );
+  const execution = await buildExecutionOptions(deps, args.payload, {
+    threadId: editableThread.id,
+  });
 
   let stagedProviderThreadId: string | null = null;
   let rewindLeaseId: string | null = null;
@@ -479,7 +476,6 @@ export async function editThreadMessage(
       requestId: createClientTurnRequestId(),
       execution,
       permissionEscalation: resolvePermissionEscalation({
-        thread: editableThread,
         initiator,
       }),
       environment: readyEnvironment,

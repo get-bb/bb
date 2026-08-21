@@ -951,8 +951,6 @@ export function createPiDeltaTranslator(
   return { translate };
 }
 
-export type PiDeltaTranslator = ReturnType<typeof createPiDeltaTranslator>;
-
 // ---------------------------------------------------------------------------
 // Pi SDK event extraction helpers
 // ---------------------------------------------------------------------------

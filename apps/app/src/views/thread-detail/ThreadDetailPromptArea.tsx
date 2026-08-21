@@ -119,7 +119,7 @@ import {
   resolveDefaultExecutionOptionsState,
   shouldQueueFollowUpMessage,
   type FollowUpExecutionSelection,
-} from "./threadDetailPromptSubmission";
+} from "@bb/client-core";
 
 const ignorePromptBannerFileClick = () => {};
 
@@ -138,8 +138,7 @@ export interface ThreadDetailSentMessageEdit {
   ) => void;
 }
 
-export const THREAD_DETAIL_COMPOSER_TEXTAREA_ID =
-  "thread-detail-follow-up-composer";
+const THREAD_DETAIL_COMPOSER_TEXTAREA_ID = "thread-detail-follow-up-composer";
 
 interface ThreadDetailPromptAreaProps {
   activeBackgroundAgentCount: number;

@@ -27,9 +27,10 @@ import {
   dropNeighborsForIndex,
   visibleBoardStatuses,
 } from "./drop-position.js";
-import { PriorityIcon, STATUS_LABELS, StatusIcon } from "./icons.js";
+import { PriorityIcon, StatusIcon } from "./icons.js";
+import { STATUS_LABELS } from "../list/lib.js";
 import { Button } from "@bb/shared-ui/button";
-import { DelayedLoading } from "../../components/delayed-loading.js";
+import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -274,7 +275,7 @@ function BoardSkeleton() {
   );
 }
 
-export interface BoardViewProps {
+interface BoardViewProps {
   projectId: string;
 }
 

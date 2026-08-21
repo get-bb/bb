@@ -5,9 +5,9 @@ import {
   useProfileClient,
   useProfiles,
   useRealtimeConnectionState,
-  useSystemConfigQuery,
-  useSystemVersionQuery,
 } from "@/app-shell";
+import { useSystemConfig, useSystemVersion } from "@/data/system";
+import { describeError } from "@/lib/describe-error";
 import type { MobileRealtimeConnectionState } from "@/lib/realtime";
 import { useTheme } from "@/theme";
 import { Button, Pill, Separator, Skeleton, Text, toast } from "@/ui";
@@ -45,10 +45,6 @@ function Row({
   );
 }
 
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 /**
  * What the app knows about the active server: the saved profile, what
  * `/system/config` and `/system/version` report, and the live socket state.
@@ -58,8 +54,8 @@ export function ServerInfoCard() {
   const { activeProfile } = useProfiles();
   const { sdk } = useProfileClient();
   const { tokens } = useTheme();
-  const config = useSystemConfigQuery();
-  const version = useSystemVersionQuery();
+  const config = useSystemConfig();
+  const version = useSystemVersion();
   const realtimeState = useRealtimeConnectionState();
   const [poking, setPoking] = useState(false);
 

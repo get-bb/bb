@@ -51,7 +51,7 @@ import {
   type TerminalFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { createFileOpenerOriginalTab } from "./file-opener-tabs";
-import { activateSecondaryPanelTabInState } from "@/components/secondary-panel/secondaryPanelTabState";
+import { activateSecondaryPanelTabInState } from "@bb/client-core";
 import {
   useCloseTerminal,
   useCreateTerminal,
@@ -89,7 +89,6 @@ import {
 } from "@/components/secondary-panel/TerminalHostSelector";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 import { PluginPanelTabContent } from "./PluginPanelActions";
-import { pluginPanelTabFillsRegion } from "./plugin-panel-tab-layout";
 
 const TERMINAL_COLS = 100;
 const TERMINAL_ROWS = 30;
@@ -839,7 +838,13 @@ export function PluginPanelRightPanelHost({
             return [
               {
                 ...shared,
-                contentFillsRegion: pluginPanelTabFillsRegion(tab),
+                // PluginPanelTabContent owns the complete body frame for every
+                // plugin tab: padded actions provide their own padded scroll
+                // container, while flush actions and file openers provide their
+                // own full-bleed layout. Letting the file-preview shell frame a
+                // padded action adds a second scroll container and an extra
+                // bottom gutter.
+                contentFillsRegion: true,
                 label: tab.title,
                 leadingVisual: (
                   <PluginIcon

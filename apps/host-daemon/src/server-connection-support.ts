@@ -5,7 +5,6 @@ import {
   type HostDaemonConnectSharesReplaceMessage,
   type HostDaemonOnlineRpcRequestMessage,
   type HostDaemonServerWsMessage,
-  type HostDaemonSessionCloseReason,
   type HostDaemonSessionOpenRequest,
   type HostDaemonSessionOpenResponse,
   type HostDaemonWatchSetReplaceMessage,
@@ -83,9 +82,6 @@ export interface ServerConnectionOptions {
   ) => void | Promise<void>;
   onConnectSharesReplace?: (
     message: HostDaemonConnectSharesReplaceMessage,
-  ) => void | Promise<void>;
-  onSessionClose?: (
-    reason: HostDaemonSessionCloseReason,
   ) => void | Promise<void>;
   onSessionOpened?: (
     session: HostDaemonSessionOpenResponse,

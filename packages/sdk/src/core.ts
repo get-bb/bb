@@ -63,8 +63,7 @@ export function createBbSdk(args: CreateBbSdkArgs): BbSdkAreas;
 export function createBbSdk(
   args: CreateBbSdkArgs | CreateBbSdkWithGuideArgs,
 ): BbSdkAreas | BbSdk {
-  const context = args.context ?? {};
-  const sdkContext = { transport: args.transport, context };
+  const sdkContext = { transport: args.transport };
   const realtime = createBbRealtimeClient({
     transport: args.transport,
   });

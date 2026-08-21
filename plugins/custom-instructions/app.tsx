@@ -3,29 +3,7 @@ import { definePluginApp, useRpc } from "@get-bb/plugin-sdk/app";
 import type { customInstructionsRpcContract } from "./server.js";
 import { Textarea } from "@bb/shared-ui/textarea";
 
-export const AUTOSAVE_DELAY_MS = 500;
-
-interface InstructionsResponse {
-  instructions: string;
-  maxLength: number;
-}
-
-function parseInstructionsResponse(value: unknown): InstructionsResponse {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("Custom instructions returned an invalid response.");
-  }
-  const response = value as Record<string, unknown>;
-  if (
-    typeof response.instructions !== "string" ||
-    typeof response.maxLength !== "number"
-  ) {
-    throw new Error("Custom instructions returned an invalid response.");
-  }
-  return {
-    instructions: response.instructions,
-    maxLength: response.maxLength,
-  };
-}
+const AUTOSAVE_DELAY_MS = 500;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -47,7 +25,6 @@ function CustomInstructionsSettings() {
     let active = true;
     void rpc
       .call("getInstructions")
-      .then(parseInstructionsResponse)
       .then((response) => {
         if (!active) return;
         setDraft(response.instructions);
@@ -75,9 +52,9 @@ function CustomInstructionsSettings() {
       const save = saveQueue.current
         .catch(() => undefined)
         .then(async () => {
-          const response = parseInstructionsResponse(
-            await rpc.call("saveInstructions", { instructions }),
-          );
+          const response = await rpc.call("saveInstructions", {
+            instructions,
+          });
           if (!active) return;
           setSaved(response.instructions);
           setMaxLength(response.maxLength);

@@ -17,7 +17,7 @@ export type AppSurface = (typeof APP_SURFACE_VALUES)[number];
  * `desktop` or `web` buckets, because that makes headless traffic look like a
  * person at a user interface.
  */
-export const REQUEST_APP_SURFACE_VALUES = [
+const REQUEST_APP_SURFACE_VALUES = [
   ...APP_SURFACE_VALUES,
   "api",
   "mobile",
@@ -27,7 +27,6 @@ export type RequestAppSurface = (typeof REQUEST_APP_SURFACE_VALUES)[number];
 export const APP_SURFACE_DESKTOP: AppSurface = "desktop";
 export const APP_SURFACE_WEB: AppSurface = "web";
 export const APP_SURFACE_API: RequestAppSurface = "api";
-export const APP_SURFACE_MOBILE: RequestAppSurface = "mobile";
 export const DEFAULT_APP_SURFACE: AppSurface = APP_SURFACE_WEB;
 
 export function parseAppSurface(

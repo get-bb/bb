@@ -2,7 +2,6 @@
 export {
   DEFAULT_PLUGIN_MENTION_TRIGGER,
   PLUGIN_MENTION_TRIGGER_VALUES,
-  isPluginMentionTrigger,
   normalizePluginMentionTriggers,
 } from "@bb/client-core";
 export type { PluginMentionTrigger } from "@bb/client-core";

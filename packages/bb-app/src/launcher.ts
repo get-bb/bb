@@ -196,12 +196,6 @@ export interface ResolveDataDirArgs {
   homeDir: string;
 }
 
-export interface ResolvePortArgs {
-  defaultPort: number;
-  env: NodeJS.ProcessEnv;
-  name: string;
-}
-
 export interface ResolveBbAppStartContextArgs {
   entrypointUrl: string;
   env: NodeJS.ProcessEnv;
@@ -829,10 +823,6 @@ export function resolveDataDir(args: ResolveDataDirArgs): string {
   });
 }
 
-export function resolvePort(args: ResolvePortArgs): number {
-  return resolvePortFromEnv(args);
-}
-
 function requireWorktreePolicyEnvValue(
   env: NodeJS.ProcessEnv,
   name: string,
@@ -1345,12 +1335,12 @@ export function resolveBbAppStartContext(
   const workspaceRoot = resolve(packageRoot, "..", "..");
   const runsFromSourceCheckout = entrypointDir === resolve(packageRoot, "src");
   const dataDir = resolveDataDir({ env: args.env, homeDir: args.homeDir });
-  const serverPort = resolvePort({
+  const serverPort = resolvePortFromEnv({
     defaultPort: BB_PROD_SERVER_PORT,
     env: args.env,
     name: "BB_SERVER_PORT",
   });
-  const daemonPort = resolvePort({
+  const daemonPort = resolvePortFromEnv({
     defaultPort: BB_PROD_HOST_DAEMON_PORT,
     env: args.env,
     name: "BB_HOST_DAEMON_PORT",
@@ -2231,7 +2221,7 @@ async function requireExpectedHostDaemonId(args: {
   return hostId;
 }
 
-export async function requestHostEnrollKey(
+async function requestHostEnrollKey(
   args: RequestHostEnrollKeyArgs,
 ): Promise<HostEnrollKeyResponse> {
   const response = await fetch(`${args.serverUrl}/internal/hosts/enroll-key`, {
@@ -2256,7 +2246,7 @@ export async function requestHostEnrollKey(
   return hostEnrollKeyResponseSchema.parse(await response.json());
 }
 
-export async function maybeAddAutoJoinEnv(
+async function maybeAddAutoJoinEnv(
   args: MaybeAddAutoJoinEnvArgs,
 ): Promise<NodeJS.ProcessEnv> {
   if (trimToUndefined(args.env.BB_HOST_ENROLL_KEY) !== undefined) {

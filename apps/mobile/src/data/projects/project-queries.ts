@@ -1,7 +1,6 @@
 import type { ProjectExecutionDefaults } from "@bb/domain";
 import type {
   ProjectBranchesResponse,
-  ProjectResponse,
   WorkspacePathListResponse,
 } from "@bb/server-contract";
 import { useQuery } from "@tanstack/react-query";
@@ -10,42 +9,19 @@ import {
   projectDefaultExecutionOptionsQueryKey,
   projectPathsQueryKey,
   projectSourceBranchesQueryKey,
-  projectsQueryKey,
 } from "@/lib/query/query-keys";
 import { requireEnabledQueryArg } from "../shared/query-helpers";
 import {
   FAST_FOCUS_OWNED_LIVE_QUERY_POLICY,
   TYPEAHEAD_QUERY_POLICY,
 } from "../shared/query-policies";
-import {
-  useProjectDetailRealtimeSubscription,
-  useProjectListRealtimeSubscription,
-} from "../shared/use-realtime-subscription";
+import { useProjectDetailRealtimeSubscription } from "../shared/use-realtime-subscription";
 
 interface QueryOptions {
   enabled?: boolean;
 }
 
-/**
- * `GET /projects` (ordinary projects with sources, no threads). The sidebar
- * bootstrap already carries the same rows; prefer `useSidebarProject` on
- * screens that mount the sidebar. This is for pickers that need the list
- * without the thread payload.
- */
-export function useProjects(options?: QueryOptions) {
-  const { sdk } = useProfileClient();
-  const enabled = options?.enabled ?? true;
-  useProjectListRealtimeSubscription({ enabled });
-  return useQuery<ProjectResponse[]>({
-    queryKey: projectsQueryKey(),
-    // Without `include=threads` the server returns bare project rows.
-    queryFn: ({ signal }) => sdk.projects.list({ signal }),
-    enabled,
-    staleTime: 60_000,
-  });
-}
-
-export const PROJECT_SOURCE_BRANCHES_LIMIT = 50;
+const PROJECT_SOURCE_BRANCHES_LIMIT = 50;
 
 export interface UseProjectBranchesOptions extends QueryOptions {
   query?: string;

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type { QueuedMessageEditRequest } from "@/components/promptbox/banner/QueuedMessagesList";
 import type { PromptDraftState } from "@/lib/prompt-draft";
-import { queuedInputToDraft } from "@/views/thread-detail/threadQueuedMessages";
+import { queuedInputToDraft } from "@bb/client-core";
 
 export interface InlineQueuedMessageEditState {
   draft: PromptDraftState;
@@ -25,7 +25,7 @@ interface UseInlineQueuedMessageEditingArgs {
   onBeginEdit?: () => void;
 }
 
-export interface UseInlineQueuedMessageEditingResult {
+interface UseInlineQueuedMessageEditingResult {
   /**
    * The live edit session, already filtered against the current owner thread
    * and queue contents — null the moment the edited message leaves the queue.

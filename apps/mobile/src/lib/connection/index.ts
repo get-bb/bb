@@ -1,7 +1,4 @@
 export {
-  AUTH_FAILURE_REFETCH_DELAY_MS,
-  AUTH_FAILURE_VERIFY_DEBOUNCE_MS,
-  CONNECT_FAILURE_VERIFY_INTERVAL_MS,
   createActiveProfileConnector,
   type ActiveProfileConnection,
   type ActiveProfileConnector,

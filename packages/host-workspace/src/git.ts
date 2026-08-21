@@ -78,12 +78,6 @@ export interface GitNullRecordLimitResult extends GitCommandResult {
   recordLimitReached: boolean;
 }
 
-type BranchStatus = {
-  branchName?: string;
-  aheadCount: number;
-  behindCount: number;
-};
-
 type ActiveWorkspaceGitOperationKind = Exclude<
   WorkspaceGitOperation["kind"],
   "none" | "unknown"
@@ -709,23 +703,6 @@ export async function getCheckoutRef(
   };
 }
 
-export function parseBranchStatus(line: string | undefined): BranchStatus {
-  const cleaned = line?.trim() ?? "";
-  if (!cleaned.startsWith("##")) {
-    return { aheadCount: 0, behindCount: 0 };
-  }
-
-  const branchMatch = cleaned.match(/^##\s+([^.\s]+)(?:\.\.\.[^\s]+)?/u);
-  const aheadMatch = cleaned.match(/ahead (\d+)/u);
-  const behindMatch = cleaned.match(/behind (\d+)/u);
-
-  return {
-    branchName: branchMatch?.[1],
-    aheadCount: aheadMatch ? Number.parseInt(aheadMatch[1], 10) : 0,
-    behindCount: behindMatch ? Number.parseInt(behindMatch[1], 10) : 0,
-  };
-}
-
 function appendUtf8Bytes(bytes: number[], value: string): void {
   bytes.push(...Buffer.from(value, "utf8"));
 }
@@ -1040,7 +1017,7 @@ export function parseNumstatEntriesZ(output: string): NumstatEntry[] {
   return entries;
 }
 
-export function parseNumstatCount(text: string): number | null {
+function parseNumstatCount(text: string): number | null {
   const value = Number.parseInt(text, 10);
   return Number.isFinite(value) ? value : null;
 }

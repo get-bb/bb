@@ -40,7 +40,7 @@ const MESSAGE_DIRECTIVE_HAST_NAME = "bb-message-directive";
 // `data-directive-index` for the component to read back.
 const MESSAGE_DIRECTIVE_INDEX_PROPERTY = "dataDirectiveIndex";
 
-export type MessageDirectiveRegistryEntry = ResolvedMessageDirective;
+type MessageDirectiveRegistryEntry = ResolvedMessageDirective;
 
 /** Directive name → unique registration, or an explicit cross-plugin collision. */
 export type MessageDirectiveRegistry = ReadonlyMap<
@@ -68,18 +68,6 @@ export type MarkdownMessageDirectiveOpenThreadPanel = (
     pluginId: string;
   },
 ) => boolean;
-
-/**
- * Resolved form held during a single MarkdownPreview render: registry + message
- * identity + the index-aligned mount table filled by the remark transform.
- */
-export interface ResolvedMessageDirectives {
-  mounts: MountedMessageDirective[];
-  message: PluginMessageDirectiveProps["message"];
-  openWorkspaceFile: PluginMessageDirectiveProps["openWorkspaceFile"];
-  openThreadPanel: MarkdownMessageDirectiveOpenThreadPanel | null;
-  registry: MessageDirectiveRegistry;
-}
 
 /**
  * `remark-directive` emits three node kinds from a single `:` grammar. Only the

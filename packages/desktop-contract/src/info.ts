@@ -10,9 +10,6 @@ export const bbDesktopDownloadStateSchema = z.enum([
   "downloaded",
   "failed",
 ]);
-export type BbDesktopDownloadState = z.infer<
-  typeof bbDesktopDownloadStateSchema
->;
 
 export const bbDesktopInfoSchema = z.object({
   /**

@@ -161,7 +161,6 @@ function createWorkspace(workspacePath = WORKSPACE_PATH): HostWorkspace {
     listFiles: unexpectedWorkspaceCall,
     commit: unexpectedWorkspaceCall,
     reset: unexpectedWorkspaceCall,
-    fetch: unexpectedWorkspaceCall,
     squashMerge: unexpectedWorkspaceCall,
     destroy: vi.fn(async () => undefined),
   };

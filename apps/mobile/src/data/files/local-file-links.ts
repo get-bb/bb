@@ -22,7 +22,7 @@ export function normalizeAbsoluteFilePath(path: string): string | null {
   return segments.length === 0 ? "/" : `/${segments.join("/")}`;
 }
 
-export function isAbsoluteFilePathWithinRoot(
+function isAbsoluteFilePathWithinRoot(
   candidatePath: string,
   rootPath: string,
 ): boolean {
@@ -31,16 +31,6 @@ export function isAbsoluteFilePathWithinRoot(
   if (candidate === null || root === null) return false;
   if (root === "/") return true;
   return candidate === root || candidate.startsWith(`${root}/`);
-}
-
-/** `rootPath` + `relativePath` (absolute paths pass through). */
-export function buildAbsoluteFilePath(
-  relativePath: string,
-  rootPath: string,
-): string {
-  if (relativePath.startsWith("/")) return relativePath;
-  const root = rootPath === "/" ? "" : rootPath.replace(/\/+$/u, "");
-  return `${root}/${relativePath.replace(/^\/+/u, "")}`;
 }
 
 export interface LocalFilePathWithinRoot {
@@ -92,9 +82,9 @@ export type ThreadLocalFileLinkResolution =
     }
   | { kind: "host-file"; path: string; lineRange: FilePreviewLineRange | null };
 
-export const THREAD_LOCAL_FILE_LINK_UNAVAILABLE_DESCRIPTION =
+const THREAD_LOCAL_FILE_LINK_UNAVAILABLE_DESCRIPTION =
   "Thread file links are only available when the thread has an environment.";
-export const THREAD_LOCAL_FILE_LINK_INVALID_PATH_DESCRIPTION =
+const THREAD_LOCAL_FILE_LINK_INVALID_PATH_DESCRIPTION =
   "Thread file links must use absolute file paths.";
 
 /** Workspace root first, then thread storage, then the host (web order). */

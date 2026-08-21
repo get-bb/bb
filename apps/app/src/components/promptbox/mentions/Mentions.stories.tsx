@@ -6,7 +6,7 @@ import type {
   ProviderCommandSuggestion,
   PromptMentionSuggestion,
   TypeaheadMenuState,
-} from "@/components/promptbox/mentions/types";
+} from "@bb/client-core";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {

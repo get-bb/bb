@@ -45,9 +45,7 @@ function isInfiniteThreadListData(
   );
 }
 
-export function isThreadListCacheData(
-  value: unknown,
-): value is ThreadListCacheData {
+function isThreadListCacheData(value: unknown): value is ThreadListCacheData {
   return isThreadListEntryArray(value) || isInfiniteThreadListData(value);
 }
 
@@ -62,7 +60,7 @@ export function* iterateThreadListCacheEntries(
   for (const page of data.pages) yield* page;
 }
 
-export function mapThreadListCacheData<T extends ThreadListCacheData>(
+function mapThreadListCacheData<T extends ThreadListCacheData>(
   data: T,
   mapper: ThreadListMapper,
 ): T {
@@ -107,7 +105,7 @@ function mapSidebarProjectThreads(
   return { ...project, threads: mapper(project.threads) };
 }
 
-export function mapSidebarBootstrapThreads(
+function mapSidebarBootstrapThreads(
   bootstrap: SidebarBootstrapResponse,
   mapper: ThreadListMapper,
 ): SidebarBootstrapResponse {
@@ -123,7 +121,7 @@ export function mapSidebarBootstrapThreads(
   };
 }
 
-export function applyToCachedSidebarThreads(
+function applyToCachedSidebarThreads(
   queryClient: QueryClient,
   mapper: ThreadListMapper,
 ): void {
@@ -155,7 +153,7 @@ export function sidebarThreadsFromBootstrap(
   return threads;
 }
 
-export function getCachedSidebarBootstrap(
+function getCachedSidebarBootstrap(
   queryClient: QueryClient,
 ): SidebarBootstrapResponse | undefined {
   return queryClient.getQueryData<SidebarBootstrapResponse>(
@@ -272,9 +270,7 @@ function threadMatchesListFilters(
  * columns are unknown until the next list fetch, so they take their neutral
  * values (the same lift the web app performs after thread creation).
  */
-export function threadResponseToListEntry(
-  thread: ThreadResponse,
-): ThreadListEntry {
+function threadResponseToListEntry(thread: ThreadResponse): ThreadListEntry {
   return {
     ...thread,
     activity: {

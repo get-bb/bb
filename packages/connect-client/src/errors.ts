@@ -17,11 +17,3 @@ export class ConnectListError extends Error {
     this.name = "ConnectListError";
   }
 }
-
-/**
- * A credential the gate refuses is dead: the machine was revoked, or the
- * account unpaired it. Callers that cache the credential must drop their copy.
- */
-export function isRevokedCredentialError(error: unknown): boolean {
-  return error instanceof ConnectListError && error.code === "unauthorized";
-}

@@ -96,16 +96,9 @@ type ListSystemProviderInfosRequest = Omit<
   capability?: ProviderCapabilityFilter;
 };
 
-interface ListSystemProviderInfosResult {
+interface ResolveSystemProviderInfosPlanResult {
   hostId: string | null;
   hostLookupError: ApiError | null;
-  providers: ProviderInfo[];
-}
-
-interface ResolveSystemProviderInfosPlanResult extends Omit<
-  ListSystemProviderInfosResult,
-  "providers"
-> {
   providersPromise: Promise<ProviderInfo[]>;
 }
 
@@ -307,19 +300,6 @@ function resolveSystemProviderInfosPlan(
   }
 }
 
-async function resolveSystemProviderInfos(
-  deps: LoggedWorkSessionDeps,
-  query: ListSystemProviderInfosRequest = {},
-): Promise<ListSystemProviderInfosResult> {
-  const { hostId, hostLookupError, providersPromise } =
-    resolveSystemProviderInfosPlan(deps, query);
-  return {
-    hostId,
-    hostLookupError,
-    providers: await providersPromise,
-  };
-}
-
 export async function listSystemProviderInfos(
   deps: LoggedWorkSessionDeps,
   query: ListSystemProviderInfosRequest = {},
@@ -327,7 +307,7 @@ export async function listSystemProviderInfos(
   // Plugins register their providers after the listener is already serving, so
   // an early request would otherwise report an empty provider list.
   await deps.providerRegistry.whenRegistrationsSettled();
-  return (await resolveSystemProviderInfos(deps, query)).providers;
+  return await resolveSystemProviderInfosPlan(deps, query).providersPromise;
 }
 
 function findCustomAcpAgentForProviderId(
@@ -395,7 +375,7 @@ export async function resolveSystemProviderModels(
  * thread model request bypasses the catalog, and `resolveSystemProviderModels`
  * keeps the full list for default resolution.
  */
-export function listVisibleCustomModels(
+function listVisibleCustomModels(
   deps: Pick<LoggedWorkSessionDeps, "config" | "db">,
 ): CustomProviderModel[] {
   if (deps.config.customModels.length === 0) {

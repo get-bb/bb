@@ -187,7 +187,7 @@ function ownershipChangeOperationTitle(
   }
 }
 
-export function threadOperationTitle(
+function threadOperationTitle(
   meta: EventProjectionThreadOperationMetadata | null,
   threadName: string,
 ): string {
@@ -205,7 +205,7 @@ export function threadOperationTitle(
   }
 }
 
-export function threadOperationStatus(
+function threadOperationStatus(
   meta: EventProjectionThreadOperationMetadata | null,
 ): EventProjectionOperationMessage["status"] {
   if (!meta) return undefined;
@@ -456,7 +456,7 @@ export function parseOperationMessage(
   }
 
   if (decoded.type === "provider/warning") {
-    const category = decoded.category ?? "general";
+    const category = decoded.category;
     const isDeprecation = category === "deprecation";
     const isConfig = category === "config";
     const title = isDeprecation

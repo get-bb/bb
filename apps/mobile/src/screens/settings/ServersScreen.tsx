@@ -2,6 +2,7 @@ import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 import { useProfiles } from "@/app-shell";
+import { describeError } from "@/lib/describe-error";
 import type { ServerProfile } from "@/lib/profiles";
 import { useTheme } from "@/theme";
 import {
@@ -17,10 +18,6 @@ import {
 } from "@/ui";
 import { connectEnrollHref } from "../shell/hrefs";
 import { Screen } from "../shell/Screen";
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /** Saved servers: tap to switch, long-press for actions, "+" to add. */
 export function ServersScreen() {

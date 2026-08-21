@@ -127,7 +127,7 @@ function PluginPath({ path }: { path: string }) {
  * The repository link's text: the URL without its scheme, so a GitHub entry
  * reads as `github.com/owner/repo` and a reader knows the destination.
  */
-export function repositoryLinkLabel(url: string): string {
+function repositoryLinkLabel(url: string): string {
   return url.replace(/^https?:\/\//u, "").replace(/\/+$/u, "");
 }
 
@@ -222,39 +222,10 @@ export function CatalogPluginDetailBanner({
   );
 }
 
-/**
- * The installed plugin page's highest-priority runtime condition.
- *
- * These render outside ToolsScrollPage rather than inside the detail column.
- * Only present-tense operational health belongs in this selector; acquisition
- * compatibility uses CatalogPluginDetailBanner, while release opportunities
- * and history stay with the version controls in the detail page.
- */
-export type PluginDetailBannerKind =
-  | "failed"
-  | "degraded"
-  | "incompatible"
-  | "missing"
-  | "needs-configuration";
-
-export function pluginDetailBannerKind(
-  plugin: PluginListItem,
-  hasFrontendFailure: boolean,
-): PluginDetailBannerKind | null {
-  if (!plugin.enabled) return null;
-  if (plugin.status === "error") return "failed";
-  if (plugin.status === "degraded") return "degraded";
-  if (plugin.status === "incompatible") return "incompatible";
-  if (plugin.status === "missing") return "missing";
-  if (plugin.status === "needs-configuration") return "needs-configuration";
-  if (hasFrontendFailure) return "failed";
-  return null;
-}
-
 function pluginHealthBannerState(
   plugin: PluginListItem,
   frontendDiagnostic: PluginFrontendDiagnostic | undefined,
-): { plugin: PluginListItem; reloadable?: boolean } | null {
+): { plugin: PluginListItem } | null {
   if (!plugin.enabled) return null;
   if (pluginRuntimeStatusPresentation(plugin) !== null) return { plugin };
 
@@ -292,7 +263,6 @@ export function PluginDetailBanners({ plugin }: { plugin: PluginListItem }) {
     <PluginHealthBanner
       plugin={banner.plugin}
       runtimeStatus={pluginRuntimeStatusPresentation(banner.plugin)}
-      reloadable={banner.reloadable}
     />
   );
 }

@@ -193,12 +193,6 @@ export function builtinPluginSource(name: string): string {
   return `builtin:${name}`;
 }
 
-export function findBundledPlugin(
-  name: string,
-): BundledPluginDefinition | undefined {
-  return BUNDLED_PLUGINS.find((plugin) => plugin.name === name);
-}
-
 /**
  * Bundled plugin roots live in three layouts:
  * - packaged server: <server dist>/builtin-plugins/<name> (written at packaging)

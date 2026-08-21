@@ -30,7 +30,7 @@ export interface TimelineSequenceWindowStart {
 const SEQUENCE_CURSOR_ANCHOR_ID_SEPARATOR = ":in-turn:";
 const BYTE_CURSOR_ANCHOR_ID_SEPARATOR = ":byte-window:";
 
-export function buildSequenceCursorAnchorId(
+function buildSequenceCursorAnchorId(
   args: TimelineSequenceWindowStart,
 ): string {
   const separator =
@@ -70,12 +70,12 @@ export function readSequenceCursor(
   return { kind, sequenceStart: cursor.anchorSeq };
 }
 
-export interface LatestThreadTimelinePageRequest {
+interface LatestThreadTimelinePageRequest {
   kind: "latest";
   segmentLimit: number;
 }
 
-export interface OlderThreadTimelinePageRequest {
+interface OlderThreadTimelinePageRequest {
   beforeCursor: TimelinePaginationCursor;
   kind: "older";
   segmentLimit: number;
@@ -90,13 +90,11 @@ interface TimelineLogicalSegment {
   rows: TimelineRow[];
 }
 
-export interface PaginatedTimelineRowsResult {
+interface PaginatedTimelineRowsResult {
   hasOlderRows: boolean;
-  kind: ThreadTimelinePageKind;
   olderCursor: TimelinePaginationCursor | null;
   returnedSegmentCount: number;
   rows: TimelineRow[];
-  segmentLimit: number;
 }
 
 function isTimelineSegmentAnchorRow(row: TimelineRow): boolean {
@@ -151,7 +149,7 @@ function buildTimelineLogicalSegments(
   return segments;
 }
 
-export interface PaginateTimelineRowsArgs {
+interface PaginateTimelineRowsArgs {
   /**
    * Non-null only for a sequence-budgeted window. Such a window is already
    * bounded by event sequence, so segment trimming would discard selected
@@ -178,14 +176,12 @@ export function paginateTimelineRows(
   if (sequenceWindowStart !== null) {
     return {
       hasOlderRows: true,
-      kind: page.kind,
       olderCursor: {
         anchorSeq: sequenceWindowStart.sequenceStart,
         anchorId: buildSequenceCursorAnchorId(sequenceWindowStart),
       },
       returnedSegmentCount: segments.length,
       rows: [...rows],
-      segmentLimit: page.segmentLimit,
     };
   }
   // Every window ends strictly before its cursor, so no segment at or past the
@@ -197,13 +193,11 @@ export function paginateTimelineRows(
 
   return {
     hasOlderRows,
-    kind: page.kind,
     olderCursor:
       hasOlderRows && oldestSelectedSegment
         ? oldestSelectedSegment.cursor
         : null,
     returnedSegmentCount: selectedSegments.length,
     rows: selectedSegments.flatMap((segment) => segment.rows),
-    segmentLimit: page.segmentLimit,
   };
 }

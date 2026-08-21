@@ -1,8 +1,6 @@
 import { COARSE_POINTER_DOT_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CONTEXT_SELECTION_SURFACE_CLASS } from "@/components/ui/context-selection";
 
-export type SidebarUnreadDotTone = "default" | "error";
-
 export const SIDEBAR_ROW_BASE_CLASS =
   "flex w-full items-center gap-2 rounded-md pr-0 text-sm transition-colors";
 
@@ -20,13 +18,7 @@ export const SIDEBAR_ROW_GLYPH_SLOT_CLASS =
  * Inner styling only — call sites own wrapper, positioning, fade, and the
  * aria-label.
  */
-const SIDEBAR_UNREAD_DOT_CLASS_BY_TONE: Record<SidebarUnreadDotTone, string> = {
-  default: `rounded-full bg-foreground ${COARSE_POINTER_DOT_SIZE_CLASS}`,
-  error: `rounded-full bg-destructive ${COARSE_POINTER_DOT_SIZE_CLASS}`,
-};
-
-export const SIDEBAR_UNREAD_DOT_CLASS =
-  SIDEBAR_UNREAD_DOT_CLASS_BY_TONE.default;
+export const SIDEBAR_UNREAD_DOT_CLASS = `rounded-full bg-foreground ${COARSE_POINTER_DOT_SIZE_CLASS}`;
 
 export const SIDEBAR_WORKING_STATUS_COLOR_CLASS = "text-muted-foreground/50";
 

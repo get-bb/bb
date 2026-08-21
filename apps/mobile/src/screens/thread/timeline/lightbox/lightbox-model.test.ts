@@ -4,7 +4,6 @@ import {
   clampLightboxTranslation,
   getWrappedImageIndex,
   LIGHTBOX_MAX_SCALE,
-  nextDoubleTapScale,
   openLightbox,
   stepLightbox,
 } from "./lightbox-model";
@@ -47,12 +46,10 @@ describe("lightbox navigation", () => {
 });
 
 describe("lightbox zoom", () => {
-  it("clamps the scale into [1, max] and toggles on double tap", () => {
+  it("clamps the scale into [1, max]", () => {
     expect(clampLightboxScale(0.2)).toBe(1);
     expect(clampLightboxScale(99)).toBe(LIGHTBOX_MAX_SCALE);
     expect(clampLightboxScale(Number.NaN)).toBe(1);
-    expect(nextDoubleTapScale(1)).toBeGreaterThan(1);
-    expect(nextDoubleTapScale(2.5)).toBe(1);
   });
 
   it("keeps a zoomed image covering the viewport and centres an unzoomed one", () => {

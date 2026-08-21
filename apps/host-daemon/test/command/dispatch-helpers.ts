@@ -254,7 +254,6 @@ export function createFakeWorkspace(pathname: string) {
     async reset() {
       state.resetCount += 1;
     },
-    async fetch() {},
     async squashMerge(options: {
       targetBranch: string;
       commitMessage: string;

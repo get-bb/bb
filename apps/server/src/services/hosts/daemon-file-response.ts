@@ -21,7 +21,7 @@ interface CreateDaemonFileContentResponseOptions {
 }
 
 /** Strong validator: the daemon hashes exactly the bytes it returned. */
-export function daemonFileEntityTag(result: DaemonFileReadResult): string {
+function daemonFileEntityTag(result: DaemonFileReadResult): string {
   return `"${result.sha256}"`;
 }
 
@@ -64,9 +64,7 @@ function buildFileContentHeaders(
   return headers;
 }
 
-export function decodeDaemonFileContent(
-  result: DaemonFileReadResult,
-): ArrayBuffer {
+function decodeDaemonFileContent(result: DaemonFileReadResult): ArrayBuffer {
   const bytes =
     result.contentEncoding === "utf8"
       ? Buffer.from(result.content, "utf8")

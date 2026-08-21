@@ -86,7 +86,7 @@ const threadSearchStatusSchema = z.enum([
   "error",
 ]);
 
-export const folderSchema = z
+const folderSchema = z
   .object({
     id: idSchema,
     name: z.string(),
@@ -95,7 +95,7 @@ export const folderSchema = z
   })
   .strict();
 
-export const projectSchema = z
+const projectSchema = z
   .object({
     id: idSchema,
     name: z.string(),
@@ -108,7 +108,7 @@ export const projectSchema = z
   })
   .strict();
 
-export const taskSchema = z
+const taskSchema = z
   .object({
     id: idSchema,
     projectId: idSchema,
@@ -127,7 +127,7 @@ export const taskSchema = z
   })
   .strict();
 
-export const labelSchema = z
+const labelSchema = z
   .object({
     id: idSchema,
     projectId: idSchema,
@@ -136,7 +136,7 @@ export const labelSchema = z
   })
   .strict();
 
-export const commentSchema = z
+const commentSchema = z
   .object({
     id: idSchema,
     taskId: idSchema,
@@ -159,7 +159,7 @@ export const commentSchema = z
  * `id`. `name` falls back to the raw provider id when the provider is no longer
  * installed. See `commentProviderSchema` usages in `displayCommentSchema`.
  */
-export const commentProviderSchema = z
+const commentProviderSchema = z
   .object({
     id: z.string(),
     name: z.string(),
@@ -178,14 +178,14 @@ export const commentProviderSchema = z
  * deleted/hidden/inaccessible; it is present (and drives the comment's logo)
  * whenever the authoring thread resolves, including side chats.
  */
-export const displayCommentSchema = commentSchema
+const displayCommentSchema = commentSchema
   .extend({
     threadTitle: z.string().nullable(),
     provider: commentProviderSchema.nullable(),
   })
   .strict();
 
-export const attachmentSchema = z
+const attachmentSchema = z
   .object({
     id: idSchema,
     taskId: idSchema.nullable(),
@@ -198,7 +198,7 @@ export const attachmentSchema = z
   })
   .strict();
 
-export const taskThreadSchema = z
+const taskThreadSchema = z
   .object({
     id: idSchema,
     taskId: idSchema,
@@ -218,7 +218,7 @@ export const taskThreadSchema = z
  * `state` matches the server's product-facing PR state, which already folds
  * GitHub's isDraft flag into a single enum.
  */
-export const taskPullRequestSchema = z
+const taskPullRequestSchema = z
   .object({
     url: z.string().url(),
     number: z.number().int().positive(),
@@ -230,7 +230,7 @@ export const taskPullRequestSchema = z
   })
   .strict();
 
-export const presetSchema = z
+const presetSchema = z
   .object({
     id: idSchema,
     name: z.string(),
@@ -247,7 +247,7 @@ export const presetSchema = z
   })
   .strict();
 
-export const tasksDomainErrorSchema = z
+const tasksDomainErrorSchema = z
   .object({
     code: z.enum([
       "task_parent_invalid",
@@ -809,7 +809,6 @@ export type TaskPullRequest = z.infer<typeof taskPullRequestSchema>;
 export type Preset = z.infer<typeof presetSchema>;
 export type TasksDomainError = z.infer<typeof tasksDomainErrorSchema>;
 export type TaskMutationResult = z.infer<typeof taskMutationResultSchema>;
-export type ProjectMutationResult = z.infer<typeof projectMutationResultSchema>;
 export type BbProjectOption = z.infer<
   (typeof tasksRpcContract)["listBbProjects"]["output"]
 >["bbProjects"][number];

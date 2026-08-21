@@ -82,7 +82,7 @@ export function pluginInstalledTelemetryEvent(
   };
 }
 
-export interface PluginRegistrationContext {
+interface PluginRegistrationContext {
   deps: PluginServiceDeps;
   bundledPlugins: readonly BundledPluginRegistration[];
   withLifecycleLock: <T>(id: string, fn: () => Promise<T>) => Promise<T>;
@@ -823,7 +823,6 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     registrationMatchesForActivation,
     refuseBuiltinShadow,
     restoreRegistration,
-    rowMatchesInstallSource,
     sourceFingerprint,
   };
 }

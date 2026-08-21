@@ -10,6 +10,7 @@ import {
   useRefreshMarketplaces,
   useRemoveMarketplace,
 } from "@/data/plugins";
+import { describeError } from "@/lib/describe-error";
 import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
 import {
@@ -28,10 +29,6 @@ import {
 import { SheetInput } from "../pickers/SheetInput";
 import { Screen } from "../shell/Screen";
 import { SettingsSection } from "./plugin-ui";
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /**
  * Plugin marketplaces (`/settings/marketplaces`; web Settings →

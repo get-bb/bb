@@ -26,7 +26,6 @@ export interface QuestionFormProps {
   disabled: boolean;
   submitting: boolean;
   submitLabel?: string;
-  cancelLabel?: string;
   onSubmit: (formState: QuestionFormState) => void;
   onCancel: () => void;
   testID?: string;
@@ -246,7 +245,6 @@ export function QuestionForm({
   disabled,
   submitting,
   submitLabel = "Submit answer",
-  cancelLabel = "Cancel",
   onSubmit,
   onCancel,
   testID,
@@ -331,7 +329,7 @@ export function QuestionForm({
           onPress={onCancel}
           testID="question-cancel"
         >
-          {cancelLabel}
+          Cancel
         </Button>
         <View className="flex-row items-center gap-2">
           {!isFirst ? (

@@ -315,8 +315,6 @@ export interface SkillsOverviewProps {
   query?: string;
   activeMode?: SkillsCollectionMode;
   browseContent?: ReactNode;
-  /** Unused since the mode tabs moved to the Extensions top nav. */
-  onModeChange?: (mode: SkillsCollectionMode) => void;
   /** Opens the composer to create a skill, optionally seeded with a full prompt. */
   onCreateSkill: (prompt?: string) => void;
   onSelectSkill: (skill: SkillSummary) => void;

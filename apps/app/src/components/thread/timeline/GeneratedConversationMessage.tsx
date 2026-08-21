@@ -42,7 +42,7 @@ import {
   closeUnterminatedMarkdownCodeSpan,
   endsInsideExactRawThreadIdCodeSpan,
   GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP,
-} from "./conversation-message-limits.js";
+} from "@bb/client-core";
 
 interface GeneratedConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
@@ -333,9 +333,7 @@ function generatedConversationEmptyText(
   }
 }
 
-export function systemMessageIconName(
-  systemMessageKind: SystemMessageKind,
-): IconName {
+function systemMessageIconName(systemMessageKind: SystemMessageKind): IconName {
   switch (systemMessageKind) {
     case "ownership-assigned":
       return "UserRoundPlus";
