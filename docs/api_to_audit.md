@@ -722,7 +722,8 @@ branding, and model-projection policy, and renders the same
 `ModelReasoningPicker` used by first-party composers. A provider tab is a
 preview until its authoritative catalog resolves; the component then emits the
 provider, default model, reconciled reasoning, and supported service tier as
-one value. `routing` can target one enrolled host or an existing environment;
+one value without closing the picker, matching the composer. `routing` can
+target one enrolled host or an existing environment;
 omitting it uses primary-machine routing. `disabled` renders the same summary
 without opening the picker. Verified catalogs also normalize an empty or stale
 controlled selection; placeholder, failed, and empty catalogs do not.

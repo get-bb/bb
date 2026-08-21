@@ -1925,7 +1925,8 @@ routing?, allowProviderChange?, align?, disabled?, className? }`, where `routing
   reconciliation, retired-model handling, search, and provider branding as
   bb's composers. Provider switches wait for the target provider's verified
   catalog, then emit one coherent value with its default model and resolved
-  reasoning; `serviceTier` is retained only when that provider supports it.
+  reasoning without closing the picker; `serviceTier` is retained only when
+  that provider supports it.
   Failed or empty catalogs leave `value` unchanged. Alias it on import for JSX:
 
   ```tsx

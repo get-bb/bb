@@ -353,6 +353,20 @@ export function ModelReasoningPicker({
   // "More models" expansion is per-open: it resets when the popover closes.
   const [showMoreModels, setShowMoreModels] = useState(false);
   const [moreModelsOpen, setMoreModelsOpen] = useState(false);
+  const [trackedSelectedProviderId, setTrackedSelectedProviderId] =
+    useState(selectedProviderId);
+
+  // A controlled provider change commits any pending preview. Reset during
+  // render so an external rehydration cannot paint an old provider's browse
+  // state for a frame. This deliberately leaves `open` untouched.
+  if (trackedSelectedProviderId !== selectedProviderId) {
+    setTrackedSelectedProviderId(selectedProviderId);
+    setPreviewProviderId(null);
+    setShowMoreModels(false);
+    setMoreModelsOpen(false);
+    setSearchQuery("");
+    setActiveIndex(-1);
+  }
 
   const activeProviderId = previewProviderId ?? selectedProviderId;
 

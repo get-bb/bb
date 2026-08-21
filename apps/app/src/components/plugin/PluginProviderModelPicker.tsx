@@ -142,7 +142,6 @@ export function PluginProviderModelPicker({
 
   return (
     <ModelReasoningPicker
-      key={controlledKey}
       providerOptions={controller.providerOptions}
       providerRouting={controller.executionOptionsRouting}
       selectedProviderId={controller.selectedProviderId}

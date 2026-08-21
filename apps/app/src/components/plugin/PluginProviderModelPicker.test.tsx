@@ -190,6 +190,8 @@ describe("PluginProviderModelPicker", () => {
         serviceTier: "fast",
       });
     });
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("button", { name: "Agent" })).toBeDefined();
   });
 
   it("reconciles model capabilities and drops unsupported service tiers", async () => {
@@ -241,9 +243,6 @@ describe("PluginProviderModelPicker", () => {
       }),
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Provider, model and reasoning" }),
-    );
     const fastMode = screen.getByRole("switch", { name: "Fast mode" });
     expect(fastMode.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(fastMode);
@@ -256,9 +255,6 @@ describe("PluginProviderModelPicker", () => {
       }),
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Provider, model and reasoning" }),
-    );
     fireEvent.click(screen.getByTitle("Claude Code"));
     await waitFor(() =>
       expect(onChange).toHaveBeenLastCalledWith({
@@ -441,15 +437,21 @@ describe("PluginProviderModelPicker", () => {
       });
       return (
         <>
-          <PluginProviderModelPicker value={value} onChange={onChange} />
+          <PluginProviderModelPicker
+            value={value}
+            onChange={(next) => {
+              onChange(next);
+              setValue(next);
+            }}
+          />
           <button
             type="button"
             onClick={() =>
               setValue({
-                providerId: "cursor",
-                model: "cursor-agent",
-                reasoningLevel: "high",
-                serviceTier: "fast",
+                providerId: "codex",
+                model: "gpt-5.5",
+                reasoningLevel: "medium",
+                serviceTier: "default",
               })
             }
           >
@@ -460,16 +462,35 @@ describe("PluginProviderModelPicker", () => {
     }
 
     render(<RehydratingPicker />, { wrapper });
-    fireEvent.click(screen.getByRole("button", { name: "Rehydrate" }));
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    const rehydrate = screen.getByRole("button", { name: "Rehydrate" });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByTitle("Cursor"));
     await waitFor(() => {
-      const trigger = screen.getByRole("button", {
-        name: "Provider, model and reasoning",
+      expect(onChange).toHaveBeenLastCalledWith({
+        providerId: "cursor",
+        model: "cursor-agent",
+        reasoningLevel: "high",
+        serviceTier: "default",
       });
       expect(trigger.textContent).toContain("Agent");
       expect(trigger.querySelector("[title]")?.getAttribute("title")).toBe(
-        "Cursor: Agent · High reasoning (Fast mode)",
+        "Cursor: Agent · High reasoning",
       );
     });
+    onChange.mockClear();
+
+    fireEvent.click(rehydrate);
+    await waitFor(() => {
+      expect(trigger.textContent).toContain("GPT-5.5");
+      expect(trigger.querySelector("[title]")?.getAttribute("title")).toBe(
+        "Codex: GPT-5.5 · Medium reasoning",
+      );
+    });
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("button", { name: "GPT-5.5" })).toBeDefined();
     expect(onChange).not.toHaveBeenCalled();
   });
 
