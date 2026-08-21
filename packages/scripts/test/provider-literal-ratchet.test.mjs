@@ -78,6 +78,14 @@ describe("scanTree (pure)", () => {
     expect(scanTree(dir).files["packages/core/c.ts"]).toBe(1);
   });
 
+  it("excludes the src/testing test-kit convention (parity/conformance harnesses name providers)", () => {
+    write(
+      "packages/core/src/testing/parity.ts",
+      'const bridge = id === "codex" ? a : "claude-code";\n',
+    );
+    expect(scanTree(dir).total).toBe(0);
+  });
+
   it("excludes provider plugins, tests, and fixtures", () => {
     write("plugins/provider-codex/server.ts", 'register("codex");\n'); // provider plugin
     write("packages/core/a.test.ts", 'expect("codex").toBe("codex");\n'); // test

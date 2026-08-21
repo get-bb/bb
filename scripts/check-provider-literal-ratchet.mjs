@@ -46,6 +46,7 @@ const EXCLUDED_SEGMENTS = new Set([
   "__snapshots__",
   "test",
   "tests",
+  "testing",
   "e2e",
   ".turbo",
   ".ladle",
