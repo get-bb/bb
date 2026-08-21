@@ -6,8 +6,8 @@ import {
 } from "@/components/ui/settings-section.js";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 
-export const DISCORD_INVITE_URL = "https://discord.gg/kvBU6tJhcJ";
-export const GITHUB_REPO_URL = "https://github.com/get-bb/bb";
+const DISCORD_INVITE_URL = "https://discord.gg/kvBU6tJhcJ";
+const GITHUB_REPO_URL = "https://github.com/get-bb/bb";
 
 interface CommunityLinkRowProps {
   description: string;

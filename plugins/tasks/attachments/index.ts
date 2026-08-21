@@ -33,7 +33,7 @@ export type AttachmentOwner =
   | { taskId: string; commentId?: never }
   | { taskId?: never; commentId: string };
 
-export type SaveAttachmentFromBytesOptions = AttachmentOwner & {
+type SaveAttachmentFromBytesOptions = AttachmentOwner & {
   fileName: string;
   mime?: string;
 };
@@ -65,7 +65,7 @@ export class AttachmentReferencedError extends Error {
   }
 }
 
-export class AttachmentCleanupError extends Error {
+class AttachmentCleanupError extends Error {
   constructor(
     readonly attachment: Attachment,
     readonly cleanupCause: unknown,
@@ -79,7 +79,7 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export function removeAttachmentDescriptionReferences(
+function removeAttachmentDescriptionReferences(
   markdown: string,
   attachmentId: string,
 ): string {
@@ -221,7 +221,7 @@ function normalizeMime(mime: string): string {
   return normalized;
 }
 
-export function isInlineRasterMime(mime: string): boolean {
+function isInlineRasterMime(mime: string): boolean {
   return INLINE_RASTER_MIMES.has(
     mime.split(";", 1)[0]?.trim().toLowerCase() ?? "",
   );

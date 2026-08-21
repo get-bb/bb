@@ -17,7 +17,7 @@ import { createComposerDraftStorage } from "./composer-draft-storage";
 let defaultStore: ComposerDraftStore | null = null;
 
 /** App-wide draft store (client-local, not per server profile). */
-export function getComposerDraftStore(): ComposerDraftStore {
+function getComposerDraftStore(): ComposerDraftStore {
   defaultStore ??= createComposerDraftStore(createComposerDraftStorage());
   return defaultStore;
 }

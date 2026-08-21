@@ -10,7 +10,7 @@ const POLL_INTERVAL_MS = 100;
  * reports whole seconds, so the two never match exactly. The window stays small
  * enough that a recycled PID from an earlier session cannot pass.
  */
-export const PROCESS_START_TOLERANCE_MS = 60_000;
+const PROCESS_START_TOLERANCE_MS = 60_000;
 
 /**
  * Stopping a PID recorded in a file is only safe when the PID still belongs to
@@ -31,7 +31,7 @@ export interface WaitForProcessExitArgs {
   timeoutMs: number;
 }
 
-export interface StopVerifiedProcessArgs {
+interface StopVerifiedProcessArgs {
   /** How long to wait after SIGKILL. SIGKILL is not catchable, so keep it short. */
   killTimeoutMs: number;
   pid: number;
@@ -49,13 +49,13 @@ export interface StopVerifiedProcessArgs {
   verifyTokens: string[];
 }
 
-export type StopVerifiedProcessResult =
+type StopVerifiedProcessResult =
   | { command: string | null; kind: "unverified"; reason: UnverifiedReason }
   | { kind: "not-running" }
   | { kind: "still-running" }
   | { kind: "stopped"; usedKill: boolean };
 
-export type UnverifiedReason = "command" | "start-time";
+type UnverifiedReason = "command" | "start-time";
 
 interface SleepArgs {
   delayMs: number;

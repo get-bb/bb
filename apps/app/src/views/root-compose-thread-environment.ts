@@ -7,7 +7,7 @@ export interface RootComposeSelectedBranch {
   isNew: boolean;
 }
 
-export interface ResolveRootComposeThreadEnvironmentArgs {
+interface ResolveRootComposeThreadEnvironmentArgs {
   defaultBranch: string | null | undefined;
   defaultWorktreeBaseBranch: string | null | undefined;
   environmentValue: string;

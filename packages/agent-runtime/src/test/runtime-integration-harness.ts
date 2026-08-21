@@ -639,7 +639,7 @@ export function getCompletedCommands(events: ThreadEvent[]): string[] {
   return commands;
 }
 
-export async function resolveDefaultModel(
+async function resolveDefaultModel(
   providerId: string,
   ctx: TestContext,
 ): Promise<string> {

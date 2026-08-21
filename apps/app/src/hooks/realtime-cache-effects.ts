@@ -39,11 +39,11 @@ const INVALIDATION_MAX_WAIT_MS = 200;
 const ENVIRONMENT_INVALIDATION_DEBOUNCE_MS = 250;
 const ENVIRONMENT_INVALIDATION_MAX_WAIT_MS = 500;
 
-export type RealtimeConnectedEvent =
+type RealtimeConnectedEvent =
   | { reconnected: false }
   | { reconnected: true; disconnectedAt: number };
 
-export interface RealtimeCacheEffects {
+interface RealtimeCacheEffects {
   dispose: () => void;
   handleChanged: (message: ChangedMessage) => void;
   handleConnected: (event: RealtimeConnectedEvent) => void;
@@ -58,7 +58,7 @@ export interface RealtimeCacheEffectsVisibility {
   subscribe: (listener: () => void) => () => void;
 }
 
-export interface RealtimeCacheEffectsOptions {
+interface RealtimeCacheEffectsOptions {
   queryClient: QueryClient;
   visibility?: RealtimeCacheEffectsVisibility;
 }

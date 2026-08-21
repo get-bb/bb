@@ -473,7 +473,7 @@ export function usePromptDraftHasInput(scope: PromptDraftScope): boolean {
   );
 }
 
-export interface PromptDraftThreadRef {
+interface PromptDraftThreadRef {
   id: string;
   projectId: string;
 }

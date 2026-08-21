@@ -6,18 +6,18 @@ import { SESSION_STATIC_QUERY_POLICY } from "../shared/query-policies";
 const SVG_ASSET_MAX_BYTES = 256 * 1024;
 
 /** Absolute URL of a server-relative asset path (`/api/v1/...`) or pass-through. */
-export function resolveServerAssetUrl(serverUrl: string, path: string): string {
+function resolveServerAssetUrl(serverUrl: string, path: string): string {
   if (/^https?:\/\//iu.test(path)) return path;
   const base = serverUrl.replace(/\/+$/u, "");
   return `${base}${path.startsWith("/") ? "" : "/"}${path}`;
 }
 
 /** Whether a response body looks like an SVG document we can hand to SvgXml. */
-export function isSvgDocument(text: string): boolean {
+function isSvgDocument(text: string): boolean {
   return /<svg[\s>]/iu.test(text.slice(0, 4096));
 }
 
-export async function fetchSvgAsset(
+async function fetchSvgAsset(
   fetchImpl: typeof fetch,
   url: string,
   signal?: AbortSignal,

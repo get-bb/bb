@@ -22,7 +22,7 @@ export function encodeSidebarWindowedNavigationEntries(
     .join(" ");
 }
 
-export const MAX_SIDEBAR_THREAD_SHORTCUTS = 9;
+const MAX_SIDEBAR_THREAD_SHORTCUTS = 9;
 
 export interface SidebarThreadShortcutTarget {
   /** Null for a thread inside a windowed-out placeholder: there is no row

@@ -23,11 +23,11 @@ export interface ConnectPairingInput {
 const CODE_PATTERN = /^[A-Z0-9][A-Z0-9-]{3,63}$/u;
 
 /** Codes are case-insensitive on the apex (`code.trim().toUpperCase()`). */
-export function normalizeConnectCode(raw: string): string {
+function normalizeConnectCode(raw: string): string {
   return raw.trim().toUpperCase();
 }
 
-export function isValidConnectCode(code: string): boolean {
+function isValidConnectCode(code: string): boolean {
   return CODE_PATTERN.test(code);
 }
 

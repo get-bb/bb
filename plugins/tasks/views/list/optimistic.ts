@@ -20,7 +20,7 @@ export interface TaskEdit {
   position?: number;
 }
 
-export type EditField = keyof TaskEdit;
+type EditField = keyof TaskEdit;
 const EDIT_FIELDS: readonly EditField[] = [
   "status",
   "priority",
@@ -35,7 +35,7 @@ const EDIT_FIELDS: readonly EditField[] = [
  * still owns. `inFlight` counts pending writes so the pending indicator clears
  * only when the last one settles.
  */
-export interface TaskEntry {
+interface TaskEntry {
   edit: TaskEdit;
   gens: Partial<Record<EditField, number>>;
   inFlight: number;

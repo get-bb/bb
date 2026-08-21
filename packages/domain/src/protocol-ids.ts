@@ -1,19 +1,19 @@
 import { z } from "zod";
 
-export const CLIENT_TURN_REQUEST_ID_PREFIX = "creq_";
+const CLIENT_TURN_REQUEST_ID_PREFIX = "creq_";
 export const CLIENT_TURN_REQUEST_ID_SUFFIX_LENGTH = 10;
 export const CLIENT_TURN_REQUEST_ID_ALPHABET =
   "23456789abcdefghijkmnpqrstuvwxyz";
 
-export interface FormatClientTurnRequestIdSuffixArgs {
+interface FormatClientTurnRequestIdSuffixArgs {
   suffix: string;
 }
 
-export interface EncodeClientTurnRequestIdAlphabetIndexesArgs {
+interface EncodeClientTurnRequestIdAlphabetIndexesArgs {
   indexes: readonly number[];
 }
 
-export interface EncodeClientTurnRequestIdNumberArgs {
+interface EncodeClientTurnRequestIdNumberArgs {
   value: number;
 }
 

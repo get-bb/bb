@@ -14,7 +14,7 @@ import {
  * the daemon session and provider registration revision, so a daemon restart
  * or a plugin reload re-probes immediately regardless of this window.
  */
-export const PROVIDER_MODEL_LIST_MEMO_TTL_MS = 10 * 60_000;
+const PROVIDER_MODEL_LIST_MEMO_TTL_MS = 10 * 60_000;
 
 export interface ProviderModelListMemoValue {
   models: AvailableModel[];

@@ -49,7 +49,7 @@ export interface PermissionModePickerOption extends PermissionModeOption {
   disabledReason: string | null;
 }
 
-export const REASONING_LABELS: Record<ReasoningLevel, string> = {
+const REASONING_LABELS: Record<ReasoningLevel, string> = {
   none: "None",
   low: "Low",
   medium: "Medium",
@@ -60,7 +60,7 @@ export const REASONING_LABELS: Record<ReasoningLevel, string> = {
   ultra: "Ultra",
 };
 
-export const PERMISSION_CEILING_REASON =
+const PERMISSION_CEILING_REASON =
   "Above the selected machine's permission limit. Change it in Settings → Machines.";
 
 const DEFAULT_SUPPORTED_PERMISSION_MODES: readonly PermissionMode[] = ["full"];
@@ -241,7 +241,7 @@ export interface PermissionModeSelectionArgs {
 }
 
 /** Modes the provider supports that also fit under the machine ceiling. */
-export function allowedPermissionModes({
+function allowedPermissionModes({
   permissionModes = DEFAULT_SUPPORTED_PERMISSION_MODES,
   ceiling,
 }: PermissionModeSelectionArgs): PermissionMode[] {

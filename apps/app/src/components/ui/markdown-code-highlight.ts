@@ -25,7 +25,7 @@ const PRESET_BY_LANGUAGE: Record<string, typeof rust> = {
   less: css,
 };
 
-export interface HighlightMarkdownCodeArgs {
+interface HighlightMarkdownCodeArgs {
   code: string;
   language: string | null;
 }

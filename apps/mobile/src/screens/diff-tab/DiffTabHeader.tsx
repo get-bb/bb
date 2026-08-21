@@ -26,7 +26,7 @@ export interface DiffTabHeaderProps {
  * Totals from the TOC (the same `--numstat` the shortstat summarizes), so
  * the pills are exact without any patch text in hand.
  */
-export function summarizeDiffFiles(files: readonly DiffFileEntry[]): {
+function summarizeDiffFiles(files: readonly DiffFileEntry[]): {
   fileCount: number;
   additions: number;
   deletions: number;

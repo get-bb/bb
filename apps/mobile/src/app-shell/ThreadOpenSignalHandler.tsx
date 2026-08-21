@@ -26,7 +26,7 @@ export function ThreadOpenSignalHandler() {
   return null;
 }
 
-export function pathnameIsThread(pathname: string, threadId: string): boolean {
+function pathnameIsThread(pathname: string, threadId: string): boolean {
   return (
     pathname === `/threads/${threadId}` ||
     pathname.endsWith(`/threads/${threadId}`)

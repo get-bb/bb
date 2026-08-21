@@ -1,4 +1,4 @@
-export interface OptionRequestLease {
+interface OptionRequestLease {
   complete(): void;
   fail(): void;
   cancel(): void;

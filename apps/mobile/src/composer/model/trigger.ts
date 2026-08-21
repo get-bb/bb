@@ -28,7 +28,7 @@ export function maskMentionRanges(value: ComposerValue): string {
 }
 
 /** Adapter from the native selection + text model to client-core's editor slice. */
-export function createTriggerEditor(
+function createTriggerEditor(
   value: ComposerValue,
   selection: TextSelection,
 ): ActiveTriggerEditor {

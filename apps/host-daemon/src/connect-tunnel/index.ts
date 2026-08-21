@@ -55,7 +55,7 @@ interface TrustedConnectGate {
   baseDomain: string;
 }
 
-export class ConnectTunnelCredentialRejectedError extends Error {
+class ConnectTunnelCredentialRejectedError extends Error {
   readonly code = "credential_rejected";
 
   constructor(message: string) {

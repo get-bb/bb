@@ -56,7 +56,7 @@ const EMPTY_BACKGROUND_COMMANDS: ThreadTimelineResponse["activeBackgroundCommand
  * us); the controller then refetches the latest window and re-derives the
  * cursor from it.
  */
-export function isStaleTimelinePaginationCursorError(error: unknown): boolean {
+function isStaleTimelinePaginationCursorError(error: unknown): boolean {
   return (
     error instanceof BbHttpError &&
     error.status === 400 &&

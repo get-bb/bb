@@ -137,7 +137,7 @@ function storeLastPresetId(presetId: string): void {
   }
 }
 
-export interface DispatchControlProps {
+interface DispatchControlProps {
   taskId: string;
   presets: Preset[] | undefined;
   onError: (message: string) => void;
@@ -279,7 +279,7 @@ export function DispatchControl({
   );
 }
 
-export interface ThreadsSectionProps {
+interface ThreadsSectionProps {
   threads: TaskThread[];
   /** Undefined while the PR lookup is in flight (cards render without pills). */
   pullRequests: TaskPullRequest[] | undefined;

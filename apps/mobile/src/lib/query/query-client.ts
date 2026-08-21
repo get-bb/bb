@@ -7,9 +7,9 @@ import {
   type QueryClientConfig,
 } from "@tanstack/react-query";
 
-export const TRANSIENT_READ_RETRY_COUNT = 2;
+const TRANSIENT_READ_RETRY_COUNT = 2;
 export const TRANSIENT_READ_RETRY_DELAY_MS = 250;
-export const DEFAULT_QUERY_STALE_TIME_MS = 2000;
+const DEFAULT_QUERY_STALE_TIME_MS = 2000;
 
 /**
  * Transport-level failures worth an immediate retry (mirrors

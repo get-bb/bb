@@ -73,7 +73,7 @@ type ManagedWorktreeEnvironmentProvisionCommand = Extract<
 export type ManagedWorktreeEnvironmentProvisionLiveCommand =
   QueuedCommand<ManagedWorktreeEnvironmentProvisionCommand>;
 
-export function isManagedWorktreeEnvironmentProvisionLiveCommand(
+function isManagedWorktreeEnvironmentProvisionLiveCommand(
   queued: QueuedCommand,
 ): queued is ManagedWorktreeEnvironmentProvisionLiveCommand {
   return (

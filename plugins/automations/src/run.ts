@@ -17,7 +17,7 @@ import { publishAutomationChange } from "./realtime.js";
 import { executeStoredScript, mapScriptResultToRun } from "./script-runner.js";
 import type { AutomationExecution } from "./rpc-types.js";
 
-export type RunFailureHandler = (error: unknown) => void;
+type RunFailureHandler = (error: unknown) => void;
 type AgentThreadsSdk = {
   get(
     args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0],

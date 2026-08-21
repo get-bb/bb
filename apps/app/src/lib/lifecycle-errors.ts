@@ -6,7 +6,7 @@ import {
 } from "@bb/server-contract";
 import { HttpError } from "./api";
 
-export type LifecycleErrorSeverity = "info" | "warning" | "error";
+type LifecycleErrorSeverity = "info" | "warning" | "error";
 export type LifecycleErrorOperation =
   | "archive_thread"
   | "commit"
@@ -33,7 +33,7 @@ export interface LifecycleErrorDescription {
   title: string;
 }
 
-export interface DescribeLifecycleErrorOptions {
+interface DescribeLifecycleErrorOptions {
   error: unknown;
   operation?: LifecycleErrorOperation | undefined;
 }

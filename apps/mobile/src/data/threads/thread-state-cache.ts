@@ -68,7 +68,7 @@ async function cancelThreadListQueries(
  * Generic optimistic patch. `patchEntry` returning null removes the entry
  * from lists (unarchive from the archived list, delete, archive).
  */
-export async function beginOptimisticThreadPatch({
+async function beginOptimisticThreadPatch({
   patchEntry,
   patchThread,
   queryClient,
@@ -312,7 +312,7 @@ export function beginUnarchiveThreadTransaction(
 
 // --- Delete -------------------------------------------------------------
 
-export function removeThreadScopedQueries(
+function removeThreadScopedQueries(
   queryClient: QueryClient,
   threadId: string,
 ): void {

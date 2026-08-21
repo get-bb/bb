@@ -31,7 +31,7 @@ export interface ProviderCliActionableIssue extends ProviderCliIssue {
   action: ProviderCliInstallAction;
 }
 
-export function providerCliEntries(
+function providerCliEntries(
   status: ProviderCliStatusResponse,
 ): ProviderCliStatusEntry[] {
   return Object.entries(status).map(([provider, entry]) => ({

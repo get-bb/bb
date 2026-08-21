@@ -6,7 +6,7 @@ import { requireEnabledQueryArg } from "../shared/query-helpers";
 import { REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY } from "../shared/query-policies";
 import { useThreadDetailRealtimeSubscription } from "../shared/use-realtime-subscription";
 
-export const DEFAULT_THREAD_STORAGE_FILE_LIST_LIMIT = 1000;
+const DEFAULT_THREAD_STORAGE_FILE_LIST_LIMIT = 1000;
 
 export interface ThreadStorageFilesOptions {
   limit?: number;

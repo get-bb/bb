@@ -143,7 +143,7 @@ export const connectRpcContract = defineRpcContract({
   },
 });
 
-export type ConnectRpcHandlers = PluginRpcHandlers<typeof connectRpcContract>;
+type ConnectRpcHandlers = PluginRpcHandlers<typeof connectRpcContract>;
 
 /**
  * Mobile pairing (the "Add mobile device" card and `bb connect machine-code`)

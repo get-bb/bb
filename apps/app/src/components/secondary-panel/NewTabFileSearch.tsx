@@ -69,7 +69,7 @@ export interface NewTabFileSearchProps {
 export type OpenBrowserHandler = () => void;
 export type StartTerminalHandler = () => void;
 
-export interface NewTabActionsProps {
+interface NewTabActionsProps {
   /** Open a session-based side chat of the current thread in its own tab. */
   /** Desktop-only: open a new in-panel browser tab. Absent ⇒ no Browser entry. */
   onOpenBrowser?: OpenBrowserHandler;

@@ -19,9 +19,9 @@ import {
 import { useTasksRefresh } from "./refresh.js";
 
 /** Accessible name + tooltip for the header refresh control. */
-export const REFRESH_TASKS_LABEL = "Refresh tasks";
+const REFRESH_TASKS_LABEL = "Refresh tasks";
 
-export interface PagerPosition {
+interface PagerPosition {
   /** 1-based position of the task within its sibling list. */
   index: number;
   total: number;
@@ -185,7 +185,7 @@ function RefreshTasksButton() {
   );
 }
 
-export interface TasksTopbarProps {
+interface TasksTopbarProps {
   route: ResolvedTasksRoute;
   projects: Project[] | undefined;
   /**

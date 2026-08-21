@@ -150,7 +150,7 @@ export interface BuildTimelineListItemsArgs {
   itemCache?: TimelineListItemCache;
 }
 
-export function timelineRowKind(row: ThreadTimelineViewRow): TimelineRowKind {
+function timelineRowKind(row: ThreadTimelineViewRow): TimelineRowKind {
   switch (row.kind) {
     case "conversation":
       return row.role === "user"
@@ -174,7 +174,7 @@ export function timelineRowKind(row: ThreadTimelineViewRow): TimelineRowKind {
  * shimmer while they are the active frontier; step summaries are a flat
  * recap; closed-step leaves take the muted summary style.
  */
-export function timelineRowTitleOptions({
+function timelineRowTitleOptions({
   activeLatestBundleId,
   row,
   scopeActive,

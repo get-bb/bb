@@ -7,7 +7,7 @@ import { BbHttpError } from "@/lib/sdk";
  * project-scoped variants so they age out their cached suggestions together.
  */
 export const PROMPT_HISTORY_STALE_TIME_MS = 10_000;
-export const TRANSIENT_READ_RETRY_COUNT = 2;
+const TRANSIENT_READ_RETRY_COUNT = 2;
 export const TRANSIENT_READ_RETRY_DELAY_MS = 250;
 
 interface RequireEnabledQueryArgArgs<T> {

@@ -5,7 +5,7 @@ import type { Plugin } from "vite";
 
 const appDir = dirname(fileURLToPath(import.meta.url));
 
-export interface BundleBootChunk {
+interface BundleBootChunk {
   fileName: string;
   bytes: number;
   /** npm package names whose code landed in this chunk. */
@@ -27,7 +27,7 @@ export interface BundleChunk extends BundleBootChunk {
  * are already on the boot path. This is the JavaScript that must arrive
  * between "app shell painted" and "route content painted".
  */
-export interface BundleRouteClosure {
+interface BundleRouteClosure {
   /** The route's own chunk (the target of App's `lazy(() => import(...))`). */
   entry: string;
   chunks: BundleBootChunk[];

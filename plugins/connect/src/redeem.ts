@@ -38,7 +38,7 @@ export function resolveDefaultConnectBaseUrl(env: NodeJS.ProcessEnv): string {
   return url.origin;
 }
 
-export interface RedeemedCredential {
+interface RedeemedCredential {
   credential: string;
   /**
    * Routing label of the redeemed server (its subdomain). Equal to the
@@ -54,7 +54,7 @@ export interface RedeemedCredential {
  * human copy by the panel); `message` keeps the raw wire detail for the CLI
  * and the plugin log — never shown verbatim in the panel.
  */
-export type ConnectPairErrorCode =
+type ConnectPairErrorCode =
   | "invalid_code"
   | "expired_code"
   | "already_used"

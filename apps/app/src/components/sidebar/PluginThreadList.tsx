@@ -7,7 +7,7 @@ import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import type { PluginThreadListSlot } from "@/lib/plugin-slots";
 
 /** Shared by the mount and the host's crash check. */
-export const THREAD_LIST_SLOT_KIND = "threadList";
+const THREAD_LIST_SLOT_KIND = "threadList";
 
 interface PluginThreadListProps {
   replacement: ResolvedReplacement<PluginThreadListSlot>;

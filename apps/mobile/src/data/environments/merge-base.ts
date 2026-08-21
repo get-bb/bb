@@ -18,7 +18,7 @@ type MergeBaseEnvironment = Pick<
 >;
 
 /** The branch the server would use when nothing is configured. */
-export function resolveImplicitMergeBaseBranch({
+function resolveImplicitMergeBaseBranch({
   environment,
   workspaceStatus,
 }: {

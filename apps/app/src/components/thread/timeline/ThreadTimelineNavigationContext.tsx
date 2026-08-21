@@ -5,7 +5,7 @@ import type {
   ThreadTimelineLocalFileLinkHandler,
 } from "./types.js";
 
-export interface ThreadTimelineNavigation {
+interface ThreadTimelineNavigation {
   environmentId: string | null;
   onOpenLink: ThreadTimelineLinkHandler;
   onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler;

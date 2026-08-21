@@ -1,9 +1,6 @@
 import type { ThreadStatus } from "@bb/domain";
 
-export type PreStartThreadStatus = Extract<
-  ThreadStatus,
-  "starting"
->;
+type PreStartThreadStatus = Extract<ThreadStatus, "starting">;
 
 export function isPreStartThreadStatus(
   status: ThreadStatus,

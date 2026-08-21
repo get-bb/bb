@@ -57,17 +57,15 @@ export interface SidebarPreferencesStore {
   setSectionOrder(mode: SidebarOrganizeMode, order: readonly string[]): void;
 }
 
-export const SIDEBAR_ORGANIZE_STORAGE_KEY = "bb.sidebar.organizationMode";
+const SIDEBAR_ORGANIZE_STORAGE_KEY = "bb.sidebar.organizationMode";
 /** Web `sidebarCollapsedAtoms.ts`: one order per organize mode. */
-export const SIDEBAR_SECTION_ORDER_STORAGE_KEYS: Record<
-  SidebarOrganizeMode,
-  string
-> = {
-  project: "bb.sidebar.sectionOrder",
-  manual: "bb.sidebar.manualSectionOrder",
-  machine: "bb.sidebar.machineSectionOrder",
-};
-export const SIDEBAR_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
+const SIDEBAR_SECTION_ORDER_STORAGE_KEYS: Record<SidebarOrganizeMode, string> =
+  {
+    project: "bb.sidebar.sectionOrder",
+    manual: "bb.sidebar.manualSectionOrder",
+    machine: "bb.sidebar.machineSectionOrder",
+  };
+const SIDEBAR_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
 const COLLAPSED_STORAGE_KEYS: Record<SidebarCollapseKind, string> = {
   project: "bb.sidebar.collapsedProjects",
   thread: "bb.sidebar.collapsedThreads",
@@ -121,11 +119,11 @@ function withCollapsedList(
   }
 }
 
-export const DEFAULT_SIDEBAR_ORGANIZE: SidebarOrganizeMode = "project";
-export const DEFAULT_SIDEBAR_SORT: SidebarSortMode = "updated";
+const DEFAULT_SIDEBAR_ORGANIZE: SidebarOrganizeMode = "project";
+const DEFAULT_SIDEBAR_SORT: SidebarSortMode = "updated";
 
 /** Lenient: accepts the web app's stored spellings for the same choice. */
-export function parseSidebarOrganizeMode(
+function parseSidebarOrganizeMode(
   value: string | null | undefined,
 ): SidebarOrganizeMode {
   switch (value) {
@@ -141,7 +139,7 @@ export function parseSidebarOrganizeMode(
 }
 
 /** Lenient: the web's legacy `none` sort normalizes to `updated`. */
-export function parseSidebarSortMode(
+function parseSidebarSortMode(
   value: string | null | undefined,
 ): SidebarSortMode {
   switch (value) {

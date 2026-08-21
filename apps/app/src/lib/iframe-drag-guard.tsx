@@ -1,6 +1,6 @@
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export interface IframeDragGuardOverlayProps {
+interface IframeDragGuardOverlayProps {
   active: boolean;
   /**
    * Cursor to show for the whole drag. The overlay is the pointer target for

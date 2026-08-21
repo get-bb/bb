@@ -35,7 +35,7 @@ export interface OpenPluginPanelArgs {
   paramsJson: string | null;
 }
 
-export type OpenPluginPanelHandler = (args: OpenPluginPanelArgs) => void;
+type OpenPluginPanelHandler = (args: OpenPluginPanelArgs) => void;
 
 /** One launcher row for a plugin action, ready to render + invoke. */
 export interface PluginPanelActionEntry {
@@ -213,7 +213,7 @@ export function usePluginNewThreadPanelActions({
   );
 }
 
-export type PluginPanelSurfaceContext =
+type PluginPanelSurfaceContext =
   | { kind: "thread"; threadId: string }
   | { kind: "new-thread"; projectId: string | null };
 

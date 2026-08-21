@@ -14,12 +14,12 @@ import {
   TRANSIENT_READ_RETRY_DELAY_MS,
 } from "@/hooks/queries/query-helpers";
 
-export interface CreateAppQueryClientOptions {
+interface CreateAppQueryClientOptions {
   defaultOptions?: QueryClientConfig["defaultOptions"];
   showMutationErrorToasts?: boolean;
 }
 
-export interface AppQueryClientBrowserEventCleanup {
+interface AppQueryClientBrowserEventCleanup {
   cleanup: () => void;
 }
 

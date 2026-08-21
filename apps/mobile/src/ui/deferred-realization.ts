@@ -14,8 +14,8 @@ export interface FrameScheduler {
   clearTimeout: (handle: ReturnType<typeof setTimeout>) => void;
 }
 
-export const DEFERRED_REALIZATION_FRAMES = 2;
-export const DEFERRED_REALIZATION_TIMEOUT_MS = 120;
+const DEFERRED_REALIZATION_FRAMES = 2;
+const DEFERRED_REALIZATION_TIMEOUT_MS = 120;
 
 /**
  * Calls `realize` once, after `frames` animation frames or `timeoutMs`,

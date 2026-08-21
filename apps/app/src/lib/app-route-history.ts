@@ -9,7 +9,7 @@ import type { Location } from "react-router-dom";
  * used to decide whether two slots are visibly the same route (duplicate
  * same-URL entries get distinct keys but share a `url`).
  */
-export interface AppRouteHistoryEntry {
+interface AppRouteHistoryEntry {
   key: string;
   url: string;
 }
@@ -20,12 +20,12 @@ export interface AppRouteHistoryEntry {
  * including duplicate same-URL pushes — so Back/Forward can move by a real
  * router delta rather than by reconstructing URLs.
  */
-export interface AppRouteHistoryState {
+interface AppRouteHistoryState {
   entries: AppRouteHistoryEntry[];
   index: number;
 }
 
-export interface AppRouteHistoryNavigation {
+interface AppRouteHistoryNavigation {
   canGoBack: boolean;
   canGoForward: boolean;
   goBack: () => void;

@@ -2,7 +2,7 @@ import { useLocation, useMatch } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { isToolsRoutePath, TOOLS_SKILLS_ROUTE_PATH } from "@/lib/route-paths";
 
-export interface RouteState {
+interface RouteState {
   /** ID of the project in view (any project-scoped route), else undefined. */
   projectId: string | undefined;
   /** ID of the thread in view (thread detail only), else undefined. */

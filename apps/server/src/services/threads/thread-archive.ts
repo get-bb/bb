@@ -81,7 +81,7 @@ export function resolveArchiveThreadEnvironment(
   return null;
 }
 
-export function archiveThreadWithLifecycleEffects(
+function archiveThreadWithLifecycleEffects(
   deps: AppDeps,
   args: ArchiveThreadWithLifecycleEffectsArgs,
 ): Thread | null {

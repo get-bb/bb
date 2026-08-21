@@ -28,8 +28,8 @@ import { useTheme } from "@/theme";
 import { Text } from "@/ui";
 
 /** Same metrics as the diff cards (`DiffHunkView`). */
-export const FILE_PREVIEW_FONT_SIZE = 12;
-export const FILE_PREVIEW_LINE_HEIGHT = 18;
+const FILE_PREVIEW_FONT_SIZE = 12;
+const FILE_PREVIEW_LINE_HEIGHT = 18;
 const CHAR_WIDTH = FILE_PREVIEW_FONT_SIZE * 0.6;
 const GUTTER_PADDING = 8;
 const CONTENT_PADDING = 10;

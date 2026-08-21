@@ -7,12 +7,12 @@ import type { RootComposeSelectedBranch } from "./root-compose-thread-environmen
 
 export type RootComposeBranchEnvironmentMode = "local" | "worktree" | "other";
 
-export interface BranchMutationBlocker {
+interface BranchMutationBlocker {
   label: string;
   title: string;
 }
 
-export interface RootComposeBranchUiState {
+interface RootComposeBranchUiState {
   currentBranch: string | null;
   currentOptionLabel: string | null;
   mutationBlocker: BranchMutationBlocker | null;
@@ -25,7 +25,7 @@ type RootComposeBranchCheckout = ProjectSourceCheckout & {
   defaultWorktreeBaseBranch?: string | null;
 };
 
-export interface BuildRootComposeBranchUiStateArgs {
+interface BuildRootComposeBranchUiStateArgs {
   checkout: RootComposeBranchCheckout | undefined;
   isFetching: boolean;
   isLoading: boolean;

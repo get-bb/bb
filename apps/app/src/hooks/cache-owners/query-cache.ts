@@ -46,25 +46,25 @@ interface UpdateCachedTimelineRowsArgs {
   updater: TimelineRowsUpdater;
 }
 
-export interface EnvironmentInvalidationParams {
+interface EnvironmentInvalidationParams {
   environmentId: string;
 }
 
-export interface EnvironmentDiffPatchRemovalParams {
+interface EnvironmentDiffPatchRemovalParams {
   environmentId: string;
   queryClient: QueryClient;
 }
 
-export interface ProjectThreadListInvalidationParams {
+interface ProjectThreadListInvalidationParams {
   projectId: string;
   queryClient: QueryClient;
 }
 
-export interface CachedGlobalThreadListInvalidationParams {
+interface CachedGlobalThreadListInvalidationParams {
   queryClient: QueryClient;
 }
 
-export interface RootOrderThreadListInvalidationParams {
+interface RootOrderThreadListInvalidationParams {
   projectId?: string;
   queryClient: QueryClient;
 }

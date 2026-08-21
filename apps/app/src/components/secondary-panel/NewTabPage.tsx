@@ -10,7 +10,7 @@ import {
 
 type NewTabPageFileSearchProps = Omit<NewTabFileSearchProps, "idleActions">;
 
-export interface NewTabPageProps extends NewTabPageFileSearchProps {
+interface NewTabPageProps extends NewTabPageFileSearchProps {
   onOpenBrowser?: OpenBrowserHandler;
   onStartTerminal?: StartTerminalHandler;
   pluginActions?: readonly PluginPanelActionEntry[];

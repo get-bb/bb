@@ -367,7 +367,7 @@ export function ansiToSpans(input: string): AnsiSpan[] {
 }
 
 /** Splits spans into lines (each line is a list of spans without `\n`). */
-export function splitSpansIntoLines(spans: readonly AnsiSpan[]): AnsiSpan[][] {
+function splitSpansIntoLines(spans: readonly AnsiSpan[]): AnsiSpan[][] {
   const lines: AnsiSpan[][] = [[]];
   for (const span of spans) {
     const parts = span.text.split("\n");

@@ -49,7 +49,7 @@ const DIRECTIVE_MARKERS: Record<DirectiveNodeType, string> = {
  * Normalize directive attributes to untrusted string values. Non-string
  * attribute values from the parser are dropped.
  */
-export function normalizeDirectiveAttributes(
+function normalizeDirectiveAttributes(
   attributes: Record<string, string | null | undefined> | null | undefined,
 ): Record<string, string> {
   if (attributes === null || attributes === undefined) {
@@ -65,7 +65,7 @@ export function normalizeDirectiveAttributes(
 }
 
 /** Reconstruct `::name{k="v"}` source when AST position offsets are unavailable. */
-export function reconstructDirectiveSource(
+function reconstructDirectiveSource(
   name: string,
   attributes: Readonly<Record<string, string>>,
   marker = "::",

@@ -14,12 +14,12 @@ import { threadDefaultExecutionOptionsQueryKey } from "@/hooks/queries/query-key
 import { findCachedProviderInfo } from "@/hooks/queries/system-queries";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 
-export interface UseForkThreadFromMessageArgs {
+interface UseForkThreadFromMessageArgs {
   /** Source thread the fork branches from. Null until the thread loads. */
   sourceThread: Thread | null;
 }
 
-export interface ForkThreadFromMessageTarget {
+interface ForkThreadFromMessageTarget {
   sourceSeqEnd: number;
 }
 

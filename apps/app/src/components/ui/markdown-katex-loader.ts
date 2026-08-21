@@ -16,7 +16,7 @@ let loadedRehypeKatex: RehypeKatex | null = null;
 let rehypeKatexImportPromise: Promise<RehypeKatex> | null = null;
 const listeners = new Set<() => void>();
 
-export function loadRehypeKatex(): Promise<RehypeKatex> {
+function loadRehypeKatex(): Promise<RehypeKatex> {
   if (rehypeKatexImportPromise === null) {
     rehypeKatexImportPromise = import("./markdown-katex.js").then(
       (katexModule) => {

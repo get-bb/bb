@@ -16,7 +16,7 @@ const gzipCompressAsync = promisify(gzipCompress);
  * bytes still gain an explicit Content-Length so the fallback middleware
  * honours the same threshold.
  */
-export const API_RESPONSE_COMPRESSION_MIN_BYTES = 1_024;
+const API_RESPONSE_COMPRESSION_MIN_BYTES = 1_024;
 
 /**
  * Brotli quality 4 lands near gzip's CPU cost per byte while still beating it

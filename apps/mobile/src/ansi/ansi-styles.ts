@@ -20,14 +20,14 @@ export interface ResolvedAnsiColors {
   backgroundColor: string | undefined;
 }
 
-export function ansiPaletteColor(
+function ansiPaletteColor(
   tokens: NativeThemeTokens,
   index: AnsiPaletteIndex,
 ): string {
   return tokens[`ansi${index}`];
 }
 
-export function ansiBackgroundContrastColor(
+function ansiBackgroundContrastColor(
   tokens: NativeThemeTokens,
   index: AnsiPaletteIndex,
 ): string {

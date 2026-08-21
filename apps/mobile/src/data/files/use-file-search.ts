@@ -4,8 +4,8 @@ import { useEnvironmentPaths, useThreadStoragePaths } from "../composer";
 import { useProjectPaths } from "../projects";
 import { buildFileSearchSections, type FileSearchSection } from "./file-search";
 
-export const FILE_SEARCH_DEBOUNCE_MS = 120;
-export const FILE_SEARCH_LIMIT_PER_SOURCE = 12;
+const FILE_SEARCH_DEBOUNCE_MS = 120;
+const FILE_SEARCH_LIMIT_PER_SOURCE = 12;
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);

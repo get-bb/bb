@@ -26,7 +26,7 @@ function mulberry32(seed: number): () => number {
 const IDENTIFIER_HEADS = "abcdefghijklmnopqrstuvwxyz_$";
 const IDENTIFIER_TAILS = "abcdefghijklmnopqrstuvwxyz0123456789_$";
 
-export interface MinifiedJsFixtureOptions {
+interface MinifiedJsFixtureOptions {
   /** Approximate size in UTF-16 code units; output ends at a fragment edge. */
   approximateLength: number;
   seed?: number;

@@ -103,7 +103,7 @@ export function normalizeAskUserQuestions(
   return questions.map(normalizeAskUserQuestion);
 }
 
-export function questionHasOptions(question: InteractionFormQuestion): boolean {
+function questionHasOptions(question: InteractionFormQuestion): boolean {
   return question.options.length > 0;
 }
 

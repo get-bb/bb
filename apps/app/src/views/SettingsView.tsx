@@ -125,51 +125,51 @@ export interface LocalOpenTargetSettingsSectionProps {
   targets: WorkspaceOpenTarget[];
 }
 
-export interface InAppBrowserLinkSettingsControlProps {
+interface InAppBrowserLinkSettingsControlProps {
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
 }
 
-export interface RewriteLocalhostLinksSettingsControlProps {
+interface RewriteLocalhostLinksSettingsControlProps {
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
 }
 
-export interface RootComposeBehaviorSettingsControlProps {
+interface RootComposeBehaviorSettingsControlProps {
   navigateToThreadAfterCreate: boolean;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
 }
 
-export interface SteerActiveThreadOnEnterSettingsControlProps {
+interface SteerActiveThreadOnEnterSettingsControlProps {
   disabled: boolean;
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
 }
 
-export interface StreamerModeSettingsControlProps {
+interface StreamerModeSettingsControlProps {
   disabled: boolean;
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
 }
 
-export interface RichTextEditingSettingsControlProps {
+interface RichTextEditingSettingsControlProps {
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
 }
 
-export interface UnhandledProviderEventsSettingsControlProps {
+interface UnhandledProviderEventsSettingsControlProps {
   disabled: boolean;
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
 }
 
-export interface FaviconColorSettingsControlProps {
+interface FaviconColorSettingsControlProps {
   disabled: boolean;
   faviconColor: FaviconColorPreference;
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
 }
 
-export interface AppearanceSettingsSectionProps {
+interface AppearanceSettingsSectionProps {
   appearance: AppTheme;
   appearanceDisabled: boolean;
   customThemes: readonly string[];
@@ -182,7 +182,7 @@ export interface AppearanceSettingsSectionProps {
   themePreference: ThemePreference;
 }
 
-export interface GeneralSettingsSectionProps {
+interface GeneralSettingsSectionProps {
   desktopBrowserAvailable: boolean;
   navigateToThreadAfterCreate: boolean;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
@@ -200,8 +200,7 @@ export interface GeneralSettingsSectionProps {
   streamerModeDisabled: boolean;
 }
 
-export type DebugSettingsSectionProps =
-  UnhandledProviderEventsSettingsControlProps;
+type DebugSettingsSectionProps = UnhandledProviderEventsSettingsControlProps;
 
 function appPaletteLabel(
   appearance: AppTheme,
@@ -215,7 +214,7 @@ function appPaletteLabel(
   );
 }
 
-export interface ExperimentsSettingsSectionProps {
+interface ExperimentsSettingsSectionProps {
   /** True while the config query hasn't loaded or a toggle write is in flight. */
   disabled: boolean;
   changelogPreviewEnabled: boolean;
@@ -293,7 +292,7 @@ function FaviconColorPreview({ value }: { value: FaviconColorPreference }) {
   );
 }
 
-export function FaviconColorSettingsControl({
+function FaviconColorSettingsControl({
   disabled,
   faviconColor,
   onFaviconColorChange,
@@ -575,7 +574,7 @@ const STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL =
   "Steer running threads on Enter";
 const STREAMER_MODE_SETTING_LABEL = "Streamer mode";
 
-export function RootComposeBehaviorSettingsControl({
+function RootComposeBehaviorSettingsControl({
   navigateToThreadAfterCreate,
   onNavigateToThreadAfterCreateChange,
 }: RootComposeBehaviorSettingsControlProps) {
@@ -590,7 +589,7 @@ export function RootComposeBehaviorSettingsControl({
   );
 }
 
-export function SteerActiveThreadOnEnterSettingsControl({
+function SteerActiveThreadOnEnterSettingsControl({
   disabled,
   enabled,
   onEnabledChange,
@@ -610,7 +609,7 @@ export function SteerActiveThreadOnEnterSettingsControl({
   );
 }
 
-export function StreamerModeSettingsControl({
+function StreamerModeSettingsControl({
   disabled,
   enabled,
   onEnabledChange,
@@ -630,7 +629,7 @@ export function StreamerModeSettingsControl({
   );
 }
 
-export function InAppBrowserLinkSettingsControl({
+function InAppBrowserLinkSettingsControl({
   enabled,
   onEnabledChange,
 }: InAppBrowserLinkSettingsControlProps) {
@@ -648,7 +647,7 @@ export function InAppBrowserLinkSettingsControl({
   );
 }
 
-export function RewriteLocalhostLinksSettingsControl({
+function RewriteLocalhostLinksSettingsControl({
   enabled,
   onEnabledChange,
 }: RewriteLocalhostLinksSettingsControlProps) {
@@ -666,7 +665,7 @@ export function RewriteLocalhostLinksSettingsControl({
   );
 }
 
-export function RichTextEditingSettingsControl({
+function RichTextEditingSettingsControl({
   enabled,
   onEnabledChange,
 }: RichTextEditingSettingsControlProps) {
@@ -681,7 +680,7 @@ export function RichTextEditingSettingsControl({
   );
 }
 
-export function UnhandledProviderEventsSettingsControl({
+function UnhandledProviderEventsSettingsControl({
   disabled,
   enabled,
   onEnabledChange,

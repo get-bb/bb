@@ -10,7 +10,7 @@ import type {
   RequestDiffFileContents,
 } from "@/components/git-diff/GitDiffCardBody";
 
-export interface UseDiffFileContentsRequesterArgs {
+interface UseDiffFileContentsRequesterArgs {
   environmentId?: string;
   target?: WorkspaceDiffTarget;
   /**

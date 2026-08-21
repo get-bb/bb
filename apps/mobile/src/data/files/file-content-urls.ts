@@ -18,7 +18,7 @@ function apiBase(serverUrl: string): string {
  * Percent-encode each segment of a path-suffix route param
  * (`:filePath{.+}` matches across slashes; everything else needs encoding).
  */
-export function encodePathSegments(path: string): string {
+function encodePathSegments(path: string): string {
   return path
     .split("/")
     .filter((segment) => segment.length > 0)

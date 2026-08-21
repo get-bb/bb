@@ -10,7 +10,7 @@ export const environmentStatusValues = [
 export const environmentStatusSchema = z.enum(environmentStatusValues);
 export type EnvironmentStatus = z.infer<typeof environmentStatusSchema>;
 
-export const WORKSPACE_PROVISION_TYPES = [
+const WORKSPACE_PROVISION_TYPES = [
   "unmanaged",
   "managed-worktree",
   "personal",
@@ -20,7 +20,7 @@ export type WorkspaceProvisionType = z.infer<
   typeof workspaceProvisionTypeSchema
 >;
 
-export const environmentWorkspaceDisplayKindValues = [
+const environmentWorkspaceDisplayKindValues = [
   "managed-worktree",
   "unmanaged-worktree",
   "other",
@@ -32,7 +32,7 @@ export type EnvironmentWorkspaceDisplayKind = z.infer<
   typeof environmentWorkspaceDisplayKindSchema
 >;
 
-export interface ResolveEnvironmentWorkspaceDisplayKindArgs {
+interface ResolveEnvironmentWorkspaceDisplayKindArgs {
   environment: {
     isWorktree: boolean | null;
     workspaceProvisionType: WorkspaceProvisionType | null;
@@ -88,7 +88,7 @@ export const environmentSchema = z.object({
 });
 export type Environment = z.infer<typeof environmentSchema>;
 
-export type EnvironmentMergeBaseBranchSource = Pick<
+type EnvironmentMergeBaseBranchSource = Pick<
   Environment,
   "baseBranch" | "defaultBranch" | "mergeBaseBranch"
 >;

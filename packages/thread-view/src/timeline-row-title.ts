@@ -49,7 +49,7 @@ import {
 } from "./timeline-view.js";
 
 export type TimelineTitleTone = "default" | "summary";
-export type TimelineStatusDecorationStatus = "denied" | "error" | "interrupted";
+type TimelineStatusDecorationStatus = "denied" | "error" | "interrupted";
 
 /**
  * Optional link target attached to a title segment. Renderers that support

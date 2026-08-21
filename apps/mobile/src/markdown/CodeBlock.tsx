@@ -20,7 +20,7 @@ export interface CodeBlockProps {
 }
 
 /** Default copy handler: clipboard + toast. */
-export function copyCodeToClipboard(code: string): void {
+function copyCodeToClipboard(code: string): void {
   void Clipboard.setStringAsync(code)
     .then(() => {
       toast.success("Copied");

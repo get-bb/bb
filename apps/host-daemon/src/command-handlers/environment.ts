@@ -177,7 +177,7 @@ function buildOnProgress(args: BuildOnProgressArgs): ProvisionProgressEmitter {
   };
 }
 
-export function toProvisionWorkspaceOptions(
+function toProvisionWorkspaceOptions(
   command: EnvironmentProvisionCommand,
   options: Pick<CommandDispatchOptions, "dataDir">,
   onProgress?: ProvisionProgressCallback,

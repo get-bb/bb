@@ -27,7 +27,7 @@ export type HapticCall =
 
 /** Key of the client-local toggle in the `bb.preferences` store. */
 export const HAPTICS_ENABLED_STORAGE_KEY = "bb.haptics.enabled";
-export const HAPTICS_ENABLED_DEFAULT = true;
+const HAPTICS_ENABLED_DEFAULT = true;
 
 /** Parses the stored toggle; anything but the literal "false" means enabled. */
 export function parseHapticsEnabled(stored: string | undefined): boolean {
@@ -35,7 +35,7 @@ export function parseHapticsEnabled(stored: string | undefined): boolean {
   return stored !== "false";
 }
 
-export function serializeHapticsEnabled(enabled: boolean): string {
+function serializeHapticsEnabled(enabled: boolean): string {
   return enabled ? "true" : "false";
 }
 

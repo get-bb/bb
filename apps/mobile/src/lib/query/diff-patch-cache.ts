@@ -126,7 +126,7 @@ export function writeDiffPatchEntry(
 }
 
 /** How long an environment's patches outlive their last reader. */
-export const DIFF_PATCH_RETENTION_MS = 2 * 60_000;
+const DIFF_PATCH_RETENTION_MS = 2 * 60_000;
 
 interface DiffPatchRetentionLease {
   readers: number;

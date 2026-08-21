@@ -70,7 +70,7 @@ function countInotifyInstances(fds: string[]): number {
   return count;
 }
 
-export function defaultReadResourceUsage(): HostDaemonResourceUsage {
+function defaultReadResourceUsage(): HostDaemonResourceUsage {
   const rssBytes = process.memoryUsage().rss;
   let openFds: number | null = null;
   let inotifyInstances: number | null = null;

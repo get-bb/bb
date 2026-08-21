@@ -41,7 +41,7 @@ export interface SubstitutePromptMentionsResult {
  * Drops out-of-range mentions and sorts by start (copy of the web
  * `normalizePromptTextMentions`).
  */
-export function normalizePromptTextMentions({
+function normalizePromptTextMentions({
   mentions,
   textLength,
 }: {

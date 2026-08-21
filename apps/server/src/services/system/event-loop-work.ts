@@ -100,7 +100,7 @@ function selectSlowestWork(): CompletedEventLoopWork | null {
   return slowest;
 }
 
-export function getEventLoopWorkSnapshot(): EventLoopWorkSnapshot {
+function getEventLoopWorkSnapshot(): EventLoopWorkSnapshot {
   const slowest = selectSlowestWork();
   return {
     currentWork: formatActiveWork(),

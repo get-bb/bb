@@ -349,7 +349,7 @@ const GH_NO_CREDENTIALS = /no oauth token|not logged in/i;
 const GH_HOST = "github.com";
 
 /** owner/name from any GitHub remote URL (https, ssh, git@), else null. */
-export function parseGithubRemote(url: string): string | null {
+function parseGithubRemote(url: string): string | null {
   const match = url
     .trim()
     .match(/github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/);

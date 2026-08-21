@@ -38,15 +38,15 @@ export interface FilePreviewFile {
   contents: string;
 }
 
-export type IframePreviewSandbox = "allow-scripts";
+type IframePreviewSandbox = "allow-scripts";
 
-export interface IframeFilePreviewTarget {
+interface IframeFilePreviewTarget {
   sandbox: IframePreviewSandbox | null;
   title: string;
   url: string;
 }
 
-export type FilePreviewState =
+type FilePreviewState =
   | { kind: "loading" }
   | { kind: "empty" }
   | { kind: "not-found" }
@@ -68,7 +68,7 @@ export type FilePreviewState =
       markdownUrlTransform?: UrlTransform;
     };
 
-export interface FilePreviewProps {
+interface FilePreviewProps {
   state: FilePreviewState;
   path: string;
   copyPath?: string | null;
@@ -174,7 +174,7 @@ interface CsvPreviewData {
 type FilePreviewViewMode = "preview" | "source";
 export type TextFilePreviewKind = "csv" | "markdown";
 type FilePreviewToggleKind = "csv" | "html" | "markdown";
-export type FilePreviewHeaderMode = "file" | "none";
+type FilePreviewHeaderMode = "file" | "none";
 type IframeLoadState = "loading" | "loaded" | "error";
 
 const CSV_PREVIEW_MAX_COLUMNS = 100;

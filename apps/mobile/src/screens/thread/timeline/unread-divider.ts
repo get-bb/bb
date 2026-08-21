@@ -39,12 +39,12 @@ export interface UnreadDividerState {
   placement: UnreadDividerPlacement | null;
 }
 
-export const NO_UNREAD_DIVIDER_STATE: UnreadDividerState = {
+const NO_UNREAD_DIVIDER_STATE: UnreadDividerState = {
   autoScroll: false,
   placement: null,
 };
 
-export function isThreadUnread(thread: UnreadDividerThread): boolean {
+function isThreadUnread(thread: UnreadDividerThread): boolean {
   return (
     thread.lastReadAt === null || thread.lastReadAt < thread.latestAttentionAt
   );

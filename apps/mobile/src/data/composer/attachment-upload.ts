@@ -9,8 +9,8 @@ import type { MultipartRequest } from "./multipart-upload";
  * them first so an oversized pick fails before the bytes leave the phone.
  */
 
-export const ATTACHMENT_IMAGE_LIMIT_BYTES = 10 * 1024 * 1024;
-export const ATTACHMENT_FILE_LIMIT_BYTES = 25 * 1024 * 1024;
+const ATTACHMENT_IMAGE_LIMIT_BYTES = 10 * 1024 * 1024;
+const ATTACHMENT_FILE_LIMIT_BYTES = 25 * 1024 * 1024;
 
 export interface PickedAttachmentFile {
   /** Local `file://` (or `ph://`, `content://`) URI from a picker. */
@@ -22,11 +22,11 @@ export interface PickedAttachmentFile {
   sizeBytes: number;
 }
 
-export function isImageMimeType(mimeType: string): boolean {
+function isImageMimeType(mimeType: string): boolean {
   return mimeType.toLowerCase().startsWith("image/");
 }
 
-export function attachmentSizeLimitBytes(mimeType: string): number {
+function attachmentSizeLimitBytes(mimeType: string): number {
   return isImageMimeType(mimeType)
     ? ATTACHMENT_IMAGE_LIMIT_BYTES
     : ATTACHMENT_FILE_LIMIT_BYTES;
@@ -49,7 +49,7 @@ export function validateAttachmentSize(
   return null;
 }
 
-export function buildAttachmentUploadUrl(
+function buildAttachmentUploadUrl(
   serverUrl: string,
   projectId: string,
 ): string {

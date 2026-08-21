@@ -62,7 +62,7 @@ const defaultBinaryAvailableDecisions: PendingInteractionApprovalDecision[] = [
   "deny",
 ];
 
-export const defaultGrantablePermissions: PendingInteractionGrantablePermissionProfile =
+const defaultGrantablePermissions: PendingInteractionGrantablePermissionProfile =
   {
     network: null,
     fileSystem: null,

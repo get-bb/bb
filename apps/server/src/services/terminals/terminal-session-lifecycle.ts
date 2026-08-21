@@ -434,7 +434,7 @@ function getTerminalDaemonCloseTarget(
   };
 }
 
-export function toTerminalSession(row: TerminalSessionRow): TerminalSession {
+function toTerminalSession(row: TerminalSessionRow): TerminalSession {
   return {
     id: row.id,
     threadId: row.threadId,

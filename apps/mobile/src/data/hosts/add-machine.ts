@@ -10,7 +10,7 @@ import { z } from "zod";
  * installer one-liner the user runs on the new machine.
  */
 
-export const connectMachineCodeSchema = z.object({
+const connectMachineCodeSchema = z.object({
   code: z.string(),
   expiresAt: z.number(),
   serverUrl: z.string(),

@@ -13,19 +13,19 @@ import type {
 } from "./thread-create-request.js";
 import { resolveCreateThreadExecutionDefaults } from "./thread-default-policy.js";
 
-export interface RememberProjectExecutionDefaultsForCreateArgs {
+interface RememberProjectExecutionDefaultsForCreateArgs {
   execution: ResolvedThreadExecutionOptions;
   request: ThreadCreateServiceRequest;
 }
 
-export interface ResolveProjectExecutionDefaultsForCreateArgs {
+interface ResolveProjectExecutionDefaultsForCreateArgs {
   executionInputSources?: ThreadCreateServiceRequestInput["executionInputSources"];
   model?: ThreadCreateServiceRequestInput["model"];
   projectId: string;
   providerId?: ThreadCreateServiceRequestInput["providerId"];
 }
 
-export interface ResolvedProjectExecutionDefaultsForCreate {
+interface ResolvedProjectExecutionDefaultsForCreate {
   executionDefaults: ProjectExecutionDefaults | null;
   providerId: string;
   requestedModel: string | null;

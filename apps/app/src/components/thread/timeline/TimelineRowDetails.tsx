@@ -25,7 +25,7 @@ import {
 import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
 import type { ThreadTimelineImageViewSrcResolver } from "./types.js";
 
-export interface WorkRowBodyProps {
+interface WorkRowBodyProps {
   resolveImageViewSrc?: ThreadTimelineImageViewSrcResolver;
   row: TimelineViewWorkRow;
   workspaceRootPath: string | undefined;

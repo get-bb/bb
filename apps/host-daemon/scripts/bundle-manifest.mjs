@@ -5,7 +5,7 @@ const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptsDir, "..");
 const workspaceRoot = resolve(packageRoot, "..", "..");
 
-export const NODE_ESM_REQUIRE_BANNER = [
+const NODE_ESM_REQUIRE_BANNER = [
   'import { createRequire as __createRequire } from "node:module";',
   'import { dirname as __pathDirname } from "node:path";',
   'import { fileURLToPath as __fileURLToPath } from "node:url";',

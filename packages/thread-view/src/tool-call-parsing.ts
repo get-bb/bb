@@ -116,12 +116,12 @@ const DOUBLE_QUOTE_ESCAPABLE = new Set(["$", "`", '"', "\\", "\n"]);
  * came from inside a quoted string. The `quoted` flag lets the redirect
  * classifier distinguish operator-shaped characters that originated as shell
  * operators from ones the user typed inside quotes. */
-export interface ShellToken {
+interface ShellToken {
   readonly value: string;
   readonly quoted: boolean;
 }
 
-export function tokenizeShellWords(command: string): ShellToken[] {
+function tokenizeShellWords(command: string): ShellToken[] {
   const tokens: ShellToken[] = [];
   let current = "";
   // Track quoted vs unquoted contributions to the current token separately.

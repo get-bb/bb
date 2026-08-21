@@ -36,21 +36,21 @@ export type StickyBottomEvent =
   | { type: "jump-to-latest" }
   | { type: "detach" };
 
-export const STICKY_BOTTOM_THRESHOLD_PX = 24;
+const STICKY_BOTTOM_THRESHOLD_PX = 24;
 
 export const INITIAL_STICKY_BOTTOM_STATE: StickyBottomState = {
   stuck: true,
   interacting: false,
 };
 
-export function distanceFromBottom(metrics: ScrollMetrics): number {
+function distanceFromBottom(metrics: ScrollMetrics): number {
   return Math.max(
     0,
     metrics.contentHeight - metrics.viewportHeight - metrics.offsetY,
   );
 }
 
-export function isNearBottom(
+function isNearBottom(
   metrics: ScrollMetrics,
   thresholdPx = STICKY_BOTTOM_THRESHOLD_PX,
 ): boolean {

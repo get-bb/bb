@@ -2,7 +2,7 @@ import type { AriaRole, ReactNode } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export type PluginBannerTone = "destructive" | "warning" | "success";
+type PluginBannerTone = "destructive" | "warning" | "success";
 
 const TONE_ICON: Record<PluginBannerTone, string> = {
   destructive: "text-destructive",

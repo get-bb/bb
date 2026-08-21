@@ -2,10 +2,10 @@ import { type CSSProperties, type ReactNode, type Ref } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 export const PROMPT_STACK_CARD_ROW_HEIGHT = 32;
-export const PROMPT_STACK_CARD_RADIUS_CLASS = "rounded-lg";
+const PROMPT_STACK_CARD_RADIUS_CLASS = "rounded-lg";
 // Outer cards are rounded-lg (8px). A 4px inset means inner hover/focus
 // targets use rounded (4px) so the corner arcs stay visually aligned.
-export const PROMPT_STACK_INLAY_RADIUS_CLASS = "rounded";
+const PROMPT_STACK_INLAY_RADIUS_CLASS = "rounded";
 export const PROMPT_STACK_INLAY_INSET_CLASS = "p-1";
 export const PROMPT_STACK_INLAY_SEGMENT_CLASS = cn(
   "min-h-6 px-2 py-1",

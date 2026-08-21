@@ -26,7 +26,7 @@ import { sdk } from "@/lib/sdk";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 
 /** The slice of a thread a title mention needs: its label and route. */
-export type ThreadTitleMentionThread = Pick<
+type ThreadTitleMentionThread = Pick<
   ThreadListEntry,
   "id" | "projectId" | "title" | "titleFallback"
 >;

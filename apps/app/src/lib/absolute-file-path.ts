@@ -1,23 +1,23 @@
-export interface ResolveAbsoluteFilePathArgs {
+interface ResolveAbsoluteFilePathArgs {
   path: string;
   rootPath: string | null | undefined;
 }
 
-export interface BuildAbsoluteFilePathArgs {
+interface BuildAbsoluteFilePathArgs {
   path: string;
   rootPath: string;
 }
 
-export interface GetAbsoluteDirnameArgs {
+interface GetAbsoluteDirnameArgs {
   path: string;
 }
 
-export interface IsAbsoluteFilePathWithinRootArgs {
+interface IsAbsoluteFilePathWithinRootArgs {
   candidatePath: string;
   rootPath: string;
 }
 
-export interface NormalizeAbsoluteFilePathArgs {
+interface NormalizeAbsoluteFilePathArgs {
   path: string;
 }
 

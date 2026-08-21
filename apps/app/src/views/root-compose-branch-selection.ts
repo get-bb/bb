@@ -1,12 +1,12 @@
 import { useCallback, useState } from "react";
 import type { RootComposeSelectedBranch } from "./root-compose-thread-environment";
 
-export interface BranchSelectionScopeArgs {
+interface BranchSelectionScopeArgs {
   environmentValue: string;
   projectId: string | undefined;
 }
 
-export interface UseScopedBranchSelectionResult {
+interface UseScopedBranchSelectionResult {
   onBranchChange: (name: string) => void;
   onClearBranch: () => void;
   onCreateBranch: (currentBranch: string | null) => void;

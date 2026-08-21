@@ -14,13 +14,13 @@ const NETWORK_TRANSPORT_ERROR_MESSAGE =
 const GENERIC_REQUEST_FAILED_MESSAGE = "Request failed";
 const TRAILING_PERIOD_PATTERN = /\.$/u;
 
-export interface MutationErrorMessageOptions {
+interface MutationErrorMessageOptions {
   error: unknown;
   fallbackMessage: string;
   lifecycleOperation?: LifecycleErrorOperation | undefined;
 }
 
-export interface MutationErrorMeta {
+interface MutationErrorMeta {
   errorMessage?: string;
   lifecycleOperation?: LifecycleErrorOperation;
   showErrorToast?: boolean;

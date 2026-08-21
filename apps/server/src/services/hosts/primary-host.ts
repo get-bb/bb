@@ -31,7 +31,7 @@ function primaryHostUnavailableError(): ApiError {
   );
 }
 
-export function readPrimaryHostIdFromDataDir(
+function readPrimaryHostIdFromDataDir(
   args: ReadPrimaryHostIdArgs,
 ): string | null {
   try {

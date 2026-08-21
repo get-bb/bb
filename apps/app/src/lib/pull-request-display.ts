@@ -16,7 +16,7 @@ interface PullRequestDisplay {
 
 export type GithubCheckStatus = "success" | "failure" | "pending";
 
-export interface PullRequestStateDisplay extends PullRequestDisplay {
+interface PullRequestStateDisplay extends PullRequestDisplay {
   dotClass: string;
 }
 

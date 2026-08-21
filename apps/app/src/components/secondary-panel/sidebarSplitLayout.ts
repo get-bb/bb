@@ -24,8 +24,8 @@ import {
   getFixedPanelTabsStateStorageKey,
 } from "@/lib/fixed-panel-tabs-state";
 
-export const SIDEBAR_SPLIT_LAYOUT_STORAGE_VERSION = 1;
-export const SIDEBAR_SPLIT_LAYOUT_STORAGE_PREFIX =
+const SIDEBAR_SPLIT_LAYOUT_STORAGE_VERSION = 1;
+const SIDEBAR_SPLIT_LAYOUT_STORAGE_PREFIX =
   "bb.thread.secondaryPanelSplitLayout";
 export const SIDEBAR_FIXED_INFO_TAB_ID = createThreadInfoFixedPanelTab().id;
 export const SIDEBAR_FIXED_DIFF_TAB_ID = createGitDiffFixedPanelTab().id;
@@ -52,7 +52,7 @@ export interface SidebarSplitState {
   layout: SplitLayout;
 }
 
-export interface SidebarSplitIds {
+interface SidebarSplitIds {
   groupId: string;
   paneId: string;
 }

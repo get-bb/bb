@@ -200,7 +200,7 @@ export function parseStoredWorkflowSettings(value: unknown): WorkflowSettings {
   return parseWorkflowSettings(raw);
 }
 
-export interface WorkflowSettingsHandle {
+interface WorkflowSettingsHandle {
   get(): Promise<WorkflowSettings>;
   onChange(
     listener: (next: WorkflowSettings, previous: WorkflowSettings) => void,

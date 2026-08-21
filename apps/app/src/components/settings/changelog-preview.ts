@@ -1,13 +1,13 @@
 import changelogSource from "../../../../../CHANGELOG.md?raw";
 
-export const LATEST_CHANGELOG_SOURCE_URL =
+const LATEST_CHANGELOG_SOURCE_URL =
   "https://raw.githubusercontent.com/get-bb/bb/main/CHANGELOG.md";
 
 export type ChangelogBlock =
   | { kind: "paragraph"; text: string }
   | { kind: "list"; items: string[] };
 
-export interface ChangelogSection {
+interface ChangelogSection {
   title: string;
   blocks: ChangelogBlock[];
 }
@@ -16,13 +16,13 @@ export interface ChangelogSection {
  * The same release shape used by getbb.app/changelog: introductory blocks,
  * then titled sections containing paragraphs and lists.
  */
-export interface ChangelogEntry {
+interface ChangelogEntry {
   version: string;
   lede: ChangelogBlock[];
   sections: ChangelogSection[];
 }
 
-export interface ChangelogReleaseMeta {
+interface ChangelogReleaseMeta {
   date: string;
   headline: string;
 }

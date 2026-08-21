@@ -38,7 +38,7 @@ function resolveProjectTrusted(
 }
 
 /** Build Pi settings with the same saved and default project-trust policy. */
-export function createConfiguredPiSettingsManager(
+function createConfiguredPiSettingsManager(
   cwd: string,
   agentDir: string,
 ): SettingsManager {

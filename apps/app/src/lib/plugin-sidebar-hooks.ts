@@ -131,7 +131,7 @@ export function useSidebarThreads(): PluginSidebarThreadsState {
 }
 
 /** Thread id -> host entry, for O(1) lookups by id. */
-export function useThreadEntryMap(): ReadonlyMap<string, ThreadListEntry> {
+function useThreadEntryMap(): ReadonlyMap<string, ThreadListEntry> {
   const { data } = useSidebarNavigation();
   return useMemo(() => {
     if (data === undefined) return EMPTY_ENTRIES;

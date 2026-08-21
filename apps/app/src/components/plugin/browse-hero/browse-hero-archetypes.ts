@@ -20,7 +20,7 @@ import { CREATE_PLUGIN_PROMPT } from "@/lib/create-resource-prompts";
  * The shape itself is shared with the Skills hero; only the content is
  * plugin-specific.
  */
-export type BrowseArchetype = ShowcaseArchetype;
+type BrowseArchetype = ShowcaseArchetype;
 
 const ARCHETYPE_SOURCE: readonly Omit<BrowseArchetype, "id">[] = [
   {
@@ -108,7 +108,7 @@ export function archetypePrompt(archetype: BrowseArchetype): string {
  * Both tiers feed every create-plugin surface (hero cards, New plugin menu),
  * so the lists cannot drift apart.
  */
-export interface UtilityExample {
+interface UtilityExample {
   id: string;
   /** The API surface this example exercises, in plain words. */
   label: string;

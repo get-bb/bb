@@ -632,13 +632,13 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   },
 } satisfies SystemChangeRegistry;
 
-export type ThreadChangeFlushPriority = "debounced" | "immediate";
+type ThreadChangeFlushPriority = "debounced" | "immediate";
 
-export interface RealtimeDirtyContext {
+interface RealtimeDirtyContext {
   queryClient: QueryClient;
 }
 
-export interface ThreadRealtimeDirtyContext extends RealtimeDirtyContext {
+interface ThreadRealtimeDirtyContext extends RealtimeDirtyContext {
   backgroundActivityChanged: boolean | undefined;
   eventTypes: readonly ThreadEventType[] | undefined;
   /**
@@ -663,66 +663,61 @@ export function createFlushOncePredicate(): (key: string) => boolean {
   };
 }
 
-export interface EnvironmentRealtimeDirtyContext extends RealtimeDirtyContext {
+interface EnvironmentRealtimeDirtyContext extends RealtimeDirtyContext {
   environmentId: string;
   getCachedThreadIdsForEnvironment: () => string[];
 }
 
-export interface ProjectRealtimeDirtyContext extends RealtimeDirtyContext {
+interface ProjectRealtimeDirtyContext extends RealtimeDirtyContext {
   projectId: string | undefined;
 }
 
-export type HostRealtimeDirtyContext = RealtimeDirtyContext;
+type HostRealtimeDirtyContext = RealtimeDirtyContext;
 
-export type RealtimeDirtyHandler<Context extends RealtimeDirtyContext> = (
+type RealtimeDirtyHandler<Context extends RealtimeDirtyContext> = (
   context: Context,
 ) => readonly QueryKey[] | void;
 
-export interface ExecuteRealtimeDirtyHandlersArgs<
+interface ExecuteRealtimeDirtyHandlersArgs<
   Context extends RealtimeDirtyContext,
 > {
   context: Context;
   handlers: readonly RealtimeDirtyHandler<Context>[];
 }
 
-export interface ThreadChangeRule {
+interface ThreadChangeRule {
   dirty: readonly RealtimeDirtyHandler<ThreadRealtimeDirtyContext>[];
   flush: ThreadChangeFlushPriority;
 }
 
-export type ThreadChangeRegistry = Record<ThreadChangeKind, ThreadChangeRule>;
+type ThreadChangeRegistry = Record<ThreadChangeKind, ThreadChangeRule>;
 
-export interface EnvironmentChangeRule {
+interface EnvironmentChangeRule {
   dirty: readonly RealtimeDirtyHandler<EnvironmentRealtimeDirtyContext>[];
 }
 
-export type EnvironmentChangeRegistry = Record<
+type EnvironmentChangeRegistry = Record<
   EnvironmentChangeKind,
   EnvironmentChangeRule
 >;
 
-export interface ProjectChangeRule {
+interface ProjectChangeRule {
   dirty: readonly RealtimeDirtyHandler<ProjectRealtimeDirtyContext>[];
 }
 
-export type ProjectChangeRegistry = Record<
-  ProjectChangeKind,
-  ProjectChangeRule
->;
+type ProjectChangeRegistry = Record<ProjectChangeKind, ProjectChangeRule>;
 
-export interface HostChangeRule {
+interface HostChangeRule {
   dirty: readonly RealtimeDirtyHandler<HostRealtimeDirtyContext>[];
 }
 
-export type HostChangeRegistry = Record<HostChangeKind, HostChangeRule>;
+type HostChangeRegistry = Record<HostChangeKind, HostChangeRule>;
 
-export interface SystemChangeRule {
+interface SystemChangeRule {
   dirty: readonly RealtimeDirtyHandler<RealtimeDirtyContext>[];
 }
 
-export type SystemChangeRegistry = Partial<
-  Record<SystemChangeKind, SystemChangeRule>
->;
+type SystemChangeRegistry = Partial<Record<SystemChangeKind, SystemChangeRule>>;
 
 export function executeRealtimeDirtyHandlers<
   Context extends RealtimeDirtyContext,

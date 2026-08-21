@@ -22,7 +22,7 @@ const RAW_JSON_MAX_CHARS = 6_000;
  * Container kinds flatten their children as the following list items while
  * expanded, so their disclosure shows no body of its own.
  */
-export function isContainerTimelineRowKind(kind: TimelineRowKind): boolean {
+function isContainerTimelineRowKind(kind: TimelineRowKind): boolean {
   return (
     kind === "turn" ||
     kind === "step-summary" ||

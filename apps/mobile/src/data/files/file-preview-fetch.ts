@@ -43,7 +43,7 @@ function parseErrorBody(text: string): ApiErrorBodyShape | null {
 }
 
 /** Non-2xx → `BbHttpError` with the server's `code` when the body carries one. */
-export async function throwFileRouteError(response: Response): Promise<never> {
+async function throwFileRouteError(response: Response): Promise<never> {
   const text = await response.text().catch(() => "");
   const body = parseErrorBody(text);
   const code = typeof body?.code === "string" ? body.code : null;
@@ -88,7 +88,7 @@ export async function loadFilePreview({
   return { ...preview, sizeBytes: contentBytes.byteLength };
 }
 
-export function decodeBase64Bytes(content: string): Uint8Array {
+function decodeBase64Bytes(content: string): Uint8Array {
   const binaryContent = atob(content);
   const bytes = new Uint8Array(binaryContent.length);
   for (let index = 0; index < binaryContent.length; index += 1) {
@@ -97,7 +97,7 @@ export function decodeBase64Bytes(content: string): Uint8Array {
   return bytes;
 }
 
-export function encodeBase64Bytes(bytes: Uint8Array): string {
+function encodeBase64Bytes(bytes: Uint8Array): string {
   const chunkSize = 0x8000;
   const binaryChunks: string[] = [];
   for (let index = 0; index < bytes.length; index += chunkSize) {

@@ -12,7 +12,7 @@ import type {
   UserAttachmentImageSrcResolver,
 } from "./types.js";
 
-export interface ConversationImageItem {
+interface ConversationImageItem {
   alt: string;
   src: string;
 }

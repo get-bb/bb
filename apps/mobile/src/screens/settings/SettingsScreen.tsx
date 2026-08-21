@@ -18,8 +18,8 @@ import { Screen } from "../shell/Screen";
 import { HapticsSettingsRow } from "./HapticsSettingsRow";
 import { SettingsSection } from "./SettingsRows";
 
-export const DISCORD_INVITE_URL = "https://discord.gg/kvBU6tJhcJ";
-export const GITHUB_REPO_URL = "https://github.com/get-bb/bb";
+const DISCORD_INVITE_URL = "https://discord.gg/kvBU6tJhcJ";
+const GITHUB_REPO_URL = "https://github.com/get-bb/bb";
 
 function openExternal(url: string): void {
   Linking.openURL(url).catch(() => {

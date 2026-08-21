@@ -30,7 +30,7 @@ export interface BlockRenderOptions {
   color: string | undefined;
 }
 
-export const DEFAULT_BLOCK_OPTIONS: BlockRenderOptions = {
+const DEFAULT_BLOCK_OPTIONS: BlockRenderOptions = {
   tight: false,
   color: undefined,
 };

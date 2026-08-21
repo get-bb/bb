@@ -19,7 +19,7 @@ interface UseThreadReadTrackingArgs {
  * driven by AppState (`installAppStateQueryEvents`), so this needs no
  * react-native import and stays consistent with query refetch-on-focus.
  */
-export function useAppIsForeground(): boolean {
+function useAppIsForeground(): boolean {
   return useSyncExternalStore(
     (onChange) => focusManager.subscribe(() => onChange()),
     () => focusManager.isFocused(),

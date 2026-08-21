@@ -22,7 +22,7 @@ const pluginNavPanelChromeSchema = z.object({
  */
 export type PluginNavPanelChrome = z.infer<typeof pluginNavPanelChromeSchema>;
 
-export interface PluginNavPanelChromeEntry {
+interface PluginNavPanelChromeEntry {
   chrome: PluginNavPanelChrome;
   /** The live registration, or null while this entry is a remembered one. */
   panel: PluginNavPanelSlot | null;
@@ -47,7 +47,7 @@ const chromeCache = createLastKnownCache({
 });
 const CHROME_CACHE_KEY = chromeCache.key("all");
 
-export function pluginNavPanelChromeOf(
+function pluginNavPanelChromeOf(
   panel: PluginNavPanelSlot,
 ): PluginNavPanelChrome {
   return {

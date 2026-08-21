@@ -10,7 +10,7 @@ import terminalPageAsset from "../../../assets/terminal/index.html";
  */
 let cached: Promise<string> | null = null;
 
-export function loadTerminalPageHtml(): Promise<string> {
+function loadTerminalPageHtml(): Promise<string> {
   if (cached === null) {
     cached = (async () => {
       const asset = Asset.fromModule(terminalPageAsset);

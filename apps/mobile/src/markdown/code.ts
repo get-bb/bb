@@ -95,7 +95,7 @@ export function normalizeCodeLanguage(
 }
 
 /** Languages whose fenced blocks are shown as source, never highlighted. */
-export function isPlainCodeLanguage(language: string | null): boolean {
+function isPlainCodeLanguage(language: string | null): boolean {
   return (
     language === "mermaid" ||
     language === "math" ||
@@ -187,7 +187,7 @@ export function tokenizeCodeLines(
  * hued token types are fixed here. Dark values are lifted like the app's
  * neutral ramp.
  */
-export const CODE_TOKEN_COLORS: Record<
+const CODE_TOKEN_COLORS: Record<
   "light" | "dark",
   Partial<Record<CodeTokenType, string>>
 > = {

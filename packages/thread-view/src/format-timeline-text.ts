@@ -28,7 +28,7 @@ import type {
 
 export type ThreadTimelineTextFormat = "json" | "minimal" | "verbose";
 
-export interface ThreadTimelineTextOptions {
+interface ThreadTimelineTextOptions {
   verbose?: boolean;
   color?: boolean;
   truncateForAudit?: boolean;

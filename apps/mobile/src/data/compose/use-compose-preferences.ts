@@ -9,7 +9,7 @@ import { createComposePreferencesStorage } from "./compose-preferences-storage";
 let defaultStore: ComposePreferencesStore | null = null;
 
 /** App-wide store (client-local, not per server profile). */
-export function getComposePreferencesStore(): ComposePreferencesStore {
+function getComposePreferencesStore(): ComposePreferencesStore {
   defaultStore ??= createComposePreferencesStore(
     createComposePreferencesStorage(),
   );

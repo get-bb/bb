@@ -25,7 +25,7 @@ export const availableModelSchema = z.object({
 });
 export type AvailableModel = z.infer<typeof availableModelSchema>;
 
-export const providerCapabilitiesSchema = z.object({
+const providerCapabilitiesSchema = z.object({
   supportsThreadArchive: z.boolean(),
   supportsThreadRename: z.boolean(),
   supportsServiceTier: z.boolean(),
@@ -41,7 +41,7 @@ export const providerCapabilitiesSchema = z.object({
 });
 export type ProviderCapabilities = z.infer<typeof providerCapabilitiesSchema>;
 
-export const providerComposerCommandSchema = z.object({
+const providerComposerCommandSchema = z.object({
   trigger: promptMentionCommandTriggerSchema,
   name: z
     .string()
@@ -53,7 +53,7 @@ export type ProviderComposerCommand = z.infer<
   typeof providerComposerCommandSchema
 >;
 
-export const providerComposerActionSchema = z.discriminatedUnion("kind", [
+const providerComposerActionSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("skills"),
     trigger: promptMentionCommandTriggerSchema,

@@ -242,14 +242,14 @@ interface OptimisticTurnRequestKindArgs {
   threadStatus: ThreadWithRuntime["status"] | null;
 }
 
-export interface SendThreadMessageAcceptedTurnTransaction {
+interface SendThreadMessageAcceptedTurnTransaction {
   kind: "accepted-turn";
   optimisticCreatedAt: number;
   optimisticRowId: string;
   previousThread: ThreadResponse | undefined;
 }
 
-export interface SendThreadMessageQueuedTransaction {
+interface SendThreadMessageQueuedTransaction {
   kind: "queued-message";
   optimisticQueuedMessageId: string;
   previousQueuedMessages: ThreadQueuedMessageListResponse | undefined;

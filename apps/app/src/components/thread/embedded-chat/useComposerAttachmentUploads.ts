@@ -14,7 +14,7 @@ interface UseComposerAttachmentUploadsArgs {
   ) => void;
 }
 
-export interface UseComposerAttachmentUploadsResult {
+interface UseComposerAttachmentUploadsResult {
   bottomAttachmentError: string | null;
   setBottomAttachmentError: (error: string | null) => void;
   handleAttachBottomFiles: (files: File[]) => Promise<void>;
@@ -36,7 +36,7 @@ interface UseDraftAttachmentUploadsArgs {
   target: DraftAttachmentUploadTarget | null;
 }
 
-export interface UseDraftAttachmentUploadsResult {
+interface UseDraftAttachmentUploadsResult {
   attachmentError: string | null;
   setAttachmentError: (error: string | null) => void;
   handleAttachFiles: (files: File[]) => Promise<void>;

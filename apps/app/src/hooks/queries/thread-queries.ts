@@ -94,10 +94,10 @@ interface QueryOptions {
 const THREAD_LIST_STALE_TIME_MS = 10_000;
 const THREAD_SEARCH_STALE_TIME_MS = 10_000;
 const THREAD_DETAIL_STALE_TIME_MS = 5_000;
-export const THREAD_MENTION_CANDIDATE_LIMIT = 200;
-export const THREAD_SEARCH_DEBOUNCE_MS = 150;
+const THREAD_MENTION_CANDIDATE_LIMIT = 200;
+const THREAD_SEARCH_DEBOUNCE_MS = 150;
 export const THREAD_SEARCH_LIMIT_PER_GROUP = 20;
-export const THREAD_SEARCH_MIN_NON_WHITESPACE_CHARS = 2;
+const THREAD_SEARCH_MIN_NON_WHITESPACE_CHARS = 2;
 
 interface ThreadDetailBootstrapQueryOptions extends QueryOptions {
   timelinePrefetch?: boolean;
@@ -126,7 +126,7 @@ type ThreadPromptHistoryQueryOptions = QueryOptions;
 
 type ThreadPendingInteractionsQueryOptions = QueryOptions;
 
-export interface UseThreadsFilters extends Omit<
+interface UseThreadsFilters extends Omit<
   ThreadListFilters,
   "archived" | "projectId"
 > {
@@ -139,13 +139,13 @@ export interface ProjectThreadSubsetFilters {
   parentThreadId?: string;
 }
 
-export interface UseProjectThreadSubsetArgs {
+interface UseProjectThreadSubsetArgs {
   enabled?: boolean;
   filters: ProjectThreadSubsetFilters;
   projectId: string | undefined;
 }
 
-export interface UseProjectThreadSubsetResult {
+interface UseProjectThreadSubsetResult {
   data: ThreadListResponse | undefined;
   isError: boolean;
   isFetching: boolean;
@@ -153,14 +153,14 @@ export interface UseProjectThreadSubsetResult {
   retry: () => void;
 }
 
-export interface UseThreadMentionCandidatesResult {
+interface UseThreadMentionCandidatesResult {
   data: ThreadListResponse | undefined;
   isError: boolean;
   isFetching: boolean;
   isLoading: boolean;
 }
 
-export interface UseThreadSearchArgs {
+interface UseThreadSearchArgs {
   active: boolean;
   limitPerGroup?: number;
   query: string;
@@ -181,7 +181,7 @@ interface BuildThreadSubsetListFiltersArgs {
   projectId: string | undefined;
 }
 
-export interface UseThreadMentionCandidatesArgs {
+interface UseThreadMentionCandidatesArgs {
   enabled?: boolean;
 }
 
@@ -395,7 +395,7 @@ interface UseChildThreadsArgs {
   parentThreadId: string | undefined;
 }
 
-export interface UseChildThreadsResult {
+interface UseChildThreadsResult {
   data: ThreadListResponse | undefined;
   isError: boolean;
   isFetching: boolean;
@@ -944,7 +944,7 @@ interface FetchThreadTimelineArgs {
  */
 export const COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT = 8;
 
-export function resolveThreadTimelineSegmentLimit(): number | undefined {
+function resolveThreadTimelineSegmentLimit(): number | undefined {
   return getMediaQuerySnapshot(COMPACT_VIEWPORT_QUERY)
     ? COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT
     : undefined;

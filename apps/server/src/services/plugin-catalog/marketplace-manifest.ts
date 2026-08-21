@@ -39,7 +39,7 @@ export const BUILTIN_PUBLISHER_KEY = "builtin";
  * Entries one manifest may list. The 1 MiB document limit alone still allows
  * thousands of entries, and each entry costs an icon request and an icon row.
  */
-export const MARKETPLACE_MAX_ENTRIES = 256;
+const MARKETPLACE_MAX_ENTRIES = 256;
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 /**

@@ -9,7 +9,7 @@ import { createLocalPreferencesStorage } from "./local-preferences-storage";
 let defaultStore: LocalPreferencesStore | null = null;
 
 /** App-wide store (client-local, not per server profile). */
-export function getLocalPreferencesStore(): LocalPreferencesStore {
+function getLocalPreferencesStore(): LocalPreferencesStore {
   defaultStore ??= createLocalPreferencesStore(createLocalPreferencesStorage());
   return defaultStore;
 }

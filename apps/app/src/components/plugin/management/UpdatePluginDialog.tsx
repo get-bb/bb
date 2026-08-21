@@ -28,7 +28,7 @@ import {
   SUCCESS_TEXT_STYLE,
 } from "./plugin-ui";
 
-export interface UpdatePluginDialogProps {
+interface UpdatePluginDialogProps {
   plugin: PluginListItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;

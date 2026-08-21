@@ -5,9 +5,8 @@ import {
 } from "@bb/domain";
 import { PLUGIN_MENTION_TRIGGER_VALUES } from "@/lib/plugin-mention-triggers";
 
-export const PROMPT_MENTION_CLIPBOARD_RESOURCE_ATTR =
-  "data-prompt-mention-resource";
-export const PROMPT_MENTION_CLIPBOARD_SERIALIZED_TEXT_ATTR =
+const PROMPT_MENTION_CLIPBOARD_RESOURCE_ATTR = "data-prompt-mention-resource";
+const PROMPT_MENTION_CLIPBOARD_SERIALIZED_TEXT_ATTR =
   "data-prompt-mention-serialized-text";
 
 export interface PromptMentionClipboardPayload {

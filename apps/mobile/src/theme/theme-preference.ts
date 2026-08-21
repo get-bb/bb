@@ -8,7 +8,7 @@ export type ThemeMode = "light" | "dark";
 export type ThemeModePreference = ThemeMode | "system";
 
 export const THEME_PREFERENCE_STORAGE_KEY = "bb.theme";
-export const DEFAULT_THEME_PREFERENCE: ThemeModePreference = "system";
+const DEFAULT_THEME_PREFERENCE: ThemeModePreference = "system";
 
 /** Minimal synchronous key/value store; MMKV in the app, a Map in tests. */
 export interface ThemePreferenceStorage {

@@ -21,7 +21,7 @@ export interface MiniMapSlot {
   isFocused: boolean;
 }
 
-export interface PaneContentSplitIndicator {
+interface PaneContentSplitIndicator {
   /** This content is open in a pane while the layout is split (>1 pane). */
   isOpenInSplit: boolean;
   /** Mini-map slots for the sidebar glyph, or null when there is nothing to show. */

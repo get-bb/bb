@@ -13,7 +13,7 @@
  * bundle *is* the page there, and the reconcile pass loads that plugin first.
  */
 
-export interface PluginFrontendBootScheduleDeps {
+interface PluginFrontendBootScheduleDeps {
   /** Resolves when the first route content has committed. */
   whenRoutePainted: () => Promise<void>;
   /** Run `callback` when the main thread is idle; returns a cancel. */

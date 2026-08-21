@@ -36,7 +36,7 @@ import { COARSE_POINTER_ROW_ACTION_SIZE_CLASS } from "@bb/shared-ui/coarse-point
 
 const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];
 
-export interface TopLevelSidebarSectionCollapseControl {
+interface TopLevelSidebarSectionCollapseControl {
   isCollapsed: boolean;
   onToggleCollapsed: () => void;
 }

@@ -11,7 +11,7 @@ import {
 } from "@/lib/provider-icon";
 import { getSettingsRoutePath } from "@/lib/route-paths";
 
-export interface SidebarUpdatesBadgeProps {
+interface SidebarUpdatesBadgeProps {
   onNavigate?: () => void;
 }
 

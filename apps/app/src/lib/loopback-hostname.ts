@@ -38,7 +38,7 @@ export function isLoopbackHostname(hostname: string): boolean {
  * `::ffff:127.x.x.x`). Such an address never routes to a remote machine: a
  * client that dials it reaches itself.
  */
-export function isLocalOnlyHostname(hostname: string): boolean {
+function isLocalOnlyHostname(hostname: string): boolean {
   const normalizedHostname = normalizeHostname(hostname);
   if (isLoopbackHostname(normalizedHostname)) return true;
   if (normalizedHostname === "0.0.0.0" || normalizedHostname === "::") {

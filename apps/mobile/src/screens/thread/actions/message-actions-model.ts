@@ -159,7 +159,7 @@ export function canEditUserMessage(
 }
 
 /** The prompt input an edit resubmits: text + mentions, then local images and files. */
-export function buildEditMessageInput(
+function buildEditMessageInput(
   target: Pick<
     TimelineMessageActionsTarget,
     "text" | "mentions" | "attachments"

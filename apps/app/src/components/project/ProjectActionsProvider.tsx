@@ -31,7 +31,7 @@ import {
 import { collapsedProjectIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 
-export interface ProjectActionsContextValue {
+interface ProjectActionsContextValue {
   requestRename: (project: ProjectResponse) => void;
   requestDelete: (project: ProjectResponse) => void;
   requestAddLocalPath: (project: ProjectResponse) => void;

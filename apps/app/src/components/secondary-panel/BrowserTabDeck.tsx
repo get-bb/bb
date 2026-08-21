@@ -11,7 +11,7 @@ import {
 } from "./browserViewVisibilityCoordinator";
 import type { UpdateBrowserTabArgs } from "./useThreadFileTabs";
 
-export interface BrowserTabDeckProps {
+interface BrowserTabDeckProps {
   browserTabs: readonly BrowserFixedPanelTab[];
   activeBrowserTabId: string | null;
   addressFocusRequest?: BrowserAddressFocusRequest | null;
@@ -34,7 +34,7 @@ export interface BrowserTabDeckProps {
   onUpdate: (args: UpdateBrowserTabArgs) => void;
 }
 
-export interface BrowserTabLifecycleObserverProps {
+interface BrowserTabLifecycleObserverProps {
   browserTabs: readonly BrowserFixedPanelTab[];
   threadId: string;
 }

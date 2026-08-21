@@ -87,7 +87,7 @@ export interface FaviconColorOption {
 }
 
 /** The same tints the web favicon uses (apps/app/src/lib/favicon-color-preference.ts). */
-export const FAVICON_COLOR_VALUES: Record<FaviconColor, string> = {
+const FAVICON_COLOR_VALUES: Record<FaviconColor, string> = {
   red: "#e5484d",
   orange: "#f76b15",
   yellow: "#ffba18",

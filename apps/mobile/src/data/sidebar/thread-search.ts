@@ -87,7 +87,7 @@ export function useThreadSearch(
   };
 }
 
-export const RECENT_THREADS_DEFAULT_LIMIT = 20;
+const RECENT_THREADS_DEFAULT_LIMIT = 20;
 
 /** Recently active threads from the sidebar bootstrap (no extra request). */
 export function useRecentThreads(limit = RECENT_THREADS_DEFAULT_LIMIT): {

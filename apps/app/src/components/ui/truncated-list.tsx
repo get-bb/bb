@@ -4,7 +4,7 @@ import { Icon } from "@bb/shared-ui/icon";
 
 const DEFAULT_VISIBLE_LIMIT = 5;
 
-export interface TruncatedListProps<T> {
+interface TruncatedListProps<T> {
   items: readonly T[];
   renderItem: (item: T) => ReactNode;
   getKey: (item: T) => string;

@@ -20,12 +20,12 @@ import {
  * illustrations of what a plugin can render, not claims about a shipped plugin.
  */
 
-export interface SceneProps {
+interface SceneProps {
   accentToken: string;
 }
 
 /** Board of threads, moved between columns by agents. */
-export function KanbanScene({ accentToken }: SceneProps) {
+function KanbanScene({ accentToken }: SceneProps) {
   const columns = [
     { label: "Todo", cards: 3 },
     { label: "In progress", cards: 2, active: true },
@@ -81,7 +81,7 @@ export function KanbanScene({ accentToken }: SceneProps) {
 }
 
 /** Homepage metrics: stat tiles over a bar chart. */
-export function DashboardScene({ accentToken }: SceneProps) {
+function DashboardScene({ accentToken }: SceneProps) {
   const bars = [42, 61, 38, 78, 55, 88, 70];
   const stats = [
     { label: "Deploys", value: "18" },
@@ -139,7 +139,7 @@ export function DashboardScene({ accentToken }: SceneProps) {
 }
 
 /** A video edit with plainly named tracks, a playhead, and render status. */
-export function VideoEditorScene({ accentToken }: SceneProps) {
+function VideoEditorScene({ accentToken }: SceneProps) {
   const tracks = [
     {
       label: "Video",
@@ -244,7 +244,7 @@ export function VideoEditorScene({ accentToken }: SceneProps) {
  * live progress, and the one item waiting on you pulled to the surface — the
  * chief-of-staff job, not another list.
  */
-export function ChiefOfStaffScene({ accentToken }: SceneProps) {
+function ChiefOfStaffScene({ accentToken }: SceneProps) {
   const lanes = [
     { worktree: "feat/billing", agents: 4, progress: 72, blocked: false },
     { worktree: "fix/auth", agents: 3, progress: 45, blocked: true },
@@ -318,7 +318,7 @@ export function ChiefOfStaffScene({ accentToken }: SceneProps) {
 }
 
 /** One product brief becoming several clearly named working prototypes. */
-export function PrototypingLabScene({ accentToken }: SceneProps) {
+function PrototypingLabScene({ accentToken }: SceneProps) {
   const prototypes = [
     { name: "Guided", state: "ready" },
     { name: "One page", state: "ready" },
@@ -418,7 +418,7 @@ export function PrototypingLabScene({ accentToken }: SceneProps) {
  * A triage inbox: incoming reports with kind chips, one clustered duplicate
  * count, and the handoff into a fix thread — intake becoming work.
  */
-export function InboxScene({ accentToken }: SceneProps) {
+function InboxScene({ accentToken }: SceneProps) {
   const rows = [
     { width: "76%", kind: "bug", cluster: "×4", active: true },
     { width: "58%", kind: "question", cluster: null, active: false },

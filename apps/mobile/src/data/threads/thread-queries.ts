@@ -30,15 +30,15 @@ interface QueryOptions {
 }
 
 export const THREAD_LIST_STALE_TIME_MS = 10_000;
-export const THREAD_DETAIL_STALE_TIME_MS = 5_000;
-export const ARCHIVED_THREADS_PAGE_SIZE = 50;
+const THREAD_DETAIL_STALE_TIME_MS = 5_000;
+const ARCHIVED_THREADS_PAGE_SIZE = 50;
 
 /**
  * A thread primed from a list cache has no spawn-policy flag (list rows omit
  * it). Hide the spawn affordance on the placeholder; the real single-thread
  * response resolves moments later.
  */
-export function liftThreadListPlaceholder(
+function liftThreadListPlaceholder(
   entry: ThreadListEntry | undefined,
 ): ThreadResponse | undefined {
   if (entry === undefined) return undefined;

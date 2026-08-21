@@ -53,7 +53,7 @@ function boundProject(project: SidebarProject): SidebarProject {
       };
 }
 
-export function boundSidebarBootstrapForCache(
+function boundSidebarBootstrapForCache(
   response: SidebarBootstrapResponse,
 ): SidebarBootstrapResponse {
   return {

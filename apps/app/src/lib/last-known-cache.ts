@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
 
-export interface LastKnownCache<T> {
+interface LastKnownCache<T> {
   /**
    * Storage key for one scope of this cache. `null` parts (an unset routing
    * dimension) serialize as "-" so the key shape stays fixed.

@@ -20,7 +20,7 @@ const DIFF_WORKER_POOL_MIN_SIZE = 1;
  */
 const CONSTRAINED_DEVICE_MEMORY_GB = 4;
 
-export interface DiffWorkerPoolEnvironment {
+interface DiffWorkerPoolEnvironment {
   hardwareConcurrency: number | undefined;
   /** `(pointer: coarse)` matches: a touch-first device. */
   coarsePointer: boolean;

@@ -33,7 +33,7 @@ const GROUP_LINE_OFFSET = 8;
 /** The single trailing column: status glyph, or the header "+" action. */
 const TRAILING_SLOT_CLASS = "h-9 w-9 items-center justify-center";
 
-export function rowPaddingLeft(depth: number): number {
+function rowPaddingLeft(depth: number): number {
   return ROW_BASE_PADDING + depth * ROW_DEPTH_STEP;
 }
 

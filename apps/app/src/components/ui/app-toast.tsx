@@ -36,7 +36,7 @@ export interface AppToastOptions
   description?: ReactNode;
 }
 
-export interface AppToastContentProps {
+interface AppToastContentProps {
   action?: Action;
   cancel?: Action;
   description?: ReactNode;

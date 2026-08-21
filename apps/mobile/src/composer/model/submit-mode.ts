@@ -33,7 +33,7 @@ export interface DescribeSubmitModeArgs {
 }
 
 /** Web `FollowUpPromptBox` title mapping for blocked reasons. */
-export function describeSubmitMode(mode: ComposerSubmitMode): string {
+function describeSubmitMode(mode: ComposerSubmitMode): string {
   if (mode === "ready" || mode.kind === "ready") return "Send";
   if (mode.kind === "queue") return "Queue follow-up";
   if (mode.kind === "stop-only") return "Stop";

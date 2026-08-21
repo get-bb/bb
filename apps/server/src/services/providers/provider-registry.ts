@@ -216,7 +216,7 @@ export interface ProviderRegistryService {
  * A boot-time turn waits this long for plugins at most; past it the request
  * proceeds against whatever registered, which is the pre-gate behavior.
  */
-export const REGISTRATIONS_SETTLED_TIMEOUT_MS = 30_000;
+const REGISTRATIONS_SETTLED_TIMEOUT_MS = 30_000;
 
 /**
  * The dynamic ACP tier is resolved from config at request time, so the

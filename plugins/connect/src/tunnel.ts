@@ -62,7 +62,7 @@ async function notifyCloudOfDisconnect(
   }
 }
 
-export interface ConnectTunnelOptions {
+interface ConnectTunnelOptions {
   store: CredentialStore;
   shares: ShareRegistry;
   /** Connect apex used only while unpaired and when pair has no target. */

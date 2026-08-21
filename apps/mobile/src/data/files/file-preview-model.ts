@@ -51,7 +51,7 @@ export interface ResolveFilePreviewContentArgs {
   htmlRawUrl: string | null;
 }
 
-export function describeFilePreviewError(error: unknown): string {
+function describeFilePreviewError(error: unknown): string {
   if (error instanceof BbHttpError) {
     if (error.status === 404) return "File not found.";
     if (error.code === FILE_TOO_LARGE_ERROR_CODE || error.status === 413) {
@@ -123,8 +123,8 @@ export function resolveFilePreviewContent({
  * user asks for the whole file (laying out thousands of monospace rows is
  * what stalls the phone; the prefix keeps the first paint bounded).
  */
-export const FILE_PREVIEW_CODE_MAX_LINES = 2_000;
-export const FILE_PREVIEW_CODE_MAX_CHARS = 256 * 1024;
+const FILE_PREVIEW_CODE_MAX_LINES = 2_000;
+const FILE_PREVIEW_CODE_MAX_CHARS = 256 * 1024;
 
 export interface FilePreviewCodeTruncation {
   /** The rendered prefix, cut at a line boundary. */
@@ -133,7 +133,7 @@ export interface FilePreviewCodeTruncation {
   totalLineCount: number;
 }
 
-export function countLines(contents: string): number {
+function countLines(contents: string): number {
   if (contents.length === 0) return 0;
   let count = 1;
   for (let index = contents.indexOf("\n"); index !== -1; ) {
@@ -201,8 +201,8 @@ interface ParsedCsvRows {
   truncatedRows: boolean;
 }
 
-export const CSV_PREVIEW_MAX_COLUMNS = 50;
-export const CSV_PREVIEW_MAX_ROWS = 300;
+const CSV_PREVIEW_MAX_COLUMNS = 50;
+const CSV_PREVIEW_MAX_ROWS = 300;
 
 /** RFC 4180-ish parser that stops once `maxRows` rows are collected. */
 export function parseCsvRows(contents: string, maxRows: number): ParsedCsvRows {

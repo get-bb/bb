@@ -10,7 +10,7 @@ import { createRecentFilesStorage } from "./recent-files-storage";
 let defaultStore: RecentFilesStore | null = null;
 
 /** App-wide recent-files store (client-local, not per server profile). */
-export function getRecentFilesStore(): RecentFilesStore {
+function getRecentFilesStore(): RecentFilesStore {
   defaultStore ??= createRecentFilesStore(createRecentFilesStorage());
   return defaultStore;
 }

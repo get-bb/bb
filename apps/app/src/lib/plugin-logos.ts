@@ -33,14 +33,14 @@ export function setPluginLogoUrls(
   for (const listener of listeners) listener();
 }
 
-export function subscribePluginLogos(listener: () => void): () => void {
+function subscribePluginLogos(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
   };
 }
 
-export function getPluginLogoUrls(): ReadonlyMap<string, PluginLogoUrls> {
+function getPluginLogoUrls(): ReadonlyMap<string, PluginLogoUrls> {
   return logoUrls;
 }
 

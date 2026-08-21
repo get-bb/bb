@@ -10,7 +10,7 @@ export function shellSingleQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-export async function listSetupMarkers(markerDir: string): Promise<string[]> {
+async function listSetupMarkers(markerDir: string): Promise<string[]> {
   try {
     return (await fs.readdir(markerDir)).filter((entry) =>
       entry.startsWith("started-"),

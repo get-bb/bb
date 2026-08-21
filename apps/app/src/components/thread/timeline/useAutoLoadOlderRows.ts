@@ -8,13 +8,13 @@ import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-
  */
 const AUTO_LOAD_OLDER_ROWS_PREFETCH_MARGIN_PX = 600;
 
-export interface UseAutoLoadOlderRowsArgs {
+interface UseAutoLoadOlderRowsArgs {
   hasOlderTimelineRows: boolean;
   isLoadingOlderTimelineRows: boolean;
   onLoadOlderRows: (() => Promise<void> | void) | undefined;
 }
 
-export interface AutoLoadOlderRows {
+interface AutoLoadOlderRows {
   /**
    * Attach to the element marking the top of the loaded window. Null-safe to
    * attach even when auto-loading is off.

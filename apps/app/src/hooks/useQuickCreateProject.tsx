@@ -24,13 +24,13 @@ import type {
   ProjectPathDialogTarget,
 } from "@/components/dialogs/ProjectPathDialog";
 
-export interface QuickCreateProjectDialogState {
+interface QuickCreateProjectDialogState {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   target: ProjectPathDialogTarget | null;
 }
 
-export interface QuickCreateProjectController {
+interface QuickCreateProjectController {
   isAvailable: boolean;
   isCreating: boolean;
   openCreateDialog: () => void;

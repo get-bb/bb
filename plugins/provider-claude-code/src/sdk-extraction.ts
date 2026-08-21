@@ -26,29 +26,29 @@ import {
   type ClaudeUserMessage,
 } from "./schemas.js";
 
-export interface ClaudeContextWindowUsageArgs {
+interface ClaudeContextWindowUsageArgs {
   fallbackModelContextWindow: number | null;
   latestRequestContextTokens: number | undefined;
   message: ClaudeResultMessage | SDKResultMessage;
 }
 
-export interface ClaudeToolUseBlockData {
+interface ClaudeToolUseBlockData {
   id: string;
   input: unknown;
   name: string;
 }
 
-export interface ClaudeReasoningBlockData {
+interface ClaudeReasoningBlockData {
   contentIndex: number;
   text: string;
 }
 
-export interface ClaudeStreamDelta {
+interface ClaudeStreamDelta {
   contentIndex: number;
   delta: string;
 }
 
-export interface ClaudeToolResultBlockData {
+interface ClaudeToolResultBlockData {
   content: unknown;
   isError: boolean;
   toolName?: string;
@@ -65,7 +65,7 @@ interface ClaudeProcessOutputStreams {
   stdout: string;
 }
 
-export interface ClaudeCommandExecutionOutputArgs {
+interface ClaudeCommandExecutionOutputArgs {
   content: unknown;
   toolUseResult: ClaudeToolUseResult | null;
 }
@@ -252,7 +252,7 @@ export function extractClaudeCommandExecutionOutput(
   return normalizedContentOutput;
 }
 
-export interface ClaudeResultTokenUsage {
+interface ClaudeResultTokenUsage {
   last: ThreadEventTokenUsageBreakdown;
   modelContextWindow: number | null;
 }

@@ -20,7 +20,7 @@ export interface RenderedMermaidDiagram {
   svg: string;
 }
 
-export interface MermaidRenderCacheKeyArgs {
+interface MermaidRenderCacheKeyArgs {
   appThemeEpoch: number;
   preferredTheme: Theme;
   source: string;
@@ -33,7 +33,7 @@ export interface MermaidRenderCacheKeyArgs {
 export const MERMAID_SOURCE_RENDER_DEBOUNCE_MS = 300;
 
 /** Diagrams enter the render gate this far before they scroll into view. */
-export const MERMAID_VIEWPORT_ROOT_MARGIN = "256px 0px";
+const MERMAID_VIEWPORT_ROOT_MARGIN = "256px 0px";
 
 export const MERMAID_RENDER_CACHE_LIMIT = 32;
 

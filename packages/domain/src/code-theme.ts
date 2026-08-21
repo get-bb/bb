@@ -16,7 +16,7 @@ export const codeThemeNameSchema = z
     "Code theme names may use letters, digits, '.', '_', ':', and '-' and cannot start with '.'",
   );
 
-export const codeThemePairSchema = z
+const codeThemePairSchema = z
   .object({
     dark: codeThemeNameSchema,
     light: codeThemeNameSchema,
@@ -24,11 +24,11 @@ export const codeThemePairSchema = z
   .strict();
 export type CodeThemePair = z.infer<typeof codeThemePairSchema>;
 
-export const vscodeThemeJsonSchema = jsonObjectSchema.refine(
+const vscodeThemeJsonSchema = jsonObjectSchema.refine(
   (value) => typeof value.name === "string" && value.name.length > 0,
   { message: "Code theme JSON must include a non-empty name" },
 );
-export type VscodeThemeJson = JsonObject & { name: string };
+type VscodeThemeJson = JsonObject & { name: string };
 
 export const resolvedCodeThemeSchema = z
   .object({
@@ -123,7 +123,7 @@ export function parseVscodeThemeJson(value: unknown): VscodeThemeJson | null {
   }
 }
 
-export function paletteCodeThemeFallback(paletteId: string): CodeThemePair {
+function paletteCodeThemeFallback(paletteId: string): CodeThemePair {
   if (Object.hasOwn(builtInPaletteCodeThemes, paletteId)) {
     return builtInPaletteCodeThemes[
       paletteId as keyof typeof builtInPaletteCodeThemes

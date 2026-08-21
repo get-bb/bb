@@ -17,7 +17,7 @@ import { appToast } from "@/components/ui/app-toast";
 import { BbHttpError } from "@/lib/sdk";
 import type { InlineQueuedMessageEditState } from "./useInlineQueuedMessageEditing";
 
-export type QueuedMessageSendGuard = "current-head" | "exists" | "none";
+type QueuedMessageSendGuard = "current-head" | "exists" | "none";
 
 interface SendQueuedMessageByIdArgs {
   guard: QueuedMessageSendGuard;
@@ -45,7 +45,7 @@ interface UseQueuedMessageActionsArgs {
   activeComposerDraftInput: PromptInput[];
 }
 
-export interface UseQueuedMessageActionsResult {
+interface UseQueuedMessageActionsResult {
   /** The processing state QueuedMessagesList should display. */
   processingQueuedMessage: {
     action: QueuedMessageProcessingAction;

@@ -80,7 +80,7 @@ const BUILTIN_NAV_ROW_PLUGIN_ID = "__builtin__";
  * "tools" so an order or hidden list saved under the row's old name keeps
  * naming the same row.
  */
-export const TOOLS_NAV_ROW_KEY = getPluginNavPanelKey({
+const TOOLS_NAV_ROW_KEY = getPluginNavPanelKey({
   pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
   id: "tools",
 });

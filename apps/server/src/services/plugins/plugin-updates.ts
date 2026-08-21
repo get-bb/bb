@@ -44,7 +44,7 @@ import type {
   PluginUpdateCheckEntry,
 } from "./plugin-service-internal.js";
 
-export const PLUGIN_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
+const PLUGIN_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 /** A git range check can stage several clones per plugin; bound the fan-out. */
 const UPDATE_CHECK_CONCURRENCY = 4;
 
@@ -77,7 +77,7 @@ export interface PluginUpdates {
   applyUpdate(id: string): Promise<PluginApplyUpdateOutcome>;
 }
 
-export interface PluginUpdatesContext {
+interface PluginUpdatesContext {
   deps: PluginServiceDeps;
   registrationMutationKey: string;
   withLifecycleLock: <T>(id: string, fn: () => Promise<T>) => Promise<T>;

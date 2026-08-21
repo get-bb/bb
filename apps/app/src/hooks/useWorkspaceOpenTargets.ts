@@ -20,11 +20,11 @@ const disabledHostDaemonPortAtom = atom<number | null>(null);
 const disabledWorkspaceOpenTargetsAtom = atom<WorkspaceOpenTarget[]>([]);
 const NO_WORKSPACE_OPEN_TARGETS: WorkspaceOpenTarget[] = [];
 
-export interface UseWorkspaceOpenTargetsArgs {
+interface UseWorkspaceOpenTargetsArgs {
   enabled: boolean;
 }
 
-export interface UseWorkspaceOpenTargetsResult {
+interface UseWorkspaceOpenTargetsResult {
   fetchWorkspaceOpenTargetsForPath:
     | ((path: string) => Promise<WorkspaceOpenTarget[]>)
     | null;

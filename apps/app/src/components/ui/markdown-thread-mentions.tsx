@@ -236,7 +236,7 @@ function isRawThreadIdEndBoundary(text: string, index: number): boolean {
   return text[index] !== "\\" && isMentionEndBoundary(text, index);
 }
 
-export interface RawThreadIdTextSegment {
+interface RawThreadIdTextSegment {
   rawThreadId: string | null;
   text: string;
 }

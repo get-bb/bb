@@ -12,7 +12,7 @@ import { createSidebarPreferencesStorage } from "./sidebar-preferences-storage";
 let defaultStore: SidebarPreferencesStore | null = null;
 
 /** App-wide store (client-local, not per server profile). */
-export function getSidebarPreferencesStore(): SidebarPreferencesStore {
+function getSidebarPreferencesStore(): SidebarPreferencesStore {
   defaultStore ??= createSidebarPreferencesStore(
     createSidebarPreferencesStorage(),
   );

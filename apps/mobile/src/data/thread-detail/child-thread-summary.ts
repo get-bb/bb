@@ -16,7 +16,7 @@ export interface ChildThreadSummary {
   threads: readonly ThreadListEntry[];
 }
 
-export const EMPTY_CHILD_THREAD_SUMMARY: ChildThreadSummary = {
+const EMPTY_CHILD_THREAD_SUMMARY: ChildThreadSummary = {
   count: 0,
   activity: NO_COLLAPSED_CHILD_ACTIVITY,
   threads: [],

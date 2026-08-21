@@ -33,7 +33,7 @@ export const HEADER_ICON_BUTTON_CLASS = COARSE_POINTER_HEADER_ICON_BUTTON_CLASS;
  * target). Used for visually dense glyphs that otherwise read oversized next
  * to compact header controls.
  */
-export const HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS =
+const HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS =
   COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS;
 
 /**

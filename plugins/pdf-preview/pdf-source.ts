@@ -2,7 +2,7 @@ import type { PluginFileOpenerSource } from "@get-bb/plugin-sdk/app";
 
 const PDF_MIME_TYPE = "application/pdf";
 
-export type PdfReadTarget =
+type PdfReadTarget =
   | { kind: "raw"; url: string }
   | { kind: "workspace-json"; url: string };
 

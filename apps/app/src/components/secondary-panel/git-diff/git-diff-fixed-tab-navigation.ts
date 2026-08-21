@@ -2,7 +2,7 @@ import type { JsonValue } from "@get-bb/plugin-sdk";
 import type { AppFixedTabDestination } from "@/lib/app-fixed-tab-navigation";
 import type { AppFixedTabReference } from "@/lib/app-navigation-host";
 
-export type GitDiffFixedTabTarget =
+type GitDiffFixedTabTarget =
   | { kind: "file"; path: string }
   | { kind: "commit"; sha: string };
 

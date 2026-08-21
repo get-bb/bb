@@ -23,7 +23,7 @@ export const DEFAULT_CODE_OVERFLOW: CodeOverflowMode = "scroll";
 export const DEFAULT_DIFF_VIEW: DiffViewMode = "unified";
 
 /** Presentation the host resolved for one source render. */
-export interface SourceCodePresentation {
+interface SourceCodePresentation {
   overflow: CodeOverflowMode;
   highlightedLines: SourceCodeLineRange | null;
 }

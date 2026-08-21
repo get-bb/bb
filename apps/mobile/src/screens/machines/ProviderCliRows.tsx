@@ -228,7 +228,7 @@ export interface ProviderCliInstallLogSheetProps {
 }
 
 /** The install/update output of one run, full screen-ish, monospace. */
-export function ProviderCliInstallLogSheet({
+function ProviderCliInstallLogSheet({
   controller,
   record,
 }: ProviderCliInstallLogSheetProps) {

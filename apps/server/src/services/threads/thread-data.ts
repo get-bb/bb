@@ -20,7 +20,7 @@ type StoredEventPayloadRow = Pick<
   "data" | "sequence" | "threadId" | "type"
 >;
 
-export interface ListThreadEventRowsArgs {
+interface ListThreadEventRowsArgs {
   afterSeq?: number;
   beforeSeq?: number;
   limit?: number;
@@ -29,7 +29,7 @@ export interface ListThreadEventRowsArgs {
   types?: readonly ThreadEventType[];
 }
 
-export interface FindThreadEventArgs {
+interface FindThreadEventArgs {
   afterSeq?: number;
   threadId: string;
   type: ThreadEventType;
@@ -101,7 +101,7 @@ export function parseStoredEvent(row: StoredEventRow): ThreadEvent {
   });
 }
 
-export function parseStoredEventRow(row: StoredEventRow): ThreadEventRow {
+function parseStoredEventRow(row: StoredEventRow): ThreadEventRow {
   return buildThreadEventRow({
     id: row.id,
     scope: parseStoredEventScope(row),

@@ -30,12 +30,12 @@ export function buildThreadHostFileContentUrl(
 const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[a-zA-Z]:[\\/]/u;
 const URL_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:/u;
 
-export function isAbsoluteLocalPath(path: string): boolean {
+function isAbsoluteLocalPath(path: string): boolean {
   return path.startsWith("/") || WINDOWS_ABSOLUTE_PATH_PATTERN.test(path);
 }
 
 /** Relative, scheme-less, non-UNC: an attachment stored under the project. */
-export function isProjectAttachmentPath(path: string): boolean {
+function isProjectAttachmentPath(path: string): boolean {
   return (
     path.length > 0 &&
     !path.startsWith("\\") &&

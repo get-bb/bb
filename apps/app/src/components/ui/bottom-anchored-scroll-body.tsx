@@ -54,7 +54,7 @@ export interface BottomAnchorContextValue {
   captureScrollAnchor: () => void;
 }
 
-export interface BottomAnchoredScrollBodyProps {
+interface BottomAnchoredScrollBodyProps {
   children: ReactNode;
   footer: ReactNode;
   scrollOverlay?: ReactNode;
@@ -68,12 +68,12 @@ export interface BottomAnchoredScrollBodyProps {
   scrollAnchorThreadId?: string;
 }
 
-export interface ScrollElementIntoViewArgs {
+interface ScrollElementIntoViewArgs {
   element: HTMLElement;
   options?: ScrollIntoViewOptions;
 }
 
-export interface ScrollElementIntoViewClampedToMaxScrollArgs {
+interface ScrollElementIntoViewClampedToMaxScrollArgs {
   element: HTMLElement;
 }
 

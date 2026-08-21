@@ -141,7 +141,7 @@ function cancelIntrinsicHeightRestore(
   resizeState.restoreTimerId = null;
 }
 
-export interface HeightTransitionProps {
+interface HeightTransitionProps {
   visible: boolean;
   children: ReactNode;
   durationMs?: number;
@@ -249,7 +249,7 @@ export function HeightTransition({
   );
 }
 
-export interface AutoHeightContainerProps {
+interface AutoHeightContainerProps {
   children: ReactNode;
   className?: string;
   durationMs?: number;

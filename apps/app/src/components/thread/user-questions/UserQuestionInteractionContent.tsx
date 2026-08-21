@@ -81,7 +81,7 @@ const OTHER_OPTION_LABEL = "Other…";
 const USER_QUESTION_FREE_TEXT_MIN_HEIGHT = 84;
 const USER_QUESTION_FREE_TEXT_MAX_HEIGHT = 158;
 
-export type QuestionShortcutChoice =
+type QuestionShortcutChoice =
   | { kind: "option"; value: string }
   | { kind: "other" }
   | null;

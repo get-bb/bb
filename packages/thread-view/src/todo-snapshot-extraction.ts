@@ -42,13 +42,13 @@ const todoWriteArgsSchema = z.object({
   todos: z.array(z.unknown()),
 });
 
-export interface ParsedTodoWriteTodo {
+interface ParsedTodoWriteTodo {
   activeForm?: string;
   content: string;
   status: ThreadTimelinePendingTodoItemStatus;
 }
 
-export interface ParsedTodoWriteArgs {
+interface ParsedTodoWriteArgs {
   todos: ParsedTodoWriteTodo[];
 }
 

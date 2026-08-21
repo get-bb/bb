@@ -5,7 +5,7 @@ import { getDetailScrollMaxHeightClass } from "../../ui/detail-scroll-size.js";
 import { ExpandableLine } from "../../ui/expandable-line.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 
-export interface TerminalOutputBlockProps {
+interface TerminalOutputBlockProps {
   output: string;
   commandLine?: string;
   exitCode?: number | null;

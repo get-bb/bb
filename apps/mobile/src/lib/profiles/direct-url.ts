@@ -48,7 +48,7 @@ function isCleartextAllowedHost(hostname: string): boolean {
 }
 
 /** Normalizes to `origin[/path-prefix]` with no trailing slash, search, or hash. */
-export function normalizeServerUrl(url: URL): string {
+function normalizeServerUrl(url: URL): string {
   const path = url.pathname.replace(/\/+$/u, "");
   return `${url.origin}${path}`;
 }

@@ -35,7 +35,7 @@ export type TimelineTitleLinkResolver = (
   link: TimelineTitleLink,
 ) => string | null;
 
-export interface TimelineTitleViewProps {
+interface TimelineTitleViewProps {
   title: TimelineTitle;
   className?: string;
   onTitleAction?: TimelineTitleActionResolver;

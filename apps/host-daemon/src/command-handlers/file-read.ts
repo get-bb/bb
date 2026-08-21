@@ -12,7 +12,7 @@ import {
 import { isFsErrorWithCode } from "../fs-errors.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
 
-export const IMAGE_FILE_SIZE_LIMIT_BYTES = 10 * 1024 * 1024;
+const IMAGE_FILE_SIZE_LIMIT_BYTES = 10 * 1024 * 1024;
 export const NON_IMAGE_FILE_SIZE_LIMIT_BYTES = 25 * 1024 * 1024;
 
 type FileContentEncoding = "base64" | "utf8";

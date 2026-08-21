@@ -18,7 +18,7 @@ export type ThreadTimelineLinkHandler = MarkdownPreviewLinkHandler;
 export type ThreadTimelineOpenPluginPanelHandler =
   MarkdownMessageDirectiveOpenThreadPanel;
 
-export interface ThreadTimelineForkMessageTarget {
+interface ThreadTimelineForkMessageTarget {
   /** Last source event sequence included in the provider-history fork. */
   sourceSeqEnd: number;
 }

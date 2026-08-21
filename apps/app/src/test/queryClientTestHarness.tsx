@@ -11,7 +11,7 @@ type QueryClientTestWrapper = (
   props: QueryClientTestWrapperProps,
 ) => JSX.Element;
 
-export interface QueryClientTestHarness {
+interface QueryClientTestHarness {
   queryClient: QueryClient;
   wrapper: QueryClientTestWrapper;
 }

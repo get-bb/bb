@@ -91,7 +91,7 @@ export interface TimelineRowHostProviderProps {
   children: ReactNode;
 }
 
-export function copyMessageTextToClipboard(text: string): void {
+function copyMessageTextToClipboard(text: string): void {
   void Clipboard.setStringAsync(text)
     .then(() => {
       toast.success("Copied");

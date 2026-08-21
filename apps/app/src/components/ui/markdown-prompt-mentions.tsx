@@ -55,7 +55,7 @@ export interface IndexedPromptMention {
   serializedText: string;
 }
 
-export interface SubstitutePromptMentionsResult {
+interface SubstitutePromptMentionsResult {
   /** `text` with each mention span replaced by its sentinel. */
   content: string;
   /** Resolved mentions, indexed to match the sentinel each one produced. */

@@ -7,9 +7,9 @@ import type { ConnectServerProfile } from "../profiles/profile";
 import { mapAuthError } from "./auth-error";
 import { installSessionCookie, type CookieStoreLike } from "./cookie-store";
 
-export const SESSION_RENEWAL_LEAD_MS = 5 * 60 * 1000;
-export const SESSION_MIN_RENEWAL_DELAY_MS = 30 * 1000;
-export const SESSION_RETRY_DELAY_MS = 30 * 1000;
+const SESSION_RENEWAL_LEAD_MS = 5 * 60 * 1000;
+const SESSION_MIN_RENEWAL_DELAY_MS = 30 * 1000;
+const SESSION_RETRY_DELAY_MS = 30 * 1000;
 
 export type SessionState =
   | { status: "idle" }

@@ -33,7 +33,7 @@ export interface CodeThemePair {
  */
 const appliedThemeByPool = new WeakMap<WorkerPoolManager, CodeThemePair>();
 
-export function areCodeThemePairsEqual(
+function areCodeThemePairsEqual(
   left: CodeThemePair,
   right: CodeThemePair,
 ): boolean {

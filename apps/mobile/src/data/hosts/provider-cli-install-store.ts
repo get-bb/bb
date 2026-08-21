@@ -92,7 +92,7 @@ export interface ProviderCliInstallStore {
   ): ProviderCliInstallRecord | null;
 }
 
-export const PROVIDER_CLI_INSTALL_MAX_RECORDS = 32;
+const PROVIDER_CLI_INSTALL_MAX_RECORDS = 32;
 
 export function providerCliInstallJobKey(
   profileId: string,

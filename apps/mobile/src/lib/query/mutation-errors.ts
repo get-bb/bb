@@ -14,7 +14,7 @@ const HTTP_STATUS_PREFIX_PATTERN = /^HTTP \d{3}:\s*/u;
 const TRAILING_PERIOD_PATTERN = /\.$/u;
 export const NETWORK_TRANSPORT_ERROR_MESSAGE =
   "Could not reach the server. Check that it is running and try again.";
-export const GENERIC_REQUEST_FAILED_MESSAGE = "Request failed";
+const GENERIC_REQUEST_FAILED_MESSAGE = "Request failed";
 
 export interface MutationErrorMeta {
   errorMessage?: string;
@@ -29,12 +29,12 @@ function stripHttpStatusPrefix(message: string): string {
   return message.replace(HTTP_STATUS_PREFIX_PATTERN, "");
 }
 
-export function isAbortLikeError(error: unknown): boolean {
+function isAbortLikeError(error: unknown): boolean {
   return toRecord(error)?.name === "AbortError";
 }
 
 /** Reads the typed subset of `mutation.meta` the toast sink understands. */
-export function getMutationErrorMeta(
+function getMutationErrorMeta(
   value: Readonly<Record<string, unknown>> | undefined,
 ): MutationErrorMeta {
   if (!value) return {};

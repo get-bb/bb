@@ -15,7 +15,7 @@
  * Returns `null` when no such boundary exists (short messages, an open fence
  * spanning the whole text, ...) so the caller renders one document.
  */
-export interface StreamingMarkdownSplit {
+interface StreamingMarkdownSplit {
   settled: string;
   tail: string;
 }

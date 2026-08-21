@@ -53,7 +53,7 @@ interface UseProjectPathSuggestionsArgs {
   includeDirectories: boolean;
 }
 
-export interface UseProjectCommandsArgs {
+interface UseProjectCommandsArgs {
   projectId: string | undefined;
   providerId: string | undefined;
   environmentId: string | null;

@@ -49,7 +49,7 @@ function getKeyboardSeenServerSnapshot(): boolean {
   return false;
 }
 
-export function useKeyboardSeen(): boolean {
+function useKeyboardSeen(): boolean {
   return useSyncExternalStore(
     subscribeKeyboardSeen,
     getKeyboardSeenSnapshot,

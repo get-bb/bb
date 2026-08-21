@@ -28,7 +28,7 @@ import {
   useOptionalPluginComposerView,
 } from "./plugin-composer-host";
 
-export const PLUGIN_COMPOSER_INLINE_PLUGIN_LIMIT = 3;
+const PLUGIN_COMPOSER_INLINE_PLUGIN_LIMIT = 3;
 
 type PluginComposerActionContribution = ResolvedComposerAction;
 

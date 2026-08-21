@@ -20,7 +20,7 @@ export interface DiffPatchState {
   error?: string;
 }
 
-export const IDLE_PATCH_STATE: DiffPatchState = { status: "idle" };
+const IDLE_PATCH_STATE: DiffPatchState = { status: "idle" };
 
 /** In-flight / errored tracking for the active target, keyed by path. */
 export interface InFlightState {

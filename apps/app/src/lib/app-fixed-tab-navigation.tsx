@@ -33,7 +33,7 @@ export function openAppFixedTabFromDestinations(
   return destination?.open(intent.target) ?? false;
 }
 
-export interface AppFixedTabTargetSnapshot {
+interface AppFixedTabTargetSnapshot {
   ownerId: string;
   sequence: number;
   tabId: string;

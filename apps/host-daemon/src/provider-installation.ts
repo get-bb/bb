@@ -45,7 +45,7 @@ export class ProviderInstallationInProgressError extends Error {
   }
 }
 
-export function createPtyProviderInstallationProcessSpawner(): ProviderInstallationProcessSpawner {
+function createPtyProviderInstallationProcessSpawner(): ProviderInstallationProcessSpawner {
   return {
     spawn(args) {
       const stdout = new PassThrough();

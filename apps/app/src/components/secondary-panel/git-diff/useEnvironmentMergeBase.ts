@@ -75,7 +75,7 @@ export function shouldSyncSelectedMergeBaseBranch({
   );
 }
 
-export function resolveImplicitMergeBaseBranch({
+function resolveImplicitMergeBaseBranch({
   environment,
   workspaceStatus,
 }: ResolveImplicitMergeBaseBranchParams): string | undefined {

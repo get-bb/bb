@@ -13,7 +13,7 @@ import {
 } from "@/lib/in-app-browser-link-preference";
 import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 
-export type OpenInAppBrowserUrl = (url: string) => void;
+type OpenInAppBrowserUrl = (url: string) => void;
 
 interface UrlOpenRoutingProviderProps {
   children: ReactNode;
@@ -64,7 +64,7 @@ export function AppNavigationUrlHost({ children }: { children: ReactNode }) {
   );
 }
 
-export function useOpenUrlByPreference(): (url: string) => boolean {
+function useOpenUrlByPreference(): (url: string) => boolean {
   const openInAppBrowser = useContext(InAppBrowserUrlOpenContext);
   const [openLinksInAppBrowser] = useOpenLinksInAppBrowserPreference();
   const desktopBrowserAvailable =

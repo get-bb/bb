@@ -8,7 +8,7 @@ import {
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export interface InlineThreadTitleCommitResult {
+interface InlineThreadTitleCommitResult {
   kind: "cancel" | "commit";
   title?: string;
 }
@@ -33,7 +33,7 @@ interface InlineThreadTitleEditorProps {
   onSubmit: () => void;
 }
 
-export function InlineThreadTitleEditor({
+function InlineThreadTitleEditor({
   ariaLabel,
   className,
   value,

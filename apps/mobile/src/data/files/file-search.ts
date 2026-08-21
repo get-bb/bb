@@ -28,7 +28,7 @@ export interface FileSearchSection {
   truncated: boolean;
 }
 
-export const FILE_SEARCH_SECTION_TITLES: Record<FileSearchSource, string> = {
+const FILE_SEARCH_SECTION_TITLES: Record<FileSearchSource, string> = {
   workspace: "Workspace files",
   "thread-storage": "Thread storage",
 };
@@ -39,7 +39,7 @@ function compareResults(a: FileSearchResult, b: FileSearchResult): number {
 }
 
 /** Files only, ranked by score then path, capped at `limit`. */
-export function rankFileSearchEntries(
+function rankFileSearchEntries(
   source: FileSearchSource,
   entries: readonly WorkspacePathEntry[],
   limit: number,

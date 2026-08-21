@@ -40,7 +40,7 @@ type EnvironmentProvisionCommand = Extract<
 type EnvironmentProvisionCommandInitiator =
   EnvironmentProvisionCommand["initiator"];
 
-export interface ManagedBranchNameArgs {
+interface ManagedBranchNameArgs {
   branchSlug?: string | null;
   threadId: string;
 }
@@ -91,7 +91,7 @@ export type UnmanagedCheckoutCommand =
   | { kind: "existing"; name: string }
   | { kind: "new"; name: string; baseBranch: string };
 
-export type EnvironmentProvisionCommandArgs =
+type EnvironmentProvisionCommandArgs =
   | {
       workspaceProvisionType: "unmanaged";
       environmentId: string;

@@ -63,7 +63,7 @@ export function formatRelativeAge(timestamp: number, now: number): string {
 }
 
 /** "Online" / "Offline · last seen 5m ago" / "Offline" (no update caveat). */
-export function describeHostPresence(host: Host, now: number): string {
+function describeHostPresence(host: Host, now: number): string {
   if (host.status === "connected") return "Online";
   if (host.lastSeenAt !== null) {
     return `Offline · last seen ${formatRelativeAge(host.lastSeenAt, now)}`;

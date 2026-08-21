@@ -31,7 +31,7 @@ interface ParentThreadInvalidDetailsArgs {
   subject: ParentThreadInvalidSubject;
 }
 
-export function environmentNotReadyDetails(
+function environmentNotReadyDetails(
   environment: EnvironmentReadinessFields,
 ): EnvironmentNotReadyErrorDetails {
   return {
@@ -97,7 +97,7 @@ export function throwThreadEnvironmentUnavailable(
   );
 }
 
-export function threadNotWritableDetails(
+function threadNotWritableDetails(
   thread: ThreadWritableFields,
   reason: ThreadNotWritableReason,
 ): ThreadNotWritableErrorDetails {

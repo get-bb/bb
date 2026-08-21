@@ -23,7 +23,7 @@ interface QueryOptions {
   enabled?: boolean;
 }
 
-export const REGISTRY_PAGE_SIZE = 24;
+const REGISTRY_PAGE_SIZE = 24;
 const REGISTRY_LIST_STALE_TIME_MS = 30 * 60_000;
 
 /**

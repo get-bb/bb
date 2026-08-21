@@ -101,7 +101,7 @@ interface ProjectMachineSetupDialogContentProps {
   onComplete: (completion: ProjectMachineSetupCompletion) => void;
 }
 
-export function ProjectMachineSetupDialogContent({
+function ProjectMachineSetupDialogContent({
   target,
   addSource,
   onOpenChange,

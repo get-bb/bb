@@ -37,7 +37,7 @@ export function toChangeTally(stats: WorkspaceChangeStats): ChangeTally {
   };
 }
 
-export function formatWorkspaceChangedFilesLabel(changedFiles: number): string {
+function formatWorkspaceChangedFilesLabel(changedFiles: number): string {
   return `${changedFiles} file${changedFiles === 1 ? "" : "s"}`;
 }
 
@@ -78,7 +78,7 @@ export interface WorkspaceChangedFilesSection {
   stats: WorkspaceChangeStats;
 }
 
-export const CHANGED_FILES_KIND_PREFIX: Record<
+const CHANGED_FILES_KIND_PREFIX: Record<
   WorkspaceChangedFilesSectionKind,
   string
 > = {

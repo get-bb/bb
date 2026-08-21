@@ -70,7 +70,7 @@ function catalogInstallDescription(
   return `Install this ${publisherLabel} plugin from its listed source repository.`;
 }
 
-export interface AddPluginDialogProps {
+interface AddPluginDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onInstalled?: (plugin: InstalledPlugin) => void;

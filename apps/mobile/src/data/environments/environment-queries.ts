@@ -34,7 +34,7 @@ interface QueryOptions {
 }
 
 const MERGE_BASE_BRANCHES_STALE_MS = 30_000;
-export const MERGE_BASE_BRANCHES_LIMIT = 50;
+const MERGE_BASE_BRANCHES_LIMIT = 50;
 
 function requireEnvironmentId(
   environmentId: string | null | undefined,

@@ -10,7 +10,7 @@ import {
   isTimelineUngroupableMessage,
 } from "./timeline-message-helpers.js";
 
-export interface CompletedTurnSummaryGroup {
+interface CompletedTurnSummaryGroup {
   kind: "summary";
   startedAt: number;
   completedAt: number | null;
@@ -19,7 +19,7 @@ export interface CompletedTurnSummaryGroup {
   summaryCount: number;
 }
 
-export interface CompletedTurnUngroupedMessage {
+interface CompletedTurnUngroupedMessage {
   kind: "ungrouped-message";
   message: EventProjectionMessage;
 }

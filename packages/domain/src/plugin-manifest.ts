@@ -6,7 +6,7 @@ const requiredManifestString = z.string().trim().min(1);
 
 export { isPluginOwnedIconPath } from "./plugin-icon.js";
 
-export const pluginBrandingSchema = z
+const pluginBrandingSchema = z
   .object({
     icon: requiredManifestString.optional(),
     logo: z
@@ -39,7 +39,7 @@ export const pluginBrandingSchema = z
     },
   );
 
-export const pluginBbManifestSchema = z
+const pluginBbManifestSchema = z
   .object({
     name: requiredManifestString,
     description: requiredManifestString,

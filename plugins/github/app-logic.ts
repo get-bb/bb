@@ -56,7 +56,7 @@ export function routeToSubPath(route: Route): string {
 // GitHub-style qualifiers parsed and matched client-side:
 // is:open, is:closed, is:merged, assignee:<login>, assignee:@me,
 // author:<login>, label:<name>, repo:<owner/name>, no:assignee, no:label.
-export interface ParsedQuery {
+interface ParsedQuery {
   states: string[];
   assignees: string[];
   authors: string[];

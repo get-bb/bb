@@ -31,7 +31,7 @@ const SERVER_SKILL_CONTENT_LIMIT_BYTES = 25 * 1024 * 1024;
  * Providers with a skill surface. A bb skill is discovered under each, so the
  * listing queries all of them and de-dupes provider-agnostic bb skills by path.
  */
-export const SKILL_COMMAND_SURFACE_PROVIDERS: readonly SkillProvider[] = [
+const SKILL_COMMAND_SURFACE_PROVIDERS: readonly SkillProvider[] = [
   "claude-code",
   "codex",
   "acp-cursor",

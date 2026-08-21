@@ -9,7 +9,7 @@
  */
 
 export const SOURCE_CODE_MAX_LINES = 5_000;
-export const SOURCE_CODE_MAX_CHARS = 512 * 1024;
+const SOURCE_CODE_MAX_CHARS = 512 * 1024;
 
 export interface SourceCodeTruncation {
   /** The rendered prefix, cut at a line boundary. */

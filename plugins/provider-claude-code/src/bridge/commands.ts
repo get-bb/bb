@@ -202,7 +202,7 @@ const claudeCodeCommandMethods = new Set<string>(
  * something to drop: the caller is waiting on `id` and would otherwise learn
  * nothing until its request timed out.
  */
-export type ClaudeCodeJsonRpcRequestDecodeResult =
+type ClaudeCodeJsonRpcRequestDecodeResult =
   | { kind: "request"; request: ClaudeCodeJsonRpcRequest }
   | { kind: "not_a_request" }
   | { kind: "unknown_method"; id: string | number; method: string }

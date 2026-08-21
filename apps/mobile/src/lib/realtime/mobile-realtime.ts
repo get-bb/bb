@@ -41,7 +41,7 @@ export interface MobileRealtimeConnectFailedEvent {
 
 const AUTH_REJECTION_PATTERN = /\b40[13]\b|unauthorized|forbidden/iu;
 
-export function isAuthRejectionMessage(message: string | null): boolean {
+function isAuthRejectionMessage(message: string | null): boolean {
   return message !== null && AUTH_REJECTION_PATTERN.test(message);
 }
 
@@ -132,10 +132,10 @@ export interface CreateMobileRealtimeOptions {
   onInvalidMessage?: (error: unknown) => void;
 }
 
-export const REALTIME_MIN_RECONNECT_DELAY_MS = 1000;
-export const REALTIME_MAX_RECONNECT_DELAY_MS = 30_000;
-export const REALTIME_RECONNECT_GROW_FACTOR = 1.5;
-export const REALTIME_CONNECTION_TIMEOUT_MS = 10_000;
+const REALTIME_MIN_RECONNECT_DELAY_MS = 1000;
+const REALTIME_MAX_RECONNECT_DELAY_MS = 30_000;
+const REALTIME_RECONNECT_GROW_FACTOR = 1.5;
+const REALTIME_CONNECTION_TIMEOUT_MS = 10_000;
 /** Same cadence as the web manager (apps/app/src/lib/ws.ts). */
 export const REALTIME_PING_INTERVAL_MS = 25_000;
 export const REALTIME_PONG_TIMEOUT_MS = 5_000;

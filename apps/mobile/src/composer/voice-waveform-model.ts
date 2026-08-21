@@ -3,7 +3,7 @@
 // buffer, and the SVG path for one frame. No react-native imports (vitest).
 
 export const WAVEFORM_BAR_WIDTH = 3;
-export const WAVEFORM_BAR_GAP = 2;
+const WAVEFORM_BAR_GAP = 2;
 export const WAVEFORM_BAR_PITCH = WAVEFORM_BAR_WIDTH + WAVEFORM_BAR_GAP;
 /** Web samples every second animation frame (~30 Hz). */
 export const WAVEFORM_SAMPLE_INTERVAL_MS = 33;

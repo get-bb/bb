@@ -42,7 +42,7 @@ const TERMINATION_SIGNALS: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
  * after a self-update only happens once the process really exits, so a hung
  * shutdown step or an undrained event loop must not keep the daemon alive.
  */
-export const DEFAULT_SHUTDOWN_EXIT_GRACE_MS = 15_000;
+const DEFAULT_SHUTDOWN_EXIT_GRACE_MS = 15_000;
 
 function listActiveResources(): string[] {
   const getActiveResourcesInfo = (

@@ -1,4 +1,4 @@
-export interface DotenvReconcileResult {
+interface DotenvReconcileResult {
   content: string;
   added: number;
   updated: number;

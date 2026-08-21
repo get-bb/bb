@@ -7,7 +7,7 @@ import type { HtmlTagDescriptor, Plugin } from "vite";
  * italics) stay lazy: preloading them would cost bytes on every load for
  * glyphs most sessions never draw.
  */
-export const PRELOADED_FONT_BASENAME = "inter-latin-wght-normal";
+const PRELOADED_FONT_BASENAME = "inter-latin-wght-normal";
 const PRELOADED_FONT_FILE_RE = new RegExp(
   `(^|/)${PRELOADED_FONT_BASENAME}(-[\\w-]+)?\\.woff2$`,
 );

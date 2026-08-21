@@ -96,7 +96,7 @@ const ThreadStorageFilePreviewTabContentChunk = lazy(() =>
 );
 
 /** Generic "content is on its way" body for a panel tab. */
-export function SecondaryPanelContentSkeleton() {
+function SecondaryPanelContentSkeleton() {
   return (
     <div
       className="space-y-2 px-4 py-4"
@@ -164,7 +164,7 @@ function ThreadSecondaryPanelInlinePlaceholder({
   );
 }
 
-export type LazyThreadSecondaryPanelProps = ComponentProps<
+type LazyThreadSecondaryPanelProps = ComponentProps<
   ThreadSecondaryPanelModule["ThreadSecondaryPanel"]
 > & {
   /**

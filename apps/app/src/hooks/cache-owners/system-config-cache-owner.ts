@@ -6,7 +6,7 @@ import {
 import type { SystemConfigResponse } from "@bb/server-contract";
 import { systemConfigQueryKey } from "../queries/query-keys";
 
-export interface KeyboardSettingsCacheTransaction {
+interface KeyboardSettingsCacheTransaction {
   previous: SystemConfigResponse | undefined;
 }
 

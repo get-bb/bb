@@ -5,7 +5,7 @@ export interface AudioInputDeviceOption {
   label: string;
 }
 
-export interface RefreshAudioInputDevicesOptions {
+interface RefreshAudioInputDevicesOptions {
   requestPermission?: boolean;
 }
 
@@ -40,7 +40,7 @@ function resolveAudioInputDeviceErrorMessage(error: unknown): string {
   return "Microphone devices unavailable";
 }
 
-export function audioInputDeviceLabel(
+function audioInputDeviceLabel(
   device: Pick<MediaDeviceInfo, "label">,
   index: number,
 ): string {

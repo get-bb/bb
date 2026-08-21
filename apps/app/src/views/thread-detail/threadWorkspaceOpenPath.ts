@@ -19,7 +19,7 @@ interface ResolveEnvironmentOpenContextArgs {
   threadEnvironmentIsLocal: boolean;
 }
 
-export interface BuildOpenInEditorHandlerArgs {
+interface BuildOpenInEditorHandlerArgs {
   rootPath: string | null;
   canOpenPreferredTarget: boolean;
   openInPreferredTarget: (request: {
@@ -49,11 +49,11 @@ export function buildOpenInEditorHandler(
   };
 }
 
-export interface ResolveThreadWorkspacePreviewRootPathArgs {
+interface ResolveThreadWorkspacePreviewRootPathArgs {
   environment: Environment | null | undefined;
 }
 
-export type WorkspaceChangedFileOpenTarget =
+type WorkspaceChangedFileOpenTarget =
   | { kind: "diff" }
   | {
       kind: "preview";
@@ -61,7 +61,7 @@ export type WorkspaceChangedFileOpenTarget =
       statusLabel: WorkspaceFilePreviewStatusLabel | null;
     };
 
-export interface ResolveWorkspaceChangedFileOpenTargetArgs {
+interface ResolveWorkspaceChangedFileOpenTargetArgs {
   file: WorkspaceFileStatus;
   section: WorkspaceChangedFilesSection;
 }

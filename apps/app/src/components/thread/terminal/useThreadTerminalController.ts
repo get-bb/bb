@@ -93,8 +93,8 @@ interface TerminalTitleRenameRequest {
 }
 
 type ThreadTerminalActionHandler = () => void;
-export type ThreadTerminalIdHandler = (terminalId: string) => void;
-export type ThreadTerminalTitleChangeHandler = (title: string) => void;
+type ThreadTerminalIdHandler = (terminalId: string) => void;
+type ThreadTerminalTitleChangeHandler = (title: string) => void;
 type TerminalTitleRenameTimeout = number;
 type TerminalCloseMode = "force" | "if-clean";
 

@@ -16,7 +16,7 @@ import {
  * extension host keeps the active renderer bound to the same plugin API,
  * reactive view, and keyboard-command behavior.
  */
-export interface ComposerExtensionController {
+interface ComposerExtensionController {
   host: PluginComposerHost | null;
   view: ComposerView;
   focus(): boolean;

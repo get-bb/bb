@@ -83,7 +83,7 @@ export interface PanelViewState {
   filesParams: FilesLauncherParams | null;
 }
 
-export const DEFAULT_FILES_LAUNCHER_PARAMS: FilesLauncherParams = {
+const DEFAULT_FILES_LAUNCHER_PARAMS: FilesLauncherParams = {
   section: "search",
   initialQuery: null,
 };
@@ -326,7 +326,7 @@ export function buildPanelStripEntries(
 }
 
 /** The fixed view tabs the scope keeps at the front of the client-core tab list. */
-export function fixedViewTabsForScope(
+function fixedViewTabsForScope(
   scope: PanelScope,
   options: BuildPanelStripEntriesOptions,
 ): FixedPanelViewTab[] {

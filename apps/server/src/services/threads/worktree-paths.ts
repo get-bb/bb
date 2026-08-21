@@ -46,13 +46,13 @@ function tryParseUrlPath(value: string): string | null {
   return null;
 }
 
-export interface ResolveManagedTargetPathArgs {
+interface ResolveManagedTargetPathArgs {
   dataDir: string;
   environmentId: string;
   sourcePath: string;
 }
 
-export interface ResolvePersonalTargetPathArgs {
+interface ResolvePersonalTargetPathArgs {
   dataDir: string;
   environmentId: string;
 }

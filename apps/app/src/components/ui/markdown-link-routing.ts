@@ -8,23 +8,23 @@ import type {
 } from "./markdown-local-file-link.js";
 
 /** One action in a local file link's right-click menu. */
-export interface MarkdownLocalFileContextMenuAction {
+interface MarkdownLocalFileContextMenuAction {
   id: string;
   label: ReactNode;
   onSelect: () => void;
   type?: "action";
 }
 
-export interface MarkdownLocalFileContextMenuSeparator {
+interface MarkdownLocalFileContextMenuSeparator {
   id: string;
   type: "separator";
 }
 
-export type MarkdownLocalFileContextMenuLeafItem =
+type MarkdownLocalFileContextMenuLeafItem =
   | MarkdownLocalFileContextMenuAction
   | MarkdownLocalFileContextMenuSeparator;
 
-export interface MarkdownLocalFileContextMenuSubmenu {
+interface MarkdownLocalFileContextMenuSubmenu {
   id: string;
   items: MarkdownLocalFileContextMenuLeafItem[];
   label: ReactNode;
@@ -39,7 +39,7 @@ export type MarkdownLocalFileContextMenuItem =
  * Right-click menu items for local file links. Null/empty = no menu; left-click
  * behavior is unchanged either way.
  */
-export type MarkdownLocalFileContextMenuItemsProvider = (
+type MarkdownLocalFileContextMenuItemsProvider = (
   link: MarkdownPreviewLocalFileLink,
 ) => MarkdownLocalFileContextMenuItem[] | null;
 

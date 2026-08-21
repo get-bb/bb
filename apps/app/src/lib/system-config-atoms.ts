@@ -101,7 +101,7 @@ function parseOrigin(url: string): string | null {
   }
 }
 
-export function selectPreferredLocalHostConnection(
+function selectPreferredLocalHostConnection(
   connections: readonly LocalHostDaemonConnection[],
   browserOrigin: string | null,
 ): LocalHostDaemonConnection | null {
@@ -183,7 +183,7 @@ systemConfigRefreshTickAtom.onMount = (setRefreshTick) => {
   };
 };
 
-export const systemConfigAtom = atom(async (get) => {
+const systemConfigAtom = atom(async (get) => {
   get(systemConfigRefreshTickAtom);
   return loadSystemConfig();
 });

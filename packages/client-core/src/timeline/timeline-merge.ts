@@ -72,7 +72,7 @@ export interface RecoverLoadedTimelineAfterStaleCursorArgs {
   surfaceKey: string;
 }
 
-export interface BuildSurfaceKeyArgs {
+interface BuildSurfaceKeyArgs {
   rowFilter: ThreadTimelineRowFilter | undefined;
   surfaceKey: string | undefined;
   threadId: string;

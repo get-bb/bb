@@ -61,7 +61,7 @@ type RelatedThread = Pick<
   "id" | "title" | "titleFallback" | "projectId" | "archivedAt" | "deletedAt"
 >;
 
-export function isSideChatThread(
+function isSideChatThread(
   thread: Pick<Thread, "originKind" | "originPluginId">,
   sideChatPluginId: string,
 ): boolean {
@@ -143,7 +143,7 @@ const BANNER_ACTIVE_CHILD_RUNTIME_STATUSES: ReadonlySet<ThreadRuntimeDisplayStat
     "waiting-for-host",
   ]);
 
-export function isThreadDisplayStatusBannerActive(
+function isThreadDisplayStatusBannerActive(
   status: ThreadRuntimeDisplayStatus,
 ): boolean {
   return BANNER_ACTIVE_CHILD_RUNTIME_STATUSES.has(status);
@@ -164,7 +164,7 @@ export interface ThreadBannerChildThreadsSection {
   primary: ThreadBannerChildItem;
 }
 
-export function childThreadsLabel(args: {
+function childThreadsLabel(args: {
   count: number;
   pendingCount: number;
 }): string {
@@ -223,12 +223,12 @@ export type EnvironmentGoneStatus = Extract<
   "destroying" | "destroyed"
 >;
 
-export const ENVIRONMENT_GONE_COPY: Record<EnvironmentGoneStatus, string> = {
+const ENVIRONMENT_GONE_COPY: Record<EnvironmentGoneStatus, string> = {
   destroying: "Archiving environment…",
   destroyed: "Environment archived",
 };
 
-export const ARCHIVED_THREAD_STATUS_LABEL = "Thread is archived";
+const ARCHIVED_THREAD_STATUS_LABEL = "Thread is archived";
 
 export function resolveEnvironmentGoneStatus(
   status: EnvironmentStatus | undefined,

@@ -41,7 +41,7 @@ export function composerScopeIdentity(scope: PluginComposerScope): string {
   }
 }
 
-export interface PluginComposerViewModelInput {
+interface PluginComposerViewModelInput {
   scope: PluginComposerScope;
   layout: ComposerView["layout"];
   text: string;

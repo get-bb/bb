@@ -12,7 +12,7 @@ import {
 } from "./secure-storage";
 
 export const PROFILE_INDEX_STORAGE_KEY = "bb.profiles.index";
-export const PROFILE_STORAGE_KEY_PREFIX = "bb.profile.";
+const PROFILE_STORAGE_KEY_PREFIX = "bb.profile.";
 
 export function profileStorageKey(profileId: string): string {
   return `${PROFILE_STORAGE_KEY_PREFIX}${profileId}`;

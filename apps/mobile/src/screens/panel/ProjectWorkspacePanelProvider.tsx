@@ -4,7 +4,7 @@ import { WorkspacePanelProvider } from "./PanelProvider";
 import type { PanelScope } from "./panel-model";
 
 /** The web's root-compose panel state id, namespaced per server profile. */
-export function rootComposePanelStateId(profileId: string): string {
+function rootComposePanelStateId(profileId: string): string {
   return `root-compose:${profileId}`;
 }
 

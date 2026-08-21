@@ -230,7 +230,7 @@ export function commandInsertionFromSuggestion(
 }
 
 /** Port of the web's `promptMentionResourceFromSuggestion`. */
-export function promptMentionResourceFromSuggestion(
+function promptMentionResourceFromSuggestion(
   suggestion: PromptMentionSuggestion,
 ): PromptMentionResource {
   switch (suggestion.kind) {

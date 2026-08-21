@@ -5,13 +5,13 @@ import {
   type AppCommandId,
 } from "@bb/domain";
 
-export interface AppCommandMetadata {
+interface AppCommandMetadata {
   command: AppCommandId;
   description: string;
   label: string;
 }
 
-export interface AppCommandGroup {
+interface AppCommandGroup {
   commands: readonly AppCommandMetadata[];
   label: string;
 }

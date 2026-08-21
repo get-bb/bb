@@ -494,7 +494,7 @@ function settleArchivePromise(
   settle();
 }
 
-export function archiveThreadsViaAppServer(
+function archiveThreadsViaAppServer(
   args: ArchiveThreadsViaAppServerArgs,
 ): Promise<ArchiveThreadsViaAppServerResult> {
   return new Promise((resolvePromise, rejectPromise) => {

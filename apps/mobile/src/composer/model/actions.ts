@@ -56,18 +56,18 @@ export interface ComposerAction {
   onPress: () => void;
 }
 
-export const AUTOMATION_PROMPT_ACTION: ComposerPromptAction = {
+const AUTOMATION_PROMPT_ACTION: ComposerPromptAction = {
   kind: "automation",
   command: { trigger: "/", name: "automation", trailingText: " " },
   text: "/automation ",
 };
 
-export const CREATE_PLUGIN_PROMPT_ACTION: ComposerPromptAction = {
+const CREATE_PLUGIN_PROMPT_ACTION: ComposerPromptAction = {
   kind: "plugin",
   text: CREATE_PLUGIN_PROMPT,
 };
 
-export const APP_PROMPT_ACTIONS: readonly ComposerPromptAction[] = [
+const APP_PROMPT_ACTIONS: readonly ComposerPromptAction[] = [
   AUTOMATION_PROMPT_ACTION,
   CREATE_PLUGIN_PROMPT_ACTION,
 ];
@@ -92,7 +92,7 @@ export const PROMPT_ACTION_PRESENTATION: Record<
 };
 
 /** Append the app-owned actions the provider did not already supply. */
-export function withAppPromptActions(
+function withAppPromptActions(
   actions: readonly ComposerPromptAction[],
 ): ComposerPromptAction[] {
   return [
@@ -103,7 +103,7 @@ export function withAppPromptActions(
   ];
 }
 
-export function orderPromptActions(
+function orderPromptActions(
   actions: readonly ComposerPromptAction[],
 ): ComposerPromptAction[] {
   return PROMPT_ACTION_ORDER.flatMap((kind) => {

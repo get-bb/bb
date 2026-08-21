@@ -9,7 +9,7 @@ export type TimelineListEntry =
   | { type: "row"; key: string; item: TimelineListItem }
   | { type: "unread-divider"; key: typeof UNREAD_DIVIDER_ENTRY_KEY };
 
-export const UNREAD_DIVIDER_ENTRY_KEY = "thread-unread-divider";
+const UNREAD_DIVIDER_ENTRY_KEY = "thread-unread-divider";
 
 export interface TimelineListEntries {
   entries: TimelineListEntry[];

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export interface EventCodeBlockProps {
+interface EventCodeBlockProps {
   children: ReactNode;
   className?: string;
   tone?: "default" | "danger";

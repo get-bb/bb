@@ -58,7 +58,7 @@ interface PendingGapFill {
   timer: unknown;
 }
 
-export const TERMINAL_GAP_FILL_TIMEOUT_MS = 8_000;
+const TERMINAL_GAP_FILL_TIMEOUT_MS = 8_000;
 export const TERMINAL_GAP_NOTICE =
   "Some terminal output was unavailable after reconnect";
 

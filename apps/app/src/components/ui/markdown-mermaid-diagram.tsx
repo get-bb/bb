@@ -34,7 +34,7 @@ import { useAppThemeEpoch } from "@/hooks/useAppTheme";
 import type { Theme } from "@/hooks/useTheme";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export interface MarkdownMermaidDiagramProps {
+interface MarkdownMermaidDiagramProps {
   preferredTheme: Theme;
   source: string;
 }

@@ -11,7 +11,7 @@ import { INFERENCE_POLICY } from "../ai/inference.js";
 
 type ThreadMetadataInferenceDeps = LoggedWorkSessionDeps;
 
-export interface ThreadMetadataInferenceArgs {
+interface ThreadMetadataInferenceArgs {
   environmentId: string | null;
   generateBranchName: boolean;
   generateTitle: boolean;
@@ -21,7 +21,7 @@ export interface ThreadMetadataInferenceArgs {
   writeTranscript: boolean;
 }
 
-export interface ThreadMetadataInferenceResult {
+interface ThreadMetadataInferenceResult {
   branchSlug: string | null;
   titleApplied: boolean;
   title: string | null;

@@ -21,8 +21,8 @@ const RESERVED_ACP_PROVIDER_IDS: ReadonlySet<string> = new Set(
   BUNDLED_PROVIDER_IDS,
 );
 
-export const BB_APP_CONFIG_FILE_NAME = "config.json";
-export const BB_APP_ENV_FILE_NAME = "env.json";
+const BB_APP_CONFIG_FILE_NAME = "config.json";
+const BB_APP_ENV_FILE_NAME = "env.json";
 
 export type BbAppManagedConfigKey =
   | "BB_APP_URL"
@@ -43,15 +43,15 @@ export const PORTABLE_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const CUSTOM_ACP_AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 const CUSTOM_ACP_AGENT_LOGO_PATTERN = /\.(?:svg|png|webp)$/iu;
 
-export interface BbAppManagedConfigWarningLogger {
+interface BbAppManagedConfigWarningLogger {
   warn(fields: Record<string, unknown>, message: string): void;
 }
 
-export interface ParseBbAppManagedConfigOptions {
+interface ParseBbAppManagedConfigOptions {
   logger?: BbAppManagedConfigWarningLogger;
 }
 
-export const bbAppManagedConfigValuesSchema = z
+const bbAppManagedConfigValuesSchema = z
   .object({
     BB_APP_URL: z.string().optional(),
     BB_INFERENCE: z.string().optional(),
@@ -89,11 +89,9 @@ export const customProviderModelSchema = z
   })
   .strict();
 
-export const bbAppManagedEnvNameSchema = z
-  .string()
-  .regex(PORTABLE_ENV_NAME_PATTERN);
+const bbAppManagedEnvNameSchema = z.string().regex(PORTABLE_ENV_NAME_PATTERN);
 
-export const bbAppManagedEnvConfigSchema = z.record(
+const bbAppManagedEnvConfigSchema = z.record(
   bbAppManagedEnvNameSchema,
   z.string(),
 );
@@ -115,7 +113,7 @@ const customAcpAgentModelCliSchema = z
 
 // One user-registered ACP agent. `id` is a slug; BB derives the runtime
 // provider id as `acp-<id>`.
-export const customAcpAgentSchema = z
+const customAcpAgentSchema = z
   .object({
     id: z.string().regex(CUSTOM_ACP_AGENT_ID_PATTERN),
     displayName: z.string().min(1),

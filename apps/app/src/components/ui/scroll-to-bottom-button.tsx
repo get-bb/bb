@@ -1,7 +1,7 @@
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 
-export interface ScrollToBottomButtonProps {
+interface ScrollToBottomButtonProps {
   visible: boolean;
   active?: boolean;
   onClick: () => void;

@@ -382,7 +382,7 @@ export async function resolveLocalBbExecutablePath(
 }
 
 /** Platform-stable name of the bb CLI file inside `BB_CLI_DIR` / daemon dist. */
-export function bbExecutableFileName(): string {
+function bbExecutableFileName(): string {
   return "bb";
 }
 

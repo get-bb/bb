@@ -20,7 +20,7 @@ import {
 } from "./work-row-model";
 
 /** Icon size of the leading glyph (web `size-3.5`). */
-export const WORK_ROW_ICON_SIZE = ROW_LEADING_ICON_SIZE;
+const WORK_ROW_ICON_SIZE = ROW_LEADING_ICON_SIZE;
 
 export interface WorkRowShellProps {
   item: TimelineRowRendererItem<TimelineWorkRowKind>;

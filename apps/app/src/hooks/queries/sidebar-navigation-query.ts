@@ -31,7 +31,7 @@ export function sidebarNavigationQueryKey(): SidebarNavigationQueryKey {
   return [SIDEBAR_NAVIGATION_QUERY_KEY];
 }
 
-export function fetchSidebarNavigation(
+function fetchSidebarNavigation(
   signal?: AbortSignal,
 ): Promise<SidebarBootstrapResponse> {
   return request<SidebarBootstrapResponse>(
@@ -94,7 +94,7 @@ export function useProjectDisplayName(
   return data.projects.find((project) => project.id === projectId)?.name;
 }
 
-export interface SidebarNavigationThreadSelection<T> {
+interface SidebarNavigationThreadSelection<T> {
   /** `select` applied to every thread row in the cache, or `undefined` while it holds nothing. */
   data: T | undefined;
   /**

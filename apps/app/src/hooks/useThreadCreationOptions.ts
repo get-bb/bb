@@ -84,7 +84,7 @@ interface ModelReasoningSelection {
   reasoningLevel: ReasoningLevel;
 }
 
-export interface ProviderModelReasoningSelection extends ModelReasoningSelection {
+interface ProviderModelReasoningSelection extends ModelReasoningSelection {
   providerId: string;
 }
 
@@ -92,7 +92,7 @@ type ProviderModelReasoningSelectionSetter = (
   selection: ProviderModelReasoningSelection,
 ) => void;
 
-export interface UseThreadCreationOptionsResult<TExecutionInputSources> {
+interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   executionOptionsRouting: SystemProvidersQuery;
   selectedProviderId: string;
   setSelectedProviderId: StringSelectionSetter;
@@ -134,7 +134,7 @@ interface ResolveThreadCreationProviderRoutingArgs {
   scope: "component-local" | "new-thread";
 }
 
-export function resolveThreadCreationProviderRouting({
+function resolveThreadCreationProviderRouting({
   environmentId,
   environmentHostId,
   environmentSelectionValue,

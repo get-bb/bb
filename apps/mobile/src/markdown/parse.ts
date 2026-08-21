@@ -28,7 +28,7 @@ export interface ParseMarkdownOptions {
   directives: boolean;
 }
 
-export const DEFAULT_PARSE_MARKDOWN_OPTIONS: ParseMarkdownOptions = {
+const DEFAULT_PARSE_MARKDOWN_OPTIONS: ParseMarkdownOptions = {
   preserveSoftBreaks: false,
   threadMentions: false,
   promptMentions: false,

@@ -59,7 +59,7 @@ const WORKSPACE_OPEN_TARGET_ICONS: Record<string, string | undefined> = {
   zed: zedIcon,
 };
 
-export interface WorkspaceOpenTargetIconProps {
+interface WorkspaceOpenTargetIconProps {
   className?: string;
   target?: Pick<WorkspaceOpenTarget, "icon" | "id">;
   targetId?: WorkspaceOpenTargetId;

@@ -120,13 +120,13 @@ export type RealtimeSubscriptionTarget = z.infer<
   typeof realtimeSubscriptionTargetSchema
 >;
 
-export const subscribeMessageSchema = z.object({
+const subscribeMessageSchema = z.object({
   type: z.literal("subscribe"),
   target: realtimeSubscriptionTargetSchema,
 });
 export type SubscribeMessage = z.infer<typeof subscribeMessageSchema>;
 
-export const unsubscribeMessageSchema = z.object({
+const unsubscribeMessageSchema = z.object({
   type: z.literal("unsubscribe"),
   target: realtimeSubscriptionTargetSchema,
 });

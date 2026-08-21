@@ -23,12 +23,12 @@ import type { TimelineRow } from "@bb/server-contract";
 const DEFAULT_MAX_ENTRIES = 64;
 const DEFAULT_RING_SIZE = 4;
 
-export interface TimelineLatestRows {
+interface TimelineLatestRows {
   maxSeq: number;
   rows: readonly TimelineRow[];
 }
 
-export interface TimelineLatestRowsCache {
+interface TimelineLatestRowsCache {
   /** The snapshot sent for `paramsKey` at exactly `maxSeq`, if still held. */
   get(paramsKey: string, maxSeq: number): TimelineLatestRows | undefined;
   set(paramsKey: string, value: TimelineLatestRows): void;

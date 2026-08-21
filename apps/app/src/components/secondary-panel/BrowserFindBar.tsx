@@ -16,7 +16,7 @@ export interface BrowserFindMatches {
   matches: number;
 }
 
-export interface BrowserFindBarProps {
+interface BrowserFindBarProps {
   inputRef: RefObject<HTMLInputElement | null>;
   query: string;
   /** Null until the first result for the current query arrives, or when the query is empty. */
@@ -36,7 +36,7 @@ interface FindBarButtonProps {
   onClick: () => void;
 }
 
-export function formatBrowserFindMatches(
+function formatBrowserFindMatches(
   matches: BrowserFindMatches | null,
 ): string | null {
   if (matches === null) {

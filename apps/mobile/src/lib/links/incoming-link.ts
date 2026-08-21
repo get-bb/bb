@@ -10,7 +10,7 @@
  * home so a link never strands the user on a "screen does not exist" page.
  */
 
-export const BB_URL_SCHEME = "bb";
+const BB_URL_SCHEME = "bb";
 
 export interface LinkProfileLike {
   id: string;
@@ -54,7 +54,7 @@ export interface ResolveIncomingLinkContext {
 }
 
 /** The add-server route, prefilled with the linked server and a follow-up path. */
-export const ADD_SERVER_PATH = "/settings/servers/add";
+const ADD_SERVER_PATH = "/settings/servers/add";
 
 /** Route groups that exist only in dev / e2e bundles (see app/e2e/reset.tsx). */
 const DEVELOPER_ROUTE_PREFIXES = ["/dev", "/e2e"] as const;

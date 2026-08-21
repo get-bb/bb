@@ -26,7 +26,7 @@ const TIMELINE_WINDOW_MAX_INTERACTION_PINS = 24;
 /** Bound exact heights that survive nested-list unmounts. */
 const TIMELINE_WINDOW_MAX_MEASUREMENTS = 2_000;
 /** Short lists cost less to keep mounted than to virtualize. */
-export const TIMELINE_WINDOWING_MIN_ITEM_COUNT = 20;
+const TIMELINE_WINDOWING_MIN_ITEM_COUNT = 20;
 
 const EMPTY_KEY_SET: ReadonlySet<string> = new Set();
 const GET_NO_SCROLL_ELEMENT = () => null;

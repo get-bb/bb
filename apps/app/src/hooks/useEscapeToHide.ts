@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-export interface UseEscapeToHideArgs {
+interface UseEscapeToHideArgs {
   enabled: boolean;
   isEmpty: () => boolean;
   onHide: () => void;

@@ -1,6 +1,6 @@
 import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 
-export interface ExpandableLineProps {
+interface ExpandableLineProps {
   fullText: string;
   children: ReactNode;
   className?: string;

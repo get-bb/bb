@@ -131,7 +131,7 @@ export function applyBbAppManagedConfig(
   );
 }
 
-export async function readBbAppManagedConfig(
+async function readBbAppManagedConfig(
   args: ReadBbAppManagedConfigArgs,
 ): Promise<BbAppManagedConfig> {
   try {
@@ -147,7 +147,7 @@ export async function readBbAppManagedConfig(
   }
 }
 
-export async function readBbAppManagedEnv(
+async function readBbAppManagedEnv(
   args: ReadBbAppManagedEnvArgs,
 ): Promise<BbAppManagedEnvFile> {
   try {

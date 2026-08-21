@@ -13,7 +13,7 @@ import {
 } from "@bb/shared-ui/dialog";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 
-export interface InstallCliSkillsDialogContentProps {
+interface InstallCliSkillsDialogContentProps {
   hosts: readonly Host[];
   onCancel: () => void;
   onInstall: (hostIds: string[]) => void;
@@ -47,7 +47,7 @@ function machineStatusLabel(args: {
  * single machine there is nothing to choose, so the list is dropped and the
  * machine is named in the description instead.
  */
-export function InstallCliSkillsDialogContent({
+function InstallCliSkillsDialogContent({
   hosts,
   onCancel,
   onInstall,
@@ -135,7 +135,7 @@ export function InstallCliSkillsDialogContent({
   );
 }
 
-export interface InstallCliSkillsDialogProps extends InstallCliSkillsDialogContentProps {
+interface InstallCliSkillsDialogProps extends InstallCliSkillsDialogContentProps {
   onOpenChange: (open: boolean) => void;
   open: boolean;
 }

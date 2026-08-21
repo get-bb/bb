@@ -18,7 +18,7 @@ import type { HostDaemonLogger } from "./logger.js";
  * daemon could not tell whose bridge it was about to delete. A launch now names
  * its plugin, so that workaround is gone.)
  */
-export const PLUGIN_HOST_ARTIFACT_CACHE_SEGMENT = "plugin-host-artifacts";
+const PLUGIN_HOST_ARTIFACT_CACHE_SEGMENT = "plugin-host-artifacts";
 // The downloaded bundle is ESM. Keep the cache filename unambiguous so Node
 // does not inherit module classification from an unrelated ancestor
 // package.json (which can also emit MODULE_TYPELESS_PACKAGE_JSON warnings).

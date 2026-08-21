@@ -41,7 +41,7 @@ export const REASONING_LEVELS = [
 export const PERMISSION_MODES = PRESET_PERMISSION_MODES;
 export type ReasoningLevel = (typeof REASONING_LEVELS)[number];
 export type PermissionMode = PresetPermissionMode;
-export type EnvironmentKind = (typeof PRESET_ENVIRONMENT_KINDS)[number];
+type EnvironmentKind = (typeof PRESET_ENVIRONMENT_KINDS)[number];
 
 export const PERMISSION_LABELS: Record<PermissionMode, string> = {
   "accept-edits": "Accept Edits",
@@ -49,12 +49,12 @@ export const PERMISSION_LABELS: Record<PermissionMode, string> = {
   full: "Full Access",
 };
 
-export const ENVIRONMENT_LABELS: Record<EnvironmentKind, string> = {
+const ENVIRONMENT_LABELS: Record<EnvironmentKind, string> = {
   "project-default": "Project default",
   "new-worktree": "New worktree",
 };
 
-export interface MachineOption {
+interface MachineOption {
   id: string;
   name: string;
 }

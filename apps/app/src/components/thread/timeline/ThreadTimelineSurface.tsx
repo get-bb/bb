@@ -322,7 +322,7 @@ function LoadOlderMessages({
 }
 
 // Delay before revealing the loading indicator so fast loads don't flash.
-export const LOADING_INDICATOR_REVEAL_DELAY_MS = 200;
+const LOADING_INDICATOR_REVEAL_DELAY_MS = 200;
 
 function DelayedThreadLoadingIndicator() {
   const [visible, setVisible] = useState(false);

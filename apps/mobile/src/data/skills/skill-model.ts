@@ -41,7 +41,7 @@ export function skillScopeLabel(
 }
 
 /** Local scopes whose SKILL.md bb may edit / delete. */
-export function isSkillEditable(
+function isSkillEditable(
   skill: Pick<SkillSummary, "scope" | "manageable">,
 ): boolean {
   switch (skill.scope) {

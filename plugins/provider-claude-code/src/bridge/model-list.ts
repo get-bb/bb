@@ -48,7 +48,7 @@ export async function listClaudeCodeBridgeModels(
   }
 }
 
-export interface ClaudeCodeBridgeModelListMemoOptions {
+interface ClaudeCodeBridgeModelListMemoOptions {
   list?: () => ReturnType<typeof listClaudeCodeBridgeModels>;
   now?: () => number;
   ttlMs: number;

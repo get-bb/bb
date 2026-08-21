@@ -11,7 +11,7 @@ import type {
   StoredServiceTier,
 } from "./persisted-selection-fields";
 
-export type ThreadCreationOptionsScope = "new-thread" | "component-local";
+type ThreadCreationOptionsScope = "new-thread" | "component-local";
 
 export interface ThreadPromptSelections {
   selectedProviderId: string;
@@ -62,7 +62,7 @@ export interface UseComponentLocalCreationOptions extends UsePromptModelReasonin
   scope: "component-local";
 }
 
-export interface StoredCreateExecutionValues {
+interface StoredCreateExecutionValues {
   selectedProviderId: string;
   selectedModel: string;
   serviceTier: StoredServiceTier;
@@ -70,7 +70,7 @@ export interface StoredCreateExecutionValues {
   permissionMode: StoredPermissionMode;
 }
 
-export interface EffectiveCreateExecutionValues {
+interface EffectiveCreateExecutionValues {
   selectedProviderId: string;
   selectedModel: string;
   serviceTier: ServiceTier | undefined;
@@ -78,7 +78,7 @@ export interface EffectiveCreateExecutionValues {
   permissionMode: PermissionMode;
 }
 
-export interface BuildExecutionInputSourcesArgs {
+interface BuildExecutionInputSourcesArgs {
   effectiveValues: EffectiveCreateExecutionValues;
   forceExplicitModel?: boolean;
   initialProviderSource?: ExecutionInputFieldSource;
@@ -87,13 +87,13 @@ export interface BuildExecutionInputSourcesArgs {
   touchedFields: ReadonlySet<ThreadPromptField>;
 }
 
-export interface SyncThreadPromptSelectionsArgs {
+interface SyncThreadPromptSelectionsArgs {
   currentSelections: ThreadPromptSelections;
   nextSelections: ThreadPromptSelections;
   touchedFields: ReadonlySet<ThreadPromptField>;
 }
 
-export interface UpdateThreadPromptSelectionsArgs {
+interface UpdateThreadPromptSelectionsArgs {
   currentSelections: ThreadPromptSelections;
   field: ThreadPromptField;
   value: ThreadPromptSelections[ThreadPromptField];

@@ -12,7 +12,7 @@ import {
   type TimelineWindowingScrollRoot,
 } from "./TimelineWindowedItemsLoader.js";
 
-export interface TimelineDetailScrollProps {
+interface TimelineDetailScrollProps {
   size: DetailScrollSize;
   /** Hide the outer x-axis when a child owns horizontal scrolling. */
   overflowX?: "auto" | "hidden";

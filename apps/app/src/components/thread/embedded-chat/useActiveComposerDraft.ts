@@ -18,7 +18,7 @@ interface UseActiveComposerDraftArgs {
   ) => void;
 }
 
-export interface UseActiveComposerDraftResult {
+interface UseActiveComposerDraftResult {
   promptDraft: ReturnType<typeof usePromptDraftStorage>;
   /** The persisted bottom-composer draft, independent of any inline edit. */
   currentPromptDraft: PromptDraftState;

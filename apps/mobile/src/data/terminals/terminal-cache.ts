@@ -18,7 +18,7 @@ import {
  * `terminals-changed` refetch confirms.
  */
 
-export function upsertTerminalSession(
+function upsertTerminalSession(
   current: TerminalListResponse | undefined,
   session: TerminalSession,
 ): TerminalListResponse {
@@ -38,7 +38,7 @@ export function upsertTerminalSession(
   };
 }
 
-export function removeTerminalSession(
+function removeTerminalSession(
   current: TerminalListResponse | undefined,
   terminalId: string,
 ): TerminalListResponse | undefined {

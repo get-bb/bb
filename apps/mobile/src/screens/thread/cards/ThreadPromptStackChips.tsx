@@ -631,7 +631,7 @@ export function ThreadModelFallbackCard({
  * context ring. Below it the readout stays out of the way; the full numbers
  * are in the accessibility label and in the thread menu's workspace info.
  */
-export const CONTEXT_WINDOW_RING_THRESHOLD_PERCENT = 60;
+const CONTEXT_WINDOW_RING_THRESHOLD_PERCENT = 60;
 
 /**
  * Small ring in the composer footer: appears only when the context window is

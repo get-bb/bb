@@ -167,7 +167,7 @@ export function resolveBrowserAddressInput(rawInput: string): string | null {
 }
 
 /** Security posture of a loaded URL, for the address-bar indicator. */
-export type BrowserUrlSecurity = "secure" | "insecure" | "none";
+type BrowserUrlSecurity = "secure" | "insecure" | "none";
 
 export function getBrowserUrlSecurity(url: string): BrowserUrlSecurity {
   if (url.length === 0) {

@@ -12,7 +12,7 @@ import {
 let store: HapticsPreferenceStore | null = null;
 
 /** App-wide haptics toggle (client-local, `bb.preferences` MMKV). */
-export function getHapticsPreferenceStore(): HapticsPreferenceStore {
+function getHapticsPreferenceStore(): HapticsPreferenceStore {
   store ??= createHapticsPreferenceStore(createMMKV({ id: "bb.preferences" }));
   return store;
 }

@@ -111,7 +111,7 @@ export function CollapsibleHeader({
   );
 }
 
-export interface ExpandablePanelProps {
+interface ExpandablePanelProps {
   isExpanded: boolean;
   summaryContent: ReactNode;
   headerToneClass: string;

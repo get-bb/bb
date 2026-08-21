@@ -43,7 +43,7 @@ function errorCode(body: unknown): string | null {
   return typeof code === "string" ? code : null;
 }
 
-export class MultipartNetworkError extends Error {
+class MultipartNetworkError extends Error {
   constructor(message = "Network request failed") {
     super(message);
     this.name = "MultipartNetworkError";

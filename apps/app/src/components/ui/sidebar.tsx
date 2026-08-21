@@ -2215,7 +2215,7 @@ const SidebarContent = React.forwardRef<
 });
 SidebarContent.displayName = "SidebarContent";
 
-export type SidebarStickyTierKind = "label" | "project" | "parent";
+type SidebarStickyTierKind = "label" | "project" | "parent";
 
 type SidebarStickyStackProps = React.ComponentProps<"div">;
 

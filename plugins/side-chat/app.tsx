@@ -21,14 +21,14 @@ import {
 import type { sideChatRpcContract } from "./server.js";
 
 const PLUGIN_ID = "side-chat";
-export const PANEL_ACTION_ID = "side-chat";
+const PANEL_ACTION_ID = "side-chat";
 
 /** Every side-chat tab is labeled like the legacy panel tab. */
 const PANEL_TAB_TITLE = "Side chat";
 
 // A type alias (not an interface) so it is assignable to the JsonValue
 // `params` the host persists with the tab.
-export type SideChatPanelParams = {
+type SideChatPanelParams = {
   threadId: string;
   sourceThreadId: string;
   sourceMessageText: string;

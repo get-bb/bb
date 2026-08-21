@@ -30,7 +30,7 @@ export interface ShowcaseArchetype {
 }
 
 /** A mini-window interior. Scenes are components, never image assets. */
-export type ShowcaseScene = (props: { accentToken: string }) => ReactElement;
+type ShowcaseScene = (props: { accentToken: string }) => ReactElement;
 
 /** Scene renderers keyed by archetype id. */
 export type ShowcaseScenes = Record<string, ShowcaseScene>;

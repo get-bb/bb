@@ -7,9 +7,9 @@ const pluginLogsResponseSchema = z.object({
 });
 
 export const PLUGIN_LOGS_DEFAULT_TAIL = 200;
-export const PLUGIN_LOGS_MAX_TAIL = 10_000;
+const PLUGIN_LOGS_MAX_TAIL = 10_000;
 
-export function buildPluginLogsUrl(
+function buildPluginLogsUrl(
   serverUrl: string,
   pluginId: string,
   tail: number,

@@ -9,10 +9,10 @@ import { z } from "zod";
  * in-process source of truth and notifies subscribers.
  */
 
-export const THREAD_RECENT_ITEMS_STORAGE_PREFIX = "bb.thread.recentItems";
-export const THREAD_RECENT_ITEMS_STORAGE_VERSION = 1;
+const THREAD_RECENT_ITEMS_STORAGE_PREFIX = "bb.thread.recentItems";
+const THREAD_RECENT_ITEMS_STORAGE_VERSION = 1;
 /** How many recent items we persist per thread before dropping the oldest. */
-export const THREAD_RECENT_ITEMS_MAX_STORED = 24;
+const THREAD_RECENT_ITEMS_MAX_STORED = 24;
 /** How many recent rows the Files tab shows before "Show more". */
 export const THREAD_RECENT_ITEMS_VISIBLE_LIMIT = 6;
 

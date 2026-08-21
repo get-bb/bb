@@ -103,7 +103,7 @@ const PINNED_SECTION_KEY = "pinned";
 const THREADS_SECTION_KEY = "threads";
 
 /** Label of an environment group row (web `EnvironmentThreadGroupHeader`). */
-export function getEnvironmentGroupLabel(
+function getEnvironmentGroupLabel(
   representativeThread: Pick<
     ThreadListEntry,
     "environmentName" | "environmentBranchName"
@@ -117,7 +117,7 @@ export function getEnvironmentGroupLabel(
 }
 
 /** The indicator state of a thread row on its own (no hidden children). */
-export function getThreadIndicatorState(
+function getThreadIndicatorState(
   thread: ThreadListEntry,
   hasUnsubmittedDraft = false,
 ): ThreadListIndicatorState {

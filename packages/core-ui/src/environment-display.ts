@@ -1,11 +1,11 @@
 import type { Environment, EnvironmentWorkspaceDisplayKind } from "@bb/domain";
 import { resolveEnvironmentWorkspaceDisplayKind } from "@bb/domain";
 
-export type EnvironmentDisplayHostLocality = "local" | "remote";
+type EnvironmentDisplayHostLocality = "local" | "remote";
 
 /** Identity of the machine an environment lives on, for multi-machine
  * surfaces that name the machine (thread metadata, offline notices). */
-export interface EnvironmentDisplayHostIdentity {
+interface EnvironmentDisplayHostIdentity {
   name: string;
   connected: boolean;
 }

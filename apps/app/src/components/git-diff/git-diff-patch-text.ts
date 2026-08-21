@@ -15,7 +15,7 @@ import {
  * parsed file in hand.
  */
 
-export type DiffPatchDisplayStyle = "unified" | "split";
+type DiffPatchDisplayStyle = "unified" | "split";
 type DiffPatchLinePrefix = " " | "+" | "-";
 
 interface DiffPatchLine {
@@ -71,7 +71,7 @@ function getDiffPatchPaths(fileDiff: ParsedGitDiffFile) {
   };
 }
 
-export function collectDiffPatchLines(fileDiff: ParsedGitDiffFile): DiffPatchLine[] {
+function collectDiffPatchLines(fileDiff: ParsedGitDiffFile): DiffPatchLine[] {
   const patchLines: DiffPatchLine[] = [];
 
   fileDiff.hunks.forEach((hunk, hunkIndex) => {
@@ -298,7 +298,7 @@ function groupDiffPatchLinesByHunk(lines: DiffPatchLine[]) {
   return groups;
 }
 
-export function buildUnifiedDiffPatchText({
+function buildUnifiedDiffPatchText({
   fileDiff,
   lines,
 }: {

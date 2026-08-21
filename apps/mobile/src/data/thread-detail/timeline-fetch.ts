@@ -35,7 +35,7 @@ export interface FetchThreadTimelineWindowArgs {
  * the delta's base is stale (the server only sends a delta when it can
  * reconstruct our exact window, so this is defensive).
  */
-export async function mergeThreadTimelineDelta(
+async function mergeThreadTimelineDelta(
   previous: ThreadTimelineResponse | undefined,
   response: ThreadTimelineResponse,
   fetchFull: () => Promise<ThreadTimelineResponse>,

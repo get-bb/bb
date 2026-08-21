@@ -5,7 +5,7 @@ import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useThreadStorageLocation } from "@/hooks/queries/thread-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 
-export type ResolvedLiveFileTarget =
+type ResolvedLiveFileTarget =
   | { status: "loading" }
   | { status: "unavailable" }
   | {

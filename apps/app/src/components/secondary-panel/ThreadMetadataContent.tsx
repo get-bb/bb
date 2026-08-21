@@ -83,7 +83,7 @@ import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 // without bypassing the production rendering path.
 // ---------------------------------------------------------------------------
 
-export interface ParentSelectorRowProps {
+interface ParentSelectorRowProps {
   thread: Thread;
   projectId: string;
   // Project of the current parent thread. A parent may live in another project,
@@ -248,7 +248,7 @@ export function ParentSelectorRow({
   );
 }
 
-export interface ForksRowProps {
+interface ForksRowProps {
   thread: Thread;
   projectId: string;
 }
@@ -259,7 +259,7 @@ export interface ForksRowProps {
  * Fetched with a targeted list query filtered by `sourceThreadId` + `originKind`
  * — no load-all-and-filter. Renders nothing when the thread has no forks.
  */
-export function ForksRow({ thread, projectId }: ForksRowProps) {
+function ForksRow({ thread, projectId }: ForksRowProps) {
   const forksQuery = useThreads({
     projectId: thread.projectId,
     sourceThreadId: thread.id,
@@ -290,7 +290,7 @@ export function ForksRow({ thread, projectId }: ForksRowProps) {
   );
 }
 
-export interface EnvironmentRowProps {
+interface EnvironmentRowProps {
   thread: Thread;
   environment: Environment | null;
   environmentDisplayHost: EnvironmentDisplayHostContext;
@@ -361,7 +361,7 @@ export function EnvironmentRow({
   );
 }
 
-export interface WorkspacePathRowProps {
+interface WorkspacePathRowProps {
   environment: Environment | null;
 }
 
@@ -399,7 +399,7 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
   );
 }
 
-export interface BranchRowProps {
+interface BranchRowProps {
   thread: Thread;
   workspaceStatus: WorkspaceStatus | undefined;
 }
@@ -439,7 +439,7 @@ export function BranchRow({ thread, workspaceStatus }: BranchRowProps) {
   );
 }
 
-export interface PullRequestRowProps {
+interface PullRequestRowProps {
   pullRequest: ThreadPullRequest | null;
 }
 
@@ -522,7 +522,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
   );
 }
 
-export interface MergeBaseRowProps {
+interface MergeBaseRowProps {
   thread: Thread;
   workspaceStatus: WorkspaceStatus | undefined;
   selectedMergeBaseBranch: string | undefined;
@@ -623,7 +623,7 @@ export function MergeBaseRow({
   );
 }
 
-export interface GitStatusRowProps {
+interface GitStatusRowProps {
   thread: Thread;
   environment: Environment | null;
   workspaceStatus: WorkspaceStatus | undefined;
@@ -692,7 +692,7 @@ export function GitStatusRow({
   );
 }
 
-export interface ArchivedRowProps {
+interface ArchivedRowProps {
   thread: Thread;
 }
 
@@ -711,7 +711,7 @@ export function ArchivedRow({ thread }: ArchivedRowProps) {
   );
 }
 
-export interface ThreadCommitsRowProps {
+interface ThreadCommitsRowProps {
   workspaceStatus: WorkspaceStatus | undefined;
   /** When provided, each commit becomes a button that opens its diff. */
   onCommitClick?: (sha: string) => void;
@@ -799,7 +799,7 @@ export function ThreadCommitsRow({
   );
 }
 
-export interface ChangedFilesRowProps {
+interface ChangedFilesRowProps {
   thread: Thread;
   workspaceStatus: WorkspaceStatus | undefined;
   onChangedFileClick?: (selection: WorkspaceChangedFileSelection) => void;
@@ -821,7 +821,7 @@ export function ChangedFilesRow({
   );
 }
 
-export interface ThreadStorageRowProps {
+interface ThreadStorageRowProps {
   controller: ThreadStorageBrowserController;
   filesError?: Error | null;
   isFilesLoading: boolean;

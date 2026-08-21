@@ -25,7 +25,7 @@ export interface ThreadHeaderTitleProps {
  * Subtitle shown under the title. Idle threads show none, and working threads
  * show none either: the timeline's working indicator already carries that.
  */
-export function headerSubtitle(
+function headerSubtitle(
   statusPill: ThreadStatusPill,
   childPillLabel: ThreadHeaderTitleProps["childPillLabel"],
 ): string | null {

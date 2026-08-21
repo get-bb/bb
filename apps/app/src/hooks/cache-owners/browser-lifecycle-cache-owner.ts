@@ -10,7 +10,7 @@ import type { Query, QueryClient } from "@tanstack/react-query";
  * and no reconnect wave when the socket stayed healthy. Left alone it would
  * sit on its loading state until the next mount.
  */
-export interface BrowserLifecycleFetchController {
+interface BrowserLifecycleFetchController {
   suspend: () => void;
   resume: () => void;
 }

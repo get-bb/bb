@@ -555,7 +555,7 @@ function setComposerInputLock(
   }
 }
 
-export function subscribeComposerInputLock(
+function subscribeComposerInputLock(
   storageKey: string | null,
   listener: ComposerInputLockListener,
 ): () => void {

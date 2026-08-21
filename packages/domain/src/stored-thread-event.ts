@@ -38,7 +38,7 @@ interface ThreadEventRowInput extends ThreadEventRowBase {
   data: Record<string, unknown>;
 }
 
-export interface StoredThreadEventParseArgs {
+interface StoredThreadEventParseArgs {
   data: Record<string, unknown>;
   providerThreadId?: string | null;
   scope: ThreadEventScope;
@@ -46,7 +46,7 @@ export interface StoredThreadEventParseArgs {
   type: ThreadEventType;
 }
 
-export type StoredThreadEventDataByType = {
+type StoredThreadEventDataByType = {
   [TType in ThreadEventType]: StoredThreadEventDataFromEvent<
     ThreadEventForType<TType>
   >;

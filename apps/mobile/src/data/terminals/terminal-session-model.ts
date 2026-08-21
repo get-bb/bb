@@ -9,7 +9,7 @@ import type { TerminalSession } from "@bb/server-contract";
 
 const TERMINAL_TITLE_MAX_LENGTH = 200;
 
-export function terminalStatusLabel(status: TerminalSession["status"]): string {
+function terminalStatusLabel(status: TerminalSession["status"]): string {
   switch (status) {
     case "starting":
       return "starting";

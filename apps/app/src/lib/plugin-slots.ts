@@ -86,7 +86,7 @@ export interface PluginSidebarFooterActionSlot
   extends PluginSidebarFooterActionRegistration, PluginSlotBase {}
 export interface PluginThreadListSlot
   extends PluginThreadListRegistration, PluginSlotBase {}
-export interface PluginThreadHeaderActionSlot
+interface PluginThreadHeaderActionSlot
   extends PluginThreadHeaderActionRegistration, PluginSlotBase {}
 export interface PluginFileOpenerSlot
   extends PluginFileOpenerRegistration, PluginSlotBase {}
@@ -98,7 +98,7 @@ export interface PluginMessageDirectiveSlot
   extends PluginMessageDirectiveRegistration, PluginSlotBase {}
 export interface PluginMessageActionSlot
   extends PluginMessageActionRegistration, PluginSlotBase {}
-export interface PluginProviderIconSlot
+interface PluginProviderIconSlot
   extends PluginProviderIconRegistration, PluginSlotBase {}
 
 /** Flattened view across plugins, ordered by plugin id (deterministic). */

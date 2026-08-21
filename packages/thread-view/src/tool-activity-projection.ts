@@ -128,7 +128,7 @@ export interface ToolActivityProjectionState {
   toolActivity: ToolActivityState;
 }
 
-export interface ToolActivityState {
+interface ToolActivityState {
   runningCallsById: Map<string, RunningExecCall>;
   pendingOutputsByCallId: Map<string, PendingExecutionOutput>;
   activeCell: ToolActivityCell | null;
@@ -144,7 +144,7 @@ interface MergeCallSummaryOptions {
   visibleOutput?: string;
 }
 
-export interface InterruptPendingToolActivityArgs {
+interface InterruptPendingToolActivityArgs {
   completedAt: number | null;
   turnIds?: ReadonlySet<string>;
 }

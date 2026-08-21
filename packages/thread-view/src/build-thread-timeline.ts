@@ -69,7 +69,7 @@ import { extractThreadTimelineModelFallback } from "./model-fallback-extraction.
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 import { buildTimelineErrorDisplay } from "./error-display.js";
 
-export type ThreadTimelineTurnMessageDetail = "summary" | "full";
+type ThreadTimelineTurnMessageDetail = "summary" | "full";
 
 interface ThreadTimelineFromEventsBaseOptions {
   contextOnlyToolCallIds?: ReadonlySet<string>;
@@ -112,12 +112,12 @@ interface ThreadTimelineFromEventsBaseOptions {
   workspaceRoot: string | null;
 }
 
-export interface ThreadTimelineFromEventsOptions extends ThreadTimelineFromEventsBaseOptions {
+interface ThreadTimelineFromEventsOptions extends ThreadTimelineFromEventsBaseOptions {
   includeNestedRows: boolean;
   turnMessageDetail: ThreadTimelineTurnMessageDetail;
 }
 
-export interface BuildThreadTimelineFromEventsArgs {
+interface BuildThreadTimelineFromEventsArgs {
   acceptedClientRequestContext: AcceptedClientRequestContext;
   contextWindowEvents: ThreadEventWithMeta[];
   events: ThreadEventWithMeta[];
@@ -136,12 +136,12 @@ export interface ThreadTimelineFromEventsResult {
   rows: TimelineRow[];
 }
 
-export interface ThreadTimelineSourceSeqRange {
+interface ThreadTimelineSourceSeqRange {
   sourceSeqEnd: number;
   sourceSeqStart: number;
 }
 
-export interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
+interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
   includeProviderUnhandledOperations: boolean;
   providerDisplayName?: string;
   threadStatus: Thread["status"];
@@ -151,12 +151,12 @@ export interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadT
   workspaceRoot: string | null;
 }
 
-export interface BuildThreadTimelineTurnDetailsFromEventsArgs {
+interface BuildThreadTimelineTurnDetailsFromEventsArgs {
   events: ThreadEventWithMeta[];
   options: BuildThreadTimelineTurnDetailsFromEventsOptions;
 }
 
-export type ThreadTimelineTurnDetailsFromEventsResult =
+type ThreadTimelineTurnDetailsFromEventsResult =
   | {
       kind: "matched";
       rows: TimelineRow[];

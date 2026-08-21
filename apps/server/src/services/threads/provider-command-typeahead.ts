@@ -125,7 +125,7 @@ function compareCommands(a: ProviderCommand, b: ProviderCommand): number {
   return a.name.localeCompare(b.name);
 }
 
-export interface BuildCommandListResponseArgs {
+interface BuildCommandListResponseArgs {
   commands: HostProviderCommand[];
   includeBuiltinCompact: boolean;
   skillCatalog: readonly ResolvedSkillCatalogEntry[];

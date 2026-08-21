@@ -22,12 +22,12 @@ import { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-polic
  * Presence-sensitive patch for the thread execution override. A field that is
  * absent (key not present) is left unchanged; an explicit `null` clears it.
  */
-export interface ThreadExecutionOverridePatch {
+interface ThreadExecutionOverridePatch {
   model?: string | null;
   reasoningLevel?: ReasoningLevel | null;
 }
 
-export interface ResolveThreadExecutionOverrideUpdateArgs {
+interface ResolveThreadExecutionOverrideUpdateArgs {
   /** The thread's currently persisted override. */
   existing: ThreadExecutionOverride;
   /** The requested change (presence-sensitive). */
@@ -43,12 +43,12 @@ export interface ResolveThreadExecutionOverrideUpdateArgs {
   fallbackModel: string | null;
 }
 
-export interface ApplyThreadExecutionOverrideArgs {
+interface ApplyThreadExecutionOverrideArgs {
   thread: Thread;
   patch: ThreadExecutionOverridePatch;
 }
 
-export interface RecoverThreadModelOverrideArgs {
+interface RecoverThreadModelOverrideArgs {
   model: string | undefined;
   modelSource: CallerExecutionInputSource | undefined;
   thread: Thread;

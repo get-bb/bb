@@ -6,14 +6,14 @@ import { isApprovalPendingInteractionPayload } from "@bb/domain";
 import { assertNever } from "./assert-never.js";
 import { summarizePendingInteractionRequestedPermissions } from "./pending-interaction-formatting.js";
 
-export type PendingInteractionPresentationSurface = "app" | "cli";
+type PendingInteractionPresentationSurface = "app" | "cli";
 
-export interface FormatPendingInteractionSummaryArgs {
+interface FormatPendingInteractionSummaryArgs {
   interaction: PendingInteraction;
   surface: PendingInteractionPresentationSurface;
 }
 
-export interface FormatPendingInteractionUserQuestionOptionLabelArgs {
+interface FormatPendingInteractionUserQuestionOptionLabelArgs {
   question: PendingInteractionUserQuestionQuestion;
   value: string;
 }

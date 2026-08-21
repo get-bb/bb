@@ -38,7 +38,7 @@ export type SidebarOrganizationMode = "project" | "chronological" | "machine";
 // that the runtime normalizes back to "updated".
 export type SidebarChronologicalSort = "updated" | "created" | "alpha" | "none";
 
-export const DEFAULT_SIDEBAR_SECTION_ORDER: readonly string[] = [
+const DEFAULT_SIDEBAR_SECTION_ORDER: readonly string[] = [
   "pinned",
   "projects",
   "threads",

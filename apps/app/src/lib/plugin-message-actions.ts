@@ -13,7 +13,7 @@ import type { PluginMessageActionSlot } from "./plugin-slots";
  * (sidebarFooterAction, threadPanelAction).
  */
 
-export interface RunPluginMessageActionArgs {
+interface RunPluginMessageActionArgs {
   slot: PluginMessageActionSlot;
   threadId: string;
   message: ThreadChatMessageReference;

@@ -20,7 +20,7 @@ export interface SharePayload {
  * iOS accepts a real `url` item (apps like Messages / Notes render it as a
  * link); Android's `Share.share` only reads `message`, so the URL goes there.
  */
-export function buildSharePayload(
+function buildSharePayload(
   platform: "ios" | "android" | "web" | "windows" | "macos",
   { title, url }: ThreadShareContent,
 ): SharePayload {

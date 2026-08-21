@@ -7,12 +7,14 @@ import {
 } from "./code-rendering";
 
 /** Shared by the mount and the host's crash check. */
-export const SOURCE_CODE_RENDERER_SLOT_KIND = "sourceCodeRenderer";
+const SOURCE_CODE_RENDERER_SLOT_KIND = "sourceCodeRenderer";
 
 const BbSourceCode = lazy(() => import("./BbSourceCode"));
 
-export interface SourceCodeHostProps
-  extends Omit<BbSourceCodeProps, "overflow" | "highlightedLines"> {
+interface SourceCodeHostProps extends Omit<
+  BbSourceCodeProps,
+  "overflow" | "highlightedLines"
+> {
   overflow?: BbSourceCodeProps["overflow"];
   highlightedLines?: BbSourceCodeProps["highlightedLines"];
   /** Rendered while BB's renderer chunk loads. */

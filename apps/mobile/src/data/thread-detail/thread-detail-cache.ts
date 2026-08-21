@@ -18,7 +18,7 @@ import {
  * without their own round trip.
  */
 
-export function stripThreadIncludes(
+function stripThreadIncludes(
   thread: ThreadWithIncludesResponse,
 ): ThreadResponse {
   const { environment: _environment, host: _host, ...threadResponse } = thread;

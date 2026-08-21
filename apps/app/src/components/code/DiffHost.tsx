@@ -10,11 +10,11 @@ import {
 } from "./code-rendering";
 
 /** Shared by the mount and the host's crash check. */
-export const DIFF_RENDERER_SLOT_KIND = "diffRenderer";
+const DIFF_RENDERER_SLOT_KIND = "diffRenderer";
 
 const BbDiff = lazy(() => import("./BbDiff"));
 
-export interface DiffHostProps extends Partial<DiffPresentation> {
+interface DiffHostProps extends Partial<DiffPresentation> {
   /**
    * The parsed diff to render. Callers parse it anyway for their own header,
    * and the diff panel additionally enriches it with full file contents so the

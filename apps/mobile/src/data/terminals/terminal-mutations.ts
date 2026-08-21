@@ -15,8 +15,8 @@ import {
  */
 
 /** Size a terminal is created with before the page reports its real fit. */
-export const DEFAULT_TERMINAL_COLS = 80;
-export const DEFAULT_TERMINAL_ROWS = 24;
+const DEFAULT_TERMINAL_COLS = 80;
+const DEFAULT_TERMINAL_ROWS = 24;
 
 export interface CreateTerminalRequest {
   scope: TerminalCreateScope;

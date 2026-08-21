@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export interface SettingsSectionProps {
+interface SettingsSectionProps {
   action?: ReactNode;
   children: ReactNode;
   description?: string;
@@ -58,7 +58,7 @@ export function SettingsSection({
   );
 }
 
-export interface SettingsRowListProps {
+interface SettingsRowListProps {
   children: ReactNode;
 }
 
@@ -66,7 +66,7 @@ export function SettingsRowList({ children }: SettingsRowListProps) {
   return <div className="divide-y divide-border">{children}</div>;
 }
 
-export interface SettingsRowProps {
+interface SettingsRowProps {
   children: ReactNode;
   /** Extra classes for rows that need positioning, e.g. a stretched row link. */
   className?: string;
@@ -85,7 +85,7 @@ export function SettingsRow({ children, className }: SettingsRowProps) {
   );
 }
 
-export interface SettingsWithControlProps {
+interface SettingsWithControlProps {
   label: string;
   labelBadge?: string;
   description?: ReactNode;

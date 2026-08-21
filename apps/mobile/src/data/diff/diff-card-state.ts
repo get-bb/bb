@@ -12,7 +12,7 @@ import type { DiffFileEntry } from "@bb/server-contract";
  */
 
 /** Many-file diffs open collapsed by default. */
-export const DIFF_AUTO_COLLAPSE_FILE_THRESHOLD = 10;
+const DIFF_AUTO_COLLAPSE_FILE_THRESHOLD = 10;
 
 export interface DiffCardInitialStateArgs {
   entry: Pick<DiffFileEntry, "changeKind">;

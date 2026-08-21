@@ -28,7 +28,7 @@ const SYSTEM_TARGET = { kind: "system" } satisfies RealtimeSubscriptionTarget;
  * `thread-detail`). Pass a memoized `target` (or use the typed helpers
  * below): a fresh object every render would bounce the server subscription.
  */
-export function useRealtimeSubscription(
+function useRealtimeSubscription(
   target: RealtimeSubscriptionTarget | null,
   options?: RealtimeSubscriptionOptions,
 ): void {

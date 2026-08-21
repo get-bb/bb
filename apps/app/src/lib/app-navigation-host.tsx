@@ -11,7 +11,7 @@ import type {
 } from "@get-bb/plugin-sdk";
 import type { FileTabViewerOverride } from "@/components/plugin/file-opener-tabs";
 
-export interface AppUrlOpenIntent {
+interface AppUrlOpenIntent {
   url: string;
 }
 
@@ -32,7 +32,7 @@ export interface AppFixedTabOpenIntent {
   target?: JsonValue;
 }
 
-export interface AppNavigationHostCapabilities {
+interface AppNavigationHostCapabilities {
   openFileExternally?: (intent: ExperimentalFileOpenOptions) => boolean;
   openFilePreview?: (intent: AppFilePreviewIntent) => boolean;
   openFixedTab?: (intent: AppFixedTabOpenIntent) => boolean;

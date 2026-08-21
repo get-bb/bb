@@ -17,7 +17,7 @@ import {
 
 export type Db = Database.Database;
 
-export const AUTOMATION_MAX_CONSECUTIVE_FAILURES = 3;
+const AUTOMATION_MAX_CONSECUTIVE_FAILURES = 3;
 export const AUTOMATION_RETRY_BASE_MS = 30_000;
 
 export interface AutomationRow {
@@ -201,7 +201,7 @@ export const migrations = [
  * (AUTOMATION_MAX_CONSECUTIVE_FAILURES), so the sequence never grows past
  * that; raise the strike count and this doubles further.
  */
-export function automationRetryDelayMs(consecutiveFailures: number): number {
+function automationRetryDelayMs(consecutiveFailures: number): number {
   const exponent = Math.max(0, consecutiveFailures - 1);
   return AUTOMATION_RETRY_BASE_MS * 2 ** exponent;
 }
@@ -533,7 +533,7 @@ export function listDueAutomations(
     .map(requiredAutomationRow);
 }
 
-export type ClaimScheduledRunResult =
+type ClaimScheduledRunResult =
   | { advanced: false }
   | { advanced: true; automation: AutomationRow; run: AutomationRunRow };
 
@@ -826,7 +826,7 @@ export function createManualRun(
   })();
 }
 
-export function getAutomationRun(db: Db, id: string): AutomationRunRow | null {
+function getAutomationRun(db: Db, id: string): AutomationRunRow | null {
   return optionalRunRow(
     db
       .prepare(

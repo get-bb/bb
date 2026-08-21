@@ -39,7 +39,7 @@ export function useAsyncAtomValue<T>(
   return useAsyncAtomState(asyncAtom, fallback).data;
 }
 
-export interface AsyncAtomState<T> {
+interface AsyncAtomState<T> {
   data: T;
   error: unknown | null;
   isLoading: boolean;

@@ -24,7 +24,7 @@ import {
 const DIFF_FILES_OVERSCAN = 4;
 const DIFF_FILES_GAP_PX = 8;
 
-export interface DiffFilesPanelProps {
+interface DiffFilesPanelProps {
   environmentId: string;
   target: WorkspaceDiffTarget;
   /** Single identity for the active (environment, target) diff slice. */

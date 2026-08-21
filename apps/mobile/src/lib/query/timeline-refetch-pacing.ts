@@ -47,7 +47,7 @@ function cancellersFor(queryClient: QueryClient): Map<string, () => void> {
   return cancellers;
 }
 
-export function hasActiveFetchingQueries(
+function hasActiveFetchingQueries(
   queryClient: QueryClient,
   queryKey: QueryKey,
 ): boolean {
@@ -88,7 +88,7 @@ function scheduleTrailingActiveRefetch(
   cancellers.set(scheduleKey, unsubscribe);
 }
 
-export function cancelTrailingActiveRefetch(
+function cancelTrailingActiveRefetch(
   queryClient: QueryClient,
   queryKey: QueryKey,
 ): void {

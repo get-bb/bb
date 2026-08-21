@@ -24,7 +24,7 @@ export const TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS = 4_000;
 export const TIMELINE_INLINE_OUTPUT_PREVIEW_HEAD_CHARS = 2_000;
 export const TIMELINE_INLINE_OUTPUT_PREVIEW_TAIL_CHARS = 1_000;
 
-export function buildTimelineOutputPreview(output: string): string {
+function buildTimelineOutputPreview(output: string): string {
   const omitted =
     output.length -
     TIMELINE_INLINE_OUTPUT_PREVIEW_HEAD_CHARS -

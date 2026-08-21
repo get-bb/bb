@@ -19,7 +19,7 @@ export function useTasksRpc() {
 
 export type TasksRpc = ReturnType<typeof useTasksRpc>;
 
-export interface TaskListQuery {
+interface TaskListQuery {
   projectId?: string;
   statuses?: TaskStatus[];
   priorities?: TaskPriority[];
@@ -49,21 +49,21 @@ export async function listAllTasks(
   return tasks;
 }
 
-export const INVALIDATION_CHANNELS = [
+const INVALIDATION_CHANNELS = [
   "tasks:changed",
   "projects:changed",
   "comments:changed",
   "threads:changed",
 ] as const;
 
-export type InvalidationChannel = (typeof INVALIDATION_CHANNELS)[number];
+type InvalidationChannel = (typeof INVALIDATION_CHANNELS)[number];
 
 /**
  * Re-runs `onInvalidate` whenever the backend publishes on any of the given
  * realtime channels. The subscription set is fixed (one per known channel) so
  * callers may pass a fresh `channels` array every render.
  */
-export function useInvalidation(
+function useInvalidation(
   channels: readonly InvalidationChannel[],
   onInvalidate: () => void,
 ): void {
@@ -78,7 +78,7 @@ export function useInvalidation(
   useRealtime("threads:changed", () => fire("threads:changed"));
 }
 
-export interface TasksQuery<T> {
+interface TasksQuery<T> {
   data: T | undefined;
   error: string | null;
   isLoading: boolean;
@@ -94,7 +94,7 @@ export interface TasksQuery<T> {
  * refresh provider so the header control can single-flight without a timer.
  * Invalidation- and deps-driven refetches do not mark the shared in-flight bit.
  */
-export interface TasksQuerySnapshot<T> {
+interface TasksQuerySnapshot<T> {
   /** Storage name; the value is validated against `schema` on every read. */
   name: string;
   schema: z.ZodType<T>;

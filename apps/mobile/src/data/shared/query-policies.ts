@@ -69,7 +69,7 @@ export const EXPENSIVE_MANUAL_QUERY_POLICY = {
  * leaves is enough for a quick back-and-forth and keeps a browsing session's
  * memory bounded (web `HEAVY_PAYLOAD_QUERY_POLICY`).
  */
-export const HEAVY_PAYLOAD_GC_TIME_MS = 60_000;
+const HEAVY_PAYLOAD_GC_TIME_MS = 60_000;
 
 export const HEAVY_PAYLOAD_QUERY_POLICY = {
   gcTime: HEAVY_PAYLOAD_GC_TIME_MS,

@@ -17,7 +17,7 @@ interface SplitLayoutStore {
   set(atom: typeof splitLayoutAtom, value: SplitLayout): void;
 }
 
-export interface OpenThreadInSplitArgs {
+interface OpenThreadInSplitArgs {
   store: SplitLayoutStore;
   navigate: (route: string, options?: { replace?: boolean }) => void;
   projectId: string;

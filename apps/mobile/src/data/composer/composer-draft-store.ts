@@ -19,7 +19,7 @@ import {
 
 const PROMPT_DRAFT_STORAGE_PREFIX = "bb.promptbox.contents";
 const PROMPT_DRAFT_STORAGE_VERSION = "3";
-export const COMPOSER_DRAFT_PERSIST_DEBOUNCE_MS = 250;
+const COMPOSER_DRAFT_PERSIST_DEBOUNCE_MS = 250;
 
 export type ComposerDraftScope =
   | { kind: "new-thread" }

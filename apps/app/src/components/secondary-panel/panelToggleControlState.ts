@@ -1,10 +1,10 @@
-export type PanelToggleAction = "enter-full-screen" | "exit-full-screen";
+type PanelToggleAction = "enter-full-screen" | "exit-full-screen";
 
 /**
  * Icon names the toggle can render. A subset of the Icon component's `IconName`
  * union; validity is enforced where the value flows into `<Icon name={…} />`.
  */
-export type PanelToggleIconName = "Maximize2" | "Minimize2";
+type PanelToggleIconName = "Maximize2" | "Minimize2";
 
 interface PanelToggleActionPresentation {
   label: string;
@@ -37,7 +37,7 @@ const PANEL_TOGGLE_ACTION_PRESENTATION = {
   },
 } as const satisfies Record<PanelToggleAction, PanelToggleActionPresentation>;
 
-export interface PanelToggleControlState {
+interface PanelToggleControlState {
   action: PanelToggleAction;
   label: string;
   isFullScreen: boolean;
@@ -45,7 +45,7 @@ export interface PanelToggleControlState {
   onClick: () => void;
 }
 
-export interface ResolveConversationCollapseControlArgs {
+interface ResolveConversationCollapseControlArgs {
   isConversationCollapsed: boolean;
   onToggleConversationCollapse: () => void;
 }

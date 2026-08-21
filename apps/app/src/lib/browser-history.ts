@@ -29,7 +29,7 @@ interface RecordBrowserVisitArgs {
   title: string | null;
 }
 
-export interface BrowserHistoryController {
+interface BrowserHistoryController {
   entries: readonly BrowserHistoryEntry[];
   recordVisit: (args: RecordBrowserVisitArgs) => void;
   clear: () => void;
