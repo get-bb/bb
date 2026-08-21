@@ -527,24 +527,6 @@ function mapExecutionTitle(row: TimelineExecutionWorkRow): TimelineTitle {
   const content = isCommand
     ? row.command
     : formatToolCallCommand(row.toolName, row.toolArgs);
-  // Keyed by BB's own row status, so a state with no plugin label (error,
-  // interrupted, waiting, denied) falls through to the standard rendering
-  // and the failing tool stays identifiable.
-  const statusLabels = isCommand ? undefined : row.statusLabels;
-  const label =
-    statusLabels && (status === "pending" || status === "completed")
-      ? statusLabels[status]
-      : null;
-  if (label !== null) {
-    return makeTitle({
-      segments: [
-        segment(label, { shimmer: status === "pending", truncate: true }),
-      ],
-      decorations: filterNull([
-        durationDecoration(row.startedAt, row.completedAt),
-      ]),
-    });
-  }
   const explorationTitle = mapSingleExplorationIntentTitle(row);
   if (explorationTitle !== null) {
     return explorationTitle;

@@ -315,14 +315,6 @@ export const timelineToolWorkRowSchema = timelineWorkRowBaseSchema.extend({
   callId: z.string(),
   toolName: z.string(),
   toolArgs: z.record(z.string(), jsonValueSchema).nullable(),
-  /**
-   * Plugin-supplied labels for the native pending/completed title, persisted
-   * on rows projected before `presentation` carried them. `presentation`
-   * supersedes these when both are present.
-   */
-  statusLabels: z
-    .object({ pending: z.string(), completed: z.string() })
-    .optional(),
   output: z.string(),
   outputPreview: timelineOutputPreviewSchema.optional(),
   completedAt: z.number().nullable(),

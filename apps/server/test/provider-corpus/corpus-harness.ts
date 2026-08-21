@@ -28,6 +28,7 @@ import type { ThreadTimelineResponse } from "@bb/server-contract";
 import type { CorpusThread } from "@bb/test-helpers";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
+import { resolveRepoRelativeFile } from "./env-file-path.js";
 import {
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   buildThreadTimelineWithProfile,
@@ -561,11 +562,9 @@ export function readAllowlist(
   }
   const extraPath = env[ALLOWLIST_FILE_ENV];
   if (extraPath !== undefined && extraPath !== "") {
-    const resolved = path.resolve(extraPath);
-    if (!fs.existsSync(resolved)) {
-      throw new Error(`${ALLOWLIST_FILE_ENV} names a missing file: ${resolved}`);
-    }
-    entries.push(...readAllowlistFile(resolved));
+    entries.push(
+      ...readAllowlistFile(resolveRepoRelativeFile(ALLOWLIST_FILE_ENV, extraPath)),
+    );
   }
   return entries;
 }

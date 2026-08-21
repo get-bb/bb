@@ -241,7 +241,7 @@
   },
   "codex/user-question": {
     "events": 18,
-    "rows": 1,
+    "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },

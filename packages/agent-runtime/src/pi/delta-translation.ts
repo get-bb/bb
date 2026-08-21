@@ -25,6 +25,7 @@ import { providerRawEventSchema, toPositiveNumber } from "@bb/domain";
 import type {
   DeltaItemShape,
   DeltaNoTurnFallback,
+  DeltaPresentation,
   ThreadDelta,
 } from "@bb/provider-bridge-protocol";
 import {
@@ -250,6 +251,104 @@ type PiToolExecutionUpdateEvent = z.infer<
 const PI_EMPTY_BASH_OUTPUT_PLACEHOLDERS = ["(no output)"] as const;
 const PI_COMMAND_TOOL_NAMES = new Set(["bash"]);
 const PI_FILE_CHANGE_TOOL_NAMES = new Set(["edit", "write"]);
+// Pi's exploration built-ins, mapped to the grammar v3 exploration kinds so
+// the timeline renders them as reads and searches without any tool-name
+// table in core. This module is the one place Pi's tool names live.
+const PI_FILE_READ_TOOL_NAME = "read";
+const PI_CONTENT_SEARCH_TOOL_NAME = "grep";
+const PI_PATH_SEARCH_TOOL_NAME = "find";
+const PI_LIST_TOOL_NAME = "ls";
+
+const piExplorationArgsSchema = z
+  .object({
+    path: z.string().optional(),
+    pattern: z.string().optional(),
+    query: z.string().optional(),
+  })
+  .passthrough();
+
+function fileNameOf(path: string): string {
+  const segments = path.split("/").filter((segment) => segment.length > 0);
+  return segments[segments.length - 1] ?? path;
+}
+
+function presentationTitle(text: string | undefined): { title?: string } {
+  const firstLine = text?.trim().split("\n", 1)[0]?.trim() ?? "";
+  return firstLine.length === 0 ? {} : { title: firstLine.slice(0, 160) };
+}
+
+/**
+ * The presentation for a Pi exploration tool (grammar v3): the label pair,
+ * a host glyph, and the path or pattern as the headline.
+ */
+function classifyPiExplorationToolUse(
+  toolName: string,
+  args: unknown,
+): { shape: DeltaItemShape; presentation: DeltaPresentation } | null {
+  const parsed = piExplorationArgsSchema.safeParse(args);
+  const fields = parsed.success ? parsed.data : {};
+  const path = toOptionalString(fields.path);
+  const pattern =
+    toOptionalString(fields.pattern) ?? toOptionalString(fields.query);
+  switch (toolName) {
+    case PI_FILE_READ_TOOL_NAME:
+      if (!path) return null;
+      return {
+        shape: { type: "fileRead", path },
+        presentation: {
+          label: { pending: "Reading file", completed: "Read file" },
+          icon: { glyph: "FileText" },
+          ...presentationTitle(fileNameOf(path)),
+        },
+      };
+    case PI_CONTENT_SEARCH_TOOL_NAME:
+      if (!pattern) return null;
+      return {
+        shape: {
+          type: "search",
+          mode: "content",
+          query: pattern,
+          ...(path === undefined ? {} : { path }),
+        },
+        presentation: {
+          label: { pending: "Searching files", completed: "Searched files" },
+          icon: { glyph: "Search" },
+          ...presentationTitle(pattern),
+        },
+      };
+    case PI_PATH_SEARCH_TOOL_NAME:
+      if (!pattern) return null;
+      return {
+        shape: {
+          type: "search",
+          mode: "path",
+          query: pattern,
+          ...(path === undefined ? {} : { path }),
+        },
+        presentation: {
+          label: { pending: "Finding files", completed: "Found files" },
+          icon: { glyph: "FolderOpen" },
+          ...presentationTitle(pattern),
+        },
+      };
+    case PI_LIST_TOOL_NAME:
+      return {
+        shape: {
+          type: "search",
+          mode: "list",
+          query: "",
+          ...(path === undefined ? {} : { path }),
+        },
+        presentation: {
+          label: { pending: "Listing files", completed: "Listed files" },
+          icon: { glyph: "FolderOpen" },
+          ...presentationTitle(path),
+        },
+      };
+    default:
+      return null;
+  }
+}
 
 const ASSISTANT_STREAM_KEY = "assistant";
 
@@ -887,10 +986,13 @@ export function createPiDeltaTranslator(
         if (!piEvent.success) {
           return unexpectedSdkEventDeltas(event, context);
         }
-        const shape = classifyPiToolUse(
+        const exploration = classifyPiExplorationToolUse(
           piEvent.data.toolName,
           piEvent.data.args,
         );
+        const shape =
+          exploration?.shape ??
+          classifyPiToolUse(piEvent.data.toolName, piEvent.data.args);
         rememberStartedToolShape(
           toolShapeKey(context, piEvent.data.toolCallId),
           shape,
@@ -903,6 +1005,9 @@ export function createPiDeltaTranslator(
               ...parentRefField,
             },
             item: shape,
+            ...(exploration === null
+              ? {}
+              : { presentation: exploration.presentation }),
             noTurnFallback: noTurnFallbackFor(piEvent.data, context),
           },
         ];

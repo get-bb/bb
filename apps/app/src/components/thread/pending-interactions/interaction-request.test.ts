@@ -47,7 +47,7 @@ describe("classifyInteractionRequest", () => {
   });
 
   it("lifts today's plan approval subject into a plan_review request that resolves as an approval", () => {
-    const payload = {
+    const payload: PendingInteraction["payload"] = {
       kind: "approval",
       reason: null,
       availableDecisions: ["allow_once", "deny"],
@@ -57,7 +57,7 @@ describe("classifyInteractionRequest", () => {
         plan: "# Plan\n\n1. Do it",
         planFilePath: "/tmp/plan.md",
       },
-    } as const;
+    };
     expect(classifyInteractionRequest({ ...base, payload })).toEqual({
       family: "request",
       kind: "plan_review",
@@ -73,7 +73,9 @@ describe("classifyInteractionRequest", () => {
   });
 
   it("classifies a user question and the target plan_review payload as requests", () => {
-    const questions = [{ id: "q1", prompt: "Which?", multiSelect: false }];
+    const questions = [
+      { id: "q1", prompt: "Which?", multiSelect: false, allowFreeText: true },
+    ];
     expect(
       classifyInteractionRequest({
         payload: { kind: "user_question", questions },

@@ -16,6 +16,9 @@
 #     scripts/provider-corpus/snapshot-rows.sh compare
 #   BB_PROVIDER_CORPUS_SNAPSHOT_DIR=$HOME/.bb/provider-corpus/snapshots/rows.<ws> \
 #     scripts/provider-corpus/snapshot-rows.sh write      # shadow snapshot
+#   BB_PROVIDER_CORPUS_ROW_CLASSES=apps/server/test/provider-corpus/allowlists/<ws>-row-classes.json \
+#     scripts/provider-corpus/snapshot-rows.sh compare    # identity-based classes
+#                                                         # (rows added/removed/moved)
 set -euo pipefail
 
 mode="${1:-compare}"

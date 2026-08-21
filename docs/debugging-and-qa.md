@@ -163,6 +163,30 @@ rows goes to a shadow directory: `BB_PROVIDER_CORPUS_SNAPSHOT_DIR=<dir>`
 redirects both `write` and `compare`. Re-mint `snapshots/rows` from `main`
 after such a PR merges and delete the allowlist file it carried.
 
+A pointer allowlist cannot describe a change that adds or removes rows: every
+later sibling shifts and the diff reports the whole turn. For such a change,
+carry a row-class file instead
+(`apps/server/test/provider-corpus/allowlists/<ws>-row-classes.json`) and set
+`BB_PROVIDER_CORPUS_ROW_CLASSES=<that file>` on the compare run. The gate then
+matches rows by identity (`callId`, `itemId`, `interactionId`, turn id, or row
+id), buckets every change into the first class whose matcher fits, and fails
+on a change no class claims or a class that claims nothing. A class names a
+`reason` and one matcher: `added`, `removed`, `moved` (the row left one
+nesting level for another), `resegmented` (a turn shows a different number of
+visible segments), `reshaped` (`from`/`to` kinds), or `changed` with the
+`fields` it may touch; each narrows by `kind`, `workKind`, `role`, and
+`nested`. Turn bounds that follow a changed child fall into the built-in
+`container-bounds` class. The run prints the count per class and records them
+in `rows-last-run.json`. To iterate on the classes without re-projecting the
+corpus, mint the branch's rows once into a shadow directory and classify the
+two directories offline:
+
+```bash
+pnpm exec tsx scripts/provider-corpus/classify-row-diff.ts \
+  ~/.bb/provider-corpus/snapshots/rows ~/.bb/provider-corpus/snapshots/rows.<ws> \
+  --classes apps/server/test/provider-corpus/allowlists/<ws>-row-classes.json --verbose
+```
+
 Perf compare mode passes when each thread's normalized cost is within 10% of
 the baseline (or within 5 ms of intrinsic cost for the small latest-page
 builds) and the median event size is within 15%. The normalized cost is the

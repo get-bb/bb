@@ -152,9 +152,16 @@
 //     provider `rootPath`, and the old vocabulary could not name a plugin
 //     provider. An old daemon rejects the new scope values.
 //
+// 151 (WS3 layer 5): the server no longer enriches tool-call events with the
+// plugin `statusLabels` pair — the bridge's persisted `presentation` is the
+// only label source — so the `item.statusLabels` key left the toolCall item
+// schema and the daemon-wire guard that rejected a daemon-supplied one is
+// gone. A daemon never sent the key, so the bytes on the wire are unchanged;
+// the bump records that the wire's acceptance rules moved.
+//
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 150 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 151 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

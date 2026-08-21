@@ -12,17 +12,9 @@ import type {
   EventProjectionToolCallMessage,
   EventProjectionToolParsedIntent,
 } from "./event-projection-types.js";
-import { getFirstStringField } from "./format-helpers.js";
 import {
-  baseToolName,
   extractShellCommandFromString,
-  formatToolCallCommand,
-  isDelegationToolName,
-  isStructuredListToolName,
-  isStructuredReadToolName,
-  isStructuredSearchToolName,
   parseShellCommandIntents,
-  stripAgentOutputMetadata,
 } from "./tool-call-parsing.js";
 
 interface DelegationMetadata {
@@ -104,7 +96,6 @@ export interface ToolCallExecutionUpdate extends ExecutionUpdateBase {
   kind: "tool-call";
   toolName?: string;
   toolArgs?: JsonObject | null;
-  statusLabels?: { pending: string; completed: string };
   parsedIntents?: EventProjectionToolParsedIntent[];
   approvalStatus?: EventProjectionApprovalLifecycleStatus | null;
 }
@@ -142,107 +133,6 @@ type ExecLifecycleEvent =
       appendOutput?: boolean;
       replaceOutput?: boolean;
     };
-
-function buildStructuredReadIntents(
-  toolName: string,
-  args: Record<string, unknown> | null,
-): EventProjectionToolParsedIntent[] {
-  const path = getFirstStringField(args, ["file_path", "file", "path"]);
-  if (!path) {
-    return [];
-  }
-
-  return [
-    {
-      type: "read",
-      cmd: formatToolCallCommand(toolName, args),
-      name: baseToolName(toolName),
-      path,
-    },
-  ];
-}
-
-function buildStructuredSearchIntents(
-  toolName: string,
-  args: Record<string, unknown> | null,
-): EventProjectionToolParsedIntent[] {
-  const query = getFirstStringField(args, ["pattern", "query"]);
-  if (!query) {
-    return [];
-  }
-
-  return [
-    {
-      type: "search",
-      cmd: formatToolCallCommand(toolName, args),
-      query,
-      path: getFirstStringField(args, ["path"]) ?? null,
-    },
-  ];
-}
-
-function buildStructuredListIntents(
-  toolName: string,
-  args: Record<string, unknown> | null,
-): EventProjectionToolParsedIntent[] {
-  const path = getFirstStringField(args, ["path", "pattern"]);
-  if (!path) {
-    return [];
-  }
-
-  return [
-    {
-      type: "list_files",
-      cmd: formatToolCallCommand(toolName, args),
-      path,
-    },
-  ];
-}
-
-function getStructuredToolParsedIntents(
-  toolName: string,
-  args: Record<string, unknown> | null,
-): EventProjectionToolParsedIntent[] {
-  const baseName = baseToolName(toolName);
-  if (isStructuredReadToolName(baseName)) {
-    return buildStructuredReadIntents(toolName, args);
-  }
-  if (isStructuredSearchToolName(baseName)) {
-    return buildStructuredSearchIntents(toolName, args);
-  }
-  if (isStructuredListToolName(baseName)) {
-    return buildStructuredListIntents(toolName, args);
-  }
-  return [];
-}
-
-function getDelegationMetadata(
-  toolName: string,
-  args: Record<string, unknown> | null,
-): DelegationMetadata {
-  if (!isDelegationToolName(toolName)) {
-    return {};
-  }
-
-  const subagentType = getFirstStringField(args, [
-    "subagent_type",
-    "subagentType",
-  ]);
-  const description = getFirstStringField(args, ["description", "prompt"]);
-  const model = getFirstStringField(args, ["model"]);
-  return {
-    ...(subagentType ? { subagentType } : {}),
-    ...(description ? { description } : {}),
-    ...(model ? { model } : {}),
-  };
-}
-
-function formatToolCallResultOutput(toolName: string, output: string): string {
-  if (baseToolName(toolName) === "Agent") {
-    return stripAgentOutputMetadata(output);
-  }
-  return output;
-}
 
 export function parseExecLifecycleEvent(
   decoded: ThreadEvent,
@@ -401,59 +291,32 @@ export function parseToolCallLifecycleEvent(
       kind === "end" ? itemStatusToExecStatus(decoded.item.status) : "pending";
     const completedAt = kind === "end" ? meta.createdAt : null;
     const result = decoded.item.result;
-    const rawOutput =
+    const output =
       typeof result === "string"
         ? result
         : result !== undefined
           ? JSON.stringify(result)
           : undefined;
-    const output =
-      rawOutput !== undefined
-        ? formatToolCallResultOutput(fullToolName, rawOutput)
-        : undefined;
     const errorField = decoded.item.error;
-    const parsedIntents = getStructuredToolParsedIntents(
-      fullToolName,
-      parsedArgs,
-    );
-    const executionKind = isDelegationToolName(fullToolName)
-      ? "delegation"
-      : "tool-call";
-    const delegationMetadata = getDelegationMetadata(fullToolName, parsedArgs);
     const toolArgs = parseToolArgs(parsedArgs);
-    const statusLabels = decoded.item.statusLabels;
     const presentation = decoded.item.presentation;
 
-    const baseCall = {
-      callId,
-      toolName: fullToolName,
-      output: kind === "end" ? (output ?? errorField) : undefined,
-      completedAt,
-      status,
-      ...(presentation ? { presentation } : {}),
-      ...(parentToolCallId ? { parentToolCallId } : {}),
-    };
-
-    if (executionKind === "delegation") {
-      return {
-        kind,
-        call: {
-          ...baseCall,
-          kind: executionKind,
-          ...delegationMetadata,
-        },
-      };
-    }
-
+    // A generic tool call. Its kind, its label and whether it delegated work
+    // come from the persisted item (the bridge's presentation, the v3 item
+    // kinds, child turns linked by `parentToolCallId`), never from its name.
     return {
       kind,
       call: {
-        ...baseCall,
-        kind: executionKind,
+        kind: "tool-call",
+        callId,
+        toolName: fullToolName,
+        output: kind === "end" ? (output ?? errorField) : undefined,
+        completedAt,
+        status,
         toolArgs,
-        ...(statusLabels ? { statusLabels } : {}),
-        parsedIntents,
-        ...delegationMetadata,
+        parsedIntents: [],
+        ...(presentation ? { presentation } : {}),
+        ...(parentToolCallId ? { parentToolCallId } : {}),
       },
     };
   }

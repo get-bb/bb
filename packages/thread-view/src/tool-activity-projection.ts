@@ -107,7 +107,6 @@ interface RunningToolCallExecution extends RunningExecutionBase {
   kind: "tool-call";
   toolName: string | null;
   toolArgs: JsonObject | null;
-  statusLabels?: { pending: string; completed: string };
   parsedIntents: EventProjectionToolParsedIntent[];
   approvalStatus: EventProjectionApprovalLifecycleStatus | null;
 }
@@ -347,9 +346,6 @@ function createRunningExecCall(
         kind: "tool-call",
         toolName: incoming.toolName ?? null,
         toolArgs: incoming.toolArgs ?? null,
-        ...(incoming.statusLabels
-          ? { statusLabels: incoming.statusLabels }
-          : {}),
         parsedIntents: incoming.parsedIntents ?? [],
         approvalStatus: incoming.approvalStatus ?? null,
       };
@@ -391,7 +387,6 @@ interface ToolCallExecutionFieldsTarget {
   parsedIntents: EventProjectionToolParsedIntent[];
   toolArgs: JsonObject | null;
   toolName: string | null;
-  statusLabels?: { pending: string; completed: string };
 }
 
 interface ToolCallExecutionFieldsSource {
@@ -400,7 +395,6 @@ interface ToolCallExecutionFieldsSource {
   status?: EventProjectionToolCallMessage["status"];
   toolArgs?: JsonObject | null;
   toolName?: string | null;
-  statusLabels?: { pending: string; completed: string };
 }
 
 interface DelegationExecutionFieldsTarget {
@@ -475,8 +469,6 @@ function mergeToolCallExecutionFields(
   if (incoming.toolArgs && !target.toolArgs) {
     target.toolArgs = incoming.toolArgs;
   }
-  if (incoming.statusLabels && !target.statusLabels)
-    target.statusLabels = incoming.statusLabels;
   target.parsedIntents = chooseParsedIntents(
     target.parsedIntents,
     incoming.parsedIntents ?? [],
@@ -983,7 +975,7 @@ function createExecMessage(
     return {
       ...base,
       kind: "delegation",
-      toolName: call.toolName ?? "Agent",
+      toolName: call.toolName ?? "delegation",
       childRef: call.childRef,
       background: call.background,
       subagentType: call.subagentType,
@@ -998,7 +990,6 @@ function createExecMessage(
     kind: "tool-call",
     toolName: call.toolName ?? "tool",
     toolArgs: call.toolArgs,
-    ...(call.statusLabels ? { statusLabels: call.statusLabels } : {}),
     parsedIntents: call.parsedIntents,
     approvalStatus: call.approvalStatus,
   };

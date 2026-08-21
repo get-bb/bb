@@ -62,13 +62,6 @@ interface ToolCallItemEventArgs {
   type: "item/completed" | "item/started";
 }
 
-interface LowercaseStructuredToolCase {
-  expectedIntent: JsonObject;
-  expectedTitle: string;
-  tool: string;
-  toolArgs: JsonObject;
-}
-
 interface ImageViewItemEventArgs {
   itemId?: string;
   path?: string;
@@ -966,49 +959,17 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(collectToolRows(rows)).toHaveLength(1);
   });
 
-  const lowercaseStructuredToolCases: LowercaseStructuredToolCase[] = [
-    {
-      expectedIntent: {
-        type: "read",
-        name: "read",
-        path: "src/app.ts",
-      },
-      expectedTitle: "Read src/app.ts",
-      tool: "read",
-      toolArgs: { path: "src/app.ts", offset: 1, limit: 20 },
-    },
-    {
-      expectedIntent: {
-        type: "search",
-        query: "TODO",
-        path: "src",
-      },
-      expectedTitle: "Searched for TODO in src",
-      tool: "grep",
-      toolArgs: { pattern: "TODO", path: "src" },
-    },
-    {
-      expectedIntent: {
-        type: "list_files",
-        path: "src/**/*.ts",
-      },
-      expectedTitle: "Listed files in src/**/*.ts",
-      tool: "glob",
-      toolArgs: { pattern: "src/**/*.ts" },
-    },
-  ];
-
-  it.each(lowercaseStructuredToolCases)(
-    "humanizes Pi's lowercase $tool tool calls",
-    ({ expectedIntent, expectedTitle, tool, toolArgs }) => {
+  it.each(["read", "grep", "glob", "Read", "Grep", "Glob"])(
+    "renders a %s tool call as a generic tool row: no tool-name table derives an intent",
+    (tool) => {
+      // The provider's bridge emits fileRead/search items for its reads and
+      // searches (Pi's translation maps read/grep/find/ls; Claude's maps
+      // Read/Grep/Glob). A bare tool call persisted before that, or from a
+      // bridge that has not migrated, is a tool row titled by its name.
+      const toolArgs = { path: "src/app.ts", pattern: "TODO" };
       const rows = buildTimelineRows([
         turnStartedEvent({ seq: 1 }),
-        toolCallItemEvent({
-          seq: 2,
-          tool,
-          toolArgs,
-          type: "item/started",
-        }),
+        toolCallItemEvent({ seq: 2, tool, toolArgs, type: "item/started" }),
         toolCallItemEvent({
           result: "ok",
           seq: 3,
@@ -1018,51 +979,38 @@ describe("buildThreadTimelineFromEvents", () => {
         }),
       ]);
       const [row] = collectToolRows(rows);
-
       expect(row).toBeDefined();
       if (!row) {
         throw new Error(`Expected a projected ${tool} tool row`);
       }
-      expect(row.activityIntents).toEqual([
-        expect.objectContaining(expectedIntent),
-      ]);
+      expect(row.activityIntents).toEqual([]);
       expect(
         buildTimelineRowTitle(row, {
           summaryStyle: "bundle",
           workStyle: "default",
         }).plain,
-      ).toBe(expectedTitle);
+      ).toBe(`Ran tool ${tool} { path: src/app.ts, pattern: TODO }`);
     },
   );
 
-  it("preserves server-enriched plugin status labels on a tool row", () => {
-    const statusLabels = {
-      pending: "Reading project overview",
-      completed: "Read project overview",
-    };
+  it("drops a statusLabels key a row persisted before the field was deleted", () => {
+    // Rows enriched by the old server keep decoding; the key is stripped and
+    // the row titles from its name (the bridge's presentation is the only
+    // label source now).
     const rows = buildTimelineRows([
       turnStartedEvent({ seq: 1 }),
       toolCallItemEvent({
-        statusLabels,
+        statusLabels: { pending: "Reading", completed: "Read" },
         seq: 2,
-        tool: "repository_context",
-        type: "item/started",
-      }),
-      toolCallItemEvent({
-        statusLabels,
-        seq: 3,
         tool: "repository_context",
         type: "item/completed",
       }),
     ]);
-
-    expect(collectToolRows(rows)).toEqual([
-      expect.objectContaining({
-        statusLabels,
-        status: "completed",
-        toolName: "repository_context",
-      }),
-    ]);
+    const [row] = collectToolRows(rows);
+    expect(row).toEqual(
+      expect.objectContaining({ status: "completed", toolName: "repository_context" }),
+    );
+    expect(row).not.toHaveProperty("statusLabels");
   });
 
   it("extracts the exact active Plan turn id from the accepted input scope", () => {
@@ -1269,6 +1217,74 @@ describe("buildThreadTimelineFromEvents", () => {
     });
 
     expect(timeline.activePromptMode).toBeNull();
+  });
+
+  it("makes a persisted call a delegation when rows name it as their parent, whatever its tool name", () => {
+    const event = createTimelineEventFactory({
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const parentToolCallId = "call-helper-1";
+    const rows = buildTimelineRows(
+      fromRows([
+        event.turnStarted({ seq: 1 }),
+        event.toolCallStarted({
+          seq: 2,
+          itemId: parentToolCallId,
+          tool: "spawn_helper",
+          arguments: {
+            description: "Audit the docs",
+            subagent_type: "reviewer",
+            model: "fast",
+          },
+        }),
+        event.assistantCompleted({
+          seq: 3,
+          itemId: "helper-progress",
+          parentToolCallId,
+          text: "Read 3 files",
+        }),
+        event.toolCallCompleted({
+          seq: 4,
+          itemId: parentToolCallId,
+          tool: "spawn_helper",
+          result: "done",
+        }),
+      ]),
+    );
+
+    const [delegation] = collectDelegationRows(rows);
+    expect(delegation).toMatchObject({
+      // The row id is minted under the delegation kind, as a bridge-declared
+      // delegation would be, so persisted threads keep stable row ids.
+      id: "thread-1:delegation:call-helper-1",
+      toolName: "spawn_helper",
+      description: "Audit the docs",
+      subagentType: "reviewer",
+      childRef: null,
+      background: false,
+      status: "completed",
+    });
+    expect(delegation?.childRows).toEqual([
+      expect.objectContaining({
+        kind: "conversation",
+        role: "assistant",
+        text: "Read 3 files",
+      }),
+    ]);
+    // A call nothing refers to stays a plain tool row.
+    expect(
+      buildTimelineRows(
+        fromRows([
+          event.turnStarted({ seq: 1 }),
+          event.toolCallCompleted({
+            seq: 2,
+            itemId: "lonely",
+            tool: "spawn_helper",
+          }),
+        ]),
+      ).some((row) => row.kind === "work" && row.workKind === "delegation"),
+    ).toBe(false);
   });
 
   it("omits duplicated background-agent lifecycle rows from delegation children", () => {
@@ -2375,96 +2391,33 @@ describe("buildThreadTimelineFromEvents", () => {
     },
   );
 
-  it("suppresses low-value ToolSearch rows", () => {
-    const rows = buildTimelineRows([
-      turnStartedEvent({ seq: 0 }),
-      toolCallItemEvent({
-        seq: 1,
-        tool: "ToolSearch",
-        toolArgs: { query: "select:TodoWrite", max_results: 1 },
-        type: "item/started",
-      }),
-      toolCallItemEvent({
-        result: "Matched tools: TodoWrite",
-        seq: 2,
-        tool: "ToolSearch",
-        toolArgs: { query: "select:TodoWrite", max_results: 1 },
-        type: "item/completed",
-      }),
-    ]);
-
-    expect(collectToolRows(rows)).toEqual([]);
-  });
-
-  it.each(["TaskCreate", "TaskGet", "TaskList", "TaskUpdate"])(
-    "suppresses pending and completed %s rows",
+  it.each(["ToolSearch", "TaskCreate", "TaskUpdate", "AskUserQuestion"])(
+    "keeps a bare %s tool row: suppression comes from the bridge's presentation, not a name table",
     (tool) => {
+      // The bridges mark these low-value calls `suppress` in their
+      // presentation (see plugins/provider-claude-code/src/presentation.ts);
+      // a row persisted without one renders like any other tool call.
       const rows = buildTimelineRows([
         turnStartedEvent({ seq: 0 }),
         toolCallItemEvent({
           seq: 1,
           tool,
-          toolArgs: { subject: "Hidden task tool" },
+          toolArgs: { subject: "Visible without presentation" },
           type: "item/started",
         }),
         toolCallItemEvent({
           result: "ok",
           seq: 2,
           tool,
-          toolArgs: { subject: "Hidden task tool" },
+          toolArgs: { subject: "Visible without presentation" },
           type: "item/completed",
         }),
       ]);
-
-      expect(collectToolRows(rows)).toEqual([]);
-    },
-  );
-
-  it.each(["TaskCreate", "TaskGet", "TaskList", "TaskUpdate"])(
-    "keeps failed %s rows visible",
-    (tool) => {
-      const rows = buildTimelineRows([
-        turnStartedEvent({ seq: 0 }),
-        toolCallItemEvent({
-          result: "Task tool failed",
-          seq: 1,
-          status: "failed",
-          tool,
-          toolArgs: { subject: "Failed task tool" },
-          type: "item/completed",
-        }),
-      ]);
-
       expect(collectToolRows(rows)).toEqual([
-        expect.objectContaining({
-          output: "Task tool failed",
-          status: "error",
-          toolName: tool,
-        }),
+        expect.objectContaining({ status: "completed", toolName: tool }),
       ]);
     },
   );
-
-  it("suppresses the generic AskUserQuestion tool row in favor of the question row", () => {
-    const rows = buildTimelineRows([
-      turnStartedEvent({ seq: 0 }),
-      toolCallItemEvent({
-        seq: 1,
-        tool: "AskUserQuestion",
-        toolArgs: { questions: [{ question: "Which path?" }] },
-        type: "item/started",
-      }),
-      toolCallItemEvent({
-        result: "ok",
-        seq: 2,
-        tool: "AskUserQuestion",
-        toolArgs: { questions: [{ question: "Which path?" }] },
-        type: "item/completed",
-      }),
-    ]);
-
-    expect(collectToolRows(rows)).toEqual([]);
-  });
 
   it("extracts context-window usage from ordered events", () => {
     expect(

@@ -327,7 +327,7 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("resolves parent crossings through the covering tool-call index", () => {
+  it("resolves parent crossings through the covering delegating-item index", () => {
     const { db, thread } = setup();
 
     const captured = captureStatements(db, () => {
@@ -350,7 +350,7 @@ describe("slow query index plans", () => {
       sql: query.sql,
     });
     expect(details).toMatch(
-      /SEARCH parent_event .*USING COVERING INDEX events_tool_call_parent_lookup_idx/u,
+      /SEARCH parent_event .*USING COVERING INDEX events_delegating_item_lookup_idx/u,
     );
 
     db.$client.close();
@@ -467,7 +467,7 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("loads todo tool calls through the generated tool-name index", () => {
+  it("loads the newest plan snapshot through the kind-based plan-steps index", () => {
     const { db, thread } = setup();
 
     const captured = captureStatements(db, () => {
@@ -475,22 +475,18 @@ describe("slow query index plans", () => {
         listTodoSnapshotEventRowsForThread(db, { threadId: thread.id }),
       ).toEqual([]);
     });
-    const query = captured.find((entry) => entry.sql.includes('"tool_name"'));
+    const query = captured.find((entry) => entry.sql.includes("planSteps"));
     if (!query) {
-      throw new Error("Expected the todo snapshot SQL");
+      throw new Error("Expected the plan snapshot SQL");
     }
+    // Keyed by item kind (and the legacy notification type), never by a
+    // tool name or a payload parse.
     expect(query.sql).not.toContain("json_extract");
-    expect(query.params).toEqual([
-      thread.id,
-      "TodoWrite",
-      "TaskCreate",
-      "TaskUpdate",
-      "TaskList",
-      "TaskGet",
-    ]);
+    expect(query.sql).not.toContain("tool_name");
+    expect(query.params).toEqual([thread.id, 1]); // LIMIT 1
     expect(
       queryPlanDetails({ db, params: query.params, sql: query.sql }),
-    ).toContain("events_todo_tool_call_thread_tool_sequence_idx");
+    ).toContain("events_plan_steps_thread_sequence_idx");
 
     db.$client.close();
   });

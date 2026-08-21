@@ -500,32 +500,7 @@ describe("buildTimelineRowTitle", () => {
     ]);
   });
 
-  it("uses native plugin status labels while preserving the generic fallback", () => {
-    const completed = buildTimelineRowTitle(
-      {
-        ...toolRow(),
-        statusLabels: {
-          pending: "Reading project overview",
-          completed: "Read project overview",
-        },
-      },
-      DEFAULT_OPTIONS,
-    );
-    const pending = buildTimelineRowTitle(
-      {
-        ...toolRow(),
-        status: "pending",
-        completedAt: null,
-        statusLabels: {
-          pending: "Reading project overview",
-          completed: "Read project overview",
-        },
-      },
-      DEFAULT_OPTIONS,
-    );
-
-    expect(completed.plain).toBe("Read project overview (2s)");
-    expect(pending.plain).toBe("Reading project overview");
+  it("titles a generic tool row from its name and arguments, not from a label table", () => {
     expect(
       buildTimelineRowTitle(
         {
@@ -537,41 +512,6 @@ describe("buildTimelineRowTitle", () => {
         DEFAULT_OPTIONS,
       ).plain,
     ).toBe("Ran tool repository_context (2s)");
-  });
-
-  // The labels deliberately cover only pending and completed. Every other
-  // state must fall back to the tool's own identity, or a failing plugin tool
-  // would render as a success sentence and the failure would be unreadable.
-  it("ignores plugin status labels outside pending and completed", () => {
-    const statusLabels = {
-      pending: "Reading project overview",
-      completed: "Read project overview",
-    };
-    const render = (overrides: Partial<ReturnType<typeof toolRow>>): string =>
-      buildTimelineRowTitle(
-        {
-          ...toolRow(),
-          activityIntents: [],
-          toolName: "repository_context",
-          toolArgs: null,
-          statusLabels,
-          ...overrides,
-        },
-        DEFAULT_OPTIONS,
-      ).plain;
-
-    expect(render({ status: "error" })).toContain("repository_context");
-    expect(render({ status: "error" })).not.toContain("Read project overview");
-    expect(render({ status: "interrupted" })).toContain("repository_context");
-    expect(render({ status: "interrupted" })).not.toContain(
-      "Read project overview",
-    );
-    expect(
-      render({ status: "pending", approvalStatus: "waiting_for_approval" }),
-    ).not.toContain("Reading project overview");
-    expect(
-      render({ status: "pending", approvalStatus: "denied" }),
-    ).not.toContain("Reading project overview");
   });
 
   it("can render completed work leaves with muted summary title treatment", () => {

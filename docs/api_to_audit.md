@@ -312,11 +312,14 @@ Before stabilization, audit:
 ## `bb.agents.registerTool({ experimental_statusLabels })`
 
 **What it does.** Lets a native plugin tool supply one short label while it is
-pending and one after successful completion. BB snapshots the labels into the
-tool-call event and renders them in its own timeline; a tool without the field
-keeps the ordinary `Running tool …` / `Ran tool …` title. Approval, error, and
-interruption states deliberately keep their standard titles so the raw tool
-identity and failure state remain clear.
+pending and one after successful completion. The server folds the pair into
+the tool's resolved presentation (see `experimental_presentation` below) and
+the bridge stamps that presentation on every call's `item.open`/`item.close`;
+the timeline reads `presentation.label` and nothing else, so a tool without
+the field keeps the ordinary `Running tool …` / `Ran tool …` title. Core no
+longer copies the labels into the tool-call event as a separate field.
+Approval, error, and interruption states deliberately keep their standard
+titles so the raw tool identity and failure state remain clear.
 
 Each label is capped at 80 characters and rendered as a truncating segment.
 

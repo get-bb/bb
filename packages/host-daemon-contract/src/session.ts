@@ -224,22 +224,6 @@ const hostDaemonWireEventSchema = z
         path: ["sequence"],
       });
     }
-    // Plugin status labels are server-owned presentation metadata, snapshotted
-    // during ingest. Without this guard a daemon could set them directly on
-    // MCP, unknown, and unlabeled tool calls, which the enrichment step leaves
-    // untouched.
-    const item: unknown = (value as { item?: unknown }).item;
-    if (
-      typeof item === "object" &&
-      item !== null &&
-      Object.hasOwn(item, "statusLabels")
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Daemon events must not provide server-owned status labels",
-        path: ["item", "statusLabels"],
-      });
-    }
   })
   .pipe(threadEventSchema);
 

@@ -106,7 +106,7 @@ const SUBAGENT_PRESENTATION: ThreadEventItemPresentation = {
  * compact rendering treat a v3 read and a legacy `Read` identically.
  */
 describe("v3 item projection", () => {
-  it("projects fileRead and search items to file-read and search rows with the legacy intents", () => {
+  it("projects fileRead and search items to file-read and search rows; bare tool calls derive no intent", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const v3 = renderTimelineFixture({
       events: [
@@ -231,9 +231,11 @@ describe("v3 item projection", () => {
     const glob = workRow(v3.rows, "search", "glob-1");
     expect(glob).not.toHaveProperty("presentation");
 
-    // The derived intents equal the legacy Read/Grep/Glob intents except for
-    // the `command`/`name` fields, which name the tool a v3 item does not have.
-    const strip = (rows: TimelineWorkRow[]) =>
+    // The v3 rows derive the read/search/list intents the exploration
+    // bundles read; the same calls persisted as bare `Read`/`Grep`/`Glob`
+    // tool calls derive none — core keeps no tool-name table — and render
+    // as generic tool rows.
+    const intents = (rows: TimelineWorkRow[]) =>
       rows.flatMap((row) =>
         row.workKind === "tool" ||
         row.workKind === "file-read" ||
@@ -244,8 +246,17 @@ describe("v3 item projection", () => {
             )
           : [],
       );
-    expect(strip(workRows(v3.rows))).toEqual(strip(workRows(legacy.rows)));
-    expect(strip(workRows(v3.rows))).toHaveLength(3);
+    expect(intents(workRows(v3.rows))).toEqual([
+      { type: "read", name: "", path: "src/index.ts" },
+      { type: "search", query: "TODO", path: "src" },
+      { type: "list_files", path: "src" },
+    ]);
+    expect(intents(workRows(legacy.rows))).toEqual([]);
+    expect(
+      workRows(legacy.rows).map((row) =>
+        row.workKind === "tool" ? row.toolName : row.workKind,
+      ),
+    ).toEqual(["Read", "Grep", "Glob"]);
 
     // Row titles: the bridge label leads; the structured content follows.
     expect(plainTitle(read)).toBe("Read file src/index.ts");

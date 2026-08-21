@@ -143,6 +143,48 @@ describe("allowlist", () => {
     expect(comparison.staleAllowlist.map((entry) => entry.reason)).toEqual(["stale"]);
     expect(comparison.passed).toBe(false);
   });
+
+  it("lets the root pointer empty one layer of one cell, and reports it stale when the layer is already empty", () => {
+    const oldRows = [{ kind: "conversation", id: "#1", text: "answer" }];
+    const newRows = [
+      { kind: "turn", id: "#1", children: [{ kind: "work", id: "#3", toolName: "bb:AskUserQuestion" }] },
+      { kind: "conversation", id: "#5", text: "answer" },
+    ];
+    const entry: ParityAllowlistEntry = {
+      provider: "codex",
+      cell: "user-question",
+      layer: "rows",
+      path: "/",
+      pr: "#0",
+      reason: "rows are not comparable for this cell",
+    };
+    const masked = compareParity(
+      { events: [], rows: oldRows },
+      { events: [], rows: newRows },
+      [entry],
+      { provider: "codex", cell: "user-question" },
+    );
+    expect(masked.rows).toEqual({ onlyInOld: [], onlyInNew: [] });
+    expect(masked.staleAllowlist).toEqual([]);
+    expect(masked.passed).toBe(true);
+
+    // The events layer of the same cell is untouched by a rows entry.
+    const unmasked = compareParity(
+      { events: [], rows: oldRows },
+      { events: [], rows: newRows },
+      [],
+      { provider: "codex", cell: "user-question" },
+    );
+    expect(unmasked.passed).toBe(false);
+
+    const stale = compareParity(
+      { events: [], rows: [] },
+      { events: [], rows: [] },
+      [entry],
+      { provider: "codex", cell: "user-question" },
+    );
+    expect(stale.staleAllowlist).toEqual([entry]);
+  });
 });
 
 describe("replay through the current bridge", () => {

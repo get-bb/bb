@@ -1,8 +1,10 @@
+import { getFirstStringField, messageId } from "./format-helpers.js";
 import type {
   EventProjectionDelegationMessage,
   EventProjectionMessage,
   EventProjection,
   EventProjectionEntry,
+  EventProjectionToolCallMessage,
   EventProjectionTurn,
 } from "./event-projection-types.js";
 import { findLastTerminalTimelineMessage } from "./timeline-message-helpers.js";
@@ -66,6 +68,59 @@ function isDelegationSourceMessage(
   message: EventProjectionMessage,
 ): message is EventProjectionDelegationMessage {
   return message.kind === "delegation";
+}
+
+/**
+ * A generic tool call that other messages name as their `parentToolCallId`
+ * delegated work, whatever the tool was called: its children are the proof.
+ * Persisted before the `delegation` item kind existed (a Claude `Agent`
+ * call with nested sub-agent turns), it becomes the delegation row those
+ * children nest under. No tool-name table decides this.
+ */
+/**
+ * A persisted tool call that other rows name as their parent is a delegation
+ * whatever the bridge called the tool. Its label metadata comes from the
+ * conventional argument keys a delegating tool carries (`description` or
+ * `prompt`, `subagent_type`, `model`) — argument shape, never a tool name. A grammar v3 `delegation` item carries these fields
+ * explicitly and does not pass through here.
+ */
+function toolCallAsDelegationMessage(
+  message: EventProjectionToolCallMessage,
+): EventProjectionDelegationMessage {
+  const {
+    kind: _kind,
+    toolArgs,
+    parsedIntents: _parsedIntents,
+    approvalStatus: _approvalStatus,
+    ...shared
+  } = message;
+  const subagentType = getFirstStringField(toolArgs, [
+    "subagent_type",
+    "subagentType",
+  ]);
+  const description = getFirstStringField(toolArgs, ["description", "prompt"]);
+  const model = getFirstStringField(toolArgs, ["model"]);
+  return {
+    ...shared,
+    // Re-mint the row id under the delegation kind so a persisted thread
+    // keeps the ids it had when the bridge (or a name table) marked the call
+    // as a delegation; nested rows inherit this id as their prefix.
+    id: messageId(message.threadId, "delegation", message.callId),
+    kind: "delegation",
+    ...(subagentType ? { subagentType } : {}),
+    ...(description ? { description } : {}),
+    ...(model ? { model } : {}),
+    childRef: null,
+    background: false,
+    childProjection: {
+      state: {
+        activeThinking: null,
+        activeWorkflows: [],
+        activeBackgroundCommands: [],
+      },
+      entries: [],
+    },
+  };
 }
 
 function maybeStartedAt(
@@ -261,6 +316,19 @@ class SemanticProjectionBuilder {
   ) {
     this.contextOnlyToolCallIds =
       options.contextOnlyToolCallIds ?? new Set<string>();
+    const referencedParentCallIds = new Set(
+      contexts
+        .map((context) => context.message.parentToolCallId)
+        .filter((id): id is string => id !== undefined),
+    );
+    for (const context of contexts) {
+      if (
+        context.message.kind === "tool-call" &&
+        referencedParentCallIds.has(context.message.callId)
+      ) {
+        context.message = toolCallAsDelegationMessage(context.message);
+      }
+    }
     const delegationCallIds = new Set(
       contexts
         .map((context) => context.message)

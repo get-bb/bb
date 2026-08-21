@@ -946,7 +946,7 @@ describe("pi delta translation equivalence", () => {
     expect(started.item.changes[0]?.diff).toContain("+++ b/src/app.ts");
   });
 
-  it("tool_execution_start with read args preserves structured tool arguments", () => {
+  it("maps Pi's read tool to a fileRead item with its presentation (grammar v3)", () => {
     const harness = createHarness();
     harness.translate(loadFixture("agent-start.json"));
 
@@ -957,18 +957,86 @@ describe("pi delta translation equivalence", () => {
       args: { path: "src/app.ts", offset: 1, limit: 20 },
     } as AgentSessionEvent);
 
+    // Pi's tool names live in its translation, not in a core table: the
+    // read becomes the exploration kind every client renders as "Read file".
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/started",
+        item: expect.objectContaining({
+          type: "fileRead",
+          path: "src/app.ts",
+          status: "pending",
+          presentation: expect.objectContaining({
+            label: { pending: "Reading file", completed: "Read file" },
+            icon: { glyph: "FileText" },
+            title: "app.ts",
+          }),
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    {
+      toolName: "grep",
+      args: { pattern: "TODO", path: "src" },
+      item: { type: "search", mode: "content", query: "TODO", path: "src" },
+      label: "Searched files",
+    },
+    {
+      toolName: "find",
+      args: { pattern: "**/*.ts" },
+      item: { type: "search", mode: "path", query: "**/*.ts" },
+      label: "Found files",
+    },
+    {
+      toolName: "ls",
+      args: { path: "src" },
+      item: { type: "search", mode: "list", query: "", path: "src" },
+      label: "Listed files",
+    },
+  ])(
+    "maps Pi's $toolName tool to a search item",
+    ({ toolName, args, item, label }) => {
+      const harness = createHarness();
+      harness.translate(loadFixture("agent-start.json"));
+      const events = harness.translate({
+        type: "tool_execution_start",
+        toolCallId: `tool-${toolName}-1`,
+        toolName,
+        args,
+      } as AgentSessionEvent);
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "item/started",
+          item: expect.objectContaining({
+            ...item,
+            presentation: expect.objectContaining({
+              label: expect.objectContaining({ completed: label }),
+            }),
+          }),
+        }),
+      );
+    },
+  );
+
+  it("keeps an unknown Pi tool as a generic tool item with its arguments", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+    const events = harness.translate({
+      type: "tool_execution_start",
+      toolCallId: "tool-think-1",
+      toolName: "think",
+      args: { depth: 3 },
+    } as AgentSessionEvent);
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/started",
         item: expect.objectContaining({
           type: "toolCall",
-          tool: "read",
+          tool: "think",
           status: "pending",
-          arguments: expect.objectContaining({
-            path: "src/app.ts",
-            offset: 1,
-            limit: 20,
-          }),
+          arguments: expect.objectContaining({ depth: 3 }),
         }),
       }),
     );
@@ -1052,18 +1120,17 @@ describe("pi delta translation equivalence", () => {
       result: "file contents",
     } as AgentSessionEvent);
 
+    // The close settles the opened fileRead item (the presentation echoes
+    // from the open); a read's result text is not part of the row.
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
         item: expect.objectContaining({
-          type: "toolCall",
-          tool: "read",
+          type: "fileRead",
+          path: "src/app.ts",
           status: "completed",
-          result: "file contents",
-          arguments: expect.objectContaining({
-            path: "src/app.ts",
-            offset: 1,
-            limit: 20,
+          presentation: expect.objectContaining({
+            label: { pending: "Reading file", completed: "Read file" },
           }),
         }),
       }),

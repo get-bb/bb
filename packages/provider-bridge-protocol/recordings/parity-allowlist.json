@@ -790,5 +790,13 @@
     "path": "/0/children/0/presentation",
     "pr": "#2192",
     "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "codex",
+    "cell": "user-question",
+    "layer": "rows",
+    "path": "/",
+    "pr": "#2232",
+    "reason": "Layer 5 deleted core's tool-name suppression set; a bb-injected tool row hides only through the `suppress` the server resolves onto the tool definition. This immutable v2 recording's thread/start predates that field, so the replayed AskUserQuestion call renders as a generic tool row inside a turn (the old leg hid it by name) and the rows layer is not comparable by pointer. Re-record the cell to drop this entry."
   }
 ]

@@ -158,7 +158,6 @@ export interface EventProjectionToolCallMessage
   kind: "tool-call";
   toolName: string;
   toolArgs: JsonObject | null;
-  statusLabels?: { pending: string; completed: string };
   callId: string;
   parsedIntents: EventProjectionToolParsedIntent[];
   output: string;

@@ -690,9 +690,10 @@ export function buildWorkRowFixtureSections(): WorkRowFixtureSection[] {
         }),
         tool("tool-labels", {
           toolName: "deploy_preview",
-          statusLabels: {
-            pending: "Deploying preview",
-            completed: "Deployed preview",
+          presentation: {
+            label: { pending: "Deploying preview", completed: "Deployed preview" },
+            icon: { glyph: "Globe" },
+            title: "bb/mobile",
           },
           toolArgs: { branch: "bb/mobile" },
           output: "https://preview.example.com/bb-mobile",

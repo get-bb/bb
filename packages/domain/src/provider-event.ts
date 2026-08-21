@@ -499,10 +499,6 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
     server: z.string().optional(),
     tool: z.string(),
     arguments: z.record(z.string(), z.unknown()).optional(),
-    /** Server-enriched labels for a native plugin tool's timeline row. */
-    statusLabels: z
-      .object({ pending: z.string(), completed: z.string() })
-      .optional(),
     status: threadEventItemStatusSchema,
     result: z.unknown().optional(),
     error: z.string().optional(),
@@ -510,8 +506,7 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
     truncation: threadEventItemTruncationSchema.optional(),
     /**
      * The escape hatch for tools with no core kind: the bridge says how the
-     * row reads. Supersedes the server-enriched `statusLabels` when both are
-     * present (WS3 deletes `statusLabels`).
+     * row reads (label, glyph, headline, suppression).
      */
     ...itemPresentationField,
     parentToolCallId: z.string().optional(),

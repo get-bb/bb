@@ -47,7 +47,6 @@ import {
 } from "../services/lib/error-log-fields.js";
 import { applyLoggedThreadLifecycleEvent } from "../services/threads/lifecycle-outcome.js";
 import { applyTurnCompletedEvent } from "./turn-completed-events.js";
-import { findPluginAgentTool } from "../services/plugins/plugin-agent-contributions.js";
 import {
   getInactiveSessionLogFields,
   requireAuthenticatedDaemonSession,
@@ -281,39 +280,6 @@ function toStoredEvent(args: ToStoredEventArgs): AppendDaemonEventInput {
     type,
     ...deriveStoredEventItemFields(envelope.event),
     data: JSON.stringify(data),
-  };
-}
-
-/**
- * Plugin status labels are server-owned presentation metadata: providers do
- * not know about them, and old daemon clients therefore need no protocol
- * change. Persist the snapshot on both lifecycle events so historical rows
- * remain readable if a plugin later reloads or disappears.
- */
-function withPluginToolStatusLabels(
-  envelope: HostDaemonEventEnvelope,
-): HostDaemonEventEnvelope {
-  const event = envelope.event;
-  if (
-    (event.type !== "item/started" && event.type !== "item/completed") ||
-    event.item.type !== "toolCall" ||
-    event.item.server !== undefined
-  ) {
-    return envelope;
-  }
-  const statusLabels = findPluginAgentTool(event.item.tool)?.record
-    .experimentalStatusLabels;
-  if (statusLabels === null || statusLabels === undefined) return envelope;
-
-  return {
-    ...envelope,
-    event: {
-      ...event,
-      item: {
-        ...event.item,
-        statusLabels,
-      },
-    },
   };
 }
 
@@ -925,7 +891,7 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
         }
         return {
           ...entry,
-          envelope: withPluginToolStatusLabels(validated),
+          envelope: validated,
         };
       });
       const eventInputs = labelledEntries.map((entry) => {

@@ -990,9 +990,20 @@ function pointerSegments(path: string): string[] {
  * Delete every value under a wildcard JSON pointer. Returns how many values
  * the mask removed, so an allowlist entry that touches nothing is reported
  * stale.
+ *
+ * The root pointer (`/`) empties the whole layer. A pointer cannot describe
+ * a change that inserts or removes a list entry (every later index shifts),
+ * so an entry that needs this must say in its reason why the layer is not
+ * comparable for that cell and what re-records it out of the allowlist.
  */
 export function maskPath(value: unknown, path: string): number {
   const segments = pointerSegments(path);
+  if (segments.length === 0) {
+    if (!Array.isArray(value)) return 0;
+    const removed = value.length;
+    value.length = 0;
+    return removed;
+  }
   let removed = 0;
   const visit = (node: unknown, index: number): void => {
     if (index >= segments.length || node === null || typeof node !== "object") {

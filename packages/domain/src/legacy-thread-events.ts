@@ -25,6 +25,7 @@ export const LEGACY_CODEX_GOAL_EXTENSION_KIND = "provider-codex/goal";
 export const LEGACY_THREAD_EVENT_TYPES = [
   "thread/goal/updated",
   "thread/goal/cleared",
+  "turn/plan/updated",
 ] as const satisfies readonly ThreadEventType[];
 
 export type LegacyThreadEventType = (typeof LEGACY_THREAD_EVENT_TYPES)[number];
@@ -44,6 +45,28 @@ export interface StoredThreadEventShape {
   data: Record<string, unknown>;
 }
 
+/**
+ * A stable id for an item a legacy event converts into. The event row carries
+ * no item id, so the id is derived from the turn and the payload: two
+ * identical snapshots in one turn fold into one item, which is what a
+ * superseding snapshot means anyway.
+ */
+function legacyItemId(prefix: string, turnId: string | null, payload: unknown): string {
+  const text = JSON.stringify(payload);
+  // djb2 — deterministic, dependency-free, good enough to key a few
+  // snapshots per turn.
+  let hash = 5381;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 33) ^ text.charCodeAt(index);
+  }
+  return `${prefix}:${turnId ?? "thread"}:${(hash >>> 0).toString(36)}`;
+}
+
+/** The scope a converter may key a derived item by. */
+export interface StoredThreadEventConversionScope {
+  turnId: string | null;
+}
+
 const GOAL_FIELDS = [
   "objective",
   "status",
@@ -61,8 +84,35 @@ const GOAL_FIELDS = [
  */
 export function convertLegacyStoredThreadEvent(
   stored: StoredThreadEventShape,
+  scope: StoredThreadEventConversionScope = { turnId: null },
 ): StoredThreadEventShape {
   switch (stored.type) {
+    case "turn/plan/updated": {
+      // Codex `update_plan` used to reach the timeline as a turn-level
+      // notification the UI discarded; the codex bridge now emits each
+      // update as a settled `planSteps` snapshot. Persisted notifications
+      // decode into the same item so old threads show their plans and feed
+      // the todo banner. No presentation: the row renders through the core
+      // plan-steps fallback like every pre-presentation row.
+      const { plan, explanation, ...rest } = stored.data;
+      const steps = Array.isArray(plan) ? plan : [];
+      return {
+        type: "item/completed",
+        data: {
+          ...rest,
+          item: {
+            type: "planSteps",
+            id: legacyItemId("legacy-plan", scope.turnId, {
+              steps,
+              explanation,
+            }),
+            steps,
+            ...(typeof explanation === "string" ? { explanation } : {}),
+            status: "completed",
+          },
+        },
+      };
+    }
     case "thread/goal/updated": {
       const payload: Record<string, unknown> = {};
       for (const field of GOAL_FIELDS) {

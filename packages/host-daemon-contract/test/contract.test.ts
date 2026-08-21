@@ -1128,7 +1128,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(150);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(151);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -3429,48 +3429,34 @@ describe("host-daemon session schemas", () => {
       }),
     ).toThrow();
 
-    // Status labels are server-owned: the ingest enrichment leaves MCP,
-    // unknown, and unlabeled tool calls untouched, so a daemon that supplied
-    // its own labels would otherwise have them persisted and rendered.
-    for (const item of [
-      // MCP tool call — enrichment skips these on `server`.
-      {
-        type: "toolCall" as const,
-        id: "tool-1",
-        server: "some-mcp-server",
-        tool: "search",
-        status: "pending" as const,
-        statusLabels: { pending: "Spoofed", completed: "Spoofed" },
-      },
-      // Native tool with no registered plugin labels.
-      {
-        type: "toolCall" as const,
-        id: "tool-2",
-        tool: "Read",
-        status: "pending" as const,
-        statusLabels: { pending: "Spoofed", completed: "Spoofed" },
-      },
-    ]) {
-      expect(() =>
-        hostDaemonEventBatchRequestSchema.parse({
-          sessionId: "session_123",
-          eventGroups: [
+    // A `statusLabels` key on an item is not part of the wire any more (the
+    // bridge's presentation is the only label source); a daemon that sends
+    // one has it dropped rather than persisted.
+    const parsed = hostDaemonEventBatchRequestSchema.parse({
+      sessionId: "session_123",
+      eventGroups: [
+        {
+          threadId: "thr_123",
+          events: [
             {
+              type: "item/started",
               threadId: "thr_123",
-              events: [
-                {
-                  type: "item/started",
-                  threadId: "thr_123",
-                  providerThreadId: "provider-1",
-                  scope: threadScope(),
-                  item,
-                },
-              ],
+              providerThreadId: "provider-1",
+              scope: turnScope("turn-1"),
+              item: {
+                type: "toolCall",
+                id: "tool-2",
+                tool: "Read",
+                status: "pending",
+                statusLabels: { pending: "Spoofed", completed: "Spoofed" },
+              },
             },
           ],
-        }),
-      ).toThrow();
-    }
+        },
+      ],
+    });
+    const [group] = parsed.eventGroups;
+    expect(group?.events[0]?.item).not.toHaveProperty("statusLabels");
 
     expect(() =>
       hostDaemonEventBatchResponseSchema.parse({

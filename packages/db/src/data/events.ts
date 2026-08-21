@@ -1536,12 +1536,9 @@ export function getStoredEventRowsByParentToolCallIdsDataBytes(
 
 /**
  * Lifecycle rows of the items that parent other events: tool calls and
- * grammar v3 `delegation` items. Two queries rather than one `IN` on the
- * kind: the tool-call branch keeps the partial
- * `events_tool_call_parent_lookup_idx` (SQLite cannot prove an `IN` implies
- * its `item_kind = 'toolCall'` predicate), and the delegation branch walks
- * the thread/type/item-kind index over the handful of delegation rows a
- * thread has.
+ * grammar v3 `delegation` items, served by the partial
+ * `events_delegating_item_lookup_idx`. The kind predicate is spelled
+ * literally so SQLite can match it to the index's WHERE clause.
  */
 export function listStoredDelegatingItemRowsByItemIds(
   db: DbConnection,
@@ -1554,37 +1551,19 @@ export function listStoredDelegatingItemRowsByItemIds(
     return [];
   }
 
-  const fields = storedEventRowFieldsWithInlineOutputLimit(
-    args.maxInlineOutputChars,
-  );
-  const lifecycleTypes = ["item/started", "item/completed"] as const;
-  const toolCallRows = db
-    .select(fields)
+  return db
+    .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
     .from(events)
     .where(
       and(
         eq(events.threadId, args.threadId),
         inArray(events.itemId, itemIds),
-        eq(events.itemKind, "toolCall"),
-        inArray(events.type, [...lifecycleTypes]),
+        sql`${events.itemKind} IN ('toolCall', 'delegation')`,
+        inArray(events.type, ["item/started", "item/completed"]),
       ),
     )
+    .orderBy(events.sequence)
     .all();
-  const delegationRows = db
-    .select(fields)
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        inArray(events.type, [...lifecycleTypes]),
-        eq(events.itemKind, "delegation"),
-        inArray(events.itemId, itemIds),
-      ),
-    )
-    .all();
-  return [...toolCallRows, ...delegationRows].sort(
-    (left, right) => left.sequence - right.sequence,
-  );
 }
 
 /** Whether the thread still has an event at exactly this sequence. */
@@ -2044,67 +2023,36 @@ export interface ListTodoSnapshotEventRowsForThreadArgs {
 }
 
 /**
- * Tool-call rows that can carry the pending-todo snapshot, oldest first.
+ * The newest plan snapshot row of a thread: a `planSteps` item (grammar v3)
+ * or a persisted codex `turn/plan/updated` notification, which decodes into
+ * the same item at read time. Each snapshot is complete and the newest wins,
+ * so one row is all the todo banner needs.
  *
- * The snapshot is not a single row: `TodoWrite` carries a complete list, but
- * the Claude task tools carry deltas that only resolve by replaying every task
- * row in order. So this returns all of them rather than just the newest.
- *
- * Needed because the todo banner is extracted from whatever events the timeline
- * window happens to contain. An event-budgeted window can start after the turn
- * that wrote the todos, which silently drops the banner mid-session — the same
- * failure mode `listLatestOpenBackgroundTaskStateRowsForThread` already
- * prevents for background tasks. Bounded in practice (tens of rows per thread,
- * not thousands) and served by the thread/type/item-kind index.
+ * Needed because the banner is extracted from whatever events the timeline
+ * window happens to contain. An event-budgeted window can start after the
+ * turn that wrote the plan, which silently drops the banner mid-session —
+ * the same failure mode `listLatestOpenBackgroundTaskStateRowsForThread`
+ * already prevents for background tasks. Served by the partial
+ * `events_plan_steps_thread_sequence_idx`; the predicate is spelled
+ * literally so SQLite can match it to the index's WHERE clause.
  */
 export function listTodoSnapshotEventRowsForThread(
   db: DbConnection,
   args: ListTodoSnapshotEventRowsForThreadArgs,
 ): StoredEventRow[] {
-  const legacyRows = db
+  const row = db
     .select(storedEventRowFields)
     .from(events)
     .where(
       and(
         eq(events.threadId, args.threadId),
-        // Keep the partial-index predicates literal. SQLite cannot prove that
-        // bound parameters imply the index WHERE clause at prepare time.
-        sql`${events.type} IN ('item/started', 'item/completed')`,
-        sql`${events.itemKind} = 'toolCall'`,
-        inArray(events.toolName, [
-          "TodoWrite",
-          "TaskCreate",
-          "TaskUpdate",
-          "TaskList",
-          "TaskGet",
-        ]),
-      ),
-    )
-    .all();
-  // A grammar v3 `planSteps` snapshot is keyed by its kind, not a tool name;
-  // the thread/type/item-kind index serves it directly. The newest snapshot
-  // wins, and the projection picks it by sequence, so the latest row is all
-  // the banner needs from this kind.
-  const planStepsRow = db
-    .select(storedEventRowFields)
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        eq(events.type, "item/completed"),
-        eq(events.itemKind, "planSteps"),
+        sql`((${events.itemKind} = 'planSteps' AND ${events.type} = 'item/completed') OR ${events.type} = 'turn/plan/updated')`,
       ),
     )
     .orderBy(desc(events.sequence))
     .limit(1)
     .get();
-  const rows = planStepsRow ? [...legacyRows, planStepsRow] : legacyRows;
-
-  // Ordering in SQL makes SQLite prefer the thread/sequence index and read every
-  // event in the thread to satisfy the sort; the type/item-kind index visits
-  // only tool-call rows. Todo snapshots are a small slice of those, so ordering
-  // after selection is cheaper than widening the scan.
-  return rows.sort((left, right) => left.sequence - right.sequence);
+  return row ? [row] : [];
 }
 
 export interface ListActiveBackgroundTaskCountsByThreadIdsArgs {
@@ -2686,8 +2634,8 @@ export interface TimelineTurnBoundaryLookupArgs {
 }
 
 /**
- * Whether an event at or above `sequence` belongs under a tool call whose own
- * item began below it.
+ * Whether an event at or above `sequence` belongs under a delegating item (a
+ * tool call or a grammar v3 `delegation`) whose own item began below it.
  *
  * Delegation children project into their parent row rather than independent
  * top-level rows. Splitting that aggregate across two timeline pages is not
@@ -2713,7 +2661,7 @@ export function hasParentedEventCrossingSequence(
           FROM events AS parent_event
           WHERE parent_event.thread_id = ${events.threadId}
             AND parent_event.item_id = ${events.parentToolCallId}
-            AND parent_event.item_kind = 'toolCall'
+            AND parent_event.item_kind IN ('toolCall', 'delegation')
             AND parent_event.sequence < ${args.sequence}
         )`,
       ),
