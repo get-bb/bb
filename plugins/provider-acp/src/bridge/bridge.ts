@@ -70,7 +70,7 @@ import {
   createAcpDeltaTranslator,
   type AcpDeltaTranslator,
 } from "../delta-translation.js";
-import { resolveAcpDialect } from "../dialect.js";
+import { resolveAcpDialect, type AcpDialect } from "../dialect.js";
 import {
   buildAcpPermissionInteractionPayload,
   resolveAcpPermissionDecision,
@@ -178,6 +178,8 @@ interface AcpThreadSession {
   providerThreadId: string;
   /** The session's working directory: the agent's cwd and the path root. */
   cwd: string;
+  /** The agent's dialect: its vendor side channels and client methods. */
+  dialect: AcpDialect;
   /** Every session-scoped notification is translated through this. */
   translator: AcpDeltaTranslator;
   connection: AcpAgentConnection;
@@ -1634,9 +1636,13 @@ async function startAgentSession(
     await stopSession(existing);
   }
 
+  const dialect = resolveAcpDialect({
+    ...(params.dialectId === undefined ? {} : { dialectId: params.dialectId }),
+    command: params.agent.command,
+  });
   const translator = createAcpDeltaTranslator({
     cwd: params.cwd,
-    dialect: resolveAcpDialect(params.agent),
+    dialect,
   });
   // The session's bb-injected tools: a proxied call to one is a bb tool and
   // reads the way its definition says (Q31).
@@ -1707,6 +1713,7 @@ async function startAgentSession(
     bbThreadId,
     providerThreadId: "",
     cwd: params.cwd,
+    dialect,
     translator,
     connection,
     supportsImageInput: false,
@@ -2200,8 +2207,36 @@ function handleAgentRequest(
       void handleFsWriteTextFile(session, params, responder);
       return;
     default:
-      responder.error(-32601, `Unsupported ACP client method "${method}"`);
+      handleDialectRequest(session, method, params, responder);
   }
+}
+
+/**
+ * A vendor request the agent's dialect claims (Cursor's `cursor/task`). An
+ * unclaimed method is still an unsupported one — the bridge must not
+ * acknowledge a request it did not act on.
+ */
+function handleDialectRequest(
+  session: AcpThreadSession,
+  method: string,
+  params: unknown,
+  responder: AcpAgentRequestResponder,
+): void {
+  const outcome = session.dialect.handleClientRequest?.(method, params);
+  if (outcome === undefined) {
+    responder.error(-32601, `Unsupported ACP client method "${method}"`);
+    return;
+  }
+  if (outcome.delegation !== undefined) {
+    sendThreadDeltas(
+      session.bbThreadId,
+      session.translator.noteDelegationReport(
+        session.bbThreadId,
+        outcome.delegation,
+      ),
+    );
+  }
+  responder.result(outcome.result);
 }
 
 function handleAgentNotification(
@@ -2366,6 +2401,13 @@ const acpProviderOptionsSchema = z
      * field for it — same delivery as the ACP launch spec.
      */
     additionalWorkspaceWriteRoots: z.array(z.string()).optional(),
+    /**
+     * The agent's dialect: which vendor side channels this bridge should
+     * read for it (see `dialect.ts`). Declared by the plugin that registers
+     * the provider, so a third-party registration of a known agent gets the
+     * same reporting fidelity a first-party one does.
+     */
+    acpDialect: z.string().min(1).optional(),
   })
   .passthrough();
 
@@ -2376,6 +2418,12 @@ function decodeAdditionalWorkspaceWriteRoots(
     acpProviderOptionsSchema.parse(providerOptions ?? {})
       .additionalWorkspaceWriteRoots ?? []
   );
+}
+
+function decodeDialectId(
+  providerOptions: Record<string, unknown> | undefined,
+): string | undefined {
+  return acpProviderOptionsSchema.parse(providerOptions ?? {}).acpDialect;
 }
 
 async function handleRequest(
@@ -2512,6 +2560,7 @@ async function handleRequest(
         additionalWorkspaceWriteRoots: decodeAdditionalWorkspaceWriteRoots(
           params.options.providerOptions,
         ),
+        dialectId: decodeDialectId(params.options.providerOptions),
         cwd: params.cwd,
         dynamicTools: params.dynamicTools,
         options: {

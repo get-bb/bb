@@ -175,6 +175,27 @@ export function planStepsPresentation(
 }
 
 /**
+ * A sub-agent an ACP agent launched (Cursor's `cursor/task`, grok's
+ * `spawn_subagent`). Version 1 of the protocol has no sub-agent concept, so
+ * the label is whatever the agent's own side channel described.
+ */
+export function delegationPresentation(args: {
+  label: string;
+  detail?: string;
+}): DeltaPresentation {
+  const presentation = withTitle(
+    {
+      label: { pending: "Running subagent", completed: "Subagent finished" },
+      icon: { glyph: "UserRound" },
+    },
+    presentationTitle(args.label),
+  );
+  return args.detail === undefined
+    ? presentation
+    : { ...presentation, detail: args.detail };
+}
+
+/**
  * A bb-injected tool whose definition carries no presentation (a server from
  * before the field existed): a generic label under bb's own glyph.
  */

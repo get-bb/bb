@@ -46,9 +46,14 @@ import {
   acpUpdateNotificationParamsSchema,
   acpWarningNotificationParamsSchema,
 } from "./bridge-protocol.js";
-import { GENERIC_ACP_DIALECT, type AcpDialect } from "./dialect.js";
+import {
+  GENERIC_ACP_DIALECT,
+  type AcpDelegationReport,
+  type AcpDialect,
+} from "./dialect.js";
 import {
   COMPACTION_PRESENTATION,
+  delegationPresentation,
   fileChangePresentation,
   planStepsPresentation,
   presentationTitle,
@@ -212,6 +217,8 @@ interface AcpOpenToolCall {
    * already open (see `notePermissionToolCall`).
    */
   permissionTitle?: string;
+  /** What the agent's dialect reported about a delegated sub-agent. */
+  delegation?: AcpDelegationReport;
 }
 
 export function createAcpDeltaTranslator(
@@ -363,15 +370,26 @@ export function createAcpDeltaTranslator(
   }
 
   /** Classify a call with its bb-tool binding, if it has one. */
+  /**
+   * Classify a call with its bb-tool binding, if it has one. The agent's own
+   * dialect gets the first word — only it can know that a tool call is a
+   * sub-agent, which version 1 of the protocol cannot express — and the
+   * shared classifier decides everything else.
+   */
   function classifyCall(
     context: AcpDeltaTranslationContext | undefined,
     event: AcpToolCallUpdateEvent,
   ): AcpClassifiedToolCall {
-    return classifyAcpToolCall(
-      event,
-      injectedToolBindings.get(callKey(context, event.toolCallId)),
-      pathOptions,
+    const injected = injectedToolBindings.get(
+      callKey(context, event.toolCallId),
     );
+    if (injected === undefined) {
+      const dialectShape = dialect.classifyToolCall?.(event);
+      if (dialectShape !== undefined) {
+        return dialectShape;
+      }
+    }
+    return classifyAcpToolCall(event, injected, pathOptions);
   }
 
   // -------------------------------------------------------------------------
@@ -481,7 +499,30 @@ export function createAcpDeltaTranslator(
     status: ThreadEventItemStatus;
     /** A headline a permission revealed while the row was open. */
     permissionTitle?: string | undefined;
+    /** A sub-agent report the dialect took off a vendor request. */
+    delegation?: AcpDelegationReport | undefined;
     noTurnFallback?: DeltaNoTurnFallback;
+  }
+
+  /** The classified call with what a later report revealed, if anything. */
+  function withDelegationReport(
+    classified: AcpClassifiedToolCall,
+    report: AcpDelegationReport | undefined,
+  ): AcpClassifiedToolCall {
+    if (report === undefined || classified.item.type !== "delegation") {
+      return classified;
+    }
+    return {
+      item: {
+        ...classified.item,
+        childRef: report.childRef,
+        label: report.label,
+      },
+      presentation: delegationPresentation({
+        label: report.label,
+        ...(report.detail === undefined ? {} : { detail: report.detail }),
+      }),
+    };
   }
 
   /** The classified call with a permission's headline, when it had one. */
@@ -511,7 +552,10 @@ export function createAcpDeltaTranslator(
    */
   function toolCallClose(args: AcpCloseArgs): ThreadDelta {
     const classified = withPermissionTitle(
-      classifyCall(args.context, args.event),
+      withDelegationReport(
+        classifyCall(args.context, args.event),
+        args.delegation,
+      ),
       args.permissionTitle,
     );
     injectedToolBindings.delete(callKey(args.context, args.event.toolCallId));
@@ -568,6 +612,7 @@ export function createAcpDeltaTranslator(
           event: open.event,
           status,
           permissionTitle: open.permissionTitle,
+          delegation: open.delegation,
         }),
       );
     }
@@ -698,6 +743,7 @@ export function createAcpDeltaTranslator(
               event: merged,
               status: mapAcpToolCallStatus(merged.status),
               permissionTitle: open?.permissionTitle,
+              delegation: open?.delegation,
               noTurnFallback: noTurnFallbackFor(rawEvent),
             }),
           ];
@@ -709,6 +755,9 @@ export function createAcpDeltaTranslator(
           ...(open?.permissionTitle === undefined
             ? {}
             : { permissionTitle: open.permissionTitle }),
+          ...(open?.delegation === undefined
+            ? {}
+            : { delegation: open.delegation }),
         });
         const progressText = extractAcpToolCallOutputText(event);
         if (progressText === undefined) {
@@ -1100,6 +1149,46 @@ export function createAcpDeltaTranslator(
     return { toolCallId: open.event.toolCallId, event: merged };
   }
 
+  /**
+   * A sub-agent the agent's dialect reported (Cursor's `cursor/task`). It
+   * arrives on a vendor request rather than a session update, and Cursor
+   * sends it once the sub-agent has already finished, so it enriches the
+   * delegation row while the row is still open and is otherwise a no-op:
+   * re-opening a settled row would show the same work twice.
+   */
+  function noteDelegationReport(
+    threadId: string,
+    report: AcpDelegationReport,
+  ): ThreadDelta[] {
+    const context = { threadId };
+    const key = callKey(context, report.toolCallId);
+    const open = mergedToolCalls.get(key);
+    if (open === undefined) {
+      return [];
+    }
+    const classified = classifyCall(context, open.event);
+    if (classified.item.type !== "delegation") {
+      return [];
+    }
+    const item: DeltaItemShape = {
+      ...classified.item,
+      childRef: report.childRef,
+      label: report.label,
+    };
+    mergedToolCalls.set(key, { ...open, delegation: report });
+    return [
+      {
+        kind: "item.open",
+        key: { providerItemId: report.toolCallId },
+        item,
+        presentation: delegationPresentation({
+          label: report.label,
+          ...(report.detail === undefined ? {} : { detail: report.detail }),
+        }),
+      },
+    ];
+  }
+
   /** The bb tool an unsettled call is bound to (Q31), for its permission. */
   function getInjectedToolBinding(
     threadId: string,
@@ -1112,6 +1201,7 @@ export function createAcpDeltaTranslator(
     configureInjectedTools,
     getInjectedToolBinding,
     getMergedToolCall,
+    noteDelegationReport,
     noteInjectedToolCall,
     notePermissionToolCall,
     translateAcpEvent,

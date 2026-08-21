@@ -68,6 +68,11 @@ const ACP_PROVIDERS: readonly PluginProviderDeclaration[] = [
     }),
     experimental_serviceTiers: [...ACP_SERVICE_TIERS],
     experimental_bridgeOptions: {
+      // Which vendor side channels the bridge reads for this agent
+      // (plugins/provider-acp/src/dialect.ts). Declared per registration so
+      // a third-party plugin that registers a known agent gets the same
+      // reporting fidelity a first-party registration does.
+      acpDialect: "cursor",
       acpLaunchSpec: {
         displayName: "Cursor",
         command: "cursor-agent",
@@ -148,6 +153,7 @@ const ACP_PROVIDERS: readonly PluginProviderDeclaration[] = [
     }),
     experimental_serviceTiers: [...ACP_SERVICE_TIERS],
     experimental_bridgeOptions: {
+      acpDialect: "grok",
       acpLaunchSpec: {
         displayName: "Grok Build",
         command: "grok",

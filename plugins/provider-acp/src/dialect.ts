@@ -2,19 +2,27 @@
  * Per-agent dialects: the vendor side channels of an ACP agent.
  *
  * The ACP wire schema (`wire.ts`) parses only the protocol. What an agent
- * puts beside the protocol — grok's `_meta["x.ai/tool"]`, Cursor's
- * `cursor/task` request — is a dialect: a small, profile-keyed module that
- * reads those channels and answers a few questions the shared translator
- * asks. The shared schema never learns a vendor key; a dialect never changes
- * what the protocol fields mean.
+ * puts beside the protocol is a dialect: grok stamps `_meta["x.ai/tool"]` on
+ * every tool event, Cursor reports its sub-agents through a vendor JSON-RPC
+ * request (`cursor/task`) that the protocol has no place for. A dialect is a
+ * small, profile-keyed module that reads those channels and answers the few
+ * questions the shared translator asks. The shared schema never learns a
+ * vendor key, and a dialect never changes what a protocol field means.
+ *
+ * Version 1 of the protocol has no sub-agent concept at all (`session/fork`
+ * is unstable and unrelated), so every delegation an ACP agent reports is
+ * vendor-specific and belongs here rather than in the classifier.
  *
  * The dialect is selected per session from the agent's launch command. An
  * agent with no dialect of its own gets the generic one, which answers
  * nothing and leaves every decision to the protocol fields.
  */
 
+import type { DeltaItemShape } from "@get-bb/plugin-sdk/provider-bridge";
 import { basename } from "node:path";
 import { z } from "zod";
+import { delegationPresentation } from "./presentation.js";
+import type { AcpClassifiedToolCall } from "./tool-classification.js";
 import {
   acpToolKindSchema,
   type AcpToolCallUpdateEvent,
@@ -33,6 +41,18 @@ export interface AcpToolIdentity {
   kind?: AcpToolKind;
 }
 
+/** What a dialect learned about a sub-agent the agent launched. */
+export interface AcpDelegationReport {
+  /** The tool call the delegation belongs to. */
+  toolCallId: string;
+  /** The child's provider-native id. */
+  childRef: string;
+  /** The row headline: what the sub-agent was asked to do. */
+  label: string;
+  /** A sub-agent type or model the row can name, when the agent says. */
+  detail?: string;
+}
+
 export interface AcpDialect {
   /** Stable id, for logs and tests. */
   readonly id: string;
@@ -42,6 +62,31 @@ export interface AcpDialect {
    * `kind` from it; a protocol value always wins over the dialect's.
    */
   toolIdentity?(event: AcpToolCallUpdateEvent): AcpToolIdentity | undefined;
+  /**
+   * The agent's own classification of a tool call, when its side channel
+   * says something the protocol fields cannot. Returning `undefined` leaves
+   * the shared classifier in charge — which is the normal answer.
+   */
+  classifyToolCall?(
+    event: AcpToolCallUpdateEvent,
+  ): AcpClassifiedToolCall | undefined;
+  /**
+   * A vendor JSON-RPC request the agent sends to the client. A dialect that
+   * answers one returns the JSON-RPC result to reply with (`{}` is a valid
+   * acknowledgement) and, optionally, what the request reported. A request
+   * no dialect claims stays an unsupported method.
+   */
+  handleClientRequest?(
+    method: string,
+    params: unknown,
+  ): AcpClientRequestOutcome | undefined;
+}
+
+export interface AcpClientRequestOutcome {
+  /** The JSON-RPC result the bridge replies with. */
+  result: Record<string, unknown>;
+  /** A sub-agent the request reported, if it reported one. */
+  delegation?: AcpDelegationReport;
 }
 
 /** The dialect of an agent with no side channels bb reads. */
@@ -86,26 +131,183 @@ function grokToolIdentity(
   };
 }
 
+/** grok's sub-agent tool and the argument that describes the work. */
+const GROK_SPAWN_SUBAGENT_TOOL = "spawn_subagent";
+const grokSpawnSubagentInputSchema = z
+  .object({
+    description: z.string().optional(),
+    prompt: z.string().optional(),
+    subagent_type: z.string().optional(),
+  })
+  .passthrough();
+
+/**
+ * grok runs sub-agents through a `spawn_subagent` tool call (with
+ * `get_command_or_subagent_output` and `kill_command_or_subagent` beside it).
+ * The protocol reports it as an ordinary tool call, so only the dialect can
+ * know it is delegated work.
+ */
+function grokClassifyToolCall(
+  event: AcpToolCallUpdateEvent,
+): AcpClassifiedToolCall | undefined {
+  if (grokToolIdentity(event)?.name !== GROK_SPAWN_SUBAGENT_TOOL) {
+    return undefined;
+  }
+  const parsed = grokSpawnSubagentInputSchema.safeParse(event.rawInput);
+  const input = parsed.success ? parsed.data : undefined;
+  const label = input?.description ?? input?.prompt ?? event.title ?? "Subagent";
+  const shape: DeltaItemShape = {
+    type: "delegation",
+    // grok reports no child session id, so the tool call is the child ref:
+    // it is what its output and kill calls name.
+    childRef: event.toolCallId,
+    label,
+    background: false,
+  };
+  return {
+    item: shape,
+    presentation: delegationPresentation({
+      label,
+      ...(input?.subagent_type === undefined
+        ? {}
+        : { detail: input.subagent_type }),
+    }),
+  };
+}
+
 export const GROK_ACP_DIALECT: AcpDialect = {
   id: "grok",
   toolIdentity: grokToolIdentity,
+  classifyToolCall: grokClassifyToolCall,
+};
+
+// ---------------------------------------------------------------------------
+// cursor-agent (`cursor-agent acp`)
+// ---------------------------------------------------------------------------
+
+/** Cursor's own name for the tool behind a sub-agent call. */
+const CURSOR_TASK_TOOL = "task";
+const cursorTaskRawInputSchema = z
+  .object({ _toolName: z.string().optional() })
+  .passthrough();
+
+const CURSOR_TASK_METHOD = "cursor/task";
+const cursorTaskParamsSchema = z
+  .object({
+    toolCallId: z.string(),
+    description: z.string().optional(),
+    prompt: z.string().optional(),
+    agentId: z.string().optional(),
+    model: z.string().optional(),
+  })
+  .passthrough();
+
+/**
+ * Cursor announces a sub-agent as a `kind: "other"` tool call whose rawInput
+ * names the tool (`{_toolName: "task"}`) and whose title is the constant
+ * "Task: Subagent task". The description, prompt, child agent id and duration
+ * arrive later, on the vendor `cursor/task` request.
+ */
+function cursorClassifyToolCall(
+  event: AcpToolCallUpdateEvent,
+): AcpClassifiedToolCall | undefined {
+  const parsed = cursorTaskRawInputSchema.safeParse(event.rawInput);
+  if (!parsed.success || parsed.data._toolName !== CURSOR_TASK_TOOL) {
+    return undefined;
+  }
+  const label = event.title ?? "Subagent task";
+  const shape: DeltaItemShape = {
+    type: "delegation",
+    childRef: event.toolCallId,
+    label,
+    background: false,
+  };
+  return {
+    item: shape,
+    presentation: delegationPresentation({ label }),
+  };
+}
+
+/**
+ * `cursor/task` is Cursor's sub-agent report. bb answered it `-32601`
+ * ("unsupported method"), which is a protocol error for a request the agent
+ * is entitled to send; an empty result acknowledges it. Cursor sends it once
+ * the sub-agent has finished, so the report names the child and what it was
+ * asked to do.
+ */
+function cursorHandleClientRequest(
+  method: string,
+  params: unknown,
+): AcpClientRequestOutcome | undefined {
+  if (method !== CURSOR_TASK_METHOD) {
+    return undefined;
+  }
+  const parsed = cursorTaskParamsSchema.safeParse(params);
+  if (!parsed.success) {
+    return { result: {} };
+  }
+  const task = parsed.data;
+  const label = task.description ?? task.prompt;
+  if (label === undefined) {
+    return { result: {} };
+  }
+  return {
+    result: {},
+    delegation: {
+      toolCallId: task.toolCallId,
+      childRef: task.agentId ?? task.toolCallId,
+      label,
+      ...(task.model === undefined ? {} : { detail: `model ${task.model}` }),
+    },
+  };
+}
+
+export const CURSOR_ACP_DIALECT: AcpDialect = {
+  id: "cursor",
+  classifyToolCall: cursorClassifyToolCall,
+  handleClientRequest: cursorHandleClientRequest,
 };
 
 // ---------------------------------------------------------------------------
 // Selection
 // ---------------------------------------------------------------------------
 
-/** Dialects by the launch command's executable name. */
-const DIALECTS_BY_COMMAND: Readonly<Record<string, AcpDialect>> = {
-  grok: GROK_ACP_DIALECT,
+/** Every dialect this kit ships, by id. */
+const DIALECTS_BY_ID: Readonly<Record<string, AcpDialect>> = {
+  [CURSOR_ACP_DIALECT.id]: CURSOR_ACP_DIALECT,
+  [GROK_ACP_DIALECT.id]: GROK_ACP_DIALECT,
 };
 
+/** The executable name each dialect's agent is normally launched as. */
+const DIALECT_IDS_BY_COMMAND: Readonly<Record<string, string>> = {
+  "cursor-agent": CURSOR_ACP_DIALECT.id,
+  grok: GROK_ACP_DIALECT.id,
+};
+
+/** Every dialect id a profile may name. */
+export const ACP_DIALECT_IDS = Object.keys(DIALECTS_BY_ID);
+
 /**
- * The dialect for an agent launch: keyed by the executable's base name
- * (`/usr/local/bin/grok` and `grok` both select the grok dialect), generic
- * for everything else.
+ * The dialect for an agent launch. The profile names it (the ACP plugin puts
+ * `acpDialect` in its bridge options, and a third-party plugin may name one
+ * of these ids for an agent it registers); an unnamed profile falls back to
+ * the launch executable's base name, so a user-configured `grok` instance
+ * gets grok's dialect without declaring anything. Everything else is
+ * generic, which answers nothing.
+ *
+ * Keying on the profile rather than on a bb provider id is deliberate: the
+ * ACP plugin owns several providers and the same agent can be registered
+ * under any id, so the dialect must not be a provider-id table.
  */
-export function resolveAcpDialect(launch: { command: string }): AcpDialect {
-  const executable = basename(launch.command);
-  return DIALECTS_BY_COMMAND[executable] ?? GENERIC_ACP_DIALECT;
+export function resolveAcpDialect(launch: {
+  dialectId?: string | undefined;
+  command: string;
+}): AcpDialect {
+  if (launch.dialectId !== undefined) {
+    return DIALECTS_BY_ID[launch.dialectId] ?? GENERIC_ACP_DIALECT;
+  }
+  const byCommand = DIALECT_IDS_BY_COMMAND[basename(launch.command)];
+  return byCommand === undefined
+    ? GENERIC_ACP_DIALECT
+    : (DIALECTS_BY_ID[byCommand] ?? GENERIC_ACP_DIALECT);
 }

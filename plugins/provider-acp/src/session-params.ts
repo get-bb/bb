@@ -104,6 +104,8 @@ export interface AcpSessionParams {
   threadId: string;
   cwd: string;
   agent: { command: string; args: string[] };
+  /** The dialect the registering plugin named for this agent, if any. */
+  dialectId?: string | undefined;
   modelSelection?: AcpModelSelection;
   /**
    * Launch-time reasoning level for agents that take reasoning as a global CLI
@@ -271,6 +273,8 @@ function buildAcpModelSelectionParam(
 interface BuildAcpSessionParamsArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   cwd: string;
+  /** The dialect the registering plugin named for this agent, if any. */
+  dialectId?: string | undefined;
   dynamicTools?: readonly DynamicTool[] | undefined;
   options: AcpSessionExecutionOptions;
   profile: AcpAgentProfile;
@@ -302,6 +306,7 @@ export function buildAcpSessionParams(
       command: profile.agentCommand.command,
       args: [...profile.agentCommand.args],
     },
+    ...(args.dialectId === undefined ? {} : { dialectId: args.dialectId }),
     ...buildAcpModelSelectionParam(profile, options),
     ...(profile.reasoningCli !== undefined
       ? { reasoningCli: profile.reasoningCli }

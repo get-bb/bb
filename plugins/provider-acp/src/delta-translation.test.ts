@@ -1755,6 +1755,172 @@ describe("acp delta translation (raw payloads and real results)", () => {
   });
 });
 
+/**
+ * Sub-agents are not in the protocol (version 1 has no such concept), so the
+ * agent's own dialect is the only thing that can report one.
+ */
+describe("acp delta translation (dialects)", () => {
+  function dialectHarness(dialectId: string): AcpEquivalenceHarness {
+    const translator = createAcpDeltaTranslator({
+      cwd: "/workspace",
+      dialect: resolveAcpDialect({ dialectId, command: "node" }),
+    });
+    const assembler = createDeltaAssembler({
+      providerId: "acp",
+      entropyPrefix: ENTROPY,
+      textDeltaFlushMs: 0,
+    });
+    const harness: AcpEquivalenceHarness = {
+      assembler,
+      translator,
+      translate: (event) =>
+        assembler.assemble({
+          threadId: THREAD_ID,
+          deltas: translator.translateAcpEvent(event, { threadId: THREAD_ID }),
+        }),
+      openTurnId: () => assembler.getOpenTurnId(THREAD_ID) ?? "",
+    };
+    harness.translate(turnStartedEvent());
+    return harness;
+  }
+
+  it("opens a Cursor task call as a delegation and takes the report's detail", () => {
+    const harness = dialectHarness("cursor");
+    const opened = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-task",
+        title: "Task: Subagent task",
+        kind: "other",
+        status: "pending",
+        rawInput: { _toolName: "task" },
+      }),
+    );
+    expect(opened[0]).toMatchObject({
+      type: "item/started",
+      item: { type: "delegation", childRef: "call-task", background: false },
+    });
+    const openedId =
+      opened[0]?.type === "item/started" ? opened[0].item.id : "";
+
+    // `cursor/task` names the child and what it was asked to do; the row is
+    // still open, so it updates in place rather than minting a second row.
+    const reported = harness.assembler.assemble({
+      threadId: THREAD_ID,
+      deltas: harness.translator.noteDelegationReport(THREAD_ID, {
+        toolCallId: "call-task",
+        childRef: "78d1cd3b-94d2-4c87-82a2-c83fe54712f1",
+        label: "Read README first line",
+        detail: "model default",
+      }),
+    });
+    expect(reported).toEqual([
+      expect.objectContaining({
+        type: "item/started",
+        item: expect.objectContaining({
+          id: openedId,
+          type: "delegation",
+          childRef: "78d1cd3b-94d2-4c87-82a2-c83fe54712f1",
+          label: "Read README first line",
+        }),
+      }),
+    ]);
+
+    expect(
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-task",
+          status: "completed",
+          rawOutput: { durationMs: 4764, isBackground: false },
+        }),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          id: openedId,
+          type: "delegation",
+          childRef: "78d1cd3b-94d2-4c87-82a2-c83fe54712f1",
+          label: "Read README first line",
+        }),
+      }),
+    ]);
+  });
+
+  // Cursor sends `cursor/task` after the sub-agent finished, so the report
+  // can arrive once the row has settled. Re-opening it would show the same
+  // work twice.
+  it("ignores a delegation report for a call that already settled", () => {
+    const harness = dialectHarness("cursor");
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-task",
+        title: "Task: Subagent task",
+        kind: "other",
+        status: "completed",
+        rawInput: { _toolName: "task" },
+      }),
+    );
+
+    expect(
+      harness.translator.noteDelegationReport(THREAD_ID, {
+        toolCallId: "call-task",
+        childRef: "agent-1",
+        label: "Read README first line",
+      }),
+    ).toEqual([]);
+  });
+
+  it("opens a grok spawn_subagent call as a delegation", () => {
+    expect(
+      dialectHarness("grok").translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "call-spawn",
+          title: "spawn_subagent",
+          status: "pending",
+          rawInput: { description: "Audit the config loader" },
+          _meta: {
+            "x.ai/tool": { name: "spawn_subagent", kind: "other", version: 1 },
+          },
+        }),
+      )[0],
+    ).toMatchObject({
+      type: "item/started",
+      item: {
+        type: "delegation",
+        childRef: "call-spawn",
+        label: "Audit the config loader",
+        presentation: { icon: { glyph: "UserRound" } },
+      },
+    });
+  });
+
+  // A bb-injected tool call is bb's own, whatever the dialect thinks.
+  it("keeps a bb-injected tool binding ahead of the dialect", () => {
+    const harness = dialectHarness("cursor");
+    harness.translator.configureInjectedTools([{ name: "AskUserQuestion" }]);
+    harness.translator.noteInjectedToolCall(THREAD_ID, "AskUserQuestion");
+    expect(
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "call-bb",
+          title: "MCP: AskUserQuestion",
+          kind: "other",
+          status: "pending",
+          rawInput: { _toolName: "task" },
+        }),
+      )[0],
+    ).toMatchObject({
+      type: "item/started",
+      item: { type: "toolCall", tool: "AskUserQuestion", server: "bb" },
+    });
+  });
+});
+
 describe("acp delta translation (bb-injected tools)", () => {
   const ASK_PRESENTATION = {
     label: { pending: "Asking a question", completed: "Asked a question" },
