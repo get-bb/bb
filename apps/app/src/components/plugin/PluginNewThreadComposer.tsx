@@ -35,9 +35,8 @@ export function PluginNewThreadComposer({
   const [pickedProjectId, setPickedProjectId] = useState<string | null>(
     defaultProjectId ?? null,
   );
-  const [seededDefaultProjectId, setSeededDefaultProjectId] = useState(
-    defaultProjectId,
-  );
+  const [seededDefaultProjectId, setSeededDefaultProjectId] =
+    useState(defaultProjectId);
   if (seededDefaultProjectId !== defaultProjectId) {
     setSeededDefaultProjectId(defaultProjectId);
     setPickedProjectId(defaultProjectId ?? null);
@@ -80,7 +79,6 @@ export function PluginNewThreadComposer({
           {renderPromptBox({
             placeholder,
             allowNoProject: true,
-            zenModeStorageKey: `bb.promptbox.zen-mode.plugin-new-thread.${composerKey}`,
           })}
         </div>
       )}

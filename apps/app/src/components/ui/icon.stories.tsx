@@ -71,10 +71,10 @@ const USAGE: Partial<Record<IconName, string>> = {
   Loading: "Loading03 thread row working spinner",
   Mail: "Mark unread thread action",
   MailOpen: "Mark read thread action",
-  Maximize2: "Expand right panel, enter zen mode, open Mermaid diagram dialog",
+  Maximize2: "Expand right panel, open Mermaid diagram dialog",
   MessageSquarePlus: "“New chat” button in sidebar",
   Mic: "Voice toggle in prompt",
-  Minimize2: "Restore conversation split, exit zen mode",
+  Minimize2: "Restore conversation split",
   MoreHorizontal:
     "Triple-dot actions menu trigger (project list, projects, threads, project sources, hosts)",
   NewTab: "Right-panel New tab tab",

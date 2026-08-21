@@ -1,5 +1,3 @@
-import { atom, useAtom } from "jotai";
-import { RESET, atomWithStorage } from "jotai/utils";
 import type {
   PromptMentionCommandTrigger,
   PromptTextMention,
@@ -71,7 +69,6 @@ import {
   REDUCED_MOTION_QUERY,
 } from "@bb/shared-ui/hooks/use-media-query";
 import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
-import { createJsonLocalStorage } from "@/lib/browser-storage";
 import {
   DEFAULT_PLUGIN_MENTION_TRIGGER,
   type PluginMentionTrigger,
@@ -183,17 +180,7 @@ function hasWhitespaceAfterPosition(
   return nextNode.type.name === "hardBreak";
 }
 
-type ZenModeLayout = "thread" | "root-compose";
-
-const ZEN_MODE_STORAGE_KEY: Record<ZenModeLayout, string> = {
-  thread: "bb.promptbox.zen-mode.thread",
-  "root-compose": "bb.promptbox.zen-mode.root-compose",
-};
-
-const ZEN_MODE_HEIGHT_CLASS: Record<ZenModeLayout, string> = {
-  thread: "h-[50dvh]",
-  "root-compose": "h-[70dvh]",
-};
+type PromptBoxEditorLayout = "thread" | "root-compose";
 
 const COLLAPSING_GRID_CLASS =
   "grid transition-[grid-template-rows] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none";
@@ -232,7 +219,6 @@ interface PromptSubmitButtonProps {
   disabledReason: string | undefined;
   isCompact: boolean;
   isSubmitting: boolean;
-  isZenMode: boolean;
   onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   title: string;
@@ -244,7 +230,6 @@ function PromptSubmitButton({
   disabledReason,
   isCompact,
   isSubmitting,
-  isZenMode,
   onClick,
   onPointerDown,
   title,
@@ -263,8 +248,6 @@ function PromptSubmitButton({
     >
       {isSubmitting ? (
         <Icon name="Spinner" className="size-4 animate-spin" />
-      ) : isZenMode ? (
-        <Icon name="ArrowUp" className="size-4" />
       ) : (
         <Icon name="CornerDownLeft" className="size-4" />
       )}
@@ -377,13 +360,6 @@ export interface AttachmentsConfig {
   projectId?: string;
 }
 
-interface PromptBoxZenModeConfig {
-  layout?: ZenModeLayout;
-  storageKey?: string | null;
-  resetKey?: string | number;
-  resetOnSubmit?: boolean;
-}
-
 interface PromptBoxCompactConfig {
   isCompact: boolean;
   placeholder?: string;
@@ -468,7 +444,10 @@ interface PromptBoxInternalProps {
   promptActions?: readonly PromptBoxAction[];
   /** Suppress plugin composer regions without unmounting the editor. */
   suppressPluginComposerCustomizations?: boolean;
-  zenMode?: PromptBoxZenModeConfig;
+  /** Selects the normal editor's viewport-relative height cap. */
+  editorLayout?: PromptBoxEditorLayout;
+  /** Collapse a standard prompt box to its one-line presentation. */
+  onCollapse?: () => void;
   /** Optional one-line presentation for unfocused mobile follow-up composers. */
   compact?: PromptBoxCompactConfig;
   /** Compact placeholder used when a follow-up composer is narrowed by its container. */
@@ -516,11 +495,6 @@ interface ParsedRichClipboardValue {
   value: PromptEditorValue;
 }
 
-type ZenModeUpdate =
-  | boolean
-  | typeof RESET
-  | ((previous: boolean) => boolean | typeof RESET);
-
 type PromptBoxMouseDownEvent = ReactMouseEvent<HTMLFormElement>;
 
 interface PromptActionInsertionRange {
@@ -548,20 +522,6 @@ const PROMPTBOX_INTERACTIVE_TARGET_SELECTOR = [
   "[role='menuitem']",
   "[role='option']",
 ].join(",");
-
-function createTransientZenModeAtom() {
-  const baseAtom = atom(false);
-  return atom(
-    (get) => get(baseAtom),
-    (get, set, update: ZenModeUpdate) => {
-      const currentValue = get(baseAtom);
-      const nextValue =
-        typeof update === "function" ? update(currentValue) : update;
-
-      set(baseAtom, nextValue === RESET ? false : nextValue);
-    },
-  );
-}
 
 /**
  * Structural equality between the last value synced into the editor and the
@@ -1239,7 +1199,8 @@ export function PromptBoxInternal({
   attachments: attachmentConfig = {},
   promptActions,
   suppressPluginComposerCustomizations = false,
-  zenMode = {},
+  editorLayout = "thread",
+  onCollapse,
   compact,
   containerCompactPlaceholder,
   heightAnimationKey,
@@ -1286,12 +1247,6 @@ export function PromptBoxInternal({
     onRemove: onRemoveAttachment,
     projectId: attachmentProjectId,
   } = attachmentConfig;
-  const {
-    layout: zenModeLayout = "thread",
-    storageKey: zenModeStorageKey,
-    resetKey: zenModeResetKey,
-    resetOnSubmit: resetZenModeOnSubmit = false,
-  } = zenMode;
   const isPointerCoarse = usePointerCoarse();
   // Legacy iPads report an iPad platform; current iPadOS WebKit uses a
   // desktop-like MacIntel platform with touch points distinguishing it from
@@ -1371,23 +1326,6 @@ export function PromptBoxInternal({
   // Mark session transitions before dispatching state so overlapping React
   // priorities cannot enqueue the same multi-state reset more than once.
   const hasActiveHistorySessionRef = useRef(false);
-  const resolvedZenModeStorageKey =
-    zenModeStorageKey ?? ZEN_MODE_STORAGE_KEY[zenModeLayout];
-  const zenModeAtom = useMemo(
-    () =>
-      resolvedZenModeStorageKey
-        ? atomWithStorage<boolean>(
-            resolvedZenModeStorageKey,
-            false,
-            createJsonLocalStorage<boolean>(),
-            {
-              getOnInit: true,
-            },
-          )
-        : createTransientZenModeAtom(),
-    [resolvedZenModeStorageKey],
-  );
-  const [isZenMode, setIsZenMode] = useAtom(zenModeAtom);
   const isVoiceRecording = voice?.state === "recording";
   const isVoiceProcessing = voice?.state === "transcribing";
   const showVoiceActionGroup = isVoiceRecording || isVoiceProcessing;
@@ -1511,9 +1449,8 @@ export function PromptBoxInternal({
     voiceCompletionPromiseRef.current = transition;
     return transition;
   }, []);
-  const showZenLayout = isZenMode;
   const showCompactLayout =
-    compact?.isCompact === true && !showVoiceActionGroup && !isZenMode;
+    compact?.isCompact === true && !showVoiceActionGroup;
   const effectivePlaceholder = showCompactLayout
     ? (compact.placeholder ?? placeholder)
     : placeholder;
@@ -1521,11 +1458,7 @@ export function PromptBoxInternal({
   const composerInputLocked = useComposerInputLock(
     pluginComposerHost?.textEffectKey ?? null,
   );
-  const composerLayout = showCompactLayout
-    ? "compact"
-    : showZenLayout
-      ? "zen"
-      : "expanded";
+  const composerLayout = showCompactLayout ? "compact" : "expanded";
   const localComposerView = usePluginComposerViewModel({
     scope: pluginComposerHost?.scope ?? {
       kind: "new-thread",
@@ -2111,18 +2044,9 @@ export function PromptBoxInternal({
     scheduleRevealEditorSelection();
   }, [editor, focusEndKey, isPointerCoarse, scheduleRevealEditorSelection]);
 
-  useEffect(() => {
-    if (zenModeResetKey === undefined) return;
-    if (resolvedZenModeStorageKey) {
-      setIsZenMode(RESET);
-      return;
-    }
-    setIsZenMode(false);
-  }, [resolvedZenModeStorageKey, setIsZenMode, zenModeResetKey]);
-
   useLayoutEffect(() => {
     scheduleRevealEditorSelection();
-  }, [isZenMode, minHeight, scheduleRevealEditorSelection]);
+  }, [minHeight, scheduleRevealEditorSelection]);
 
   const resetHistorySession = useCallback(() => {
     if (!hasActiveHistorySessionRef.current) return;
@@ -2223,7 +2147,7 @@ export function PromptBoxInternal({
     formElement.addEventListener("transitionend", handleTransitionEnd);
 
     return cleanup;
-  }, [heightAnimationKey, isZenMode, showCompactLayout, zenModeLayout]);
+  }, [heightAnimationKey, showCompactLayout]);
 
   const trimmedValue = value.trim();
   const hasAttachments = attachments.length > 0;
@@ -2758,13 +2682,8 @@ export function PromptBoxInternal({
     setVoiceActionTransition("exiting");
     voice?.cancel();
   }, [voice]);
-  const actionSubmitTitle = isZenMode
-    ? submitTitle.replace(/^Submit\s+/, "")
-    : submitTitle;
   const effectiveSubmitTitle =
-    !canSubmit && submitDisabledReason
-      ? submitDisabledReason
-      : actionSubmitTitle;
+    !canSubmit && submitDisabledReason ? submitDisabledReason : submitTitle;
 
   const emitAttachmentFiles = useCallback(
     (files: File[]) => {
@@ -2774,20 +2693,6 @@ export function PromptBoxInternal({
     [onAttachFiles],
   );
 
-  const resetZenModeAfterSubmit = useCallback(() => {
-    if (!resetZenModeOnSubmit || !isZenMode) return;
-    if (resolvedZenModeStorageKey) {
-      setIsZenMode(RESET);
-      return;
-    }
-    setIsZenMode(false);
-  }, [
-    isZenMode,
-    resetZenModeOnSubmit,
-    resolvedZenModeStorageKey,
-    setIsZenMode,
-  ]);
-
   const submitPrompt = useCallback(() => {
     const shouldBlurAfterSubmit = blurAfterPointerSubmitRef.current;
     blurAfterPointerSubmitRef.current = false;
@@ -2796,8 +2701,7 @@ export function PromptBoxInternal({
     if (shouldBlurAfterSubmit) {
       blurPromptEditor(editorRef.current);
     }
-    resetZenModeAfterSubmit();
-  }, [canSubmit, onSubmit, resetZenModeAfterSubmit]);
+  }, [canSubmit, onSubmit]);
 
   const handleSubmitClick = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -2851,8 +2755,7 @@ export function PromptBoxInternal({
   const submitModifierPrompt = useCallback(() => {
     if (!canModifierSubmit || !onModifierSubmit) return;
     onModifierSubmit();
-    resetZenModeAfterSubmit();
-  }, [canModifierSubmit, onModifierSubmit, resetZenModeAfterSubmit]);
+  }, [canModifierSubmit, onModifierSubmit]);
 
   const applyHistoryDraft = useCallback(
     (draft: PromptDraftState) => {
@@ -2875,45 +2778,14 @@ export function PromptBoxInternal({
     [history, scheduleRevealEditorSelection, syncTriggerState],
   );
 
-  const focusEditorAfterSizeChange = useCallback(() => {
-    // Size changes on mobile web are presentation-only. Keeping focus where it
-    // is prevents the soft keyboard from covering the thread after a tap.
-    if (isPointerCoarse) return;
-    requestAnimationFrame(() => {
-      const currentEditor = editorRef.current;
-      if (!currentEditor || currentEditor.isDestroyed) return;
-
-      currentEditor.commands.focus();
-      scheduleRevealEditorSelection();
-    });
-  }, [isPointerCoarse, scheduleRevealEditorSelection]);
-
-  const exitZenMode = useCallback(() => {
+  const collapsePromptBox = useCallback(() => {
+    if (!onCollapse) return;
     capturePromptBoxHeight();
-    if (!isZenMode) return;
-    setIsZenMode(false);
-    focusEditorAfterSizeChange();
-  }, [
-    capturePromptBoxHeight,
-    focusEditorAfterSizeChange,
-    isZenMode,
-    setIsZenMode,
-  ]);
-
-  const enterZenMode = useCallback(() => {
-    capturePromptBoxHeight();
-    // Mobile follow-up composers expand by focus, not a manual size control.
-    if (compact) return;
-    if (isZenMode) return;
-    setIsZenMode(true);
-    focusEditorAfterSizeChange();
-  }, [
-    capturePromptBoxHeight,
-    focusEditorAfterSizeChange,
-    isZenMode,
-    compact,
-    setIsZenMode,
-  ]);
+    // The compact editor expands when it receives focus. Release the current
+    // editor focus before collapsing so the next click can expand it again.
+    blurPromptEditor(editorRef.current);
+    onCollapse();
+  }, [capturePromptBoxHeight, onCollapse]);
 
   const handleAttachmentInputChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -3165,7 +3037,7 @@ export function PromptBoxInternal({
         !event.metaKey &&
         !event.altKey &&
         !event.ctrlKey &&
-        (event.shiftKey || isZenMode || !canSubmitWithEnterKey);
+        (event.shiftKey || !canSubmitWithEnterKey);
       if (isPromptNewlineKey && currentEditor && exitHeading(currentEditor)) {
         event.preventDefault();
         return true;
@@ -3180,7 +3052,7 @@ export function PromptBoxInternal({
         return true;
       }
 
-      if (isZenMode || !canSubmitWithEnterKey) return false;
+      if (!canSubmitWithEnterKey) return false;
       const isSubmitKey = event.key === "Enter" && !event.shiftKey;
 
       if (!isSubmitKey) return false;
@@ -3202,7 +3074,6 @@ export function PromptBoxInternal({
       dispatchAppCommandKey,
       history,
       isPointerCoarse,
-      isZenMode,
       loadMoreCommands,
       onCommandQueryChange,
       onMentionQueryChange,
@@ -3242,7 +3113,6 @@ export function PromptBoxInternal({
       ref={formRef}
       data-promptbox=""
       data-promptbox-compact={showCompactLayout ? "" : undefined}
-      data-promptbox-zen={showZenLayout ? "" : undefined}
       data-promptbox-voice-active={showVoiceActionGroup ? "" : undefined}
       onSubmit={handleSubmit}
       onMouseDown={handlePromptBoxMouseDown}
@@ -3260,11 +3130,6 @@ export function PromptBoxInternal({
       className={cn(
         "group/promptbox relative w-full rounded-xl border border-border bg-background shadow-lift",
         showCompactLayout && "overflow-hidden",
-        // Zen toggles only the *height* of the box; the inset padding stays
-        // identical so the placeholder/text doesn't jump when toggling.
-        // `flex flex-col` lets the editor's `flex-1` fill the dvh height.
-        showZenLayout && "flex flex-col",
-        showZenLayout && ZEN_MODE_HEIGHT_CLASS[zenModeLayout],
         className,
       )}
     >
@@ -3277,24 +3142,20 @@ export function PromptBoxInternal({
       />
       <div
         data-promptbox-layout=""
-        className={cn(COLLAPSING_GRID_CLASS, showZenLayout && "min-h-0 flex-1")}
+        className={COLLAPSING_GRID_CLASS}
         style={{ gridTemplateRows: "1fr" }}
       >
         <div
           data-promptbox-main=""
           className={cn(
             "min-h-0 overflow-hidden transition-opacity duration-[180ms] motion-reduce:transition-none",
-            isZenMode && "flex flex-col",
             showCompactLayout && "relative h-12",
             showVoiceActionGroup && "pointer-events-none",
           )}
         >
           {header && !showCompactLayout ? (
-            // Left padding matches the editor's so the header content aligns
-            // with the placeholder column in both normal and zen modes (editor
-            // shifts from px-4 to px-6 when entering zen). Right padding leaves
-            // room for the zen-mode toggle button in the top-right corner. Zen
-            // mode also gets more top room since the card fills the viewport.
+            // Left padding matches the editor's placeholder column. Right
+            // padding leaves room for prompt box controls in the top-right.
             <div
               data-promptbox-expanded-only=""
               inert={showVoiceActionGroup ? true : undefined}
@@ -3303,28 +3164,25 @@ export function PromptBoxInternal({
               {header}
             </div>
           ) : null}
-          <div
-            data-promptbox-input-region=""
-            className={cn(
-              "relative",
-              isZenMode && "min-h-0 flex flex-1 flex-col",
-            )}
-          >
+          <div data-promptbox-input-region="" className="relative">
             {!showCompactLayout ? (
               <>
                 <div data-promptbox-expanded-only="">
                   <AppCommandShortcutHint
                     shortcut={focusComposerShortcut}
-                    className="absolute right-10 top-2 z-20 group-focus-within/promptbox:hidden"
+                    className={cn(
+                      "absolute top-2 z-20 group-focus-within/promptbox:hidden",
+                      onCollapse ? "right-10" : "right-2",
+                    )}
                   />
                 </div>
-                <div
-                  data-promptbox-expanded-only=""
-                  data-promptbox-standard-actions=""
-                  inert={showVoiceActionGroup ? true : undefined}
-                  className="absolute right-2 top-2 z-20 flex items-center gap-0.5"
-                >
-                  {isZenMode ? (
+                {onCollapse ? (
+                  <div
+                    data-promptbox-expanded-only=""
+                    data-promptbox-standard-actions=""
+                    inert={showVoiceActionGroup ? true : undefined}
+                    className="absolute right-2 top-2 z-20 flex items-center"
+                  >
                     <Button
                       type="button"
                       size="icon"
@@ -3332,45 +3190,26 @@ export function PromptBoxInternal({
                       onMouseDown={(event) => {
                         event.preventDefault();
                       }}
-                      onClick={exitZenMode}
-                      aria-label="Make prompt box smaller"
+                      onClick={collapsePromptBox}
+                      aria-label="Collapse prompt box"
                       className={cn(
                         "text-subtle-foreground hover:text-muted-foreground",
                         COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
                       )}
                     >
-                      <Icon name="Minimize2" className="size-3" />
+                      <Icon name="ChevronDown" className="size-3" />
                     </Button>
-                  ) : null}
-                  {!isZenMode && !compact ? (
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                      }}
-                      onClick={enterZenMode}
-                      aria-label="Make prompt box larger"
-                      className={cn(
-                        "text-subtle-foreground hover:text-muted-foreground",
-                        COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
-                      )}
-                    >
-                      <Icon name="Maximize2" className="size-3" />
-                    </Button>
-                  ) : null}
-                </div>
+                  </div>
+                ) : null}
               </>
             ) : null}
             <ComposerEditorSlot
               editor={editor}
               scrollContainerRef={editorScrollContainerRef}
               inputLocked={composerInputLocked}
-              isZenMode={isZenMode}
               isCompactLayout={showCompactLayout}
               minHeight={minHeight}
-              layout={zenModeLayout}
+              layout={editorLayout}
               resolveMentionLink={mentionResolveLink}
             />
           </div>
@@ -3380,20 +3219,15 @@ export function PromptBoxInternal({
               ref={typeaheadMenuRef}
               data-promptbox-typeahead-menu=""
               className={cn(
-                // Zen mode: menu floats inside the form, anchored just above
-                // the action footer so it stays visible. The form's pb-3 +
-                // ~36px button row sets the bottom offset.
-                // Normal mode: menu floats outside the form (above or below).
+                // The menu floats outside the form (above or below).
                 // -left-px / -right-px aligns the menu with the form's outer
                 // edge (form has a 1px border; left-0/right-0 would otherwise
                 // sit inside it, leaving the banner above peeking out 1px on
                 // each side).
                 "absolute -left-px -right-px z-20",
-                isZenMode
-                  ? "bottom-14 px-3"
-                  : mentionMenuPlacement === "top"
-                    ? "bottom-full mb-2"
-                    : "top-full mt-2",
+                mentionMenuPlacement === "top"
+                  ? "bottom-full mb-2"
+                  : "top-full mt-2",
               )}
             >
               <MentionMenu
@@ -3595,7 +3429,6 @@ export function PromptBoxInternal({
                         }
                         isCompact={showCompactLayout}
                         isSubmitting={isSubmitting}
-                        isZenMode={isZenMode}
                         onPointerDown={handleSubmitPointerDown}
                         onClick={handleSubmitClick}
                         title={effectiveSubmitTitle}

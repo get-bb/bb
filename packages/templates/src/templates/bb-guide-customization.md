@@ -84,10 +84,9 @@ understand; development builds always show these diagnostic rows.
 Settings → General also includes `steerActiveThreadOnEnter`, which defaults to
 false. Outside an open typeahead menu, enabling it makes Enter steer a running
 thread and Command+Enter queue a follow-up; when disabled, those actions are
-reversed. Shift+Enter inserts a newline, and unmodified Enter inserts a newline
-in zen mode. On coarse-pointer touch devices, the software-keyboard Return path
-inserts a newline. iPadOS WebKit preserves these Enter shortcuts for a connected
-Magic Keyboard.
+reversed. Shift+Enter inserts a newline. On coarse-pointer touch devices, the
+software-keyboard Return path inserts a newline. iPadOS WebKit preserves these
+Enter shortcuts for a connected Magic Keyboard.
 
 Settings → General also includes `streamerMode`, which defaults to false. Turn
 it on to hide every `customModels` entry from `~/.bb/config.json` in all model

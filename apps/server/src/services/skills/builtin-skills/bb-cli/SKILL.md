@@ -89,10 +89,9 @@ message agents, or inspect projects, providers, and environments.
 - The `steerActiveThreadOnEnter` General preference defaults to false. Outside
   an open composer typeahead menu, enable it to make Enter steer a running
   thread and Command+Enter queue a follow-up; when disabled, those actions are
-  reversed. Shift+Enter inserts a newline, while zen mode also makes
-  unmodified Enter insert one. On coarse-pointer touch devices, the software
-  keyboard keeps Return as a newline; iPadOS WebKit preserves the Enter
-  shortcuts for a connected Magic Keyboard. Update the preference with
+  reversed. Shift+Enter inserts a newline. On coarse-pointer touch devices,
+  the software keyboard keeps Return as a newline; iPadOS WebKit preserves the
+  Enter shortcuts for a connected Magic Keyboard. Update the preference with
   `bb settings general steerActiveThreadOnEnter <true|false>`.
 - The `streamerMode` General preference defaults to false. Enable it to hide
   every `customModels` entry from `~/.bb/config.json` in all model lists

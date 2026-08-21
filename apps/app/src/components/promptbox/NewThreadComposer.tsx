@@ -114,7 +114,6 @@ interface NewThreadComposerPromptOptions {
   id?: string;
   placeholder?: string;
   autoFocus?: boolean;
-  zenModeStorageKey: string;
   banner?: ReactNode;
   header?: ReactNode;
   /** When present, submission is blocked and this reason is shown on the submit button. */
@@ -1234,7 +1233,6 @@ export function NewThreadComposer({
           autoFocus={options.autoFocus}
           pluginComposerHost={options.pluginComposerHost ?? pluginComposerHost}
           textEffects={options.textEffects ?? textEffects}
-          zenModeStorageKey={options.zenModeStorageKey}
           history={{
             currentDraft,
             entries: promptHistoryDrafts,

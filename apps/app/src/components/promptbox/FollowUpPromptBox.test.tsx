@@ -60,7 +60,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     promptBoxRef,
     submission,
     suppressPluginComposerCustomizations,
-    zenMode,
+    onCollapse,
     heightAnimationKey,
     minHeight,
     voice,
@@ -80,7 +80,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     };
     submission?: { onModifierSubmit?: () => void };
     suppressPluginComposerCustomizations?: boolean;
-    zenMode?: { resetKey: string | number };
+    onCollapse?: () => void;
     heightAnimationKey?: string | number;
     minHeight?: number;
     voice?: { state: "idle" | "recording" | "transcribing" | "error" };
@@ -88,7 +88,6 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     <div
       data-testid="prompt-box"
       data-compact={compact?.isCompact}
-      data-zen-reset-key={zenMode?.resetKey}
       data-height-animation-key={heightAnimationKey}
       data-min-height={minHeight}
       data-voice-state={voice?.state}
@@ -131,6 +130,11 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       <button type="button" onClick={submission?.onModifierSubmit}>
         Modifier submit
       </button>
+      {onCollapse ? (
+        <button type="button" onClick={onCollapse}>
+          Collapse prompt box
+        </button>
+      ) : null}
     </div>
   ),
 }));
@@ -248,7 +252,7 @@ function createFollowUpPromptBoxProps(
         onQueryChange: vi.fn(),
       },
     },
-    zenModeResetKey: "thr_test",
+    collapseResetKey: "thr_test",
   };
 }
 
@@ -753,6 +757,34 @@ describe("FollowUpPromptBox", () => {
     expect(
       screen.queryByRole("button", { name: /Make prompt box/u }),
     ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Collapse prompt box" }),
+    ).toBeNull();
+  });
+
+  it("collapses a wide composer until the user focuses it again", () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    props.environmentSummary = <span>Local environment</span>;
+    render(<FollowUpPromptBox {...props} />);
+
+    expect(screen.getByText("Local environment")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse prompt box" }),
+    );
+
+    expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
+      "true",
+    );
+    expect(screen.queryByText("Local environment")).toBeNull();
+
+    act(() =>
+      screen.getByRole("textbox", { name: "Follow-up prompt" }).focus(),
+    );
+
+    expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
+      null,
+    );
+    expect(screen.getByText("Local environment")).toBeTruthy();
   });
 
   it("collapses after a pointer submission when the keyboard viewport settles", async () => {
@@ -1149,9 +1181,6 @@ describe("FollowUpPromptBox", () => {
     rerender(<FollowUpPromptBox {...props} focusEndKey="mobile" />);
 
     expect(screen.getByTestId("prompt-box")).toBe(initialPromptBox);
-    expect(initialPromptBox.getAttribute("data-zen-reset-key")).toBe(
-      "thr_test:mobile",
-    );
   });
 
   it("uses the caller-specific compact placeholder", () => {

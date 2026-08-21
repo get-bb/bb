@@ -182,8 +182,6 @@ interface NewThreadPromptBoxUIProps {
   /** Active root-composer binding for plugin composer hooks and customizations. */
   pluginComposerHost?: PluginComposerHost | null;
   textEffects?: readonly ComposerTextEffectSource[];
-  /** zenMode storage key used for the root-compose zen-mode atom. */
-  zenModeStorageKey: string;
   /** Overrides the default new-thread placeholder copy. */
   placeholder?: string;
 
@@ -236,7 +234,6 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   autoFocus,
   pluginComposerHost,
   textEffects,
-  zenModeStorageKey,
   placeholder: placeholderOverride,
   history,
   typeahead,
@@ -307,7 +304,6 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
           disabledReason={disabledReason}
           autoFocus={autoFocus}
           textEffects={textEffects}
-          zenModeStorageKey={zenModeStorageKey}
           placeholder={placeholderOverride}
           history={history}
           typeahead={typeahead}
@@ -346,7 +342,6 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   disabledReason,
   autoFocus,
   textEffects,
-  zenModeStorageKey,
   placeholder: placeholderOverride,
   history,
   typeahead,
@@ -376,8 +371,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
     () => permissionDisplayForPromptMode(promptModeInput),
     [promptModeInput],
   );
-  const permissionPickerDisabledByPlanMode =
-    isPlanModePrompt(promptModeInput);
+  const permissionPickerDisabledByPlanMode = isPlanModePrompt(promptModeInput);
   const submitTitle = isSubmitting
     ? "Submitting..."
     : execution.model.isLoading
@@ -418,10 +412,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
           title: submitTitle,
         }}
         autoFocus={autoFocus}
-        zenMode={{
-          layout: "root-compose",
-          storageKey: zenModeStorageKey,
-        }}
+        editorLayout="root-compose"
         minHeight={NEW_THREAD_PROMPT_BOX_MIN_HEIGHT}
         placeholder={placeholder}
         header={modeConfig.header}

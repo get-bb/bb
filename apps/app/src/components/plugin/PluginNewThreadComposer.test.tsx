@@ -327,9 +327,7 @@ function ForkSeedSurface({ composer }: { composer: NewThreadComposerState }) {
   useEffect(() => {
     seedEnvironmentSelectionValue(encodeReuseValue("env-source"));
   }, [seedEnvironmentSelectionValue]);
-  return composer.renderPromptBox({
-    zenModeStorageKey: "bb.promptbox.zen-mode.test-root-fork",
-  });
+  return composer.renderPromptBox({});
 }
 
 function composerElement(

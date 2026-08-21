@@ -251,7 +251,7 @@ interface InlineDraftComposerOptions {
   textEffects: FollowUpPromptBoxProps["textEffects"];
   threadRuntimeDisplayStatus: FollowUpComposerProps["threadRuntimeDisplayStatus"];
   typeahead: FollowUpPromptBoxProps["typeahead"];
-  zenModeResetKey: string;
+  collapseResetKey: string;
 }
 
 /**
@@ -302,7 +302,7 @@ function buildInlineDraftComposer(options: InlineDraftComposerOptions) {
       permissionReadOnly
       typeahead={options.typeahead}
       promptActions={options.promptActions}
-      zenModeResetKey={options.zenModeResetKey}
+      collapseResetKey={options.collapseResetKey}
       focusEndKey={`${options.focusSessionKey}:${options.editFocusNonce}`}
       isPrimaryComposer={false}
       showScrollToBottomButton={false}
@@ -1359,7 +1359,7 @@ export function ThreadDetailPromptArea({
         textEffects: queuedComposerTextEffects,
         threadRuntimeDisplayStatus: runtimeDisplayStatus,
         typeahead: typeaheadConfig,
-        zenModeResetKey: `queued-message:${queuedMessageId}`,
+        collapseResetKey: `queued-message:${queuedMessageId}`,
       }),
     };
     return { inlineEditor, pluginComposerHost };
@@ -1463,7 +1463,7 @@ export function ThreadDetailPromptArea({
           textEffects: sentMessageComposerTextEffects,
           threadRuntimeDisplayStatus: runtimeDisplayStatus,
           typeahead: typeaheadConfig,
-          zenModeResetKey: `sent-message:${operationId}`,
+          collapseResetKey: `sent-message:${operationId}`,
         })}
       </InlineMessageEditorFrame>,
       hostElement,
@@ -1698,7 +1698,7 @@ export function ThreadDetailPromptArea({
       pluginComposerHost={normalPluginComposerHost}
       pluginComposerScope={normalPluginComposerHost.scope}
       textEffects={promptTextEffects}
-      zenModeResetKey={thread.id}
+      collapseResetKey={thread.id}
       focusEndKey={bottomFocusEndKey}
       environmentSummary={environmentSummary}
       contextWindowUsage={contextWindowUsage ?? null}

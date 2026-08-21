@@ -212,9 +212,9 @@ subagents and the Workflow tool under the Claude Code provider plugin. Read
 and set them like any plugin setting, for example
 `bb plugin config provider-claude-code set workflowsDisabled true`.
 
-Outside an open typeahead menu, Shift+Enter inserts a newline. In zen mode,
-unmodified Enter also inserts a newline. On coarse-pointer touch devices, the
-software-keyboard Return path inserts a newline and the submit button sends.
+Outside an open typeahead menu, Shift+Enter inserts a newline. On
+coarse-pointer touch devices, the software-keyboard Return path inserts a
+newline and the submit button sends.
 iPadOS WebKit additionally preserves the Enter and Command+Enter shortcuts
 above for a connected Magic Keyboard.
 

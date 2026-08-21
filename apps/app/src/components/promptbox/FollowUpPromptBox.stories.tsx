@@ -557,7 +557,7 @@ interface RowConfig {
   contextWindowUsage?: ThreadContextWindowUsage | null;
   stack?: ReactNode | null;
   queuedMessages?: readonly ThreadQueuedMessage[];
-  zenModeResetKey?: string;
+  collapseResetKey?: string;
   hideComposer?: boolean;
   /** Defaults to the editable execution controls; override to show the read-only model/provider config. */
   execution?: ExecutionControlsProps;
@@ -608,7 +608,7 @@ function Row({
   contextWindowUsage = null,
   stack = null,
   queuedMessages: initialQueuedMessages,
-  zenModeResetKey = "thr_demo",
+  collapseResetKey = "thr_demo",
   hideComposer = false,
   execution = baseExecution,
   permission = basePermission,
@@ -723,7 +723,7 @@ function Row({
                 permissionReadOnly
                 promptActions={promptActions}
                 typeahead={typeaheadBase}
-                zenModeResetKey={`${zenModeResetKey}:queued-message`}
+                collapseResetKey={`${collapseResetKey}:queued-message`}
                 isPrimaryComposer={false}
                 showScrollToBottomButton={false}
               />
@@ -741,7 +741,7 @@ function Row({
       resolvedCompactPlaceholder,
       resolvedPlaceholder,
       threadRuntimeDisplayStatus,
-      zenModeResetKey,
+      collapseResetKey,
     ],
   );
   const queueElement =
@@ -816,7 +816,7 @@ function Row({
         promptActions={promptActions}
         readOnly={readOnly}
         typeahead={typeaheadBase}
-        zenModeResetKey={zenModeResetKey}
+        collapseResetKey={collapseResetKey}
       />
     </PromptStage>
   );

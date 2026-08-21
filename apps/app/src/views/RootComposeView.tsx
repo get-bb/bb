@@ -73,7 +73,6 @@ import {
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
-import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import {
   buildForkThreadRequest,
@@ -177,7 +176,6 @@ import {
   type RootComposeTerminalTarget,
 } from "./RootComposePanelTabContent";
 
-const ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY = "bb.promptbox.zen-mode.root-compose";
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
 
 // Fill the scroll area and center the no-projects welcome both axes.
@@ -1910,10 +1908,6 @@ function RootComposeSurface({
   const promptBox = renderPromptBox({
     id: "root-compose-prompt",
     autoFocus: !isProviderCliVersionBlocked,
-    zenModeStorageKey: getProjectScopedStorageKey(
-      ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY,
-      projectId,
-    ),
     banner: promptBanner,
     header: promptHeader,
     blockedReason: isProviderCliVersionBlocked
