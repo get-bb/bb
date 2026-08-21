@@ -1,0 +1,582 @@
+// @vitest-environment jsdom
+
+import type {
+  PendingInteraction,
+  ThreadQueuedMessage,
+  ThreadWithRuntime,
+} from "@bb/domain";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  PluginComposerHostScopeProvider,
+  usePluginComposerHost,
+  usePluginComposerHostDraft,
+} from "@/components/plugin/plugin-composer-host";
+import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
+import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
+
+/**
+ * Keystroke isolation for the published plugin composer host.
+ *
+ * The host published by ThreadDetailPromptArea reaches large non-draft
+ * subscribers (ThreadDetailSecondaryContentBody -> SecondaryPanelLayout ->
+ * ThreadTimelinePane, the hosted-panel registry). It must stay referentially
+ * stable while the user types: a per-keystroke identity notified the pane
+ * scope and re-rendered the whole thread shell per character. The live draft
+ * must instead reach actual draft consumers through the host's
+ * getCurrent/subscribeDraft pair. These tests use the real draft store so
+ * keystrokes flow the way they do in the app.
+ */
+
+const mocks = vi.hoisted(() => ({
+  sendMessageMutateAsync: vi.fn(),
+  shellProbeRenders: vi.fn(),
+  updateQueuedMessageMutateAsync: vi.fn(),
+}));
+
+vi.mock("react-router-dom", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router-dom")>();
+  return { ...actual, useNavigate: () => vi.fn() };
+});
+
+vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
+  FollowUpPromptBox: ({
+    composer,
+    pendingInteraction = null,
+    stack,
+  }: {
+    composer: {
+      message: string;
+      onChangeMessage: (message: string, mentions: []) => void;
+      onSubmit: () => void;
+    } | null;
+    pendingInteraction?: ReactNode;
+    stack: ReactNode;
+  }) => (
+    <div data-testid="follow-up-prompt-box">
+      <div data-testid="prompt-stack">
+        {stack}
+        {pendingInteraction}
+      </div>
+      {composer ? (
+        // Like the real FollowUpPromptBox: hidden, not unmounted, while a
+        // pending interaction takes the composer's place.
+        <div hidden={pendingInteraction !== null}>
+          <input
+            aria-label="Composer message"
+            value={composer.message}
+            onChange={(event) =>
+              composer.onChangeMessage(event.currentTarget.value, [])
+            }
+          />
+          <button type="button" onClick={composer.onSubmit}>
+            Submit composer
+          </button>
+        </div>
+      ) : null}
+    </div>
+  ),
+}));
+
+vi.mock("@/components/promptbox/ThreadEnvironmentSummary", () => ({
+  ThreadEnvironmentSummary: () => <div />,
+}));
+
+vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
+  QueuedMessagesList: ({
+    inlineEditor,
+    queuedMessages,
+    onEdit,
+  }: {
+    inlineEditor?: { content: ReactNode; onDismiss: () => void };
+    queuedMessages: readonly ThreadQueuedMessage[];
+    onEdit: (request: {
+      queuedMessageId: string;
+      queuedMessageIndex: number;
+    }) => void;
+  }) => (
+    <div data-testid="queued-message-list">
+      {queuedMessages.map((message, index) => (
+        <button
+          key={message.id}
+          type="button"
+          onClick={() =>
+            onEdit({ queuedMessageId: message.id, queuedMessageIndex: index })
+          }
+        >
+          Edit queued message {index + 1}
+        </button>
+      ))}
+      {inlineEditor ? (
+        <div data-testid="inline-queued-message-editor">
+          {inlineEditor.content}
+          <button type="button" onClick={inlineEditor.onDismiss}>
+            Cancel queued edit
+          </button>
+        </div>
+      ) : null}
+    </div>
+  ),
+}));
+
+vi.mock("@/components/promptbox/banner/ThreadBackgroundCommandsCard", () => ({
+  ThreadBackgroundCommandsCard: () => null,
+}));
+
+vi.mock("@/components/promptbox/banner/ThreadGoalCard", () => ({
+  ThreadGoalCard: () => null,
+}));
+
+vi.mock("@/components/promptbox/banner/ThreadPromptContextBanner", () => ({
+  ThreadPromptContextBanner: () => null,
+}));
+
+vi.mock("@/components/promptbox/banner/ThreadPromptModeCard", () => ({
+  ThreadPromptModeCard: () => null,
+}));
+
+vi.mock("@/components/promptbox/banner/ThreadTodoCard", () => ({
+  ThreadTodoCard: () => null,
+}));
+
+vi.mock("@/components/promptbox/banner/ThreadWorkflowCard", () => ({
+  ThreadWorkflowCard: () => null,
+}));
+
+vi.mock(
+  "@/components/thread/pending-interactions/ThreadPendingInteractionBanner",
+  () => ({
+    ThreadPendingInteractionBanner: () => (
+      <div data-testid="pending-interaction" />
+    ),
+  }),
+);
+
+vi.mock("@/components/plugin/PluginPendingInteractionComposer", () => ({
+  PluginPendingInteractionComposer: () => null,
+}));
+
+vi.mock("@/components/ui/app-toast", () => ({
+  appToast: { error: vi.fn() },
+}));
+
+vi.mock("@/hooks/useCommandSuggestions", () => ({
+  useCommandSuggestions: () => ({
+    hasMore: false,
+    isError: false,
+    isLoading: false,
+    isLoadingMore: false,
+    loadMore: vi.fn(),
+    suggestions: [],
+    trigger: null,
+  }),
+}));
+
+vi.mock("@/hooks/usePromptMentions", () => ({
+  usePromptMentions: () => ({
+    isError: false,
+    isLoading: false,
+    setQuery: vi.fn(),
+    suggestions: [],
+  }),
+}));
+
+vi.mock("@/hooks/useThreadCreationOptions", () => ({
+  useThreadCreationOptions: () => ({
+    activeModel: null,
+    executionInputSources: {},
+    hasMultipleProviders: false,
+    isLoadingModels: false,
+    modelLoadError: null,
+    modelLoadFailed: false,
+    modelOptions: [],
+    moreModelOptions: [],
+    permissionMode: "auto",
+    permissionModeOptions: [],
+    providerOptions: [],
+    reasoningLevel: "medium",
+    reasoningOptions: [],
+    selectedModel: "gpt-5",
+    selectedProviderComposerActions: [],
+    selectedProviderDisplayName: "Codex",
+    selectedProviderId: "codex",
+    serviceTier: undefined,
+    serviceTierSupportByProvider: {},
+    setPermissionMode: vi.fn(),
+    setReasoningLevel: vi.fn(),
+    setSelectedModel: vi.fn(),
+    setServiceTier: vi.fn(),
+    supportsPermissionModeSelection: true,
+    supportsServiceTier: false,
+  }),
+}));
+
+vi.mock("@/hooks/mutations/project-mutations", () => ({
+  useUploadPromptAttachment: () => ({
+    isPending: false,
+    mutateAsync: vi.fn(),
+  }),
+}));
+
+vi.mock("@/hooks/mutations/thread-runtime-mutations", () => {
+  const idleMutation = () => ({
+    isPending: false,
+    mutate: vi.fn(),
+    mutateAsync: vi.fn(),
+    variables: null,
+  });
+  return {
+    useCancelThreadPlan: idleMutation,
+    useClearThreadGoal: idleMutation,
+    useCreateThreadQueuedMessage: idleMutation,
+    useDeleteThreadQueuedMessage: idleMutation,
+    useReorderThreadQueuedMessage: idleMutation,
+    useSetThreadQueuedMessageGroupBoundary: idleMutation,
+    useSendThreadQueuedMessage: idleMutation,
+    useStopThread: idleMutation,
+    useUpdateThreadQueuedMessage: () => ({
+      isPending: false,
+      mutateAsync: mocks.updateQueuedMessageMutateAsync,
+    }),
+  };
+});
+
+vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
+  useUnarchiveThread: () => ({
+    isPending: false,
+    mutate: vi.fn(),
+    variables: null,
+  }),
+}));
+
+vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
+  useProjectDisplayName: () => null,
+}));
+
+vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
+  useThreadDefaultExecutionOptions: () => ({
+    data: {
+      model: "gpt-5",
+      permissionMode: "auto",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    },
+    isError: false,
+  }),
+}));
+
+const queryMocks = vi.hoisted(() => ({
+  queuedMessages: [] as ThreadQueuedMessage[],
+}));
+
+vi.mock("@/hooks/queries/thread-queries", () => ({
+  getLatestPendingInteraction: (interactions: readonly PendingInteraction[]) =>
+    interactions.at(-1) ?? null,
+  useThreadPromptHistory: () => ({ data: [] }),
+  useThreadQueuedMessages: () => ({ data: queryMocks.queuedMessages }),
+}));
+
+const PROJECT_ID = "proj_keystrokes";
+
+function makeThread(id: string): ThreadWithRuntime {
+  return {
+    archivedAt: null,
+    environmentId: null,
+    id,
+    projectId: PROJECT_ID,
+    providerId: "codex",
+    runtime: { displayStatus: "idle" },
+    status: "idle",
+  } as ThreadWithRuntime;
+}
+
+function makeQueuedMessage(): ThreadQueuedMessage {
+  return {
+    id: "qmsg_1",
+    content: [{ type: "text", text: "Already queued", mentions: [] }],
+    model: "gpt-5",
+    reasoningLevel: "medium",
+    permissionMode: "auto",
+    serviceTier: "default",
+    groupWithNext: false,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+}
+
+function makePendingInteraction(threadId: string): PendingInteraction {
+  return {
+    id: `interaction-${threadId}`,
+    threadId,
+    turnId: "turn-1",
+    providerId: "codex",
+    providerThreadId: "provider-thread-1",
+    providerRequestId: "provider-request-1",
+    origin: {
+      kind: "provider",
+      providerId: "codex",
+      providerThreadId: "provider-thread-1",
+      providerRequestId: "provider-request-1",
+    },
+    payload: {
+      kind: "user_question",
+      questions: [
+        {
+          id: "question-1",
+          prompt: "Continue?",
+          multiSelect: false,
+          allowFreeText: true,
+        },
+      ],
+    },
+    resolution: null,
+    status: "pending",
+    statusReason: null,
+    createdAt: 1,
+    resolvedAt: null,
+  };
+}
+
+/**
+ * Mirrors ThreadDetailSecondaryContentBody: holds the published host without
+ * reading its draft. Every render is one shell re-render in the app
+ * (SecondaryPanelLayout, ThreadTimelinePane), so this must stay flat while
+ * the user types.
+ */
+function ShellProbe() {
+  mocks.shellProbeRenders(usePluginComposerHost());
+  return null;
+}
+
+/** An actual draft consumer (the plugin-hook read path). */
+function PublishedHostDraftProbe() {
+  const host = usePluginComposerHost();
+  const draft = usePluginComposerHostDraft(host);
+  return <div data-testid="published-host-draft">{draft?.text ?? ""}</div>;
+}
+
+function observedShellHosts(): readonly unknown[] {
+  return mocks.shellProbeRenders.mock.calls.map((call) => call[0]);
+}
+
+/**
+ * Mounting settles at two shell renders: the probe first sees an empty scope,
+ * then the area's layout-effect publish delivers the host. Everything after
+ * that baseline is a real shell re-render.
+ */
+function shellRenderCount(): number {
+  return mocks.shellProbeRenders.mock.calls.length;
+}
+
+interface RenderPromptAreaArgs {
+  thread: ThreadWithRuntime;
+  pendingInteractions?: readonly PendingInteraction[];
+}
+
+function buildPromptArea({
+  thread,
+  pendingInteractions = [],
+}: RenderPromptAreaArgs) {
+  return (
+    <PluginComposerHostScopeProvider>
+      <ShellProbe />
+      <PublishedHostDraftProbe />
+      <ThreadDetailPromptArea
+        activeBackgroundAgentCount={0}
+        activeBackgroundCommands={[]}
+        activePromptMode={null}
+        activeWorkflows={[]}
+        canUseGitUi={false}
+        childPendingInteractions={[]}
+        childThreadsSection={null}
+        composerFocusRequestNonce={0}
+        contextBannerMergeBase={null}
+        environmentGoneStatus={null}
+        goal={null}
+        modelFallback={null}
+        isEnvironmentActionPending={false}
+        onChangedFileClick={vi.fn()}
+        parentThreadSection={null}
+        pendingInteractions={pendingInteractions}
+        pendingInteractionsInitialLoading={false}
+        pendingTodos={null}
+        projectId={PROJECT_ID}
+        pullRequest={null}
+        pullRequestMergeMethod="squash"
+        resolveMentionLink={() => null}
+        sendMessage={{
+          isPending: false,
+          mutateAsync: mocks.sendMessageMutateAsync,
+        }}
+        steerActiveThreadOnEnter={false}
+        thread={thread}
+        workspaceChangedFilesSection={null}
+        workspaceStatusPending={false}
+      />
+    </PluginComposerHostScopeProvider>
+  );
+}
+
+function renderPromptArea(args: RenderPromptAreaArgs) {
+  return render(buildPromptArea(args));
+}
+
+function getBottomComposerInput(): HTMLInputElement {
+  return screen.getByRole("textbox", {
+    name: "Composer message",
+  }) as HTMLInputElement;
+}
+
+let threadCounter = 0;
+let threadId = "";
+
+beforeEach(() => {
+  threadCounter += 1;
+  threadId = `thr_keystrokes_${threadCounter}`;
+  queryMocks.queuedMessages = [];
+  mocks.sendMessageMutateAsync.mockResolvedValue(undefined);
+  mocks.updateQueuedMessageMutateAsync.mockResolvedValue(undefined);
+});
+
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+  vi.clearAllMocks();
+});
+
+describe("ThreadDetailPromptArea published composer host", () => {
+  it("keeps the published host referentially stable while keystrokes reach draft consumers", () => {
+    renderPromptArea({ thread: makeThread(threadId) });
+    const input = getBottomComposerInput();
+    const rendersAfterMount = shellRenderCount();
+    const hostAfterMount = observedShellHosts().at(-1);
+    expect(hostAfterMount).not.toBe(null);
+
+    const typed = "abcdefghijklmnopqrstu";
+    for (let index = 1; index <= typed.length; index += 1) {
+      fireEvent.change(input, { target: { value: typed.slice(0, index) } });
+    }
+
+    expect(input.value).toBe(typed);
+    // Draft consumers saw every keystroke through the stable host...
+    expect(screen.getByTestId("published-host-draft").textContent).toBe(typed);
+    // ...while the pane scope never notified: no shell re-render for the
+    // entire burst, including the empty -> non-empty flip.
+    expect(shellRenderCount()).toBe(rendersAfterMount);
+    expect(observedShellHosts().at(-1)).toBe(hostAfterMount);
+  });
+
+  it("submits the draft as typed, read imperatively at event time", async () => {
+    renderPromptArea({ thread: makeThread(threadId) });
+    const input = getBottomComposerInput();
+    for (const index of Array.from({ length: 7 }, (_, i) => i + 1)) {
+      fireEvent.change(input, { target: { value: "Ship it".slice(0, index) } });
+    }
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+    });
+
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledTimes(1);
+    expect(mocks.sendMessageMutateAsync.mock.calls[0]?.[0]).toMatchObject({
+      input: [{ type: "text", text: "Ship it", mentions: [] }],
+    });
+    expect(
+      getPromptDraftAccessor({
+        kind: "thread",
+        projectId: PROJECT_ID,
+        threadId,
+      }).getCurrent().text,
+    ).toBe("");
+  });
+
+  it("delivers external draft writes to consumers without re-rendering the shell, even while a pending interaction hides the composer", () => {
+    const accessor = getPromptDraftAccessor({
+      kind: "thread",
+      projectId: PROJECT_ID,
+      threadId,
+    });
+    renderPromptArea({
+      thread: makeThread(threadId),
+      pendingInteractions: [makePendingInteraction(threadId)],
+    });
+    expect(screen.getByTestId("pending-interaction")).toBeTruthy();
+    expect(screen.getByTestId("published-host-draft").textContent).toBe("");
+    const rendersAfterMount = shellRenderCount();
+
+    act(() => {
+      accessor.setDraft({
+        text: "typed elsewhere",
+        mentions: [],
+        attachments: [],
+      });
+    });
+    expect(screen.getByTestId("published-host-draft").textContent).toBe(
+      "typed elsewhere",
+    );
+
+    act(() => {
+      accessor.setDraft({
+        text: "typed elsewhere again",
+        mentions: [],
+        attachments: [],
+      });
+    });
+    expect(screen.getByTestId("published-host-draft").textContent).toBe(
+      "typed elsewhere again",
+    );
+    expect(shellRenderCount()).toBe(rendersAfterMount);
+  });
+
+  it("swaps to a per-session stable host for inline queued-message edits and streams the inline draft", () => {
+    queryMocks.queuedMessages = [makeQueuedMessage()];
+    renderPromptArea({ thread: makeThread(threadId) });
+    const rendersAfterMount = shellRenderCount();
+    const threadHost = observedShellHosts().at(-1);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+    // Opening the editor publishes the queued-message host: exactly one
+    // legitimate shell notification.
+    expect(shellRenderCount()).toBe(rendersAfterMount + 1);
+    expect(observedShellHosts().at(-1)).not.toBe(threadHost);
+    expect(screen.getByTestId("published-host-draft").textContent).toBe(
+      "Already queued",
+    );
+
+    const inlineInput = within(
+      screen.getByTestId("inline-queued-message-editor"),
+    ).getByRole("textbox", { name: "Composer message" }) as HTMLInputElement;
+    const typed = "Already queued and refined";
+    for (
+      let index = "Already queued".length + 1;
+      index <= typed.length;
+      index += 1
+    ) {
+      fireEvent.change(inlineInput, {
+        target: { value: typed.slice(0, index) },
+      });
+    }
+
+    expect(inlineInput.value).toBe(typed);
+    // Inline keystrokes reached consumers through the same stable host...
+    expect(screen.getByTestId("published-host-draft").textContent).toBe(typed);
+    expect(shellRenderCount()).toBe(rendersAfterMount + 1);
+
+    // ...and closing the editor swaps back to the identical thread host.
+    fireEvent.click(screen.getByRole("button", { name: "Cancel queued edit" }));
+    expect(shellRenderCount()).toBe(rendersAfterMount + 2);
+    expect(observedShellHosts().at(-1)).toBe(threadHost);
+    expect(screen.getByTestId("published-host-draft").textContent).toBe("");
+  });
+});

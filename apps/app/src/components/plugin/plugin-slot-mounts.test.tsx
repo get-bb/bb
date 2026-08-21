@@ -48,6 +48,7 @@ import {
   PluginComposerHostProvider,
   PluginComposerHostScopeProvider,
   type PluginComposerHost,
+  useComposerHostDraftNotifier,
   usePublishPluginComposerHost,
 } from "./plugin-composer-host";
 import { PluginHomepageSections } from "./PluginHomepageSections";
@@ -512,6 +513,7 @@ describe("useComposer", () => {
       });
       const draftRef = useRef(draft);
       draftRef.current = draft;
+      const subscribeDraft = useComposerHostDraftNotifier(draft);
       const host = useMemo<PluginComposerHost>(
         () => ({
           scope: {
@@ -519,13 +521,13 @@ describe("useComposer", () => {
             threadId: "thr_queue",
             queuedMessageId,
           },
-          draft,
           textEffectKey: `queued-message:thr_queue:${queuedMessageId}:1`,
           getCurrent: () => draftRef.current,
+          subscribeDraft,
           setDraft,
           focus: () => {},
         }),
-        [draft, queuedMessageId],
+        [queuedMessageId, subscribeDraft],
       );
 
       return (
@@ -616,10 +618,10 @@ describe("useComposer", () => {
                   threadId: "thr_queue",
                   queuedMessageId: "qmsg_1",
                 },
-                draft,
                 textEffectKey:
                   "queued-message:thr_queue:qmsg_1:sibling-surface",
                 getCurrent: () => draft,
+                subscribeDraft: () => () => {},
                 setDraft,
                 focus: () => {},
               }
@@ -683,6 +685,7 @@ describe("useComposer", () => {
       });
       const draftRef = useRef(draft);
       draftRef.current = draft;
+      const subscribeDraft = useComposerHostDraftNotifier(draft);
       const host = useMemo<PluginComposerHost>(
         () => ({
           scope: {
@@ -692,13 +695,13 @@ describe("useComposer", () => {
             tabId: "side-chat:one",
             childThreadId,
           },
-          draft,
           textEffectKey: `side-chat:side-chat:one:${childThreadId ?? ""}`,
           getCurrent: () => draftRef.current,
+          subscribeDraft,
           setDraft,
           focus: () => {},
         }),
-        [childThreadId, draft],
+        [childThreadId, subscribeDraft],
       );
 
       return (
@@ -815,16 +818,17 @@ describe("useComposer", () => {
       });
       const draftRef = useRef(draft);
       draftRef.current = draft;
+      const subscribeDraft = useComposerHostDraftNotifier(draft);
       const host = useMemo<PluginComposerHost>(
         () => ({
           scope: { kind: "new-thread", projectId },
-          draft,
           textEffectKey: `root:${projectId}`,
           getCurrent: () => draftRef.current,
+          subscribeDraft,
           setDraft,
           focus: () => {},
         }),
-        [draft, projectId],
+        [projectId, subscribeDraft],
       );
 
       return (
@@ -901,9 +905,9 @@ describe("useComposer", () => {
         };
         return {
           scope: { kind: "new-thread", projectId },
-          draft,
           textEffectKey: `root-state:${projectId ?? "null"}`,
           getCurrent: () => draft,
+          subscribeDraft: () => () => {},
           setDraft: () => {},
           focus: () => {},
         };
@@ -1050,11 +1054,11 @@ describe("useComposer", () => {
             threadId: "thr_scope_owner",
             queuedMessageId,
           },
-          draft,
           // A host can retain its editable surface while its logical scope
           // changes, as root compose does when the selected project changes.
           textEffectKey: "shared-scope-effect",
           getCurrent: () => draft,
+          subscribeDraft: () => () => {},
           setDraft: () => {},
           focus: () => {},
         }),
