@@ -4,9 +4,9 @@ import type * as z from "zod";
 import type { EmptyInput, Endpoint } from "./endpoint.js";
 
 export type RouteMethod = "get" | "post" | "patch" | "delete" | "put";
-type RouteResponseFormat = "json" | "text" | "binary";
+export type RouteResponseFormat = "json" | "text" | "binary";
 
-interface RouteResponseDescriptor<
+export interface RouteResponseDescriptor<
   Output,
   Status extends ContentfulStatusCode,
   Format extends RouteResponseFormat,
@@ -16,47 +16,47 @@ interface RouteResponseDescriptor<
   readonly output?: Output;
 }
 
-interface NoRouteRequest<Input> {
+export interface NoRouteRequest<Input> {
   source: "none";
   readonly input?: Input;
   readonly parsedInput?: never;
 }
 
-interface QueryRouteRequest<Input, ParsedInput> {
+export interface QueryRouteRequest<Input, ParsedInput> {
   source: "query";
   schema: ZodType;
   readonly input?: Input;
   readonly parsedInput?: ParsedInput;
 }
 
-interface JsonRouteRequest<Input, ParsedInput> {
+export interface JsonRouteRequest<Input, ParsedInput> {
   source: "json";
   schema: ZodType;
   readonly input?: Input;
   readonly parsedInput?: ParsedInput;
 }
 
-interface FormRouteRequest<Input> {
+export interface FormRouteRequest<Input> {
   source: "form";
   readonly input?: Input;
   readonly parsedInput?: never;
 }
 
-type RouteRequestDescriptor<Input, ParsedInput> =
+export type RouteRequestDescriptor<Input, ParsedInput> =
   | NoRouteRequest<Input>
   | QueryRouteRequest<Input, ParsedInput>
   | JsonRouteRequest<Input, ParsedInput>
   | FormRouteRequest<Input>;
 
-type AnyRouteRequestDescriptor = RouteRequestDescriptor<any, any>;
+export type AnyRouteRequestDescriptor = RouteRequestDescriptor<any, any>;
 
-type AnyRouteResponseDescriptor = RouteResponseDescriptor<
+export type AnyRouteResponseDescriptor = RouteResponseDescriptor<
   any,
   ContentfulStatusCode,
   RouteResponseFormat
 >;
 
-type RouteResponseDefinition =
+export type RouteResponseDefinition =
   | AnyRouteResponseDescriptor
   | readonly AnyRouteResponseDescriptor[];
 
@@ -72,7 +72,7 @@ export interface RouteDefinition<
   response: Response;
 }
 
-type RouteRequestInput<Request> = Request extends {
+export type RouteRequestInput<Request> = Request extends {
   readonly input?: infer Input;
 }
   ? Input
@@ -84,7 +84,7 @@ export type RouteParsedInput<Request> = Request extends {
   ? ParsedInput
   : never;
 
-type EndpointFromRouteResponse<Input, Response> =
+export type EndpointFromRouteResponse<Input, Response> =
   Response extends readonly AnyRouteResponseDescriptor[]
     ? {
         [Index in keyof Response]: EndpointFromRouteResponse<
@@ -105,10 +105,10 @@ export type EndpointFromRouteDescriptor<Descriptor> =
     ? EndpointFromRouteResponse<RouteRequestInput<Request>, Response>
     : never;
 
-type MethodKeyFromRouteMethod<Method extends RouteMethod> =
+export type MethodKeyFromRouteMethod<Method extends RouteMethod> =
   Method extends "delete" ? "$delete" : `$${Method}`;
 
-type RouteDescriptorsIn<Value> = Value extends RouteDefinition
+export type RouteDescriptorsIn<Value> = Value extends RouteDefinition
   ? Value
   : Value extends object
     ? { [Key in keyof Value]: RouteDescriptorsIn<Value[Key]> }[keyof Value]
@@ -122,7 +122,7 @@ type RouteDescriptorUnion<Descriptors> = Extract<
 type RoutePath<Descriptor> =
   Descriptor extends RouteDefinition<infer Path, any, any, any> ? Path : never;
 
-type ApiSchemaFromRouteUnion<Routes extends RouteDefinition> = {
+export type ApiSchemaFromRouteUnion<Routes extends RouteDefinition> = {
   [Path in RoutePath<Routes>]: {
     [Descriptor in Routes as Descriptor extends RouteDefinition<
       Path,
@@ -138,7 +138,7 @@ type ApiSchemaFromRouteUnion<Routes extends RouteDefinition> = {
 export type ApiSchemaFromRouteDescriptors<Descriptors> =
   ApiSchemaFromRouteUnion<RouteDescriptorUnion<Descriptors>>;
 
-interface RouteResponseOptions<Status extends ContentfulStatusCode> {
+export interface RouteResponseOptions<Status extends ContentfulStatusCode> {
   status: Status;
 }
 
