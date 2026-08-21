@@ -24,6 +24,7 @@ import {
   parsePermissionMode,
   parseServiceTier,
   PERMISSION_MODE_HELP,
+  PLAN_HELP,
   buildPromptInputs,
   collectOption,
 } from "./helpers.js";
@@ -69,6 +70,7 @@ interface ThreadTellCommandOptions {
   reasoningLevel?: string;
   serviceTier?: string;
   mode?: string;
+  plan?: boolean;
   file?: string[];
   image?: string[];
 }
@@ -97,6 +99,7 @@ interface PostThreadMessageArgs {
   reasoningLevel?: ReasoningLevel;
   serviceTier?: ServiceTier;
   senderThreadId?: string;
+  plan?: boolean;
   files?: readonly string[];
   images?: readonly string[];
 }
@@ -423,6 +426,7 @@ export function registerActionsCommands(
     )
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .option("--mode <mode>", "Message mode: steer (default), queue, or auto")
+    .option("--plan", PLAN_HELP)
     .option(
       "--file <path>",
       "Pass a host-readable absolute or uploaded attachment file path (repeatable)",
@@ -448,6 +452,7 @@ export function registerActionsCommands(
             reasoningLevel: parseReasoningLevel(opts.reasoningLevel),
             serviceTier: parseServiceTier(opts.serviceTier),
             senderThreadId: resolveSenderThreadId(id),
+            plan: opts.plan,
             files: opts.file,
             images: opts.image,
           });
@@ -530,6 +535,7 @@ async function postThreadMessage(
     threadId: args.threadId,
     input: buildPromptInputs({
       message: args.message,
+      plan: args.plan,
       files: args.files,
       images: args.images,
     }),

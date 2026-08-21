@@ -1,4 +1,5 @@
 import {
+  createBuiltinPlanCommandTextInput,
   permissionModeInputSchema,
   type PermissionMode,
   type PromptInput,
@@ -20,6 +21,8 @@ export const DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS =
 const SERVICE_TIERS: ServiceTier[] = ["fast", "default"];
 export const PERMISSION_MODE_HELP =
   "Permission mode: accept-edits, auto, or full";
+export const PLAN_HELP =
+  "Send the message as the provider's /plan action so the agent proposes a plan for approval before executing";
 
 export function collectOption(value: string, previous: string[]): string[] {
   return [...previous, value];
@@ -29,9 +32,13 @@ export function buildPromptInputs(args: {
   message: string;
   files?: readonly string[];
   images?: readonly string[];
+  /** Open the provider's plan action (`/plan`) instead of executing. */
+  plan?: boolean;
 }): PromptInput[] {
   return [
-    { type: "text", text: args.message, mentions: [] },
+    args.plan
+      ? createBuiltinPlanCommandTextInput(args.message)
+      : { type: "text", text: args.message, mentions: [] },
     ...(args.files ?? []).map(
       (path): PromptInput => ({ type: "localFile", path }),
     ),

@@ -96,6 +96,7 @@ export {
   DEFAULT_BB_REQUEST_TIMEOUT_MS,
 };
 export { BbHttpError, BbRequestTimeoutError } from "./response.js";
+export { createBuiltinPlanCommandTextInput } from "./core.js";
 export { createGuideArea } from "./areas/guide.js";
 export {
   DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,

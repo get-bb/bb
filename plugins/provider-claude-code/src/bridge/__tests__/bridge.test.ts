@@ -546,6 +546,7 @@ function canonicalOptions(args?: {
 function canonicalTurnParams(args: {
   threadId: string;
   providerThreadId?: string;
+  expectedTurnId?: string;
   input: JsonValue[];
   permissionEscalation?: "ask" | "deny";
   providerOptions?: Record<string, JsonValue>;
@@ -553,10 +554,38 @@ function canonicalTurnParams(args: {
   return {
     threadId: args.threadId,
     providerThreadId: args.providerThreadId ?? args.threadId,
+    ...(args.expectedTurnId !== undefined
+      ? { expectedTurnId: args.expectedTurnId }
+      : {}),
     clientRequestId: "creq_abcdefghjk",
     input: args.input,
     options: canonicalOptions(args),
   };
+}
+
+/** The prompt input the composer's `/plan` action produces for `text`. */
+function planCommandInput(text: string): JsonValue[] {
+  return [
+    {
+      type: "text",
+      text: `/plan ${text}`,
+      mentions: [
+        {
+          start: 0,
+          end: "/plan".length,
+          resource: {
+            kind: "command",
+            trigger: "/",
+            name: "plan",
+            source: "command",
+            origin: "builtin",
+            label: "plan",
+            argumentHint: null,
+          },
+        },
+      ],
+    },
+  ];
 }
 
 async function startBridgeThread(args: StartBridgeThreadArgs): Promise<void> {
@@ -1987,6 +2016,178 @@ describe("bridge", () => {
 
       await stopBridgeThread({ bridge, queries, threadId });
     } finally {
+      bridge.restore();
+    }
+  });
+
+  // `bb thread tell --plan` on a busy thread lands as turn/steer. The steer
+  // path shares enterPlanModeIfRequested with turn/start; this covers what the
+  // turn/start test above does not: entering Plan mode from a steer, staying
+  // in it across a plain turn and a repeated /plan, and re-entering it after
+  // an approved plan restored the preset.
+  it("enters Plan mode from a /plan steer and only re-requests it after the plan is approved", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-plan-live-steer";
+      await startBridgeThread({ bridge, threadId });
+      const query = queries[0];
+      const call = getLatestQueryCall();
+      if (!query) {
+        throw new Error("Expected live Claude query");
+      }
+      expect(call.options.permissionMode).toBe("acceptEdits");
+
+      bridge.sendRequest(
+        2,
+        "turn/steer",
+        canonicalTurnParams({
+          threadId,
+          expectedTurnId: "turn-1",
+          input: planCommandInput("add a README"),
+          providerOptions: { claudeCodePermissionMode: "plan" },
+        }),
+      );
+      expect(await readNextPromptText(call)).toBe("add a README");
+      await bridge.waitForResponse(2);
+      expect(queries).toHaveLength(1);
+      expect(query.close).not.toHaveBeenCalled();
+      expect(query.setPermissionMode).toHaveBeenCalledTimes(1);
+      expect(query.setPermissionMode).toHaveBeenCalledWith("plan");
+
+      // A follow-up turn without /plan keeps Plan mode: only an approved
+      // plan leaves it.
+      bridge.sendRequest(
+        3,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          input: [{ type: "text", text: "keep planning", mentions: [] }],
+        }),
+      );
+      expect(await readNextPromptText(call)).toBe("keep planning");
+      await bridge.waitForResponse(3);
+      expect(query.setPermissionMode).toHaveBeenCalledTimes(1);
+
+      // A /plan steer while already in Plan mode is a no-op.
+      bridge.sendRequest(
+        4,
+        "turn/steer",
+        canonicalTurnParams({
+          threadId,
+          expectedTurnId: "turn-2",
+          input: planCommandInput("also consider tests"),
+          providerOptions: { claudeCodePermissionMode: "plan" },
+        }),
+      );
+      expect(await readNextPromptText(call)).toBe("also consider tests");
+      await bridge.waitForResponse(4);
+      expect(query.setPermissionMode).toHaveBeenCalledTimes(1);
+
+      const canUseTool = getLastCanUseTool();
+      const planPromise = canUseTool(
+        "ExitPlanMode",
+        { plan: "# Plan" },
+        { signal: new AbortController().signal, toolUseID: "tool-plan" },
+      );
+      await bridge.flushWork();
+      const approvalRequest = bridge.messages.find((message) =>
+        isApprovalInteraction(message),
+      );
+      if (approvalRequest?.id === undefined) {
+        throw new Error("Expected ExitPlanMode to request user approval");
+      }
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: approvalRequest.id,
+          result: { decision: "allow_once", grantedPermissions: null },
+        }),
+      );
+      await expect(planPromise).resolves.toMatchObject({ behavior: "allow" });
+      await bridge.flushWork();
+      expect(query.setPermissionMode).toHaveBeenLastCalledWith("acceptEdits");
+
+      // A later /plan steer re-enters Plan mode on the same live session.
+      bridge.sendRequest(
+        5,
+        "turn/steer",
+        canonicalTurnParams({
+          threadId,
+          expectedTurnId: "turn-3",
+          input: planCommandInput("plan the follow-up"),
+          providerOptions: { claudeCodePermissionMode: "plan" },
+        }),
+      );
+      expect(await readNextPromptText(call)).toBe("plan the follow-up");
+      await bridge.waitForResponse(5);
+      expect(queries).toHaveLength(1);
+      expect(query.setPermissionMode).toHaveBeenCalledTimes(3);
+      expect(query.setPermissionMode).toHaveBeenLastCalledWith("plan");
+
+      bridge.sendRequest(6, "thread/stop", {
+        threadId,
+        providerThreadId: threadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await bridge.flushWork();
+      query.finish();
+      await bridge.waitForResponse(6);
+    } finally {
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
+  it("fails a /plan turn instead of running it in the old mode when the SDK refuses the switch", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      query.setPermissionMode.mockRejectedValue(
+        new Error("control request refused"),
+      );
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-plan-live-session-refused";
+      await startBridgeThread({ bridge, threadId });
+      const query = queries[0];
+      const call = getLatestQueryCall();
+      if (!query) {
+        throw new Error("Expected live Claude query");
+      }
+
+      // Stand in for the SDK reading its prompt stream: the prompt must never
+      // arrive, so this read only settles when the session closes.
+      const promptRead = readNextPromptText(call).catch(() => undefined);
+      bridge.sendRequest(
+        2,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          input: planCommandInput("add a README"),
+          providerOptions: { claudeCodePermissionMode: "plan" },
+        }),
+      );
+      await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
+        error: { message: expect.stringContaining("control request refused") },
+      });
+      expect(query.close).not.toHaveBeenCalled();
+
+      await stopBridgeThread({ bridge, queries, threadId });
+      expect(await promptRead).toBeUndefined();
+    } finally {
+      queries.forEach((query) => query.finish());
       bridge.restore();
     }
   });

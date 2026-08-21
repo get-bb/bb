@@ -26,6 +26,7 @@ import {
   buildPromptInputs,
   collectOption,
   PERMISSION_MODE_HELP,
+  PLAN_HELP,
   parseServiceTier,
 } from "./helpers.js";
 
@@ -43,6 +44,7 @@ interface ThreadSpawnCommandOptions {
   title?: string;
   serviceTier?: string;
   permissionMode?: string;
+  plan?: boolean;
   parentSelf?: boolean;
   machine?: string;
   host?: string;
@@ -202,6 +204,7 @@ export function registerSpawnCommand(
     .option("--title <title>", "Thread title")
     .option("--service-tier <tier>", "Service tier: fast or default")
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
+    .option("--plan", PLAN_HELP)
     .option(
       "--file <path>",
       "Pass a host-readable absolute or uploaded attachment file path (repeatable)",
@@ -300,6 +303,7 @@ export function registerSpawnCommand(
             ...(opts.model ? { model: opts.model } : {}),
             input: buildPromptInputs({
               message: opts.prompt,
+              plan: opts.plan,
               files: opts.file,
               images: opts.image,
             }),

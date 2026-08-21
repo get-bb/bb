@@ -23,6 +23,9 @@ import {
 } from "./areas/thread-sections.js";
 
 export type * from "./public-types.js";
+// Structured prompt input for the provider's plan action; pass it as
+// `input` to `threads.spawn` / `threads.send` (the CLI's `--plan`).
+export { createBuiltinPlanCommandTextInput } from "@bb/domain";
 
 export interface CreateBbSdkArgs {
   context?: BbSdkContext;

@@ -440,5 +440,24 @@ describe("buildClaudeTurnParams", () => {
     expect(params.input).toEqual([
       { type: "text", text: "inspect the failing test", mentions: [] },
     ]);
+    // The bridge switches an already-loaded session into plan mode from this
+    // flag; without it the stripped prompt ran under the session's old mode.
+    expect(params.claudeCodePermissionMode).toBe("plan");
+  });
+
+  it("omits claudeCodePermissionMode when the turn does not open plan mode", () => {
+    const params = buildClaudeTurnParams({
+      threadId: "thread-1",
+      providerThreadId: "provider-1",
+      input: [{ type: "text", text: "hi", mentions: [] }],
+      options: {
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+        providerOptions: { workflowsEnabled: true },
+      },
+    });
+    expect(params).not.toHaveProperty("claudeCodePermissionMode");
   });
 });

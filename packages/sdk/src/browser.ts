@@ -1,4 +1,9 @@
-import { createBbSdk, type BbSdk, type BbSdkAreas } from "./core.js";
+import {
+  createBbSdk,
+  createBuiltinPlanCommandTextInput,
+  type BbSdk,
+  type BbSdkAreas,
+} from "./core.js";
 import { createHttpTransport } from "./transport-http.js";
 import type {
   BbRealtimeSocketFactory,
@@ -49,7 +54,7 @@ export const bb = createBrowserBbSdk();
 
 export { BbHttpError, BbRequestTimeoutError } from "./response.js";
 export type { BbHttpErrorArgs } from "./response.js";
-export { createBbSdk, createHttpTransport };
+export { createBbSdk, createBuiltinPlanCommandTextInput, createHttpTransport };
 export type { BbSdk, BbSdkAreas, BbSdkContext, BbSdkTransport };
 export type * from "./areas/skills.js";
 export type * from "./public-types.js";

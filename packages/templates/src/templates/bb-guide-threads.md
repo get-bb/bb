@@ -27,6 +27,7 @@ Spawning:
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
+    --plan                         Send the prompt as the provider's /plan action (plan first, execute after approval)
     --section <id>                 Create the thread in a section
     --visibility <visibility>      visible or hidden; a child inherits its parent by default
     --file <path>                  Host-readable absolute or uploaded file path
@@ -173,12 +174,22 @@ Messaging:
     --mode <mode>                          Message mode: steer (default), queue, or auto
     --model <model>                        Model override for this turn
     --reasoning-level <level>              Reasoning level override
+    --plan                                 Send the message as the provider's /plan action
     --file <path>                          Host-readable absolute or uploaded file path
     --image <path>                         Host-readable absolute or uploaded image path
 
   Tell steers by default, delivering the message immediately into the active
   turn. Use --mode queue for non-urgent follow-ups that can wait until the agent
   is free.
+
+  --plan sends the same structured /plan command the composer's plan action
+  sends, so the agent proposes a plan for approval before executing (Claude
+  Code and Codex threads). Plain "/plan ..." text is not recognized; it reaches
+  the provider as literal text. Approve or deny the proposed plan with
+  `bb thread interactions`; `bb thread cancel-plan` leaves Plan mode early.
+  SDK callers build the same input with
+  `createBuiltinPlanCommandTextInput(text)` from `@bb/sdk` and pass it as
+  `input` to `threads.spawn` or `threads.send`.
 
   bb thread stop [id]                      Stop work and release the agent runtime
   bb thread compact [id]                   Request compaction of an idle or errored thread's context

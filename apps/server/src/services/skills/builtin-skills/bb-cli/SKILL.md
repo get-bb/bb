@@ -385,6 +385,13 @@ or artifacts, validation performed, and blockers.
 <seconds>` when you need a shorter or longer budget.
 - Use `bb thread tell <thread-id> "..."` when requirements change, a blocker
   needs clarification, or follow-up work is needed.
+- Add `--plan` to `bb thread spawn` or `bb thread tell` to send the prompt as
+  the provider's structured `/plan` action: the agent proposes a plan for
+  approval before executing (Claude Code and Codex). Plain `/plan ...` text is
+  not recognized and reaches the provider as literal text. Review the proposed
+  plan with `bb thread interactions`; `bb thread cancel-plan` leaves Plan mode
+  early. The SDK equivalent is `input: [createBuiltinPlanCommandTextInput(text)]`
+  (exported by `@bb/sdk`) on `threads.spawn` / `threads.send`.
 - Use `bb thread edit-message <thread-id> --message "..."` to replace and rerun
   the latest eligible user message in a Codex, Claude Code, or Pi thread. Pass
   `--expected-request-sequence <sequence>` to select an earlier message. Failed

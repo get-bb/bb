@@ -356,6 +356,42 @@ export function createStandaloneBuiltinCompactCommandInput(): PromptInput[] {
   ];
 }
 
+const BUILTIN_PLAN_COMMAND_TEXT = "/plan";
+
+/**
+ * Text prompt input that opens the provider's plan action for `text`: the
+ * same `/plan` command mention the composer's plan action produces, so a CLI
+ * or SDK caller reaches plan mode without hand-building a mention. Plan mode
+ * is keyed on the mention, not on the literal text: plain `/plan ...` text is
+ * forwarded to the provider unchanged.
+ */
+export function createBuiltinPlanCommandTextInput(
+  text: string,
+): TextPromptInput {
+  return {
+    type: "text",
+    text:
+      text.length > 0
+        ? `${BUILTIN_PLAN_COMMAND_TEXT} ${text}`
+        : BUILTIN_PLAN_COMMAND_TEXT,
+    mentions: [
+      {
+        start: 0,
+        end: BUILTIN_PLAN_COMMAND_TEXT.length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "plan",
+          source: "command",
+          origin: "builtin",
+          label: "plan",
+          argumentHint: null,
+        },
+      },
+    ],
+  };
+}
+
 export function promptInputHasCommandMention(
   input: readonly PromptInput[],
   selector: PromptCommandSelector,
