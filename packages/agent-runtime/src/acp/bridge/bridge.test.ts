@@ -1117,6 +1117,55 @@ describe("acp bridge", () => {
     );
   });
 
+  it("resolves the MCP server entry point from the module URL, not argv[1]", async () => {
+    // Packaged builds execute this code inside bb-provider-bridge-worker.mjs;
+    // argv[1] must not leak into the MCP server command handed to the agent.
+    vi.stubGlobal("process", {
+      ...process,
+      argv: [process.argv[0]!, "/bogus/bb-provider-bridge-worker.mjs"],
+      execArgv: [],
+    });
+    try {
+      const { providerThreadId } = await startThread({
+        dynamicTools: [
+          {
+            name: "update_environment_directory",
+            description: "Move this thread to another environment directory.",
+            inputSchema: {
+              type: "object",
+              properties: { path: { type: "string" } },
+              required: ["path"],
+            },
+          },
+        ],
+      });
+
+      const turnId = sendRequest("turn/start", {
+        threadId: providerThreadId,
+        input: [{ type: "text", text: "echo-mcp-server-config", mentions: [] }],
+      });
+      await waitForResponse(turnId);
+      await waitForTurnCompleted();
+
+      const configPrefix = "mcp-server-config:";
+      const configText = agentMessageTexts().find((text) =>
+        text.startsWith(configPrefix),
+      );
+      if (!configText) {
+        throw new Error("Fake ACP agent did not report MCP server config");
+      }
+      const [mcpServerConfig] = JSON.parse(
+        configText.slice(configPrefix.length),
+      ) as { args: string[] }[];
+      expect(mcpServerConfig?.args.at(-1)).toBe("--mcp-stdio");
+      const entryPoint = mcpServerConfig?.args.at(-2) ?? "";
+      expect(entryPoint).not.toBe("/bogus/bb-provider-bridge-worker.mjs");
+      expect(entryPoint.endsWith("bridge.ts")).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("warns and launches the family id when a reasoning variant is missing", async () => {
     chmodSync(FAKE_AGENT_PATH, 0o755);
     const listCommand = {

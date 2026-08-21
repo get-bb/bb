@@ -219,9 +219,11 @@ function sendRuntimeRequest(
 }
 
 function resolveBridgeProcessArgsForMcpServer(): string[] {
-  const entryPoint = process.argv[1]
-    ? resolve(process.argv[1])
-    : fileURLToPath(import.meta.url);
+  // Resolve from this module's URL, not process.argv[1]: in packaged builds
+  // this code runs inside bb-provider-bridge-worker.mjs, whose argv[1] is the
+  // worker bootstrap (it exits with a usage error when re-executed). The
+  // module URL points at the bundled artifact, which handles --mcp-stdio.
+  const entryPoint = fileURLToPath(import.meta.url);
   return [...process.execArgv, entryPoint, "--mcp-stdio"];
 }
 
