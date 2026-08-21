@@ -30,7 +30,14 @@ import {
   diffCalibrationStreams,
   normalizeCalibrationEvents,
 } from "./calibration-diff.js";
-import { readBridgeRecording, type BridgeRecording } from "./recording.js";
+import type { RecordedCellReplay } from "../conformance/recorded.js";
+import {
+  COMMITTED_RECORDINGS_ROOT,
+  listRecordedCells,
+  readBridgeRecording,
+  type BridgeRecording,
+  type RecordedCell,
+} from "./recording.js";
 
 // ---------------------------------------------------------------------------
 // Injected collaborators
@@ -928,4 +935,63 @@ export function describeParityValue(value: unknown): string {
       ? `:${String((item as { type: unknown }).type)}`
       : "";
   return `${type}${suffix} ${JSON.stringify(value).slice(0, 160)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Recorded-traffic conformance input
+// ---------------------------------------------------------------------------
+
+export interface ReplayRecordedCellsOptions {
+  /** Which recorded providers this bridge serves (`acp` serves `acp-*`). */
+  servesProvider: (providerId: string) => boolean;
+  /** Cell names to replay; defaults to every committed cell of those providers. */
+  cells?: readonly string[];
+  /** The checkout whose bridge replays; defaults to the recordings' own. */
+  checkoutRoot?: string;
+  recordingsRoot?: string;
+  createAssembler: CreateParityAssembler;
+  timeoutMs?: number;
+  onStderr?: (text: string) => void;
+}
+
+/**
+ * Replay this bridge's recorded cells for `checkRecordedCellReplay`: each
+ * cell through the bridge of the checkout, with the recording's own assembled
+ * events beside the replay's. Cells run concurrently — each is its own bridge
+ * process with its own replay state.
+ */
+export async function replayRecordedCells(
+  options: ReplayRecordedCellsOptions,
+): Promise<RecordedCellReplay[]> {
+  const recordingsRoot = options.recordingsRoot ?? COMMITTED_RECORDINGS_ROOT;
+  const checkoutRoot = options.checkoutRoot ?? resolve(recordingsRoot, "../../..");
+  const cells = listRecordedCells(recordingsRoot).filter(
+    (cell: RecordedCell) =>
+      options.servesProvider(cell.provider) &&
+      (options.cells === undefined || options.cells.includes(cell.cell)) &&
+      readBridgeRecording(cell.dir).manifest?.scope !== "process",
+  );
+  return Promise.all(
+    cells.map(async (cell): Promise<RecordedCellReplay> => {
+      const recorded = assembleRecordedEvents(
+        readBridgeRecording(cell.dir),
+        options.createAssembler,
+        cell.provider,
+      );
+      const run = await replayRecording({
+        recordingDir: cell.dir,
+        bridge: { checkoutRoot, providerId: cell.provider },
+        createAssembler: options.createAssembler,
+        ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+        ...(options.onStderr !== undefined ? { onStderr: options.onStderr } : {}),
+      });
+      return {
+        provider: cell.provider,
+        cell: cell.cell,
+        events: run.events,
+        recordedEvents: recorded.events,
+        stalls: run.stalls,
+      };
+    }),
+  );
 }

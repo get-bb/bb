@@ -6,6 +6,12 @@ import {
   type ConformanceSessionFixture,
 } from "./scenarios.js";
 export { checkItemOpensBeforeDelta } from "./scenarios.js";
+export {
+  checkRecordedCellReplay,
+  RECORDED_CONFORMANCE_CELLS,
+  type RecordedCellReplay,
+  type RecordedConformanceCell,
+} from "./recorded.js";
 import {
   reportPassed,
   type BridgeConformanceTransport,

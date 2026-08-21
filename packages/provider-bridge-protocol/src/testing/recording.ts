@@ -5,13 +5,20 @@
  * and, for a packaged fixture, a `manifest.json`.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   BRIDGE_RECORDING_DIRECTIONS,
   bridgeRecordingFileName,
   type BridgeRecordingDirection,
   type BridgeRecordingEntry,
 } from "../bridge-kit/bridge-recorder.js";
+
+/** The redacted fixtures this package ships, and the checkout they live in. */
+export const COMMITTED_RECORDINGS_ROOT = fileURLToPath(
+  new URL("../../recordings", import.meta.url),
+);
+export const RECORDINGS_CHECKOUT_ROOT = resolve(COMMITTED_RECORDINGS_ROOT, "../../..");
 
 export interface BridgeRecordingManifest {
   provider: string;

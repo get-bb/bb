@@ -372,8 +372,28 @@ recorded provider never records itself.
 
 Recordings are the input of the parity harness
 (`packages/provider-bridge-protocol/src/testing/parity.ts`): the provider
-lanes replay into a fake child, the runtime lanes replay into a bridge, and
-two bridge versions are diffed on the assembled events and projected rows.
-Redacted recordings live under `packages/provider-bridge-protocol/recordings`;
-`scripts/provider-recordings/redact.mjs` produces them. Raw recordings stay
-out of git.
+lanes replay into a fake child (`replay-provider-child.mjs`, for which the
+recording is the script), the runtime lanes replay into a bridge, and two
+checkouts are diffed on the assembled events and projected rows with
+`pnpm parity --old <checkout> --new .` (`@bb/provider-parity`). Each leg
+assembles and projects with its own checkout's code. Differences a migration
+PR intends go in `recordings/parity-allowlist.json` with the PR and reason;
+an entry that masks nothing is reported stale and fails the run.
+
+Redacted recordings live under `packages/provider-bridge-protocol/recordings`,
+one `<provider>/<cell>` directory per live-QA matrix cell with a
+`manifest.json` (provider, cell, CLI version, date, what the session did);
+`scripts/provider-recordings/redact.mjs` and `package-cells.mjs` produce
+them. `recordings/row-counts.json` pins each cell's event, row,
+`provider/unhandled`, and grammar-drop counts; `parity.self.test.ts` checks
+the pins and replays every cell through the current bridge on each commit,
+and `UPDATE_PARITY_ROW_COUNTS=1` rewrites the pins deliberately. Raw
+recordings stay out of git.
+
+The conformance kit runs the same recordings as its recorded-traffic
+scenario set: `replayRecordedCells` replays a bridge's cells and
+`checkRecordedCellReplay` reports `recorded/<cell>/{replays,
+events-schema-valid, grammar, turn-lifecycle, not-empty}` per cell. Each
+first-party bridge has a `bridge.recorded-conformance.test.ts` beside its
+scripted suite, so conformance reflects the real dialect as well as the
+protocol.
