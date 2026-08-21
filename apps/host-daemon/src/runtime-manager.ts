@@ -42,6 +42,7 @@ import {
 } from "./injected-skills.js";
 import { reconnectProvisionArgs } from "./workspace-provision-target.js";
 import type { FetchSkillTree } from "./skill-trees.js";
+import { userExecutableProcessOptions } from "./user-executable-env.js";
 
 type StopWatching = () => void | Promise<void>;
 
@@ -1064,7 +1065,7 @@ export class RuntimeManager {
       );
     }
 
-    const workspace = await this.provisionWorkspace(args.provision);
+    const workspace = await this.provisionHostWorkspace(args.provision);
     if (workspace.path !== args.workspacePath) {
       throw new Error(
         `Workspace refresh for ${args.environmentId} returned ${workspace.path}, not ${args.workspacePath}`,
@@ -1149,7 +1150,10 @@ export class RuntimeManager {
       );
     }
 
-    await this.provisionWorkspace({ ...args.provision, signal: args.signal });
+    await this.provisionHostWorkspace({
+      ...args.provision,
+      signal: args.signal,
+    });
     this.options.onWorkspaceStatusChanged?.({
       environmentId: args.entry.environmentId,
       changeKinds: ["work-status-changed", "git-refs-changed"],
@@ -1423,12 +1427,8 @@ export class RuntimeManager {
       );
     }
 
-    const setupPath = this.getShellEnv().PATH;
-    const workspace = await this.provisionWorkspace({
+    const workspace = await this.provisionHostWorkspace({
       ...provision,
-      ...(provision.workspaceProvisionType === "managed-worktree" && setupPath
-        ? { setupPath }
-        : {}),
       signal: args.provisionSignal,
     });
     const workspaceWriteRoots =
@@ -1508,6 +1508,15 @@ export class RuntimeManager {
       workspace,
       path: workspace.path,
     };
+  }
+
+  private provisionHostWorkspace(
+    provision: ProvisionWorkspaceArgs,
+  ): Promise<HostWorkspace> {
+    return this.provisionWorkspace({
+      ...provision,
+      ...userExecutableProcessOptions(this.getShellEnv()),
+    });
   }
 
   private async stopWatchingStatus(entry: RuntimeEntry): Promise<void> {

@@ -6,6 +6,7 @@ export {
 export type { HostWorkspace, ProvisionWorkspaceArgs } from "./provision.js";
 
 export type { PullRequestActionOptions } from "./workspace.js";
+export type { GitHostCliOptions } from "./git-host.js";
 
 export {
   WorkspaceError,
@@ -24,3 +25,4 @@ export {
   readGitBlob,
   runGit,
 } from "./git.js";
+export type { GitProcessOptions } from "./git.js";

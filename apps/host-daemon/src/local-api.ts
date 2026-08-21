@@ -24,8 +24,9 @@ import {
   type WorkspaceOpenTargetsQuery,
 } from "@bb/host-daemon-contract";
 import {
-  listWorkspaceOpenTargets,
-  openPathInTarget,
+  createWorkspaceOpenTargetRuntime,
+  listWorkspaceOpenTargetsWithRuntime,
+  openPathInTargetWithRuntime,
   type OpenPathInTargetArgs,
   WorkspaceOpenTargetError,
 } from "@bb/local-open-targets";
@@ -35,6 +36,7 @@ import { HTTPException } from "hono/http-exception";
 import { isFsErrorWithCode } from "./fs-errors.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import { resolveHostPlatform } from "./host-platform.js";
+import { userExecutableProcessOptions } from "./user-executable-env.js";
 
 type WorkspaceOpenTargetListHandler = (
   query: WorkspaceOpenTargetsQuery,
@@ -67,6 +69,7 @@ interface StartLocalApiServerOptions {
   getConnected: () => boolean;
   listWorkspaceOpenTargets?: WorkspaceOpenTargetListHandler;
   openInTarget?: OpenInTargetHandler;
+  shellEnv?: () => NodeJS.ProcessEnv;
 }
 
 export interface LocalApiServer {
@@ -197,6 +200,12 @@ async function resolveOpenPathInTargetArgs({
   };
 }
 
+function workspaceOpenTargetRuntime(options: StartLocalApiServerOptions) {
+  return createWorkspaceOpenTargetRuntime({
+    ...userExecutableProcessOptions(options.shellEnv?.() ?? {}),
+  });
+}
+
 export async function startLocalApiServer(
   options: StartLocalApiServerOptions,
 ): Promise<LocalApiServer> {
@@ -303,14 +312,26 @@ export async function startLocalApiServer(
     async (c, query) =>
       c.json({
         targets: await (
-          options.listWorkspaceOpenTargets ?? listWorkspaceOpenTargets
+          options.listWorkspaceOpenTargets ??
+          ((query) =>
+            listWorkspaceOpenTargetsWithRuntime(
+              workspaceOpenTargetRuntime(options),
+              query,
+            ))
         )(query),
       }),
   );
 
   post("/open-in-target", openInTargetRequestSchema, async (c, payload) => {
     try {
-      await (options.openInTarget ?? openPathInTarget)(
+      await (
+        options.openInTarget ??
+        ((args) =>
+          openPathInTargetWithRuntime(
+            args,
+            workspaceOpenTargetRuntime(options),
+          ))
+      )(
         await resolveOpenPathInTargetArgs({
           configLoader: clientConfigLoader,
           request: payload,

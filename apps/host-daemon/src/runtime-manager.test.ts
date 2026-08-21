@@ -1235,7 +1235,31 @@ describe("RuntimeManager", () => {
 
     expect(provisionWorkspace).toHaveBeenCalledWith(
       expect.objectContaining({
-        setupPath: "/resolved/user/bin:/usr/bin:/bin",
+        shellPath: "/resolved/user/bin:/usr/bin:/bin",
+      }),
+    );
+  });
+
+  it("passes the resolved shell PATH to unmanaged workspace Git", async () => {
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      shellEnv: {
+        PATH: "/resolved/user/bin:/usr/bin:/bin",
+      },
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      provision: {
+        workspaceProvisionType: "unmanaged",
+        path: "/tmp/env-1",
+      },
+    });
+
+    expect(provisionWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shellPath: "/resolved/user/bin:/usr/bin:/bin",
       }),
     );
   });

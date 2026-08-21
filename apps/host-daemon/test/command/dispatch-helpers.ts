@@ -61,8 +61,10 @@ interface FakeWorkspaceState {
   lastCommitMessage: string | undefined;
   lastDiffTarget: FakeWorkspaceDiffTarget | undefined;
   lastPullRequestAction: PullRequestActionOptions | undefined;
+  pullRequestActionShellPath: string | undefined;
   pullRequest: GitHostPullRequest | null;
   pullRequestLookupError: string | null;
+  pullRequestLookupShellPath: string | undefined;
   statusReads: number;
 }
 
@@ -128,8 +130,10 @@ export function createFakeWorkspace(pathname: string) {
     lastCommitMessage: undefined,
     destroyed: false,
     lastPullRequestAction: undefined,
+    pullRequestActionShellPath: undefined,
     pullRequest: null,
     pullRequestLookupError: null,
+    pullRequestLookupShellPath: undefined,
   };
   const workspace: FakeHostWorkspace = {
     path: pathname,
@@ -205,7 +209,8 @@ export function createFakeWorkspace(pathname: string) {
     async diffPatch() {
       return [];
     },
-    async getPullRequest() {
+    async getPullRequest(options) {
+      state.pullRequestLookupShellPath = options?.shellPath;
       if (state.pullRequestLookupError !== null) {
         return {
           outcome: "unavailable" as const,
@@ -216,8 +221,9 @@ export function createFakeWorkspace(pathname: string) {
         ? { outcome: "none" as const }
         : { outcome: "found" as const, pullRequest: state.pullRequest };
     },
-    async runPullRequestAction(action) {
+    async runPullRequestAction(action, options) {
       state.lastPullRequestAction = action;
+      state.pullRequestActionShellPath = options?.shellPath;
     },
     async listFiles() {
       return listFilesRecursively(pathname, pathname);

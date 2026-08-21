@@ -433,6 +433,7 @@ export async function createHostDaemonApp(
     hostWatcher: options.hostWatcher,
     refreshWorkspace: (args) =>
       runtimeManager.refreshEnvironmentWorkspace(args),
+    shellEnv: () => runtimeManager.getShellEnv(),
     threadStorageRootPath,
     onThreadStorageChanged: ({ environmentId }) => {
       sendServerMessage({
@@ -918,6 +919,7 @@ export async function createHostDaemonApp(
         devAppPort: options.devAppPort,
         appUrl: options.appUrl,
         getConnected: () => connection.sessionId != null,
+        shellEnv: () => runtimeManager.getShellEnv(),
       })
     : null;
   const eventLoopStallMonitor = startEventLoopStallMonitor({

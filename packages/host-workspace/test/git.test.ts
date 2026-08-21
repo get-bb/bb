@@ -427,6 +427,31 @@ describe("command timeouts", () => {
   });
 });
 
+describe("user-shell Git resolution", () => {
+  it("uses the resolved shell PATH for Git commands and Git pipelines", async () => {
+    const workspacePath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "bb-git-shell-path-workspace-"),
+    );
+    const binPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "bb-git-shell-path-bin-"),
+    );
+    tempDirs.push(workspacePath, binPath);
+    const gitPath = path.join(binPath, "git");
+    await fs.writeFile(gitPath, "#!/bin/sh\nprintf 'user-shell-git\\n'\n");
+    await fs.chmod(gitPath, 0o755);
+
+    await expect(
+      runGit(["--version"], { cwd: workspacePath, shellPath: binPath }),
+    ).resolves.toMatchObject({ stdout: "user-shell-git\n" });
+    await expect(
+      runShellPipeline("git --version", [], {
+        cwd: workspacePath,
+        shellPath: binPath,
+      }),
+    ).resolves.toMatchObject({ stdout: "user-shell-git\n" });
+  });
+});
+
 describe("readGitBlob", () => {
   it("reads a blob at a git ref and reports the returned byte size", async () => {
     const repoPath = await initReadGitBlobRepo();

@@ -3,7 +3,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import mimeTypes from "mime-types";
 import type { HostReadFileRelativeDotfilePolicy } from "@bb/host-daemon-contract";
-import { readGitBlob, WorkspaceError } from "@bb/host-workspace";
+import {
+  readGitBlob,
+  WorkspaceError,
+  type GitProcessOptions,
+} from "@bb/host-workspace";
 import {
   CommandDispatchError,
   ExpectedCommandDispatchError,
@@ -60,7 +64,7 @@ interface ValidatedRootRelativePath {
   resultPath: string;
 }
 
-interface ReadFileFromGitRefArgs {
+interface ReadFileFromGitRefArgs extends GitProcessOptions {
   /** Repo root — `git -C <rootPath>` runs from here. Must be absolute. */
   rootPath: string;
   /** Path under rootPath the caller asked about. Must be absolute, must be within rootPath. */
@@ -265,6 +269,7 @@ export async function readFileFromGitRef(
       args.ref,
       gitRelativePath,
       fileSizeLimitBytes,
+      args,
     );
   } catch (error) {
     if (error instanceof WorkspaceError && error.code === "blob_too_large") {

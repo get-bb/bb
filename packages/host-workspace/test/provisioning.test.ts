@@ -567,7 +567,7 @@ describe("workspace provisioning", () => {
     const result = await runSetupScript({
       workspacePath,
       timeoutMs: 900000,
-      setupPath: `${binPath}${path.delimiter}/usr/bin:/bin`,
+      shellPath: `${binPath}${path.delimiter}/usr/bin:/bin`,
     });
 
     expect(result.ran).toBe(true);
