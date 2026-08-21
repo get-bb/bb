@@ -29,9 +29,18 @@ function jsonOk(body: unknown): Response {
 const SETTINGS_VIEW = {
   ok: true,
   schema: {
-    greeting: { type: "string", label: "Greeting" },
+    greeting: {
+      type: "string",
+      label: "Greeting",
+      placeholder: "Enter a greeting",
+    },
     enabled: { type: "boolean", label: "Enabled" },
-    apiKey: { type: "string", label: "API key", secret: true },
+    apiKey: {
+      type: "string",
+      label: "API key",
+      secret: true,
+      placeholder: "Paste an API key",
+    },
   },
   values: { greeting: "hello", enabled: true, apiKey: { set: false } },
 };
@@ -66,11 +75,12 @@ describe("PluginSettingsForm", () => {
       "Greeting",
     )) as HTMLInputElement;
     expect(greeting.value).toBe("hello");
+    expect(greeting.placeholder).toBe("Enter a greeting");
 
     // Secrets are write-only: no value, only a set/not-set placeholder.
     const apiKey = screen.getByLabelText("API key") as HTMLInputElement;
     expect(apiKey.value).toBe("");
-    expect(apiKey.placeholder).toBe("[not set]");
+    expect(apiKey.placeholder).toBe("Paste an API key");
 
     const save = screen.getByRole("button", { name: /save settings/i });
     expect((save as HTMLButtonElement).disabled).toBe(true);
@@ -124,6 +134,31 @@ describe("PluginSettingsForm", () => {
     expect(JSON.parse(String(put?.init?.body))).toEqual({
       values: { apiKey: "sk-123" },
     });
+  });
+
+  it("keeps the set marker for configured secrets", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          jsonOk({
+            ...SETTINGS_VIEW,
+            values: {
+              ...SETTINGS_VIEW.values,
+              apiKey: { set: true },
+            },
+          }),
+        ),
+      ),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginSettingsForm pluginId="demo" />, { wrapper });
+
+    const apiKey = (await screen.findByLabelText(
+      "API key",
+    )) as HTMLInputElement;
+    expect(apiKey.placeholder).toBe("[set]");
   });
 });
 

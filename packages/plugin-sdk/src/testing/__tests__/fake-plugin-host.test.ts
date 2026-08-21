@@ -238,6 +238,23 @@ describe("settings", () => {
     });
   });
 
+  it("retains string input placeholders", () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.settings.define({
+      token: {
+        type: "string",
+        label: "Token",
+        placeholder: "Paste a token",
+      },
+    });
+
+    expect(harness.registrations.settingsDescriptors.token).toEqual({
+      type: "string",
+      label: "Token",
+      placeholder: "Paste a token",
+    });
+  });
+
   it("setSettings validates, fires onChange with next/prev, and skips no-op updates", async () => {
     const { bb, harness } = createFakePluginHost();
     const handle = defineSettings(bb);
@@ -279,6 +296,17 @@ describe("settings", () => {
         broken: { type: "select", label: "B", options: ["a"], default: "z" },
       }),
     ).toThrow('default for setting "broken" must be one of its options');
+    expect(() =>
+      bb.settings.define({
+        emptyPlaceholder: {
+          type: "string",
+          label: "Empty placeholder",
+          placeholder: "",
+        },
+      }),
+    ).toThrow(
+      'invalid descriptor for setting "emptyPlaceholder" (placeholder)',
+    );
   });
 });
 

@@ -191,9 +191,9 @@ function SettingField({
           placeholder={
             isSecret
               ? pluginSecretIsSet(storedValue)
-                ? "[set] — type to replace"
-                : "[not set]"
-              : undefined
+                ? "[set]"
+                : (descriptor.placeholder ?? "[not set]")
+              : descriptor.placeholder
           }
           autoCapitalize="none"
           editable={!disabled}

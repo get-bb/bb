@@ -53,6 +53,7 @@ export type PluginSettingDescriptor =
       description?: string;
       /** Stored in a 0600 file under <dataDir>/plugins/<id>/secrets/, never in the db or sent to the frontend. */
       secret?: true;
+      placeholder?: string;
       default?: string;
     }
   | { type: "boolean"; label: string; description?: string; default?: boolean }

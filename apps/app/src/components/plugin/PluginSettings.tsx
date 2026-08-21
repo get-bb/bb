@@ -184,12 +184,17 @@ function PluginSettingField({
       : !isSecret && typeof storedValue === "string"
         ? storedValue
         : "";
+  const placeholder = isSecret
+    ? secretIsSet
+      ? "[set]"
+      : (descriptor.placeholder ?? "[not set]")
+    : descriptor.placeholder;
   return (
     <Input
       type={isSecret ? "password" : "text"}
       value={value}
       aria-label={descriptor.label}
-      placeholder={isSecret ? (secretIsSet ? "[set]" : "[not set]") : undefined}
+      placeholder={placeholder}
       onChange={(event) => onChange(event.target.value)}
       className="h-7 w-full text-xs sm:w-64"
     />
