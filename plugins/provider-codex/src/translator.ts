@@ -22,6 +22,7 @@ import {
 import { z } from "zod";
 import {
   applyCodexRateLimitUpdate,
+  clearCodexEventTranslationThreadState,
   createCodexEventTranslationState,
   setCodexInjectedTools,
   translateCodexEventToDeltas,
@@ -568,6 +569,10 @@ export function createCodexEventTranslator(
     const closed = clearExitedChildThreadState({
       providerThreadId: paramsResult.data.threadId,
     });
+    clearCodexEventTranslationThreadState(
+      eventTranslationState,
+      paramsResult.data.threadId,
+    );
     clearGitWritableRootsByProviderThreadId({
       providerThreadId: paramsResult.data.threadId,
     });

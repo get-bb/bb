@@ -1215,6 +1215,149 @@ describe("codex subagent activity correlation", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Terminal retry-error classification (#1840)
+// ---------------------------------------------------------------------------
+
+const STREAM_DISCONNECT_MESSAGE =
+  "stream disconnected before completion: error sending request for url (https://chatgpt.com/backend-api/codex/responses)";
+
+const STREAM_DISCONNECTED_ERROR_INFO = {
+  category: "stream-disconnected",
+  providerCode: "responseStreamDisconnected",
+  httpStatusCode: 502,
+};
+
+const UNKNOWN_ERROR_INFO = {
+  category: "unknown",
+  providerCode: "other",
+  httpStatusCode: null,
+};
+
+function codexReconnectError(turnId: string) {
+  return codexEvent("error", {
+    threadId: "t1",
+    turnId,
+    error: {
+      message: "Reconnecting... 5/5",
+      codexErrorInfo: { responseStreamDisconnected: { httpStatusCode: 502 } },
+      additionalDetails: STREAM_DISCONNECT_MESSAGE,
+    },
+    willRetry: true,
+  });
+}
+
+function codexTerminalOtherError(turnId: string, message: string) {
+  return codexEvent("error", {
+    threadId: "t1",
+    turnId,
+    error: { message, codexErrorInfo: "other", additionalDetails: null },
+    willRetry: false,
+  });
+}
+
+describe("codex terminal retry-error classification", () => {
+  // Codex labels each reconnect attempt `responseStreamDisconnected`, then
+  // reports the terminal failure for the same stream error as `other` once
+  // its retry budget is exhausted (codex-rs maps `CodexErrorDetails::Stream`
+  // to `CodexErrorInfo::Other`). The translator keeps the structured
+  // classification for the terminal row without parsing provider prose.
+  it("carries the retry classification into the degraded terminal error", () => {
+    const harness = createHarness();
+    harness.translate(codexReconnectError("turn-1"));
+
+    expect(
+      harness.translate(
+        codexTerminalOtherError("turn-1", STREAM_DISCONNECT_MESSAGE),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        scope: turnScope(harness.turnId("turn-1")),
+        willRetry: false,
+        detail: STREAM_DISCONNECT_MESSAGE,
+        errorInfo: STREAM_DISCONNECTED_ERROR_INFO,
+      }),
+    );
+
+    // The context is consumed by the terminal event: a repeat stays `other`.
+    expect(
+      harness.translate(
+        codexTerminalOtherError("turn-1", STREAM_DISCONNECT_MESSAGE),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: UNKNOWN_ERROR_INFO,
+      }),
+    );
+  });
+
+  it("does not relabel an unrelated terminal error after a reconnect", () => {
+    const harness = createHarness();
+    harness.translate(codexReconnectError("turn-1"));
+
+    expect(
+      harness.translate(codexTerminalOtherError("turn-1", "request failed")),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: UNKNOWN_ERROR_INFO,
+      }),
+    );
+  });
+
+  it("scopes the retry context to the turn and drops it on turn/completed", () => {
+    const harness = createHarness();
+    harness.translate(codexReconnectError("turn-1"));
+
+    expect(
+      harness.translate(
+        codexTerminalOtherError("turn-2", STREAM_DISCONNECT_MESSAGE),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: UNKNOWN_ERROR_INFO,
+      }),
+    );
+
+    harness.translate(
+      codexEvent("turn/completed", {
+        threadId: "t1",
+        turn: codexTurn({ id: "turn-1", status: "completed", error: null }),
+      }),
+    );
+    expect(
+      harness.translate(
+        codexTerminalOtherError("turn-1", STREAM_DISCONNECT_MESSAGE),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: UNKNOWN_ERROR_INFO,
+      }),
+    );
+  });
+
+  it("drops the retry context when the codex thread closes", () => {
+    const harness = createHarness();
+    harness.translate(codexReconnectError("turn-1"));
+    harness.translate(codexEvent("thread/closed", { threadId: "t1" }));
+
+    expect(
+      harness.translate(
+        codexTerminalOtherError("turn-1", STREAM_DISCONNECT_MESSAGE),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: UNKNOWN_ERROR_INFO,
+      }),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Accepted-turn correlation via turn/started (68d80092f, current semantics)
 // ---------------------------------------------------------------------------
 

@@ -78,6 +78,18 @@ export interface CodexInjectedTool {
   presentation?: DeltaPresentation;
 }
 
+/**
+ * The structured classification Codex attached to a retried failure, keyed by
+ * `threadId\0turnId`. Codex labels every reconnect attempt with the specific
+ * error info (for example `responseStreamDisconnected`) but downgrades the
+ * terminal error for the same failure to `other` once its retry budget is
+ * exhausted, so the bridge carries the retry-time classification forward.
+ */
+interface CodexRetryErrorContext {
+  errorInfo: CodexErrorInfo;
+  failureText: string;
+}
+
 interface CodexEventTranslationState {
   rateLimits: CodexRateLimitSnapshot | null;
   /**
@@ -86,10 +98,15 @@ interface CodexEventTranslationState {
    * says; every other dynamic tool call is codex's own.
    */
   injectedToolsByName: Map<string, CodexInjectedTool>;
+  retryErrorsByTurnKey: Map<string, CodexRetryErrorContext>;
 }
 
 export function createCodexEventTranslationState(): CodexEventTranslationState {
-  return { rateLimits: null, injectedToolsByName: new Map() };
+  return {
+    rateLimits: null,
+    injectedToolsByName: new Map(),
+    retryErrorsByTurnKey: new Map(),
+  };
 }
 
 export function setCodexInjectedTools(
@@ -245,7 +262,7 @@ function normalizeCodexRateLimits(
 }
 
 type CodexErrorEvent = Extract<CodexHandledEvent, { method: "error" }>;
-type CodexErrorPayload = CodexErrorEvent["params"]["error"];
+type CodexErrorParams = CodexErrorEvent["params"];
 
 type CodexItemTranslationResult =
   | {
@@ -349,9 +366,8 @@ function getProviderErrorCategory(
 }
 
 function toProviderErrorInfo(
-  error: CodexErrorPayload,
+  errorInfo: CodexErrorInfo | null | undefined,
 ): ProviderErrorInfo | null {
-  const errorInfo = error.codexErrorInfo;
   if (!errorInfo) {
     return null;
   }
@@ -360,6 +376,63 @@ function toProviderErrorInfo(
     providerCode: getCodexErrorProviderCode(errorInfo),
     httpStatusCode: getCodexErrorHttpStatusCode(errorInfo),
   };
+}
+
+function codexTurnKey(scope: { threadId: string; turnId?: string }): string {
+  return `${scope.threadId}\0${scope.turnId ?? ""}`;
+}
+
+function takeCodexRetryError(
+  state: CodexEventTranslationState,
+  scope: { threadId: string; turnId?: string },
+): CodexRetryErrorContext | undefined {
+  const key = codexTurnKey(scope);
+  const retryError = state.retryErrorsByTurnKey.get(key);
+  state.retryErrorsByTurnKey.delete(key);
+  return retryError;
+}
+
+export function clearCodexEventTranslationThreadState(
+  state: CodexEventTranslationState,
+  threadId: string,
+): void {
+  const prefix = codexTurnKey({ threadId });
+  for (const key of state.retryErrorsByTurnKey.keys()) {
+    if (key.startsWith(prefix)) {
+      state.retryErrorsByTurnKey.delete(key);
+    }
+  }
+}
+
+/**
+ * Codex reports the underlying failure in `additionalDetails` while it is
+ * retrying ("Reconnecting... n/m"), then moves the same text to `message` and
+ * downgrades `codexErrorInfo` to `other` on the terminal event. Correlate the
+ * two by failure text, scoped to the turn, so the terminal error keeps the
+ * structured classification without interpreting provider prose.
+ */
+function resolveCodexErrorInfo(
+  state: CodexEventTranslationState,
+  params: CodexErrorParams,
+): CodexErrorInfo | null | undefined {
+  const errorInfo = params.error.codexErrorInfo;
+  const failureText = params.error.additionalDetails ?? params.error.message;
+  if (params.willRetry === true) {
+    if (errorInfo && errorInfo !== "other") {
+      state.retryErrorsByTurnKey.set(codexTurnKey(params), {
+        errorInfo,
+        failureText,
+      });
+    }
+    return errorInfo;
+  }
+  if (params.willRetry !== false) {
+    return errorInfo;
+  }
+  const retryError = takeCodexRetryError(state, params);
+  return errorInfo === "other" && retryError?.failureText === failureText
+    ? retryError.errorInfo
+    : errorInfo;
 }
 
 function toRawEvent(rawEvent: JsonRpcMessage): ProviderRawEvent {
@@ -903,6 +976,10 @@ export function translateCodexEventToDeltas(
         { kind: "turn.open", providerTurnId: handledEvent.params.turn.id },
       ];
     case "turn/completed": {
+      takeCodexRetryError(state, {
+        threadId: handledEvent.params.threadId,
+        turnId: handledEvent.params.turn.id,
+      });
       const status = toTurnStatus(handledEvent.params.turn.status);
       return [
         {
@@ -1164,7 +1241,9 @@ export function translateCodexEventToDeltas(
         },
       ];
     case "error": {
-      const errorInfo = toProviderErrorInfo(handledEvent.params.error);
+      const errorInfo = toProviderErrorInfo(
+        resolveCodexErrorInfo(state, handledEvent.params),
+      );
       return [
         {
           kind: "provider.error",
