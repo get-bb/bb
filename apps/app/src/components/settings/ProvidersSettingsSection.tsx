@@ -62,10 +62,7 @@ export function ProvidersSettingsSection({
       ) : (
         <SettingsRowList>
           {providers.map((provider, index) => {
-            const ProviderIcon = getProviderIconInfo(
-              provider.id,
-              provider.logoUrl,
-            )?.icon;
+            const ProviderIcon = getProviderIconInfo(provider.id, provider)?.icon;
             const isDefault =
               generalSettings.defaultProviderId === provider.id ||
               (generalSettings.defaultProviderId === null && index === 0);

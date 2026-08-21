@@ -8,7 +8,7 @@ import { OpenAiIcon } from "@/components/icons/OpenAiIcon";
 import { OpencodeIcon } from "@/components/icons/OpencodeIcon";
 import { OmpIcon } from "@/components/icons/OmpIcon";
 import { PiIcon } from "@/components/icons/PiIcon";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, ICON_NAMES, type IconName } from "@bb/shared-ui/icon";
 import { getPluginSlotSnapshot, subscribePluginSlots } from "./plugin-slots";
 
 const ACP_ID_PREFIX = "acp-";
@@ -24,6 +24,44 @@ function isAcpProviderId(providerId: string): boolean {
 
 const GenericAcpIcon: ComponentType<{ className?: string }> = ({ className }) =>
   createElement(Icon, { name: "Code", className, "aria-hidden": "true" });
+
+/**
+ * What a caller knows about a provider's declared icon, straight off its
+ * `ProviderInfo`: a file logo served by the host (`logoUrl`) or a named host
+ * glyph (`icon.glyph`). A declaration names at most one.
+ */
+export interface ProviderIconSource {
+  logoUrl: string | null;
+  icon?: { glyph: string };
+}
+
+function isIconName(name: string): name is IconName {
+  return (ICON_NAMES as readonly string[]).includes(name);
+}
+
+const declaredGlyphIcons = new Map<string, ComponentType<{ className?: string }>>();
+
+/**
+ * A provider's declared host glyph, rendered through the shared icon set so
+ * it inherits the surrounding text color like a vendored brand mark. An
+ * unknown glyph name (a newer host's vocabulary, a typo) resolves to nothing,
+ * and the caller's fallback chain continues.
+ */
+function getDeclaredGlyphIcon(
+  glyph: string,
+): ComponentType<{ className?: string }> | undefined {
+  if (!isIconName(glyph)) {
+    return undefined;
+  }
+  const cached = declaredGlyphIcons.get(glyph);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const GlyphIcon: ComponentType<{ className?: string }> = ({ className }) =>
+    createElement(Icon, { name: glyph, className, "aria-hidden": "true" });
+  declaredGlyphIcons.set(glyph, GlyphIcon);
+  return GlyphIcon;
+}
 
 // Vendored brand marks for the built-in providers, keyed by provider id. The
 // first-party provider plugins ship no frontend bundle: registering these
@@ -66,7 +104,9 @@ function getConfiguredProviderLogoIcon(
     return cached;
   }
 
-  const fallbackIcon = resolveStaticProviderIconInfo(providerId, null)?.icon;
+  const fallbackIcon = resolveStaticProviderIconInfo(providerId, {
+    logoUrl: null,
+  })?.icon;
   const ProviderLogoIcon: ComponentType<{ className?: string }> = ({
     className,
   }) => {
@@ -110,10 +150,10 @@ const pluginAwareProviderIcons = new Map<
  */
 function getPluginAwareProviderIcon(
   providerId: string,
-  logoUrl: string | null,
+  source: ProviderIconSource,
   staticIcon: ComponentType<{ className?: string }> | undefined,
 ): ComponentType<{ className?: string }> {
-  const cacheKey = `${providerId}\0${logoUrl ?? ""}`;
+  const cacheKey = `${providerId}\0${source.logoUrl ?? ""}\0${source.icon?.glyph ?? ""}`;
   const cached = pluginAwareProviderIcons.get(cacheKey);
   if (cached !== undefined) {
     return cached;
@@ -152,29 +192,41 @@ function getPluginAwareProviderIcon(
  * 3. A caller-supplied `logoUrl` (from a server-provided `ProviderInfo`) for
  *    providers without a vendored mark — plugin-registered third parties, and
  *    the right home for static color logos.
- * 4. The generic glyph for unrecognized ACP providers.
+ * 4. The host glyph the provider declared (`ProviderInfo.icon.glyph`, from a
+ *    declaration like `icon: "Zap"`): a plugin without an SVG asset still
+ *    gets a mark instead of its initial. Drawn through the shared icon set,
+ *    so it inherits the text color like a vendored mark.
+ * 5. The generic glyph for unrecognized ACP providers.
  *
  * Returns undefined for unknown non-ACP providers so callers can fall back
- * gracefully.
+ * gracefully (the picker shows the display name's initial).
+ *
+ * The second argument is the provider's declared icon source — pass the
+ * `ProviderInfo` itself, or nothing for surfaces that only know the id.
  */
 export function getProviderIconInfo(
   providerId: string,
-  logoUrl: string | null = null,
+  source: ProviderIconSource | null = null,
 ): ProviderIconInfo | undefined {
-  const staticInfo = resolveStaticProviderIconInfo(providerId, logoUrl);
+  const resolvedSource = source ?? { logoUrl: null };
+  const staticInfo = resolveStaticProviderIconInfo(providerId, resolvedSource);
   const pluginIcon = getRegisteredPluginProviderIcon(providerId);
   if (staticInfo === undefined && pluginIcon === undefined) {
     return undefined;
   }
   return {
-    icon: getPluginAwareProviderIcon(providerId, logoUrl, staticInfo?.icon),
+    icon: getPluginAwareProviderIcon(
+      providerId,
+      resolvedSource,
+      staticInfo?.icon,
+    ),
     ariaLabel: staticInfo?.ariaLabel ?? providerId,
   };
 }
 
 function resolveStaticProviderIconInfo(
   providerId: string,
-  logoUrl: string | null,
+  source: ProviderIconSource,
 ): ProviderIconInfo | undefined {
   const builtInBrand = BUILT_IN_BRAND_ICONS[providerId];
   if (builtInBrand !== undefined) {
@@ -189,11 +241,19 @@ function resolveStaticProviderIconInfo(
     }
   }
 
-  if (logoUrl !== null) {
+  if (source.logoUrl !== null) {
     return {
-      icon: getConfiguredProviderLogoIcon(providerId, logoUrl),
+      icon: getConfiguredProviderLogoIcon(providerId, source.logoUrl),
       ariaLabel: "Provider logo",
     };
+  }
+
+  const glyphIcon =
+    source.icon === undefined
+      ? undefined
+      : getDeclaredGlyphIcon(source.icon.glyph);
+  if (glyphIcon !== undefined) {
+    return { icon: glyphIcon, ariaLabel: "Provider icon" };
   }
 
   if (isAcpProviderId(providerId)) {

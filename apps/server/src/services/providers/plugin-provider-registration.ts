@@ -192,12 +192,14 @@ export function buildPluginProviderRegistration(args: {
     // registration (see registerProvider in plugin-runtime.ts). The raw
     // plugin-assets route serves only branding variants and built bundles, so
     // declared icon paths are never exposed as URLs directly. A named host
-    // glyph has no bytes, so it gets no URL — the client falls back the same
-    // way it does for a provider with no icon at all.
+    // glyph has no bytes, so it gets no URL and travels by name instead.
     logoUrl:
       declaration.icon !== undefined && isPluginOwnedIconPath(declaration.icon)
         ? `/api/v1/system/providers/${declaration.id}/logo`
         : null,
+    ...(declaration.icon !== undefined && !isPluginOwnedIconPath(declaration.icon)
+      ? { icon: { glyph: declaration.icon } }
+      : {}),
     capabilities: {
       supportsThreadArchive,
       supportsThreadRename,

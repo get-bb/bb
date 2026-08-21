@@ -709,9 +709,16 @@ provider-retry) stops vendoring provider names, icons, and copy.
    signature.
 2. **Icons.** `logoUrl` is null for the bundled first-party providers (their
    marks are vendored in the app), so a plugin still cannot draw every
-   provider's icon from this hook alone. Decide whether the host serves its
-   vendored marks through the logo route, or exposes an icon component, before
-   telling plugins to delete their copies.
+   provider's icon from this hook alone. A provider that declared a named
+   glyph (`icon: "Zap"`) now arrives as `icon: { glyph }` beside `logoUrl`
+   (at most one of the two is set; the host draws vendored mark → `logoUrl`
+   → `icon.glyph` → the initial), so a plugin can draw glyph-declared
+   third-party providers through the shared icon set. Decide whether the host
+   serves its vendored marks through the logo route, or exposes an icon
+   component, before telling plugins to delete their copies — and whether
+   `icon` and `logoUrl` fold into one `{ glyph } | { url }` field, the
+   declaration's own `{ glyph } | { asset }` shape, when `ProviderInfo`
+   stabilizes.
 
 ## `app.slots.experimental_providerIcon` (`@get-bb/plugin-sdk/app`)
 

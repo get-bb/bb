@@ -35,18 +35,16 @@ afterEach(() => {
 
 describe("getProviderIconInfo", () => {
   it("prefers a configured provider logo over the generic ACP icon", () => {
-    const iconInfo = getProviderIconInfo(
-      "acp-do-computer",
-      "/api/v1/system/providers/acp-do-computer/logo",
-    );
+    const iconInfo = getProviderIconInfo("acp-do-computer", {
+      logoUrl: "/api/v1/system/providers/acp-do-computer/logo",
+    });
     if (iconInfo === undefined) {
       throw new Error("Expected configured provider logo icon info");
     }
     expect(
-      getProviderIconInfo(
-        "acp-do-computer",
-        "/api/v1/system/providers/acp-do-computer/logo",
-      )?.icon,
+      getProviderIconInfo("acp-do-computer", {
+        logoUrl: "/api/v1/system/providers/acp-do-computer/logo",
+      })?.icon,
     ).toBe(iconInfo.icon);
 
     const view = render(
@@ -71,10 +69,9 @@ describe("getProviderIconInfo", () => {
     // resolves to black there, invisible on dark themes. Known ids must keep
     // their inline React marks even when the server provides a logoUrl.
     for (const providerId of ["codex", "claude-code", "pi", "acp-opencode"]) {
-      const iconInfo = getProviderIconInfo(
-        providerId,
-        `/api/v1/system/providers/${providerId}/logo`,
-      );
+      const iconInfo = getProviderIconInfo(providerId, {
+        logoUrl: `/api/v1/system/providers/${providerId}/logo`,
+      });
       if (iconInfo === undefined) {
         throw new Error(`Expected icon info for ${providerId}`);
       }
@@ -85,11 +82,59 @@ describe("getProviderIconInfo", () => {
     }
   });
 
-  it("lets a plugin-registered component win, and falls back when it goes away", () => {
-    const iconInfo = getProviderIconInfo(
-      "codex",
-      "/api/v1/system/providers/codex/logo",
+  it("draws a declared host glyph for a provider without a logo, and keeps it below a logo", () => {
+    // `icon: "Zap"` on the declaration: no bytes to serve, so no logoUrl; the
+    // glyph arrives by name and must render through the shared icon set
+    // (inline svg, inherits the text color) instead of the initial.
+    const glyphInfo = getProviderIconInfo("echo-agent", {
+      logoUrl: null,
+      icon: { glyph: "Zap" },
+    });
+    if (glyphInfo === undefined) {
+      throw new Error("Expected a glyph icon for echo-agent");
+    }
+    expect(
+      getProviderIconInfo("echo-agent", { logoUrl: null, icon: { glyph: "Zap" } })
+        ?.icon,
+    ).toBe(glyphInfo.icon);
+    const glyphView = render(
+      createElement(glyphInfo.icon, { className: "size-4" }),
     );
+    expect(glyphView.container.querySelector("img")).toBeNull();
+    expect(
+      glyphView.container.querySelector('svg[data-icon="Zap"]'),
+    ).not.toBeNull();
+    glyphView.unmount();
+
+    // A glyph the host does not know resolves to nothing, so the caller's
+    // fallback (the initial) takes over instead of an empty box.
+    expect(
+      getProviderIconInfo("echo-agent", {
+        logoUrl: null,
+        icon: { glyph: "NoSuchGlyph" },
+      }),
+    ).toBeUndefined();
+
+    // A file logo is the richer asset: it wins when both are present.
+    const bothInfo = getProviderIconInfo("echo-agent", {
+      logoUrl: "/api/v1/system/providers/echo-agent/logo",
+      icon: { glyph: "Zap" },
+    });
+    if (bothInfo === undefined) {
+      throw new Error("Expected icon info when both forms are present");
+    }
+    const bothView = render(createElement(bothInfo.icon, {}));
+    expect(bothView.container.querySelector("img")).not.toBeNull();
+    bothView.unmount();
+
+    // Unknown non-ACP provider with neither form: nothing, as before.
+    expect(getProviderIconInfo("echo-agent", { logoUrl: null })).toBeUndefined();
+  });
+
+  it("lets a plugin-registered component win, and falls back when it goes away", () => {
+    const iconInfo = getProviderIconInfo("codex", {
+      logoUrl: "/api/v1/system/providers/codex/logo",
+    });
     if (iconInfo === undefined) {
       throw new Error("Expected icon info for codex");
     }

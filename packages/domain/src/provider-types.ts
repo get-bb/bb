@@ -142,6 +142,17 @@ export const providerInfoSchema = z.object({
    * Absent when the provider declared none. Grouping only.
    */
   family: z.string().min(1).optional(),
+  /**
+   * The declared icon, projected by form. A plugin-relative asset path
+   * (`icon: "./icons/agent.svg"`) is served by the provider-logo route and
+   * arrives here as `logoUrl`; a named host glyph (`icon: "Zap"`) has no
+   * bytes to serve and arrives as `icon.glyph`, the same vocabulary an
+   * item presentation's `icon` uses. A declaration names at most one form,
+   * so at most one of the two is set; `icon` is absent when the declaration
+   * named a path or nothing. Clients draw a vendored brand mark first, then
+   * `logoUrl`, then `icon.glyph`, then the display name's initial.
+   */
+  icon: z.object({ glyph: z.string().min(1) }).optional(),
   logoUrl: z.string().min(1).nullable(),
   /** Sessionless maintenance methods declared by the provider plugin. */
   experimental_providerHealth: z.boolean(),
