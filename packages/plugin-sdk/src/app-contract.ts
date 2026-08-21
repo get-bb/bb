@@ -307,8 +307,11 @@ export interface PluginDiffRendererProps {
   overflow: CodeOverflowMode;
   showLineNumbers: boolean;
   /**
-   * Complete resolved text for both sides, or `null` when the caller supplied
-   * only the patch. A replacement can use this to implement context expansion.
+   * Caller-resolved text for both sides, or `null` when the caller supplied
+   * only the patch. A replacement can use this to implement context expansion,
+   * but must verify that the paths and hunk lines agree with `patch` before
+   * treating the contents as complete. BB's original renderer performs that
+   * verification when it mounts.
    */
   experimental_fullFileContents: ExperimentalDiffFullFileContents | null;
   /**

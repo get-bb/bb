@@ -123,7 +123,7 @@ afterEach(() => {
 });
 
 describe("DiffHost", () => {
-  it("keeps BB's renderer chunk unloaded when a replacement never delegates", async () => {
+  it("skips BB's renderer and full-file enrichment when a replacement never delegates", async () => {
     registerDiffRenderer((props) => {
       receivedProps.push(props);
       return <div data-testid="plugin-diff">plugin diff</div>;
@@ -133,7 +133,7 @@ describe("DiffHost", () => {
       <DiffHost
         file={parseFixture()}
         patchText={PATCH}
-        fullFileContents={null}
+        fullFileContents={FULL_FILE_CONTENTS}
         view="split"
       />,
     );
@@ -145,6 +145,9 @@ describe("DiffHost", () => {
       await Promise.resolve();
     });
     expect(bbDiff.loaded).toBe(false);
+    expect(receivedProps.at(-1)?.experimental_fullFileContents).toBe(
+      FULL_FILE_CONTENTS,
+    );
   });
 
   it("hands the replacement resolved semantic props, not BB's host-only inputs", async () => {
@@ -348,7 +351,7 @@ describe("experimental_Diff", () => {
     expect(patch).not.toContain("\r");
   });
 
-  it("enriches BB's renderer with complete file contents for context expansion", async () => {
+  it("defers complete-file enrichment to BB's lazy renderer", async () => {
     render(
       <PluginDiff
         patch={PATCH}
@@ -361,9 +364,10 @@ describe("experimental_Diff", () => {
     const file = bbDiff.lastProps?.file as ReturnType<
       typeof parseFixture
     > | null;
-    expect(file?.isPartial).toBe(false);
-    expect(file?.additionLines).toContain("const newTail = true;\n");
-    expect(bbDiff.lastProps?.expansionLineCount).toBe(30);
+    expect(file?.isPartial).toBe(true);
+    expect(bbDiff.lastProps?.patchText).toBe(PATCH);
+    expect(bbDiff.lastProps?.fullFileContents).toBe(FULL_FILE_CONTENTS);
+    expect(bbDiff.lastProps).not.toHaveProperty("expansionLineCount");
   });
 
   it("degrades to plain text instead of an empty diff when the patch will not parse", () => {

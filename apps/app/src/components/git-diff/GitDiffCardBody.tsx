@@ -23,7 +23,6 @@ import {
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   formatGitDiffFileLabel,
-  enrichGitDiffFileForContext,
   isPreviewableImagePath,
   isSvgGitDiffFile,
   normalizeGitDiffPath,
@@ -79,7 +78,6 @@ type DiffFileEnrichmentState =
   | { status: "loading" }
   | {
       status: "ready";
-      fileDiff: ParsedGitDiffFile;
       fullFileContents: ExperimentalDiffFullFileContents;
     }
   | {
@@ -91,7 +89,6 @@ type DiffFileEnrichmentState =
     }
   | {
       status: "ready-svg";
-      fileDiff: ParsedGitDiffFile;
       fullFileContents: ExperimentalDiffFullFileContents;
       oldImageUrl: string | null;
       newImageUrl: string | null;
@@ -276,7 +273,7 @@ interface UseGitDiffCardBodyArgs {
 interface GitDiffCardBodyState {
   bodySentinelRef: RefCallback<HTMLDivElement>;
   enrichment: DiffFileEnrichmentState;
-  enrichedFileDiff: ParsedGitDiffFile;
+  fileDiff: ParsedGitDiffFile;
   fileDiffLabel: string;
   isImageCard: boolean;
   isSvgPreviewCard: boolean;
@@ -442,12 +439,6 @@ export function useGitDiffCardBody({
           setEnrichment({ status: "unavailable" });
           return;
         }
-        const enrichedFileDiff = enrichGitDiffFileForContext({
-          fileDiff,
-          oldFile: oldResult.file,
-          newFile: newResult.file,
-          patchText,
-        });
         const fullFileContents = toDiffFullFileContents(
           oldResult.file,
           newResult.file,
@@ -456,7 +447,6 @@ export function useGitDiffCardBody({
           enrichmentStatusRef.current = "ready-svg";
           setEnrichment({
             status: "ready-svg",
-            fileDiff: enrichedFileDiff,
             fullFileContents,
             oldImageUrl: svgTextToDataUrl(oldResult.file.contents),
             newImageUrl: svgTextToDataUrl(newResult.file.contents),
@@ -466,7 +456,6 @@ export function useGitDiffCardBody({
         enrichmentStatusRef.current = "ready";
         setEnrichment({
           status: "ready",
-          fileDiff: enrichedFileDiff,
           fullFileContents,
         });
       })
@@ -513,12 +502,6 @@ export function useGitDiffCardBody({
     [contextExpansionStatus, requestContextExpansion],
   );
 
-  const enrichedFileDiff = useMemo<ParsedGitDiffFile>(() => {
-    if (enrichment.status !== "ready" && enrichment.status !== "ready-svg") {
-      return fileDiff;
-    }
-    return enrichment.fileDiff;
-  }, [fileDiff, enrichment]);
   const fullFileContents =
     enrichment.status === "ready" || enrichment.status === "ready-svg"
       ? enrichment.fullFileContents
@@ -537,7 +520,7 @@ export function useGitDiffCardBody({
   return {
     bodySentinelRef,
     enrichment,
-    enrichedFileDiff,
+    fileDiff,
     fileDiffLabel,
     isImageCard,
     isSvgPreviewCard: isSvgCard,
@@ -857,7 +840,7 @@ export function GitDiffCardBody({
   const {
     bodySentinelRef,
     enrichment,
-    enrichedFileDiff,
+    fileDiff,
     fileDiffLabel,
     isImageCard,
     isSvgPreviewCard,
@@ -904,7 +887,7 @@ export function GitDiffCardBody({
         <GitDiffCardSvgBody
           displayMode={svgDisplayMode}
           enrichment={enrichment}
-          fileDiff={enrichedFileDiff}
+          fileDiff={fileDiff}
           fileDiffLabel={fileDiffLabel}
           patchText={patchText}
           fullFileContents={fullFileContents}
@@ -914,7 +897,7 @@ export function GitDiffCardBody({
       ) : (
         <>
           <DiffHost
-            file={enrichedFileDiff}
+            file={fileDiff}
             patchText={patchText}
             fullFileContents={fullFileContents}
             {...presentation}

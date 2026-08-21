@@ -70,9 +70,11 @@ interface GitDiffContextEnrichmentInput {
 }
 
 /**
- * Reparses a card's raw file patch with both full file sides attached. The
- * diff renderer only exposes expand-context controls when `isPartial` is false
- * and `additionLines` / `deletionLines` contain complete file contents.
+ * Reparses a raw file patch with both full file sides attached. The returned
+ * file is only enriched when the supplied paths and every hunk line agree with
+ * the original patch. `@pierre/diffs` trusts caller-supplied contents, so this
+ * check prevents unrelated, empty, or swapped files from being presented as
+ * expandable context.
  */
 export function enrichGitDiffFileForContext({
   fileDiff,
@@ -80,18 +82,98 @@ export function enrichGitDiffFileForContext({
   newFile,
   patchText,
 }: GitDiffContextEnrichmentInput): ParsedGitDiffFile {
-  if (!patchText) return fileDiff;
+  if (!patchText || !doFullFilePathsMatch(fileDiff, oldFile, newFile)) {
+    return fileDiff;
+  }
 
+  // Do not inherit the partial diff's cache key. Pierre treats matching cache
+  // keys as semantic equality, but callers may refresh the full contents while
+  // retaining the same patch identity.
+  const enrichedFile = processFile(patchText, { oldFile, newFile });
+  if (
+    enrichedFile === undefined ||
+    enrichedFile.isPartial ||
+    !doFullFileHunksMatch(fileDiff, enrichedFile)
+  ) {
+    return fileDiff;
+  }
+  return enrichedFile;
+}
+
+function doFullFilePathsMatch(
+  fileDiff: ParsedGitDiffFile,
+  oldFile: FileContents,
+  newFile: FileContents,
+): boolean {
+  const expectedNewPath = normalizeGitDiffPath(fileDiff.name);
+  const expectedOldPath =
+    normalizeGitDiffPath(fileDiff.prevName) ?? expectedNewPath;
   return (
-    processFile(patchText, {
-      oldFile,
-      newFile,
-      cacheKey:
-        fileDiff.cacheKey === undefined
-          ? undefined
-          : `${fileDiff.cacheKey}:context`,
-    }) ?? fileDiff
+    expectedOldPath !== undefined &&
+    expectedNewPath !== undefined &&
+    normalizeGitDiffPath(oldFile.name) === expectedOldPath &&
+    normalizeGitDiffPath(newFile.name) === expectedNewPath
   );
+}
+
+function doFullFileHunksMatch(
+  partialFile: ParsedGitDiffFile,
+  fullFile: ParsedGitDiffFile,
+): boolean {
+  return partialFile.hunks.every(
+    (hunk) =>
+      doLineRangesMatch({
+        expectedLines: partialFile.deletionLines,
+        expectedStart: hunk.deletionLineIndex,
+        actualLines: fullFile.deletionLines,
+        actualStart: hunk.deletionStart - 1,
+        count: hunk.deletionCount,
+      }) &&
+      doLineRangesMatch({
+        expectedLines: partialFile.additionLines,
+        expectedStart: hunk.additionLineIndex,
+        actualLines: fullFile.additionLines,
+        actualStart: hunk.additionStart - 1,
+        count: hunk.additionCount,
+      }),
+  );
+}
+
+function doLineRangesMatch({
+  expectedLines,
+  expectedStart,
+  actualLines,
+  actualStart,
+  count,
+}: {
+  expectedLines: string[];
+  expectedStart: number;
+  actualLines: string[];
+  actualStart: number;
+  count: number;
+}): boolean {
+  if (
+    expectedStart < 0 ||
+    actualStart < 0 ||
+    count < 0 ||
+    expectedStart + count > expectedLines.length ||
+    actualStart + count > actualLines.length
+  ) {
+    return false;
+  }
+  for (let index = 0; index < count; index += 1) {
+    if (
+      normalizeComparableDiffLine(expectedLines[expectedStart + index]) !==
+      normalizeComparableDiffLine(actualLines[actualStart + index])
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function normalizeComparableDiffLine(line: string | undefined): string {
+  return line?.endsWith("\r\n") ? `${line.slice(0, -2)}\n` : (line ?? "");
 }
 
 export function summarizeGitDiffFile(

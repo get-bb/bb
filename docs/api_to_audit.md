@@ -968,7 +968,9 @@ behavior deliberately stay with the caller.
    `{ path, content }` objects. This keeps lazy loading, retries, and viewport
    policy with the caller while letting BB's renderer and a replacement consume
    complete UTF-8 sides without exposing Pierre's `FileContents` type. A
-   replacement always receives the resolved field as an object or `null`.
+   replacement always receives the caller-resolved field as an object or
+   `null`, and owns patch-consistency validation if it uses those contents for
+   expansion. BB's original validates only when its lazy renderer mounts.
 
 ## `app.slots.experimental_sourceCodeRenderer` / `app.slots.experimental_diffRenderer` (`@get-bb/plugin-sdk/app`)
 
@@ -1016,8 +1018,10 @@ is temporarily unavailable renders BB's renderer without erasing the pin.
    precedent rather than as a fact about these two slots: no other slot lets a
    plugin reach into another plugin's rendered output.
 4. **Capability parity. Resolved for context expansion (Aug 2026):** a
-   replacement receives `experimental_fullFileContents` as an object or `null`, matching the
-   public host component and first-party diff cards. Selection-to-chat and the
+   replacement receives `experimental_fullFileContents` as an object or `null`,
+   matching the public host component and first-party diff cards. These are
+   caller-resolved contents; a replacement that implements expansion also owns
+   consistency validation against `patch`. Selection-to-chat and the
    deleted-file gate remain host-only; confirm that remaining asymmetry is
    acceptable, or promote either capability before stabilization.
 5. **Two slots or one.** Confirm source and diff should stay separately

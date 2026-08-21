@@ -6,9 +6,11 @@ import { PierreWorkerPoolBoundary } from "@/lib/pierre-worker-pool-boundary";
 import { useRequirePierreWorkerPool } from "@/lib/pierre-worker-pool-gate";
 import { usePierreStrictModeRecoveryOptions } from "@/lib/pierre-strict-mode-recovery";
 import {
+  buildFileDiffPatchText,
   buildDiffDomSelectionText,
   buildDiffLineSelectionText,
 } from "@/components/git-diff/git-diff-patch-text";
+import { enrichGitDiffFileForContext } from "@/components/git-diff/git-diff-parsing";
 import { useResolvedCodeThemePair } from "@/lib/code-theme";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -19,6 +21,9 @@ const DIFF_VIEW_STYLE = {
   "--diffs-font-size": "12px",
   "--diffs-line-height": "18px",
 } as CSSProperties;
+
+/** Unchanged lines revealed by one built-in expand-context action. */
+const DEFAULT_DIFF_EXPANSION_LINE_COUNT = 30;
 
 function BbDiffSkeleton() {
   return (
@@ -41,13 +46,38 @@ function BbDiffSkeleton() {
  */
 export function BbDiff({
   file,
+  patchText,
+  fullFileContents,
   view,
   overflow,
   showLineNumbers,
   className,
-  expansionLineCount,
   onSelectionAddToChat,
 }: BbDiffProps) {
+  const oldPath = fullFileContents?.old.path;
+  const oldContent = fullFileContents?.old.content;
+  const newPath = fullFileContents?.new.path;
+  const newContent = fullFileContents?.new.content;
+  const resolvedFile = useMemo(() => {
+    if (
+      oldPath === undefined ||
+      oldContent === undefined ||
+      newPath === undefined ||
+      newContent === undefined
+    ) {
+      return file;
+    }
+    return enrichGitDiffFileForContext({
+      fileDiff: file,
+      oldFile: { name: oldPath, contents: oldContent },
+      newFile: { name: newPath, contents: newContent },
+      patchText: patchText ?? buildFileDiffPatchText(file),
+    });
+  }, [file, newContent, newPath, oldContent, oldPath, patchText]);
+  const expansionLineCount =
+    resolvedFile !== file && resolvedFile.isPartial === false
+      ? DEFAULT_DIFF_EXPANSION_LINE_COUNT
+      : undefined;
   const containerRef = useRef<HTMLDivElement>(null);
   const codeTheme = useResolvedCodeThemePair();
   const themeType = usePreferredTheme();
@@ -55,10 +85,10 @@ export function BbDiff({
     (range: SelectedLineRange) =>
       buildDiffLineSelectionText({
         displayStyle: view,
-        fileDiff: file,
+        fileDiff: resolvedFile,
         range,
       }),
-    [file, view],
+    [resolvedFile, view],
   );
   const buildFallbackSelectionText = useCallback(
     ({
@@ -66,8 +96,9 @@ export function BbDiff({
     }: {
       containerElement: HTMLElement | null;
       range: SelectedLineRange;
-    }) => buildDiffDomSelectionText({ containerElement, fileDiff: file }),
-    [file],
+    }) =>
+      buildDiffDomSelectionText({ containerElement, fileDiff: resolvedFile }),
+    [resolvedFile],
   );
   const lineSelectionActions = usePierreLineSelectionActions({
     buildFallbackSelectionText,
@@ -135,7 +166,7 @@ export function BbDiff({
       <div className="w-full max-w-full" style={DIFF_VIEW_STYLE}>
         <PierreWorkerPoolBoundary>
           <DiffView
-            fileDiff={file}
+            fileDiff={resolvedFile}
             options={options}
             selectedLines={lineSelectionActions.selectedRange}
           />

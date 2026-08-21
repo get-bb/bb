@@ -177,4 +177,59 @@ describe("threadDetailGitDiff", () => {
     expect(secondHunk.deletionLineIndex).toBe(7);
     expect(secondHunk.collapsedBefore).toBe(5);
   });
+
+  it.each([
+    {
+      name: "empty contents",
+      oldFile: { name: "src/context.ts", contents: "" },
+      newFile: { name: "src/context.ts", contents: "" },
+    },
+    {
+      name: "unrelated contents",
+      oldFile: {
+        name: "src/context.ts",
+        contents: "not the old file\n",
+      },
+      newFile: {
+        name: "src/context.ts",
+        contents: "not the new file\n",
+      },
+    },
+    {
+      name: "swapped contents",
+      oldFile: {
+        name: "src/context.ts",
+        contents: `${NEW_CONTEXT_CONTENT}\n`,
+      },
+      newFile: {
+        name: "src/context.ts",
+        contents: `${OLD_CONTEXT_CONTENT}\n`,
+      },
+    },
+    {
+      name: "mismatched paths",
+      oldFile: {
+        name: "src/another.ts",
+        contents: `${OLD_CONTEXT_CONTENT}\n`,
+      },
+      newFile: {
+        name: "src/another.ts",
+        contents: `${NEW_CONTEXT_CONTENT}\n`,
+      },
+    },
+  ])("keeps the patch partial for $name", ({ oldFile, newFile }) => {
+    const [file] = parseGitDiffFiles(MULTI_HUNK_DIFF);
+    expect(file).toBeDefined();
+    if (!file) throw new Error("expected parsed file");
+
+    const result = enrichGitDiffFileForContext({
+      fileDiff: file,
+      oldFile,
+      newFile,
+      patchText: MULTI_HUNK_DIFF,
+    });
+
+    expect(result).toBe(file);
+    expect(result.isPartial).toBe(true);
+  });
 });

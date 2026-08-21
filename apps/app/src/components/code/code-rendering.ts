@@ -1,6 +1,7 @@
 import type {
   CodeOverflowMode,
   DiffViewMode,
+  ExperimentalDiffFullFileContents,
   SourceCodeLineRange,
 } from "@get-bb/plugin-sdk";
 import type { ParsedGitDiffFile } from "@/components/git-diff/git-diff-parsing";
@@ -57,18 +58,14 @@ export interface BbSourceCodeProps extends SourceCodePresentation {
 /** Props BB's default diff renderer receives from {@link DiffHost}. */
 export interface BbDiffProps extends DiffPresentation {
   /**
-   * The diff to draw. Already parsed — and possibly enriched with full file
-   * contents for context expansion — by the caller, which also needs it for
-   * its own header.
+   * The raw parsed diff to draw. The built-in renderer enriches it lazily when
+   * complete file contents agree with the patch.
    */
   file: ParsedGitDiffFile;
+  /** Original patch text, when the caller still has it. */
+  patchText?: string;
+  /** Caller-resolved full text sides, or null when context is unavailable. */
+  fullFileContents: ExperimentalDiffFullFileContents | null;
   className?: string;
-  /**
-   * How many unchanged lines each expand-context click reveals. Set ONLY by a
-   * host that received complete file contents and a successfully enriched
-   * `file`: pierre renders an empty diff when it is given an expansion budget
-   * for a hunk-only patch, which is what the timeline supplies.
-   */
-  expansionLineCount?: number;
   onSelectionAddToChat?: (text: string) => void;
 }

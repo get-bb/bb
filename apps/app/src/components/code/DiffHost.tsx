@@ -15,14 +15,11 @@ const DIFF_RENDERER_SLOT_KIND = "diffRenderer";
 
 const BbDiff = lazy(() => import("./BbDiff"));
 
-/** Unchanged lines revealed by one built-in expand-context action. */
-const DEFAULT_DIFF_EXPANSION_LINE_COUNT = 30;
-
 interface DiffHostProps extends Partial<DiffPresentation> {
   /**
    * The parsed diff to render. Callers parse it anyway for their own header,
-   * and callers with full file contents additionally enrich it so the renderer
-   * can expand context between hunks.
+   * while the built-in renderer lazily enriches it if full contents are
+   * available and consistent with the patch.
    */
   file: ParsedGitDiffFile;
   /**
@@ -45,8 +42,9 @@ interface DiffHostProps extends Partial<DiffPresentation> {
  * the environment diff panel's file bodies — and every plugin that calls
  * `experimental_Diff` renders through here, so one
  * `experimental_diffRenderer` registration replaces them all at once.
- * Resolved full-file text is semantic input: the built-in renderer uses the
- * enriched parsed file, while a replacement receives the plain text sides.
+ * Resolved full-file text is semantic input: a replacement receives the plain
+ * text sides, while the built-in renderer validates and parses them only if it
+ * actually mounts.
  *
  * BB's own renderer sits behind `lazy()`. A plugin replacement that never
  * delegates therefore never downloads it, and `experimental_Original` costs
@@ -76,15 +74,12 @@ export function DiffHost({
     <Suspense fallback={fallback}>
       <BbDiff
         file={file}
+        patchText={patchText}
+        fullFileContents={fullFileContents}
         view={view}
         overflow={overflow}
         showLineNumbers={showLineNumbers}
         className={className}
-        expansionLineCount={
-          fullFileContents !== null && file.isPartial === false
-            ? DEFAULT_DIFF_EXPANSION_LINE_COUNT
-            : undefined
-        }
         onSelectionAddToChat={onSelectionAddToChat}
       />
     </Suspense>
