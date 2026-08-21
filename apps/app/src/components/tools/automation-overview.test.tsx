@@ -29,6 +29,7 @@ const INSTALLED_AUTOMATIONS: AutomationsOverviewResponse["automations"] = [
         prompt: "Summarize yesterday's commits.",
         providerId: "claude",
         model: "claude-opus-5",
+        reasoningLevel: "medium",
         permissionMode: "auto",
         environment: { type: "host", workspace: { type: "personal" } },
       },

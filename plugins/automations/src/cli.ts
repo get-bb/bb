@@ -14,7 +14,9 @@ import type {
   AutomationScriptInterpreter,
   CreateAutomationInput,
   PermissionMode,
+  ReasoningLevel,
   ResolvedCreateAutomationInput,
+  ServiceTier,
   UpdateAutomationInput,
 } from "./rpc-types.js";
 import {
@@ -155,6 +157,30 @@ function parsePermissionMode(
   throw new Error(
     "Invalid --permission-mode. Expected accept-edits, auto, or full.",
   );
+}
+
+function parseReasoningLevel(value: string): ReasoningLevel {
+  if (
+    value === "none" ||
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh" ||
+    value === "ultracode" ||
+    value === "max" ||
+    value === "ultra"
+  ) {
+    return value;
+  }
+  throw new Error(
+    "Invalid --reasoning. Expected none, low, medium, high, xhigh, ultracode, max, or ultra.",
+  );
+}
+
+function parseServiceTier(value: string): ServiceTier | null {
+  if (value === "default" || value === "fast") return value;
+  if (value === "none") return null;
+  throw new Error("Invalid --service-tier. Expected default, fast, or none.");
 }
 
 function validateAgentTargetOptions(args: ParsedArgs): void {
@@ -441,12 +467,21 @@ async function buildExecution(
     }
     validateAgentTargetOptions(args);
     const environment = await buildAgentEnvironment(bb, args);
+    const reasoning = flag(args, "reasoning");
+    const serviceTier = flag(args, "service-tier");
+    const parsedServiceTier =
+      serviceTier === undefined ? undefined : parseServiceTier(serviceTier);
     return {
       execution: {
         mode: "agent",
         prompt,
         providerId: provider,
         model,
+        reasoningLevel:
+          reasoning === undefined ? "medium" : parseReasoningLevel(reasoning),
+        ...(parsedServiceTier === null || parsedServiceTier === undefined
+          ? {}
+          : { serviceTier: parsedServiceTier }),
         permissionMode: await resolvePermissionMode(
           bb,
           provider,
@@ -463,6 +498,8 @@ async function buildExecution(
   if (
     args.flags.has("provider") ||
     args.flags.has("model") ||
+    args.flags.has("reasoning") ||
+    args.flags.has("service-tier") ||
     args.flags.has("permission-mode") ||
     args.flags.has("target-thread") ||
     args.flags.has("environment") ||
@@ -497,8 +534,6 @@ async function buildExecution(
 }
 
 const COMPLETE_EXECUTION_FLAG_NAMES = [
-  "provider",
-  "model",
   "script",
   "script-file",
   "interpreter",
@@ -512,6 +547,10 @@ async function buildAgentExecutionUpdate(
 ): Promise<AgentExecutionUpdate | undefined> {
   const agentOptionNames = [
     "prompt",
+    "provider",
+    "model",
+    "reasoning",
+    "service-tier",
     "permission-mode",
     "target-thread",
     "environment",
@@ -523,6 +562,16 @@ async function buildAgentExecutionUpdate(
   validateAgentTargetOptions(args);
   const update: AgentExecutionUpdate = {};
   if (args.flags.has("prompt")) update.prompt = requireFlag(args, "prompt");
+  if (args.flags.has("provider")) {
+    update.providerId = requireFlag(args, "provider");
+  }
+  if (args.flags.has("model")) update.model = requireFlag(args, "model");
+  if (args.flags.has("reasoning")) {
+    update.reasoningLevel = parseReasoningLevel(requireFlag(args, "reasoning"));
+  }
+  if (args.flags.has("service-tier")) {
+    update.serviceTier = parseServiceTier(requireFlag(args, "service-tier"));
+  }
   if (args.flags.has("permission-mode")) {
     update.permissionMode = parsePermissionMode(
       requireFlag(args, "permission-mode"),
@@ -568,7 +617,14 @@ async function buildUpdateRequest(
     request.trigger = buildTrigger(args);
   }
   let scriptSource: ScriptFileSource | undefined;
-  if (COMPLETE_EXECUTION_FLAG_NAMES.some((name) => args.flags.has(name))) {
+  const replacesAgentExecution =
+    args.flags.has("prompt") &&
+    args.flags.has("provider") &&
+    args.flags.has("model");
+  if (
+    replacesAgentExecution ||
+    COMPLETE_EXECUTION_FLAG_NAMES.some((name) => args.flags.has(name))
+  ) {
     const built = await buildExecution(bb, args, ctx);
     request.execution = built.execution;
     scriptSource = built.scriptSource;
@@ -620,6 +676,15 @@ function printAutomation(automation: AutomationResponse): string {
     automation.execution.storedScriptPath !== undefined
   ) {
     lines.push(`  Script:    ${automation.execution.storedScriptPath}`);
+  }
+  if (automation.execution.mode === "agent") {
+    lines.push(
+      `  Provider:  ${automation.execution.providerId}`,
+      `  Model:     ${automation.execution.model}`,
+      `  Reasoning: ${automation.execution.reasoningLevel}`,
+      `  Tier:      ${automation.execution.serviceTier ?? "-"}`,
+      `  Permission: ${automation.execution.permissionMode}`,
+    );
   }
   if (automation.lastError) lines.push(`  Error:     ${automation.lastError}`);
   lines.push("");
@@ -733,9 +798,9 @@ function helpText(): string {
   return `Automation commands
 
 bb automation list --project <id>
-bb automation create --project <id> --name <name> (--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>) (--prompt <text> --provider <id> --model <model> | --script <inline> | --script-file <path> [--host <name-or-id>])
+bb automation create --project <id> --name <name> (--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>) (--prompt <text> --provider <id> --model <model> [--reasoning <level>] [--service-tier default|fast] | --script <inline> | --script-file <path> [--host <name-or-id>])
 bb automation show <automationId> --project <id>
-bb automation update <automationId> --project <id> [--name <name>] [schedule flags] [complete agent/script execution flags | partial agent update flags]
+bb automation update <automationId> --project <id> [--name <name>] [schedule flags] [complete agent/script execution flags | --provider <id> --model <model> --reasoning <level> --service-tier default|fast|none]
 bb automation pause <automationId> --project <id>
 bb automation resume <automationId> --project <id>
 bb automation run <automationId> --project <id> [--idempotency-key <key>]
