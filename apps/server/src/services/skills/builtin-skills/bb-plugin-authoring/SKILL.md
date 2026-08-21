@@ -1919,7 +1919,7 @@ className?, leadingContent?, messageActions? }` —
 - `experimental_ProviderModelPicker` — bb's controlled provider, model, and
   reasoning picker. Props:
   `{ value: { providerId, model, reasoningLevel, serviceTier? }, onChange,
-routing?, allowProviderChange?, disabled?, className? }`, where `routing` is
+routing?, allowProviderChange?, align?, disabled?, className? }`, where `routing` is
   `{ kind: "host", hostId }` or `{ kind: "environment", environmentId }`.
   It uses the same live catalog, defaults, capability
   reconciliation, retired-model handling, search, and provider branding as
@@ -1944,6 +1944,8 @@ routing?, allowProviderChange?, disabled?, className? }`, where `routing` is
   `allowProviderChange={false}` hides the provider tabs while leaving model,
   reasoning, and service-tier controls available for the fixed `providerId`.
   This is independent of routing: one environment can run several providers.
+  `align` optionally sets the popover to `"start"`, `"center"`, or `"end"`;
+  it defaults to `"start"`.
 
   Omit `routing` for primary-machine discovery. Route by host for a selected
   machine or by environment when the catalog depends on an existing workspace.
@@ -1955,12 +1957,13 @@ routing?, allowProviderChange?, disabled?, className? }`, where `routing` is
 
 - `experimental_PermissionModePicker` — bb's controlled permission-mode
   picker. Props:
-  `{ providerId, value, onChange, routing?, disabled?, className? }`.
+  `{ providerId, value, onChange, routing?, align?, disabled?, className? }`.
   The host resolves the provider's supported modes and the routed machine's
   permission ceiling with the same policy as the composer; it emits a corrected
   mode when a provider or routing change makes `value` invalid. A provisional
   or failed lookup never changes `value`. `routing` has the same host/environment
-  shape as `experimental_ProviderModelPicker`:
+  shape as `experimental_ProviderModelPicker`. `align` accepts `"start"`,
+  `"center"`, or `"end"` and defaults to `"end"`:
 
   ```tsx
   import { experimental_PermissionModePicker as PermissionModePicker } from "@get-bb/plugin-sdk/app";

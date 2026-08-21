@@ -133,6 +133,7 @@ describe("experimental_ProviderModelPicker test runtime", () => {
         }}
         onChange={onChange}
         routing={{ kind: "host", hostId: "host-test" }}
+        align="end"
       />,
     );
 
@@ -165,6 +166,9 @@ describe("experimental_ProviderModelPicker test runtime", () => {
     expect(
       picker.getByTestId("bb-provider-model-picker").dataset.routingId,
     ).toBe("host-test");
+    expect(picker.getByTestId("bb-provider-model-picker").dataset.align).toBe(
+      "end",
+    );
   });
 });
 
@@ -177,6 +181,7 @@ describe("experimental_PermissionModePicker test runtime", () => {
         value="auto"
         onChange={onChange}
         routing={{ kind: "environment", environmentId: "env-test" }}
+        align="start"
       />,
     );
 
@@ -195,6 +200,9 @@ describe("experimental_PermissionModePicker test runtime", () => {
     expect(
       picker.getByTestId("bb-permission-mode-picker").dataset.routingId,
     ).toBe("env-test");
+    expect(picker.getByTestId("bb-permission-mode-picker").dataset.align).toBe(
+      "start",
+    );
   });
 });
 

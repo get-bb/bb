@@ -29,6 +29,7 @@ export function PluginProviderModelPicker({
   onChange,
   routing,
   allowProviderChange = true,
+  align = "start",
   disabled,
   className,
 }: ExperimentalProviderModelPickerProps) {
@@ -167,6 +168,7 @@ export function PluginProviderModelPicker({
       showFastModeToggle={controller.supportsServiceTier}
       serviceTierSupportByProvider={controller.serviceTierSupportByProvider}
       commandShortcutsEnabled={false}
+      align={align}
       disabled={disabled}
       className={className}
     />

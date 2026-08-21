@@ -503,6 +503,7 @@ function TestProviderModelPicker({
   onChange,
   routing,
   allowProviderChange = true,
+  align = "start",
   disabled,
   className,
 }: ExperimentalProviderModelPickerProps) {
@@ -532,6 +533,7 @@ function TestProviderModelPicker({
       }
       data-disabled={disabled ? "true" : "false"}
       data-provider-change-allowed={allowProviderChange ? "true" : "false"}
+      data-align={align}
       className={className}
     >
       <fieldset disabled={disabled} className="contents">
@@ -596,6 +598,7 @@ function TestPermissionModePicker({
   value,
   onChange,
   routing,
+  align = "end",
   disabled,
   className,
 }: ExperimentalPermissionModePickerProps) {
@@ -606,6 +609,7 @@ function TestPermissionModePicker({
       disabled={disabled}
       data-testid="bb-permission-mode-picker"
       data-provider-id={providerId}
+      data-align={align}
       data-routing-kind={routing?.kind ?? "primary"}
       data-routing-id={
         routing === undefined

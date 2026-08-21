@@ -273,6 +273,8 @@ interface ModelReasoningPickerProps {
   defaultOpen?: boolean;
   /** Whether the popover blocks page interaction. Defaults to true. */
   modal?: boolean;
+  /** Horizontal popover alignment. Defaults to "start". */
+  align?: "start" | "center" | "end";
   /**
    * Render the trigger as a non-interactive, dimmed label showing the same
    * model/reasoning summary — the popover never opens. Used by read-only
@@ -319,6 +321,7 @@ export function ModelReasoningPicker({
   muted,
   defaultOpen = false,
   modal = true,
+  align = "start",
   disabled,
   footerAction,
 }: ModelReasoningPickerProps) {
@@ -1011,7 +1014,7 @@ export function ModelReasoningPicker({
     <Popover open={open} onOpenChange={setOpen} modal={modal}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
-        align="start"
+        align={align}
         mobileTitle="Model"
         onMobileContentAnimationEnd={handleMobileContentAnimationEnd}
         className={cn(

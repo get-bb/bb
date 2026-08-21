@@ -719,6 +719,9 @@ describe("PresetDialog environment section", () => {
     expect(slot.getByTestId("bb-provider-model-picker").dataset.routingId).toBe(
       "mach_1",
     );
+    expect(slot.getByTestId("bb-permission-mode-picker").dataset.align).toBe(
+      "start",
+    );
   });
 
   it("hides worktree fields for project-default presets", async () => {

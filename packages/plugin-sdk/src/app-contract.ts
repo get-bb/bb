@@ -1512,6 +1512,8 @@ export interface ExperimentalProviderModelPickerProps {
   routing?: ExperimentalProviderModelPickerRouting;
   /** Allow switching providers. Defaults to true; false hides provider tabs. */
   allowProviderChange?: boolean;
+  /** Horizontal popover alignment. Defaults to `"start"`. */
+  align?: "start" | "center" | "end";
   /** Render the shared selection summary without allowing changes. */
   disabled?: boolean;
   className?: string;
@@ -1525,6 +1527,8 @@ export interface ExperimentalPermissionModePickerProps {
   onChange(value: PermissionMode): void;
   /** Route capability and machine-ceiling resolution like the execution picker. */
   routing?: ExperimentalProviderModelPickerRouting;
+  /** Horizontal menu alignment. Defaults to `"end"`. */
+  align?: "start" | "center" | "end";
   /** Render the resolved mode without allowing changes. */
   disabled?: boolean;
   className?: string;

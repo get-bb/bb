@@ -10,6 +10,7 @@ export function PluginPermissionModePicker({
   value,
   onChange,
   routing,
+  align = "end",
   disabled,
   className,
 }: ExperimentalPermissionModePickerProps) {
@@ -53,6 +54,7 @@ export function PluginPermissionModePicker({
       onChange={onChange}
       supported={controller.permissionModeOptions.length > 0}
       showWhenSingleOption
+      align={align}
       disabled={disabled || !controller.permissionModeIsVerified}
       className={className}
     />

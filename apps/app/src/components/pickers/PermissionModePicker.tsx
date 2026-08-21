@@ -39,6 +39,8 @@ export interface PermissionModePickerProps {
   defaultOpen?: boolean;
   /** Whether the menu blocks page interaction. Defaults to Radix's true; pass false in stories. */
   modal?: boolean;
+  /** Horizontal menu alignment. Defaults to "end". */
+  align?: "start" | "center" | "end";
   /** Temporary effective mode display; does not change the stored permission value. */
   displayOverride?: {
     label: string;
@@ -73,6 +75,7 @@ export function PermissionModePicker({
   muted = true,
   defaultOpen,
   modal,
+  align = "end",
   displayOverride,
   disabled,
   showChevronWhenDisabled,
@@ -100,7 +103,7 @@ export function PermissionModePicker({
       muted={muted}
       defaultOpen={defaultOpen}
       modal={modal}
-      align="end"
+      align={align}
       displayOverride={displayOverride}
       disabled={disabled || options.length <= 1}
       showChevronWhenDisabled={showChevronWhenDisabled}
