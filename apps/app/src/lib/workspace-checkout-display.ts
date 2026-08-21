@@ -8,7 +8,7 @@ export interface WorkspaceCheckoutDisplay {
   copySuccessMessage: string | null;
   copyValue: string | null;
   label: string;
-  rowLabel: "Branch" | "Checkout";
+  rowLabel: "Branch" | "Bookmark" | "Checkout";
   title: string;
 }
 
@@ -44,6 +44,28 @@ export function formatWorkspaceCheckoutDisplay({
           label: "detached HEAD",
           rowLabel: "Checkout",
           title: "Detached HEAD",
+        };
+      }
+      if (checkout.jj) {
+        if (checkout.jj.bookmark !== null) {
+          return {
+            copyErrorMessage: "Failed to copy bookmark name",
+            copyLabel: "Copy bookmark name",
+            copySuccessMessage: "Bookmark name copied",
+            copyValue: checkout.jj.bookmark,
+            label: checkout.jj.bookmark,
+            rowLabel: "Bookmark",
+            title: `Copy bookmark name: ${checkout.jj.bookmark}`,
+          };
+        }
+        return {
+          copyErrorMessage: "Failed to copy commit SHA",
+          copyLabel: "Copy commit SHA",
+          copySuccessMessage: "Commit SHA copied",
+          copyValue: checkout.headSha,
+          label: `jj ${shortSha(checkout.headSha)}`,
+          rowLabel: "Bookmark",
+          title: `jj checkout without a bookmark: ${checkout.headSha}`,
         };
       }
       return {

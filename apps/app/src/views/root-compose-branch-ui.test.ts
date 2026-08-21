@@ -123,6 +123,58 @@ describe("buildRootComposeBranchUiState", () => {
     });
   });
 
+  it("labels a jj checkout with its bookmark and blocks branch mutation", () => {
+    expect(
+      buildRootComposeBranchUiState({
+        checkout: {
+          ...detachedCheckout,
+          checkout: {
+            kind: "detached",
+            headSha: "def987654321",
+            jj: { bookmark: "feature" },
+          },
+        },
+        isFetching: false,
+        isLoading: false,
+        mode: "local",
+        selectedBranch: null,
+      }),
+    ).toMatchObject({
+      currentBranch: null,
+      currentOptionLabel: "Current: feature (jj)",
+      triggerLabel: "Current (feature)",
+      mutationBlocker: {
+        label: "jj",
+        title: "Branch switching is managed by jj in this workspace",
+      },
+    });
+  });
+
+  it("labels a jj checkout without a bookmark", () => {
+    expect(
+      buildRootComposeBranchUiState({
+        checkout: {
+          ...detachedCheckout,
+          checkout: {
+            kind: "detached",
+            headSha: "def987654321",
+            jj: { bookmark: null },
+          },
+        },
+        isFetching: false,
+        isLoading: false,
+        mode: "local",
+        selectedBranch: null,
+      }),
+    ).toMatchObject({
+      currentOptionLabel: "Current (jj)",
+      triggerLabel: "Current (jj)",
+      mutationBlocker: {
+        label: "jj",
+      },
+    });
+  });
+
   it("labels unborn branches as the current empty checkout", () => {
     expect(
       buildRootComposeBranchUiState({

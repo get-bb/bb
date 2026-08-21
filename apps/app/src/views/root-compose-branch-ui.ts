@@ -62,6 +62,11 @@ function formatCurrentCheckoutLabel(
     case "branch":
       return `Current: ${checkout.branchName}`;
     case "detached":
+      if (checkout.jj) {
+        return checkout.jj.bookmark !== null
+          ? `Current: ${checkout.jj.bookmark} (jj)`
+          : "Current (jj)";
+      }
       return "Current (detached)";
     case "unborn":
       return "Current (empty repo)";
@@ -79,6 +84,11 @@ function formatCurrentCheckoutTriggerLabel(
     case "branch":
       return `Current (${checkout.branchName})`;
     case "detached":
+      if (checkout.jj) {
+        return checkout.jj.bookmark !== null
+          ? `Current (${checkout.jj.bookmark})`
+          : "Current (jj)";
+      }
       return "Current (detached)";
     case "unborn":
       return "Current (empty repo)";
@@ -146,6 +156,12 @@ export function resolveBranchMutationBlocker(
     case "branch":
       return null;
     case "detached":
+      if (args.checkout.checkout.jj) {
+        return {
+          label: "jj",
+          title: "Branch switching is managed by jj in this workspace",
+        };
+      }
       return {
         label: "Detached",
         title: "Checkout blocked while HEAD is detached",

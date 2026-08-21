@@ -365,7 +365,14 @@ export function registerEnvironmentCommands(
         }
         const status = result.workspace;
         console.log(`State: ${status.workingTree.state}`);
-        console.log(`Branch: ${status.branch.currentBranch ?? "(detached)"}`);
+        const jjCheckout =
+          status.checkout.kind === "detached" ? status.checkout.jj : undefined;
+        const fallbackBranchLabel = jjCheckout
+          ? (jjCheckout.bookmark ?? "(jj, no bookmark)")
+          : "(detached)";
+        console.log(
+          `Branch: ${status.branch.currentBranch ?? fallbackBranchLabel}`,
+        );
         console.log(`Default branch: ${status.branch.defaultBranch}`);
         console.log(`Changed files: ${status.workingTree.files.length}`);
         if (status.workingTree.lineStatsComplete) {

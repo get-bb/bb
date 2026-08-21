@@ -51,6 +51,40 @@ describe("formatWorkspaceCheckoutDisplay", () => {
     });
   });
 
+  it("formats a jj checkout with a bookmark as a copyable bookmark label", () => {
+    expect(
+      formatWorkspaceCheckoutDisplay({
+        checkout: {
+          kind: "detached",
+          headSha: "abcdef1234567890",
+          jj: { bookmark: "feature" },
+        },
+      }),
+    ).toMatchObject({
+      copyValue: "feature",
+      label: "feature",
+      rowLabel: "Bookmark",
+      title: "Copy bookmark name: feature",
+    });
+  });
+
+  it("formats a jj checkout without a bookmark as a short SHA label", () => {
+    expect(
+      formatWorkspaceCheckoutDisplay({
+        checkout: {
+          kind: "detached",
+          headSha: "abcdef1234567890",
+          jj: { bookmark: null },
+        },
+      }),
+    ).toMatchObject({
+      copyValue: "abcdef1234567890",
+      label: "jj abcdef1",
+      rowLabel: "Bookmark",
+      title: "jj checkout without a bookmark: abcdef1234567890",
+    });
+  });
+
   it("formats an unborn checkout with a branch name", () => {
     expect(
       formatWorkspaceCheckoutDisplay({
