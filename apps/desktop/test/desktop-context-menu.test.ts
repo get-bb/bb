@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildDesktopContextMenuTemplate,
   registerDesktopContextMenu,
-  resolveDesktopSpellcheckFallback,
   type DesktopContextMenuWebContents,
 } from "../src/desktop-context-menu.js";
 
@@ -52,11 +51,9 @@ const DEFAULT_MEDIA_FLAGS = {
 
 interface FakeWebContents extends Pick<
   DesktopContextMenuWebContents,
-  "executeJavaScript" | "insertText" | "replaceMisspelling" | "session"
+  "replaceMisspelling" | "session"
 > {
   addedDictionaryWords: string[];
-  executedScripts: string[];
-  insertedTexts: string[];
   replacedMisspellings: string[];
   spellCheckerEnabledValues: boolean[];
 }
@@ -97,23 +94,12 @@ function createContextMenuParams(
 
 function createFakeWebContents(): FakeWebContents {
   const addedDictionaryWords: string[] = [];
-  const executedScripts: string[] = [];
-  const insertedTexts: string[] = [];
   const replacedMisspellings: string[] = [];
   const spellCheckerEnabledValues: boolean[] = [];
   return {
     addedDictionaryWords,
-    executedScripts,
-    insertedTexts,
     replacedMisspellings,
     spellCheckerEnabledValues,
-    executeJavaScript(script) {
-      executedScripts.push(script);
-      return Promise.resolve(null);
-    },
-    insertText(text) {
-      insertedTexts.push(text);
-    },
     replaceMisspelling(text) {
       replacedMisspellings.push(text);
     },
@@ -134,16 +120,18 @@ function clickMenuItem(item: MenuItemConstructorOptions | undefined): void {
 }
 
 describe("desktop context menu", () => {
-  it("offers spellcheck replacements for editable misspellings", () => {
+  it("uses Electron's spelling result even when spellcheckEnabled is false", () => {
     const webContents = createFakeWebContents();
+    const params = createContextMenuParams({
+      formControlType: "input-text",
+      isEditable: true,
+      spellcheckEnabled: false,
+      misspelledWord: "teh",
+      dictionarySuggestions: ["the", "tech"],
+    });
     const template = buildDesktopContextMenuTemplate({
       webContents,
-      params: createContextMenuParams({
-        isEditable: true,
-        spellcheckEnabled: true,
-        misspelledWord: "teh",
-        dictionarySuggestions: ["the", "tech"],
-      }),
+      params,
     });
 
     expect(template[0]).toMatchObject({ label: "the" });
@@ -152,80 +140,6 @@ describe("desktop context menu", () => {
     clickMenuItem(template[0]);
 
     expect(webContents.replacedMisspellings).toEqual(["the"]);
-  });
-
-  it("offers renderer spellcheck replacements when Electron omits suggestions for selected prompt text", () => {
-    const webContents = createFakeWebContents();
-    const template = buildDesktopContextMenuTemplate({
-      webContents,
-      params: createContextMenuParams({
-        isEditable: true,
-        selectionText: "recieve",
-      }),
-      spellcheckContext: {
-        dictionarySuggestions: ["receive", "relieve"],
-        misspelledWord: "recieve",
-        replacementMode: "selected-text",
-      },
-    });
-
-    expect(template[0]).toMatchObject({ label: "receive" });
-    expect(template[1]).toMatchObject({ label: "relieve" });
-
-    clickMenuItem(template[0]);
-
-    expect(webContents.insertedTexts).toEqual(["receive"]);
-    expect(webContents.replacedMisspellings).toEqual([]);
-  });
-
-  it("looks up fallback spellcheck suggestions for a selected editable word", async () => {
-    const webContents = {
-      ...createFakeWebContents(),
-      executeJavaScript: vi.fn().mockResolvedValue({
-        dictionarySuggestions: ["receive"],
-        misspelledWord: "recieve",
-      }),
-    } satisfies FakeWebContents;
-
-    await expect(
-      resolveDesktopSpellcheckFallback({
-        webContents,
-        params: createContextMenuParams({
-          isEditable: true,
-          selectionText: "recieve",
-          spellcheckEnabled: true,
-        }),
-      }),
-    ).resolves.toEqual({
-      dictionarySuggestions: ["receive"],
-      misspelledWord: "recieve",
-      replacementMode: "selected-text",
-    });
-    expect(webContents.executeJavaScript).toHaveBeenCalledWith(
-      expect.stringContaining('"recieve"'),
-    );
-  });
-
-  it("does not look up fallback spellcheck suggestions when spellcheck is disabled", async () => {
-    const webContents = {
-      ...createFakeWebContents(),
-      executeJavaScript: vi.fn().mockResolvedValue({
-        dictionarySuggestions: ["receive"],
-        misspelledWord: "recieve",
-      }),
-    } satisfies FakeWebContents;
-
-    await expect(
-      resolveDesktopSpellcheckFallback({
-        webContents,
-        params: createContextMenuParams({
-          isEditable: true,
-          selectionText: "recieve",
-          spellcheckEnabled: false,
-        }),
-      }),
-    ).resolves.toBeNull();
-    expect(webContents.executeJavaScript).not.toHaveBeenCalled();
   });
 
   it("can add a misspelled word to the spellchecker dictionary", () => {

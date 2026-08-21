@@ -66,10 +66,6 @@ import {
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
 } from "./desktop-window-command-ipc.js";
-import {
-  BB_DESKTOP_SPELLCHECK_GLOBAL_NAME,
-  type BbDesktopSpellcheckApi,
-} from "./desktop-spellcheck-contract.js";
 import { resolveBbDesktopPlatform } from "./desktop-platform.js";
 
 function getDesktopVersion(version: string | undefined): string {
@@ -176,31 +172,6 @@ const browserFindResultListeners = new Set<BbDesktopBrowserFindResultHandler>();
 const closeWindowRequestListeners =
   new Set<BbDesktopCloseWindowRequestHandler>();
 const openNewTabListeners = new Set<BbDesktopOpenNewTabHandler>();
-
-function normalizeSpellcheckWord(word: string): string | null {
-  const normalized = word.trim();
-  if (
-    normalized.length === 0 ||
-    normalized.length > 80 ||
-    /\s/u.test(normalized)
-  ) {
-    return null;
-  }
-  return normalized;
-}
-
-const bbSpellcheckApi: BbDesktopSpellcheckApi = {
-  getCorrectionContext(word) {
-    const normalized = normalizeSpellcheckWord(word);
-    if (normalized === null || !webFrame.isWordMisspelled(normalized)) {
-      return null;
-    }
-    return {
-      dictionarySuggestions: webFrame.getWordSuggestions(normalized),
-      misspelledWord: normalized,
-    };
-  },
-};
 
 function browserViewBoundsAtWindowScale(
   bounds: BbDesktopBrowserViewBounds,
@@ -494,8 +465,4 @@ ipcRenderer.on(
 void invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);
 void invokeDesktopWindowState();
 
-contextBridge.exposeInMainWorld(
-  BB_DESKTOP_SPELLCHECK_GLOBAL_NAME,
-  bbSpellcheckApi,
-);
 contextBridge.exposeInMainWorld("bbDesktop", bbDesktopApi);
