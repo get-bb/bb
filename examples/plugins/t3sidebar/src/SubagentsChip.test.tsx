@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk";
@@ -45,90 +45,51 @@ function thread(
   };
 }
 
-function renderCompact() {
-  return renderSlot(
-    childrenChip,
-    {
-      threadId: "parent",
-      projectId: "proj_1",
-      isCompactViewport: true,
-    },
-    {
-      sidebarThreads: {
-        status: "ready",
-        threads: [
-          thread({ id: "parent" }),
-          thread({ id: "child", parentThreadId: "parent" }),
-        ],
-        projects: [{ id: "proj_1", name: "bb", isPersonal: false }],
-      },
-    },
-  );
-}
+afterEach(cleanup);
 
-afterEach(() => {
-  cleanup();
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
-});
-
-describe("SubagentsChip menu position", () => {
-  it("clamps only when right alignment would cross the viewport gutter", () => {
-    renderCompact();
-    vi.stubGlobal("innerWidth", 390);
-    const trigger = screen.getByRole("button", { name: "1 child threads" });
-    vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
-      right: 250,
-    } as DOMRect);
-
-    fireEvent.click(trigger);
-
-    const menu = screen.getByRole("menu", { name: "Child threads" });
-    expect(menu.classList.contains("fixed")).toBe(true);
-    expect(menu.classList.contains("w-80")).toBe(true);
-    expect(menu.classList.contains("max-w-[calc(100vw-1rem)]")).toBe(true);
-    expect(menu.style.left).toBe("8px");
-  });
-
-  it("stays right-aligned to the chip while the menu fits on screen", () => {
-    renderCompact();
-    vi.stubGlobal("innerWidth", 390);
-    const trigger = screen.getByRole("button", { name: "1 child threads" });
-    vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
-      right: 380,
-    } as DOMRect);
-
-    fireEvent.click(trigger);
-
-    expect(
-      screen.getByRole("menu", { name: "Child threads" }).style.left,
-    ).toBe("60px");
-  });
-
-  it("keeps the desktop menu anchored to its header chip", () => {
+describe("SubagentsChip child list", () => {
+  it("caps a long menu and makes the child list scrollable", () => {
     renderSlot(
       childrenChip,
       {
         threadId: "parent",
         projectId: "proj_1",
-        isCompactViewport: false,
+        isCompactViewport: true,
       },
       {
         sidebarThreads: {
           status: "ready",
           threads: [
-            thread({ id: "parent" }),
-            thread({ id: "child", parentThreadId: "parent" }),
+            thread({ id: "parent", title: "Parent" }),
+            ...Array.from({ length: 26 }, (_, index) =>
+              thread({
+                id: `child_${index}`,
+                title: `Child ${index + 1}`,
+                parentThreadId: "parent",
+                createdAt: index,
+              }),
+            ),
           ],
           projects: [{ id: "proj_1", name: "bb", isPersonal: false }],
         },
       },
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "1 child threads" }));
+    fireEvent.click(screen.getByRole("button", { name: "26 child threads" }));
+
     const menu = screen.getByRole("menu", { name: "Child threads" });
-    expect(menu.classList.contains("absolute")).toBe(true);
-    expect(menu.classList.contains("right-0")).toBe(true);
-    expect(menu.classList.contains("w-80")).toBe(true);
+    const list = menu.querySelector("ul");
+    expect(menu.classList.contains("flex")).toBe(true);
+    expect(
+      menu.classList.contains("max-h-[min(32rem,calc(100dvh-6rem))]"),
+    ).toBe(true);
+    expect(list?.classList.contains("min-h-0")).toBe(true);
+    expect(list?.classList.contains("overflow-y-auto")).toBe(true);
+    expect(list?.classList.contains("overscroll-contain")).toBe(true);
+    expect(list?.classList.contains("touch-pan-y")).toBe(true);
+    expect(list?.classList.contains("[-webkit-overflow-scrolling:touch]")).toBe(
+      true,
+    );
+    expect(screen.getAllByRole("menuitem")).toHaveLength(26);
   });
 });
