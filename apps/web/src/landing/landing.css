@@ -138,6 +138,12 @@ code,
 /* ── Nav ────────────────────────────────────────────────────────── */
 
 .nav {
+  /* The filled entrance animation leaves the nav a stacking context, so its
+     theme menu's z-index only counts inside it; lift the nav above the hero
+     (whose animated children are z=0 contexts later in the DOM) so the open
+     menu paints over the announcement pill instead of under it. */
+  position: relative;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -196,9 +202,15 @@ code,
   font-weight: 500;
 }
 
-/* Theme toggle: both glyphs are always in the DOM (SSR can't know the theme,
-   so this keeps hydration deterministic); the html.dark class — the same one
-   the tokens key off — picks which one shows. */
+/* Theme control: the button shows the resolved theme (both glyphs are always
+   in the DOM — SSR can't know the theme, so this keeps hydration
+   deterministic — and the html.dark class the tokens key off picks one) and
+   opens a Light / Dark / System menu anchored to its right edge. */
+.theme-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
 .theme-toggle {
   display: inline-grid;
   place-items: center;
@@ -237,6 +249,77 @@ code,
 
 .dark .theme-toggle .theme-ic-moon {
   display: block;
+}
+
+.theme-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 148px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--shade) 4%, transparent),
+    0 12px 32px -12px color-mix(in oklab, var(--shade) 40%, transparent);
+  animation: theme-menu-in 0.12s ease-out;
+}
+
+@keyframes theme-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.theme-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.theme-menu-item:hover {
+  background: var(--state-hover);
+}
+
+.theme-menu-item:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.theme-menu-item[aria-checked="true"] {
+  font-weight: 500;
+}
+
+.theme-menu-ic {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--dim);
+}
+
+.theme-menu-check {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--ink);
 }
 
 /* ── Buttons ────────────────────────────────────────────────────── */
@@ -3051,7 +3134,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 
   .nav,
-  .hero > * {
+  .hero > *,
+  .theme-menu {
     animation: none;
   }
 
