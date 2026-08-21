@@ -3,7 +3,7 @@
 // One settingsSection "Remote access", driven by the `status` rpc and live
 // `connect` realtime pushes. Four states, each matched to the redesign mock:
 // not paired (promise + two numbered steps + auto-submitting code field),
-// pairing (inline typed-code errors), connected (URL hero chip + QR toggle +
+// pairing (inline typed-code errors), connected (URL hero chip +
 // mobile-app pairing + shared ports + isolated disconnect), reconnecting
 // (amber wash + dimmed body). Disconnect confirms in a dialog, then lands on
 // the unpaired card with a transient receipt.
@@ -1148,7 +1148,6 @@ function ConnectedContent({
   const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
   const [repairOpen, setRepairOpen] = useState(false);
-  const [qrOpen, setQrOpen] = useState(false);
 
   const disconnect = useCallback(() => {
     setDisconnecting(true);
@@ -1193,27 +1192,6 @@ function ConnectedContent({
       </div>
 
       {status.url !== null ? <UrlHero url={status.url} showOpen /> : null}
-
-      {status.url !== null ? (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground"
-              onClick={() => setQrOpen((open) => !open)}
-            >
-              <Icon name="GridView" className="size-3.5" />
-              Show QR for phone
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              scan to open on another device
-            </span>
-          </div>
-          {qrOpen ? <QrCodeImage value={status.url} /> : null}
-        </div>
-      ) : null}
 
       {repairOpen ? (
         <div className="space-y-2 rounded-md border border-border bg-surface-recessed/50 px-3 py-3">

@@ -388,7 +388,7 @@ describe("connect settings section", () => {
       slot.queryByRole("button", { name: "Add mobile device" }),
     ).toBeNull();
     // The rest of the paired card is unaffected.
-    slot.getByRole("button", { name: "Show QR for phone" });
+    slot.getByRole("button", { name: "Re-pair" });
   });
 
   it("add mobile device mints a machine code and shows the QR payload, the code, and a countdown", async () => {
