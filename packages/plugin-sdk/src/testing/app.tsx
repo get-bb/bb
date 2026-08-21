@@ -35,6 +35,7 @@ import {
   type PluginNewThreadPanelActionRegistration,
   type PluginPendingInteractionRegistration,
   type PluginProviderIconRegistration,
+  type PluginTimelineRendererRegistration,
   type PluginRealtimeConnectionState,
   type PluginRpcClient,
   type PluginSdkApp,
@@ -749,6 +750,7 @@ export interface CapturedPluginApp {
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
   providerIcons: PluginProviderIconRegistration[];
+  timelineRenderers: PluginTimelineRendererRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 

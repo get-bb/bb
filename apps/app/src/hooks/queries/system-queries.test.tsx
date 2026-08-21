@@ -83,6 +83,7 @@ describe("useSystemProviderInfo", () => {
   it("uses capabilities already loaded by the composer while the provider roster loads", async () => {
     const provider: ProviderInfo = {
       id: "codex",
+      pluginId: "provider-codex",
       displayName: "Codex",
       logoUrl: null,
       available: true,
@@ -132,6 +133,7 @@ describe("useSystemProviderInfo", () => {
     const providers: ProviderInfo[] = [
       {
         id: "codex",
+        pluginId: "provider-codex",
         displayName: "Codex",
         logoUrl: null,
         available: true,
@@ -231,6 +233,7 @@ describe("useSystemExecutionOptions", () => {
     const providers: ProviderInfo[] = [
       {
         id: "codex",
+        pluginId: "provider-codex",
         displayName: "Codex",
         logoUrl: null,
         available: true,
@@ -250,6 +253,7 @@ describe("useSystemExecutionOptions", () => {
       },
       {
         id: "acp-opencode",
+        pluginId: "provider-acp-opencode",
         displayName: "OpenCode",
         logoUrl: null,
         available: true,
@@ -352,6 +356,7 @@ describe("useSystemExecutionOptions", () => {
   /** The built-in roster a host reports alongside its catalog. */
   const BUILT_IN_PROVIDERS: ProviderInfo[] = ["codex", "pi"].map((id) => ({
     id,
+    pluginId: `provider-${id}`,
     displayName: id,
     logoUrl: null,
     available: true,
@@ -423,6 +428,7 @@ describe("useSystemExecutionOptions", () => {
   it("replays the host's provider list so a custom provider paints as itself", async () => {
     const customProvider = {
       id: "acp:my-agent",
+      pluginId: "provider-acp:my-agent",
       displayName: "My agent",
       logoUrl: null,
       experimental_providerHealth: true,

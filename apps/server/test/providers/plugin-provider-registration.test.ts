@@ -44,6 +44,7 @@ describe("buildPluginProviderRegistration", () => {
 
     expect(registration.info).toStrictEqual({
       id: "my-remote-agent",
+      pluginId: "acme-agent",
       displayName: "My Remote Agent",
       available: true,
       logoUrl: "/api/v1/system/providers/my-remote-agent/logo",

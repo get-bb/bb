@@ -186,6 +186,7 @@ describe("usage limits model", () => {
   const USAGE_PROVIDER_INFOS: ProviderInfo[] = [
     {
       id: "agent-a",
+      pluginId: "provider-agent-a",
       displayName: "Agent A",
       logoUrl: null,
       available: true,
@@ -210,6 +211,7 @@ describe("usage limits model", () => {
     },
     {
       id: "agent-b",
+      pluginId: "provider-agent-b",
       displayName: "Agent B",
       logoUrl: null,
       available: true,
@@ -229,6 +231,7 @@ describe("usage limits model", () => {
     },
     {
       id: "no-usage",
+      pluginId: "provider-no-usage",
       displayName: "No Usage",
       logoUrl: null,
       available: true,

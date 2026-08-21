@@ -1457,6 +1457,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             (loadedPlugin !== undefined
               ? brandingAssets.get(row.id)?.logoDark?.url
               : identity?.brandingAssets.logoDark?.url) ?? null,
+          providerIds:
+            loadedPlugin?.handle
+              .listProviderDeclarations()
+              .map((declaration) => declaration.id) ?? [],
         };
       });
   }

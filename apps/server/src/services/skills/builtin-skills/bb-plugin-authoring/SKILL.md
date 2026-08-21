@@ -1867,6 +1867,24 @@ openWorkspaceFile }` — register a leaf
   `useBbNavigate().openThreadPanel`. Errors from `run` (sync or
   async) are contained and
   logged, never breaking the timeline.
+- `experimental_timelineRenderer` → the expanded body of the timeline rows a
+  provider plugin owns. Registration: `{ kind, component }`, where `kind` is
+  one of the plugin's own extension item kinds (`"<pluginId>/<name>"`, as
+  declared in `bb.providers.register({ experimental_extensionKinds })`) or
+  `"tool"` for the generic tool items of the providers this plugin
+  registered. Core kinds (messages, commands, file changes, reads, searches,
+  delegations, plan steps) always use bb's renderers and are customized only
+  through the bridge's presentation. The component receives `row` (id,
+  threadId, turnId, kind, toolName, status, startedAt, completedAt),
+  `payload` (the extension item's validated payload, or `{ arguments,
+  output }` for a tool call), `presentation` (the bridge's label, icon,
+  title, detail, suppress and tint for the row; null only for a tool row
+  persisted before bridges attached one), `thread` (`{ id,
+  providerId }`) and `Original`, the host's declarative base for the body —
+  render `<Original />` to keep it beside your own content. The row header
+  (label, glyph, tint, headline) stays host-rendered. With no renderer
+  registered, the declarative base renders, so a row never goes blank; a
+  crash in the component is contained to that row.
 - `experimental_providerIcon` → the React component bb draws as one agent
   provider's icon. Registration: `{ providerId, icon }`, where `providerId` is
   the provider's id (`"codex"`, `"acp-cursor"`) — not the plugin id — and

@@ -66,6 +66,7 @@ describe("GET /api/v1/system/usage-limits", () => {
         pluginId: "provider-no-usage",
         info: {
           id: "no-usage",
+          pluginId: "provider-no-usage",
           displayName: "No Usage",
           logoUrl: null,
           available: true,

@@ -51,6 +51,7 @@ const STORY_COMPOSER_ACTIONS_BY_PROVIDER: Record<
 const STORY_PROVIDER_INFOS: ProviderInfo[] = STORY_PROVIDER_OPTIONS.map(
   (provider) => ({
     id: provider.value,
+    pluginId: `provider-${provider.value}`,
     displayName: provider.label,
     logoUrl: null,
     available: true,

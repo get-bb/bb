@@ -4,6 +4,7 @@ import { providerInfoSchema } from "../src/provider-types.js";
 describe("provider info schema", () => {
   const baseProviderInfo = {
     id: "codex",
+    pluginId: "provider-codex",
     displayName: "Codex",
     logoUrl: null,
     experimental_providerHealth: true,

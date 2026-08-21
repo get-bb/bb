@@ -712,6 +712,49 @@ fetches and four icon remounts at every boot.
    the accessible label story: the host derives `ariaLabel` from its own
    provider data, falling back to the provider id, and the slot supplies none.
 
+## `app.slots.experimental_timelineRenderer` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Lets a provider plugin's frontend render the expanded body
+of the timeline rows it owns: `{ kind, component }`, where `kind` is one of
+the plugin's own extension item kinds (`"<pluginId>/<name>"`, as declared in
+`bb.providers.register({ experimental_extensionKinds })`) or `"tool"` for the
+generic tool items of the providers the plugin registered. Core kinds
+(messages, commands, file changes, reads, searches, delegations, plan steps)
+always use bb's renderers and are customized through the bridge's persisted
+`presentation` alone (docs/provider-plugin-api.md §5, Q17). The component
+receives `{ row, payload, presentation, thread, Original }`; `Original` is
+the host's declarative base for the body. The row header (the presentation's
+label, glyph, tint and headline) stays host-rendered. The host drops a kind
+outside the plugin's namespace with a warning, scopes `"tool"` to the plugin
+that owns the thread's provider (`ProviderInfo.pluginId`), contains a crash
+to the row (the declarative base renders instead), and loads a provider
+plugin's bundle only on the first thread of one of its providers, never at
+boot (`InstalledPlugin.providerIds` marks the candidates the loader defers).
+
+**Audit before stabilizing.**
+
+1. **Body versus whole row.** The slot owns the expanded body under a
+   host-rendered header. Decide whether a plugin may also replace the header
+   (an inline widget with no disclosure, e.g. a goal card) before freezing
+   the prop shape, and whether `suppress` should stay a bridge-only decision
+   or the renderer may opt a row back in.
+2. **Tool-row payload.** A `"tool"` row hands the renderer
+   `{ arguments, output }` where `output` is the server's inline preview
+   (head+tail) for long outputs. Decide whether the renderer gets the full
+   output on demand (the core body fetches it through
+   `timelineTurnSummaryDetails`) or only the preview.
+3. **Provider ownership source.** `"tool"` scoping reads the thread's
+   `ProviderInfo.pluginId`. An embedded chat without a thread identity and a
+   provider whose plugin was uninstalled both resolve to "unknown owner", so
+   no renderer applies; confirm that is the right failure mode for both.
+4. **Legacy rows.** `presentation` is null on a tool row persisted before
+   bridges attached one. Decide whether the renderer should see such rows at
+   all, or only rows with a presentation.
+5. **Mobile parity.** Mobile renders the declarative base and loads no plugin
+   JS (by design). Confirm the base (label, glyph, tint, title, detail) is
+   sufficient for the first-party extension kinds before a third party
+   relies on a web-only upgrade.
+
 ## `experimental_NewThreadComposer` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** The host-owned new-thread compose surface, the create-side

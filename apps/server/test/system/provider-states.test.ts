@@ -88,6 +88,7 @@ describe("getProviderStates", () => {
         pluginId: "provider-no-health",
         info: {
           id: "no-health",
+          pluginId: "provider-no-health",
           displayName: "No Health",
           logoUrl: null,
           available: true,

@@ -80,6 +80,7 @@ const INSTALLED_PLUGIN_RESPONSE = {
     app: { hasApp: false, bundle: null },
     logoUrl: null,
     logoDarkUrl: null,
+    providerIds: [],
   },
 };
 

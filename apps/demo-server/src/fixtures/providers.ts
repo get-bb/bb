@@ -15,6 +15,8 @@ function provider(
 ): ProviderInfo {
   return {
     ...info,
+    // Demo fixtures: the first-party plugin ids follow `provider-<id>`.
+    pluginId: `provider-${info.id}`,
     available: true,
     logoUrl: `/api/v1/system/providers/${info.id}/logo`,
     experimental_providerHealth: false,

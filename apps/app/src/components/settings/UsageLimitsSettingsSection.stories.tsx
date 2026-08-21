@@ -136,6 +136,7 @@ const HOSTS: Host[] = [
 function provider(id: string, displayName: string): ProviderInfo {
   return {
     id,
+    pluginId: `provider-${id}`,
     displayName,
     logoUrl: null,
     available: true,

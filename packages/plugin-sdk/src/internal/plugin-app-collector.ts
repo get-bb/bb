@@ -17,6 +17,7 @@ import type {
   PluginThreadHeaderActionRegistration,
   PluginThreadListRegistration,
   PluginThreadPanelActionRegistration,
+  PluginTimelineRendererRegistration,
 } from "@get-bb/plugin-sdk";
 import {
   collectComposerCustomization,
@@ -27,6 +28,7 @@ import {
   requireOptionalString,
   requireProviderId,
   requireSlotId,
+  requireTimelineRendererKind,
   requireUniqueId,
 } from "./composer-customization-validation.js";
 
@@ -52,6 +54,7 @@ export interface CollectedPluginAppRegistrations {
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
   providerIcons: PluginProviderIconRegistration[];
+  timelineRenderers: PluginTimelineRendererRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 
@@ -83,6 +86,7 @@ export function collectPluginAppRegistrations(
     messageDirectives: [],
     messageActions: [],
     providerIcons: [],
+    timelineRenderers: [],
     contentScripts: [],
   };
   const seenIds = {
@@ -102,6 +106,7 @@ export function collectPluginAppRegistrations(
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
     providerIcon: new Set<string>(),
+    timelineRenderer: new Set<string>(),
     contentScript: new Set<string>(),
   };
 
@@ -457,6 +462,15 @@ export function collectPluginAppRegistrations(
         collected.providerIcons.push({
           providerId,
           icon: requireComponent(kind, registration.icon),
+        });
+      },
+      experimental_timelineRenderer(registration) {
+        const kind = "slots.experimental_timelineRenderer";
+        const itemKind = requireTimelineRendererKind(kind, registration?.kind);
+        requireUniqueId(kind, seenIds.timelineRenderer, itemKind);
+        collected.timelineRenderers.push({
+          kind: itemKind,
+          component: requireComponent(kind, registration.component),
         });
       },
     },

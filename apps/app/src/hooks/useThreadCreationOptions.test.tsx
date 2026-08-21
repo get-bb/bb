@@ -64,6 +64,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
     providers: [
       {
         id: GLOBAL_PROVIDER_ID,
+        pluginId: `provider-${GLOBAL_PROVIDER_ID}`,
         displayName: "Global Provider",
         logoUrl: null,
         available: true,
@@ -89,6 +90,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
       },
       {
         id: PROJECT_PROVIDER_ID,
+        pluginId: `provider-${PROJECT_PROVIDER_ID}`,
         displayName: "Project Provider",
         logoUrl: null,
         available: true,
@@ -182,6 +184,7 @@ function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
     providers: [
       {
         id: "claude-code",
+        pluginId: "provider-claude-code",
         displayName: "Claude Code",
         logoUrl: null,
         available: true,
@@ -325,6 +328,7 @@ describe("useThreadCreationOptions", () => {
           {
             ...templateProvider,
             id: "codex",
+            pluginId: "provider-codex",
             displayName: "Codex",
             available: false,
           },

@@ -27,10 +27,8 @@ import {
   type ProviderUsageQueryState,
 } from "@/hooks/queries/system-queries";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
-import {
-  getProviderIconColorClass,
-  getProviderIconInfo,
-} from "@/lib/provider-icon";
+import { getProviderIconInfo } from "@/lib/provider-icon";
+import { ProviderIconMark } from "./ProviderIconMark";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 interface ProviderConfig {
@@ -38,6 +36,8 @@ interface ProviderConfig {
   providerId: string;
   signInHint: string;
   expiredHint: string;
+  /** The declared `strings`, kept for the icon tint. */
+  strings: ProviderInfo["strings"];
 }
 
 /**
@@ -52,6 +52,7 @@ function providerConfig(
   return {
     providerId,
     name,
+    strings: info?.strings,
     signInHint:
       info?.strings?.signInHint ?? `Sign in to ${name}, then reload usage.`,
     expiredHint:
@@ -245,11 +246,10 @@ function ProviderUsageBlock({
         <div className="flex min-w-0 flex-1 items-start gap-2.5">
           {ProviderIcon ? (
             <span aria-hidden="true" className="mt-0.5 shrink-0">
-              <ProviderIcon
-                className={cn(
-                  "size-4",
-                  getProviderIconColorClass(config.providerId),
-                )}
+              <ProviderIconMark
+                provider={{ id: config.providerId, strings: config.strings }}
+                icon={ProviderIcon}
+                className="size-4"
               />
             </span>
           ) : null}

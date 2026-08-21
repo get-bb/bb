@@ -1033,6 +1033,92 @@ export interface PluginProviderIconRegistration {
   icon: ComponentType<{ className?: string }>;
 }
 
+/**
+ * The declarative presentation persisted with a timeline item (docs/
+ * provider-plugin-api.md §3): what every client renders when no plugin code
+ * is present. A renderer receives it so it can reuse the bridge's label,
+ * glyph and tint instead of re-deriving them from the payload.
+ */
+export interface PluginTimelineRowPresentation {
+  label: { pending: string; completed: string };
+  icon: { glyph: string };
+  title?: string;
+  /** Short Markdown, length-capped at ingest. */
+  detail?: string;
+  suppress?: boolean;
+  tint?: { light: string; dark: string };
+}
+
+export type PluginTimelineRowStatus =
+  | "pending"
+  | "completed"
+  | "error"
+  | "interrupted";
+
+/** The projected row a `experimental_timelineRenderer` component receives. */
+export interface PluginTimelineRendererRow {
+  id: string;
+  threadId: string;
+  turnId: string | null;
+  /**
+   * The item kind the renderer registered for: this plugin's extension kind
+   * (`"<pluginId>/<name>"`) or `"tool"` for a generic tool item.
+   */
+  kind: string;
+  /** The tool name for a `"tool"` row; null for an extension row. */
+  toolName: string | null;
+  status: PluginTimelineRowStatus;
+  startedAt: number;
+  completedAt: number | null;
+}
+
+export interface PluginTimelineRendererProps {
+  row: PluginTimelineRendererRow;
+  /**
+   * The item's data: an extension item's payload (validated against the
+   * plugin's declared schema at ingest), or for a `"tool"` row the call's
+   * `{ arguments, output }`.
+   */
+  payload: JsonValue;
+  /**
+   * The bridge's presentation for the row. Null only for a generic tool row
+   * persisted before bridges attached presentation (grammar v2); an
+   * extension row always has one.
+   */
+  presentation: PluginTimelineRowPresentation | null;
+  /** The thread the row belongs to. */
+  thread: { id: string; providerId: string | null };
+  /**
+   * The host's declarative base for this row's body (the presentation's
+   * `detail`, or the tool call's arguments and output). Render it to keep
+   * the default body beside the plugin's own content.
+   */
+  Original: ComponentType<Record<never, never>>;
+}
+
+/**
+ * Render the expanded body of the timeline rows this plugin owns: its own
+ * extension item kinds (`"<pluginId>/<name>"`, where `<pluginId>` is this
+ * plugin), and `"tool"` for the generic tool items of the providers this
+ * plugin registered. Core kinds (message, command, fileChange, fileRead,
+ * search, delegation, planSteps, …) always use the core renderers and are
+ * customized through the bridge's presentation alone.
+ *
+ * The row's header — the bridge's label, glyph, tint and headline — stays
+ * host-rendered so the timeline reads uniformly; the component owns the
+ * body. When no renderer is registered for a kind (the plugin is not loaded,
+ * uninstalled, or never shipped an app bundle) the declarative base renders
+ * instead, so a row never goes blank. Crashes are contained per row.
+ */
+export interface PluginTimelineRendererRegistration {
+  /**
+   * `"<pluginId>/<name>"` for one of this plugin's extension kinds, or
+   * `"tool"` for the generic tool items of this plugin's providers.
+   */
+  kind: string;
+  component: ComponentType<PluginTimelineRendererProps>;
+}
+
 // ---------------------------------------------------------------------------
 // definePluginApp
 // ---------------------------------------------------------------------------
@@ -1096,6 +1182,15 @@ export interface PluginAppSlots {
    * docs/api_to_audit.md.
    */
   experimental_providerIcon(registration: PluginProviderIconRegistration): void;
+  /**
+   * Render the body of this plugin's own timeline rows: its extension kinds
+   * and its providers' generic tool items (see
+   * {@link PluginTimelineRendererRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_timelineRenderer(
+    registration: PluginTimelineRendererRegistration,
+  ): void;
 }
 
 export interface PluginAppComposer {

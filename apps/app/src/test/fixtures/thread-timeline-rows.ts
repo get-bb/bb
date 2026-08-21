@@ -1,8 +1,12 @@
+import type { JsonValue, ThreadEventPlanStep } from "@bb/domain";
 import type {
   TimelineActivityIntent,
   TimelineApprovalStatus,
   TimelineApprovalWorkRow,
   TimelineCommandWorkRow,
+  TimelineExtensionWorkRow,
+  TimelinePlanStepsWorkRow,
+  TimelineRowPresentation,
   TimelineConversationAttachments,
   TimelineConversationRow,
   TimelineConversationTurnRequest,
@@ -87,12 +91,39 @@ interface ToolRowArgs extends RowBaseOverrideArgs {
   durationMs?: number | null;
   id?: string;
   output?: string;
+  presentation?: TimelineRowPresentation;
   seq?: number;
   sourceSeqEnd?: number;
   sourceSeqStart?: number;
   status?: TimelineRowStatus;
   toolArgs?: TimelineToolWorkRow["toolArgs"];
   toolName?: string;
+  turnId?: string | null;
+}
+
+interface ExtensionRowArgs extends RowBaseOverrideArgs {
+  callId?: string;
+  durationMs?: number | null;
+  extensionKind?: TimelineExtensionWorkRow["extensionKind"];
+  id?: string;
+  payload?: JsonValue;
+  presentation?: TimelineRowPresentation;
+  seq?: number;
+  sourceSeqStart?: number;
+  status?: TimelineRowStatus;
+  turnId?: string | null;
+}
+
+interface PlanStepsRowArgs extends RowBaseOverrideArgs {
+  callId?: string;
+  durationMs?: number | null;
+  explanation?: string | null;
+  id?: string;
+  presentation?: TimelineRowPresentation;
+  seq?: number;
+  sourceSeqStart?: number;
+  status?: TimelineRowStatus;
+  steps?: ThreadEventPlanStep[];
   turnId?: string | null;
 }
 
@@ -519,6 +550,7 @@ export function toolRow({
   durationMs = 2_300,
   id = DEFAULT_TOOL_ID,
   output = "",
+  presentation,
   seq,
   sourceSeqEnd,
   sourceSeqStart,
@@ -551,6 +583,93 @@ export function toolRow({
     completedAt: completedAtFromDuration(base.startedAt, durationMs),
     approvalStatus,
     activityIntents,
+    ...(presentation ? { presentation } : {}),
+  };
+}
+
+export const ECHO_RECEIPT_PRESENTATION: TimelineRowPresentation = {
+  label: { pending: "Writing receipt", completed: "Wrote receipt" },
+  icon: { glyph: "Check" },
+  title: "hello world",
+  detail: "Echoed **2** items",
+  tint: { light: "#1d4ed8", dark: "#93c5fd" },
+};
+
+export function extensionRow({
+  callId,
+  createdAt,
+  durationMs = 1_500,
+  extensionKind = "echo-provider/receipt",
+  id = "extension_receipt",
+  payload = { prompt: "hello world", itemCount: 2, shouted: false },
+  presentation = ECHO_RECEIPT_PRESENTATION,
+  seq,
+  sourceSeqStart,
+  startedAt,
+  status = "completed",
+  threadId,
+  turnId,
+}: ExtensionRowArgs = {}): TimelineExtensionWorkRow {
+  const base = baseRow({
+    createdAt,
+    id,
+    seq,
+    sourceSeqStart,
+    startedAt,
+    threadId,
+    turnId,
+  });
+  return {
+    ...base,
+    kind: "work",
+    workKind: "extension",
+    status,
+    callId: callId ?? id,
+    extensionKind,
+    payload,
+    presentation,
+    completedAt: completedAtFromDuration(base.startedAt, durationMs),
+  };
+}
+
+export function planStepsRow({
+  callId,
+  createdAt,
+  durationMs = 0,
+  explanation = null,
+  id = "plan_steps_1",
+  presentation,
+  seq,
+  sourceSeqStart,
+  startedAt,
+  status = "completed",
+  steps = [
+    { step: "Read the spec", status: "completed" },
+    { step: "Wire the renderer", status: "active" },
+    { step: "Write tests", status: "pending" },
+  ],
+  threadId,
+  turnId,
+}: PlanStepsRowArgs = {}): TimelinePlanStepsWorkRow {
+  const base = baseRow({
+    createdAt,
+    id,
+    seq,
+    sourceSeqStart,
+    startedAt,
+    threadId,
+    turnId,
+  });
+  return {
+    ...base,
+    kind: "work",
+    workKind: "plan-steps",
+    status,
+    callId: callId ?? id,
+    steps,
+    explanation,
+    completedAt: completedAtFromDuration(base.startedAt, durationMs),
+    ...(presentation ? { presentation } : {}),
   };
 }
 

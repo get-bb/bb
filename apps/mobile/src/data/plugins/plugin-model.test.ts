@@ -43,6 +43,7 @@ function plugin(overrides: Partial<InstalledPlugin> = {}): InstalledPlugin {
     app: { hasApp: false, bundle: null },
     logoUrl: null,
     logoDarkUrl: null,
+    providerIds: [],
     ...overrides,
   };
 }

@@ -18,6 +18,7 @@ const waitingView: ProviderRetryView = {
 
 const claudeCodeProvider: ProviderInfo = {
   id: "claude-code",
+  pluginId: "provider-claude-code",
   displayName: "Claude Code",
   logoUrl: null,
   available: true,

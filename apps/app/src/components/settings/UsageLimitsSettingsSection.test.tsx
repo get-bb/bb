@@ -33,6 +33,7 @@ function provider(
 ): ProviderInfo {
   return {
     id,
+    pluginId: `provider-${id}`,
     displayName,
     logoUrl: null,
     available: true,

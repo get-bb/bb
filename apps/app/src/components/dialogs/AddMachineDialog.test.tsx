@@ -77,6 +77,7 @@ function connectPlugin(
     app: { hasApp: false, bundle: null },
     logoUrl: null,
     logoDarkUrl: null,
+    providerIds: [],
     ...overrides,
   };
 }

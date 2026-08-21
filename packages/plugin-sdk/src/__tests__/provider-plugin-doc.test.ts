@@ -36,7 +36,7 @@ import {
 } from "@bb/domain";
 import {
   timelineCommandWorkRowSchema,
-  type TimelineRow,
+  type TimelineCommandWorkRow,
 } from "@bb/server-contract";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { z } from "zod";
@@ -180,24 +180,23 @@ const PRESENTATION_FIELDS = {
 } as const satisfies Record<string, PresentationPath | Gap>;
 
 /**
- * §5 `TimelineRow { kind, payload, presentation }` → the `TimelineRow` union
- * (type level) and a representative row schema (runtime).
+ * §5 `TimelineRow { kind, payload, presentation }` → a representative work
+ * row (type level and its schema at runtime).
  */
 const TIMELINE_ROW_FIELDS = {
   kind: "kind",
-  payload: { gap: "WS3 (projection): one folded row shape for every item" },
-  presentation: { gap: "WS3 (projection): presentation rides every row" },
-} as const satisfies Record<string, keyof TimelineRow | Gap>;
-type TimelineRowGapsNotLanded = Extract<
-  "payload" | "presentation",
-  keyof TimelineRow
->;
+  // Rows keep typed per-kind fields (a `file-read` row has `path`, a
+  // `search` row `mode`/`query`); only the `extension` row carries an opaque
+  // `payload`. The fold of every kind's body into one field is not landed.
+  payload: {
+    gap: "WS3 (projection): one folded `payload` for every kind; rows stay typed per kind and only extension rows carry `payload`",
+  },
+  presentation: "presentation",
+} as const satisfies Record<string, keyof TimelineCommandWorkRow | Gap>;
+type TimelineRowGapsNotLanded = Extract<"payload", keyof TimelineCommandWorkRow>;
 
-/** §5 `app.slots.timelineRenderer` → `PluginAppSlots`. */
-type TimelineRendererSlotNotLanded = Extract<
-  "timelineRenderer" | "experimental_timelineRenderer",
-  keyof PluginAppSlots
->;
+/** §5 `app.slots.timelineRenderer` → `PluginAppSlots` (experimental_ until audited). */
+type TimelineRendererSlot = PluginAppSlots["experimental_timelineRenderer"];
 
 // ---------------------------------------------------------------------------
 // Doc parsing
@@ -415,11 +414,11 @@ describe("guardrail G10: docs/provider-plugin-api.md matches the contract", () =
     expectLandedPresent(PRESENTATION_FIELDS, presentationKeys, "presentation");
   });
 
-  it("§5 projection and renderer slot are still gaps owned by WS3", () => {
+  it("§5 presentation rides every work row and the renderer slot exists (WS3)", () => {
     const rowKeys = schemaKeys(timelineCommandWorkRowSchema);
     expectLandedPresent(TIMELINE_ROW_FIELDS, rowKeys, "TimelineRow");
     expectGapsNotLanded(TIMELINE_ROW_FIELDS, rowKeys, "TimelineRow");
     expectTypeOf<TimelineRowGapsNotLanded>().toBeNever();
-    expectTypeOf<TimelineRendererSlotNotLanded>().toBeNever();
+    expectTypeOf<TimelineRendererSlot>().toBeFunction();
   });
 });

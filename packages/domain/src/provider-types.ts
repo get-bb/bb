@@ -136,6 +136,12 @@ export type ProviderExtensionKinds = z.infer<
 
 export const providerInfoSchema = z.object({
   id: z.string(),
+  /**
+   * The plugin that registered the provider (`bb.providers.register`). The
+   * owner of the provider's extension-kind namespace, and the bundle the
+   * app loads on the first thread of this provider.
+   */
+  pluginId: z.string().min(1),
   displayName: z.string(),
   /**
    * Declared grouping key shared by related providers (the ACP agents).

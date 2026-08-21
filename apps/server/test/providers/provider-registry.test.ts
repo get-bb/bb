@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 
 const CURSOR_LIKE_INFO = {
+  pluginId: "provider-acp",
   available: true,
   experimental_providerHealth: true,
   experimental_providerUsage: true,

@@ -202,6 +202,15 @@ export const installedPluginSchema = z.object({
   app: pluginAppStateSchema,
   logoUrl: z.string().nullable(),
   logoDarkUrl: z.string().nullable(),
+  /**
+   * The agent providers this plugin registered (`bb.providers.register`),
+   * empty for every other plugin. The app defers a provider plugin's frontend
+   * bundle until the first thread of one of its providers opens, so the boot
+   * payload never carries provider code (docs/provider-plugin-api.md §5).
+   * Servers before this field default to none, which keeps their plugins on
+   * the eager path.
+   */
+  providerIds: z.array(z.string()).default([]),
 });
 export type InstalledPlugin = z.infer<typeof installedPluginSchema>;
 

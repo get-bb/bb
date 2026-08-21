@@ -28,7 +28,10 @@ import { parseEnvironmentValue } from "@/components/pickers/environment-picker-v
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getProviderIconInfo } from "@/lib/provider-icon";
-import { REASONING_LABELS } from "@/lib/reasoning-labels";
+import {
+  fastServiceTierLabel,
+  reasoningLevelLabel,
+} from "@/lib/reasoning-labels";
 import {
   permissionModeRank,
   providerModelCatalogDependsOnWorkspace,
@@ -124,6 +127,8 @@ interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   supportsPermissionModeSelection: boolean;
   supportsServiceTier: boolean;
   serviceTierSupportByProvider: Record<string, boolean>;
+  /** The committed provider's declared label for its fast tier. */
+  serviceTierFastLabel: string;
   executionInputSources: TExecutionInputSources;
 }
 
@@ -522,6 +527,7 @@ export function useThreadCreationOptions(
     }
     return supportByProvider;
   }, [providers]);
+  const serviceTierFastLabel = fastServiceTierLabel(selectedProviderInfo);
 
   // Pi model ids gained a provider prefix, so a thread can hold
   // `deepseek/deepseek-v4-flash` where the catalog now lists
@@ -655,7 +661,9 @@ export function useThreadCreationOptions(
       seen.add(effort.reasoningEffort);
       options.push({
         value: effort.reasoningEffort,
-        label: REASONING_LABELS[effort.reasoningEffort],
+        // The provider's declared label for the level (docs/provider-plugin-
+        // api.md §1); the model catalog carries only ids.
+        label: reasoningLevelLabel(effort.reasoningEffort, selectedProviderInfo),
       });
     }
 
@@ -664,7 +672,7 @@ export function useThreadCreationOptions(
     }
 
     return options;
-  }, [activeModel]);
+  }, [activeModel, selectedProviderInfo]);
   const serviceTier = useMemo(
     () => (supportsServiceTier ? rawServiceTier : undefined),
     [rawServiceTier, supportsServiceTier],
@@ -1043,6 +1051,7 @@ export function useThreadCreationOptions(
     supportsPermissionModeSelection,
     supportsServiceTier,
     serviceTierSupportByProvider,
+    serviceTierFastLabel,
     executionInputSources,
   };
 }

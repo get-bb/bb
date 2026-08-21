@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useState,
+  type CSSProperties,
   type FocusEvent,
   type KeyboardEvent,
   type MouseEvent,
@@ -44,6 +45,8 @@ interface ExpandableTimelineRowProps {
   expandable?: boolean;
   horizontalPadding?: TimelineRowHorizontalPadding;
   leadingIcon?: IconName;
+  /** Inline style for the leading icon (a bridge's per-theme tint). */
+  leadingIconStyle?: CSSProperties;
   /** Extra classes on the header summary line only (not the expanded body). */
   summaryClassName?: string;
   onTitleAction?: TimelineTitleActionResolver;
@@ -84,6 +87,7 @@ function ExpandableTimelineRowComponent({
   forceExpanded = false,
   horizontalPadding = "default",
   leadingIcon,
+  leadingIconStyle,
   onTitleAction,
   renderBody,
   resolveSegmentLinkHref,
@@ -207,6 +211,7 @@ function ExpandableTimelineRowComponent({
             <Icon
               name={leadingIcon}
               className="size-3.5 shrink-0 text-muted-foreground"
+              style={leadingIconStyle}
               aria-hidden
             />
           ) : null}

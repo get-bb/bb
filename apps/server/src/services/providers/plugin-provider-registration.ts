@@ -180,6 +180,7 @@ export function buildPluginProviderRegistration(args: {
 
   const info: ProviderInfo = {
     id: declaration.id,
+    pluginId: args.pluginId,
     displayName: declaration.displayName,
     ...(declaration.experimental_family === undefined
       ? {}

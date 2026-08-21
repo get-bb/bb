@@ -1,5 +1,7 @@
-import type { ComponentType } from "react";
+import type { CSSProperties, ComponentType } from "react";
 import { createElement, useState, useSyncExternalStore } from "react";
+import type { ProviderInfo } from "@bb/domain";
+import { isPresentationTintColor } from "@/components/thread/timeline/presentation-display";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
 import { CursorIcon } from "@/components/icons/CursorIcon";
 import { GrokIcon } from "@/components/icons/GrokIcon";
@@ -201,6 +203,27 @@ function resolveStaticProviderIconInfo(
   }
 
   return undefined;
+}
+
+/**
+ * The provider's declared icon tint (`strings.iconTint`, docs/provider-
+ * plugin-api.md §1) as an inline style, picking the light or dark value
+ * through `light-dark()` so it follows the app's `color-scheme`. Undefined
+ * when the provider declared none, in which case the caller's colour class
+ * applies (the vendored per-id table below, until every provider declares).
+ */
+export function getProviderIconTintStyle(
+  provider: Pick<ProviderInfo, "strings"> | undefined,
+): CSSProperties | undefined {
+  const tint = provider?.strings?.iconTint;
+  if (
+    tint === undefined ||
+    !isPresentationTintColor(tint.light) ||
+    !isPresentationTintColor(tint.dark)
+  ) {
+    return undefined;
+  }
+  return { color: `light-dark(${tint.light.trim()}, ${tint.dark.trim()})` };
 }
 
 export function getProviderIconColorClass(providerId: string): string {

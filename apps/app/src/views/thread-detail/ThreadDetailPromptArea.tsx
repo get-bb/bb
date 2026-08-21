@@ -673,6 +673,7 @@ export function ThreadDetailPromptArea({
     supportsPermissionModeSelection,
     supportsServiceTier,
     serviceTierSupportByProvider,
+    serviceTierFastLabel,
     executionInputSources,
   } = useThreadCreationOptions({
     enabled: thread.archivedAt === null,
@@ -1152,6 +1153,7 @@ export function ThreadDetailPromptArea({
         onChange: setServiceTier,
         supported: supportsServiceTier,
         supportByProvider: serviceTierSupportByProvider,
+        fastLabel: serviceTierFastLabel,
       },
       reasoning: {
         value: reasoningLevel,
@@ -1184,6 +1186,7 @@ export function ThreadDetailPromptArea({
       setReasoningLevel,
       setServiceTier,
       supportsServiceTier,
+      serviceTierFastLabel,
     ],
   );
   const compactExecutionConfig = useMemo(() => {

@@ -9,7 +9,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { useLocation } from "react-router-dom";
 import {
@@ -85,6 +85,15 @@ import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 import { Button } from "@bb/shared-ui/button";
 import { AutoHeightContainer } from "../../ui/height-transition.js";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import {
+  presentationIconName,
+  presentationTintStyle,
+} from "./presentation-display.js";
+import {
+  PluginTimelineRendererBody,
+  isPluginRenderableWorkRow,
+  usePluginTimelineRenderer,
+} from "./PluginTimelineRendererBody.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
   TimelineScrollRestoreRowIdContext,
@@ -1414,7 +1423,7 @@ function TimelineExpandableBody({
         );
       }
       return (
-        <WorkRowBody
+        <WorkRowBodyWithPluginRenderer
           row={row}
           resolveImageViewSrc={resolveImageViewSrc}
           workspaceRootPath={workspaceRootPath}
@@ -1432,6 +1441,40 @@ function TimelineExpandableBody({
     default:
       return assertNever(row);
   }
+}
+
+/**
+ * The expanded body of a non-delegation work row: the plugin renderer the
+ * thread's provider plugin registered for this row's kind, else the core
+ * body. Resolved per row so a late-loading provider bundle upgrades the
+ * body in place.
+ */
+function WorkRowBodyWithPluginRenderer({
+  row,
+  resolveImageViewSrc,
+  workspaceRootPath,
+}: {
+  row: TimelineViewWorkRow;
+  resolveImageViewSrc: ThreadTimelineImageViewSrcResolver | undefined;
+  workspaceRootPath: string | undefined;
+}) {
+  const slot = usePluginTimelineRenderer(row);
+  const original = useCallback(
+    () => (
+      <WorkRowBody
+        row={row}
+        resolveImageViewSrc={resolveImageViewSrc}
+        workspaceRootPath={workspaceRootPath}
+      />
+    ),
+    [resolveImageViewSrc, row, workspaceRootPath],
+  );
+  if (slot !== null && isPluginRenderableWorkRow(row)) {
+    return (
+      <PluginTimelineRendererBody row={row} slot={slot} original={original} />
+    );
+  }
+  return original();
 }
 
 function TurnRowBody({
@@ -1636,11 +1679,25 @@ function leadingIconForWorkRow(
   if ("activityIntents" in row && row.activityIntents.some(isSkillReadIntent)) {
     return "Zap";
   }
+  // The bridge's glyph (grammar v3 presentation) is the row's icon whenever
+  // the host knows it; the per-kind table below is the fallback for rows
+  // persisted before presentation existed and for unknown glyph names.
+  if (row.workKind !== "approval" && row.workKind !== "question") {
+    const presented = presentationIconName(row.presentation);
+    if (presented !== undefined) {
+      return presented;
+    }
+  }
   // A command/tool row that carries a single exploration intent renders as a
   // flat, non-expandable row, so the per-intent search/read/folder glyph must
   // come from here (not the bundled compact-intent path) — otherwise it would
   // fall through to the generic Terminal icon.
-  if (row.workKind === "command" || row.workKind === "tool") {
+  if (
+    row.workKind === "command" ||
+    row.workKind === "tool" ||
+    row.workKind === "file-read" ||
+    row.workKind === "search"
+  ) {
     const intent = primaryTimelineActivityIntent(row);
     if (intent !== null && intent.type !== "unknown") {
       return explorationIntentIcon(intent.type);
@@ -1653,6 +1710,14 @@ function leadingIconForWorkRow(
       return "Terminal";
     case "tool":
       return "Terminal";
+    case "file-read":
+      return "FileText";
+    case "search":
+      return "Search";
+    case "plan-steps":
+      return "ListTodo";
+    case "extension":
+      return "Puzzle";
     case "web-search":
       return "Search";
     case "web-fetch":
@@ -1729,6 +1794,20 @@ function leadingIconForRow(row: ThreadTimelineViewRow): IconName | undefined {
   return leadingIconForWorkRow(row) ?? leadingIconForSystemRow(row);
 }
 
+/** The bridge's tint for the leading glyph; undefined keeps the row colour. */
+function leadingIconStyleForRow(
+  row: ThreadTimelineViewRow,
+): CSSProperties | undefined {
+  if (
+    row.kind !== "work" ||
+    row.workKind === "approval" ||
+    row.workKind === "question"
+  ) {
+    return undefined;
+  }
+  return presentationTintStyle(row.presentation);
+}
+
 function isSkillReadIntent(intent: TimelineActivityIntent): boolean {
   if (intent.type !== "read") {
     return false;
@@ -1763,6 +1842,12 @@ function TimelineRowView({
     row,
     scopeActive,
   });
+  // A plugin renderer gives a row a body the core rule does not know about
+  // (an extension row without a detail, a tool row a provider plugin
+  // renders), so such a row is expandable even when the core body is empty.
+  const pluginRendererSlot = usePluginTimelineRenderer(
+    row.kind === "work" ? row : null,
+  );
 
   if (row.kind === "conversation") {
     return (
@@ -1804,8 +1889,9 @@ function TimelineRowView({
     );
   }
 
-  if (!isRowExpandable(row)) {
+  if (!isRowExpandable(row) && pluginRendererSlot === null) {
     const staticLeadingIcon = leadingIconForRow(row);
+    const staticLeadingIconStyle = leadingIconStyleForRow(row);
     return (
       <TimelineStaticRow
         horizontalPadding={horizontalPadding}
@@ -1820,6 +1906,7 @@ function TimelineRowView({
             <Icon
               name={staticLeadingIcon}
               className="size-3.5 shrink-0 text-muted-foreground"
+              style={staticLeadingIconStyle}
               aria-hidden
             />
           ) : null}
@@ -1886,6 +1973,7 @@ function TimelineExpandableRowView({
   );
 
   const leadingIcon = leadingIconForRow(row);
+  const leadingIconStyle = leadingIconStyleForRow(row);
 
   return (
     <ExpandableTimelineRow
@@ -1900,6 +1988,7 @@ function TimelineExpandableRowView({
       })}
       horizontalPadding={horizontalPadding}
       leadingIcon={leadingIcon}
+      leadingIconStyle={leadingIconStyle}
       autoExpanded={
         liveAutoExpandedRowIds.has(row.id) ||
         initialAutoExpandedRowIds.has(row.id)

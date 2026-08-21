@@ -49,6 +49,10 @@ export const ACP_TIER_CAPABILITIES: ProviderCapabilities = {
 // so fork is offered but edit-message rewind is not.
 const ACP_FORK: ProviderFork = "tip";
 
+// The dynamic ACP tier is served by the first-party ACP plugin's bridge, so
+// its rows belong to that plugin (extension kinds, renderers, app bundle).
+const ACP_TIER_PLUGIN_ID = "provider-acp";
+
 // Skills are injected into every provider runtime, so the `/` skills
 // typeahead is universal; ACP agents contribute no other composer affordance.
 const ACP_COMPOSER_ACTIONS: readonly ProviderComposerAction[] = [
@@ -112,6 +116,7 @@ export function buildAcpProviderInfo(
     ),
     displayName: args.displayName,
     id: args.id,
+    pluginId: ACP_TIER_PLUGIN_ID,
     logoUrl: args.logoUrl,
   };
 }
