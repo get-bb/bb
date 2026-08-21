@@ -1,9 +1,16 @@
 /**
  * The echo bridge's conformance run: drives the bridge in-process through the
  * canonical Provider Bridge Protocol suite (JSON-RPC hygiene, the initialize
- * handshake, and the shared session lifecycle) and asserts a fully green
- * report. This is the test every provider bridge should ship — a conformant
- * bridge passes all eleven scenarios.
+ * handshake, the shared session lifecycle, and the zero-work turn) and
+ * asserts a fully green report. This is the test every provider bridge
+ * should ship — a conformant bridge passes all twelve scenarios. Everything
+ * it needs comes from the published `@get-bb/plugin-sdk/provider-bridge/testing`
+ * kit; no private bb package is involved.
+ *
+ * The lifecycle scenarios run the bridge's full grammar v3 turn (command,
+ * fileRead, search, a delegation with a child turn, planSteps, tools, the
+ * extension item and state, the streamed message), so `events/schema-valid`
+ * and `item/opens-before-delta` cover every v3 shape the bridge emits.
  *
  * The transport is the in-process pattern: `send` is the bridge's exported
  * line handler, and `takeMessages` drains a captured stdout buffer (the
@@ -66,6 +73,9 @@ it("passes the canonical protocol suite", async () => {
     session: {
       cwd: workspaceDir,
       promptInput: [{ type: "text", text: "say hello", mentions: [] }],
+      // `/noop` is the prompt the echo agent completes without activity, so
+      // the kit can check that such a turn still settles.
+      zeroWorkPromptInput: [{ type: "text", text: "/noop", mentions: [] }],
     },
     timeoutMs: 5_000,
   });
@@ -89,6 +99,7 @@ it("passes the canonical protocol suite", async () => {
     "item/opens-before-delta": "pass",
     "stop/release-not-interrupted": "pass",
     "session/resume-id-uniqueness": "pass",
+    "turn/settles-without-activity": "pass",
   });
   expect(report.passed).toBe(true);
 }, 30_000);
