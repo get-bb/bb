@@ -119,6 +119,8 @@ interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   isLoadingModels: boolean;
   modelLoadFailed: boolean;
   modelLoadError: SystemExecutionOptionsModelLoadError | null;
+  /** True only after the selected provider's live model probe succeeds. */
+  modelCatalogIsVerified: boolean;
   reasoningOptions: PickerOption<ReasoningLevel>[];
   permissionModeOptions: PickerOption<PermissionMode>[];
   supportsPermissionModeSelection: boolean;
@@ -393,6 +395,11 @@ export function useThreadCreationOptions(
   // a failure, so it deliberately stays out of `modelLoadFailed`.
   const modelCatalogIsUnverified =
     modelLoadError !== null || executionOptionsQuery.isPlaceholderData;
+  const modelCatalogIsVerified =
+    executionOptionsQuery.data !== undefined &&
+    !executionOptionsQuery.isPlaceholderData &&
+    !executionOptionsQuery.isError &&
+    modelLoadError === null;
   const hasMultipleProviders = providers.length >= 2;
 
   // Resolve the effective provider: use selectedProviderId if it matches a known
@@ -1038,6 +1045,7 @@ export function useThreadCreationOptions(
     isLoadingModels,
     modelLoadFailed,
     modelLoadError,
+    modelCatalogIsVerified,
     reasoningOptions,
     permissionModeOptions,
     supportsPermissionModeSelection,
