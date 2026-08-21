@@ -7,14 +7,13 @@ import {
 } from "@bb/core-ui";
 import { extractShellCommandFromString } from "@bb/thread-view";
 import {
-  isApprovalPendingInteractionPayload,
-  isUserQuestionPendingInteractionPayload,
+  isPluginPendingInteraction,
   type ApprovalPendingInteractionPayload,
   type PendingInteraction,
   type PendingInteractionApprovalDecision,
   type PendingInteractionApprovalSubject,
   type PendingInteractionResolution,
-  type UserQuestionPendingInteractionPayload,
+  type PendingInteractionUserQuestionQuestion,
 } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { ExpandableLine } from "@/components/ui/expandable-line.js";
@@ -23,6 +22,11 @@ import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import { getDetailScrollMaxHeightClass } from "@/components/ui/detail-scroll-size.js";
 import { UserQuestionAnswerForm } from "@/components/thread/user-questions/UserQuestionInteractionContent.js";
 import { useResolveThreadPendingInteraction } from "@/hooks/mutations/thread-interaction-mutations";
+import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
+import {
+  classifyInteractionRequest,
+  type InteractionRequestView,
+} from "./interaction-request";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -46,7 +50,7 @@ interface ApprovalPendingInteractionBannerProps {
 
 interface UserQuestionPendingInteractionBannerProps {
   interaction: PendingInteraction;
-  payload: UserQuestionPendingInteractionPayload;
+  questions: readonly PendingInteractionUserQuestionQuestion[];
   sourceThread?: ThreadPendingInteractionSourceThread;
   threadId: string;
 }
@@ -70,36 +74,152 @@ interface BuildApprovalSubjectInput {
   payload: ApprovalPendingInteractionPayload;
 }
 
+/**
+ * Renders one pending interaction by its family (docs/provider-plugin-api.md
+ * §4): approvals with the decision buttons a permission mode could have
+ * pressed; the open requests with their core renderers (`user_question`,
+ * `plan_review`) or, for a `"<pluginId>/<kind>"` request, the plugin's
+ * `pendingInteraction` slot component.
+ */
 export function ThreadPendingInteractionBanner({
   interaction,
   sourceThread,
   threadId,
 }: ThreadPendingInteractionBannerProps) {
-  if (interaction.payload.kind === "plugin") {
-    return null;
-  }
-  if (isUserQuestionPendingInteractionPayload(interaction.payload)) {
+  const request = classifyInteractionRequest(interaction);
+  if (request.family === "approval") {
     return (
-      <ThreadUserQuestionPendingInteractionBanner
+      <ApprovalPendingInteractionBanner
         interaction={interaction}
-        payload={interaction.payload}
+        payload={request.payload}
         sourceThread={sourceThread}
         threadId={threadId}
       />
     );
   }
-
-  if (!isApprovalPendingInteractionPayload(interaction.payload)) {
-    return assertNever(interaction.payload);
+  switch (request.kind) {
+    case "user_question":
+      return (
+        <ThreadUserQuestionPendingInteractionBanner
+          interaction={interaction}
+          questions={request.questions}
+          sourceThread={sourceThread}
+          threadId={threadId}
+        />
+      );
+    case "plan_review":
+      return (
+        <PlanReviewRequestBanner
+          interaction={interaction}
+          request={request}
+          sourceThread={sourceThread}
+          threadId={threadId}
+        />
+      );
+    default:
+      if (!isPluginPendingInteraction(interaction)) {
+        // The request family's plugin member is not on the wire yet (WS5);
+        // until then a plugin request always arrives as a plugin interaction.
+        return null;
+      }
+      return (
+        <div data-testid="plugin-request-banner" data-request-kind={request.kind}>
+          {sourceThread ? (
+            <NavLink
+              to={sourceThread.href}
+              className="mb-1 block text-xs text-muted-foreground no-underline hover:underline"
+            >
+              From child thread: {sourceThread.title}
+            </NavLink>
+          ) : null}
+          <PluginPendingInteractionComposer interaction={interaction} />
+        </div>
+      );
   }
+}
 
+interface PlanReviewRequestBannerProps {
+  interaction: PendingInteraction;
+  request: Extract<InteractionRequestView, { kind: "plan_review" }>;
+  sourceThread?: ThreadPendingInteractionSourceThread;
+  threadId: string;
+}
+
+/**
+ * A finished plan waiting for the user's verdict — a request, not an
+ * approval: no permission mode answers "ready to code?". Today's wire still
+ * resolves it through the `plan` approval subject's decisions, which this
+ * banner labels as the plan verdict they are.
+ */
+function PlanReviewRequestBanner({
+  interaction,
+  request,
+  sourceThread,
+  threadId,
+}: PlanReviewRequestBannerProps) {
+  const resolvePendingInteraction = useResolveThreadPendingInteraction();
+  const isResolving = interaction.status === "resolving";
+  const submittedDecision = approvalResolutionDecision(interaction.resolution);
+  const mutationErrorMessage = resolvePendingInteraction.error
+    ? getMutationErrorMessage({
+        error: resolvePendingInteraction.error,
+        fallbackMessage: "Failed to resolve plan review",
+        lifecycleOperation: "resolve_interaction",
+      })
+    : null;
+  const submitDisabled = resolvePendingInteraction.isPending || isResolving;
+  const approval = request.approval;
+  const submitDecision = (
+    decision: PendingInteractionApprovalDecision,
+  ): void => {
+    const resolution = buildPendingInteractionApprovalResolution(
+      interaction,
+      decision,
+    );
+    void resolvePendingInteraction
+      .mutateAsync({ threadId, interactionId: interaction.id, resolution })
+      .catch(() => {});
+  };
+  const { plan, planFilePath } = request.review;
   return (
-    <ApprovalPendingInteractionBanner
-      interaction={interaction}
-      payload={interaction.payload}
+    <BannerShell
+      title={approval?.reason ?? "Ready to code?"}
+      errorMessage={mutationErrorMessage}
       sourceThread={sourceThread}
-      threadId={threadId}
-    />
+      footer={
+        approval
+          ? approval.availableDecisions.map((decision) => (
+              <ApprovalDecisionButton
+                key={decision}
+                decision={decision}
+                disabled={submitDisabled}
+                isLoading={isResolving && submittedDecision === decision}
+                onClick={() => submitDecision(decision)}
+                subjectKind="plan"
+              />
+            ))
+          : null
+      }
+    >
+      <div
+        className="overflow-hidden rounded-lg border border-border bg-card"
+        data-testid="plan-review-request"
+      >
+        <div
+          className={cn(
+            getDetailScrollMaxHeightClass("base"),
+            "overflow-auto px-3 py-2",
+          )}
+        >
+          <MarkdownPreview content={plan} className="text-xs" />
+        </div>
+        {planFilePath ? (
+          <p className="truncate border-t border-border px-3 py-2 font-mono text-xs text-muted-foreground">
+            {planFilePath}
+          </p>
+        ) : null}
+      </div>
+    </BannerShell>
   );
 }
 
@@ -205,7 +325,7 @@ function ApprovalPendingInteractionBanner({
 
 function ThreadUserQuestionPendingInteractionBanner({
   interaction,
-  payload,
+  questions,
   sourceThread,
   threadId,
 }: UserQuestionPendingInteractionBannerProps) {
@@ -218,7 +338,7 @@ function ThreadUserQuestionPendingInteractionBanner({
       <UserQuestionAnswerForm
         interactionId={interaction.id}
         isResolving={isResolving}
-        questions={payload.questions}
+        questions={questions}
         threadId={threadId}
       />
     </BannerShell>
