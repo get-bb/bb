@@ -13,6 +13,7 @@ import {
   TimelineWindowedItems,
   type TimelineWindowedItemRenderState,
 } from "./TimelineWindowedItems.js";
+import { TimelineWindowedItemsLoader } from "./TimelineWindowedItemsLoader.js";
 
 const ITEM_KEYS = Array.from({ length: 100 }, (_, index) => `row-${index}`);
 
@@ -134,6 +135,32 @@ afterEach(() => {
 });
 
 describe("TimelineWindowedItems", () => {
+  it("seeds exact heights while the lazy windowing implementation loads", () => {
+    const measurements = new Map<string, number>();
+
+    render(
+      <TimelineWindowedItemsLoader
+        enabled
+        estimateItemHeight={() => 100}
+        gap={0}
+        getScrollElement={() => scrollElement}
+        itemKeys={ITEM_KEYS}
+        measurements={measurements}
+        renderItem={(index, state) => (
+          <div
+            key={ITEM_KEYS[index]}
+            ref={state.itemRef}
+            data-index={state.itemIndex}
+          />
+        )}
+      />,
+      { container: scrollElement },
+    );
+
+    expect(measurements.get("row-0")).toBe(32);
+    expect(measurements.get("row-99")).toBe(32);
+  });
+
   it("keeps the control path fully mounted when the experiment is off", () => {
     renderWindowedItems({ enabled: false });
 

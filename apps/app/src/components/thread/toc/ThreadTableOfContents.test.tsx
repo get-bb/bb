@@ -105,6 +105,7 @@ function TocHost({
   hostPaddingX = 0,
   hostWidth = 1_200,
   loadOlderTimelineRows = () => {},
+  onNavigateToRow,
   threadId = "thr_toc_test",
   timelineRows,
 }: {
@@ -113,6 +114,7 @@ function TocHost({
   hostPaddingX?: number;
   hostWidth?: number;
   loadOlderTimelineRows?: () => void | Promise<void>;
+  onNavigateToRow?: (rowId: string) => void;
   threadId?: string;
   timelineRows: readonly TimelineRow[];
 }) {
@@ -136,6 +138,7 @@ function TocHost({
         timelineRows={timelineRows}
         hasOlderTimelineRows={hasOlderTimelineRows}
         loadOlderTimelineRows={loadOlderTimelineRows}
+        onNavigateToRow={onNavigateToRow}
       />
     </div>
   );
@@ -834,6 +837,7 @@ describe("ThreadTableOfContents", () => {
   it("scrolls straight to a message already loaded in the window", async () => {
     scrollElement.appendChild(timelineRowElement("u2"));
     const loadOlder = vi.fn();
+    const onNavigateToRow = vi.fn();
     setOutline([
       {
         id: "u1",
@@ -860,12 +864,14 @@ describe("ThreadTableOfContents", () => {
         timelineRows={[]}
         hasOlderTimelineRows
         loadOlderTimelineRows={loadOlder}
+        onNavigateToRow={onNavigateToRow}
       />,
     );
     openTocPanel();
     fireEvent.click(await screen.findByText("Loaded question"));
 
     await waitFor(() => expect(scrollElementIntoView).toHaveBeenCalledTimes(1));
+    expect(onNavigateToRow).toHaveBeenCalledWith("u2");
     expect(loadOlder).not.toHaveBeenCalled();
   });
 

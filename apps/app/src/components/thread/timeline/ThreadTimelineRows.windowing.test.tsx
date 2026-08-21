@@ -168,7 +168,7 @@ describe("ThreadTimelineRows windowing experiment", () => {
     });
   });
 
-  it("keeps an offscreen search target realized and reveals it", async () => {
+  it("keeps offscreen search and outline targets realized", async () => {
     const scrollElement = document.createElement("div");
     scrollElement.setAttribute("data-test-main-scroll", "");
     Object.defineProperty(scrollElement, "clientHeight", { value: 800 });
@@ -214,6 +214,7 @@ describe("ThreadTimelineRows windowing experiment", () => {
               <ThreadTimelineRows
                 threadId="thr_large_search"
                 timelineRows={rows}
+                timelineNavigationTargetRowId="search-message-40"
                 timelineWindowingEnabled
                 threadRuntimeDisplayStatus="idle"
                 workspaceRootPath={undefined}
@@ -229,6 +230,11 @@ describe("ThreadTimelineRows windowing experiment", () => {
 
     expect(target?.dataset.timelineWindowedRealized).toBe("true");
     expect(target?.textContent).toContain("Search message 20");
+    const outlineTarget = view.container.querySelector<HTMLElement>(
+      '[data-timeline-row-id="search-message-40"]',
+    );
+    expect(outlineTarget?.dataset.timelineWindowedRealized).toBe("true");
+    expect(outlineTarget?.textContent).toContain("Search message 40");
     await waitFor(() =>
       expect(scrollElementIntoView).toHaveBeenCalledWith({
         element: target,

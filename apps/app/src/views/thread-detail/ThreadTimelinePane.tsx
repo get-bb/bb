@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { ThreadTimelineUnreadDividerPlacement } from "@/components/thread/timeline";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
@@ -22,6 +22,8 @@ export function ThreadTimelinePane({
   footer,
   ...surface
 }: ThreadTimelinePaneProps) {
+  const [timelineNavigationTargetRowId, setTimelineNavigationTargetRowId] =
+    useState<string | null>(null);
   return (
     <EmbeddedThreadChat
       variant="hosted-footer"
@@ -32,9 +34,10 @@ export function ThreadTimelinePane({
           timelineRows={surface.timelineRows}
           hasOlderTimelineRows={surface.hasOlderTimelineRows}
           loadOlderTimelineRows={surface.onLoadOlderRows}
+          onNavigateToRow={setTimelineNavigationTargetRowId}
         />
       }
-      surface={surface}
+      surface={{ ...surface, timelineNavigationTargetRowId }}
     />
   );
 }

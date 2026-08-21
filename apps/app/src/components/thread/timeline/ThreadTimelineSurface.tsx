@@ -70,6 +70,8 @@ export interface ThreadTimelineSurfaceProps {
   stoppingAnchorAt?: number;
   timelineErrorClassName?: string;
   timelineRows: TimelineRow[];
+  /** Outline destination kept mounted while timeline windowing is enabled. */
+  timelineNavigationTargetRowId?: string | null;
   threadId: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
   unreadDividerAutoScroll?: boolean;
@@ -170,6 +172,7 @@ export function ThreadTimelineSurface({
   stoppingAnchorAt = 0,
   timelineErrorClassName = "mt-6 text-destructive",
   timelineRows,
+  timelineNavigationTargetRowId,
   threadId,
   threadRuntimeDisplayStatus,
   unreadDividerAutoScroll,
@@ -242,6 +245,7 @@ export function ThreadTimelineSurface({
           isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
           onLoadOlderRows={onLoadOlderRows}
           timelineRows={timelineRowsWithPendingStop}
+          timelineNavigationTargetRowId={timelineNavigationTargetRowId}
           timelineWindowingEnabled={timelineWindowingEnabled}
           threadId={threadId}
           threadRuntimeDisplayStatus={threadRuntimeDisplayStatus}

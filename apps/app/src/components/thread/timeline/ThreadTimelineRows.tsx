@@ -199,6 +199,8 @@ export interface ThreadTimelineRowsProps {
   isLoadingOlderTimelineRows?: boolean;
   onLoadOlderRows?: () => Promise<void> | void;
   timelineRows: TimelineRow[];
+  /** Outline destination kept mounted while timeline windowing is enabled. */
+  timelineNavigationTargetRowId?: string | null;
   threadId?: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
   /** Omit for standalone initial-unread rendering, pass false for live updates. */
@@ -280,6 +282,7 @@ interface TimelineRowsListProps {
   compactActivityIntents: boolean;
   hasOlderTimelineRows?: boolean;
   isLoadingOlderTimelineRows?: boolean;
+  navigationTargetRowId?: string | null;
   onLoadOlderRows?: () => Promise<void> | void;
   rows: readonly ThreadTimelineViewRow[];
   scopeActive: boolean;
@@ -2055,6 +2058,7 @@ function TimelineRowsList({
   compactActivityIntents,
   hasOlderTimelineRows,
   isLoadingOlderTimelineRows,
+  navigationTargetRowId,
   onLoadOlderRows,
   rows,
   scopeActive,
@@ -2114,8 +2118,23 @@ function TimelineRowsList({
     if (spacing === "top-level" && scrollRestoreRowId !== null) {
       keys.add(scrollRestoreRowId);
     }
+    if (
+      spacing === "top-level" &&
+      timelineWindowingEnabled &&
+      navigationTargetRowId != null
+    ) {
+      keys.add(navigationTargetRowId);
+    }
     return keys;
-  }, [items, rows, scrollRestoreRowId, spacing, stableSearchExpandedRowIds]);
+  }, [
+    items,
+    rows,
+    scrollRestoreRowId,
+    spacing,
+    stableSearchExpandedRowIds,
+    navigationTargetRowId,
+    timelineWindowingEnabled,
+  ]);
   const getWindowingScrollElement =
     detailScrollRoot?.getScrollElement ??
     bottomAnchor?.getScrollElement ??
@@ -2485,6 +2504,9 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                           hasOlderTimelineRows={props.hasOlderTimelineRows}
                           isLoadingOlderTimelineRows={
                             props.isLoadingOlderTimelineRows
+                          }
+                          navigationTargetRowId={
+                            props.timelineNavigationTargetRowId
                           }
                           onLoadOlderRows={props.onLoadOlderRows}
                           rows={rows}

@@ -38,6 +38,8 @@ interface ThreadTableOfContentsProps {
   hasOlderTimelineRows: boolean;
   /** Loads the next older timeline page; awaited while jumping to an unloaded row. */
   loadOlderTimelineRows: () => void | Promise<void>;
+  /** Lets timeline windowing mount an offscreen destination before scrolling. */
+  onNavigateToRow?: (rowId: string) => void;
 }
 
 // Matches `@container scroll-overlay (min-width: 56rem)` in app.css.
@@ -532,6 +534,7 @@ export function ThreadTableOfContents({
   timelineRows,
   hasOlderTimelineRows,
   loadOlderTimelineRows,
+  onNavigateToRow,
 }: ThreadTableOfContentsProps) {
   const bottomAnchor = useBottomAnchoredScroll();
   const [rootElement, setRootElement] = useState<HTMLElement | null>(null);
@@ -668,6 +671,7 @@ export function ThreadTableOfContents({
           options: { block: "start", inline: "nearest" },
         });
       };
+      onNavigateToRow?.(id);
 
       let row = findTimelineRowElement(getScrollElement(), id);
       if (row) {
@@ -714,7 +718,7 @@ export function ThreadTableOfContents({
         setPendingJumpId(null);
       }
     },
-    [bottomAnchor],
+    [bottomAnchor, onNavigateToRow],
   );
 
   if (userItems.length < TOC_MIN_USER_MESSAGES) {
