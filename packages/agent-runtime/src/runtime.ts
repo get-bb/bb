@@ -135,7 +135,6 @@ interface ResolveProviderProcessKeyArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   providerId: string;
-  threadId?: string;
 }
 
 interface ArchiveOrUnarchiveThreadArgs {
@@ -275,12 +274,12 @@ interface RequireProviderRequestPlanArgs {
 }
 
 /**
- * The codex per-thread process lane (#130). Still load-bearing for the idle
- * reap (`isThreadScopedCodexProcess`); the process-topology layer (L3)
- * collapses it to one process per provider artifact.
+ * The one provider id the pre-experiment idle reap releases (the behavior
+ * bb shipped before `providerSessionReapingEnabled` extended release to every
+ * restorable provider). Product policy, not a process-topology fact: one
+ * bridge process serves every thread of a provider in the environment.
  */
 const CODEX_PROVIDER_ID = "codex";
-const CODEX_THREAD_PROCESS_KEY_PREFIX = `${CODEX_PROVIDER_ID}\0thread:`;
 const THREAD_CREATION_REQUEST_TIMEOUT_MS = 2 * 60_000;
 
 async function delay(ms: number): Promise<void> {
@@ -405,19 +404,16 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   });
 
   /**
-   * Codex runs one provider process per thread. The codex bridge now owns a
-   * per-thread `codex app-server` child internally, so this outer scoping is
-   * redundant for isolation — only the pre-experiment idle reap still keys
-   * off `isThreadScopedCodexProcess`. The process-topology layer (L3)
-   * collapses it to one process per provider artifact.
+   * One process per provider artifact: every thread of a provider in this
+   * environment runs on the same bridge process, and the bridge supervises
+   * whatever children it needs (the codex bridge runs one `codex app-server`
+   * per thread underneath itself). The runtime never scopes a process to a
+   * thread.
    */
   function resolveProviderProcessKey(
     args: ResolveProviderProcessKeyArgs,
   ): string {
-    const baseKey =
-      args.providerId !== CODEX_PROVIDER_ID || args.threadId === undefined
-        ? args.providerId
-        : `${CODEX_THREAD_PROCESS_KEY_PREFIX}${args.threadId}`;
+    const baseKey = args.providerId;
     // A plugin-delivered bridge keys process identity by its artifact hash AND
     // by the declaration facts baked into the adapter at spawn (capabilities,
     // static provider options): a plugin can change either one alone, and
@@ -441,32 +437,16 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     return providerProcesses.requireProviderProcess({ processKey, providerId });
   }
 
-  function isThreadScopedCodexProcess(proc: ProviderProcess): boolean {
-    return (
-      proc.providerId === CODEX_PROVIDER_ID &&
-      proc.processKey.startsWith(CODEX_THREAD_PROCESS_KEY_PREFIX)
-    );
-  }
-
   /**
    * Releasing a thread is the moment a process can become retirable: a
-   * thread-scoped codex process has nothing left to serve, and a bridge
-   * process superseded by a plugin update was only being kept alive by the
-   * threads still running on it.
+   * bridge process superseded by a plugin update was only being kept alive
+   * by the threads still running on it. A current process stays up for the
+   * provider's next thread; its own per-thread children are the bridge's
+   * business (the codex bridge kills a thread's app-server on release).
    */
   async function releaseIdleProviderProcess(
     proc: ProviderProcess,
   ): Promise<void> {
-    if (
-      isThreadScopedCodexProcess(proc) &&
-      proc.identity.threadIds.size === 0
-    ) {
-      await providerProcesses.shutdownProvider({
-        processKey: proc.processKey,
-        providerId: proc.providerId,
-      });
-      return;
-    }
     await providerProcesses.retireSupersededBridgeProcessIfIdle(proc);
   }
 
@@ -1125,7 +1105,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       resolveProviderProcessKey({
         ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
         providerId,
-        threadId,
       });
     await providerProcesses.ensureProvider({
       processKey,
@@ -1578,18 +1557,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   }
 
   const runtime: AgentRuntime = {
-    async ensureProvider({
-      providerId,
-      forThreadId,
-      acpLaunchSpec,
-      bridgeLaunch,
-    }) {
+    async ensureProvider({ providerId, acpLaunchSpec, bridgeLaunch }) {
       await providerProcesses.ensureProvider({
         processKey: resolveProviderProcessKey({
           ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
           ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
           providerId,
-          ...(forThreadId !== undefined ? { threadId: forThreadId } : {}),
         }),
         providerId,
         ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
@@ -1621,11 +1594,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
             ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
             providerId,
-            threadId,
           });
           await runtime.ensureProvider({
             providerId,
-            forThreadId: threadId,
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
             ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
           });
@@ -1824,11 +1795,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
             ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
             providerId,
-            threadId,
           });
           await runtime.ensureProvider({
             providerId,
-            forThreadId: threadId,
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
             ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
           });
@@ -2014,11 +1983,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
             ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
             providerId,
-            threadId,
           });
           await runtime.ensureProvider({
             providerId,
-            forThreadId: threadId,
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
             ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
           });
@@ -2674,9 +2641,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             return null;
           }
 
-          let proc: ProviderProcess;
           try {
-            proc = providerProcesses.requireProviderProcess({
+            // A session whose process is gone has nothing to release.
+            providerProcesses.requireProviderProcess({
               processKey: candidate.runtimeConfig.processKey,
               providerId: candidate.runtimeConfig.providerId,
             });
@@ -2686,11 +2653,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           // Open background tasks and open delegations (a codex native
           // sub-agent still running, or still owed a followup turn) are
           // live provider work; reaping the session would destroy it.
-          if (
-            providerSessionReapingEnabled
-              ? backgroundWorkState.hasOpenThreadWork(candidate.threadId)
-              : !isThreadScopedCodexProcess(proc)
-          ) {
+          if (backgroundWorkState.hasOpenThreadWork(candidate.threadId)) {
             return null;
           }
 

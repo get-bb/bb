@@ -1,6 +1,6 @@
 {
   "_comment": "Provider-literal ratchet (G1). Per-file occurrence count of provider-ID references in core. May only go DOWN. Regenerate: node scripts/check-provider-literal-ratchet.mjs --write. Delete this file and the guard when empty.",
-  "total": 142,
+  "total": 136,
   "files": {
     "apps/app/src/components/tools/SkillsCollection.tsx": 3,
     "apps/app/src/lib/provider-icon.ts": 15,
@@ -9,7 +9,6 @@
     "apps/host-daemon/scripts/bundle-manifest.mjs": 1,
     "apps/host-daemon/src/command-handlers/list-commands.ts": 20,
     "apps/host-daemon/src/command-handlers/list-skills.ts": 1,
-    "apps/host-daemon/src/command-router.ts": 3,
     "apps/host-daemon/src/injected-skills.ts": 3,
     "apps/server/src/routes/threads/actions.ts": 1,
     "apps/server/src/services/ai/host-daemon-ai-provider.ts": 1,
@@ -25,7 +24,7 @@
     "packages/agent-runtime/src/provider-catalog.ts": 2,
     "packages/agent-runtime/src/provider-registry.ts": 2,
     "packages/agent-runtime/src/runtime-skill-roots.ts": 5,
-    "packages/agent-runtime/src/runtime.ts": 6,
+    "packages/agent-runtime/src/runtime.ts": 3,
     "packages/agent-runtime/src/types.ts": 3,
     "packages/config/src/bb-app-managed-config.ts": 4,
     "packages/domain/src/provider-model-catalog.ts": 3,

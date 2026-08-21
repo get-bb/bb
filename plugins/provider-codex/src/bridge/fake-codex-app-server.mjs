@@ -24,6 +24,7 @@
  */
 
 import {
+  appendFileSync,
   closeSync,
   existsSync,
   openSync,
@@ -156,6 +157,26 @@ const archiveStatePath = script?.archiveStatePath ?? null;
  */
 let renameEmptyRolloutFailuresLeft = script?.renameEmptyRolloutFailures ?? 0;
 const archivedThreadIds = new Set();
+/**
+ * `processLogPath`: one line per child lifecycle step (`spawn:<pid>:<ppid>`,
+ * `exit:<pid>:<ppid>`), so a test can count how many app-server children the
+ * bridge runs, how many bridge processes spawned them (distinct ppids), and
+ * see the children die on release, archive, and bridge shutdown.
+ */
+const processLogPath = script?.processLogPath ?? null;
+
+function logProcessStep(step) {
+  if (processLogPath === null) {
+    return;
+  }
+  appendFileSync(processLogPath, `${step}:${process.pid}:${process.ppid}\n`);
+}
+
+logProcessStep("spawn");
+process.on("SIGTERM", () => {
+  logProcessStep("exit");
+  process.exit(0);
+});
 let scriptedTurnIndex = 0;
 
 function readArchivedThreadIds() {
@@ -508,5 +529,6 @@ stdinLines.on("line", (line) => {
   }
 });
 stdinLines.on("close", () => {
+  logProcessStep("exit");
   process.exit(0);
 });

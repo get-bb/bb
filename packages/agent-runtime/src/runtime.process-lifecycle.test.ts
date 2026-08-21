@@ -728,7 +728,7 @@ describe("createAgentRuntime process lifecycle", () => {
     return { processLog, runtime };
   }
 
-  it("runs each codex thread on a separate provider process", async () => {
+  it("runs every codex thread on one provider process", async () => {
     const events: ThreadEvent[] = [];
     const { processLog, runtime } = createCodexRuntime({ events });
     await runtime.startThread({
@@ -745,13 +745,12 @@ describe("createAgentRuntime process lifecycle", () => {
       providerId: "codex",
       options: fullRuntimeOptions,
     });
-    await waitForRuntimeState({
-      label: "two codex provider processes spawned",
-      predicate: () =>
-        processLog.read().filter((line) => line.startsWith("spawn:")).length ===
-        2,
-      runtime,
-    });
+    // One process per provider artifact: the bridge supervises its own
+    // per-thread children (see runtime.codex-topology.test.ts for the real
+    // codex bridge); the runtime never scopes a process to a thread.
+    expect(
+      processLog.read().filter((line) => line.startsWith("spawn:")),
+    ).toHaveLength(1);
     const firstSession = runtime.getProviderSession("t1");
     const secondSession = runtime.getProviderSession("t2");
     if (!firstSession || !secondSession) {
@@ -788,8 +787,8 @@ describe("createAgentRuntime process lifecycle", () => {
       text: "second",
       threadId: "t2",
     });
-    // Each answer carries the pid of the process that served it: two
-    // different processes.
+    // Each answer carries the pid of the process that served it: the same
+    // process for both threads.
     const pidOf = (threadId: string): string | undefined =>
       events
         .filter(
@@ -803,16 +802,13 @@ describe("createAgentRuntime process lifecycle", () => {
         )
         .find((pid) => pid !== undefined);
     expect(pidOf("t1")).toBeDefined();
-    expect(pidOf("t1")).not.toBe(pidOf("t2"));
+    expect(pidOf("t1")).toBe(pidOf("t2"));
 
+    // Stopping one thread releases its session; the process stays up for
+    // the other thread and for the provider's next thread.
     await runtime.stopThread({ threadId: "t1" });
-    await waitForRuntimeState({
-      label: "one codex provider process exited after stopping one thread",
-      predicate: () =>
-        processLog.read().filter((line) => line.startsWith("exit:")).length ===
-        1,
-      runtime,
-    });
+    expect(runtime.hasThread("t1")).toBe(false);
+    expect(runtime.listRunningProviders()).toEqual(["codex"]);
     await runtime.runTurn({
       clientRequestId: "creq_2222222252",
       threadId: "t2",
@@ -826,10 +822,13 @@ describe("createAgentRuntime process lifecycle", () => {
       text: "still alive",
       threadId: "t2",
     });
+    expect(
+      processLog.read().filter((line) => line.startsWith("exit:")),
+    ).toHaveLength(0);
     await runtime.shutdown();
   });
 
-  it("stops a thread-scoped codex process when session construction fails", async () => {
+  it("keeps the codex provider process when one session construction fails", async () => {
     const events: ThreadEvent[] = [];
     const { processLog, runtime } = createCodexRuntime({
       events,
@@ -848,22 +847,13 @@ describe("createAgentRuntime process lifecycle", () => {
         options: fullRuntimeOptions,
       }),
     ).rejects.toThrow("no rollout found");
-    // The process the failed construction spawned does not linger.
-    await waitForRuntimeState({
-      label: "thread-scoped codex process exited after failed construction",
-      predicate: () =>
-        processLog.read().filter((line) => line.startsWith("exit:")).length ===
-        1,
-      runtime,
-      timeoutMs: 5_000,
-    });
     expect(runtime.getProviderSession("t1")).toBeNull();
-    await waitForRuntimeState({
-      label: "no codex provider process left running",
-      predicate: () => runtime.listRunningProviders().length === 0,
-      runtime,
-      timeoutMs: 5_000,
-    });
+    // The process serves every codex thread in the environment, so one
+    // failed construction does not take it down.
+    expect(runtime.listRunningProviders()).toEqual(["codex"]);
+    expect(
+      processLog.read().filter((line) => line.startsWith("exit:")),
+    ).toHaveLength(0);
     await runtime.shutdown();
   });
 
@@ -944,7 +934,7 @@ describe("createAgentRuntime process lifecycle", () => {
     }
   });
 
-  it("reaps a codex thread process after a terminal provider error before turn start", async () => {
+  it("reaps a codex session after a terminal provider error before turn start", async () => {
     const events: ThreadEvent[] = [];
     const { processLog, runtime } = createCodexRuntime({ events });
     try {
@@ -991,19 +981,18 @@ describe("createAgentRuntime process lifecycle", () => {
           threadId: "t1",
         }),
       ]);
-      await waitForRuntimeState({
-        label: "reaped codex process exited",
-        predicate: () =>
-          processLog.read().filter((line) => line.startsWith("exit:"))
-            .length === 1,
-        runtime,
-      });
+      // The session is released (thread/stop), the provider process stays.
+      expect(runtime.getProviderSession("t1")).toBeNull();
+      expect(runtime.listRunningProviders()).toEqual(["codex"]);
+      expect(
+        processLog.read().filter((line) => line.startsWith("exit:")),
+      ).toHaveLength(0);
     } finally {
       await runtime.shutdown();
     }
   });
 
-  it("reaps an idle codex thread process and resumes it later", async () => {
+  it("reaps an idle codex session and resumes it later on the same process", async () => {
     const events: ThreadEvent[] = [];
     const { processLog, runtime } = createCodexRuntime({ events });
     try {
@@ -1059,15 +1048,10 @@ describe("createAgentRuntime process lifecycle", () => {
         threadId: "t1",
       });
       expect(reapedSession.idleForMs).toBeGreaterThanOrEqual(30 * 60 * 1000);
-      await waitForRuntimeState({
-        label: "reaped codex process exited",
-        predicate: () =>
-          processLog.read().filter((line) => line.startsWith("exit:"))
-            .length === 1,
-        runtime,
-      });
       expect(runtime.hasThread("t1")).toBe(false);
       expect(runtime.getProviderSession("t1")).toBeNull();
+      // The session was released on the provider process, which stays up.
+      expect(runtime.listRunningProviders()).toEqual(["codex"]);
 
       await runtime.resumeThread({
         environmentId: "env-1",
@@ -1090,12 +1074,13 @@ describe("createAgentRuntime process lifecycle", () => {
         text: "after reap",
         threadId: "t1",
       });
+      // Resumed on the same process: one spawn, no exit, one thread/resume.
       const logLines = processLog.read();
       expect(logLines.filter((line) => line.startsWith("spawn:"))).toHaveLength(
-        2,
+        1,
       );
       expect(logLines.filter((line) => line.startsWith("exit:"))).toHaveLength(
-        1,
+        0,
       );
       expect(
         logLines.some(

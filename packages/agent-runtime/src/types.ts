@@ -216,12 +216,6 @@ export interface AgentRuntimeBridgeLaunch {
 export interface EnsureProviderArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
-  /**
-   * Providers with thread-scoped processes use this to start the process for a
-   * specific bb thread. Omit it for provider-scoped maintenance work such as
-   * model listing.
-   */
-  forThreadId?: string;
   providerId: string;
 }
 

@@ -428,7 +428,11 @@ describe("CommandRouter", () => {
     await runtimeManager.shutdownAll();
   });
 
-  it("does not route separate codex threads through one provider process lane", async () => {
+  it("routes every codex thread through the provider's one process lane", async () => {
+    // One process per provider artifact (the codex bridge supervises its own
+    // per-thread children): a thread.stop holds the codex process's write
+    // lane for the length of its dispatch, and another codex thread's
+    // turn.submit waits on it, exactly as for every other provider.
     const harness = createHarness({ workspacePath: "/tmp/env-router" });
     await harness.manager.ensureEnvironment({
       environmentId: "env-router",
@@ -477,12 +481,13 @@ describe("CommandRouter", () => {
     });
     await flushAsyncWork();
 
-    expect(harness.runtimeState.ranTurnText).toBe("codex other thread");
-    const turnResponse = await turnTask;
-    expect(turnResponse.ok).toBe(true);
+    expect(harness.runtimeState.ranTurnText).not.toBe("codex other thread");
 
     releaseStop.resolve();
     const stopResponse = await stopTask;
     expect(stopResponse.ok).toBe(true);
+    const turnResponse = await turnTask;
+    expect(turnResponse.ok).toBe(true);
+    expect(harness.runtimeState.ranTurnText).toBe("codex other thread");
   });
 });
