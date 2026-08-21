@@ -1,6 +1,6 @@
 {
   "_comment": "Provider-literal ratchet (G1). Per-file occurrence count of provider-ID references in core. May only go DOWN. Regenerate: node scripts/check-provider-literal-ratchet.mjs --write. Delete this file and the guard when empty.",
-  "total": 213,
+  "total": 209,
   "files": {
     "apps/app/src/components/pickers/model-brand-prefix.ts": 2,
     "apps/app/src/components/pickers/model-load-error-message.tsx": 1,
@@ -31,7 +31,6 @@
     "apps/server/src/services/system/provider-bridge-launch.ts": 5,
     "apps/server/src/services/threads/provider-command-typeahead.ts": 2,
     "apps/server/src/services/threads/thread-commands.ts": 6,
-    "apps/server/src/services/threads/thread-default-policy.ts": 4,
     "apps/server/src/services/threads/thread-edit-message.ts": 2,
     "packages/agent-runtime/src/bridge-protocol-adapter.ts": 1,
     "packages/agent-runtime/src/execution-options.ts": 1,

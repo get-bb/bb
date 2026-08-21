@@ -52,6 +52,7 @@ const EXCLUDED_SEGMENTS = new Set([
   ".ladle",
   ".storybook",
   "stories",
+  "dev", // dev-only fixture screens (apps/mobile/src/screens/dev)
 ]);
 const EXCLUDED_PREFIXES = [join("plugins", "provider-"), join("examples", "")];
 const EXCLUDED_FILE_RE =
