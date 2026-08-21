@@ -14,9 +14,9 @@ import { dirname, isAbsolute, join, relative } from "node:path";
 import { derivePluginId, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { loadPluginSdkDeclarations } from "./plugin-sdk-dts.js";
 import {
+  PLUGIN_SHIMMED_TYPE_DEPENDENCIES,
   PLUGIN_STARTER_DEPENDENCIES,
   PLUGIN_STARTER_FILES,
-  PLUGIN_STARTER_TYPE_DEPENDENCIES,
 } from "./generated/plugin-starter-files.generated.js";
 
 /**
@@ -306,6 +306,9 @@ export async function migratePluginToPackageLayout(
   const { rootDir, sdkVersion, dryRun = false } = args;
   const manifestPlan = await planManifest(rootDir, sdkVersion, {
     raiseFloor: true,
+    // The migration is the SDK layout switch; `bb plugin types` owns the
+    // shimmed-package pins once the plugin is on the package layout.
+    shimmedTypePins: "none",
   });
   const typesPlan = await planVendoredDeletions(rootDir);
   // The `types` include entries only stop being the author's once the
@@ -501,8 +504,25 @@ interface SetPluginSdkPinArgs {
   rootDir: string;
   /** Exact version to pin `@get-bb/plugin-sdk` to. */
   sdkVersion: string;
+  /**
+   * Whether the manifest declares a `bb.app` frontend. An app plugin gets
+   * every runtime-shimmed package declared for types (see
+   * {@link PLUGIN_SHIMMED_TYPE_DEPENDENCIES}); a headless one only has the
+   * shimmed packages it already declares repinned.
+   */
+  app: boolean;
   /** Report the change without writing (`bb plugin types --check`). */
   dryRun?: boolean;
+}
+
+/** One shimmed package {@link setPluginSdkPin} brought to the host's version. */
+export interface ShimmedTypePinChange {
+  name: string;
+  /** Previously declared range, or null when the package was not declared. */
+  from: string | null;
+  to: string;
+  /** Whether the declaration was moved out of `dependencies`. */
+  movedFromDependencies: boolean;
 }
 
 /** What {@link setPluginSdkPin} changed. */
@@ -517,11 +537,14 @@ interface PluginSdkPinChange {
    * `devDependencies`, collapsing a manifest that declared it in both.
    */
   movedFromDependencies: boolean;
+  /** Runtime-shimmed packages repinned, moved, or added (types only). */
+  shimmedTypePins: ShimmedTypePinChange[];
 }
 
 /**
  * Point a package-layout plugin's `@get-bb/plugin-sdk` devDependency at
- * `sdkVersion` exactly, leaving `engines.bbPluginSdk` alone.
+ * `sdkVersion` exactly, leaving `engines.bbPluginSdk` alone, and bring the
+ * runtime-shimmed packages' type-only devDependencies to the host's versions.
  *
  * `bb plugin types` is the command that keeps a plugin's declarations matched
  * to the bb actually running it. Under the vendored layout it rewrote
@@ -530,28 +553,49 @@ interface PluginSdkPinChange {
  * deliberately untouched: it states what the plugin's *source* requires, and
  * merely reading newer declarations does not raise that.
  *
- * Returns null when the manifest already pins this version in the right
- * section.
+ * The shimmed packages (sonner, vaul, the portaling radix families, ...) are
+ * the other half of the host-provided surface: `bb plugin build` swaps their
+ * imports for the host's copies, so the declarations a plugin typechecks
+ * against must be the host's versions too, and they belong in
+ * `devDependencies` for the same reason the SDK does (#2072).
+ *
+ * Returns null when the manifest already matches.
  */
 export async function setPluginSdkPin(
   args: SetPluginSdkPinArgs,
 ): Promise<PluginSdkPinChange | null> {
-  const { rootDir, sdkVersion, dryRun = false } = args;
-  const plan = await planManifest(rootDir, sdkVersion, { raiseFloor: false });
+  const { rootDir, sdkVersion, app, dryRun = false } = args;
+  const plan = await planManifest(rootDir, sdkVersion, {
+    raiseFloor: false,
+    shimmedTypePins: app ? "all" : "declared",
+  });
   if (plan.text === null) return null;
   if (!dryRun) {
     await writeJsonFileAtomically(rootDir, "package.json", plan.text);
   }
-  return { pin: plan.pin, movedFromDependencies: plan.movedFromDependencies };
+  return {
+    pin: plan.pin,
+    movedFromDependencies: plan.movedFromDependencies,
+    shimmedTypePins: plan.shimmedTypePins,
+  };
 }
 
 interface ManifestPlan {
   pin: { from: string | null; to: string } | null;
   movedFromDependencies: boolean;
+  shimmedTypePins: ShimmedTypePinChange[];
   enginesFloor: { from: string | null; to: string } | null;
   /** Replacement file text, or null when the manifest already matches. */
   text: string | null;
 }
+
+/**
+ * Which runtime-shimmed packages {@link planManifest} brings to the host's
+ * version: none (`bb plugin migrate`, whose plan is the SDK switch alone),
+ * the ones the manifest already declares, or every one (an app plugin, whose
+ * source may import any of them).
+ */
+type ShimmedTypePinPolicy = "none" | "declared" | "all";
 
 /**
  * Compute the package.json rewrite. Parsing failures throw here rather than
@@ -561,7 +605,7 @@ interface ManifestPlan {
 async function planManifest(
   rootDir: string,
   sdkVersion: string,
-  options: { raiseFloor: boolean },
+  options: { raiseFloor: boolean; shimmedTypePins: ShimmedTypePinPolicy },
 ): Promise<ManifestPlan> {
   const path = join(rootDir, "package.json");
   await statNoFollow(path, "package.json");
@@ -614,6 +658,11 @@ async function planManifest(
     );
   }
 
+  const shimmedTypePins = applyShimmedTypePins(
+    manifest,
+    options.shimmedTypePins,
+  );
+
   let enginesFloor: ManifestPlan["enginesFloor"] = null;
   if (options.raiseFloor) {
     const engines = asRecord(manifest.engines);
@@ -625,10 +674,16 @@ async function planManifest(
     }
   }
 
-  if (pin === null && !movedFromDependencies && enginesFloor === null) {
+  if (
+    pin === null &&
+    !movedFromDependencies &&
+    shimmedTypePins.length === 0 &&
+    enginesFloor === null
+  ) {
     return {
       pin: null,
       movedFromDependencies: false,
+      shimmedTypePins: [],
       enginesFloor: null,
       text: null,
     };
@@ -636,9 +691,66 @@ async function planManifest(
   return {
     pin,
     movedFromDependencies,
+    shimmedTypePins,
     enginesFloor,
     text: reserialize(raw, manifest),
   };
+}
+
+/**
+ * Bring the runtime-shimmed packages' declarations to the host's versions,
+ * in place: each one ends up in `devDependencies` at the range the host app
+ * declares, and a copy in `dependencies` is removed — `bb plugin build`
+ * never reads it from node_modules, so a runtime declaration only installs a
+ * second copy of a singleton. Same rules as the SDK pin: the host's range in
+ * the right section is left alone; a drifted range, a wrong section, or
+ * (under `"all"`) a missing declaration is a change.
+ */
+function applyShimmedTypePins(
+  manifest: Record<string, unknown>,
+  policy: ShimmedTypePinPolicy,
+): ShimmedTypePinChange[] {
+  if (policy === "none") return [];
+  const changes: ShimmedTypePinChange[] = [];
+  const deps = asRecord(manifest.dependencies);
+  let devDeps = asRecord(manifest.devDependencies);
+  let depsChanged = false;
+  for (const [name, hostVersion] of Object.entries(
+    PLUGIN_SHIMMED_TYPE_DEPENDENCIES,
+  )) {
+    const runtimeDeclared = deps[name];
+    const devDeclared = devDeps[name];
+    const inDependencies = typeof runtimeDeclared === "string";
+    const declared =
+      typeof devDeclared === "string"
+        ? devDeclared
+        : inDependencies
+          ? runtimeDeclared
+          : null;
+    if (declared === null && policy === "declared") continue;
+    if (declared === hostVersion && !inDependencies) continue;
+    changes.push({
+      name,
+      from: declared,
+      to: hostVersion,
+      movedFromDependencies: inDependencies,
+    });
+    if (inDependencies) {
+      delete deps[name];
+      depsChanged = true;
+    }
+    devDeps = insertDependency(devDeps, name, hostVersion);
+  }
+  if (changes.length === 0) return [];
+  if (depsChanged) {
+    if (Object.keys(deps).length === 0) {
+      delete manifest.dependencies;
+    } else {
+      manifest.dependencies = deps;
+    }
+  }
+  manifest.devDependencies = devDeps;
+  return changes;
 }
 
 /**
@@ -1640,8 +1752,11 @@ Run \`npm install\` once before \`bb plugin build\` — the vendored components'
 npm deps bundle into your dist. React, and BB-shimmed packages like the
 radix portal primitives and \`sonner\` (\`import { toast } from "sonner"\`
 reaches BB's own toaster), are provided by the BB app at runtime and never
-bundled. Ship \`dist/\` (npm tarball or committed for git installs) so
-people installing your plugin never need npm.
+bundled. Every shimmed package is declared in \`devDependencies\` at the
+host's version so those imports typecheck; keep them there (never in
+\`dependencies\`, which would bundle a second copy), and \`bb plugin types\`
+repins them alongside the SDK. Ship \`dist/\` (npm tarball or committed for
+git installs) so people installing your plugin never need npm.
 
 ## Manifest
 
@@ -1797,8 +1912,11 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
           "better-sqlite3": "^12.0.0",
           hono: "^4.11.9",
           typescript: "^5.7.0",
-          // Runtime-shimmed by BB (never bundled) — types only.
-          ...PLUGIN_STARTER_TYPE_DEPENDENCIES,
+          // Every package BB shims to its own runtime (never bundled), at
+          // the host's version — types only, so each documented "import
+          // freely" specifier resolves for tsc and the editor. `bb plugin
+          // types` keeps these matched to the BB you run, like the SDK pin.
+          ...PLUGIN_SHIMMED_TYPE_DEPENDENCIES,
         },
       },
       null,

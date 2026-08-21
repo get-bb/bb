@@ -922,7 +922,11 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin types [path]` — sync the plugin's `@get-bb/plugin-sdk` surface
     to the running bb (default: cwd). For a plugin that depends on the npm
     package it rewrites the exact `devDependencies` pin to this bb's SDK
-    version (reporting old → new, and reminding you to `npm install`); for a
+    version and brings the type-only devDependencies of the packages bb shims
+    at runtime (sonner, vaul, the portal radix families, @pierre/diffs, clsx,
+    tailwind-merge, class-variance-authority) to this bb's versions — adding
+    any an app plugin is missing and moving one out of `dependencies`
+    (reporting old → new, and reminding you to `npm install`); for a
     plugin that still vendors declarations it rewrites `types/*.d.ts`, creating
     `types/` when absent. Run it in a cloned or older plugin: the SDK surface
     grows every release. `--check` writes nothing and exits non-zero on a

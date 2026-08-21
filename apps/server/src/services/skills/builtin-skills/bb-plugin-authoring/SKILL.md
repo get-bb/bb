@@ -58,7 +58,13 @@ The manifest is `package.json`:
   `devDependencies` makes the plugin uninstallable from git, and unbuildable
   after any install that omits dev deps — including the packaged CLI's own,
   which runs npm under `NODE_ENV=production`. `devDependencies` is for types
-  and tooling only.
+  and tooling only — including every package bb shims at runtime (sonner,
+  vaul, the portal radix families, @pierre/diffs, clsx, tailwind-merge,
+  class-variance-authority): the build never bundles them, but `tsc` still
+  resolves their declarations through node_modules, so each one you import
+  needs a `devDependencies` entry at the host's version (`bb plugin new`
+  writes all of them; `bb plugin types` repins them). Never put one in
+  `dependencies` — that bundles a second copy beside the host's.
 - `bb.host` (optional, singular) — full-trust Node 22 ESM entry bundled into
   `dist/host.js` + source map + `host.meta.json`. Its owning server entry calls
   it through typed host RPC. The daemon downloads it lazily, verifies its
@@ -198,7 +204,10 @@ does not cover:
 1. **`bb plugin types`**, run in the plugin directory (or given its path),
    syncs that plugin's SDK surface to the running bb — no server needed. For a
    plugin that depends on the npm package it repins the exact
-   `@get-bb/plugin-sdk` devDependency to this bb's SDK version (run
+   `@get-bb/plugin-sdk` devDependency to this bb's SDK version and brings the
+   runtime-shimmed packages' type-only devDependencies (sonner, vaul, the
+   portal radix families, ...) to the versions this bb ships — adding any an
+   app plugin is missing and moving one out of `dependencies` (run
    `npm install` after); for an older plugin that still vendors `types/*.d.ts`
    it rewrites those declarations. Either way a cloned or older plugin can be
    thousands of lines behind. `--check` reports a mismatch without writing;
@@ -2441,7 +2450,13 @@ only `definePluginApp` + the hooks):
   `-tooltip`, `-navigation-menu`), `sonner`, `vaul`, `@pierre/diffs` (+
   `/react`). Your vendored overlays therefore share the host's
   dismissable-layer/focus/scroll-lock world — stacking against host
-  overlays behaves correctly.
+  overlays behaves correctly. "Import freely" is about the bundle: `tsc`
+  still needs each one's declarations in `node_modules`, so every shimmed
+  package is a **type-only `devDependencies` entry at the host's version**
+  (the scaffold declares all of them; `bb plugin types` repins them; `bb
+  plugin types --check` reports drift). Never list one in `dependencies` —
+  the build would not read it, and a git install would bundle a second
+  copy of a singleton.
 - Also never bundled, for size rather than singleton reasons: `clsx`,
   `tailwind-merge`, and `class-variance-authority`. Your app bundle uses the
   host's installed copies (tailwind-merge ^3, clsx ^2, cva ^0.7), so keep

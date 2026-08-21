@@ -1345,7 +1345,7 @@ export function registerPluginCommands(
   plugin
     .command("types [path]")
     .description(
-      "Sync a plugin's @get-bb/plugin-sdk surface to the running bb (default: cwd): repin the npm devDependency for plugins that depend on the package, or rewrite the vendored types/ declarations for plugins that still carry them",
+      "Sync a plugin's @get-bb/plugin-sdk surface to the running bb (default: cwd): repin the npm devDependency and the type-only devDependencies of the packages bb shims at runtime (sonner, vaul, the portal radix families, ...) for plugins that depend on the package, or rewrite the vendored types/ declarations for plugins that still carry them",
     )
     .option(
       "--check",
@@ -1371,6 +1371,7 @@ export function registerPluginCommands(
             const pending = await setPluginSdkPin({
               rootDir,
               sdkVersion: PLUGIN_SDK_VERSION,
+              app: hasApp,
               dryRun: true,
             });
             if (pending === null) {
@@ -1379,20 +1380,30 @@ export function registerPluginCommands(
               );
               return;
             }
-            console.error(
-              pending.pin === null
-                ? 'Move "@get-bb/plugin-sdk" from dependencies to devDependencies — bb provides its runtime (`bb plugin types` does it for you).'
-                : `Set "@get-bb/plugin-sdk" to ${PLUGIN_SDK_VERSION} in devDependencies and re-run npm install (\`bb plugin types\` does it for you).`,
-            );
+            if (pending.pin !== null || pending.movedFromDependencies) {
+              console.error(
+                pending.pin === null
+                  ? 'Move "@get-bb/plugin-sdk" from dependencies to devDependencies — bb provides its runtime (`bb plugin types` does it for you).'
+                  : `Set "@get-bb/plugin-sdk" to ${PLUGIN_SDK_VERSION} in devDependencies and re-run npm install (\`bb plugin types\` does it for you).`,
+              );
+            }
+            for (const shim of pending.shimmedTypePins) {
+              console.error(
+                shim.movedFromDependencies
+                  ? `Move "${shim.name}" from dependencies to devDependencies at ${shim.to} — bb shims it at runtime and never bundles it (\`bb plugin types\` does it for you).`
+                  : `Set "${shim.name}" to ${shim.to} in devDependencies — the version this bb shims at runtime (\`bb plugin types\` does it for you).`,
+              );
+            }
             process.exit(1);
           }
           const changed = await setPluginSdkPin({
             rootDir,
             sdkVersion: PLUGIN_SDK_VERSION,
+            app: hasApp,
           });
           if (changed === null) {
             console.log(
-              `@get-bb/plugin-sdk is already pinned to ${PLUGIN_SDK_VERSION} — this bb's SDK version.`,
+              `@get-bb/plugin-sdk is already pinned to ${PLUGIN_SDK_VERSION} — this bb's SDK version${hasApp ? ", and the runtime-shimmed packages are at this bb's versions" : ""}.`,
             );
             console.log(
               "The declarations are in node_modules/@get-bb/plugin-sdk/bundled-types/ — read them for exact signatures.",
@@ -1409,6 +1420,13 @@ export function registerPluginCommands(
             // npm install a second copy that shadows the pinned one.
             console.log(
               "Moved @get-bb/plugin-sdk from dependencies to devDependencies.",
+            );
+          }
+          for (const shim of changed.shimmedTypePins) {
+            // Same reasoning as the SDK: bb shims these at runtime, so they
+            // are declared for types only, at the versions bb itself ships.
+            console.log(
+              `${shim.name}: ${shim.from ?? "(not declared)"} → ${shim.to} in devDependencies${shim.movedFromDependencies ? " (moved from dependencies)" : ""}.`,
             );
           }
           // The new pin has to resolve for the declarations to land, so the

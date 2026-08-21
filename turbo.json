@@ -301,6 +301,7 @@
         "scripts/generate-plugin-scaffold.mjs",
         "scripts/write-generated.mjs",
         "$TURBO_ROOT$/apps/app/package.json",
+        "$TURBO_ROOT$/packages/plugin-build/src/runtime-shims.mjs",
         "$TURBO_ROOT$/packages/plugin-registry/r/**"
       ],
       "outputs": ["src/generated/plugin-starter-files.generated.ts"]
@@ -312,6 +313,7 @@
       "inputs": [
         "scripts/generate-plugin-theme.mjs",
         "scripts/generate-runtime-export-manifest.mjs",
+        "src/runtime-shims.mjs",
         "$TURBO_ROOT$/apps/app/package.json",
         "$TURBO_ROOT$/apps/app/src/components/ui/theme.css",
         "$TURBO_ROOT$/packages/plugin-sdk/src/**",
