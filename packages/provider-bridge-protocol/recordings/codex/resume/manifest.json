@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "resume",
+  "threadId": "thr_rsjqcswyh2",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.149.0",
+  "recordedAt": "2026-08-21",
+  "description": "A turn, a release stop, then a new turn that resumes the session.",
+  "note": "",
+  "bridgeRuns": 2,
+  "lines": {
+    "runtime→bridge": 6,
+    "bridge→runtime": 27,
+    "provider→bridge": 51,
+    "bridge→provider": 10
+  }
+}

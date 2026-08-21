@@ -1,0 +1,17 @@
+{
+  "provider": "claude-code",
+  "cell": "approval-deny",
+  "threadId": "thr_zqtyjdxxwh",
+  "scope": "thread",
+  "cliVersion": "Claude Code 2.1.238 (Agent SDK 0.3.197)",
+  "recordedAt": "2026-08-21",
+  "description": "accept-edits mode; an out-of-sandbox command denied.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 3,
+    "bridge→runtime": 13,
+    "provider→bridge": 39,
+    "bridge→provider": 8
+  }
+}

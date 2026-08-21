@@ -1,0 +1,17 @@
+{
+  "provider": "pi",
+  "cell": "web-search",
+  "threadId": "thr_gck2qwkakt",
+  "scope": "thread",
+  "cliVersion": "@earendil-works/pi-coding-agent 0.84.0 (in-process)",
+  "recordedAt": "2026-08-21",
+  "description": "A turn that uses web search or fetch (or a shell fallback).",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 2,
+    "bridge→runtime": 17,
+    "provider→bridge": 91,
+    "bridge→provider": 1
+  }
+}

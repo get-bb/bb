@@ -1,0 +1,1 @@
+{"ts":1787277411907,"run":1787275054108,"seq":3033,"dir":"bridge→runtime","line":"{\"jsonrpc\":\"2.0\",\"id\":160,\"error\":{\"code\":-32000,\"message\":\"ACP agent \\\"cursor-agent acp\\\" does not advertise session/fork support.\"}}"}

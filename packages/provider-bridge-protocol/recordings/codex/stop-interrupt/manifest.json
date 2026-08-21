@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "stop-interrupt",
+  "threadId": "thr_96xaqmfm8x",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.149.0",
+  "recordedAt": "2026-08-21",
+  "description": "A turn interrupted by thread/stop, then a new turn on the resumed session.",
+  "note": "",
+  "bridgeRuns": 2,
+  "lines": {
+    "runtime→bridge": 6,
+    "bridge→runtime": 33,
+    "provider→bridge": 61,
+    "bridge→provider": 11
+  }
+}

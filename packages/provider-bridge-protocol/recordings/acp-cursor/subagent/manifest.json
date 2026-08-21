@@ -1,0 +1,17 @@
+{
+  "provider": "acp-cursor",
+  "cell": "subagent",
+  "threadId": "thr_s3sef2qkmj",
+  "scope": "thread",
+  "cliVersion": "cursor-agent 2026.08.11-e8db854",
+  "recordedAt": "2026-08-21",
+  "description": "The agent delegates one task to a subagent (where the provider has one).",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 2,
+    "bridge→runtime": 47,
+    "provider→bridge": 46,
+    "bridge→provider": 4
+  }
+}

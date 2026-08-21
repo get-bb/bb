@@ -1,0 +1,2 @@
+{"ts":1787279781830,"run":1787279780925,"seq":4,"dir":"bridge→provider","line":"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"clientInfo\":{\"name\":\"bb\",\"version\":\"1.0.0\",\"title\":null},\"capabilities\":{\"experimentalApi\":true}}}"}
+{"ts":1787279782755,"run":1787279780925,"seq":6,"dir":"bridge→provider","line":"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"model/list\",\"params\":{}}"}

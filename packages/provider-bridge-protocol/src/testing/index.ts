@@ -5,3 +5,5 @@
  */
 export * from "./bridge-json-rpc-test-helpers.js";
 export * from "./calibration-diff.js";
+export * from "./parity.js";
+export * from "./recording.js";

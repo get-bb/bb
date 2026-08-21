@@ -1,0 +1,17 @@
+{
+  "provider": "claude-code",
+  "cell": "model-list",
+  "threadId": null,
+  "scope": "process",
+  "cliVersion": "Claude Code 2.1.238 (Agent SDK 0.3.197)",
+  "recordedAt": "2026-08-21",
+  "description": "Process-scoped model/list probe.",
+  "note": "model/list at 1787279430591986546",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 3,
+    "bridge→runtime": 3,
+    "provider→bridge": 0,
+    "bridge→provider": 0
+  }
+}

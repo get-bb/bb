@@ -1,0 +1,3 @@
+{"ts":1787275084746,"run":1787275055276,"seq":340,"dir":"bridge→provider","line":"{\"method\":\"prompt\",\"params\":{\"text\":\"Count from 1 to 40 out loud, one number per message line, and run `sleep 2` in the shell between every number. Do not stop early.\",\"streamingBehavior\":\"followUp\",\"imageCount\":0}}"}
+{"ts":1787275113817,"run":1787275055276,"seq":507,"dir":"bridge→provider","line":"{\"method\":\"prompt\",\"params\":{\"text\":\"Stop counting now. Instead, tell me the current git branch name and finish.\",\"streamingBehavior\":\"steer\",\"imageCount\":0}}"}
+{"ts":1787279502751,"run":1787275055276,"seq":1491,"dir":"bridge→provider","line":"{\"method\":\"compact\"}"}

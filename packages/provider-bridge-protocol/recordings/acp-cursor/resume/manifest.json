@@ -1,0 +1,17 @@
+{
+  "provider": "acp-cursor",
+  "cell": "resume",
+  "threadId": "thr_zp8sk7kkyf",
+  "scope": "thread",
+  "cliVersion": "cursor-agent 2026.08.11-e8db854",
+  "recordedAt": "2026-08-21",
+  "description": "A turn, a release stop, then a new turn that resumes the session.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 5,
+    "bridge→runtime": 22,
+    "provider→bridge": 19,
+    "bridge→provider": 6
+  }
+}

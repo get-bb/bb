@@ -1,0 +1,17 @@
+{
+  "provider": "claude-code",
+  "cell": "turn-tools",
+  "threadId": "thr_9yphp3jwc5",
+  "scope": "thread",
+  "cliVersion": "Claude Code 2.1.238 (Agent SDK 0.3.197)",
+  "recordedAt": "2026-08-21",
+  "description": "One turn: read a file, edit it, run a shell command.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 2,
+    "bridge→runtime": 13,
+    "provider→bridge": 50,
+    "bridge→provider": 9
+  }
+}

@@ -28,6 +28,11 @@
       "types": "./src/testing/index.ts",
       "default": "./src/testing/index.ts"
     },
+    "./testing/parity": {
+      "source": "./src/testing/parity-entry.ts",
+      "types": "./src/testing/parity-entry.ts",
+      "default": "./src/testing/parity-entry.ts"
+    },
     "./bridge-worker-entry": {
       "source": "./src/bridge-worker-entry.ts",
       "types": "./src/bridge-worker-entry.ts",

@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "turn-tools",
+  "threadId": "thr_svpp9yrm7p",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.149.0",
+  "recordedAt": "2026-08-21",
+  "description": "One turn: read a file, edit it, run a shell command.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 3,
+    "bridge→runtime": 47,
+    "provider→bridge": 72,
+    "bridge→provider": 5
+  }
+}

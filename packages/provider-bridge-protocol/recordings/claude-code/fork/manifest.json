@@ -1,0 +1,17 @@
+{
+  "provider": "claude-code",
+  "cell": "fork",
+  "threadId": "thr_a7w5btqn3h",
+  "scope": "thread",
+  "cliVersion": "Claude Code 2.1.238 (Agent SDK 0.3.197)",
+  "recordedAt": "2026-08-21",
+  "description": "A thread forked from a resumed source thread, then one turn.",
+  "note": "fork of thr_5p9ar8jadb",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 2,
+    "bridge→runtime": 9,
+    "provider→bridge": 20,
+    "bridge→provider": 5
+  }
+}

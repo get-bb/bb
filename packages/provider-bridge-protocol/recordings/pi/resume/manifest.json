@@ -1,0 +1,17 @@
+{
+  "provider": "pi",
+  "cell": "resume",
+  "threadId": "thr_7mq98ky59s",
+  "scope": "thread",
+  "cliVersion": "@earendil-works/pi-coding-agent 0.84.0 (in-process)",
+  "recordedAt": "2026-08-21",
+  "description": "A turn, a release stop, then a new turn that resumes the session.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 5,
+    "bridge→runtime": 21,
+    "provider→bridge": 24,
+    "bridge→provider": 3
+  }
+}

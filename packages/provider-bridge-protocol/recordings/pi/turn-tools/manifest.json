@@ -1,0 +1,17 @@
+{
+  "provider": "pi",
+  "cell": "turn-tools",
+  "threadId": "thr_xc2ssvyvdk",
+  "scope": "thread",
+  "cliVersion": "@earendil-works/pi-coding-agent 0.84.0 (in-process)",
+  "recordedAt": "2026-08-21",
+  "description": "One turn: read a file, edit it, run a shell command.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 2,
+    "bridge→runtime": 38,
+    "provider→bridge": 289,
+    "bridge→provider": 1
+  }
+}

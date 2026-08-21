@@ -1,0 +1,3 @@
+{"ts":1787277372856,"run":1787275055276,"seq":1305,"dir":"bridge→provider","line":"{\"method\":\"prompt\",\"params\":{\"text\":\"Reply with the single word ready.\",\"streamingBehavior\":\"followUp\",\"imageCount\":0}}"}
+{"ts":1787277384463,"run":1787275055276,"seq":1326,"dir":"bridge→provider","line":"{\"method\":\"abort\"}"}
+{"ts":1787277393637,"run":1787275055276,"seq":1333,"dir":"bridge→provider","line":"{\"method\":\"prompt\",\"params\":{\"text\":\"What word did you reply with in your previous message? Reply with that word only.\",\"streamingBehavior\":\"followUp\",\"imageCount\":0}}"}

@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "compaction",
+  "threadId": "thr_9q2wgzsbad",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.149.0",
+  "recordedAt": "2026-08-21",
+  "description": "A thread compacted after a turn (/compact).",
+  "note": "compact on steer thread",
+  "bridgeRuns": 2,
+  "lines": {
+    "runtime→bridge": 6,
+    "bridge→runtime": 86,
+    "provider→bridge": 137,
+    "bridge→provider": 11
+  }
+}

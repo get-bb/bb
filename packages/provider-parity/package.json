@@ -1,0 +1,33 @@
+{
+  "name": "@bb/provider-parity",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "parity": "node --conditions=source --import tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@bb/agent-runtime": "workspace:*",
+    "@bb/domain": "workspace:*",
+    "@bb/provider-bridge-protocol": "workspace:*",
+    "@bb/thread-view": "workspace:*"
+  },
+  "devDependencies": {
+    "@bb/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "vitest": "^4.1.1"
+  }
+}

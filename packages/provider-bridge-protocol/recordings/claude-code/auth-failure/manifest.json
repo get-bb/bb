@@ -1,0 +1,17 @@
+{
+  "provider": "claude-code",
+  "cell": "auth-failure",
+  "threadId": "thr_9e3ukzazz3",
+  "scope": "thread",
+  "cliVersion": "Claude Code 2.1.238 (Agent SDK 0.3.197)",
+  "recordedAt": "2026-08-21",
+  "description": "A turn against an empty provider config home (401 / not logged in).",
+  "note": "daemon started with empty CODEX_HOME / CLAUDE_CONFIG_DIR",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 2,
+    "bridge→runtime": 7,
+    "provider→bridge": 11,
+    "bridge→provider": 5
+  }
+}

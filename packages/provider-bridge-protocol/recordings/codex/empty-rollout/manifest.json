@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "empty-rollout",
+  "threadId": "thr_es6zgj4gt7",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.149.0",
+  "recordedAt": "2026-08-21",
+  "description": "codex: resume after the rollout file was truncated to zero bytes.",
+  "note": "rollout file truncated to 0 bytes before resume",
+  "bridgeRuns": 2,
+  "lines": {
+    "runtime→bridge": 4,
+    "bridge→runtime": 16,
+    "provider→bridge": 34,
+    "bridge→provider": 9
+  }
+}
