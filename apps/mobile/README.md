@@ -790,7 +790,13 @@ push key); nobody needs a local Xcode signing setup to ship.
   `eas build -p ios --profile <profile> [--auto-submit]` with
   `EXPO_TOKEN`. EAS builds, then uploads to TestFlight; the job waits for
   both and fails when either fails. Logs are on expo.dev under the project's
-  Builds and Submissions (the run summary links them).
+  Builds and Submissions (the run summary links them). After a submit, the
+  job runs `scripts/testflight-distribute.mjs`, which waits for App Store
+  Connect to process the build, submits it for Beta App Review when it has
+  none, and adds it to the external group named by the `external_group`
+  input (default `External testers`; empty skips the step). Run the script
+  by hand with `node scripts/testflight-distribute.mjs --version X.Y.Z
+  --build N` from `apps/mobile` with the `.p8` in place.
   Run it alone from the Actions tab ("Mobile iOS (EAS)") or
   `gh workflow run mobile-ios-eas.yml -f profile=production -f submit=true`.
   The nightly `publish-bb-app.yml` calls the same workflow after the npm
@@ -822,10 +828,10 @@ App Store Connect finishes processing it, usually within 30 minutes. The group
 **External testers** need a Beta App Review on the first build of each
 marketing version, and Apple usually auto-approves later builds of that
 version. The nightly keeps one marketing version for this reason (see "CI"
-above). Turn on "Automatically distribute builds" on the external group so new
-nightly builds reach it without a manual step. Before a build can go to an
-external group,
-App Store Connect needs all of this:
+above). Apple offers "Automatically distribute builds" only for internal
+groups, so the CI distribute step adds each submitted build to the external
+group through the App Store Connect API. Before a build can go to an external
+group, App Store Connect needs all of this:
 
 - **Test Information** (`betaAppLocalizations`): a feedback email, a beta
   description, and the privacy policy URL <https://getbb.app/privacy>. Per
@@ -865,11 +871,9 @@ Write to <EMAIL> if the server does not respond.
 Rehearse it before submitting: hand a colleague a phone that has never run bb,
 give them only these notes, and check that they reach a thread.
 
-The marketing version climbs on every nightly, because the EAS job writes the
-npm version into `app.json`. A new version string is more likely to trigger a
-fresh Beta App Review than another build of the same version. If external
-testers become the main audience, pin the TestFlight marketing version and let
-the EAS build number tell nightlies apart.
+The nightly keeps the marketing version in `app.json` and lets the EAS build
+number tell nightlies apart, because a new version string triggers a fresh
+Beta App Review and another build of the same version usually does not.
 
 ## Local state
 

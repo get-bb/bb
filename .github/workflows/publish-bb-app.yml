@@ -743,6 +743,7 @@ jobs:
       # EAS build number tells nightly builds apart and later builds skip
       # the review.
       version: ""
+      external_group: External testers
     secrets:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
