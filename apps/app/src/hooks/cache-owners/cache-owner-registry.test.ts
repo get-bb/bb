@@ -117,6 +117,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "ArchivedThreadsListFilters",
     "ENVIRONMENT_WORK_STATUS_QUERY_KEY",
     "EnvironmentWorkStatusQueryKey",
+    "SIDEBAR_NAVIGATION_QUERY_KEY",
     "THREADS_QUERY_KEY",
     "ThreadListQueryFilters",
     "environmentDiffFilesQueryKeyPrefix",

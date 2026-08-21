@@ -27,6 +27,7 @@ import {
   prepareReadyThreadTurnCommand,
 } from "./thread-lifecycle.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
+import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
 import {
   appendClientTurnEventInTransaction,
   appendPreparedClientTurnRequestedEventWithNotificationInTransaction,
@@ -337,8 +338,8 @@ async function queueReadyParentSystemMessage(
     providerId: args.thread.providerId,
     syncGeneratedTitle: false,
   });
-  let transitioned = false;
-  deps.db.transaction(
+  // The post-transition row when dispatching the message activated the thread.
+  const activeThread: Thread | null = deps.db.transaction(
     (tx) => {
       ensureThreadCanStartRequest(args.thread);
       appendPreparedClientTurnRequestedEventWithNotificationInTransaction(tx, {
@@ -357,15 +358,15 @@ async function queueReadyParentSystemMessage(
         requestId,
       });
       const dispatchKind = command.mode;
-      if (dispatchKind === "turn.submit") {
-        requireThreadLifecycleEventApplied(
-          applyLoggedThreadLifecycleEventInTransaction(
-            { db: tx, logger: deps.logger },
-            { event: { type: "run.started" }, threadId: args.thread.id },
-          ),
-        );
-        transitioned = true;
+      if (dispatchKind !== "turn.submit") {
+        return null;
       }
+      return requireThreadLifecycleEventApplied(
+        applyLoggedThreadLifecycleEventInTransaction(
+          { db: tx, logger: deps.logger },
+          { event: { type: "run.started" }, threadId: args.thread.id },
+        ),
+      );
     },
     { behavior: "immediate" },
   );
@@ -383,10 +384,12 @@ async function queueReadyParentSystemMessage(
       );
     },
   });
-  if (transitioned) {
-    deps.hub.notifyThread(args.thread.id, ["status-changed"], {
-      projectId: args.thread.projectId,
-    });
+  if (activeThread) {
+    deps.hub.notifyThread(
+      args.thread.id,
+      ["status-changed"],
+      buildThreadStatusChangeMetadata(deps, activeThread),
+    );
   }
   return true;
 }

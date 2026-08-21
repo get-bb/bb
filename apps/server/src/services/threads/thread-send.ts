@@ -43,7 +43,10 @@ import {
   requireReadyThreadEnvironment,
 } from "./thread-turn-dispatch.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
-import { resolveThreadRuntimeState } from "./thread-runtime-display.js";
+import {
+  buildThreadStatusChangeMetadata,
+  resolveThreadRuntimeState,
+} from "./thread-runtime-display.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import {
@@ -110,7 +113,8 @@ interface SendThreadMessageQueueRequestArgs {
 }
 
 interface SendThreadMessageQueueRequestResult {
-  threadBecameActive: boolean;
+  /** The post-transition row when queueing the request activated the thread. */
+  activeThread: Thread | null;
 }
 
 interface SendThreadMessageTransactionPreflight {
@@ -139,8 +143,8 @@ interface AppendAndQueueSendThreadMessageArgs {
 }
 
 interface AppendAndQueueSendThreadMessageResult {
+  activeThread: Thread | null;
   request: AppendedClientTurnRequestWithNotification;
-  threadBecameActive: boolean;
 }
 
 export function ensureThreadIsNotAwaitingUserInteraction(
@@ -337,7 +341,7 @@ function appendAndQueueSendThreadMessageInTransaction({
   target,
   thread,
 }: AppendAndQueueSendThreadMessageArgs): AppendAndQueueSendThreadMessageResult {
-  let threadBecameActive = false;
+  let activeThread: Thread | null = null;
   const request = db.transaction(
     (tx) => {
       beforeAppendInTransaction?.({ tx });
@@ -373,14 +377,14 @@ function appendAndQueueSendThreadMessageInTransaction({
         requestEventSequence: appended.sequence,
         tx,
       });
-      threadBecameActive = queueResult.threadBecameActive;
+      activeThread = queueResult.activeThread;
       return appended;
     },
     { behavior: "immediate" },
   );
   return {
+    activeThread,
     request,
-    threadBecameActive,
   };
 }
 
@@ -571,15 +575,16 @@ export async function sendThreadMessage(
           currentThread?.status === "error" ||
           currentThread?.status === "idle"
         ) {
-          requireThreadLifecycleEventApplied(
-            applyLoggedThreadLifecycleEventInTransaction(
-              { db: tx, logger: deps.logger },
-              { event: { type: "run.started" }, threadId: thread.id },
+          return {
+            activeThread: requireThreadLifecycleEventApplied(
+              applyLoggedThreadLifecycleEventInTransaction(
+                { db: tx, logger: deps.logger },
+                { event: { type: "run.started" }, threadId: thread.id },
+              ),
             ),
-          );
-          return { threadBecameActive: true };
+          };
         }
-        return { threadBecameActive: false };
+        return { activeThread: null };
       },
       requestId,
       senderThreadId,
@@ -605,10 +610,12 @@ export async function sendThreadMessage(
         );
       },
     });
-    if (queuedRequest.threadBecameActive) {
-      deps.hub.notifyThread(thread.id, ["status-changed"], {
-        projectId: thread.projectId,
-      });
+    if (queuedRequest.activeThread) {
+      deps.hub.notifyThread(
+        thread.id,
+        ["status-changed"],
+        buildThreadStatusChangeMetadata(deps, queuedRequest.activeThread),
+      );
     }
     if (shouldCaptureUserMessageSent) {
       captureUserMessageSentTelemetry(deps, thread);
@@ -650,7 +657,7 @@ export async function sendThreadMessage(
     input,
     inputGroups,
     queueInTransaction: () => {
-      return { threadBecameActive: false };
+      return { activeThread: null };
     },
     requestId,
     senderThreadId,

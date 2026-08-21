@@ -31,13 +31,13 @@ export type ThreadRuntimeDisplayStatus = z.infer<
   typeof threadRuntimeDisplayStatusSchema
 >;
 
-const threadRuntimeStateSchema = z.object({
+export const threadRuntimeStateSchema = z.object({
   displayStatus: threadRuntimeDisplayStatusSchema,
   hostReconnectGraceExpiresAt: z.number().nullable(),
 });
 export type ThreadRuntimeState = z.infer<typeof threadRuntimeStateSchema>;
 
-const threadActivityStateSchema = z.object({
+export const threadActivityStateSchema = z.object({
   activeWorkflowCount: z.number().int().nonnegative(),
   activeBackgroundAgentCount: z.number().int().nonnegative(),
   activeBackgroundCommandCount: z.number().int().nonnegative(),

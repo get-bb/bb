@@ -283,6 +283,7 @@ describe("hero plugin: slack-bot", () => {
         db: server.db,
         hub: server.hub,
         logger: testLogger,
+        providerRegistry: server.deps.providerRegistry,
       };
       applyLoggedThreadLifecycleEvent(lifecycleDeps, {
         threadId: threadId as string,

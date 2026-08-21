@@ -81,6 +81,14 @@ interface FakeVisibility extends RealtimeCacheEffectsVisibility {
   setVisible: (visible: boolean) => void;
 }
 
+const NO_THREAD_ACTIVITY = {
+  activeBackgroundAgentCount: 0,
+  activeBackgroundCommandCount: 0,
+  activeGoalCount: 0,
+  activePlanModeCount: 0,
+  activeWorkflowCount: 0,
+} as const;
+
 function createFakeVisibility(): FakeVisibility {
   let visible = true;
   const listeners = new Set<() => void>();
@@ -584,9 +592,9 @@ describe("createRealtimeCacheEffects", () => {
     await vi.advanceTimersByTimeAsync(50);
 
     // The unviewed thread's cached window is stale for its next mount...
-    expect(
-      queryClient.getQueryState(unviewedTimelineKey)?.isInvalidated,
-    ).toBe(true);
+    expect(queryClient.getQueryState(unviewedTimelineKey)?.isInvalidated).toBe(
+      true,
+    );
     const unviewedInvalidations = invalidateSpy.mock.calls.filter(
       ([filters]) =>
         JSON.stringify(filters?.queryKey) ===
@@ -1825,6 +1833,227 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
+  it("patches cached thread list status from notification metadata instead of refetching the sidebar bootstrap", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const threadListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+    const sidebarNavigationKey = sidebarNavigationQueryKey();
+    const idleRow = {
+      activity: NO_THREAD_ACTIVITY,
+      id: "thr_1",
+      latestAttentionAt: 100,
+      runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+      status: "idle",
+      updatedAt: 100,
+    };
+    const otherRow = {
+      activity: NO_THREAD_ACTIVITY,
+      id: "thr_2",
+      latestAttentionAt: 50,
+      runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+      status: "idle",
+      updatedAt: 50,
+    };
+    const threadListQueryFn = vi.fn(async () => [idleRow, otherRow]);
+    const sidebarQueryFn = vi.fn(async () => ({
+      projects: [{ threads: [idleRow, otherRow] }],
+      personalProject: { threads: [] },
+    }));
+    const observers = [
+      new QueryObserver(queryClient, {
+        queryKey: threadListKey,
+        queryFn: threadListQueryFn,
+        staleTime: Infinity,
+      }),
+      new QueryObserver(queryClient, {
+        queryKey: sidebarNavigationKey,
+        queryFn: sidebarQueryFn,
+        staleTime: Infinity,
+      }),
+    ];
+    const unsubscribers = observers.map((observer) =>
+      observer.subscribe(() => {}),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(1);
+    expect(threadListQueryFn).toHaveBeenCalledTimes(1);
+
+    // The plan-mode and goal indicators are server-computed and gated on the
+    // status, so the push carries the activity of the post-transition row.
+    const statusChange = {
+      activity: { ...NO_THREAD_ACTIVITY, activePlanModeCount: 1 },
+      latestAttentionAt: 100,
+      runtime: {
+        displayStatus: "active",
+        hostReconnectGraceExpiresAt: null,
+      },
+      status: "active",
+      updatedAt: 200,
+    } as const;
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { projectId: "project-1", statusChange },
+      changes: ["status-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(1);
+    expect(threadListQueryFn).toHaveBeenCalledTimes(1);
+    expect(
+      queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated,
+    ).not.toBe(true);
+    const sidebarThreads = queryClient.getQueryData<{
+      projects: { threads: (typeof idleRow)[] }[];
+    }>(sidebarNavigationKey)?.projects[0]?.threads;
+    expect(sidebarThreads?.[0]).toEqual({ id: "thr_1", ...statusChange });
+    // Untouched rows keep their identity so memoized sidebar rows skip work.
+    expect(sidebarThreads?.[1]).toBe(otherRow);
+    expect(
+      queryClient.getQueryData<(typeof idleRow)[]>(threadListKey)?.[0],
+    ).toEqual({ id: "thr_1", ...statusChange });
+
+    for (const unsubscribe of unsubscribers) {
+      unsubscribe();
+    }
+    effects.dispose();
+  });
+
+  it("refetches thread lists for a status change that carries no row metadata", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const sidebarNavigationKey = sidebarNavigationQueryKey();
+    const sidebarQueryFn = vi.fn(async () => ({
+      projects: [{ threads: [{ id: "thr_1", status: "idle" }] }],
+      personalProject: { threads: [] },
+    }));
+    const observer = new QueryObserver(queryClient, {
+      queryKey: sidebarNavigationKey,
+      queryFn: sidebarQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(1);
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { projectId: "project-1" },
+      changes: ["status-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+    effects.dispose();
+  });
+
+  it("restarts a sidebar fetch already in flight so its stale snapshot cannot overwrite the patched status", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const sidebarNavigationKey = sidebarNavigationQueryKey();
+    const idleRow = {
+      activity: NO_THREAD_ACTIVITY,
+      id: "thr_1",
+      latestAttentionAt: 100,
+      runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+      status: "idle",
+      updatedAt: 100,
+    };
+    const activeRow = {
+      ...idleRow,
+      runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+      status: "active",
+      updatedAt: 200,
+    };
+    // The first fetch (driven by an earlier title change) was answered by the
+    // server before the thread became active; a fetch started after the
+    // status push sees the active row.
+    let activated = false;
+    const responses: { activated: boolean; resolve: () => void }[] = [];
+    const sidebarQueryFn = vi.fn(
+      () =>
+        new Promise<{
+          projects: { threads: (typeof idleRow)[] }[];
+          personalProject: { threads: never[] };
+        }>((resolve) => {
+          const snapshot = activated ? activeRow : idleRow;
+          responses.push({
+            activated,
+            resolve: () =>
+              resolve({
+                projects: [{ threads: [snapshot] }],
+                personalProject: { threads: [] },
+              }),
+          });
+        }),
+    );
+    const observer = new QueryObserver(queryClient, {
+      queryKey: sidebarNavigationKey,
+      queryFn: sidebarQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    responses.shift()?.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(1);
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { projectId: "project-1" },
+      changes: ["title-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(2);
+    const staleResponse = responses.shift();
+
+    activated = true;
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: {
+        projectId: "project-1",
+        statusChange: {
+          activity: NO_THREAD_ACTIVITY,
+          latestAttentionAt: 100,
+          runtime: {
+            displayStatus: "active",
+            hostReconnectGraceExpiresAt: null,
+          },
+          status: "active",
+          updatedAt: 200,
+        },
+      },
+      changes: ["status-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The in-flight fetch was superseded by one started after the transition.
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(3);
+    staleResponse?.resolve();
+    responses.shift()?.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(
+      queryClient.getQueryData<{
+        projects: { threads: (typeof idleRow)[] }[];
+      }>(sidebarNavigationKey)?.projects[0]?.threads[0]?.status,
+    ).toBe("active");
+
+    unsubscribe();
+    effects.dispose();
+  });
+
   it("invalidates thread list and detail but not timeline for parent changes", () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
@@ -2080,6 +2309,67 @@ describe("createRealtimeCacheEffects", () => {
 
       expect(queryClient.getQueryState(threadKey)?.isInvalidated).toBe(true);
       expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
+      expect(
+        queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated,
+      ).toBe(true);
+      effects.dispose();
+    });
+
+    it("refetches when a bare status-changed follows one that carried the row", () => {
+      // Stop requests, command failures and host interruptions still push the
+      // bare kind. Merged behind an earlier push's row snapshot, the resume
+      // flush must not patch the row to that earlier, now-stale status.
+      vi.useFakeTimers();
+      const visibility = createFakeVisibility();
+      const { effects, queryClient } =
+        createRealtimeEffectsTestContext(visibility);
+      const sidebarNavigationKey = sidebarNavigationQueryKey();
+      const idleRow = {
+        activity: NO_THREAD_ACTIVITY,
+        id: "thr_1",
+        latestAttentionAt: 100,
+        runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+        status: "idle",
+        updatedAt: 100,
+      };
+      queryClient.setQueryData(sidebarNavigationKey, {
+        projects: [{ threads: [idleRow] }],
+        personalProject: { threads: [] },
+      });
+
+      visibility.setVisible(false);
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: {
+          projectId: "project-1",
+          statusChange: {
+            activity: NO_THREAD_ACTIVITY,
+            latestAttentionAt: 100,
+            runtime: {
+              displayStatus: "active",
+              hostReconnectGraceExpiresAt: null,
+            },
+            status: "active",
+            updatedAt: 200,
+          },
+        },
+        changes: ["status-changed"],
+      });
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        changes: ["status-changed"],
+      });
+      visibility.setVisible(true);
+
+      expect(
+        queryClient.getQueryData<{
+          projects: { threads: (typeof idleRow)[] }[];
+        }>(sidebarNavigationKey)?.projects[0]?.threads[0],
+      ).toBe(idleRow);
       expect(
         queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated,
       ).toBe(true);

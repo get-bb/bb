@@ -57,6 +57,7 @@ import {
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
+import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 
 interface SendQueuedMessageArgs {
@@ -330,7 +331,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     thread,
   });
 
-  const command = deps.db.transaction(
+  const { activeThread, command } = deps.db.transaction(
     (tx) => {
       const consumed = deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
         queuedMessages: args.queuedMessages,
@@ -379,8 +380,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
         // guard skips the thread on the next sweep tick.
         throw createQueuedMessageClaimLostError();
       }
-      deps.hub.notifyThread(thread.id, ["status-changed"]);
-      return command;
+      return { activeThread: outcome.thread, command };
     },
     { behavior: "immediate" },
   );
@@ -390,6 +390,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     ["events-appended", "queue-changed", "status-changed"],
     {
       eventTypes: ["client/turn/requested"],
+      ...buildThreadStatusChangeMetadata(deps, activeThread),
     },
   );
   startLiveHostCommand(deps, {
