@@ -1492,18 +1492,26 @@ export interface ExperimentalProviderModelPickerValue {
   serviceTier?: ServiceTier;
 }
 
+/** Where the picker resolves the live provider and model catalog. */
+export type ExperimentalProviderModelPickerRouting =
+  | { kind: "host"; hostId: string }
+  | { kind: "environment"; environmentId: string };
+
 /**
  * Props of the host-owned `experimental_ProviderModelPicker` component.
  * Provider switches emit one coherent value after the live catalog resolves
  * its default model, reasoning level, and service-tier capability. Failed or
- * empty catalogs leave `value` unchanged. Omit `hostId` to use bb's
- * primary-machine routing.
+ * empty catalogs leave `value` unchanged. Omit `routing` to use bb's
+ * primary-machine routing. Environment routing is required when a provider's
+ * model catalog depends on the selected workspace.
  */
 export interface ExperimentalProviderModelPickerProps {
   value: ExperimentalProviderModelPickerValue;
   onChange(value: ExperimentalProviderModelPickerValue): void;
-  /** Route provider, model, and capability discovery through this machine. */
-  hostId?: string;
+  /** Route discovery through an explicit machine or existing environment. */
+  routing?: ExperimentalProviderModelPickerRouting;
+  /** Render the shared selection summary without allowing changes. */
+  disabled?: boolean;
   className?: string;
 }
 

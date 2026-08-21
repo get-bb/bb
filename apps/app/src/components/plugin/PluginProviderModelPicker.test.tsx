@@ -162,7 +162,7 @@ describe("PluginProviderModelPicker", () => {
       return (
         <PluginProviderModelPicker
           value={value}
-          hostId={hostId}
+          routing={{ kind: "host", hostId }}
           className="plugin-picker"
           onChange={(next) => {
             onChange(next);
@@ -267,6 +267,41 @@ describe("PluginProviderModelPicker", () => {
         reasoningLevel: "xhigh",
       }),
     );
+  });
+
+  it("normalizes a stale controlled selection after the catalog is verified", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    cacheCatalog(
+      queryClient,
+      "codex",
+      executionOptions([
+        model("gpt-current", "OpenAI GPT Current", ["medium", "high"], true),
+      ]),
+    );
+    const onChange = vi.fn();
+
+    render(
+      <PluginProviderModelPicker
+        value={{
+          providerId: "codex",
+          model: "gpt-removed",
+          reasoningLevel: "ultra",
+          serviceTier: "fast",
+        }}
+        onChange={onChange}
+      />,
+      { wrapper },
+    );
+
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith({
+        providerId: "codex",
+        model: "gpt-current",
+        reasoningLevel: "high",
+        serviceTier: "fast",
+      }),
+    );
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 
   it("preserves a controlled retired model from the selected-only catalog", () => {

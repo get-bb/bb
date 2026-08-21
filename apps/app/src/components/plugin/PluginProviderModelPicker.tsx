@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import type { SystemProvidersQuery } from "@bb/server-contract";
 import type {
   ExperimentalProviderModelPickerProps,
@@ -27,14 +27,28 @@ function selectionKey(value: ExperimentalProviderModelPickerValue): string {
 export function PluginProviderModelPicker({
   value,
   onChange,
-  hostId,
+  routing,
+  disabled,
   className,
 }: ExperimentalProviderModelPickerProps) {
-  const controlledKey = `${hostId ?? ""}\0${selectionKey(value)}`;
-  const pendingModelCommitRef = useRef(false);
-  const routing = useMemo<SystemProvidersQuery>(
-    () => (hostId === undefined ? {} : { hostId }),
-    [hostId],
+  const hostId = routing?.kind === "host" ? routing.hostId : undefined;
+  const environmentId =
+    routing?.kind === "environment" ? routing.environmentId : undefined;
+  const routingKey =
+    hostId !== undefined
+      ? `host:${hostId}`
+      : environmentId !== undefined
+        ? `environment:${environmentId}`
+        : "primary";
+  const controlledKey = `${routingKey}\0${selectionKey(value)}`;
+  const providerRouting = useMemo<SystemProvidersQuery>(
+    () =>
+      hostId !== undefined
+        ? { hostId }
+        : environmentId !== undefined
+          ? { environmentId }
+          : {},
+    [environmentId, hostId],
   );
   const controller = useThreadCreationOptions({
     scope: "component-local",
@@ -43,7 +57,7 @@ export function PluginProviderModelPicker({
     initialReasoningLevel: value.reasoningLevel,
     initialServiceTier: value.serviceTier,
     resetKey: controlledKey,
-    resolveProviderRouting: () => routing,
+    resolveProviderRouting: () => providerRouting,
   });
 
   const emit = useCallback(
@@ -57,13 +71,11 @@ export function PluginProviderModelPicker({
 
   useEffect(() => {
     if (
-      !pendingModelCommitRef.current ||
       !controller.modelCatalogIsVerified ||
       controller.selectedModel.length === 0
     ) {
       return;
     }
-    pendingModelCommitRef.current = false;
     emit({
       providerId: controller.selectedProviderId,
       model: controller.selectedModel,
@@ -84,7 +96,6 @@ export function PluginProviderModelPicker({
   const handleModelChange = useCallback(
     (model: string) => {
       if (!controller.modelCatalogIsVerified) return;
-      pendingModelCommitRef.current = true;
       controller.setSelectedModel(model);
     },
     [controller],
@@ -167,6 +178,7 @@ export function PluginProviderModelPicker({
       showFastModeToggle={controller.supportsServiceTier}
       serviceTierSupportByProvider={controller.serviceTierSupportByProvider}
       commandShortcutsEnabled={false}
+      disabled={disabled}
       className={className}
     />
   );

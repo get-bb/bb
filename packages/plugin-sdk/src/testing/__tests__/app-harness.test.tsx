@@ -131,7 +131,7 @@ describe("experimental_ProviderModelPicker test runtime", () => {
           serviceTier: "default",
         }}
         onChange={onChange}
-        hostId="host-test"
+        routing={{ kind: "host", hostId: "host-test" }}
       />,
     );
 
@@ -158,9 +158,12 @@ describe("experimental_ProviderModelPicker test runtime", () => {
       reasoningLevel: "xhigh",
       serviceTier: "fast",
     });
-    expect(picker.getByTestId("bb-provider-model-picker").dataset.hostId).toBe(
-      "host-test",
-    );
+    expect(
+      picker.getByTestId("bb-provider-model-picker").dataset.routingKind,
+    ).toBe("host");
+    expect(
+      picker.getByTestId("bb-provider-model-picker").dataset.routingId,
+    ).toBe("host-test");
   });
 });
 

@@ -500,7 +500,8 @@ function TestNewThreadComposer({
 function TestProviderModelPicker({
   value,
   onChange,
-  hostId,
+  routing,
+  disabled,
   className,
 }: ExperimentalProviderModelPickerProps) {
   const [draft, setDraft] = useState(value);
@@ -519,59 +520,69 @@ function TestProviderModelPicker({
   return (
     <div
       data-testid="bb-provider-model-picker"
-      data-host-id={hostId ?? ""}
+      data-routing-kind={routing?.kind ?? "primary"}
+      data-routing-id={
+        routing === undefined
+          ? ""
+          : routing.kind === "host"
+            ? routing.hostId
+            : routing.environmentId
+      }
+      data-disabled={disabled ? "true" : "false"}
       className={className}
     >
-      <input
-        aria-label="Provider ID"
-        value={draft.providerId}
-        onChange={(event) =>
-          setDraft((current) => ({
-            ...current,
-            providerId: event.target.value,
-          }))
-        }
-      />
-      <input
-        aria-label="Model"
-        value={draft.model}
-        onChange={(event) =>
-          setDraft((current) => ({ ...current, model: event.target.value }))
-        }
-      />
-      <input
-        aria-label="Reasoning level"
-        value={draft.reasoningLevel}
-        onChange={(event) => {
-          const reasoningLevel = reasoningLevels.find(
-            (candidate) => candidate === event.target.value,
-          );
-          if (reasoningLevel === undefined) return;
-          setDraft((current) => ({ ...current, reasoningLevel }));
-        }}
-      />
-      <select
-        aria-label="Service tier"
-        value={draft.serviceTier ?? ""}
-        onChange={(event) =>
-          setDraft((current) => {
-            const serviceTier = event.target.value;
-            if (serviceTier !== "fast" && serviceTier !== "default") {
-              const next = { ...current };
-              delete next.serviceTier;
-              return next;
-            }
-            return { ...current, serviceTier };
-          })
-        }
-      >
-        <option value="">Unsupported</option>
-        <option value="default">Default</option>
-        <option value="fast">Fast</option>
-      </select>
-      <button type="button" onClick={() => onChange(draft)}>
-        Apply execution selection
-      </button>
+      <fieldset disabled={disabled} className="contents">
+        <input
+          aria-label="Provider ID"
+          value={draft.providerId}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              providerId: event.target.value,
+            }))
+          }
+        />
+        <input
+          aria-label="Model"
+          value={draft.model}
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, model: event.target.value }))
+          }
+        />
+        <input
+          aria-label="Reasoning level"
+          value={draft.reasoningLevel}
+          onChange={(event) => {
+            const reasoningLevel = reasoningLevels.find(
+              (candidate) => candidate === event.target.value,
+            );
+            if (reasoningLevel === undefined) return;
+            setDraft((current) => ({ ...current, reasoningLevel }));
+          }}
+        />
+        <select
+          aria-label="Service tier"
+          value={draft.serviceTier ?? ""}
+          onChange={(event) =>
+            setDraft((current) => {
+              const serviceTier = event.target.value;
+              if (serviceTier !== "fast" && serviceTier !== "default") {
+                const next = { ...current };
+                delete next.serviceTier;
+                return next;
+              }
+              return { ...current, serviceTier };
+            })
+          }
+        >
+          <option value="">Unsupported</option>
+          <option value="default">Default</option>
+          <option value="fast">Fast</option>
+        </select>
+        <button type="button" onClick={() => onChange(draft)}>
+          Apply execution selection
+        </button>
+      </fieldset>
     </div>
   );
 }
