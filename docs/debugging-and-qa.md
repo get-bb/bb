@@ -151,9 +151,17 @@ cover. An entry names a scope, a path, and the PR that made the change:
 
 `path` is a JSON pointer over the snapshot, or a glob where `*` matches one
 segment and `**` any number. The run prints the entries it used; an entry that
-covers nothing fails the run because it is stale. Refresh the baseline with
-`write` only when the diff is the intended behavior change, in the PR that
-makes it, and remove the allowlist entries it absorbs.
+covers nothing fails the run because it is stale.
+
+`snapshots/rows` is the baseline minted on `main` and shared by every
+workstream, so never run `write` against it from a feature branch. A PR that
+intentionally changes rows carries its own allowlist in the repository
+(`apps/server/test/provider-corpus/allowlists/<ws>.json`, same schema, merged
+after the shared file) and compares with
+`BB_PROVIDER_CORPUS_ALLOWLIST=<that file>`. A snapshot of the branch's own
+rows goes to a shadow directory: `BB_PROVIDER_CORPUS_SNAPSHOT_DIR=<dir>`
+redirects both `write` and `compare`. Re-mint `snapshots/rows` from `main`
+after such a PR merges and delete the allowlist file it carried.
 
 Perf compare mode passes when each thread's normalized cost is within 10% of
 the baseline (or within 5 ms of intrinsic cost for the small latest-page

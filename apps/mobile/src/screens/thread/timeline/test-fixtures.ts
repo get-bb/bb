@@ -97,6 +97,8 @@ export function delegationRow(
     status: "completed",
     callId: `call-${id}`,
     toolName: "Task",
+    childRef: null,
+    background: false,
     subagentType: "explore",
     description: "Look around",
     output: "",

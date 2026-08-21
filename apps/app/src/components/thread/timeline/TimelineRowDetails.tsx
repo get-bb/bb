@@ -278,6 +278,12 @@ export function WorkRowBody({
     case "approval":
     case "web-search":
     case "web-fetch":
+    case "file-read":
+    case "search":
+    case "plan-steps":
+    case "extension":
+      // Title-only until the presentation-driven renderers land (WS3 layer
+      // 2): the row title already carries the bridge's label and headline.
       return null;
     default:
       return assertNever(row);

@@ -125,6 +125,9 @@ export function upsertBackgroundTaskMessage(
     ...(lifecycle.item.parentToolCallId
       ? { parentToolCallId: lifecycle.item.parentToolCallId }
       : {}),
+    ...(lifecycle.item.presentation
+      ? { presentation: lifecycle.item.presentation }
+      : {}),
     itemId: lifecycle.item.id,
     familyId: lifecycle.item.familyId ?? null,
     taskType: lifecycle.item.taskType,

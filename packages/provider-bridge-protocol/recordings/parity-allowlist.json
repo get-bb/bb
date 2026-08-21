@@ -558,5 +558,237 @@
     "path": "/0/children/3/toolName",
     "pr": "#2179",
     "reason": "Projection of the same change: the legacy tool row's toolName is the item's `tool` slot, now the native kind rather than the agent's title (the title is in the persisted presentation, which the presentation-driven projection will read)."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/1/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "rows",
+    "path": "/0/children/1/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "rows",
+    "path": "/0/children/3/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "user-question",
+    "layer": "rows",
+    "path": "/0/children/1/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/0/children/1/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/0/activityIntents",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/0/approvalStatus",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/0/cmd",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/0/path",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/0/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/0/workKind",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/3/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/4/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/5/activityIntents",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/5/approvalStatus",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/5/cmd",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/5/path",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/5/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/5/workKind",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/0/background",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: delegation rows carry `background` (a delegation that outlives its spawning turn)."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/0/childRef",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: delegation rows carry `childRef`, the provider-native child id of the grammar v3 delegation item."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/0/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/0/children/0/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "codex",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/0/background",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: delegation rows carry `background` (a delegation that outlives its spawning turn)."
+  },
+  {
+    "provider": "codex",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/0/childRef",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: delegation rows carry `childRef`, the provider-native child id of the grammar v3 delegation item."
+  },
+  {
+    "provider": "codex",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/0/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "codex",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/1/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "codex",
+    "cell": "turn-tools",
+    "layer": "rows",
+    "path": "/0/children/2/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "codex",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/0/children/0/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
   }
 ]

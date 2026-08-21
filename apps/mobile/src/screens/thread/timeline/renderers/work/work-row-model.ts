@@ -76,7 +76,12 @@ export function leadingIconForWorkRow(row: TimelineViewWorkRow): IconName {
   if ("activityIntents" in row && row.activityIntents.some(isSkillReadIntent)) {
     return "Zap";
   }
-  if (row.workKind === "command" || row.workKind === "tool") {
+  if (
+    row.workKind === "command" ||
+    row.workKind === "tool" ||
+    row.workKind === "file-read" ||
+    row.workKind === "search"
+  ) {
     const intent = primaryTimelineActivityIntent(row);
     if (intent !== null && intent.type !== "unknown") {
       return explorationIntentIcon(intent.type);
@@ -88,6 +93,14 @@ export function leadingIconForWorkRow(row: TimelineViewWorkRow): IconName {
     case "command":
     case "tool":
       return "Terminal";
+    case "file-read":
+      return "FileText";
+    case "search":
+      return "Search";
+    case "plan-steps":
+      return "ListTodo";
+    case "extension":
+      return "Puzzle";
     case "web-search":
       return "Search";
     case "web-fetch":

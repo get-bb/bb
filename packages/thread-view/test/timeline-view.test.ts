@@ -227,6 +227,8 @@ function delegationRow({
     status,
     callId,
     toolName: "spawnAgent",
+    childRef: null,
+    background: false,
     subagentType: "reviewer",
     description: "Review timeline grouping",
     output: "",

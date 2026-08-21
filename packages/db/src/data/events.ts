@@ -1534,7 +1534,16 @@ export function getStoredEventRowsByParentToolCallIdsDataBytes(
   return row?.dataBytes ?? 0;
 }
 
-export function listStoredToolCallRowsByItemIds(
+/**
+ * Lifecycle rows of the items that parent other events: tool calls and
+ * grammar v3 `delegation` items. Two queries rather than one `IN` on the
+ * kind: the tool-call branch keeps the partial
+ * `events_tool_call_parent_lookup_idx` (SQLite cannot prove an `IN` implies
+ * its `item_kind = 'toolCall'` predicate), and the delegation branch walks
+ * the thread/type/item-kind index over the handful of delegation rows a
+ * thread has.
+ */
+export function listStoredDelegatingItemRowsByItemIds(
   db: DbConnection,
   args: ListStoredToolCallRowsByItemIdsArgs,
 ): StoredEventRow[] {
@@ -1545,19 +1554,37 @@ export function listStoredToolCallRowsByItemIds(
     return [];
   }
 
-  return db
-    .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
+  const fields = storedEventRowFieldsWithInlineOutputLimit(
+    args.maxInlineOutputChars,
+  );
+  const lifecycleTypes = ["item/started", "item/completed"] as const;
+  const toolCallRows = db
+    .select(fields)
     .from(events)
     .where(
       and(
         eq(events.threadId, args.threadId),
         inArray(events.itemId, itemIds),
         eq(events.itemKind, "toolCall"),
-        inArray(events.type, ["item/started", "item/completed"]),
+        inArray(events.type, [...lifecycleTypes]),
       ),
     )
-    .orderBy(events.sequence)
     .all();
+  const delegationRows = db
+    .select(fields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        inArray(events.type, [...lifecycleTypes]),
+        eq(events.itemKind, "delegation"),
+        inArray(events.itemId, itemIds),
+      ),
+    )
+    .all();
+  return [...toolCallRows, ...delegationRows].sort(
+    (left, right) => left.sequence - right.sequence,
+  );
 }
 
 /** Whether the thread still has an event at exactly this sequence. */
@@ -2034,7 +2061,7 @@ export function listTodoSnapshotEventRowsForThread(
   db: DbConnection,
   args: ListTodoSnapshotEventRowsForThreadArgs,
 ): StoredEventRow[] {
-  const rows = db
+  const legacyRows = db
     .select(storedEventRowFields)
     .from(events)
     .where(
@@ -2054,6 +2081,24 @@ export function listTodoSnapshotEventRowsForThread(
       ),
     )
     .all();
+  // A grammar v3 `planSteps` snapshot is keyed by its kind, not a tool name;
+  // the thread/type/item-kind index serves it directly. The newest snapshot
+  // wins, and the projection picks it by sequence, so the latest row is all
+  // the banner needs from this kind.
+  const planStepsRow = db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "item/completed"),
+        eq(events.itemKind, "planSteps"),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  const rows = planStepsRow ? [...legacyRows, planStepsRow] : legacyRows;
 
   // Ordering in SQL makes SQLite prefer the thread/sequence index and read every
   // event in the thread to satisfy the sort; the type/item-kind index visits

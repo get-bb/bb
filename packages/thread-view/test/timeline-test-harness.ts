@@ -17,6 +17,7 @@ import type {
   ThreadEventRowOfType,
   SystemThreadInterruptedReason,
   ThreadEventWarningCategory,
+  ThreadTimelinePendingTodos,
   ThreadTurnInitiator,
   TurnRequestTarget,
 } from "@bb/domain";
@@ -48,6 +49,7 @@ export interface RenderTimelineFixtureArgs {
 }
 
 export interface RenderedTimelineFixture {
+  pendingTodos: ThreadTimelinePendingTodos | null;
   events: ThreadEventRow[];
   messages: EventProjectionMessage[];
   projection: EventProjection;
@@ -140,6 +142,7 @@ interface FileReadEventArgs extends ProviderTurnEventOptions {
   itemId?: string;
   path: string;
   cmd?: string;
+  presentation?: ThreadEventItemPresentation;
   status?: "pending" | "completed" | "failed" | "interrupted";
 }
 
@@ -149,6 +152,7 @@ interface SearchEventArgs extends ProviderTurnEventOptions {
   query: string;
   path?: string;
   cmd?: string;
+  presentation?: ThreadEventItemPresentation;
   status?: "pending" | "completed" | "failed" | "interrupted";
 }
 
@@ -158,6 +162,26 @@ interface DelegationEventArgs extends ProviderTurnEventOptions {
   label: string;
   background?: boolean;
   summary?: string;
+  presentation?: ThreadEventItemPresentation;
+  status?: "pending" | "completed" | "failed" | "interrupted";
+}
+
+interface PlanStepsEventArgs extends ProviderTurnEventOptions {
+  itemId?: string;
+  steps: Array<{
+    step: string;
+    status?: "pending" | "active" | "completed" | "failed";
+  }>;
+  explanation?: string;
+  presentation?: ThreadEventItemPresentation;
+  status?: "pending" | "completed" | "failed" | "interrupted";
+}
+
+interface ExtensionEventArgs extends ProviderTurnEventOptions {
+  itemId?: string;
+  kind: `${string}/${string}`;
+  payload: JsonValue;
+  presentation: ThreadEventItemPresentation;
   status?: "pending" | "completed" | "failed" | "interrupted";
 }
 
@@ -376,6 +400,18 @@ export interface TimelineEventFactory {
   searchStarted(args: SearchEventArgs): ThreadEventRowOfType<"item/started">;
   searchCompleted(
     args: SearchEventArgs,
+  ): ThreadEventRowOfType<"item/completed">;
+  planStepsStarted(
+    args: PlanStepsEventArgs,
+  ): ThreadEventRowOfType<"item/started">;
+  planStepsCompleted(
+    args: PlanStepsEventArgs,
+  ): ThreadEventRowOfType<"item/completed">;
+  extensionStarted(
+    args: ExtensionEventArgs,
+  ): ThreadEventRowOfType<"item/started">;
+  extensionCompleted(
+    args: ExtensionEventArgs,
   ): ThreadEventRowOfType<"item/completed">;
   threadCompacted(
     args?: ProviderTurnEventOptions,
@@ -908,6 +944,9 @@ export function createTimelineEventFactory(
             status: args.status ?? "pending",
             background: args.background ?? false,
             ...(args.summary === undefined ? {} : { summary: args.summary }),
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
           },
         },
       };
@@ -927,6 +966,9 @@ export function createTimelineEventFactory(
             status: args.status ?? "completed",
             background: args.background ?? false,
             ...(args.summary === undefined ? {} : { summary: args.summary }),
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
           },
         },
       };
@@ -966,6 +1008,9 @@ export function createTimelineEventFactory(
             path: args.path,
             ...(args.cmd === undefined ? {} : { cmd: args.cmd }),
             status: args.status ?? "pending",
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
           },
         },
       };
@@ -983,6 +1028,9 @@ export function createTimelineEventFactory(
             path: args.path,
             ...(args.cmd === undefined ? {} : { cmd: args.cmd }),
             status: args.status ?? "completed",
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
           },
         },
       };
@@ -1002,6 +1050,9 @@ export function createTimelineEventFactory(
             ...(args.path === undefined ? {} : { path: args.path }),
             ...(args.cmd === undefined ? {} : { cmd: args.cmd }),
             status: args.status ?? "pending",
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
           },
         },
       };
@@ -1021,6 +1072,89 @@ export function createTimelineEventFactory(
             ...(args.path === undefined ? {} : { path: args.path }),
             ...(args.cmd === undefined ? {} : { cmd: args.cmd }),
             status: args.status ?? "completed",
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
+          },
+        },
+      };
+    },
+    planStepsStarted(args) {
+      const base = nextProviderTurnScopedRowBase("plan-steps-started", args);
+      return {
+        ...base,
+        type: "item/started",
+        data: {
+          ...providerFields(args),
+          item: {
+            type: "planSteps",
+            id: args.itemId ?? `plan-steps-${base.seq}`,
+            steps: args.steps,
+            ...(args.explanation === undefined
+              ? {}
+              : { explanation: args.explanation }),
+            status: args.status ?? "pending",
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
+          },
+        },
+      };
+    },
+    planStepsCompleted(args) {
+      const base = nextProviderTurnScopedRowBase("plan-steps-completed", args);
+      return {
+        ...base,
+        type: "item/completed",
+        data: {
+          ...providerFields(args),
+          item: {
+            type: "planSteps",
+            id: args.itemId ?? `plan-steps-${base.seq}`,
+            steps: args.steps,
+            ...(args.explanation === undefined
+              ? {}
+              : { explanation: args.explanation }),
+            status: args.status ?? "completed",
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
+          },
+        },
+      };
+    },
+    extensionStarted(args) {
+      const base = nextProviderTurnScopedRowBase("extension-started", args);
+      return {
+        ...base,
+        type: "item/started",
+        data: {
+          ...providerFields(args),
+          item: {
+            type: "extension",
+            id: args.itemId ?? `extension-${base.seq}`,
+            kind: args.kind,
+            payload: args.payload,
+            status: args.status ?? "pending",
+            presentation: args.presentation,
+          },
+        },
+      };
+    },
+    extensionCompleted(args) {
+      const base = nextProviderTurnScopedRowBase("extension-completed", args);
+      return {
+        ...base,
+        type: "item/completed",
+        data: {
+          ...providerFields(args),
+          item: {
+            type: "extension",
+            id: args.itemId ?? `extension-${base.seq}`,
+            kind: args.kind,
+            payload: args.payload,
+            status: args.status ?? "completed",
+            presentation: args.presentation,
           },
         },
       };
@@ -1242,6 +1376,7 @@ export function renderTimelineFixture(
   return {
     events: args.events,
     messages,
+    pendingTodos: timeline.pendingTodos,
     projection,
     rows,
     text,

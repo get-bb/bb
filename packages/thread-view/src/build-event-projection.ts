@@ -175,8 +175,12 @@ function isEventProjectionCallMessage(
   switch (message.kind) {
     case "command":
     case "delegation":
+    case "extension":
     case "file-edit":
+    case "file-read":
     case "image-view":
+    case "plan-steps":
+    case "search":
     case "tool-call":
     case "web-fetch":
     case "web-search":

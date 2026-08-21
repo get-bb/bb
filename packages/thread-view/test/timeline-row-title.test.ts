@@ -269,6 +269,8 @@ function delegationRow(): TimelineViewDelegationWorkRow {
     status: "completed",
     callId: "delegation-call-1",
     toolName: "spawnAgent",
+    childRef: null,
+    background: false,
     subagentType: "general-purpose-review-agent-with-a-long-name",
     description: "Review correctness + plan adherence",
     output: "",

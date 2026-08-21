@@ -1045,6 +1045,8 @@ export function delegationRow({
     status,
     callId: callId ?? id,
     toolName,
+    childRef: null,
+    background: false,
     subagentType,
     description,
     output,

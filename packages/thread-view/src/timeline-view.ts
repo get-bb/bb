@@ -8,7 +8,6 @@ import type {
   TimelineRowBase,
   TimelineRowStatus,
   TimelineSystemRow,
-  TimelineToolWorkRow,
   TimelineTurnRow,
   TimelineWorkRow,
 } from "@bb/server-contract";
@@ -21,6 +20,8 @@ import { plural } from "./format-helpers.js";
 import {
   getTimelineActivityIntentDetailDedupeKey,
   hasTimelineExplorationIntent,
+  timelineRowActivityIntents,
+  type TimelineExplorationWorkRow,
 } from "./timeline-activity-intents.js";
 
 export interface TimelineViewDelegationWorkRow extends Omit<
@@ -105,9 +106,11 @@ interface TimelineWorkSummaryCounts {
   deletedFiles: number;
   delegations: number;
   editedFiles: number;
+  extensions: number;
   fileChanges: number;
   files: number;
   lists: number;
+  planUpdates: number;
   renamedFiles: number;
   searches: number;
   tools: number;
@@ -122,8 +125,10 @@ type TimelineWorkSummaryCategory =
   | "commands"
   | "delegations"
   | "exploration"
+  | "extensions"
   | "fileChanges"
   | "imageViews"
+  | "planUpdates"
   | "tools"
   | "webResearch";
 
@@ -155,12 +160,12 @@ function getExploredFileIdentity(
 }
 
 function countExplorationIntents(
-  row: TimelineCommandWorkRow | TimelineToolWorkRow,
+  row: TimelineExplorationWorkRow,
   counts: TimelineWorkSummaryCounts,
   exploredFileIdentities: Set<string>,
   noteExplorationKind: (kind: TimelineExplorationKind) => void,
 ): void {
-  for (const intent of row.activityIntents) {
+  for (const intent of timelineRowActivityIntents(row)) {
     switch (intent.type) {
       case "read": {
         const identity = getExploredFileIdentity(intent);
@@ -208,9 +213,11 @@ function summarizeTimelineWork(
     deletedFiles: 0,
     delegations: 0,
     editedFiles: 0,
+    extensions: 0,
     fileChanges: 0,
     files: 0,
     lists: 0,
+    planUpdates: 0,
     renamedFiles: 0,
     searches: 0,
     tools: 0,
@@ -250,6 +257,21 @@ function summarizeTimelineWork(
         } else {
           counts.tools += 1;
         }
+        break;
+      case "file-read":
+      case "search":
+        countExplorationIntents(
+          row,
+          counts,
+          exploredFileIdentities,
+          noteExplorationKind,
+        );
+        break;
+      case "plan-steps":
+        counts.planUpdates += 1;
+        break;
+      case "extension":
+        counts.extensions += 1;
         break;
       case "file-change":
         switch (getFileChangeAction(row.change)) {
@@ -356,7 +378,11 @@ function approvalStatusSummaryLabel(
       case "approval":
       case "question":
       case "delegation":
+      case "extension":
+      case "file-read":
       case "image-view":
+      case "plan-steps":
+      case "search":
       case "web-fetch":
       case "web-search":
       case "workflow":
@@ -396,6 +422,13 @@ function getTimelineWorkSummaryCategory(
       return hasTimelineExplorationIntent(row) ? "exploration" : "commands";
     case "tool":
       return hasTimelineExplorationIntent(row) ? "exploration" : "tools";
+    case "file-read":
+    case "search":
+      return "exploration";
+    case "plan-steps":
+      return "planUpdates";
+    case "extension":
+      return "extensions";
     case "file-change":
       return "fileChanges";
     case "web-fetch":
@@ -499,6 +532,14 @@ function completedSummaryPhrase(
         : null;
     case "tools":
       return counts.tools > 0 ? `Ran ${plural(counts.tools, "tool")}` : null;
+    case "planUpdates":
+      return counts.planUpdates > 0
+        ? `Updated plan ${plural(counts.planUpdates, "time")}`
+        : null;
+    case "extensions":
+      return counts.extensions > 0
+        ? `Ran ${plural(counts.extensions, "plugin step")}`
+        : null;
     default:
       return assertNever(category);
   }
@@ -529,6 +570,12 @@ function activeSummaryPhrase(
     case "tools":
       return counts.tools > 0
         ? `Running ${plural(counts.tools, "tool")}`
+        : null;
+    case "planUpdates":
+      return counts.planUpdates > 0 ? "Updating plan" : null;
+    case "extensions":
+      return counts.extensions > 0
+        ? `Running ${plural(counts.extensions, "plugin step")}`
         : null;
     default:
       return assertNever(category);
@@ -716,6 +763,13 @@ function rowConcept(row: TimelineViewWorkRow): TimelineWorkSummaryCategory {
         : row.workKind === "command"
           ? "commands"
           : "tools";
+    case "file-read":
+    case "search":
+      return "exploration";
+    case "plan-steps":
+      return "planUpdates";
+    case "extension":
+      return "extensions";
     case "file-change":
       return "fileChanges";
     case "delegation":
@@ -756,6 +810,18 @@ function dedupeBundleChildIntents(
   let lastEmittedKey: string | null = null;
   const out: TimelineViewWorkRow[] = [];
   for (const child of children) {
+    if (child.workKind === "file-read" || child.workKind === "search") {
+      // A v3 exploration row carries exactly one intent; a duplicate of the
+      // previous sibling's collapses the whole row.
+      const [intent] = timelineRowActivityIntents(child);
+      const key = intent ? getTimelineActivityIntentDetailDedupeKey(intent) : null;
+      if (key !== null && key === lastEmittedKey) {
+        continue;
+      }
+      lastEmittedKey = key;
+      out.push(child);
+      continue;
+    }
     if (
       (child.workKind !== "command" && child.workKind !== "tool") ||
       child.activityIntents.length === 0

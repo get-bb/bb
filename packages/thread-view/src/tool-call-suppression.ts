@@ -14,27 +14,40 @@ const SUPPRESSED_TIMELINE_TOOL_NAMES = new Set([
 ]);
 
 /**
- * A low-value tool call row: one the bridge marked `suppress` in its
- * presentation (grammar v3 — the bridge owns its tools' presentation), or,
- * for events persisted before presentation existed, one of the legacy names
- * above. Failed and interrupted calls always render.
+ * A low-value item row the timeline drops: one the bridge marked `suppress`
+ * in its presentation (grammar v3 — the bridge owns its items' presentation;
+ * a planSteps snapshot still feeds the todo banner because that extraction
+ * reads the events, not the rows), or, for tool calls persisted before
+ * presentation existed, one of the legacy names above. Failed and
+ * interrupted items always render.
  */
 export function shouldSuppressLowValueToolCall(decoded: ThreadEvent): boolean {
-  if (
-    (decoded.type !== "item/started" && decoded.type !== "item/completed") ||
-    decoded.item.type !== "toolCall"
-  ) {
+  if (decoded.type !== "item/started" && decoded.type !== "item/completed") {
     return false;
   }
-
-  if (
-    decoded.item.presentation?.suppress !== true &&
-    !SUPPRESSED_TIMELINE_TOOL_NAMES.has(decoded.item.tool)
-  ) {
-    return false;
+  const item = decoded.item;
+  switch (item.type) {
+    case "toolCall":
+      if (
+        item.presentation?.suppress !== true &&
+        !SUPPRESSED_TIMELINE_TOOL_NAMES.has(item.tool)
+      ) {
+        return false;
+      }
+      break;
+    case "fileRead":
+    case "search":
+    case "planSteps":
+    case "extension":
+    case "delegation":
+    case "fileChange":
+      if (item.presentation?.suppress !== true) {
+        return false;
+      }
+      break;
+    default:
+      return false;
   }
 
-  return (
-    decoded.item.status === "pending" || decoded.item.status === "completed"
-  );
+  return item.status === "pending" || item.status === "completed";
 }

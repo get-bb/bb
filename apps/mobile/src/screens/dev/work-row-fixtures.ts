@@ -457,6 +457,8 @@ function delegation(
     status: "completed",
     callId: `call-${id}`,
     toolName: "Task",
+    childRef: null,
+    background: false,
     subagentType: "explore",
     description: "Find where the timeline rows are rendered",
     output:

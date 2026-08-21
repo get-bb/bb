@@ -440,7 +440,9 @@
       "cache": false,
       "passThroughEnv": [
         "BB_PROVIDER_CORPUS_DIR",
-        "BB_PROVIDER_CORPUS_SNAPSHOT"
+        "BB_PROVIDER_CORPUS_SNAPSHOT",
+        "BB_PROVIDER_CORPUS_SNAPSHOT_DIR",
+        "BB_PROVIDER_CORPUS_ALLOWLIST"
       ]
     },
     // Builds real plugin host artifacts (the builtin artifacts suite, plus the

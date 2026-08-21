@@ -15,6 +15,8 @@ export {
 export {
   hasTimelineExplorationIntent,
   primaryTimelineActivityIntent,
+  timelineRowActivityIntents,
+  type TimelineExplorationWorkRow,
 } from "./timeline-activity-intents.js";
 export {
   capitalize,

@@ -29,6 +29,7 @@ import {
   normalizeJson,
   readAllowlist,
   resolveSnapshotMode,
+  resolveSnapshotRowsDir,
   unifiedJsonDiff,
   type JsonDiff,
   type JsonValue,
@@ -93,11 +94,10 @@ function buildRowSnapshot(
  * resolved file under the rows root even if that validation ever loosens.
  */
 function snapshotFilePath(
-  snapshotsDir: string,
+  rowsRoot: string,
   provider: string,
   threadId: string,
 ): string {
-  const rowsRoot = path.resolve(snapshotsDir, "rows");
   const filePath = path.resolve(rowsRoot, provider, `${threadId}.json`);
   if (!filePath.startsWith(`${rowsRoot}${path.sep}`)) {
     throw new Error(
@@ -126,6 +126,7 @@ describe.skipIf(!available)("provider corpus row snapshots", () => {
   // so everything here must tolerate a missing corpus.
   const corpusDir = resolveProviderCorpusDir() ?? "";
   const snapshotsDir = path.join(corpusDir, "snapshots");
+  const rowsDir = resolveSnapshotRowsDir(snapshotsDir);
   const allowlist = available ? readAllowlist(snapshotsDir) : [];
   const usedAllowlistEntries = new Set<number>();
   let registry: ProviderRegistryService | null = null;
@@ -159,7 +160,7 @@ describe.skipIf(!available)("provider corpus row snapshots", () => {
         totals.threads += 1;
         totals.rows += built.rows;
         totals.bytes += Buffer.byteLength(serialized);
-        const filePath = snapshotFilePath(snapshotsDir, provider, threadId);
+        const filePath = snapshotFilePath(rowsDir, provider, threadId);
 
         if (mode === "write") {
           // A baseline must not depend on the wall clock or on iteration
@@ -209,7 +210,7 @@ describe.skipIf(!available)("provider corpus row snapshots", () => {
             );
           }
           throw new Error(
-            `${threadId} (${provider}) has ${matched.unallowed.length} row diff(s) not covered by snapshots/allowlist.json; first: ${matched.unallowed[0]?.pointer}`,
+            `${threadId} (${provider}) has ${matched.unallowed.length} row diff(s) not covered by the allowlist; first: ${matched.unallowed[0]?.pointer}`,
           );
         }
       } finally {

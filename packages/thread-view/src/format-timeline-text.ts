@@ -12,6 +12,7 @@ import {
   formatTimelineActivityIntentDetail,
   getTimelineActivityIntentDetailDedupeKey,
   hasTimelineExplorationIntent,
+  timelineRowActivityIntents,
   type TimelineExplorationWorkRow,
 } from "./timeline-activity-intents.js";
 import {
@@ -240,6 +241,29 @@ function formatWorkBody(
       return lines;
     case "image-view":
       return lines;
+    case "file-read":
+    case "search":
+      return lines;
+    case "plan-steps":
+      if (context.verbose) {
+        for (const step of row.steps) {
+          const marker =
+            step.status === "completed"
+              ? "[x]"
+              : step.status === "active"
+                ? "[>]"
+                : step.status === "failed"
+                  ? "[!]"
+                  : "[ ]";
+          lines.push(dim(`  ${marker} ${step.step}`, context.color));
+        }
+      }
+      return lines;
+    case "extension":
+      if (row.presentation.detail) {
+        lines.push(dim(indentBlock(row.presentation.detail, "  "), context.color));
+      }
+      return lines;
     case "approval":
     case "question":
     case "workflow":
@@ -274,7 +298,7 @@ function formatExplorationWorkDetails(
 ): string[] {
   let lastEmittedKey: string | null = null;
   const details: string[] = [];
-  for (const intent of row.activityIntents) {
+  for (const intent of timelineRowActivityIntents(row)) {
     if (intent.type === "unknown") {
       continue;
     }
@@ -302,7 +326,10 @@ function formatWorkSummaryDetails(
   const childContext = nestedContext(context, null);
   for (const child of row.children) {
     if (
-      (child.workKind === "command" || child.workKind === "tool") &&
+      (child.workKind === "command" ||
+        child.workKind === "tool" ||
+        child.workKind === "file-read" ||
+        child.workKind === "search") &&
       hasTimelineExplorationIntent(child)
     ) {
       lines.push(
@@ -315,7 +342,9 @@ function formatWorkSummaryDetails(
     if (
       child.workKind === "web-search" ||
       child.workKind === "web-fetch" ||
-      child.workKind === "image-view"
+      child.workKind === "image-view" ||
+      child.workKind === "plan-steps" ||
+      child.workKind === "extension"
     ) {
       lines.push(rowHeader(formatWorkTitle(child, childContext), childContext));
       continue;

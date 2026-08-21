@@ -1,92 +1,173 @@
-import type { ThreadEvent } from "@bb/domain";
+import type {
+  ExtensionKind,
+  JsonValue,
+  ThreadEvent,
+  ThreadEventItemPresentation,
+  ThreadEventItemStatus,
+  ThreadEventPlanStep,
+  ThreadEventSearchMode,
+} from "@bb/domain";
 import { getEventParentToolCallId } from "./event-decode.js";
 
-export interface WebSearchLifecycleEvent {
+/**
+ * The begin/end item family: items with no streamed output whose whole row
+ * comes from the opened item plus its settled counterpart. Historically the
+ * web kinds (webSearch, webFetch, imageView); grammar v3 adds the
+ * exploration kinds (fileRead, search), plan snapshots (planSteps) and
+ * plugin extension items. Commands, tool calls and delegations stream
+ * output and take the exec-lifecycle path instead.
+ */
+interface ItemActivityLifecycleBase {
   kind: "begin" | "end";
-  itemKind: "web-search";
   callId: string;
-  queries: string[];
   parentToolCallId?: string;
+  /** The bridge's declarative presentation; absent on pre-v3 events. */
+  presentation?: ThreadEventItemPresentation;
 }
 
-export interface WebFetchLifecycleEvent {
-  kind: "begin" | "end";
+export interface WebSearchLifecycleEvent extends ItemActivityLifecycleBase {
+  itemKind: "web-search";
+  queries: string[];
+}
+
+export interface WebFetchLifecycleEvent extends ItemActivityLifecycleBase {
   itemKind: "web-fetch";
-  callId: string;
   url: string;
   prompt: string | null;
   pattern: string | null;
-  parentToolCallId?: string;
 }
 
-interface ImageViewLifecycleEvent {
-  kind: "begin" | "end";
+interface ImageViewLifecycleEvent extends ItemActivityLifecycleBase {
   itemKind: "image-view";
-  callId: string;
   path: string;
-  parentToolCallId?: string;
+}
+
+/**
+ * The v3 kinds carry an explicit item status, so a failed or interrupted
+ * read/search/extension settles with that status instead of `completed`.
+ */
+interface StatusedItemActivityLifecycleBase extends ItemActivityLifecycleBase {
+  status: ThreadEventItemStatus;
+}
+
+export interface FileReadLifecycleEvent extends StatusedItemActivityLifecycleBase {
+  itemKind: "file-read";
+  path: string;
+  cmd: string | null;
+}
+
+export interface SearchLifecycleEvent extends StatusedItemActivityLifecycleBase {
+  itemKind: "search";
+  mode: ThreadEventSearchMode;
+  query: string;
+  path: string | null;
+  cmd: string | null;
+}
+
+export interface PlanStepsLifecycleEvent extends StatusedItemActivityLifecycleBase {
+  itemKind: "plan-steps";
+  steps: ThreadEventPlanStep[];
+  explanation: string | null;
+}
+
+export interface ExtensionLifecycleEvent extends StatusedItemActivityLifecycleBase {
+  itemKind: "extension";
+  extensionKind: ExtensionKind;
+  payload: JsonValue;
+  presentation: ThreadEventItemPresentation;
 }
 
 export type WebActivityLifecycleEvent =
   | WebSearchLifecycleEvent
   | WebFetchLifecycleEvent
-  | ImageViewLifecycleEvent;
+  | ImageViewLifecycleEvent
+  | FileReadLifecycleEvent
+  | SearchLifecycleEvent
+  | PlanStepsLifecycleEvent
+  | ExtensionLifecycleEvent;
 
 export function parseWebActivityLifecycleEvent(
   decoded: ThreadEvent,
   parentToolCallIdOverride?: string,
 ): WebActivityLifecycleEvent | null {
+  if (decoded.type !== "item/started" && decoded.type !== "item/completed") {
+    return null;
+  }
   const parentToolCallId =
     parentToolCallIdOverride ?? getEventParentToolCallId(decoded);
-  if (
-    (decoded.type === "item/started" || decoded.type === "item/completed") &&
-    decoded.item.type === "webSearch"
-  ) {
-    const callId = decoded.item.id;
-    if (!callId) return null;
+  const item = decoded.item;
+  const callId = item.id;
+  if (!callId) return null;
+  const kind = decoded.type === "item/started" ? "begin" : "end";
+  const base = {
+    kind,
+    callId,
+    ...(parentToolCallId ? { parentToolCallId } : {}),
+  } as const;
 
-    return {
-      kind: decoded.type === "item/started" ? "begin" : "end",
-      itemKind: "web-search",
-      callId,
-      queries: decoded.item.queries,
-      ...(parentToolCallId ? { parentToolCallId } : {}),
-    };
+  switch (item.type) {
+    case "webSearch":
+      return {
+        ...base,
+        itemKind: "web-search",
+        queries: item.queries,
+        ...(item.presentation ? { presentation: item.presentation } : {}),
+      };
+    case "webFetch":
+      return {
+        ...base,
+        itemKind: "web-fetch",
+        url: item.url,
+        prompt: item.prompt,
+        pattern: item.pattern,
+        ...(item.presentation ? { presentation: item.presentation } : {}),
+      };
+    case "imageView":
+      return {
+        ...base,
+        itemKind: "image-view",
+        path: item.path,
+        ...(item.presentation ? { presentation: item.presentation } : {}),
+      };
+    case "fileRead":
+      return {
+        ...base,
+        itemKind: "file-read",
+        path: item.path,
+        cmd: item.cmd ?? null,
+        status: item.status,
+        ...(item.presentation ? { presentation: item.presentation } : {}),
+      };
+    case "search":
+      return {
+        ...base,
+        itemKind: "search",
+        mode: item.mode,
+        query: item.query,
+        path: item.path ?? null,
+        cmd: item.cmd ?? null,
+        status: item.status,
+        ...(item.presentation ? { presentation: item.presentation } : {}),
+      };
+    case "planSteps":
+      return {
+        ...base,
+        itemKind: "plan-steps",
+        steps: item.steps,
+        explanation: item.explanation ?? null,
+        status: item.status,
+        ...(item.presentation ? { presentation: item.presentation } : {}),
+      };
+    case "extension":
+      return {
+        ...base,
+        itemKind: "extension",
+        extensionKind: item.kind,
+        payload: item.payload,
+        status: item.status,
+        presentation: item.presentation,
+      };
+    default:
+      return null;
   }
-
-  if (
-    (decoded.type === "item/started" || decoded.type === "item/completed") &&
-    decoded.item.type === "webFetch"
-  ) {
-    const callId = decoded.item.id;
-    if (!callId) return null;
-
-    return {
-      kind: decoded.type === "item/started" ? "begin" : "end",
-      itemKind: "web-fetch",
-      callId,
-      url: decoded.item.url,
-      prompt: decoded.item.prompt,
-      pattern: decoded.item.pattern,
-      ...(parentToolCallId ? { parentToolCallId } : {}),
-    };
-  }
-
-  if (
-    (decoded.type === "item/started" || decoded.type === "item/completed") &&
-    decoded.item.type === "imageView"
-  ) {
-    const callId = decoded.item.id;
-    if (!callId) return null;
-
-    return {
-      kind: decoded.type === "item/started" ? "begin" : "end",
-      itemKind: "image-view",
-      callId,
-      path: decoded.item.path,
-      ...(parentToolCallId ? { parentToolCallId } : {}),
-    };
-  }
-
-  return null;
 }

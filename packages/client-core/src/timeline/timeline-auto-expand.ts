@@ -32,6 +32,16 @@ export function isWorkRowExpandable(row: TimelineViewWorkRow): boolean {
     case "command":
     case "tool":
       return !hasTimelineExplorationIntent(row);
+    case "file-read":
+    case "search":
+      // Exploration rows are title-only, like the legacy Read/Grep bundles.
+      return false;
+    case "plan-steps":
+      return row.steps.length > 0;
+    case "extension":
+      // The declarative base shows the bridge's detail in the body; a row
+      // without one stays title-only (a plugin renderer may still expand).
+      return row.presentation.detail !== undefined;
     case "file-change":
       return true;
     case "delegation":
