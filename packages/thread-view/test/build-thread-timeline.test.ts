@@ -948,6 +948,28 @@ function fileChangeRowIdByPath(
 }
 
 describe("buildThreadTimelineFromEvents", () => {
+  it("renders one turn when daemon retry history contains duplicate turn starts", () => {
+    const rows = buildTimelineRows([
+      turnStartedEvent({ seq: 1 }),
+      turnStartedEvent({ seq: 2 }),
+      toolCallItemEvent({
+        seq: 3,
+        tool: "read",
+        type: "item/started",
+      }),
+      toolCallItemEvent({
+        result: "ok",
+        seq: 4,
+        tool: "read",
+        type: "item/completed",
+      }),
+      turnCompletedEvent({ seq: 5 }),
+    ]);
+
+    expect(rows.filter((row) => row.kind === "turn")).toHaveLength(1);
+    expect(collectToolRows(rows)).toHaveLength(1);
+  });
+
   const lowercaseStructuredToolCases: LowercaseStructuredToolCase[] = [
     {
       expectedIntent: {

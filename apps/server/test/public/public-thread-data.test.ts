@@ -445,6 +445,63 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("returns a timeline when a stored history holds a duplicate turn/started from a daemon replay", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const eventBase = {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-retried",
+        scope: turnScope("turn-retried"),
+      };
+
+      seedEvent(harness.deps, {
+        ...eventBase,
+        sequence: 1,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        ...eventBase,
+        sequence: 2,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        ...eventBase,
+        sequence: 3,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "toolCall",
+            id: "tool-call-retried",
+            tool: "read",
+            status: "completed",
+            result: "ok",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        ...eventBase,
+        sequence: 4,
+        type: "turn/completed",
+        data: { status: "completed" },
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline`,
+      );
+
+      expect(response.status).toBe(200);
+      const timeline = threadTimelineResponseSchema.parse(
+        await readJson(response),
+      );
+      expect(timeline.rows.filter((row) => row.kind === "turn")).toHaveLength(
+        1,
+      );
+    });
+  });
+
   it("returns the full conversation outline beyond the paginated timeline window", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);

@@ -653,6 +653,79 @@ describe("events", () => {
     });
   });
 
+  it("skips turn/started when a daemon replays an already-committed batch", () => {
+    const { db, thread } = setup();
+    const turnStarted = {
+      threadId: thread.id,
+      type: "turn/started" as const,
+      ...createTurnEventFields({ turnId: "turn_replayed" }),
+      environmentId: null,
+      providerThreadId: "provider_thr_replayed",
+      data: JSON.stringify({
+        providerThreadId: "provider_thr_replayed",
+        turnId: "turn_replayed",
+      }),
+    };
+    const turnCompleted = {
+      threadId: thread.id,
+      type: "turn/completed" as const,
+      ...createTurnEventFields({ turnId: "turn_replayed" }),
+      environmentId: null,
+      providerThreadId: "provider_thr_replayed",
+      data: JSON.stringify({
+        providerThreadId: "provider_thr_replayed",
+        status: "completed",
+        turnId: "turn_replayed",
+      }),
+    };
+
+    const first = db.transaction(
+      (tx) => appendDaemonEventsInTransaction(tx, [turnStarted, turnCompleted]),
+      { behavior: "immediate" },
+    );
+    // The server committed the batch but the acknowledgement was lost, so the
+    // daemon posts the identical batch again.
+    const replay = db.transaction(
+      (tx) => appendDaemonEventsInTransaction(tx, [turnStarted, turnCompleted]),
+      { behavior: "immediate" },
+    );
+
+    expect(first.insertedInputIndexes).toEqual([0, 1]);
+    expect(replay).toEqual({
+      acceptedEvents: [{ threadId: thread.id, sequence: 3 }],
+      insertedInputIndexes: [1],
+      skippedTurnUnstartedInputIndexes: [],
+    });
+    expect(
+      listEvents(db, { threadId: thread.id }).map((event) => event.type),
+    ).toEqual(["turn/started", "turn/completed", "turn/completed"]);
+  });
+
+  it("skips a turn/started repeated inside one daemon batch", () => {
+    const { db, thread } = setup();
+    const turnStarted = {
+      threadId: thread.id,
+      type: "turn/started" as const,
+      ...createTurnEventFields({ turnId: "turn_twice" }),
+      environmentId: null,
+      providerThreadId: "provider_thr_twice",
+      data: JSON.stringify({
+        providerThreadId: "provider_thr_twice",
+        turnId: "turn_twice",
+      }),
+    };
+
+    const result = db.transaction(
+      (tx) => appendDaemonEventsInTransaction(tx, [turnStarted, turnStarted]),
+      { behavior: "immediate" },
+    );
+
+    expect(result.insertedInputIndexes).toEqual([0]);
+    expect(
+      listEvents(db, { threadId: thread.id }).map((event) => event.type),
+    ).toEqual(["turn/started"]);
+  });
+
   it("rejects daemon turn-scoped events before turn/started is stored", () => {
     const { db, thread } = setup();
 

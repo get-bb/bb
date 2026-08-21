@@ -1010,13 +1010,22 @@ describe("internal event and tool-call routes", () => {
         harness.db.select().from(threads).where(eq(threads.id, thread.id)).get()
           ?.status,
       ).toBe("idle");
+      // The replayed turn/started is the same provider turn, so it is not
+      // stored twice; a second start would break timeline projection.
       expect(
         harness.db
-          .select()
+          .select({ type: events.type })
           .from(events)
           .where(eq(events.threadId, thread.id))
-          .all(),
-      ).toHaveLength(4);
+          .orderBy(events.sequence)
+          .all()
+          .map((event) => event.type),
+      ).toEqual(["turn/started", "turn/completed", "turn/completed"]);
+
+      const timelineResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline`,
+      );
+      expect(timelineResponse.status).toBe(200);
     });
   });
 

@@ -248,11 +248,12 @@ export function groupEventProjectionTurns(
         type: event.type,
         scope: event.scope,
       });
-      const existing = turnsById.get(turnId);
-      if (existing) {
-        throw new Error(
-          `Timeline projection found duplicate turn/started for ${turnId}`,
-        );
+      if (turnsById.has(turnId)) {
+        // Histories stored before ingestion deduplicated turn/started can hold
+        // the same provider turn start twice (a daemon replay after a lost
+        // acknowledgement). The first start is canonical; one replayed
+        // lifecycle marker must not make the whole timeline unreadable.
+        continue;
       }
       turnsById.set(turnId, createProjectionTurn(event, meta));
       entryDrafts.push({
