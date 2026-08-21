@@ -720,7 +720,7 @@ Its card header includes an open-in-sidebar action for the source HTML file.
 The `plugins/` directory contains every bundled plugin: the auto-installed
 builtins and the store-only BB Official GitHub, Docs, Memory, and Tasks
 plugins. The `examples/plugins/` reference plugins cover slack-bot (webhook
-bot), agent-enrichment (agent surfaces), composer-customization (all composer
-regions), and t3sidebar (a replacement sidebar thread list). Thread Hover
+bot), agent-enrichment (agent surfaces), and composer-customization (all
+composer regions). Thread Hover
 Cards installs from the BB Community marketplace (source: the bb-plugins
 repo).

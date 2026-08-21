@@ -2004,8 +2004,7 @@ serviceTier?, executionInputSources, environment, input }`. Forward it
 
   Experimental: the `experimental_` prefix will drop once the entry in
   `docs/api_to_audit.md` is audited. Give it real width — the control row
-  does not fit in a ~420px column. Full reference:
-  `examples/plugins/cascade`.
+  does not fit in a ~420px column.
 
 Hooks:
 
@@ -2360,13 +2359,6 @@ Remaining reference examples in `examples/plugins/`:
   needsConfiguration.
 - `agent-enrichment` — agent surfaces: CLI command, zod-schema native tool,
   docs mention provider, boolean setting, bundled `skills/` directory.
-- `cascade` — the big host-component example: a scrollable-tiling strip where
-  every column is a `ThreadChat` and the draft column is
-  `experimental_NewThreadComposer`, plus a thin index backend (kv layout
-  state, background service + realtime), pure row projection, and a
-  bare-letter keymap that coexists with a dozen live composers.
-- `t3sidebar` — an inbox-style replacement for the sidebar thread list, with
-  header chips for child threads and plugin-owned settled and snoozed state.
 
 ## Gotchas
 

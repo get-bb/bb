@@ -724,12 +724,6 @@
     // ---- In-repo plugins typecheck against the SDK's bundled .d.ts ----------
     // Either through a tsconfig `paths` map or through the workspace symlink's
     // package `types` field; both land on bundled-types/, a build output.
-    "bb-plugin-cascade#typecheck": {
-      "dependsOn": [
-        "@get-bb/plugin-sdk#build:types",
-        "topo"
-      ]
-    },
     "bb-plugin-composer-customization#typecheck": {
       "dependsOn": [
         "@get-bb/plugin-sdk#build:types",
@@ -749,12 +743,6 @@
       ]
     },
     "bb-plugin-replacement-lab-beta#typecheck": {
-      "dependsOn": [
-        "@get-bb/plugin-sdk#build:types",
-        "topo"
-      ]
-    },
-    "bb-plugin-t3sidebar#typecheck": {
       "dependsOn": [
         "@get-bb/plugin-sdk#build:types",
         "topo"
