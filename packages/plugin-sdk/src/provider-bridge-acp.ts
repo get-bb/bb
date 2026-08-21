@@ -60,6 +60,12 @@ export type {
   AcpToolIdentity,
 } from "@bb/provider-bridge-acp";
 
+export {
+  acpAgentProbeSchema as experimental_acpAgentProbeSchema,
+  probeAcpAgent as experimental_probeAcpAgent,
+} from "@bb/provider-bridge-acp";
+export type { AcpAgentProbe, AcpAgentProbeRequest } from "@bb/provider-bridge-acp";
+
 export { acpProfileFromLaunchSpec as experimental_acpProfileFromLaunchSpec } from "@bb/provider-bridge-acp";
 export type { AcpAgentProfile } from "@bb/provider-bridge-acp";
 

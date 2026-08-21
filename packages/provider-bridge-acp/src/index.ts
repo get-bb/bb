@@ -35,6 +35,9 @@ export type {
   AcpToolIdentity,
 } from "./dialect.js";
 
+export { acpAgentProbeSchema, probeAcpAgent } from "./probe.js";
+export type { AcpAgentProbe, AcpAgentProbeRequest } from "./probe.js";
+
 export type { AcpAgentProfile } from "./profiles.js";
 export { acpProfileFromLaunchSpec } from "./profiles.js";
 

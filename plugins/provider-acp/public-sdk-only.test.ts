@@ -26,6 +26,7 @@ const PLUGIN_IMPORT_ALLOWLIST = [
   /^@get-bb\/plugin-sdk$/u,
   /^@get-bb\/plugin-sdk\/(?:provider-bridge|host|app)$/u,
   /^@get-bb\/plugin-sdk\/provider-bridge\/acp$/u,
+  /^@get-bb\/plugin-sdk\/host$/u,
   /^zod$/u,
   /^node:/u,
   /^\.\.?\//u,

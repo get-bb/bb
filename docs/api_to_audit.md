@@ -31,12 +31,20 @@ so each agent's vendor side channels (grok's `_meta["x.ai/tool"]`, Cursor's
 read by a small profile-keyed module that a plugin can supply for its own
 agent and name in its registration's bridge options (`acpDialect`).
 `experimental_handleAcpBridgeLine` is the raw line handler for harnesses.
+`experimental_probeAcpAgent` asks one installed agent what it supports
+(`initialize` → `agentCapabilities`) so a plugin can replace a declared guess
+with the agent's own answer, and `experimental_acpAgentProbeSchema` validates
+that answer across a host RPC boundary.
 `experimental_parseAcpAgentModelLines` / `experimental_buildAcpAgentModelCatalog`
 / `experimental_splitAcpPrimaryModels` build a model picker from an agent's
 `--list-models` output. `experimental_acpProfileFromLaunchSpec` and
 `experimental_ACP_*` expose the launch profile and the protocol vocabularies.
 
-**Audit before stabilizing.** Decide whether `AcpDialect` is the right shape
+**Audit before stabilizing.** Decide what `probeAcpAgent` owes a caller:
+today it spawns the agent with a 10s timeout, advertises the bridge's own
+client capabilities, and answers `-32601` to anything the agent asks — settle
+whether the timeout, the client capabilities and the refusal are the caller's
+to choose. Decide whether `AcpDialect` is the right shape
 for a third-party agent — today it has four optional hooks (`toolIdentity`,
 `classifyToolCall`, `handleClientRequest`, `maintenance`) and no versioning,
 so adding a fifth is a silent capability change for every dialect. Decide

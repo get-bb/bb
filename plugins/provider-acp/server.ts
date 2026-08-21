@@ -17,7 +17,9 @@ import {
   parseCustomAcpAgents,
   type AcpAgentDefinition,
 } from "./src/agents.js";
+import { acpHostContract, type AcpProbeResult } from "./src/contract.js";
 import { acpProviderDeclaration } from "./src/declaration.js";
+import { applyAcpAgentProbe } from "./src/probe-capabilities.js";
 import {
   KNOWN_ACP_AGENTS,
   KNOWN_ACP_PROVIDER_IDS,
@@ -97,8 +99,31 @@ async function resolveCustomAgents(
 export default async function acpProvidersPlugin(
   bb: BbPluginApi,
 ): Promise<void> {
+  const host = bb.hosts.experimental_client({ contract: acpHostContract });
+
+  /**
+   * Every agent this plugin has registered, and its disposer. A declaration
+   * states capabilities before any agent has spoken, so each one is
+   * registered from what it declares and re-registered from what the agent
+   * answers once a host can be asked (Q21).
+   */
+  const registrations = new Map<string, { dispose: () => void }>();
+  const definitions = new Map<string, AcpAgentDefinition>();
+
+  function register(agent: AcpAgentDefinition): void {
+    registrations.get(agent.id)?.dispose();
+    definitions.set(agent.id, agent);
+    registrations.set(agent.id, bb.providers.register(acpProviderDeclaration(agent)));
+  }
+
+  function unregister(providerId: string): void {
+    registrations.get(providerId)?.dispose();
+    registrations.delete(providerId);
+    definitions.delete(providerId);
+  }
+
   for (const agent of KNOWN_ACP_AGENTS) {
-    bb.providers.register(acpProviderDeclaration(agent));
+    register(agent);
   }
 
   const settings = bb.settings.define({
@@ -113,30 +138,96 @@ export default async function acpProvidersPlugin(
   // Configured agents are re-registered whenever the setting changes: the
   // registry hands back a disposer per registration, and re-registering an
   // id this plugin already owns is only allowed after that disposer runs.
-  let disposeCustomAgents: (() => void)[] = [];
+  let customProviderIds: string[] = [];
   async function registerCustomAgents(settingValue: string): Promise<void> {
-    for (const dispose of disposeCustomAgents.splice(0)) {
-      dispose();
-    }
     const agents = await resolveCustomAgents(bb, settingValue);
-    disposeCustomAgents = agents.map(
-      (agent) => bb.providers.register(acpProviderDeclaration(agent)).dispose,
-    );
+    const next = new Set(agents.map((agent) => agent.id));
+    for (const providerId of customProviderIds) {
+      if (!next.has(providerId)) {
+        unregister(providerId);
+      }
+    }
+    for (const agent of agents) {
+      register(agent);
+    }
+    customProviderIds = [...next];
     if (agents.length > 0) {
       bb.log.info(`Registered ${agents.length} configured ACP agent(s).`);
+    }
+  }
+
+  /**
+   * Ask each agent what it supports and re-register the ones whose answer
+   * differs from what bb declared. A host that cannot be reached, or an agent
+   * that is not installed there, leaves the declaration alone: bb narrows a
+   * capability it can verify and never widens one it cannot.
+   */
+  async function probeAgents(hostId: string): Promise<void> {
+    for (const [providerId, agent] of [...definitions]) {
+      let probe: AcpProbeResult;
+      try {
+        probe = await host.call(
+          "probeAgent",
+          {
+            command: agent.launch.command,
+            args: agent.launch.args,
+            env: agent.launch.env,
+          },
+          { hostId },
+        );
+      } catch (error) {
+        bb.log.debug(
+          `Could not probe ${providerId} on host ${hostId}: ${String(error)}`,
+        );
+        continue;
+      }
+      const applied = applyAcpAgentProbe(agent, probe);
+      if (applied === null) {
+        continue;
+      }
+      bb.log.info(
+        `${providerId} on host ${hostId}: ${applied.reason}; re-registering.`,
+      );
+      register(applied.agent);
+    }
+  }
+
+  async function probeAllHosts(): Promise<void> {
+    const hosts = await bb.sdk.hosts.list();
+    for (const available of hosts) {
+      if (available.status !== "connected") {
+        continue;
+      }
+      await probeAgents(available.id);
     }
   }
 
   const initial = await settings.get();
   await registerCustomAgents(initial.customAgents);
   settings.onChange((next) => {
-    void registerCustomAgents(next.customAgents).catch((error: unknown) => {
-      bb.log.error(`Could not re-register the configured ACP agents: ${String(error)}`);
-    });
+    void registerCustomAgents(next.customAgents)
+      .then(probeAllHosts)
+      .catch((error: unknown) => {
+        bb.log.error(
+          `Could not re-register the configured ACP agents: ${String(error)}`,
+        );
+      });
   });
+
+  // Probing spawns agents, so it never blocks plugin load: the declarations
+  // are live from the first moment and get more exact a moment later.
+  void probeAllHosts().catch((error: unknown) => {
+    bb.log.debug(`ACP capability probing failed: ${String(error)}`);
+  });
+  host.experimental_onWorkerExit(({ hostId }) => {
+    void probeAgents(hostId).catch(() => {});
+  });
+
   bb.onDispose(() => {
-    for (const dispose of disposeCustomAgents.splice(0)) {
-      dispose();
+    for (const [, registration] of registrations) {
+      registration.dispose();
     }
+    registrations.clear();
+    definitions.clear();
   });
 }
