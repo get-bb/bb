@@ -15,8 +15,9 @@
  *      MAX_STRING_CHARS keeps its head and tail around a marker;
  *   2. textually: absolute paths under the home directory become
  *      `/home/user`, emails become `user@example.com`, and token shapes
- *      (bbde_, ghp_, github_pat_, sk-, sk-ant-, xox?-, JWTs, bearer values,
- *      Authorization headers) are replaced by `<prefix>REDACTED`.
+ *      (bbde_, GitHub gh[pousr]_/github_pat_, sk-, sk-ant-, xox?-, JWTs,
+ *      bearer values, Authorization headers) are replaced by
+ *      `<prefix>REDACTED`.
  *
  * The script is idempotent: a redacted file rewrites to itself. After writing
  * it sweeps the output for every pattern again and exits 3 if anything
@@ -38,7 +39,7 @@ const REDACTED_EMAIL = "user@example.com";
  * `-` run) plus `REDACTED`, so a reader still sees what kind of secret it was. */
 const TOKEN_PATTERNS = [
   /bbde_[A-Za-z0-9]{16,}/g,
-  /ghp_[A-Za-z0-9]{20,}/g,
+  /gh[pousr]_[A-Za-z0-9._-]{20,}/g,
   /github_pat_[A-Za-z0-9_]{20,}/g,
   /sk-ant-[A-Za-z0-9_-]{20,}/g,
   /(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}/g,
