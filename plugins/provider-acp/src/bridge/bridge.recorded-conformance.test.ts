@@ -25,6 +25,7 @@ it("reproduces every recorded matrix cell", async () => {
       return { assembleMessage: (message) => collector.assembleMessage(message) };
     },
     timeoutMs: 60_000,
+    onStderr: (text) => process.stderr.write(`[bridge] ${text}`),
   });
   expect(replays.length).toBeGreaterThan(0);
 

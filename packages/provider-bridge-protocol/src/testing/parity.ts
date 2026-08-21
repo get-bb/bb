@@ -16,7 +16,8 @@
  * injected. `@bb/provider-parity` wires the real ones and owns the CLI.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -103,8 +104,22 @@ export type ReplayDialect = "json-rpc" | "claude-cli";
 export interface ReplayProviderProfile {
   dialect: ReplayDialect;
   bridgeFamily: keyof typeof FIRST_PARTY_BRIDGE_MODULES;
-  env(args: { replayCommand: string[]; wrapperPath: string }): Record<string, string>;
+  env(args: {
+    replayCommand: string[];
+    wrapperPath: string;
+    stateDir: string;
+  }): Record<string, string>;
   rewriteRuntimeLine?(line: string, args: { replayCommand: string[] }): string;
+  /**
+   * Provider state a bridge reads outside its provider pipe, seeded before
+   * the replay starts (the Claude SDK forks by copying the source session's
+   * transcript from disk).
+   */
+  prepareState?(args: {
+    recording: BridgeRecording;
+    stateDir: string;
+    workspaceDir: string;
+  }): void;
 }
 
 export class UnreplayableProviderError extends Error {
@@ -131,7 +146,13 @@ export function resolveReplayProfile(providerId: string): ReplayProviderProfile 
       bridgeFamily: "claude-code",
       // The Agent SDK runs a `.mjs` executable through node itself, so the
       // wrapper module (which bakes the replay arguments in) is the "CLI".
-      env: ({ wrapperPath }) => ({ BB_CLAUDE_CODE_EXECUTABLE: wrapperPath }),
+      // The config dir is the replay's own: the SDK reads and writes session
+      // transcripts under it, and a replay must not touch the user's.
+      env: ({ wrapperPath, stateDir }) => ({
+        BB_CLAUDE_CODE_EXECUTABLE: wrapperPath,
+        CLAUDE_CONFIG_DIR: claudeConfigDir(stateDir),
+      }),
+      prepareState: seedClaudeForkTranscripts,
     };
   }
   if (providerId.startsWith("acp-")) {
@@ -150,6 +171,78 @@ export function resolveReplayProfile(providerId: string): ReplayProviderProfile 
     );
   }
   throw new UnreplayableProviderError(providerId, "no replay profile");
+}
+
+function claudeConfigDir(stateDir: string): string {
+  return join(stateDir, "claude-config");
+}
+
+/** The Agent SDK's project directory name for a workspace path. */
+function claudeProjectDirName(workspaceDir: string): string {
+  return workspaceDir.replace(/[^a-zA-Z0-9]/g, "-");
+}
+
+/**
+ * `forkSession` in the Agent SDK is a local file operation: it reads the
+ * source session's transcript from the config dir's project directory and
+ * writes the forked copy beside it. The transcript of the recorded source
+ * session lives on the machine that recorded it, and its content does not
+ * reach the replay (the forked "CLI" is the replay child), so every recorded
+ * `thread/fork` gets a minimal transcript for its source session: one user
+ * and one assistant entry, the assistant carrying the checkpoint id the fork
+ * names, if any.
+ */
+function seedClaudeForkTranscripts(args: {
+  recording: BridgeRecording;
+  stateDir: string;
+  workspaceDir: string;
+}): void {
+  const projectDir = join(
+    claudeConfigDir(args.stateDir),
+    "projects",
+    claudeProjectDirName(args.workspaceDir),
+  );
+  for (const entry of args.recording.entries) {
+    if (entry.dir !== "runtime→bridge") continue;
+    const message = parseWire(entry.line);
+    if (message === null || message.method !== "thread/fork") continue;
+    const params = message.params as
+      | { sourceProviderThreadId?: unknown; sourceProviderCheckpointId?: unknown }
+      | undefined;
+    const sessionId = params?.sourceProviderThreadId;
+    if (typeof sessionId !== "string") continue;
+    const checkpointId =
+      typeof params?.sourceProviderCheckpointId === "string"
+        ? params.sourceProviderCheckpointId
+        : randomUUID();
+    const userUuid = randomUUID();
+    const timestamp = "2026-01-01T00:00:00.000Z";
+    const transcript = [
+      {
+        type: "user",
+        uuid: userUuid,
+        parentUuid: null,
+        sessionId,
+        timestamp,
+        cwd: args.workspaceDir,
+        message: { role: "user", content: "recorded source session" },
+      },
+      {
+        type: "assistant",
+        uuid: checkpointId,
+        parentUuid: userUuid,
+        sessionId,
+        timestamp,
+        cwd: args.workspaceDir,
+        message: { role: "assistant", content: [{ type: "text", text: "ready" }] },
+      },
+    ];
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, `${sessionId}.jsonl`),
+      `${transcript.map((line) => JSON.stringify(line)).join("\n")}\n`,
+    );
+  }
 }
 
 function rewriteAcpLaunchSpec(line: string, replayCommand: string[]): string {
@@ -182,12 +275,15 @@ function rewriteAcpLaunchSpec(line: string, replayCommand: string[]): string {
 }
 
 /**
- * A recorded request carries the recording machine's shell PATH in
- * `options.envVars`; a bridge that spawns its provider with it (the Claude
- * SDK looks `node` up on it) would fail on this machine. Point it at ours.
+ * A recorded request carries the recording machine's facts a replay must not
+ * depend on: the shell PATH in `options.envVars` (a bridge that spawns its
+ * provider with it — the Claude SDK looks `node` up on it — would fail
+ * here), and the workspace `cwd` (ACP bridges and the Claude SDK spawn the
+ * provider inside it; it does not exist on another machine). Point both at
+ * this replay's.
  */
-function rewriteRecordedShellPath(line: string): string {
-  if (!line.includes('"PATH"')) {
+function rewriteRecordedMachineFacts(line: string, workspaceDir: string): string {
+  if (!line.includes('"PATH"') && !line.includes('"cwd"')) {
     return line;
   }
   let parsed: unknown;
@@ -196,13 +292,22 @@ function rewriteRecordedShellPath(line: string): string {
   } catch {
     return line;
   }
-  const envVars = (parsed as { params?: { options?: { envVars?: Record<string, unknown> } } })
-    .params?.options?.envVars;
-  if (envVars === undefined || typeof envVars.PATH !== "string") {
+  const params = (parsed as { params?: { cwd?: unknown; options?: { envVars?: Record<string, unknown> } } })
+    .params;
+  if (params === undefined) {
     return line;
   }
-  envVars.PATH = process.env.PATH ?? envVars.PATH;
-  return JSON.stringify(parsed);
+  let changed = false;
+  const envVars = params.options?.envVars;
+  if (envVars !== undefined && typeof envVars.PATH === "string") {
+    envVars.PATH = process.env.PATH ?? envVars.PATH;
+    changed = true;
+  }
+  if (typeof params.cwd === "string") {
+    params.cwd = workspaceDir;
+    changed = true;
+  }
+  return changed ? JSON.stringify(parsed) : line;
 }
 
 function tsxSpecifier(): string {
@@ -402,6 +507,9 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
   const recording = readBridgeRecording(options.recordingDir);
 
   const stateDir = mkdtempSync(join(tmpdir(), "bb-parity-replay-"));
+  // The replayed session's workspace: the recording's cwd belongs to the
+  // machine that recorded it, and nothing in a replay runs real commands.
+  const workspaceDir = mkdtempSync(join(tmpdir(), "bb-parity-ws-"));
   const replayCommand = [
     process.execPath,
     REPLAY_CHILD_PATH,
@@ -434,12 +542,13 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
     { mode: 0o755 },
   );
 
+  profile.prepareState?.({ recording, stateDir, workspaceDir });
   const launch = resolveBridgeLaunch(options.bridge);
   const child: ChildProcess = spawn(launch.command, launch.args, {
     cwd: launch.cwd,
     env: {
       ...process.env,
-      ...profile.env({ replayCommand, wrapperPath }),
+      ...profile.env({ replayCommand, wrapperPath, stateDir }),
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -632,7 +741,7 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
       const threadId = (request.params as { threadId?: unknown }).threadId;
       if (typeof threadId === "string") grammar.clearThread(threadId);
     }
-    const rewritten = rewriteRecordedShellPath(step.entry.line);
+    const rewritten = rewriteRecordedMachineFacts(step.entry.line, workspaceDir);
     const line =
       profile.rewriteRuntimeLine === undefined
         ? rewritten
@@ -659,6 +768,7 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
     }),
   ]);
   rmSync(stateDir, { recursive: true, force: true });
+  rmSync(workspaceDir, { recursive: true, force: true });
 
   return {
     providerId,
