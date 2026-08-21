@@ -428,7 +428,8 @@ export type TurnSubmitTarget = z.infer<typeof turnSubmitTargetSchema>;
  * auto-targeted input steers the live active turn or starts a new turn. The
  * nullable expected id is the server's snapshot; the daemon rechecks its
  * runtime so input sent while turn/started is still in flight is not mistaken
- * for a competing turn.
+ * for a competing turn, and rejects instead of starting another turn if the
+ * pending start does not produce an id within its bounded wait.
  */
 const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
   .extend({

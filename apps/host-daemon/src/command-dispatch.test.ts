@@ -502,6 +502,41 @@ describe("dispatchCommand", () => {
     expect(runtime.runTurn).toHaveBeenCalledOnce();
   });
 
+  it("rejects auto input when a pending turn still has no id after the wait", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: WORKSPACE_PATH,
+    });
+    runtime.setIdle("thread-1");
+    vi.mocked(runtime.getLiveThreadIds).mockReturnValue(["thread-1"]);
+    vi.mocked(runtime.waitForActiveTurn).mockResolvedValueOnce(null);
+
+    await expect(
+      dispatchCommand(
+        createTurnSubmitCommand({ mode: "auto", expectedTurnId: null }),
+        {
+          dataDir: "/tmp/bb-data",
+          logger: silentLogger,
+          eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+          fetchProjectAttachment: async () => {
+            throw new Error("Unexpected project attachment fetch");
+          },
+          runtimeManager: manager,
+          threadStorageRootPath: "/tmp/bb-thread-storage",
+        },
+      ),
+    ).rejects.toThrow(
+      "Refusing to start a competing turn while thread-1 is still starting",
+    );
+    expect(runtime.runTurn).not.toHaveBeenCalled();
+    expect(runtime.steerTurn).not.toHaveBeenCalled();
+  });
+
   it("flushes buffered events before reporting thread.stop success", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({

@@ -26,7 +26,8 @@ type ExistingThreadRuntimeCommand =
 // it. An auto/steer submit created in that gap carries no expected turn id even
 // though the preceding command is already opening one. The daemon serializes
 // turn submissions, so give the runtime-owned turn state a bounded chance to
-// catch up before treating the input as a separate turn.
+// catch up. If it is still pending after that bound, fail closed rather than
+// launch a competing turn.
 const TURN_SUBMIT_ACTIVE_TURN_WAIT_MS = 5_000;
 
 interface ResumeThreadRuntimeIfMissingArgs {
@@ -427,9 +428,27 @@ async function resolveSubmittedTurnTarget(
   if (!entry.runtime.getLiveThreadIds().includes(command.threadId)) {
     return null;
   }
-  return await entry.runtime.waitForActiveTurn(command.threadId, {
-    timeoutMs: TURN_SUBMIT_ACTIVE_TURN_WAIT_MS,
-  });
+  const awaitedTurnId = await entry.runtime.waitForActiveTurn(
+    command.threadId,
+    {
+      timeoutMs: TURN_SUBMIT_ACTIVE_TURN_WAIT_MS,
+    },
+  );
+  if (awaitedTurnId !== null) {
+    return awaitedTurnId;
+  }
+  // The timeout and provider event can race. Re-read both facts before
+  // deciding whether the previous start completed or remains unresolved.
+  const refreshedTurnId = entry.runtime.getActiveTurnId(command.threadId);
+  if (refreshedTurnId !== null) {
+    return refreshedTurnId;
+  }
+  if (entry.runtime.getLiveThreadIds().includes(command.threadId)) {
+    throw new Error(
+      `Refusing to start a competing turn while ${command.threadId} is still starting`,
+    );
+  }
+  return null;
 }
 
 export async function submitTurn(
