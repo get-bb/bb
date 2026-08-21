@@ -273,18 +273,70 @@ describe("plugin background services", () => {
       `,
     });
     await service.installPath(rootDir);
-    await service.reload("stubborn");
+    const outcome = await service.reload("stubborn");
     const entry = service.list().find((p) => p.id === "stubborn");
     expect(entry?.status).toBe("degraded");
     expect(entry?.statusDetail).toContain("service socket did not stop");
     // Not re-loaded: that would double-start the hung service.
     expect(service.getApi("stubborn")).toBeUndefined();
+    // The plugin is unusable after this reload (#2029): the outcome must say
+    // so instead of resolving as success while `bb stubborn` is gone.
+    expect(outcome).toEqual({
+      ok: false,
+      error: 'plugin "stubborn" reload failed: service socket did not stop',
+      plugins: service.list(),
+    });
 
     // Still degraded on a second reload attempt.
-    await service.reload("stubborn");
+    const again = await service.reload("stubborn");
     expect(service.list().find((p) => p.id === "stubborn")?.status).toBe(
       "degraded",
     );
+    expect(again.ok).toBe(false);
+  });
+
+  it("reports a failed reload that kept the previous instance", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-keeper",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.cli.register({ name: "keeper", summary: "keeper", run() { return { exitCode: 0, stdout: "ok" }; } });
+        }
+      `,
+    });
+    const installed = await service.installPath(rootDir);
+    expect(installed.status).toBe("running");
+    const healthy = await service.reload("keeper");
+    expect(healthy.ok).toBe(true);
+
+    // A broken edit: the new sources do not load, so the host keeps the
+    // previous instance serving. The reload still did not apply.
+    await writeFile(
+      join(rootDir, "server.ts"),
+      `export default function plugin() { throw new Error("boom on load"); }`,
+    );
+    const outcome = await service.reload("keeper");
+    const entry = service.list().find((p) => p.id === "keeper");
+    expect(entry?.status).toBe("running");
+    expect(entry?.statusDetail).toBe("reload failed: boom on load");
+    expect(service.getApi("keeper")).toBeDefined();
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) throw new Error("unreachable");
+    expect(outcome.error).toBe(
+      'plugin "keeper" reload failed: boom on load (the previous instance is still running)',
+    );
+
+    // Reloading every plugin reports the same failure; the fixed plugin
+    // reloads cleanly.
+    expect((await service.reload()).ok).toBe(false);
+    await writeFile(
+      join(rootDir, "server.ts"),
+      `export default function plugin(bb: any) { bb.cli.register({ name: "keeper", summary: "keeper", run() { return { exitCode: 0, stdout: "ok" }; } }); }`,
+    );
+    expect((await service.reload("keeper")).ok).toBe(true);
+    expect(
+      service.list().find((p) => p.id === "keeper")?.statusDetail,
+    ).toBeNull();
   });
 
   it("restarts a crashed service with backoff", async () => {

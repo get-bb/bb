@@ -218,7 +218,10 @@ added/updated/unchanged counts.
                                  tag, engine ranges, install time, and recent
                                  activation history
   bb plugin enable|disable <id>  Load or unload an installed plugin
-  bb plugin reload [id]          Re-run factories against current sources
+  bb plugin reload [id]          Re-run factories against current sources.
+                                 Exits 1 when a plugin does not come up on
+                                 them (previous instance kept, or degraded
+                                 because a service ignored its abort)
   bb plugin config <id> [set <key> <value> | unset <key>]
                                  Show or change a plugin's declared settings
   bb plugin logs <id> [-n N] [-f]  Print (or follow) a plugin's bb.log output

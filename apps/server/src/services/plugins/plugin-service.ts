@@ -146,6 +146,18 @@ export interface PluginSkillRootContribution {
 }
 
 /**
+ * Result of `reload`. `plugins` is the full inventory after the reload. A
+ * reload fails when any targeted plugin is not running its current sources
+ * afterwards: the new sources did not load (the previous instance keeps
+ * serving), or a service of the previous instance never stopped and the
+ * plugin is degraded with nothing loaded (#2029). A plugin the user disabled
+ * stays disabled and is not a failure.
+ */
+export type PluginReloadOutcome =
+  | { ok: true; plugins: PluginListEntry[] }
+  | { ok: false; error: string; plugins: PluginListEntry[] };
+
+/**
  * `fs.watch` is allowed to omit the changed filename. The dev loop still has
  * to reload in that case; `.` is a non-ignored synthetic path representing an
  * unknown change somewhere below the watched plugin root.
@@ -256,7 +268,8 @@ export interface PluginService {
     id: string,
     enabled: boolean,
   ): Promise<PluginListEntry | undefined>;
-  reload(id?: string): Promise<void>;
+  /** Reload one plugin, or every plugin; see PluginReloadOutcome. */
+  reload(id?: string): Promise<PluginReloadOutcome>;
   /** Live API handle for a running plugin (used by later phases and tests). */
   getApi(id: string): BbPluginApi | undefined;
   /**
@@ -1610,14 +1623,17 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               }
             },
             reloadPlugin: async () => {
-              await withLifecycleLock(row.id, async () => {
+              const problem = await withLifecycleLock(row.id, async () => {
                 const current = getInstalledPlugin(deps.db, row.id);
-                if (current === undefined) return;
+                if (current === undefined) return null;
                 await disposeOne(row.id);
-                await loadOne(current);
+                return loadOne(current);
               });
               await syncCliSkill();
               notifyPluginsChanged();
+              // The dev loop logs a thrown reload as "reload failed: …"
+              // instead of "reloaded" while the plugin is not running.
+              if (problem !== null) throw new Error(problem);
             },
             log: (message) => logger.info(`plugin ${row.id}: ${message}`),
           });
@@ -1824,11 +1840,19 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const rows = listInstalledPlugins(deps.db).filter(
         (row) => id === undefined || row.id === id,
       );
+      const failures: string[] = [];
       for (const row of rows.sort((a, b) => a.id.localeCompare(b.id))) {
-        await withLifecycleLock(row.id, () => loadOne(row));
+        const problem = await withLifecycleLock(row.id, () => loadOne(row));
+        if (problem !== null) {
+          failures.push(`plugin "${row.id}" reload failed: ${problem}`);
+        }
       }
       await syncCliSkill();
       notifyPluginsChanged();
+      const plugins = list();
+      return failures.length === 0
+        ? { ok: true, plugins }
+        : { ok: false, error: failures.join("; "), plugins };
     },
 
     getApi(id) {

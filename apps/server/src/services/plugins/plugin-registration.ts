@@ -86,7 +86,8 @@ interface PluginRegistrationContext {
   bundledPlugins: readonly BundledPluginRegistration[];
   withLifecycleLock: <T>(id: string, fn: () => Promise<T>) => Promise<T>;
   disposeOne: (id: string) => Promise<void>;
-  loadOne: (row: InstalledPluginRow) => Promise<void>;
+  /** Resolves the load problem, or null once the row's sources are loaded. */
+  loadOne: (row: InstalledPluginRow) => Promise<string | null>;
   statuses: ReadonlyMap<
     string,
     { status: PluginRuntimeStatus; detail: string | null }

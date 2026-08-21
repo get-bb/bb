@@ -55,7 +55,8 @@ interface PluginActivationContext {
   withArtifactLock: <T>(key: string, fn: () => Promise<T>) => Promise<T>;
   withLifecycleLock: <T>(id: string, fn: () => Promise<T>) => Promise<T>;
   disposeOne: (id: string) => Promise<void>;
-  loadOne: (row: InstalledPluginRow) => Promise<void>;
+  /** Resolves the load problem, or null once the row's sources are loaded. */
+  loadOne: (row: InstalledPluginRow) => Promise<string | null>;
   restoreRegistration: (row: InstalledPluginRow) => void;
   provenanceForRow: (row: InstalledPluginRow) => PluginProvenance;
   registrationMatchesForActivation: (

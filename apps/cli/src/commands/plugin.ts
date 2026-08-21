@@ -1653,7 +1653,8 @@ export function registerPluginCommands(
           if (!result.ok) process.exit(1);
           return;
         }
-        if (!result.ok) exitWithError(result);
+        // A failed reload still carries the inventory: print the targeted
+        // entries (status and detail) before the error and the exit code.
         const reloaded =
           id === undefined
             ? (result.plugins ?? [])
@@ -1661,6 +1662,7 @@ export function registerPluginCommands(
         for (const entry of reloaded) {
           printPlugin(entry);
         }
+        if (!result.ok) exitWithError(result);
       }),
     );
 

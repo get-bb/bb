@@ -450,8 +450,14 @@ export function registerPluginRoutes(
 
   app.post("/plugins/reload", async (context) => {
     const id = context.req.query("id") ?? undefined;
-    await plugins.reload(id);
-    return context.json({ ok: true, plugins: plugins.list() });
+    const outcome = await plugins.reload(id);
+    // A reload that left a targeted plugin without its current sources
+    // running (degraded after a hung service, or the previous instance kept)
+    // is a failure the caller must see: `bb plugin reload` exits 1 on it and
+    // the dev loop logs it. The inventory rides along so the status detail
+    // is visible either way.
+    if (!outcome.ok) return context.json(outcome, 422);
+    return context.json(outcome);
   });
 
   app.post("/plugins/:id/enable", async (context) => {
