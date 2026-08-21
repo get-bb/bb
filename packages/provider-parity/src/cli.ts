@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 /**
  * `pnpm parity --old <checkout> --new . [--provider <id>] [--cell <name>]
- *              [--recordings <dir>] [--allowlist <file>] [--timeout <ms>] [--verbose]`
+ *              [--recordings <dir>] [--allowlist <file>] [--timeout <ms>] [--verbose]
+ *              [--dump-dir <dir>]`
+ *
+ * `--dump-dir` writes each leg's normalized event and row lists per cell
+ * (`<provider>-<cell>.<old|new>.<events|rows>.json`), so an allowlist entry
+ * can name the exact list index of a diff the 160-character CLI rendering
+ * cannot show in full.
  *
  * Replay every committed recording through the bridge of two checkouts and
  * diff the assembled events and projected rows against the allowlist. Exit
@@ -9,7 +15,8 @@
  * gate. With `--old` equal to `--new` the diff must be empty: that is the
  * harness's own acceptance test.
  */
-import { resolve } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import {
   ALLOWLIST_PATH,
   RECORDINGS_ROOT,
@@ -26,7 +33,11 @@ import {
   type RecordedCell,
 } from "./index.js";
 import { loadParityLeg } from "./leg.js";
-import { describeParityValue } from "@bb/provider-bridge-protocol/testing/parity";
+import {
+  describeParityValue,
+  normalizeParityEvents,
+  normalizeParityRows,
+} from "@bb/provider-bridge-protocol/testing/parity";
 
 interface CliArgs {
   oldRoot: string;
@@ -37,11 +48,12 @@ interface CliArgs {
   allowlist: string;
   timeoutMs: number | undefined;
   verbose: boolean;
+  dumpDir: string | null;
 }
 
 function usage(): never {
   process.stderr.write(
-    "usage: pnpm parity --old <checkout> --new <checkout> [--provider <id>] [--cell <name>] [--recordings <dir>] [--allowlist <file>] [--timeout <ms>] [--verbose]\n",
+    "usage: pnpm parity --old <checkout> --new <checkout> [--provider <id>] [--cell <name>] [--recordings <dir>] [--allowlist <file>] [--timeout <ms>] [--verbose] [--dump-dir <dir>]\n",
   );
   process.exit(2);
 }
@@ -59,6 +71,7 @@ function parseArgs(argv: string[]): CliArgs {
     allowlist: ALLOWLIST_PATH,
     timeoutMs: undefined,
     verbose: false,
+    dumpDir: null,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
@@ -94,6 +107,10 @@ function parseArgs(argv: string[]): CliArgs {
         break;
       case "--verbose":
         args.verbose = true;
+        break;
+      case "--dump-dir":
+        args.dumpDir = resolve(callerCwd, value ?? usage());
+        index += 1;
         break;
       default:
         usage();
@@ -167,10 +184,21 @@ async function main(): Promise<void> {
     const onStderr = args.verbose
       ? (text: string) => process.stderr.write(text)
       : undefined;
+    // Each leg paces itself from the lane its own assembler parses whole:
+    // the old (recording-time) leg from the recorded lane, the new leg from
+    // the current lane its bridge wrote, when there is one.
     const [oldInputs, newInputs] = await Promise.all([
       replayCell(cell, { ...oldLeg, timeoutMs: args.timeoutMs, onStderr }),
-      replayCell(cell, { ...newLeg, timeoutMs: args.timeoutMs, onStderr }),
+      replayCell(cell, { ...newLeg, timeoutMs: args.timeoutMs, onStderr, planFromCurrentLane: true }),
     ]);
+    if (args.dumpDir !== null) {
+      mkdirSync(args.dumpDir, { recursive: true });
+      const prefix = join(args.dumpDir, `${cell.provider}-${cell.cell}`);
+      writeFileSync(`${prefix}.old.events.json`, JSON.stringify(normalizeParityEvents(oldInputs.events), null, 2));
+      writeFileSync(`${prefix}.new.events.json`, JSON.stringify(normalizeParityEvents(newInputs.events), null, 2));
+      writeFileSync(`${prefix}.old.rows.json`, JSON.stringify(normalizeParityRows(oldInputs.rows), null, 2));
+      writeFileSync(`${prefix}.new.rows.json`, JSON.stringify(normalizeParityRows(newInputs.rows), null, 2));
+    }
     const comparison = compareCell(cell, oldInputs, newInputs, allowlist);
     const oldCounts = countCellInputs(oldInputs);
     const newCounts = countCellInputs(newInputs);

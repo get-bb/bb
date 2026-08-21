@@ -92,6 +92,51 @@ export function readBridgeRecordingLane(
   return entries;
 }
 
+/**
+ * The file a bridge change re-records its side of the wire into
+ * (`pnpm rerecord`): the `bridge→runtime` lane as THIS checkout's bridge
+ * emits it for the recording's provider and runtime lanes. The recorded lane
+ * itself is never rewritten — it is the recording, and a pre-migration
+ * checkout paces its replay from it — so the current expectation lives
+ * beside it. Absent until a bridge change first needs one.
+ */
+export const CURRENT_BRIDGE_LANE_FILE = "bridge→runtime.current.ndjson";
+
+export function readCurrentBridgeLane(dir: string): BridgeRecordingEntry[] | null {
+  const file = join(dir, CURRENT_BRIDGE_LANE_FILE);
+  if (!existsSync(file)) {
+    return null;
+  }
+  const entries: BridgeRecordingEntry[] = [];
+  const lines = readFileSync(file, "utf8").split("\n");
+  for (const [index, raw] of lines.entries()) {
+    if (raw.length === 0) continue;
+    const entry = parseEntry(raw, file, index + 1);
+    if (entry.dir !== "bridge→runtime") {
+      throw new Error(`${file}:${index + 1}: entry direction ${entry.dir} in the current bridge lane`);
+    }
+    entries.push(entry);
+  }
+  return entries;
+}
+
+/**
+ * The recording with its `bridge→runtime` lane replaced by the current
+ * expectation when one exists: what the self-suite pins and compares.
+ */
+export function withCurrentBridgeLane(recording: BridgeRecording): BridgeRecording {
+  const current = readCurrentBridgeLane(recording.dir);
+  if (current === null) {
+    return recording;
+  }
+  const entries = [
+    ...recording.entries.filter((entry) => entry.dir !== "bridge→runtime"),
+    ...current,
+  ];
+  entries.sort(compareRecordingEntries);
+  return { ...recording, entries };
+}
+
 export function readBridgeRecording(dir: string): BridgeRecording {
   const manifestPath = join(dir, "manifest.json");
   const manifest = existsSync(manifestPath)

@@ -36,6 +36,7 @@ import {
   COMMITTED_RECORDINGS_ROOT,
   listRecordedCells,
   readBridgeRecording,
+  withCurrentBridgeLane,
   type BridgeRecording,
   type RecordedCell,
 } from "./recording.js";
@@ -348,6 +349,20 @@ export interface ReplayRecordingOptions {
   recordingDir: string;
   bridge: ParityBridgeSpec;
   createAssembler: CreateParityAssembler;
+  /**
+   * The assembler that plans the replay's gates from the recorded
+   * `bridge→runtime` lane; defaults to `createAssembler`. A re-recording run
+   * on a checkout whose grammar no longer accepts the whole recorded lane
+   * plans with the recording-time checkout's assembler instead.
+   */
+  createPlanAssembler?: CreateParityAssembler;
+  /**
+   * Plan the replay's gates from the cell's current bridge lane
+   * (`bridge→runtime.current.ndjson`, see `withCurrentBridgeLane`) when one
+   * exists, instead of the recorded lane. The leg whose bridge wrote that
+   * lane parses all of it; the recording-time leg parses the recorded lane.
+   */
+  planFromCurrentLane?: boolean;
   /** Per-wait timeout for a gate or a response. */
   timeoutMs?: number;
   /**
@@ -358,6 +373,14 @@ export interface ReplayRecordingOptions {
   orderTimeoutMs?: number;
   /** Quiet period after the last request before the bridge is closed. */
   settleMs?: number;
+  /**
+   * Quiet period a request waits for once the gates are met. The replay child
+   * plays every provider line before the request's cursor point a couple of
+   * milliseconds apart, so a short silence means the bridge has emitted all
+   * that the pre-request stream produces; without it a request the bridge
+   * acknowledges at once (a steer) lands at a load-dependent point.
+   */
+  drainMs?: number;
   /** Mirror the bridge's stderr (and the replay child's logs) here. */
   onStderr?: (text: string) => void;
 }
@@ -375,6 +398,12 @@ export interface ParityRun {
   lines: string[];
   /** When each line arrived, ms since the replay started (diagnostics). */
   lineTimes: number[];
+  /**
+   * For each line, the recorded `runtime→bridge` entry written last before
+   * it arrived (null before any was sent) — where the line sits in the
+   * recording's wire order, for a lane re-recorded through this bridge.
+   */
+  lineAfter: Array<{ run: number; seq: number; ts: number } | null>;
   /** Assembled events, minus the ones the grammar dropped (as the runtime does). */
   events: ThreadEvent[];
   grammarViolations: ParityGrammarViolation[];
@@ -502,6 +531,7 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
   // waits this long, while a slow CI runner must never trip it for a healthy one.
   const orderTimeoutMs = options.orderTimeoutMs ?? 5_000;
   const settleMs = options.settleMs ?? 750;
+  const drainMs = options.drainMs ?? 300;
   const providerId = options.bridge.providerId;
   const profile = resolveReplayProfile(providerId);
   const recording = readBridgeRecording(options.recordingDir);
@@ -557,14 +587,19 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
   const startedAt = Date.now();
   const lines: string[] = [];
   const lineTimes: number[] = [];
+  const lineAfter: ParityRun["lineAfter"] = [];
+  let lastSentRuntimeEntry: { run: number; seq: number; ts: number } | null = null;
   const events: ThreadEvent[] = [];
   const grammarViolations: ParityGrammarViolation[] = [];
   const stalls: string[] = [];
   let stderr = "";
   const grammar = new ThreadEventGrammar();
   const liveAssembler = options.createAssembler(providerId);
-  const planAssembler = options.createAssembler(providerId);
-  const steps = planRuntimeSteps(recording, planAssembler);
+  const planAssembler = (options.createPlanAssembler ?? options.createAssembler)(providerId);
+  const steps = planRuntimeSteps(
+    options.planFromCurrentLane === true ? withCurrentBridgeLane(recording) : recording,
+    planAssembler,
+  );
 
   const answeredIds = new Set<string>();
   const pendingBridgeRequests: { id: string | number; method: string }[] = [];
@@ -619,6 +654,7 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
       lastOutputAt = Date.now();
       lines.push(line);
       lineTimes.push(lastOutputAt - startedAt);
+      lineAfter.push(lastSentRuntimeEntry);
       const message = parseWire(line);
       if (message === null) return;
       if (isResponse(message)) {
@@ -698,6 +734,7 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
       // Responses are replayed on demand when the bridge asks; notifications
       // go straight through.
       if (step.message !== null && !isResponse(step.message)) {
+        lastSentRuntimeEntry = { run: step.entry.run, seq: step.entry.seq, ts: step.entry.ts };
         write(step.entry.line);
       }
       continue;
@@ -730,6 +767,12 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
       timeoutMs,
       false,
     );
+    await waitFor(
+      `the stream to drain before ${method}`,
+      () => Date.now() - lastOutputAt >= drainMs,
+      timeoutMs,
+      false,
+    );
     if (child.exitCode !== null) break;
     if (
       method === "thread/stop" &&
@@ -746,6 +789,7 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
       profile.rewriteRuntimeLine === undefined
         ? rewritten
         : profile.rewriteRuntimeLine(rewritten, { replayCommand });
+    lastSentRuntimeEntry = { run: step.entry.run, seq: step.entry.seq, ts: step.entry.ts };
     write(line);
     sentRequestIds.push(String(request.id));
     // Release the provider lines up to the next runtime request.
@@ -775,6 +819,7 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
     recordingDir: options.recordingDir,
     lines,
     lineTimes,
+    lineAfter,
     events,
     grammarViolations,
     stalls,
@@ -1085,8 +1130,11 @@ export async function replayRecordedCells(
   );
   return Promise.all(
     cells.map(async (cell): Promise<RecordedCellReplay> => {
+      // The expectation is this checkout's current bridge lane when a bridge
+      // change wrote one (`pnpm rerecord`), else the recorded lane; the
+      // replay paces itself from the same lane.
       const recorded = assembleRecordedEvents(
-        readBridgeRecording(cell.dir),
+        withCurrentBridgeLane(readBridgeRecording(cell.dir)),
         options.createAssembler,
         cell.provider,
       );
@@ -1094,6 +1142,7 @@ export async function replayRecordedCells(
         recordingDir: cell.dir,
         bridge: { checkoutRoot, providerId: cell.provider },
         createAssembler: options.createAssembler,
+        planFromCurrentLane: true,
         ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
         ...(options.onStderr !== undefined ? { onStderr: options.onStderr } : {}),
       });

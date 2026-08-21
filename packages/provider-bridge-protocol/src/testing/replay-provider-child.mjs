@@ -53,6 +53,15 @@ const CURSOR_POLL_MS = 5;
  * them, or the replay reorders what the recording had in order.
  */
 const EMIT_GAP_MS = 2;
+/**
+ * Gap after a response. The bridge continues its request's continuation in
+ * a microtask once the line loop yields; a notification read in the same
+ * chunk is handled first, so under load two milliseconds let a steer's ack
+ * (emitted after `await request("turn/steer")`) land after the next
+ * notification instead of before it, as the recording had it. A response
+ * is rare, so the longer gap costs nothing measurable.
+ */
+const RESPONSE_GAP_MS = 50;
 /** A request that opens or addresses a provider session; see segment release. */
 const SESSION_DEFINING_KEY =
   /^(thread|session)\/(start|resume|fork|new|load|archive|unarchive|name\/set)$/;
@@ -333,12 +342,12 @@ function main() {
     return null;
   }
 
-  function scheduleAdvance() {
+  function scheduleAdvance(gapMs = EMIT_GAP_MS) {
     if (emitTimer !== null) return;
     emitTimer = setTimeout(() => {
       emitTimer = null;
       advance();
-    }, EMIT_GAP_MS);
+    }, gapMs);
   }
 
   function advance() {
@@ -383,7 +392,9 @@ function main() {
         }
         emitRecorded(step);
         position += 1;
-        scheduleAdvance();
+        scheduleAdvance(
+          step.classified.kind === "response" ? RESPONSE_GAP_MS : EMIT_GAP_MS,
+        );
         return;
       }
       // An expectation of what the bridge writes.

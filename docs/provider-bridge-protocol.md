@@ -390,6 +390,16 @@ the pins and replays every cell through the current bridge on each commit,
 and `UPDATE_PARITY_ROW_COUNTS=1` rewrites the pins deliberately. Raw
 recordings stay out of git.
 
+A recording is never rewritten. When a bridge change alters what the bridge
+emits for a recording, `pnpm --filter @bb/provider-parity rerecord
+[--plan-with <recording-time checkout>]` writes the bridge's current output
+to `bridge→runtime.current.ndjson` beside the recorded lane; the self-suite
+pins and compares against that file when it exists, while `pnpm parity`
+still paces a pre-migration leg from the recorded lane (and the current leg
+from the current one). `pnpm parity --dump-dir <dir>` writes both legs'
+normalized event and row lists per cell, for allowlist entries that must
+name a list index.
+
 The conformance kit runs the same recordings as its recorded-traffic
 scenario set: `replayRecordedCells` replays a bridge's cells and
 `checkRecordedCellReplay` reports `recorded/<cell>/{replays,

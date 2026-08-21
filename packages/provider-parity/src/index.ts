@@ -18,6 +18,7 @@ import {
   replayRecording,
   resolveReplayProfile,
   UnreplayableProviderError,
+  withCurrentBridgeLane,
   type CreateParityAssembler,
   type ParityAllowlistEntry,
   type ParityComparison,
@@ -122,7 +123,7 @@ export interface CellInputs {
 
 /** The recording's own view: the recorded bridge output, no bridge in the loop. */
 export function recordedCellInputs(cell: RecordedCell): CellInputs & { invalidDeltas: string[] } {
-  const recording = readBridgeRecording(cell.dir);
+  const recording = withCurrentBridgeLane(readBridgeRecording(cell.dir));
   const assembled = assembleRecordedEvents(recording, createParityAssembler, cell.provider);
   return {
     ...assembled,
@@ -134,6 +135,8 @@ export interface ReplayCellOptions {
   checkoutRoot: string;
   timeoutMs?: number;
   onStderr?: (text: string) => void;
+  /** See `ReplayRecordingOptions.planFromCurrentLane`. */
+  planFromCurrentLane?: boolean;
   /** The leg's own assembler and projector (see `leg.ts`); defaults to this checkout's. */
   createAssembler?: CreateParityAssembler;
   projectRows?: ParityRowProjector;
@@ -159,6 +162,7 @@ export async function replayCell(
     recordingDir: cell.dir,
     bridge: { checkoutRoot: options.checkoutRoot, providerId: cell.provider },
     createAssembler: options.createAssembler ?? createParityAssembler,
+    ...(options.planFromCurrentLane === undefined ? {} : { planFromCurrentLane: options.planFromCurrentLane }),
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
     ...(options.onStderr !== undefined ? { onStderr: options.onStderr } : {}),
   });
