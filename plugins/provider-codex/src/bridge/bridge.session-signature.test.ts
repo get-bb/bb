@@ -28,6 +28,18 @@ const sessionOptions = {
   permissionEscalation: null,
 } as const;
 
+const autoAskSessionOptions = {
+  permissionMode: "auto",
+  permissionScope: "workspace",
+  approvalReviewer: "automatic",
+  permissionEscalation: "ask",
+} as const;
+
+const autoDenySessionOptions = {
+  ...autoAskSessionOptions,
+  permissionEscalation: "deny",
+} as const;
+
 let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let workspaceDir: string;
 
@@ -73,6 +85,34 @@ it("keeps the constructed session for a turn whose options carry no envVars", as
     input: [{ type: "text", text: "say hello", mentions: [] }],
     // The runtime never carries envVars on a turn.
     options: { ...sessionOptions },
+  });
+  const turn = await harness.waitForResponse(2);
+
+  expect(turn.error).toBeUndefined();
+  expect(
+    harness.messages.filter((message) => message.method === "session/replaced"),
+  ).toEqual([]);
+}, 30_000);
+
+it("keeps an auto-reviewed session when only escalation intent changes", async () => {
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: autoAskSessionOptions,
+  });
+  const started = await harness.waitForResponse(1);
+  const providerThreadId = (started.result as { providerThreadId: string })
+    .providerThreadId;
+
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    clientRequestId: "creq_signature3",
+    input: [{ type: "text", text: "say hello", mentions: [] }],
+    // User and system turns carry ask/deny respectively. Automatic review
+    // maps both to the same effective Codex permission settings.
+    options: autoDenySessionOptions,
   });
   const turn = await harness.waitForResponse(2);
 

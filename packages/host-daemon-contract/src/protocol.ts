@@ -1,3 +1,9 @@
+// Version 151 lets the daemon re-resolve an auto/steer turn target from its
+// live runtime after the server observed an active thread but before it had a
+// turn id. A command that an older daemon reports as `appliedAs: "new-turn"`
+// can now report `appliedAs: "steer"`, preventing a child/system notification
+// from replacing the user turn that was still starting.
+//
 // Version 150 adds an OPTIONAL `presentation` to each bb-injected tool
 // definition (`dynamicTools[]` on thread.start, turn.submit and the resume
 // contexts): how a call to the tool reads as a timeline row (grammar v3),
@@ -154,7 +160,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 150 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 151 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

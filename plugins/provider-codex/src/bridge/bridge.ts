@@ -94,6 +94,7 @@ import {
   toCodexDynamicTools,
   toCodexPermissionSettings,
   toCodexServiceTier,
+  toCodexThreadPermissionSettings,
   toCodexUserInput,
   type BbThreadForkParams,
   type BbThreadStartParams,
@@ -478,8 +479,12 @@ function decodeCodexOptions(
 
 /**
  * The construction-scoped option facts. A turn arriving with a different set
- * rebuilds the provider session, reported via session/replaced. Model and
- * serviceTier are deliberately absent: they ride every codex turn/start.
+ * rebuilds the provider session, reported via session/replaced. Compare the
+ * effective Codex permissions, not bb's source policy: auto-reviewed user and
+ * system turns differ in permissionEscalation (`ask` versus `deny`) but both
+ * map to the same Codex construction settings and must keep one session.
+ * Model and serviceTier are deliberately absent: they ride every codex
+ * turn/start.
  *
  * envVars is deliberately absent too: the runtime builds the shell
  * environment only for session-construction commands and sends
@@ -492,15 +497,15 @@ function constructionSignature(
   cwd: string,
   sessionOptions: CodexSessionOptions,
 ): string {
+  const permissionSettings = toCodexThreadPermissionSettings(sessionOptions);
   return JSON.stringify({
     cwd,
     reasoningLevel: sessionOptions.reasoningLevel ?? null,
     memoryEnabled: sessionOptions.memoryEnabled ?? null,
     providerSubagentsEnabled: sessionOptions.providerSubagentsEnabled ?? null,
-    permissionMode: sessionOptions.permissionMode,
-    permissionScope: sessionOptions.permissionScope,
-    approvalReviewer: sessionOptions.approvalReviewer,
-    permissionEscalation: sessionOptions.permissionEscalation,
+    approvalPolicy: permissionSettings.approvalPolicy,
+    approvalsReviewer: permissionSettings.approvalsReviewer,
+    sandbox: permissionSettings.sandbox,
   });
 }
 

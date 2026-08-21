@@ -1045,6 +1045,9 @@ const BRIDGE_LAUNCH = {
 } as const;
 
 describe("host-daemon command schemas", () => {
+  // Version 151 makes auto/steer turn targeting use the daemon's live turn
+  // state, so the same command can report steer where an older daemon reported
+  // new-turn.
   // Version 142 moves built-in ACP discovery into provider bridges and carries
   // provider-owned static bridge options plus installation capability facts.
   // Version 138 adds the provider-targeted provider.health command, changes
@@ -1128,7 +1131,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(150);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(151);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
