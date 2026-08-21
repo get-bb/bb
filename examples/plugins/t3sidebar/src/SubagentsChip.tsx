@@ -15,9 +15,13 @@ const CHILD_MENU_VIEWPORT_GUTTER = 8;
 
 interface CompactViewportBounds {
   left: number;
+  top: number;
   width: number;
+  height: number;
   safeAreaLeft: number;
+  safeAreaTop: number;
   safeAreaRight: number;
+  safeAreaBottom: number;
 }
 
 function clampCompactMenuLeft({
@@ -70,6 +74,12 @@ export function SubagentsChip({
   const [compactMenuLeft, setCompactMenuLeft] = useState(
     CHILD_MENU_VIEWPORT_GUTTER,
   );
+  const [compactMenuTop, setCompactMenuTop] = useState(
+    CHILD_MENU_VIEWPORT_GUTTER,
+  );
+  const [compactMenuMaxHeight, setCompactMenuMaxHeight] = useState<
+    string | undefined
+  >();
 
   const updateCompactViewport = useCallback(() => {
     const visualViewport = window.visualViewport;
@@ -77,15 +87,23 @@ export function SubagentsChip({
     const safeArea = safeAreaProbe ? getComputedStyle(safeAreaProbe) : null;
     const next: CompactViewportBounds = {
       left: visualViewport?.offsetLeft ?? 0,
+      top: visualViewport?.offsetTop ?? 0,
       width: visualViewport?.width ?? window.innerWidth,
+      height: visualViewport?.height ?? window.innerHeight,
       safeAreaLeft: parsePixelValue(safeArea?.paddingLeft ?? ""),
+      safeAreaTop: parsePixelValue(safeArea?.paddingTop ?? ""),
       safeAreaRight: parsePixelValue(safeArea?.paddingRight ?? ""),
+      safeAreaBottom: parsePixelValue(safeArea?.paddingBottom ?? ""),
     };
     setCompactViewport((current) =>
       current?.left === next.left &&
+      current.top === next.top &&
       current.width === next.width &&
+      current.height === next.height &&
       current.safeAreaLeft === next.safeAreaLeft &&
-      current.safeAreaRight === next.safeAreaRight
+      current.safeAreaTop === next.safeAreaTop &&
+      current.safeAreaRight === next.safeAreaRight &&
+      current.safeAreaBottom === next.safeAreaBottom
         ? current
         : next,
     );
@@ -111,14 +129,32 @@ export function SubagentsChip({
     const trigger = triggerRef.current;
     const menu = menuRef.current;
     if (!trigger || !menu) return;
+    const triggerRect = trigger.getBoundingClientRect();
     const menuWidth = menu.getBoundingClientRect().width;
     if (menuWidth <= 0) return;
     setCompactMenuLeft(
       clampCompactMenuLeft({
-        triggerRight: trigger.getBoundingClientRect().right,
+        triggerRight: triggerRect.right,
         menuWidth,
         viewport: compactViewport,
       }),
+    );
+    const minTop =
+      compactViewport.top +
+      compactViewport.safeAreaTop +
+      CHILD_MENU_VIEWPORT_GUTTER;
+    const viewportBottom =
+      compactViewport.top +
+      compactViewport.height -
+      compactViewport.safeAreaBottom -
+      CHILD_MENU_VIEWPORT_GUTTER;
+    const top = Math.min(
+      Math.max(triggerRect.bottom + CHILD_MENU_VIEWPORT_GUTTER, minTop),
+      Math.max(minTop, viewportBottom),
+    );
+    setCompactMenuTop(top);
+    setCompactMenuMaxHeight(
+      `min(32rem, ${Math.max(0, viewportBottom - top)}px)`,
     );
   }, [compactViewport, isCompactViewport, open]);
 
@@ -156,7 +192,9 @@ export function SubagentsChip({
           className="pointer-events-none fixed invisible size-0"
           style={{
             paddingLeft: "env(safe-area-inset-left)",
+            paddingTop: "env(safe-area-inset-top)",
             paddingRight: "env(safe-area-inset-right)",
+            paddingBottom: "env(safe-area-inset-bottom)",
           }}
         />
       ) : null}
@@ -175,14 +213,14 @@ export function SubagentsChip({
             aria-label="Child threads"
             className={cn(
               "z-50 flex max-h-[min(32rem,calc(100dvh-6rem))] w-80 max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-lg",
-              isCompactViewport
-                ? "fixed top-[calc(env(safe-area-inset-top)+3.5rem)]"
-                : "absolute right-0 top-9",
+              isCompactViewport ? "fixed" : "absolute right-0 top-9",
             )}
             style={
               isCompactViewport
                 ? {
                     left: compactMenuLeft,
+                    top: compactMenuTop,
+                    maxHeight: compactMenuMaxHeight,
                     maxWidth: compactViewport
                       ? Math.max(
                           0,
