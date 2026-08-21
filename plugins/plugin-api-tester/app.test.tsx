@@ -13,7 +13,7 @@ describe("Plugin API Tester panel", () => {
     expect(app.navPanels[0]).toMatchObject({
       id: "plugin-api-tester",
       title: "Plugin API Tester",
-      icon: "Code",
+      icon: "Beaker",
       path: "plugin-api-tester",
     });
 

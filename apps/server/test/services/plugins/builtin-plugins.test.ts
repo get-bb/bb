@@ -213,7 +213,7 @@ describe("builtin plugin reconciliation", () => {
       ["automations", "Clock"],
       ["connect", "Smartphone"],
       ["custom-instructions", "EditFile"],
-      ["plugin-api-tester", "Code"],
+      ["plugin-api-tester", "Beaker"],
       ["inline-vis", "AppWindow"],
       ["keep-awake", "Coffee"],
       ["pdf-preview", "FileText"],

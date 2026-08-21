@@ -22,7 +22,7 @@ export default definePluginApp((app) => {
   app.slots.navPanel({
     id: "plugin-api-tester",
     title: "Plugin API Tester",
-    icon: "Code",
+    icon: "Beaker",
     path: "plugin-api-tester",
     component: PluginApiTesterPanel,
   });

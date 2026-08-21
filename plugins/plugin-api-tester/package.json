@@ -12,7 +12,7 @@
     "name": "Plugin API Tester",
     "description": "Exercise and inspect bb plugin API surfaces during development.",
     "branding": {
-      "icon": "Code"
+      "icon": "Beaker"
     },
     "server": "./server.ts",
     "app": "./app.tsx"
