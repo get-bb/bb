@@ -1,0 +1,84 @@
+name: Deploy Demo Server
+
+# The bb demo server is the mock bb server an App Store reviewer connects to
+# (apps/demo-server). It has no database, no secrets, and no route of its
+# own, so this is the short form of deploy-connect.yml: install, typecheck
+# and test, deploy. It serves from workers.dev; see the wrangler config for
+# why it is not on demo.getbb.app.
+#
+# Paths: the worker bundles @bb/server-contract from source, and the
+# contract is what its tests check the fixtures against, so a contract change
+# redeploys the demo too. That is the point: a demo that has drifted from the
+# contract is a demo that crashes in front of a reviewer.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/demo-server/**"
+      - "packages/server-contract/**"
+      - ".github/workflows/deploy-demo-server.yml"
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "22.x"
+  PNPM_VERSION: "9.15.0"
+
+permissions:
+  contents: read
+
+# One deploy at a time, and a queued one waits rather than being dropped, so
+# the worker never ends up on a build older than main.
+concurrency:
+  group: demo-server-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy demo server to Cloudflare Workers
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      # The tests parse every fixture with the contract's own schemas. Run
+      # them here too, not only in ci.yml: this job also fires on a contract
+      # change, and that is exactly when a fixture can go stale.
+      - name: Typecheck and test
+        run: pnpm exec turbo run typecheck test --filter=@bb/demo-server
+
+      # No build step: wrangler's esbuild bundles the worker and its workspace
+      # dependency straight from source. The account is pinned in
+      # wrangler.jsonc, so the token never has to pick one.
+      - name: Deploy demo server
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: pnpm --filter @bb/demo-server exec wrangler deploy | tee deploy.log
+
+      # The workers.dev URL is what goes in the App Store review notes. Surface
+      # it on the run so nobody has to open the Cloudflare dashboard for it.
+      - name: Report the URL
+        run: |
+          {
+            echo "## Demo server"
+            echo
+            grep -Eo 'https://[^ ]+\.workers\.dev' deploy.log | sort -u | sed 's/^/- /' || echo "- URL not found in the wrangler output; check the deploy step log."
+          } >> "$GITHUB_STEP_SUMMARY"
