@@ -15,6 +15,7 @@ import type {
   TimelineApprovalWorkRow,
   TimelineCommandWorkRow,
   TimelineQuestionWorkRow,
+  TimelineRowPresentation,
   TimelineToolArgs,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
@@ -25,7 +26,7 @@ import {
   type TimelineActivityIntentTitle,
   type TimelineViewWorkRow,
 } from "@bb/thread-view";
-import type { IconName } from "@/ui/icon-map";
+import { isIconName, type IconName } from "@/ui/icon-map";
 import type { TimelineRowKind } from "../../rows";
 
 /**
@@ -69,12 +70,50 @@ export function leadingIconForActivityIntentTitle(
 }
 
 /**
- * A leading glyph for every work row, keyed by kind so edits, explores and
+ * The bridge's persisted presentation for a work row (grammar v3), or
+ * undefined for rows bb authors itself and for rows persisted before
+ * presentation existed. The declarative base every client renders from.
+ */
+export function workRowPresentation(
+  row: TimelineViewWorkRow,
+): TimelineRowPresentation | undefined {
+  if (row.workKind === "approval" || row.workKind === "question") {
+    return undefined;
+  }
+  return row.presentation;
+}
+
+// A conservative CSS <color> grammar (hex, functional notations, names);
+// plugin data never reaches a style prop unchecked.
+const TINT_COLOR_PATTERN =
+  /^(#[0-9a-f]{3,8}|(rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color)\([-+.%\w\s,/]*\)|[a-z]{3,20})$/iu;
+
+/**
+ * The bridge's accent for the row's leading glyph in the current theme mode
+ * (`presentation.tint`), or undefined for the neutral row colour.
+ */
+export function leadingIconTintForWorkRow(
+  row: TimelineViewWorkRow,
+  mode: "light" | "dark",
+): string | undefined {
+  const tint = workRowPresentation(row)?.tint;
+  if (tint === undefined) return undefined;
+  const value = tint[mode].trim();
+  return TINT_COLOR_PATTERN.test(value) ? value : undefined;
+}
+
+/**
+ * A leading glyph for every work row: the bridge's glyph when the host knows
+ * it (web `presentationIconName`), else keyed by kind so edits, explores and
  * commands read apart at a glance (web `leadingIconForWorkRow`).
  */
 export function leadingIconForWorkRow(row: TimelineViewWorkRow): IconName {
   if ("activityIntents" in row && row.activityIntents.some(isSkillReadIntent)) {
     return "Zap";
+  }
+  const presentedGlyph = workRowPresentation(row)?.icon.glyph;
+  if (presentedGlyph !== undefined && isIconName(presentedGlyph)) {
+    return presentedGlyph;
   }
   if (
     row.workKind === "command" ||

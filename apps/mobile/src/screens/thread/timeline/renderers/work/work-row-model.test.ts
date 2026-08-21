@@ -23,6 +23,7 @@ import {
   isInsideWorkSummary,
   isPastWorkRow,
   leadingIconForWorkRow,
+  leadingIconTintForWorkRow,
   toolArgEntries,
   workflowBodyKind,
   workflowPhaseStripState,
@@ -181,6 +182,60 @@ describe("leadingIconForWorkRow", () => {
       leadingIconForWorkRow(workflowRow({ taskType: "local_subagent" })),
     ).toBe("UserRoundPlus");
     expect(leadingIconForWorkRow(approvalRow({}))).toBe("Lock");
+  });
+});
+
+describe("presentation-driven glyph and tint", () => {
+  const presentation = {
+    label: { pending: "Stamping receipt", completed: "Stamped receipt" },
+    icon: { glyph: "Check" },
+    tint: { light: "#1d4ed8", dark: "#93c5fd" },
+  };
+
+  it("prefers the bridge's glyph when the host knows it, else the per-kind glyph", () => {
+    expect(leadingIconForWorkRow(toolRow("t", { presentation }))).toBe("Check");
+    expect(
+      leadingIconForWorkRow(
+        toolRow("t", {
+          presentation: { ...presentation, icon: { glyph: "NotAGlyph" } },
+        }),
+      ),
+    ).toBe("Terminal");
+    // A skill read keeps its Zap even with a presentation glyph.
+    expect(
+      leadingIconForWorkRow(
+        toolRow("t", {
+          presentation,
+          activityIntents: [
+            {
+              type: "read",
+              command: "Read",
+              name: "SKILL.md",
+              path: "/x/skills/deploy/SKILL.md",
+            },
+          ],
+        }),
+      ),
+    ).toBe("Zap");
+  });
+
+  it("picks the tint for the theme mode and refuses non-colour values", () => {
+    const row = toolRow("t", { presentation });
+    expect(leadingIconTintForWorkRow(row, "light")).toBe("#1d4ed8");
+    expect(leadingIconTintForWorkRow(row, "dark")).toBe("#93c5fd");
+    expect(leadingIconTintForWorkRow(toolRow("t"), "light")).toBeUndefined();
+    expect(
+      leadingIconTintForWorkRow(
+        toolRow("t", {
+          presentation: {
+            ...presentation,
+            tint: { light: "url(evil)", dark: "#fff" },
+          },
+        }),
+        "light",
+      ),
+    ).toBeUndefined();
+    expect(leadingIconTintForWorkRow(approvalRow({}), "light")).toBeUndefined();
   });
 });
 

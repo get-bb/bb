@@ -4,10 +4,14 @@ import type {
   TimelineCommandWorkRow,
   TimelineConversationRow,
   TimelineDelegationWorkRow,
+  TimelineExtensionWorkRow,
   TimelineFileChangeWorkRow,
+  TimelineFileReadWorkRow,
   TimelineImageViewWorkRow,
+  TimelinePlanStepsWorkRow,
   TimelineQuestionWorkRow,
   TimelineRow,
+  TimelineSearchWorkRow,
   TimelineToolWorkRow,
   TimelineWebFetchWorkRow,
   TimelineWebSearchWorkRow,
@@ -106,6 +110,100 @@ function tool(
     completedAt: durationMs === null ? null : row.startedAt + durationMs,
     approvalStatus: null,
     activityIntents: [],
+    ...overrides,
+  };
+}
+
+function fileRead(
+  id: string,
+  overrides: Partial<TimelineFileReadWorkRow> &
+    Pick<TimelineFileReadWorkRow, "path">,
+  durationMs: number | null = 400,
+): TimelineFileReadWorkRow {
+  const row = base(id, 3_000, durationMs);
+  return {
+    ...row,
+    kind: "work",
+    workKind: "file-read",
+    status: durationMs === null ? "pending" : "completed",
+    callId: `call-${id}`,
+    cmd: null,
+    completedAt: durationMs === null ? null : row.startedAt + durationMs,
+    presentation: {
+      label: { pending: "Reading file", completed: "Read file" },
+      icon: { glyph: "FileText" },
+      title: overrides.path.split("/").pop() ?? overrides.path,
+    },
+    ...overrides,
+  };
+}
+
+function search(
+  id: string,
+  overrides: Partial<TimelineSearchWorkRow> &
+    Pick<TimelineSearchWorkRow, "mode" | "query">,
+  durationMs: number | null = 600,
+): TimelineSearchWorkRow {
+  const row = base(id, 3_000, durationMs);
+  return {
+    ...row,
+    kind: "work",
+    workKind: "search",
+    status: durationMs === null ? "pending" : "completed",
+    callId: `call-${id}`,
+    path: null,
+    cmd: null,
+    completedAt: durationMs === null ? null : row.startedAt + durationMs,
+    presentation: {
+      label:
+        overrides.mode === "content"
+          ? { pending: "Searching files", completed: "Searched files" }
+          : { pending: "Finding files", completed: "Found files" },
+      icon: { glyph: overrides.mode === "content" ? "Search" : "FolderOpen" },
+      title: overrides.query,
+    },
+    ...overrides,
+  };
+}
+
+function planSteps(
+  id: string,
+  overrides: Partial<TimelinePlanStepsWorkRow> &
+    Pick<TimelinePlanStepsWorkRow, "steps">,
+): TimelinePlanStepsWorkRow {
+  const row = base(id, 4_000, 0);
+  const active = overrides.steps.find((step) => step.status === "active");
+  return {
+    ...row,
+    kind: "work",
+    workKind: "plan-steps",
+    status: "completed",
+    callId: `call-${id}`,
+    explanation: null,
+    completedAt: row.startedAt,
+    presentation: {
+      label: { pending: "Updating plan", completed: "Updated plan" },
+      icon: { glyph: "ListTodo" },
+      ...(active ? { title: active.step } : {}),
+    },
+    ...overrides,
+  };
+}
+
+function extension(
+  id: string,
+  overrides: Partial<TimelineExtensionWorkRow> &
+    Pick<TimelineExtensionWorkRow, "extensionKind" | "payload" | "presentation">,
+  durationMs: number | null = 1_500,
+): TimelineExtensionWorkRow {
+  const row = base(id, 5_000, durationMs);
+  return {
+    ...row,
+    kind: "work",
+    workKind: "extension",
+    status: durationMs === null ? "pending" : "completed",
+    callId: `call-${id}`,
+    completedAt: durationMs === null ? null : row.startedAt + durationMs,
     ...overrides,
   };
 }
@@ -811,6 +909,62 @@ export function buildWorkRowFixtureSections(): WorkRowFixtureSection[] {
           completedAt: T0 + 9_000,
         }),
         assistant("a-done", "All done."),
+      ],
+    },
+    {
+      title:
+        "Presentation-driven rows (grammar v3): reads, searches, plan, extension, tinted tool",
+      rows: [
+        user("u-v3", "Show me every new row kind"),
+        fileRead("read-v3", { path: "src/index.ts" }),
+        fileRead("read-v3-pending", { path: "src/long-file-name.ts" }, null),
+        search("grep-v3", { mode: "content", query: "TODO", path: "src" }),
+        search("glob-v3", { mode: "path", query: "**/*.test.ts" }),
+        tool("tool-v3", {
+          toolName: "echo_stamp",
+          toolArgs: { text: "hello" },
+          output: "stamped",
+          presentation: {
+            label: { pending: "Stamping receipt", completed: "Stamped receipt" },
+            icon: { glyph: "Check" },
+            tint: { light: "#1d4ed8", dark: "#93c5fd" },
+            detail: "Stamped by the **echo** provider.",
+          },
+        }),
+        planSteps("plan-v3", {
+          steps: [
+            { step: "Read the spec", status: "completed" },
+            { step: "Wire the renderer", status: "active" },
+            { step: "Write tests", status: "pending" },
+            { step: "Ship it", status: "failed" },
+          ],
+          explanation: "Four steps, one failed.",
+        }),
+        extension("ext-v3", {
+          extensionKind: "echo-provider/receipt",
+          payload: { prompt: "hello world", itemCount: 2, shouted: false },
+          presentation: {
+            label: { pending: "Writing receipt", completed: "Wrote receipt" },
+            icon: { glyph: "MessageSquare" },
+            title: "hello world",
+            detail: "Echoed **2** items · shout off",
+            tint: { light: "#9333EA", dark: "#D8B4FE" },
+          },
+        }),
+        extension(
+          "ext-v3-pending",
+          {
+            extensionKind: "echo-provider/receipt",
+            payload: {},
+            presentation: {
+              label: { pending: "Writing receipt", completed: "Wrote receipt" },
+              icon: { glyph: "MessageSquare" },
+              title: "still echoing",
+            },
+          },
+          null,
+        ),
+        assistant("a-v3", "Every kind rendered from its presentation."),
       ],
     },
   ];

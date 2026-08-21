@@ -1,4 +1,5 @@
 import type { TimelineRowRendererProps } from "../../renderers";
+import { PresentationDetail } from "./PresentationWorkRows";
 import { ToolCallDetailBlock } from "./ToolCallDetailBlock";
 import { WorkRowShell } from "./WorkRowShell";
 
@@ -20,6 +21,7 @@ export function ToolWorkRow({
       expanded={expanded}
       onToggle={onToggle}
     >
+      <PresentationDetail presentation={row.presentation} />
       <ToolCallDetailBlock
         toolName={row.toolName}
         args={row.toolArgs}

@@ -51,6 +51,8 @@ interface ExpandableRowHeaderProps {
   /** Replaces the generic title renderer for a specialized header. */
   titleContent?: ReactNode;
   leadingIcon?: IconName;
+  /** Accent for the leading glyph (a bridge's tint); defaults to muted. */
+  leadingIconColor?: string;
   expandable: boolean;
   expanded: boolean;
   onToggle: () => void;
@@ -79,6 +81,7 @@ export function ExpandableRowHeader({
   title,
   titleContent,
   leadingIcon,
+  leadingIconColor,
   expandable,
   expanded,
   onToggle,
@@ -114,7 +117,7 @@ export function ExpandableRowHeader({
           <Icon
             name={leadingIcon}
             size={ROW_LEADING_ICON_SIZE}
-            color={tokens.mutedForeground}
+            color={leadingIconColor ?? tokens.mutedForeground}
           />
         ) : null}
         <View className="min-w-0 flex-1">

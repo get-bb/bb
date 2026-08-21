@@ -8,6 +8,12 @@ import { CommandWorkRow } from "./CommandWorkRow";
 import { DelegationWorkRow } from "./DelegationWorkRow";
 import { FileChangeWorkRow } from "./FileChangeWorkRow";
 import { ImageViewWorkRow } from "./ImageViewWorkRow";
+import {
+  ExtensionWorkRow,
+  FileReadWorkRow,
+  PlanStepsWorkRow,
+  SearchWorkRow,
+} from "./PresentationWorkRows";
 import { QuestionWorkRow } from "./QuestionWorkRow";
 import { ToolWorkRow } from "./ToolWorkRow";
 import { WebFetchWorkRow, WebSearchWorkRow } from "./WebWorkRows";
@@ -19,6 +25,10 @@ registerTimelineRowRenderer("work:file-change", FileChangeWorkRow);
 registerTimelineRowRenderer("work:web-search", WebSearchWorkRow);
 registerTimelineRowRenderer("work:web-fetch", WebFetchWorkRow);
 registerTimelineRowRenderer("work:image-view", ImageViewWorkRow);
+registerTimelineRowRenderer("work:file-read", FileReadWorkRow);
+registerTimelineRowRenderer("work:search", SearchWorkRow);
+registerTimelineRowRenderer("work:plan-steps", PlanStepsWorkRow);
+registerTimelineRowRenderer("work:extension", ExtensionWorkRow);
 registerTimelineRowRenderer("work:approval", ApprovalWorkRow);
 registerTimelineRowRenderer("work:question", QuestionWorkRow);
 registerTimelineRowRenderer("work:delegation", DelegationWorkRow);

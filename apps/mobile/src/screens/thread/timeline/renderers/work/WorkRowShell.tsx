@@ -16,6 +16,7 @@ import {
   isPastWorkRow,
   leadingIconForActivityIntentTitle,
   leadingIconForWorkRow,
+  leadingIconTintForWorkRow,
 } from "./work-row-model";
 
 /** Icon size of the leading glyph (web `size-3.5`). */
@@ -61,7 +62,7 @@ export function WorkRowShell({
   children,
   accessibilityLabel,
 }: WorkRowShellProps) {
-  const { tokens } = useTheme();
+  const { tokens, mode } = useTheme();
   const row = item.row;
   const dim = isPastWorkRow(row);
   const compactTitles = compactActivityIntentTitles(row, item.parentKind);
@@ -97,6 +98,7 @@ export function WorkRowShell({
       <ExpandableRowHeader
         title={item.title}
         leadingIcon={leadingIconForWorkRow(row)}
+        leadingIconColor={leadingIconTintForWorkRow(row, mode)}
         expandable={expandable}
         expanded={expanded}
         onToggle={onToggle}
