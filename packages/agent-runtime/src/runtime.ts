@@ -1,9 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
-import {
-  isAcpProviderId,
-  isSessionRestorableProvider,
-} from "./provider-catalog.js";
+import { isSessionRestorableProvider } from "./provider-catalog.js";
 import {
   normalizeProviderThreadNameEvent,
   toProviderExternalThreadName,
@@ -11,13 +8,11 @@ import {
 import type {
   DynamicTool,
   InstructionMode,
-  ProviderErrorCategory,
   ThreadEvent,
 } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type { AdapterCommand } from "./provider-adapter.js";
 import {
-  BRIDGE_JSON_RPC_ERRORS,
   experimental_providerHealthResultSchema,
   experimental_providerInstallationRunResultSchema,
   experimental_providerInstallationStatusSchema,
@@ -87,7 +82,7 @@ interface ReconfigureThreadIfNeededArgs {
   threadId: string;
 }
 
-interface RestartCodexThreadForNextTurnArgs {
+interface RestartThreadBridgeArgs {
   instructions: string | undefined;
   options: AgentRuntimeExecutionOptions;
   threadId: string;
@@ -232,9 +227,9 @@ const PREPARED_THREAD_REWIND_RETRY_MS = 30_000;
 interface ThreadRuntimeConfig {
   /**
    * The launch spec the live provider session was constructed with. Kept so a
-   * runtime-internal re-resume (the codex account restart) can rebuild the
-   * same process key and adapter for a plugin-delivered bridge, which cannot
-   * be resolved from the provider id alone.
+   * runtime-internal re-resume (a `restartRecommended` bridge restart) can
+   * rebuild the same process key and adapter for a plugin-delivered bridge,
+   * which cannot be resolved from the provider id alone.
    */
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   dynamicTools?: DynamicTool[];
@@ -280,65 +275,18 @@ interface RequireProviderRequestPlanArgs {
 }
 
 /**
- * Codex-shaped recovery signals. These survive graduation deliberately: the
- * codex bridge passes provider error text and `errorInfo.category` through
- * verbatim precisely so these runtime tolerances keep matching (see the
- * comments beside SESSION_NOT_RESTORABLE and the rename path in
- * codex/bridge/bridge.ts). Do not delete them as "legacy adapter" residue.
+ * The codex per-thread process lane (#130). Still load-bearing for the idle
+ * reap (`isThreadScopedCodexProcess`); the process-topology layer (L3)
+ * collapses it to one process per provider artifact.
  */
 const CODEX_PROVIDER_ID = "codex";
 const CODEX_THREAD_PROCESS_KEY_PREFIX = `${CODEX_PROVIDER_ID}\0thread:`;
 const THREAD_CREATION_REQUEST_TIMEOUT_MS = 2 * 60_000;
-const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_CATEGORIES =
-  new Set<ProviderErrorCategory>(["rate-limit", "unauthorized"]);
-const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_TEXT_PATTERN =
-  /\b(?:40[19]|429|auth(?:entication|orization)?|credits?|quota|rate[-\s]?limit(?:ed)?|unauthori[sz]ed|usage limit)\b/i;
-const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
-  /\b(?:session|thread)\s+\S+\s+is archived\b/i;
-const CODEX_EMPTY_ROLLOUT_RENAME_ERROR_PATTERN = /\brollout at .+ is empty\b/i;
-const CODEX_RENAME_RETRY_DELAYS_MS = [50, 200] as const;
 
 async function delay(ms: number): Promise<void> {
   await new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
   });
-}
-
-interface SendRenameWithRolloutRetriesArgs {
-  onStderr: AgentRuntimeOptions["onStderr"];
-  providerId: string;
-  send: () => Promise<void>;
-  threadId: string;
-}
-
-/**
- * A brand-new Codex rollout file can exist before its first record is written,
- * and a rename landing in that window fails until Codex flushes. Retry only
- * that error, backing off after each attempt, then make one final attempt
- * whose failure propagates. Every other error fails immediately.
- */
-async function sendRenameWithRolloutRetries(
-  args: SendRenameWithRolloutRetriesArgs,
-): Promise<void> {
-  for (const retryDelayMs of CODEX_RENAME_RETRY_DELAYS_MS) {
-    try {
-      await args.send();
-      return;
-    } catch (error) {
-      if (
-        args.providerId !== CODEX_PROVIDER_ID ||
-        !(error instanceof Error) ||
-        !CODEX_EMPTY_ROLLOUT_RENAME_ERROR_PATTERN.test(error.message)
-      ) {
-        throw error;
-      }
-      args.onStderr?.(
-        `Codex session rollout is not ready; retrying rename for thread "${args.threadId}" in ${retryDelayMs}ms.`,
-      );
-      await delay(retryDelayMs);
-    }
-  }
-  await args.send();
 }
 
 function resolveThreadStoragePath(
@@ -365,7 +313,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   let nextRequestId = 1;
   const threadIdentityRegistry = new RuntimeThreadIdentityRegistry();
   const threadRuntimeConfigs = new Map<string, ThreadRuntimeConfig>();
-  const codexThreadsRequiringAccountRestart = new Set<string>();
   const rateLimitedRetryDelaysMs =
     options.rateLimitRetry?.delaysMs ?? DEFAULT_RATE_LIMITED_RETRY_DELAYS_MS;
   /**
@@ -460,10 +407,9 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   /**
    * Codex runs one provider process per thread. The codex bridge now owns a
    * per-thread `codex app-server` child internally, so this outer scoping is
-   * redundant for isolation — but it is still load-bearing: the account
-   * restart below and the pre-experiment idle reap both key off
-   * `isThreadScopedCodexProcess`. Collapsing it means routing those through
-   * `thread/stop {release}` + resume, which is a refactor, not a deletion.
+   * redundant for isolation — only the pre-experiment idle reap still keys
+   * off `isThreadScopedCodexProcess`. The process-topology layer (L3)
+   * collapses it to one process per provider artifact.
    */
   function resolveProviderProcessKey(
     args: ResolveProviderProcessKeyArgs,
@@ -551,28 +497,22 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       // can only ever explain this request. A timeout or a bridge exit has no
       // response and therefore no hint.
       const hint = stampRecoveryHint(error, recovery);
-      // Legacy gate: the codex-shaped text match survives until the typed
-      // hint has shipped in every bridge the runtime can meet (it is deleted
-      // in the next layer). A hint always wins over the text.
-      if (
-        (hint?.kind === "sessionArchived" && hint.retryable) ||
-        (hint === null && isCodexArchivedSessionError(recovery.providerId, error))
-      ) {
-        return await unarchiveAndRetryRequest({
-          error,
-          proc: args.proc,
-          recovery,
-          request,
-        });
-      }
       if (hint === null) {
         throw error;
       }
       switch (hint.kind) {
         case "sessionArchived":
-          // Not retryable: the bridge says the session cannot be unarchived
-          // from here (a fork source it cannot reopen, for example).
-          throw error;
+          if (!hint.retryable) {
+            // The bridge says the session cannot be unarchived from here (a
+            // fork source it cannot reopen, for example).
+            throw error;
+          }
+          return await unarchiveAndRetryRequest({
+            error,
+            proc: args.proc,
+            recovery,
+            request,
+          });
         case "authRequired":
           throw new AgentRuntimeRecoveryError({
             cause: error,
@@ -784,7 +724,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     threadId: string,
     config: ThreadRuntimeConfig,
   ): void {
-    codexThreadsRequiringAccountRestart.delete(threadId);
     threadRuntimeConfigs.set(threadId, config);
   }
 
@@ -802,7 +741,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   }
 
   function clearThreadRuntimeConfig(threadId: string): void {
-    codexThreadsRequiringAccountRestart.delete(threadId);
     threadsAwaitingBridgeRestart.delete(threadId);
     idleProviderSessionSinceMsByThreadId.delete(threadId);
     pendingTurnStarts.delete(threadId);
@@ -977,74 +915,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     return providerThreadId;
   }
 
-  function shouldRestartCodexThreadAfterEvent(
-    event: ThreadEvent,
-    proc: ProviderProcess,
-  ): boolean {
-    if (
-      proc.providerId !== CODEX_PROVIDER_ID ||
-      event.type !== "provider/error" ||
-      event.willRetry === true
-    ) {
-      return false;
-    }
-
-    if (
-      event.errorInfo !== undefined &&
-      CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_CATEGORIES.has(
-        event.errorInfo.category,
-      )
-    ) {
-      return true;
-    }
-
-    const errorText = [event.message, event.detail]
-      .filter((part) => part !== undefined)
-      .join("\n");
-    return CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_TEXT_PATTERN.test(errorText);
-  }
-
-  async function restartCodexThreadForNextTurnIfNeeded(
-    args: RestartCodexThreadForNextTurnArgs,
-  ): Promise<void> {
-    if (!codexThreadsRequiringAccountRestart.has(args.threadId)) {
-      return;
-    }
-
-    const currentConfig = threadRuntimeConfigs.get(args.threadId);
-    if (!currentConfig || currentConfig.providerId !== CODEX_PROVIDER_ID) {
-      codexThreadsRequiringAccountRestart.delete(args.threadId);
-      return;
-    }
-
-    if (turnState.getActiveTurnId(args.threadId) !== null) {
-      return;
-    }
-
-    const providerThreadId = requireProviderThreadId(args.threadId);
-    const proc = providerProcesses.requireProviderProcess({
-      processKey: currentConfig.processKey,
-      providerId: currentConfig.providerId,
-    });
-    if (!isThreadScopedCodexProcess(proc)) {
-      codexThreadsRequiringAccountRestart.delete(args.threadId);
-      return;
-    }
-
-    codexThreadsRequiringAccountRestart.delete(args.threadId);
-    await providerProcesses.shutdownProvider({
-      processKey: proc.processKey,
-      providerId: proc.providerId,
-    });
-    await resumeThreadFromConfig({
-      currentConfig,
-      instructions: args.instructions,
-      options: args.options,
-      providerThreadId,
-      threadId: args.threadId,
-    });
-  }
-
   /**
    * An unsolicited `provider/recovery` notification: a condition with no
    * runtime request to ride on (a terminal 401 mid-turn). A hint that
@@ -1116,7 +986,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
    * thread's next turn or steer.
    */
   async function restartThreadBridgeIfRecommended(
-    args: RestartCodexThreadForNextTurnArgs,
+    args: RestartThreadBridgeArgs,
   ): Promise<void> {
     const hint = threadsAwaitingBridgeRestart.get(args.threadId);
     if (hint === undefined) {
@@ -1313,17 +1183,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     await releaseIdleProviderProcess(proc);
   }
 
-  function isCodexArchivedSessionError(
-    providerId: string,
-    error: unknown,
-  ): error is Error {
-    return (
-      providerId === CODEX_PROVIDER_ID &&
-      error instanceof Error &&
-      CODEX_ARCHIVED_SESSION_ERROR_PATTERN.test(error.message)
-    );
-  }
-
   async function reconfigureThreadIfNeeded(
     args: ReconfigureThreadIfNeededArgs,
   ): Promise<void> {
@@ -1491,9 +1350,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       turnState.observe(normalizedEvent);
       backgroundWorkState.observe(normalizedEvent);
       observeProviderSessionIdleState(normalizedEvent);
-      if (shouldRestartCodexThreadAfterEvent(normalizedEvent, args.proc)) {
-        codexThreadsRequiringAccountRestart.add(normalizedEvent.threadId);
-      }
       options.onEvent(normalizedEvent);
       threadGoalState.observe(normalizedEvent);
     }
@@ -2290,11 +2146,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         work: async () => {
           const pid = threadIdentityRegistry.resolveProviderForThread(threadId);
           requireProviderProcessForThread(threadId);
-          await restartCodexThreadForNextTurnIfNeeded({
-            threadId,
-            options: execOpts,
-            instructions,
-          });
           await restartThreadBridgeIfRecommended({
             threadId,
             options: execOpts,
@@ -2392,11 +2243,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             };
           }
 
-          await restartCodexThreadForNextTurnIfNeeded({
-            threadId,
-            options: execOpts,
-            instructions,
-          });
           await restartThreadBridgeIfRecommended({
             threadId,
             options: execOpts,
@@ -2451,14 +2297,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                 `Dropping stale steer for thread "${threadId}": ${error.recovery.message}`,
                 threadId,
               );
-              turnState.clearThread(threadId);
-              return { status: "stale", activeTurnId: null };
-            }
-            if (
-              error instanceof JsonRpcResponseError &&
-              isAcpProviderId(pid) &&
-              error.code === BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN
-            ) {
               turnState.clearThread(threadId);
               return { status: "stale", activeTurnId: null };
             }
@@ -2581,22 +2419,15 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             plan: proc.adapter.buildCommandPlan(adapterCommand),
             providerId: pid,
           });
-          await sendRenameWithRolloutRetries({
-            onStderr: options.onStderr,
-            providerId: pid,
-            send: async () => {
-              await sendCommand({
-                proc,
-                message: cmd,
-                resultSchema: ignoredJsonRpcResultSchema,
-                recovery: {
-                  providerId: pid,
-                  providerThreadId: adapterCommand.providerThreadId,
-                  threadId,
-                },
-              });
+          await sendCommand({
+            proc,
+            message: cmd,
+            resultSchema: ignoredJsonRpcResultSchema,
+            recovery: {
+              providerId: pid,
+              providerThreadId: adapterCommand.providerThreadId,
+              threadId,
             },
-            threadId,
           });
           emitAcceptedCommandEvents({
             command: adapterCommand,

@@ -27,7 +27,6 @@ import {
   scriptedEchoProcessEnv,
   waitForRuntimeState,
   waitForThreadAgentMessageText,
-  waitForThreadTurnCompleted,
   waitForThreadTurnStarted,
   withBridgeLaunch,
   type ScriptedEchoLaunchScript,
@@ -868,151 +867,12 @@ describe("createAgentRuntime process lifecycle", () => {
     await runtime.shutdown();
   });
 
-  it("restarts a codex thread process after a terminal account error before the next turn", async () => {
-    const events: ThreadEvent[] = [];
-    const { processLog, runtime } = createCodexRuntime({ events });
-    try {
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "codex",
-        options: fullRuntimeOptions,
-      });
-      const initialSession = runtime.getProviderSession("t1");
-      await runtime.runTurn({
-        clientRequestId: "creq_2222222253",
-        threadId: "t1",
-        input: [
-          promptTextInput({
-            text: "fail_turn:unexpected_status_401_Unauthorized:_Missing_bearer",
-          }),
-        ],
-        options: fullRuntimeOptions,
-      });
-      await waitForThreadTurnCompleted({
-        events,
-        providerId: "codex",
-        runtime,
-        threadId: "t1",
-      });
-      expect(events).toContainEqual(
-        expect.objectContaining({
-          type: "turn/completed",
-          threadId: "t1",
-          status: "failed",
-        }),
-      );
-      // The 401 was the point; the waits below must not fail fast on it.
-      events.splice(0, events.length);
-
-      await runtime.runTurn({
-        clientRequestId: "creq_2222222254",
-        threadId: "t1",
-        input: [promptTextInput({ text: "after reauth" })],
-        options: fullRuntimeOptions,
-      });
-      await waitForThreadAgentMessageText({
-        events,
-        providerId: "codex",
-        runtime,
-        text: "after reauth",
-        threadId: "t1",
-      });
-
-      // Same provider session, resumed on a fresh process.
-      expect(runtime.getProviderSession("t1")).toEqual(initialSession);
-      const logLines = processLog.read();
-      expect(logLines.filter((line) => line.startsWith("spawn:"))).toHaveLength(
-        2,
-      );
-      expect(logLines.filter((line) => line.startsWith("exit:"))).toHaveLength(
-        1,
-      );
-      expect(
-        logLines.some(
-          (line) =>
-            line.startsWith("thread/resume:") &&
-            line.endsWith(`:t1:${initialSession?.providerThreadId ?? ""}`),
-        ),
-      ).toBe(true);
-      const turnStarts = logLines.filter((line) =>
-        line.startsWith("turn/start:"),
-      );
-      expect(turnStarts).toHaveLength(2);
-      const [accountErrorTurn, afterReauthTurn] = turnStarts;
-      expect(accountErrorTurn?.split(":")[1]).not.toBe(
-        afterReauthTurn?.split(":")[1],
-      );
-    } finally {
-      await runtime.shutdown();
-    }
-  });
-
-  // A graduated provider has no daemon-bundled bridge, so the runtime's
-  // account restart must re-resume with the launch the session started with —
-  // otherwise the restart fails with "no provider bridge launch".
-  it("re-resumes the codex account restart with the thread's bridge launch", async () => {
-    const events: ThreadEvent[] = [];
-    const record = createScriptedEchoRequestRecord();
-    const bridgeLaunch = createScriptedEchoLaunch({
-      pluginId: "provider-codex",
-      scripted: CODEX_SCRIPT,
-    });
-    const runtime = createAgentRuntime({
-      workspacePath: tmpDir,
-      env: record.env,
-      onEvent: (event) => events.push(event),
-      onToolCall: async () => ({ contentItems: [], success: true }),
-    });
-    try {
-      // The launch rides only this startThread; the restart's resume must
-      // reuse it on its own.
-      await runtime.startThread({
-        bridgeLaunch,
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "codex",
-        options: fullRuntimeOptions,
-      });
-      await runtime.runTurn({
-        clientRequestId: "creq_2222222255",
-        threadId: "t1",
-        input: [promptTextInput({ text: "fail_turn:401_Unauthorized" })],
-        options: fullRuntimeOptions,
-      });
-      await waitForThreadTurnCompleted({
-        events,
-        providerId: "codex",
-        runtime,
-        threadId: "t1",
-      });
-      events.splice(0, events.length);
-      await runtime.runTurn({
-        clientRequestId: "creq_2222222256",
-        threadId: "t1",
-        input: [promptTextInput({ text: "after reauth" })],
-        options: fullRuntimeOptions,
-      });
-      await waitForThreadAgentMessageText({
-        events,
-        providerId: "codex",
-        runtime,
-        text: "after reauth",
-        threadId: "t1",
-      });
-      // Two bridge processes were launched from the same artifact, and the
-      // second one received the resume.
-      const requests = record.read();
-      expect(requests.filter((r) => r.method === "initialize")).toHaveLength(2);
-      expect(requests.filter((r) => r.method === "thread/resume")).toHaveLength(
-        1,
-      );
-    } finally {
-      await runtime.shutdown();
-    }
-  });
+  // The codex account restart (shut the thread's process down after a
+  // terminal 401/429 and resume before the next turn, #130) moved into the
+  // codex bridge, which rebuilds its own app-server child from the rollout:
+  // plugins/provider-codex/src/bridge/bridge.recovery.test.ts. The runtime's
+  // generic counterpart, the `restartRecommended` recovery hint, is pinned in
+  // runtime.recovery.test.ts.
 
   it("gives a changed declaration its own bridge process at the same artifact hash", async () => {
     const record = createScriptedEchoRequestRecord();

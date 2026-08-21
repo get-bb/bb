@@ -321,10 +321,8 @@ describe("createAgentRuntime command contracts", () => {
     }
   });
 
-  it("retries a Codex rename while its new rollout file is still empty", async () => {
-    const stderr: string[] = [];
+  it("does not retry a rename: the bridge owns the not-ready-rollout ladder", async () => {
     const { record, runtime } = createContractRuntime({
-      onStderr: (line) => stderr.push(line),
       launch: {
         scripted: {
           failMethods: [
@@ -346,53 +344,15 @@ describe("createAgentRuntime command contracts", () => {
         providerId: "codex",
         options: fullRuntimeOptions,
       });
-      await runtime.renameThread({ threadId: "t1", title: "New Title" });
 
-      const renameRequests = record
-        .read()
-        .filter((entry) => entry.method === "thread/name/set");
-      expect(renameRequests).toHaveLength(2);
-      expect(renameRequests.map((entry) => entry.params?.title)).toEqual([
-        "[bb] New Title",
-        "[bb] New Title",
-      ]);
-      expect(stderr).toContainEqual(
-        expect.stringContaining('retrying rename for thread "t1"'),
-      );
-    } finally {
-      await runtime.shutdown();
-    }
-  });
-
-  it("stops retrying a Codex rename once its rollout stays empty", async () => {
-    const { record, runtime } = createContractRuntime({
-      launch: {
-        scripted: {
-          failMethods: [
-            {
-              method: "thread/name/set",
-              message: codexEmptyRolloutRenameError,
-            },
-          ],
-        },
-      },
-    });
-
-    try {
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "codex",
-        options: fullRuntimeOptions,
-      });
-
+      // The codex bridge retries the empty-rollout window itself and answers
+      // the runtime once; a rejection that reaches the runtime is final.
       await expect(
         runtime.renameThread({ threadId: "t1", title: "New Title" }),
       ).rejects.toThrow(/rollout at .+ is empty/i);
       expect(
         record.read().filter((entry) => entry.method === "thread/name/set"),
-      ).toHaveLength(3);
+      ).toHaveLength(1);
     } finally {
       await runtime.shutdown();
     }

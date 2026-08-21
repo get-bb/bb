@@ -2548,11 +2548,12 @@ async function handleRequest(
         return;
       }
       if (session.activePromptKind !== "turn") {
-        sendError(
-          request.id,
-          ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE,
-          "No active turn to steer",
-        );
+        // The typed hint is what the runtime acts on (it drops the steer as
+        // stale); the code stays for the wire's sake.
+        const message = "No active turn to steer";
+        sendError(request.id, ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE, message, {
+          recovery: { kind: "staleTurn", message, retryable: false },
+        });
         return;
       }
       // A steer joins the active turn, but the agent only learns about it

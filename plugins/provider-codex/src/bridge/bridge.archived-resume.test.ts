@@ -13,17 +13,14 @@ import { handleLine } from "./bridge.js";
  * `error.data.recovery` — that is what drives the runtime's
  * unarchive-and-retry — and the original error text VERBATIM for the
  * user-visible failure when the recovery cannot run (historical fix
- * a4e3011b0: the runtime's legacy text gate still reads it until the
- * deletion layer removes it).
+ * a4e3011b0 kept the text verbatim for a runtime regex; that regex is gone,
+ * the text now only names the session and the CLI command that fixes it).
  */
 
 const THREAD_ID = "thr_archived_resume_1";
 const ARCHIVED_PROVIDER_THREAD_ID = "archived-prov-1";
 // Must match what fake-codex-app-server.mjs emits for `archived-` thread ids.
 const ARCHIVED_ERROR_TEXT = `session ${ARCHIVED_PROVIDER_THREAD_ID} is archived; unarchive it and retry`;
-// Copy of runtime.ts's CODEX_ARCHIVED_SESSION_ERROR_PATTERN (not exported).
-const RUNTIME_UNARCHIVE_RETRY_PATTERN =
-  /\b(?:session|thread)\s+\S+\s+is archived\b/i;
 
 const fakeAppServerPath = fileURLToPath(
   new URL("./fake-codex-app-server.mjs", import.meta.url),
@@ -77,9 +74,8 @@ it("preserves the archived-session error text verbatim on a rejected resume", as
   expect(response.error?.code).toBe(
     BRIDGE_JSON_RPC_ERRORS.SESSION_NOT_RESTORABLE,
   );
-  // Verbatim: any wrapping or rewording breaks the runtime's regex match.
+  // Verbatim: the text names the session and the CLI command that fixes it.
   expect(response.error?.message).toBe(ARCHIVED_ERROR_TEXT);
-  expect(response.error?.message).toMatch(RUNTIME_UNARCHIVE_RETRY_PATTERN);
   // The typed hint rides the rejection: the runtime acts on this, not text.
   expect(response.error?.data).toEqual({
     recovery: {

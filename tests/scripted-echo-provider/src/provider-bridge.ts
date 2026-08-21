@@ -871,7 +871,7 @@ function rejectIfArchived(
     return false;
   }
   const message = archivedSessionError(providerThreadId);
-  // The codex shape: the text for the legacy runtime gate, the typed hint
+  // The codex shape: the text for the user-visible failure, the typed hint
   // on the error for the runtime's unarchive-and-retry action.
   respondError(id, -32000, message, {
     recovery: {
