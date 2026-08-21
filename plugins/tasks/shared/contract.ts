@@ -42,14 +42,19 @@ const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const idSchema = z.string().regex(ULID_PATTERN, "must be a ULID");
 const nonBlankStringSchema = z.string().trim().min(1, "must not be blank");
-const presetReasoningLevelSchema = z.enum([
+export const presetReasoningLevelSchema = z.enum([
+  "none",
   "low",
   "medium",
   "high",
   "xhigh",
+  "ultracode",
   "max",
   "ultra",
 ]);
+export type PresetReasoningLevel = z.infer<typeof presetReasoningLevelSchema>;
+export const presetServiceTierSchema = z.enum(["default", "fast"]);
+export type PresetServiceTier = z.infer<typeof presetServiceTierSchema>;
 export const PRESET_PERMISSION_MODES = [
   "accept-edits",
   "auto",
@@ -236,7 +241,8 @@ const presetSchema = z
     name: z.string(),
     providerId: z.string(),
     modelId: z.string(),
-    reasoningLevel: z.string(),
+    reasoningLevel: presetReasoningLevelSchema,
+    serviceTier: presetServiceTierSchema.nullable(),
     permissionMode: presetPermissionModeSchema,
     environmentKind: presetEnvironmentKindSchema,
     baseBranch: nullablePresetTargetSchema,
@@ -364,6 +370,7 @@ const updatePresetInputSchema = z
     providerId: nonBlankStringSchema.optional(),
     modelId: nonBlankStringSchema.optional(),
     reasoningLevel: presetReasoningLevelSchema.optional(),
+    serviceTier: presetServiceTierSchema.nullable().optional(),
     permissionMode: presetPermissionModeSchema.optional(),
     environmentKind: presetEnvironmentKindSchema.optional(),
     baseBranch: nullablePresetTargetSchema.optional(),
@@ -377,6 +384,7 @@ const updatePresetInputSchema = z
       input.providerId !== undefined ||
       input.modelId !== undefined ||
       input.reasoningLevel !== undefined ||
+      input.serviceTier !== undefined ||
       input.permissionMode !== undefined ||
       input.environmentKind !== undefined ||
       input.baseBranch !== undefined ||
@@ -648,6 +656,7 @@ export const tasksRpcContract = defineRpcContract({
         providerId: nonBlankStringSchema,
         modelId: nonBlankStringSchema,
         reasoningLevel: presetReasoningLevelSchema,
+        serviceTier: presetServiceTierSchema.nullable().default(null),
         permissionMode: presetPermissionModeSchema,
         environmentKind: presetEnvironmentKindSchema.default("project-default"),
         baseBranch: nullablePresetTargetSchema.default(null),
@@ -690,39 +699,6 @@ export const tasksRpcContract = defineRpcContract({
   listPresets: {
     input: z.null(),
     output: z.object({ presets: z.array(presetSchema) }).strict(),
-  },
-  listProviders: {
-    input: z.object({}).strict(),
-    output: z
-      .object({
-        providers: z.array(
-          z
-            .object({
-              id: z.string(),
-              name: z.string(),
-              permissionModes: z.array(presetPermissionModeSchema),
-            })
-            .strict(),
-        ),
-      })
-      .strict(),
-  },
-  listProviderModels: {
-    input: z.object({ providerId: nonBlankStringSchema }).strict(),
-    output: z
-      .object({
-        models: z.array(
-          z
-            .object({
-              id: z.string(),
-              name: z.string(),
-              isDefault: z.boolean(),
-            })
-            .strict(),
-        ),
-        reasoningLevels: z.array(z.string()),
-      })
-      .strict(),
   },
   listMachines: {
     input: z.object({}).strict(),

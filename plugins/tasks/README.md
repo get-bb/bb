@@ -99,8 +99,8 @@ than traversing an inconsistent snapshot.
 
 Linking a Tasks project to a bb project enables delegation. Open a task, choose
 **Delegate**, select a preset, and optionally add instructions. A preset
-defines the provider, model, reasoning level, permission mode, and reusable
-instructions. Presets are user-defined, so create the worker profiles your team
+defines the provider, model, reasoning level, optional service tier, permission
+mode, and reusable instructions. Presets are user-defined, so create the worker profiles your team
 uses repeatedly before dispatching work.
 
 Delegation creates a worker thread in the linked bb project, attaches that

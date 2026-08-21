@@ -952,6 +952,8 @@ describe("bb tasks CLI", () => {
           "gpt-5.6-sol",
           "--reasoning",
           "high",
+          "--service-tier",
+          "fast",
           "--permission",
           "accept-edits",
           "--environment",
@@ -969,6 +971,9 @@ describe("bb tasks CLI", () => {
     expect(created).toMatchObject({
       name: "CLI worker",
       providerId: "codex",
+      modelId: "gpt-5.6-sol",
+      reasoningLevel: "high",
+      serviceTier: "fast",
       permissionMode: "accept-edits",
       environmentKind: "new-worktree",
       baseBranch: "main",
@@ -981,6 +986,7 @@ describe("bb tasks CLI", () => {
     expect(shown).toContain("Environment   worktree");
     expect(shown).toContain("Base branch   main");
     expect(shown).toContain("Machine       host_air");
+    expect(shown).toContain("Service tier  fast");
 
     const updated = JSON.parse(
       stdout(
@@ -990,6 +996,8 @@ describe("bb tasks CLI", () => {
           "CLI worker",
           "--reasoning",
           "ultra",
+          "--service-tier",
+          "none",
           "--name",
           "CLI reviewer",
           "--environment",
@@ -1002,6 +1010,7 @@ describe("bb tasks CLI", () => {
       id: created.id,
       name: "CLI reviewer",
       reasoningLevel: "ultra",
+      serviceTier: null,
       environmentKind: "project-default",
       baseBranch: null,
       machineId: null,
@@ -1011,6 +1020,7 @@ describe("bb tasks CLI", () => {
     expect(listTable).toContain("ENVIRONMENT");
     expect(listTable).toContain("BASE BRANCH");
     expect(listTable).toContain("MACHINE");
+    expect(listTable).toContain("SERVICE TIER");
 
     const listed = JSON.parse(
       stdout(await harness.runCli(["preset", "list", "--json"])),

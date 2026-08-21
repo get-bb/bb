@@ -21,6 +21,7 @@ function createTestPreset(
     providerId: "claude-code",
     modelId: "claude-sonnet-5",
     reasoningLevel: "high",
+    serviceTier: "fast",
     permissionMode: "full",
     environmentKind: overrides.environmentKind ?? "project-default",
     baseBranch: overrides.baseBranch ?? null,
@@ -75,6 +76,7 @@ describe("task delegation", () => {
           providerId: "claude-code",
           model: "claude-sonnet-5",
           reasoningLevel: "high",
+          serviceTier: "fast",
           permissionMode: "full",
           title: "TASK-1 · Implement delegation",
           prompt: expect.stringContaining(

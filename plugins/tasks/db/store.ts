@@ -7,7 +7,11 @@ import {
   TASKS_PAGE_MAX_LIMIT,
   type TaskSort,
 } from "../shared/pagination.js";
-import { presetPermissionModeSchema } from "../shared/contract.js";
+import {
+  presetPermissionModeSchema,
+  presetReasoningLevelSchema,
+  presetServiceTierSchema,
+} from "../shared/contract.js";
 import type {
   Attachment,
   Comment,
@@ -153,6 +157,7 @@ interface PresetRow {
   provider_id: string;
   model_id: string;
   reasoning_level: string;
+  service_tier: string | null;
   permission_mode: string;
   environment_kind: PresetEnvironmentKind;
   base_branch: string | null;
@@ -436,7 +441,11 @@ function presetFromRow(row: PresetRow): Preset {
     name: row.name,
     providerId: row.provider_id,
     modelId: row.model_id,
-    reasoningLevel: row.reasoning_level,
+    reasoningLevel: presetReasoningLevelSchema.parse(row.reasoning_level),
+    serviceTier:
+      row.service_tier === null
+        ? null
+        : presetServiceTierSchema.parse(row.service_tier),
     permissionMode: presetPermissionModeSchema.parse(row.permission_mode),
     environmentKind: row.environment_kind,
     baseBranch: row.base_branch,
@@ -1714,6 +1723,7 @@ export function createTasksStore(db: PluginDatabase) {
         string,
         string,
         string,
+        "default" | "fast" | null,
         string,
         PresetEnvironmentKind,
         string | null,
@@ -1725,10 +1735,11 @@ export function createTasksStore(db: PluginDatabase) {
     >(
       `
       INSERT INTO presets (
-        id, name, provider_id, model_id, reasoning_level, permission_mode,
+        id, name, provider_id, model_id, reasoning_level, service_tier,
+        permission_mode,
         environment_kind, base_branch, machine_id, instructions, builtin,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     ).run(
       id,
@@ -1736,6 +1747,7 @@ export function createTasksStore(db: PluginDatabase) {
       requireNonEmpty(input.providerId, "Preset providerId"),
       requireNonEmpty(input.modelId, "Preset modelId"),
       requireNonEmpty(input.reasoningLevel, "Preset reasoningLevel"),
+      input.serviceTier,
       requireNonEmpty(input.permissionMode, "Preset permissionMode"),
       environment.environmentKind,
       environment.baseBranch,
@@ -1772,6 +1784,7 @@ export function createTasksStore(db: PluginDatabase) {
         string,
         string,
         string,
+        "default" | "fast" | null,
         string,
         PresetEnvironmentKind,
         string | null,
@@ -1784,7 +1797,7 @@ export function createTasksStore(db: PluginDatabase) {
       `
       UPDATE presets SET
         name = ?, provider_id = ?, model_id = ?, reasoning_level = ?,
-        permission_mode = ?, environment_kind = ?, base_branch = ?,
+        service_tier = ?, permission_mode = ?, environment_kind = ?, base_branch = ?,
         machine_id = ?, instructions = ?, builtin = ?
       WHERE id = ?
     `,
@@ -1801,6 +1814,7 @@ export function createTasksStore(db: PluginDatabase) {
       input.reasoningLevel === undefined
         ? current.reasoningLevel
         : requireNonEmpty(input.reasoningLevel, "Preset reasoningLevel"),
+      input.serviceTier === undefined ? current.serviceTier : input.serviceTier,
       input.permissionMode === undefined
         ? current.permissionMode
         : requireNonEmpty(input.permissionMode, "Preset permissionMode"),
