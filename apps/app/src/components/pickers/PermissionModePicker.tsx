@@ -53,6 +53,8 @@ export interface PermissionModePickerProps {
   disabled?: boolean;
   /** Keep the chevron visible while disabled, used for plan-mode permission locks. */
   showChevronWhenDisabled?: boolean;
+  /** Show a locked summary when the provider exposes only one mode. */
+  showWhenSingleOption?: boolean;
 }
 
 /**
@@ -74,12 +76,17 @@ export function PermissionModePicker({
   displayOverride,
   disabled,
   showChevronWhenDisabled,
+  showWhenSingleOption = false,
 }: PermissionModePickerProps) {
   const compactOptions = useMemo(
     () => addPermissionModeCompactLabels(options),
     [options],
   );
-  if (!supported || value === undefined || options.length <= 1) {
+  if (
+    !supported ||
+    value === undefined ||
+    (!showWhenSingleOption && options.length <= 1)
+  ) {
     return null;
   }
   return (
@@ -95,7 +102,7 @@ export function PermissionModePicker({
       modal={modal}
       align="end"
       displayOverride={displayOverride}
-      disabled={disabled}
+      disabled={disabled || options.length <= 1}
       showChevronWhenDisabled={showChevronWhenDisabled}
     />
   );

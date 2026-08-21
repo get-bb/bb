@@ -63,6 +63,7 @@ import {
   type ExperimentalOpenFixedTabOptions,
   type ExperimentalPluginFixedTabReference,
   type NewThreadComposerProps,
+  type ExperimentalPermissionModePickerProps,
   type ExperimentalProviderModelPickerProps,
   type ThreadChatProps,
   type DiffProps,
@@ -501,6 +502,7 @@ function TestProviderModelPicker({
   value,
   onChange,
   routing,
+  allowProviderChange = true,
   disabled,
   className,
 }: ExperimentalProviderModelPickerProps) {
@@ -529,11 +531,13 @@ function TestProviderModelPicker({
             : routing.environmentId
       }
       data-disabled={disabled ? "true" : "false"}
+      data-provider-change-allowed={allowProviderChange ? "true" : "false"}
       className={className}
     >
       <fieldset disabled={disabled} className="contents">
         <input
           aria-label="Provider ID"
+          disabled={!allowProviderChange}
           value={draft.providerId}
           onChange={(event) =>
             setDraft((current) => ({
@@ -584,6 +588,48 @@ function TestProviderModelPicker({
         </button>
       </fieldset>
     </div>
+  );
+}
+
+function TestPermissionModePicker({
+  providerId,
+  value,
+  onChange,
+  routing,
+  disabled,
+  className,
+}: ExperimentalPermissionModePickerProps) {
+  return (
+    <select
+      aria-label="Permission mode"
+      value={value}
+      disabled={disabled}
+      data-testid="bb-permission-mode-picker"
+      data-provider-id={providerId}
+      data-routing-kind={routing?.kind ?? "primary"}
+      data-routing-id={
+        routing === undefined
+          ? ""
+          : routing.kind === "host"
+            ? routing.hostId
+            : routing.environmentId
+      }
+      className={className}
+      onChange={(event) => {
+        const permissionMode = event.target.value;
+        if (
+          permissionMode === "accept-edits" ||
+          permissionMode === "auto" ||
+          permissionMode === "full"
+        ) {
+          onChange(permissionMode);
+        }
+      }}
+    >
+      <option value="accept-edits">Accept Edits</option>
+      <option value="auto">Approve for me</option>
+      <option value="full">Full Access</option>
+    </select>
   );
 }
 
@@ -745,6 +791,7 @@ const testPluginSdkApp = {
   experimental_UrlLink: TestUrlLink,
   experimental_NewThreadComposer: TestNewThreadComposer,
   experimental_ProviderModelPicker: TestProviderModelPicker,
+  experimental_PermissionModePicker: TestPermissionModePicker,
   experimental_SourceCode: TestSourceCode,
   experimental_Diff: TestDiff,
   experimental_useSidebarThreads(): PluginSidebarThreadsState {

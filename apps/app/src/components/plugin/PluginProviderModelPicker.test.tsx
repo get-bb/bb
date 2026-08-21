@@ -472,4 +472,42 @@ describe("PluginProviderModelPicker", () => {
     });
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("keeps model controls editable while provider changes are locked", () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    cacheCatalog(
+      queryClient,
+      "codex",
+      executionOptions([
+        model("gpt-5.5", "OpenAI GPT-5.5", ["medium"], true),
+        model("gpt-light", "OpenAI GPT Light", ["low"]),
+      ]),
+    );
+    const onChange = vi.fn();
+
+    render(
+      <PluginProviderModelPicker
+        value={{
+          providerId: "codex",
+          model: "gpt-5.5",
+          reasoningLevel: "medium",
+        }}
+        onChange={onChange}
+        allowProviderChange={false}
+      />,
+      { wrapper },
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    expect(screen.queryByTitle("Cursor")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "GPT Light" }));
+
+    expect(onChange).toHaveBeenCalledWith({
+      providerId: "codex",
+      model: "gpt-light",
+      reasoningLevel: "low",
+    });
+  });
 });

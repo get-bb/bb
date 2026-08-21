@@ -726,6 +726,10 @@ one value. `routing` can target one enrolled host or an existing environment;
 omitting it uses primary-machine routing. `disabled` renders the same summary
 without opening the picker. Verified catalogs also normalize an empty or stale
 controlled selection; placeholder, failed, and empty catalogs do not.
+`allowProviderChange={false}` hides provider tabs while retaining model,
+reasoning, and service-tier selection for the controlled provider. Routing
+never implies provider locking: an environment supplies host/workspace context
+and can run more than one provider.
 
 Tasks delegation presets and Automations agent execution both use this
 component end to end. They persist the same tuple and pass it to
@@ -753,8 +757,45 @@ bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
    explicit callbacks.
 5. **Scope.** Validate settings and compact-form usage in external plugins,
    especially whether they need an explicit loading/error callback. Tasks and
-   Automations currently rely on the picker-owned loading/error UI. Permission,
-   environment, and prompt submission stay intentionally outside this control.
+   Automations currently rely on the picker-owned loading/error UI. Environment,
+   permission, and prompt submission stay separate controls.
+
+## `experimental_PermissionModePicker` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Exposes BB's permission picker as a controlled
+`{ providerId, value, onChange, routing?, disabled?, className? }` component.
+The host adapter reuses `useThreadCreationOptions` and `PermissionModePicker`,
+so supported modes, fallback order, compact labels, and the routed machine's
+permission ceiling are identical to the composer. It displays modes above the
+ceiling as disabled with the host explanation, renders a locked summary for a
+provider with one mode, and emits a corrected mode when an authoritative
+provider/routing change invalidates `value`. Placeholder, loading, and failed
+lookups never mutate the controlled value.
+
+Tasks delegation presets and Automations use this component beside
+`experimental_ProviderModelPicker`; their frontend bundles no longer read the
+provider directory or implement permission reconciliation. Server-side spawn
+and update validation remains authoritative.
+
+Implementation: `apps/app/src/components/plugin/PluginPermissionModePicker.tsx`,
+bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
+
+**Audit before stabilizing.**
+
+1. **Controlled reconciliation.** Confirm automatic `onChange` after an
+   authoritative capability/ceiling change is preferable to a separate
+   invalid-state callback, and that provisional failures should remain
+   read-only without changing the caller's value.
+2. **Routing and provider coupling.** Confirm requiring both `providerId` and
+   the shared host/environment routing is the right composable boundary. A
+   provider switch across two sibling controls settles in two controlled
+   updates rather than one combined execution tuple.
+3. **Single-mode presentation.** Confirm compact/settings consumers should
+   see a locked summary when only one mode is supported, while first-party
+   composer call sites may continue hiding a non-choice.
+4. **Permission ceiling behavior.** Audit hosts whose ceiling is below every
+   mode a provider supports and decide whether the picker should render an
+   explicit unavailable state instead of the controller's existing fallback.
 
 ## `experimental_NewThreadComposer` (`@get-bb/plugin-sdk/app`)
 

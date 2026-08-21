@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo } from "react";
-import type { SystemProvidersQuery } from "@bb/server-contract";
 import type {
   ExperimentalProviderModelPickerProps,
   ExperimentalProviderModelPickerValue,
@@ -9,6 +8,7 @@ import {
   formatModelLabel,
   useThreadCreationOptions,
 } from "@/hooks/useThreadCreationOptions";
+import { resolvePluginExecutionRouting } from "./plugin-execution-routing";
 
 function selectionKey(value: ExperimentalProviderModelPickerValue): string {
   return [
@@ -28,28 +28,15 @@ export function PluginProviderModelPicker({
   value,
   onChange,
   routing,
+  allowProviderChange = true,
   disabled,
   className,
 }: ExperimentalProviderModelPickerProps) {
-  const hostId = routing?.kind === "host" ? routing.hostId : undefined;
-  const environmentId =
-    routing?.kind === "environment" ? routing.environmentId : undefined;
-  const routingKey =
-    hostId !== undefined
-      ? `host:${hostId}`
-      : environmentId !== undefined
-        ? `environment:${environmentId}`
-        : "primary";
-  const controlledKey = `${routingKey}\0${selectionKey(value)}`;
-  const providerRouting = useMemo<SystemProvidersQuery>(
-    () =>
-      hostId !== undefined
-        ? { hostId }
-        : environmentId !== undefined
-          ? { environmentId }
-          : {},
-    [environmentId, hostId],
+  const resolvedRouting = useMemo(
+    () => resolvePluginExecutionRouting(routing),
+    [routing],
   );
+  const controlledKey = `${resolvedRouting.key}\0${selectionKey(value)}`;
   const controller = useThreadCreationOptions({
     scope: "component-local",
     initialProviderId: value.providerId,
@@ -57,7 +44,7 @@ export function PluginProviderModelPicker({
     initialReasoningLevel: value.reasoningLevel,
     initialServiceTier: value.serviceTier,
     resetKey: controlledKey,
-    resolveProviderRouting: () => providerRouting,
+    resolveProviderRouting: () => resolvedRouting.query,
   });
 
   const emit = useCallback(
@@ -158,9 +145,11 @@ export function PluginProviderModelPicker({
       providerOptions={controller.providerOptions}
       providerRouting={controller.executionOptionsRouting}
       selectedProviderId={controller.selectedProviderId}
-      onSelectedProviderChange={() => {}}
-      onProviderPreviewResolved={handleProviderPreviewResolved}
-      requireVerifiedProviderPreview
+      onSelectedProviderChange={allowProviderChange ? () => {} : undefined}
+      onProviderPreviewResolved={
+        allowProviderChange ? handleProviderPreviewResolved : undefined
+      }
+      requireVerifiedProviderPreview={allowProviderChange}
       hasMultipleProviders={controller.hasMultipleProviders}
       modelValue={controller.selectedModel}
       modelOptions={controller.modelOptions}

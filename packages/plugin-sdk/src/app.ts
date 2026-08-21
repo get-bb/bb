@@ -54,6 +54,8 @@ export const experimental_NewThreadComposer =
   runtime.experimental_NewThreadComposer;
 export const experimental_ProviderModelPicker =
   runtime.experimental_ProviderModelPicker;
+export const experimental_PermissionModePicker =
+  runtime.experimental_PermissionModePicker;
 // Host-owned code rendering (experimental — see docs/api_to_audit.md).
 export const experimental_SourceCode = runtime.experimental_SourceCode;
 export const experimental_Diff = runtime.experimental_Diff;

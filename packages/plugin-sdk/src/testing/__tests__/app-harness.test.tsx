@@ -26,6 +26,7 @@ const {
   experimental_FileLink: FileLink,
   experimental_UrlLink: UrlLink,
   experimental_ProviderModelPicker: ProviderModelPicker,
+  experimental_PermissionModePicker: PermissionModePicker,
   experimental_useAppPanel,
   experimental_useFixedTabTarget,
   ThreadChat,
@@ -164,6 +165,36 @@ describe("experimental_ProviderModelPicker test runtime", () => {
     expect(
       picker.getByTestId("bb-provider-model-picker").dataset.routingId,
     ).toBe("host-test");
+  });
+});
+
+describe("experimental_PermissionModePicker test runtime", () => {
+  it("exposes the controlled mode, provider, and routing", () => {
+    const onChange = vi.fn();
+    const picker = render(
+      <PermissionModePicker
+        providerId="codex"
+        value="auto"
+        onChange={onChange}
+        routing={{ kind: "environment", environmentId: "env-test" }}
+      />,
+    );
+
+    fireEvent.change(
+      picker.getByRole("combobox", { name: "Permission mode" }),
+      { target: { value: "full" } },
+    );
+
+    expect(onChange).toHaveBeenCalledWith("full");
+    expect(
+      picker.getByTestId("bb-permission-mode-picker").dataset.providerId,
+    ).toBe("codex");
+    expect(
+      picker.getByTestId("bb-permission-mode-picker").dataset.routingKind,
+    ).toBe("environment");
+    expect(
+      picker.getByTestId("bb-permission-mode-picker").dataset.routingId,
+    ).toBe("env-test");
   });
 });
 

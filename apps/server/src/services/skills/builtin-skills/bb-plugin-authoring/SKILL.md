@@ -1919,7 +1919,7 @@ className?, leadingContent?, messageActions? }` —
 - `experimental_ProviderModelPicker` — bb's controlled provider, model, and
   reasoning picker. Props:
   `{ value: { providerId, model, reasoningLevel, serviceTier? }, onChange,
-routing?, disabled?, className? }`, where `routing` is
+routing?, allowProviderChange?, disabled?, className? }`, where `routing` is
   `{ kind: "host", hostId }` or `{ kind: "environment", environmentId }`.
   It uses the same live catalog, defaults, capability
   reconciliation, retired-model handling, search, and provider branding as
@@ -1941,12 +1941,41 @@ routing?, disabled?, className? }`, where `routing` is
   <ProviderModelPicker value={selection} onChange={setSelection} />;
   ```
 
+  `allowProviderChange={false}` hides the provider tabs while leaving model,
+  reasoning, and service-tier controls available for the fixed `providerId`.
+  This is independent of routing: one environment can run several providers.
+
   Omit `routing` for primary-machine discovery. Route by host for a selected
   machine or by environment when the catalog depends on an existing workspace.
   This is intended for settings and other compact forms that need an execution
   preference without a composer; do not fetch and reconcile provider catalogs
   again in plugin RPC. The built-in Tasks presets and Automations editor are
   reference consumers: both persist the coherent value and use it at spawn.
+  Experimental: see `docs/api_to_audit.md`.
+
+- `experimental_PermissionModePicker` — bb's controlled permission-mode
+  picker. Props:
+  `{ providerId, value, onChange, routing?, disabled?, className? }`.
+  The host resolves the provider's supported modes and the routed machine's
+  permission ceiling with the same policy as the composer; it emits a corrected
+  mode when a provider or routing change makes `value` invalid. A provisional
+  or failed lookup never changes `value`. `routing` has the same host/environment
+  shape as `experimental_ProviderModelPicker`:
+
+  ```tsx
+  import { experimental_PermissionModePicker as PermissionModePicker } from "@get-bb/plugin-sdk/app";
+
+  <PermissionModePicker
+    providerId={selection.providerId}
+    value={permissionMode}
+    onChange={setPermissionMode}
+    routing={{ kind: "environment", environmentId }}
+  />;
+  ```
+
+  Use it beside the provider/model picker in settings and compact execution
+  forms. Do not pass a plugin-computed option list or reconstruct provider
+  capabilities. Tasks presets and Automations are the reference consumers.
   Experimental: see `docs/api_to_audit.md`.
 
 - `experimental_SourceCode` — bb's source viewer. Props:

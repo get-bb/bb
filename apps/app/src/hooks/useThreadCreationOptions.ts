@@ -124,6 +124,8 @@ interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   reasoningOptions: PickerOption<ReasoningLevel>[];
   permissionModeOptions: PickerOption<PermissionMode>[];
   supportsPermissionModeSelection: boolean;
+  /** True once provider capabilities and the routed permission ceiling are authoritative. */
+  permissionModeIsVerified: boolean;
   supportsServiceTier: boolean;
   serviceTierSupportByProvider: Record<string, boolean>;
   executionInputSources: TExecutionInputSources;
@@ -400,6 +402,10 @@ export function useThreadCreationOptions(
     !executionOptionsQuery.isPlaceholderData &&
     !executionOptionsQuery.isError &&
     modelLoadError === null;
+  const permissionModeIsVerified =
+    executionOptionsQuery.data !== undefined &&
+    !executionOptionsQuery.isPlaceholderData &&
+    !executionOptionsQuery.isError;
   const hasMultipleProviders = providers.length >= 2;
 
   // Resolve the effective provider: use selectedProviderId if it matches a known
@@ -1049,6 +1055,7 @@ export function useThreadCreationOptions(
     reasoningOptions,
     permissionModeOptions,
     supportsPermissionModeSelection,
+    permissionModeIsVerified,
     supportsServiceTier,
     serviceTierSupportByProvider,
     executionInputSources,

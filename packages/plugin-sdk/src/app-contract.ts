@@ -1510,7 +1510,22 @@ export interface ExperimentalProviderModelPickerProps {
   onChange(value: ExperimentalProviderModelPickerValue): void;
   /** Route discovery through an explicit machine or existing environment. */
   routing?: ExperimentalProviderModelPickerRouting;
+  /** Allow switching providers. Defaults to true; false hides provider tabs. */
+  allowProviderChange?: boolean;
   /** Render the shared selection summary without allowing changes. */
+  disabled?: boolean;
+  className?: string;
+}
+
+/** Props of BB's controlled, host-resolved permission-mode picker. */
+export interface ExperimentalPermissionModePickerProps {
+  /** Provider whose supported modes determine the available choices. */
+  providerId: string;
+  value: PermissionMode;
+  onChange(value: PermissionMode): void;
+  /** Route capability and machine-ceiling resolution like the execution picker. */
+  routing?: ExperimentalProviderModelPickerRouting;
+  /** Render the resolved mode without allowing changes. */
   disabled?: boolean;
   className?: string;
 }
@@ -1916,6 +1931,12 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md.
    */
   experimental_ProviderModelPicker: ComponentType<ExperimentalProviderModelPickerProps>;
+  /**
+   * BB's controlled permission-mode picker. The host resolves provider
+   * capabilities and the routed machine's permission ceiling. Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_PermissionModePicker: ComponentType<ExperimentalPermissionModePickerProps>;
   /**
    * The host-owned source viewer (see {@link SourceCodeProps}). Renders
    * supplied source text with BB's syntax highlighting, gutters, and live code
