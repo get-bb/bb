@@ -36,7 +36,7 @@ if (!window.matchMedia) {
 // imported before it runs.
 const app = await loadPluginApp(() => import("../../app"));
 const { derivePrefix } = await import("./shared.js");
-const { defaultPermissionMode, describePresetEnvironment, savePresetDraft } =
+const { describePresetEnvironment, savePresetDraft } =
   await import("./preset-dialog.js");
 
 afterEach(cleanup);
@@ -599,15 +599,6 @@ describe("describePresetEnvironment", () => {
         MACHINES,
       ),
     ).toBe("Project default");
-  });
-});
-
-describe("preset permission defaults", () => {
-  it("prefers Auto and otherwise falls back to Full Access", () => {
-    expect(defaultPermissionMode(["accept-edits", "auto", "full"])).toBe(
-      "auto",
-    );
-    expect(defaultPermissionMode(["accept-edits", "full"])).toBe("full");
   });
 });
 

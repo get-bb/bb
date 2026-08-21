@@ -2,28 +2,17 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExperimentalProviderModelPickerProps } from "@get-bb/plugin-sdk/app";
+import type {
+  ExperimentalPermissionModePickerProps,
+  ExperimentalProviderModelPickerProps,
+} from "@get-bb/plugin-sdk/app";
 import type { AgentExecutionUpdate, AutomationResponse } from "./rpc-types.js";
 
 vi.mock("@get-bb/plugin-sdk/app", () => ({
-  experimental_useProviders: () => ({
-    status: "ready",
-    providers: [
-      {
-        id: "codex",
-        capabilities: {
-          permissionModes: ["accept-edits", "auto", "full"],
-        },
-      },
-      {
-        id: "claude",
-        capabilities: { permissionModes: ["auto", "full"] },
-      },
-    ],
-  }),
   experimental_ProviderModelPicker: ({
     onChange,
     routing,
+    allowProviderChange,
     disabled,
   }: ExperimentalProviderModelPickerProps) => (
     <button
@@ -37,6 +26,9 @@ vi.mock("@get-bb/plugin-sdk/app", () => ({
             ? routing.hostId
             : routing.environmentId
       }
+      data-provider-change-allowed={
+        allowProviderChange === false ? "false" : "true"
+      }
       onClick={() =>
         onChange({
           providerId: "claude",
@@ -47,6 +39,24 @@ vi.mock("@get-bb/plugin-sdk/app", () => ({
       }
     >
       Choose Claude
+    </button>
+  ),
+  experimental_PermissionModePicker: ({
+    providerId,
+    value,
+    onChange,
+    routing,
+    disabled,
+  }: ExperimentalPermissionModePickerProps) => (
+    <button
+      type="button"
+      aria-label="Permission mode"
+      disabled={disabled}
+      data-provider-id={providerId}
+      data-routing-kind={routing?.kind ?? "primary"}
+      onClick={() => onChange(providerId === "claude" ? "auto" : value)}
+    >
+      {value}
     </button>
   ),
 }));
@@ -113,7 +123,14 @@ describe("automation provider and model picker", () => {
     const picker = screen.getByRole("button", { name: "Choose Claude" });
     expect(picker.getAttribute("data-routing-kind")).toBe("environment");
     expect(picker.getAttribute("data-routing-id")).toBe("env_test");
+    expect(picker.getAttribute("data-provider-change-allowed")).toBe("true");
     fireEvent.click(picker);
+    const permission = screen.getByRole("button", {
+      name: "Permission mode",
+    });
+    expect(permission.getAttribute("data-provider-id")).toBe("claude");
+    expect(permission.getAttribute("data-routing-kind")).toBe("environment");
+    fireEvent.click(permission);
     fireEvent.click(screen.getByRole("button", { name: "Save Prompt" }));
 
     expect(onUpdate).toHaveBeenCalledWith({

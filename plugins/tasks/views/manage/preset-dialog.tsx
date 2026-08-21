@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
+  experimental_PermissionModePicker as PermissionModePicker,
   experimental_ProviderModelPicker as ProviderModelPicker,
-  experimental_useProviders,
   type ExperimentalProviderModelPickerValue,
 } from "@get-bb/plugin-sdk/app";
 import type { Preset, PresetPermissionMode } from "../../shared/contract.js";
@@ -72,16 +72,6 @@ export function describePresetEnvironment(
 
 /** Sentinel Select value for "Default machine" (Radix rejects empty values). */
 const DEFAULT_MACHINE_VALUE = "__default-machine__";
-
-function isPermissionMode(value: string): value is PermissionMode {
-  return (PERMISSION_MODES as readonly string[]).includes(value);
-}
-
-export function defaultPermissionMode(
-  modes: readonly PermissionMode[],
-): PermissionMode {
-  return modes.includes("auto") ? "auto" : "full";
-}
 
 export function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -184,26 +174,11 @@ export function PresetDialog({
   const set = <K extends keyof PresetDraft>(key: K, value: PresetDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
 
-  const providerDirectory = experimental_useProviders();
-  const providers = providerDirectory.providers;
   const machinesQuery = useTasksQuery(
     async (rpc) => (await rpc.call("listMachines", {})).machines,
     [],
   );
   const machines = machinesQuery.data;
-
-  const permissionOptions: readonly PermissionMode[] =
-    providers
-      .find((provider) => provider.id === draft.providerId)
-      ?.capabilities.permissionModes.filter(isPermissionMode) ??
-    PERMISSION_MODES;
-
-  useEffect(() => {
-    if (permissionOptions.length === 0) return;
-    if (!permissionOptions.includes(draft.permissionMode)) {
-      set("permissionMode", defaultPermissionMode(permissionOptions));
-    }
-  }, [permissionOptions.join(","), draft.permissionMode]);
 
   const canSubmit =
     draft.name.trim() !== "" &&
@@ -263,23 +238,15 @@ export function PresetDialog({
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Permissions">
-              <Select
+              <PermissionModePicker
+                providerId={draft.providerId}
                 value={draft.permissionMode}
-                onValueChange={(value) =>
-                  set("permissionMode", value as PermissionMode)
-                }
-              >
-                <SelectTrigger aria-label="Permissions" className="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {permissionOptions.map((mode) => (
-                    <SelectItem key={mode} value={mode}>
-                      {PERMISSION_LABELS[mode]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={(value) => set("permissionMode", value)}
+                {...(pickerRouting === undefined
+                  ? {}
+                  : { routing: pickerRouting })}
+                className="h-8 max-w-full"
+              />
             </Field>
           </div>
           <Field label="Execution environment">

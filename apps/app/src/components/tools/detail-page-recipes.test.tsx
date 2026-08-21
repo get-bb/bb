@@ -25,7 +25,10 @@ import type {
   AgentExecutionUpdate,
   AutomationResponse,
 } from "bb-plugin-automations/rpc-types";
-import type { ExperimentalProviderModelPickerProps } from "@get-bb/plugin-sdk/app";
+import type {
+  ExperimentalPermissionModePickerProps,
+  ExperimentalProviderModelPickerProps,
+} from "@get-bb/plugin-sdk/app";
 import {
   AutomationDetailView as AutomationDetailViewBase,
   AutomationRunStatusIndicator,
@@ -33,23 +36,6 @@ import {
 
 vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
   ...(await importOriginal()),
-  experimental_useProviders: () => ({
-    status: "ready",
-    providers: [
-      {
-        id: "claude",
-        capabilities: {
-          permissionModes: ["accept-edits", "auto", "full"],
-        },
-      },
-      {
-        id: "codex",
-        capabilities: {
-          permissionModes: ["accept-edits", "auto", "full"],
-        },
-      },
-    ],
-  }),
   experimental_ProviderModelPicker: ({
     value,
     onChange,
@@ -80,6 +66,27 @@ vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => ({
       {value.providerId === "claude" ? "Claude" : value.providerId} ·{" "}
       {value.model === "claude-opus-5" ? "Opus 5" : value.model} ·{" "}
       {value.reasoningLevel}
+    </button>
+  ),
+  experimental_PermissionModePicker: ({
+    providerId,
+    value,
+    onChange,
+    disabled,
+  }: ExperimentalPermissionModePickerProps) => (
+    <button
+      type="button"
+      aria-label="Permission mode"
+      data-testid="bb-permission-mode-picker"
+      data-provider-id={providerId}
+      disabled={disabled}
+      onClick={() => onChange(value === "full" ? "auto" : "full")}
+    >
+      {value === "accept-edits"
+        ? "Accept Edits"
+        : value === "auto"
+          ? "Approve for me"
+          : "Full Access"}
     </button>
   ),
 }));
@@ -878,7 +885,7 @@ describe("Automation detail recipe", () => {
       '[data-testid="bb-provider-model-picker"]',
     ) as HTMLButtonElement;
     const disabledPermissionSelector = container.querySelector(
-      '[data-disabled-automation-selector="Permission mode"]',
+      '[data-testid="bb-permission-mode-picker"]',
     ) as HTMLButtonElement;
     expect(disabledModelSelector.disabled).toBe(true);
     expect(disabledPermissionSelector.disabled).toBe(true);
@@ -919,13 +926,10 @@ describe("Automation detail recipe", () => {
       promptFooter.querySelectorAll('[data-option-display=""]'),
     ).toHaveLength(1);
     const accessSelector = promptFooter.querySelector(
-      '[data-automation-selector="Permission mode"]',
+      '[data-testid="bb-permission-mode-picker"]',
     ) as HTMLButtonElement;
     expect(accessSelector.disabled).toBe(false);
     expect(accessSelector.getAttribute("aria-label")).toBe("Permission mode");
-    expect(
-      accessSelector.querySelector('[data-icon="ChevronDown"]'),
-    ).not.toBeNull();
     expect(promptPanel.textContent).toContain("Opus 5");
     expect(promptPanel.textContent).toContain("Claude");
     const modelSelector = promptPanel.querySelector(
@@ -954,7 +958,7 @@ describe("Automation detail recipe", () => {
       '[data-testid="bb-provider-model-picker"]',
     ) as HTMLButtonElement;
     const reopenedAccessSelector = container.querySelector(
-      '[data-automation-selector="Permission mode"]',
+      '[data-testid="bb-permission-mode-picker"]',
     ) as HTMLButtonElement;
     const reopenedSavePrompt = screen.getByRole("button", {
       name: "Save Prompt",
@@ -963,8 +967,7 @@ describe("Automation detail recipe", () => {
       target: { value: "Summarize the last two days." },
     });
     fireEvent.click(reopenedModelSelector);
-    fireEvent.keyDown(reopenedAccessSelector, { key: "Enter" });
-    fireEvent.click(await screen.findByRole("option", { name: "Full Access" }));
+    fireEvent.click(reopenedAccessSelector);
     expect((reopenedSavePrompt as HTMLButtonElement).disabled).toBe(false);
     expect(
       (screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement)
