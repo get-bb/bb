@@ -10,6 +10,7 @@ import { memo, useMemo } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useTheme } from "@/theme";
 import { Icon, Spinner, Text, type IconName } from "@/ui";
+import { TYPEAHEAD_MAX_HEIGHT } from "./model";
 import type { TypeaheadMenuModel } from "./useComposerTypeahead";
 
 export interface TypeaheadMenuProps {
@@ -150,7 +151,7 @@ export function TypeaheadMenu({
   menu,
   onPickMention,
   onPickCommand,
-  maxHeight = 280,
+  maxHeight = TYPEAHEAD_MAX_HEIGHT,
   testID = "composer-typeahead",
 }: TypeaheadMenuProps) {
   const { tokens } = useTheme();

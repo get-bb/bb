@@ -81,3 +81,10 @@ export {
   type ComposerPromptActionKind,
   type PromptActionInsertion,
 } from "./actions";
+export {
+  resolveTypeaheadMaxHeight,
+  TYPEAHEAD_GAP,
+  TYPEAHEAD_MAX_HEIGHT,
+  TYPEAHEAD_MIN_HEIGHT,
+  TYPEAHEAD_TOP_MARGIN,
+} from "./typeahead-height";

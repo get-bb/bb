@@ -38,6 +38,7 @@ import {
   EmptyStatePanel,
   COMPOSER_KEYBOARD_GAP,
   KeyboardPaddingView,
+  OverlayBounds,
   Skeleton,
   Text,
   useSheet,
@@ -428,69 +429,73 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
         style={{ flex: 1 }}
         keyboardGap={COMPOSER_KEYBOARD_GAP}
       >
-        {(timelineLoading && entries.length === 0) || !threadReady ? (
-          <View className="flex-1">
-            <TimelineSkeleton />
-          </View>
-        ) : timelineError && entries.length === 0 ? (
-          <View className="flex-1 gap-3 p-4" testID="thread-timeline-error">
-            <EmptyStatePanel>
-              <Text className="text-center text-sm text-muted-foreground">
-                Failed to load the timeline.
-              </Text>
-              <Text variant="caption" className="pt-1 text-center">
-                {timelineError.message}
-              </Text>
-            </EmptyStatePanel>
-            <Button
-              variant="outline"
-              icon="RotateCcw"
-              onPress={() => void refetchLatestTimeline()}
-            >
-              Retry
-            </Button>
-          </View>
-        ) : entries.length === 0 && !showWorkingIndicator ? (
-          <View className="flex-1 px-4 pt-6" testID="thread-timeline-empty">
-            <EmptyStatePanel>No messages yet.</EmptyStatePanel>
-          </View>
-        ) : (
-          <TimelineList
-            ref={listRef}
-            entries={entries}
-            unreadDividerIndex={unreadDividerIndex}
-            unreadDividerAutoScroll={unreadDivider.autoScroll}
-            onToggleRow={toggleRow}
+        {/* The composer's typeahead floats up to the top of this region,
+            never under the header. */}
+        <OverlayBounds style={{ flex: 1 }}>
+          {(timelineLoading && entries.length === 0) || !threadReady ? (
+            <View className="flex-1">
+              <TimelineSkeleton />
+            </View>
+          ) : timelineError && entries.length === 0 ? (
+            <View className="flex-1 gap-3 p-4" testID="thread-timeline-error">
+              <EmptyStatePanel>
+                <Text className="text-center text-sm text-muted-foreground">
+                  Failed to load the timeline.
+                </Text>
+                <Text variant="caption" className="pt-1 text-center">
+                  {timelineError.message}
+                </Text>
+              </EmptyStatePanel>
+              <Button
+                variant="outline"
+                icon="RotateCcw"
+                onPress={() => void refetchLatestTimeline()}
+              >
+                Retry
+              </Button>
+            </View>
+          ) : entries.length === 0 && !showWorkingIndicator ? (
+            <View className="flex-1 px-4 pt-6" testID="thread-timeline-empty">
+              <EmptyStatePanel>No messages yet.</EmptyStatePanel>
+            </View>
+          ) : (
+            <TimelineList
+              ref={listRef}
+              entries={entries}
+              unreadDividerIndex={unreadDividerIndex}
+              unreadDividerAutoScroll={unreadDivider.autoScroll}
+              onToggleRow={toggleRow}
+              threadId={threadId}
+              projectId={thread?.projectId ?? ""}
+              hasOlderRows={hasOlderTimelineRows}
+              isLoadingOlderRows={isLoadingOlderTimelineRows}
+              onLoadOlderRows={loadOlderTimelineRows}
+              footer={footer}
+              bottomInset={8}
+              testID="thread-timeline"
+            />
+          )}
+          <ThreadPromptArea
             threadId={threadId}
-            projectId={thread?.projectId ?? ""}
-            hasOlderRows={hasOlderTimelineRows}
-            isLoadingOlderRows={isLoadingOlderTimelineRows}
-            onLoadOlderRows={loadOlderTimelineRows}
-            footer={footer}
-            bottomInset={8}
-            testID="thread-timeline"
+            thread={thread}
+            environmentId={bootstrap.data?.environment?.id ?? null}
+            hostId={bootstrap.data?.host?.id ?? null}
+            composer={composer}
+            composerRef={composerRef}
+            pendingInteraction={pendingInteraction}
+            childPendingInteractions={childPendingInteractions}
+            queuedMessages={queuedMessages}
+            activeWorkflows={activeWorkflows}
+            activeBackgroundCommands={activeBackgroundCommands}
+            activePromptMode={activePromptMode}
+            goal={goal}
+            pendingTodos={pendingTodos}
+            modelFallback={modelFallback}
+            contextWindowUsage={contextWindowUsage}
+            contextBanner={contextBanner.banner}
+            onHandoffToNewThread={contextBanner.handoffToNewThread}
           />
-        )}
-        <ThreadPromptArea
-          threadId={threadId}
-          thread={thread}
-          environmentId={bootstrap.data?.environment?.id ?? null}
-          hostId={bootstrap.data?.host?.id ?? null}
-          composer={composer}
-          composerRef={composerRef}
-          pendingInteraction={pendingInteraction}
-          childPendingInteractions={childPendingInteractions}
-          queuedMessages={queuedMessages}
-          activeWorkflows={activeWorkflows}
-          activeBackgroundCommands={activeBackgroundCommands}
-          activePromptMode={activePromptMode}
-          goal={goal}
-          pendingTodos={pendingTodos}
-          modelFallback={modelFallback}
-          contextWindowUsage={contextWindowUsage}
-          contextBanner={contextBanner.banner}
-          onHandoffToNewThread={contextBanner.handoffToNewThread}
-        />
+        </OverlayBounds>
       </KeyboardPaddingView>
       {thread ? (
         <ThreadActionsSheet

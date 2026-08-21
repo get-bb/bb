@@ -41,6 +41,12 @@ export {
   type KeyboardPaddingViewProps,
 } from "./KeyboardPaddingView";
 export { ListRow, type ListRowProps } from "./ListRow";
+export {
+  OverlayBounds,
+  useOverlayBounds,
+  type OverlayBoundsProps,
+  type OverlayBoundsValue,
+} from "./OverlayBounds";
 export { Pill, type PillProps, type PillSize, type PillVariant } from "./Pill";
 export { Separator, type SeparatorProps } from "./Separator";
 export {

@@ -22,6 +22,7 @@ import {
   EmptyStatePanel,
   COMPOSER_KEYBOARD_GAP,
   KeyboardPaddingView,
+  OverlayBounds,
   Text,
   toast,
 } from "@/ui";
@@ -81,61 +82,65 @@ function ConnectedComposerShowcase() {
         style={{ flex: 1 }}
         keyboardGap={COMPOSER_KEYBOARD_GAP}
       >
-        <ScrollView
-          className="flex-1"
-          contentContainerStyle={{ padding: 16, gap: 12 }}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-        >
-          <Text variant="caption">
-            Project {projectId ?? "—"}
-            {projectId === PERSONAL_PROJECT_ID ? " (personal)" : ""} · provider{" "}
-            {providerId ?? "—"}
-          </Text>
-          <View className="flex-row flex-wrap gap-2">
-            {MODES.map((entry) => (
-              <Button
-                key={entry.key}
-                size="sm"
-                variant={entry.key === modeKey ? "default" : "outline"}
-                onPress={() => setModeKey(entry.key)}
-                testID={`dev-composer-mode-${entry.key}`}
-              >
-                {entry.label}
-              </Button>
-            ))}
-          </View>
-          <Text variant="sectionLabel">PromptInput</Text>
-          <Text variant="mono" selectable testID="dev-composer-serialized">
-            {serialized}
-          </Text>
-          {lastSubmit ? (
-            <Text variant="caption" testID="dev-composer-last-submit">
-              submitted: {lastSubmit}
+        {/* Same bounds as the product screens, so the showcase exercises
+            the typeahead's height cap. */}
+        <OverlayBounds style={{ flex: 1 }}>
+          <ScrollView
+            className="flex-1"
+            contentContainerStyle={{ padding: 16, gap: 12 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+          >
+            <Text variant="caption">
+              Project {projectId ?? "—"}
+              {projectId === PERSONAL_PROJECT_ID ? " (personal)" : ""} ·
+              provider {providerId ?? "—"}
             </Text>
-          ) : null}
-        </ScrollView>
-        <View
-          className="border-t border-border-hairline bg-background px-3 pt-2"
-          style={{ paddingBottom: Math.max(insets.bottom, 12) }}
-        >
-          <Composer
-            value={value}
-            onChange={setValue}
-            attachments={attachments}
-            onAttachmentsChange={setAttachments}
-            scope={{ projectId, providerId }}
-            submitMode={mode}
-            onSubmit={(kind) => {
-              setLastSubmit(
-                `${kind} ${JSON.stringify(composerValueToPromptInput(value, attachments))}`,
-              );
-              toast.success(`Submit: ${kind}`);
-            }}
-            placeholder="Try @, /, + and the mic…"
-            testID="dev-composer"
-          />
-        </View>
+            <View className="flex-row flex-wrap gap-2">
+              {MODES.map((entry) => (
+                <Button
+                  key={entry.key}
+                  size="sm"
+                  variant={entry.key === modeKey ? "default" : "outline"}
+                  onPress={() => setModeKey(entry.key)}
+                  testID={`dev-composer-mode-${entry.key}`}
+                >
+                  {entry.label}
+                </Button>
+              ))}
+            </View>
+            <Text variant="sectionLabel">PromptInput</Text>
+            <Text variant="mono" selectable testID="dev-composer-serialized">
+              {serialized}
+            </Text>
+            {lastSubmit ? (
+              <Text variant="caption" testID="dev-composer-last-submit">
+                submitted: {lastSubmit}
+              </Text>
+            ) : null}
+          </ScrollView>
+          <View
+            className="border-t border-border-hairline bg-background px-3 pt-2"
+            style={{ paddingBottom: Math.max(insets.bottom, 12) }}
+          >
+            <Composer
+              value={value}
+              onChange={setValue}
+              attachments={attachments}
+              onAttachmentsChange={setAttachments}
+              scope={{ projectId, providerId }}
+              submitMode={mode}
+              onSubmit={(kind) => {
+                setLastSubmit(
+                  `${kind} ${JSON.stringify(composerValueToPromptInput(value, attachments))}`,
+                );
+                toast.success(`Submit: ${kind}`);
+              }}
+              placeholder="Try @, /, + and the mic…"
+              testID="dev-composer"
+            />
+          </View>
+        </OverlayBounds>
       </KeyboardPaddingView>
     </Screen>
   );

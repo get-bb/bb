@@ -24,6 +24,7 @@ import {
   Icon,
   COMPOSER_KEYBOARD_GAP,
   KeyboardPaddingView,
+  OverlayBounds,
   Spinner,
   Text,
 } from "@/ui";
@@ -269,56 +270,63 @@ function HomeBody() {
         style={{ flex: 1 }}
         keyboardGap={COMPOSER_KEYBOARD_GAP}
       >
-        <View className="flex-1">
-          <SidebarThreadList
-            contentContainerStyle={{ paddingBottom: 16 }}
-            testID="home-thread-list"
-          />
-        </View>
-        {/* The scrim dims everything under the card — the list and the
-            dock's own margins — so the expanded card floats over it. */}
-        {scrimMounted ? (
-          <Animated.View
-            pointerEvents={expanded ? "auto" : "none"}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              opacity: scrim,
-              backgroundColor: withAlpha(
-                scrimBaseColor(mode, tokens),
-                SCRIM_ALPHA,
-              ),
-            }}
-          >
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Close composer"
-              onPress={collapse}
-              style={{ flex: 1 }}
-              testID="home-compose-scrim"
+        {/* The dock's typeahead floats up to the top of this region, never
+            under the header. */}
+        <OverlayBounds style={{ flex: 1 }}>
+          <View className="flex-1">
+            <SidebarThreadList
+              contentContainerStyle={{ paddingBottom: 16 }}
+              testID="home-thread-list"
             />
-          </Animated.View>
-        ) : null}
-        <View
-          className="px-3 pt-1"
-          style={{ paddingBottom: Math.max(insets.bottom, 8) }}
-          testID="home-compose-dock"
-        >
-          <ComposeDock
-            controller={controller}
-            onExpandedChange={setDockExpanded}
-            composerRef={composerRef}
-            onCreated={(thread) => {
-              collapse();
-              if (controller.navigateAfterCreate) {
-                router.push(threadHref(thread.id));
-              }
-            }}
-          />
-        </View>
+          </View>
+          {/* The scrim dims everything under the card — the list and the
+              dock's own margins — so the expanded card floats over it. It
+              overhangs the bounds by the keyboard gap: on devices without a
+              home-indicator inset the bounds end that far above the
+              keyboard, and the strip would otherwise show undimmed. */}
+          {scrimMounted ? (
+            <Animated.View
+              pointerEvents={expanded ? "auto" : "none"}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: -COMPOSER_KEYBOARD_GAP,
+                opacity: scrim,
+                backgroundColor: withAlpha(
+                  scrimBaseColor(mode, tokens),
+                  SCRIM_ALPHA,
+                ),
+              }}
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close composer"
+                onPress={collapse}
+                style={{ flex: 1 }}
+                testID="home-compose-scrim"
+              />
+            </Animated.View>
+          ) : null}
+          <View
+            className="px-3 pt-1"
+            style={{ paddingBottom: Math.max(insets.bottom, 8) }}
+            testID="home-compose-dock"
+          >
+            <ComposeDock
+              controller={controller}
+              onExpandedChange={setDockExpanded}
+              composerRef={composerRef}
+              onCreated={(thread) => {
+                collapse();
+                if (controller.navigateAfterCreate) {
+                  router.push(threadHref(thread.id));
+                }
+              }}
+            />
+          </View>
+        </OverlayBounds>
       </KeyboardPaddingView>
     </SidebarActionsProvider>
   );

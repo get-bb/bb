@@ -264,7 +264,9 @@ src/
   theme/                 generated tokens, ThemeProvider, fonts (see src/ui/README.md)
   ui/                    NativeWind primitives (Text, Button, ListRow, Sheet, …;
                          KeyboardPaddingView — JS-state keyboard padding for
-                         bottom-anchored composer screens)
+                         bottom-anchored composer screens; OverlayBounds — the
+                         region under the header the composer's floating
+                         typeahead may cover)
 e2e/flows/               Maestro flows (smoke, phase1-shell, phase3-threads, phase3-compose,
                          phase4a-timeline, phase4a-diff-showcase,
                          phase4a-conversation-rows, phase4a-work-rows,

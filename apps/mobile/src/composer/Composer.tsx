@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { Pressable, View, type StyleProp, type ViewStyle } from "react-native";
 import { haptic } from "@/lib/haptics";
@@ -25,6 +26,7 @@ import {
   Icon,
   SheetPresenceContext,
   Spinner,
+  useOverlayBounds,
   useSheet,
   type ActionSheetAction,
 } from "@/ui";
@@ -45,6 +47,8 @@ import {
   PROMPT_ACTION_PRESENTATION,
   resolvePromptActionInsertion,
   resolveSubmitAffordance,
+  resolveTypeaheadMaxHeight,
+  TYPEAHEAD_GAP,
   type ComposerAction,
   type ComposerPromptAction,
   type ComposerSubmitKind,
@@ -158,6 +162,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
     const { tokens } = useTheme();
     const { serverUrl } = useProfileClient();
     const inputRef = useRef<ComposerInputHandle>(null);
+    const rootRef = useRef<View>(null);
     const valueRef = useRef(value);
     useEffect(() => {
       valueRef.current = value;
@@ -229,6 +234,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
     });
     const activeTrigger = typeahead.activeTrigger;
     const menu = typeahead.menu;
+    // Only the floating list is bounded by the room above the card; the
+    // inline `below` list is part of the card and must not feed back into
+    // its own anchor.
+    const { spaceAbove, measureSpaceAbove } = useSpaceAboveCard({
+      rootRef,
+      enabled: typeaheadPlacement === "above",
+      menuOpen: menu !== null,
+    });
+    const typeaheadMaxHeight = resolveTypeaheadMaxHeight(spaceAbove);
 
     const applyMention = useCallback(
       (suggestion: PromptMentionSuggestion) => {
@@ -431,13 +445,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
         menu={menu}
         onPickMention={applyMention}
         onPickCommand={applyCommand}
+        maxHeight={typeaheadMaxHeight}
         testID={`${testID}-typeahead`}
       />
     ) : null;
 
     return (
       <SheetPresenceContext.Provider value={sheetPresence}>
-        <View style={{ position: "relative", zIndex: 10 }} testID={testID}>
+        <View
+          ref={rootRef}
+          collapsable={false}
+          onLayout={measureSpaceAbove}
+          style={{ position: "relative", zIndex: 10 }}
+          testID={testID}
+        >
           {menuNode && typeaheadPlacement === "above" ? (
             <View
               style={{
@@ -445,7 +466,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
                 left: 0,
                 right: 0,
                 bottom: "100%",
-                marginBottom: 6,
+                marginBottom: TYPEAHEAD_GAP,
                 zIndex: 20,
               }}
             >
@@ -651,6 +672,42 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
     );
   },
 );
+
+/**
+ * The distance from the top of the overlay bounds (the screen content under
+ * the native header) to the top of the composer root, for the typeahead's
+ * height cap. Re-measured on the root's own layout (the card grows with the
+ * text), on the bounds' layout (keyboard frame, rotation) and when the menu
+ * opens. `null` while disabled, without a bounds provider, or before the
+ * first measurement.
+ */
+function useSpaceAboveCard({
+  rootRef,
+  enabled,
+  menuOpen,
+}: {
+  rootRef: RefObject<View | null>;
+  enabled: boolean;
+  menuOpen: boolean;
+}): { spaceAbove: number | null; measureSpaceAbove: () => void } {
+  const { ref: boundsRef, layoutVersion: boundsLayoutVersion } =
+    useOverlayBounds();
+  const [spaceAbove, setSpaceAbove] = useState<number | null>(null);
+  const measureSpaceAbove = useCallback(() => {
+    const root = rootRef.current;
+    const target = boundsRef.current;
+    if (!enabled || !root || !target) return;
+    root.measureLayout(
+      target,
+      (_x, y) => setSpaceAbove(y),
+      () => undefined,
+    );
+  }, [boundsRef, enabled, rootRef]);
+  useEffect(() => {
+    measureSpaceAbove();
+  }, [measureSpaceAbove, boundsLayoutVersion, menuOpen]);
+  return { spaceAbove, measureSpaceAbove };
+}
 
 /**
  * Applies a "+" prompt action at the caret and refocuses the input. Lives
