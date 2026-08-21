@@ -422,6 +422,49 @@ describe("ThreadDetailSecondaryContent", () => {
     });
   });
 
+  it("keeps the panel subtree mounted when navigating between threads", async () => {
+    const props = createProps();
+    const { rerender } = render(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent {...props} />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    const sidePanel = await screen.findByTestId(
+      "inline-secondary-panel",
+      {},
+      { timeout: 5_000 },
+    );
+    const panelGroup = screen.getByTestId("panel-group");
+
+    const nextProps = createProps();
+    nextProps.timeline = {
+      ...nextProps.timeline,
+      threadId: "thread-2",
+    } as ThreadDetailSecondaryContentProps["timeline"];
+    rerender(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent {...nextProps} />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    // Navigation swaps content identity but must not remount the physical
+    // panel host: same DOM nodes for the group and the realized side panel.
+    expect(screen.getByTestId("panel-group")).toBe(panelGroup);
+    expect(screen.getByTestId("inline-secondary-panel")).toBe(sidePanel);
+    expect(
+      screen.getByTestId("thread-timeline-pane").getAttribute("data-thread-id"),
+    ).toBe("thread-2");
+  });
+
   it("only requests the forks list while the secondary panel is open", () => {
     const props = createProps();
     const { rerender } = render(
