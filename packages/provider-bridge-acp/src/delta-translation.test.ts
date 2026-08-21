@@ -1376,6 +1376,30 @@ describe("acp delta translation (raw payloads and real results)", () => {
     });
   });
 
+  // Found in live QA: `node -e "process.exit(3)"` prints nothing, and the row
+  // showed `{"exitCode":3,"stdout":"","stderr":""}` — the envelope, rendered
+  // as JSON, because the empty join fell through to the generic fallback.
+  it("shows no output for a command that printed nothing", () => {
+    const events = startedHarness().translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-silent",
+        title: '`node -e "process.exit(3)"`',
+        kind: "execute",
+        status: "completed",
+        rawInput: { command: 'node -e "process.exit(3)"' },
+        rawOutput: { exitCode: 3, stdout: "", stderr: "" },
+      }),
+    );
+
+    const item =
+      events[0]?.type === "item/completed" ? events[0].item : undefined;
+    expect(item).toMatchObject({ type: "commandExecution", exitCode: 3 });
+    expect(
+      item?.type === "commandExecution" ? item.aggregatedOutput : "unset",
+    ).toBeUndefined();
+  });
+
   // M2. grok streams cumulative stdout on in_progress updates of a running
   // command. Before, the update was suppressed and the output vanished.
   it("streams a running command's cumulative output onto its row", () => {
@@ -1438,6 +1462,62 @@ describe("acp delta translation (raw payloads and real results)", () => {
         type: "item/commandExecution/outputDelta",
         delta: "two\n",
         reset: true,
+      }),
+    ]);
+  });
+
+  // Found in live QA: grok sends its whole rawOutput envelope on the
+  // in-progress update of a command that has printed nothing, and the row
+  // streamed `{"type":"Bash","output":[],"exit_code":0,…}` — including an
+  // exit code the command had not reached.
+  it("streams the command's own output, never the rawOutput envelope", () => {
+    const harness = startedHarness();
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-envelope",
+        title: "Execute `node -e exit`",
+        kind: "execute",
+        status: "in_progress",
+        rawInput: { command: "node -e exit" },
+      }),
+    );
+
+    expect(
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-envelope",
+          status: "in_progress",
+          rawOutput: {
+            type: "Bash",
+            output: [],
+            output_for_prompt: "",
+            exit_code: 0,
+            command: "node -e exit",
+          },
+        }),
+      ),
+    ).toEqual([]);
+
+    expect(
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-envelope",
+          status: "in_progress",
+          rawOutput: {
+            type: "Bash",
+            output_for_prompt: "working\n",
+            exit_code: 0,
+            command: "node -e exit",
+          },
+        }),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "item/commandExecution/outputDelta",
+        delta: "working\n",
       }),
     ]);
   });

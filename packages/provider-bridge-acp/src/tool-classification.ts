@@ -223,6 +223,10 @@ export interface AcpCommandResult {
   output?: string;
 }
 
+function emptyToUndefined(value: string | undefined): string | undefined {
+  return value === undefined || value.length === 0 ? undefined : value;
+}
+
 function joinStreams(stdout: string, stderr: string): string | undefined {
   if (stdout.length === 0 && stderr.length === 0) {
     return undefined;
@@ -246,14 +250,21 @@ export function extractAcpCommandResult(
   const parsed = commandRawOutputSchema.safeParse(event.rawOutput);
   const raw = parsed.success ? parsed.data : undefined;
   const exitCode = raw?.exitCode ?? raw?.exit_code ?? undefined;
+  // An agent that reported its streams has told bb what the command printed,
+  // even when that is nothing: `node -e "process.exit(3)"` prints nothing and
+  // its row must show nothing, not the rawOutput envelope rendered as JSON.
+  const reportedStreams =
+    raw !== undefined &&
+    (raw.stdout !== undefined ||
+      raw.stderr !== undefined ||
+      raw.output_for_prompt !== undefined);
   let output = extractAcpToolCallContentText(event);
-  if (output === undefined && raw !== undefined) {
+  if (output === undefined && reportedStreams && raw !== undefined) {
     output =
       raw.stdout !== undefined || raw.stderr !== undefined
         ? joinStreams(raw.stdout ?? "", raw.stderr ?? "")
-        : raw.output_for_prompt;
-  }
-  if (output === undefined) {
+        : emptyToUndefined(raw.output_for_prompt);
+  } else if (output === undefined) {
     output = extractAcpToolCallOutputText(event);
   }
   const notes = [

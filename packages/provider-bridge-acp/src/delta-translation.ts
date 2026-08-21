@@ -749,13 +749,12 @@ export function createAcpDeltaTranslator(
             ? {}
             : { delegation: open.delegation }),
         });
-        const progressText = extractAcpToolCallOutputText(event);
-        if (progressText === undefined) {
-          return suppressedUnhandled(rawEvent);
-        }
         // An in-progress update on a running command carries the output so
         // far (grok streams cumulative stdout, with tail-window resets): a
-        // cumulative snapshot the assembler diffs onto the row. Output that
+        // cumulative snapshot the assembler diffs onto the row. It is the
+        // command's own output — the same extraction the close uses, never
+        // the rawOutput envelope rendered as JSON, which mid-flight also
+        // carries an exit code the command has not reached yet. Output that
         // arrives with no turn open belongs to a command the turn end
         // already settled, so it has no row to land on and is dropped.
         if (
@@ -763,13 +762,20 @@ export function createAcpDeltaTranslator(
           mergedType === "command" &&
           open?.openedType === "command"
         ) {
-          return [
-            {
-              kind: "command.outputSnapshot",
-              key: { providerItemId: event.toolCallId },
-              text: progressText,
-            },
-          ];
+          const streamed = extractAcpCommandResult(event).output;
+          return streamed === undefined
+            ? suppressedUnhandled(rawEvent)
+            : [
+                {
+                  kind: "command.outputSnapshot",
+                  key: { providerItemId: event.toolCallId },
+                  text: streamed,
+                },
+              ];
+        }
+        const progressText = extractAcpToolCallOutputText(event);
+        if (progressText === undefined) {
+          return suppressedUnhandled(rawEvent);
         }
         // Commands and file changes settle with their output at the close;
         // every other item streams its progress text.
