@@ -35,7 +35,10 @@ import {
   THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
   THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
 } from "./secondaryPanelSizing";
-import { resolveConversationCollapseControl } from "./panelToggleControlState";
+import {
+  getRightPanelToggleIconName,
+  resolveConversationCollapseControl,
+} from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
 import type {
@@ -204,10 +207,7 @@ export function resolveCollapsedPanelTrafficLightReserveClassName({
   return reserves && MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS;
 }
 
-const HIDE_PANEL_CONTROL = {
-  iconName: "PanelRight" as const,
-  label: "Hide right panel",
-};
+const HIDE_PANEL_LABEL = "Hide right panel";
 
 export interface SecondaryPanelFixedTab {
   ariaLabel: string;
@@ -343,7 +343,7 @@ export function ThreadSecondaryPanel({
     [tabs],
   );
   const hasActiveRenderableTab = activeRenderableTab !== undefined;
-  const hideControl = HIDE_PANEL_CONTROL;
+  const hidePanelIconName = getRightPanelToggleIconName(renderAsDrawer);
   // The conversation-collapse toggle only exists on a wide viewport; the drawer
   // layout fills the screen and cannot collapse the conversation.
   const conversationCollapseControl =
@@ -587,12 +587,12 @@ export function ThreadSecondaryPanel({
       onClick={onClose}
       aria-label={
         togglePanelShortcut
-          ? `${hideControl.label} (${togglePanelShortcut.label})`
-          : hideControl.label
+          ? `${HIDE_PANEL_LABEL} (${togglePanelShortcut.label})`
+          : HIDE_PANEL_LABEL
       }
       aria-keyshortcuts={togglePanelShortcut?.ariaKeyshortcuts}
     >
-      <Icon name={hideControl.iconName} />
+      <Icon name={hidePanelIconName} />
       <AppCommandShortcutHint
         shortcut={togglePanelShortcut}
         className="absolute right-full mr-1"

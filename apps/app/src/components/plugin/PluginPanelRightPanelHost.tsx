@@ -21,6 +21,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
+import { getRightPanelToggleIconName } from "@/components/secondary-panel/panelToggleControlState";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import {
   LazyBrowserTabDeck,
@@ -949,6 +950,7 @@ export function PluginPanelRightPanelHost({
   );
 
   const toggleLabel = isOpen ? "Hide right panel" : "Show right panel";
+  const toggleIconName = getRightPanelToggleIconName(isCompactViewport);
   const page = (
     <div
       className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${
@@ -995,7 +997,7 @@ export function PluginPanelRightPanelHost({
                     aria-pressed={isOpen}
                     onClick={togglePanel}
                   >
-                    <Icon name="PanelRight" />
+                    <Icon name={toggleIconName} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>{toggleLabel}</TooltipContent>

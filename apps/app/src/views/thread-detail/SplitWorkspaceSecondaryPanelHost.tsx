@@ -32,6 +32,7 @@ import {
   SecondaryPanelHostLayoutContext,
   type SecondaryPanelHostLayout,
 } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
+import { useRightPanelToggleIconName } from "@/components/secondary-panel/panelToggleControlState";
 import {
   getPanelCollapseTransitionStyle,
   PANEL_COLLAPSE_TRANSITION_CLASS,
@@ -189,6 +190,7 @@ export function SplitWorkspaceSecondaryPanelHost({
   };
 
   const toggleLabel = isOpen ? "Hide right panel" : "Show right panel";
+  const toggleIconName = useRightPanelToggleIconName();
   // An open pane panel carries the toggle in its own chrome, and a full-screen
   // pane hides it. The empty state has no chrome, so it keeps the button.
   const showsCornerToggle = !isPaneMaximized && !(isOpen && model !== null);
@@ -248,7 +250,7 @@ export function SplitWorkspaceSecondaryPanelHost({
             aria-expanded={isOpen}
             onClick={toggleWindowPanel}
           >
-            <Icon name="PanelRight" />
+            <Icon name={toggleIconName} />
           </Button>
         </div>
         <PanelGroup

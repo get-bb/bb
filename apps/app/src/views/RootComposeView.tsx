@@ -36,6 +36,7 @@ import {
   type ProjectMachineSetupDialogTarget,
 } from "@/components/dialogs/ProjectMachineSetupDialog";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
+import { useRightPanelToggleIconName } from "@/components/secondary-panel/panelToggleControlState";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type {
   SecondaryPanelPaneRenderContext,
@@ -259,10 +260,9 @@ export function RootComposeRightPanelToggle({
   isOpen,
   onToggle,
 }: RootComposeRightPanelToggleProps) {
-  const renderAsDrawer = useIsCompactViewport();
   const shortcut = useAppCommandShortcut("panel.toggle");
   const rightPanelLabel = isOpen ? "Hide right panel" : "Show right panel";
-  const rightPanelIconName = renderAsDrawer ? "PanelBottom" : "PanelRight";
+  const rightPanelIconName = useRightPanelToggleIconName();
 
   return (
     <Button

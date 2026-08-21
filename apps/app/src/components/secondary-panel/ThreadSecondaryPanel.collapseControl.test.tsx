@@ -72,6 +72,7 @@ function createTestRenderableTab(
 function renderPanel(args: {
   isConversationCollapsed: boolean;
   onToggleConversationCollapse: () => void;
+  renderAsDrawer?: boolean;
 }) {
   const { wrapper: Wrapper } = createQueryClientTestHarness();
   return render(
@@ -516,6 +517,33 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
     ).toBeTruthy();
     expect(screen.getByText("Checking Git support…")).toBeTruthy();
     expect(screen.queryByText("This panel view is unavailable.")).toBeNull();
+  });
+});
+
+// Every right-panel show/hide control has to disclose the edge the panel
+// actually opens from, and on a compact viewport that edge is the bottom.
+// Each trigger builds its own button, so the glyph is only correct as long as
+// every one of them routes through getRightPanelToggleIconName.
+describe("ThreadSecondaryPanel hide control glyph", () => {
+  it("shows the drawer glyph while the panel renders as a bottom drawer", () => {
+    const view = renderPanel({
+      isConversationCollapsed: false,
+      onToggleConversationCollapse: noop,
+      renderAsDrawer: true,
+    });
+
+    const hideControl = view.getByRole("button", { name: "Hide right panel" });
+    expect(hideControl.querySelector('[data-icon="PanelBottom"]')).toBeTruthy();
+  });
+
+  it("shows the side-panel glyph on a wide viewport", () => {
+    const view = renderPanel({
+      isConversationCollapsed: false,
+      onToggleConversationCollapse: noop,
+    });
+
+    const hideControl = view.getByRole("button", { name: "Hide right panel" });
+    expect(hideControl.querySelector('[data-icon="PanelRight"]')).toBeTruthy();
   });
 });
 

@@ -46,8 +46,10 @@ vi.mock("@/components/layout/AppPageHeader", () => ({
   ),
 }));
 
+const viewportState = vi.hoisted(() => ({ isCompactViewport: false }));
+
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
-  useIsCompactViewport: () => false,
+  useIsCompactViewport: () => viewportState.isCompactViewport,
 }));
 
 const THREAD_ID = "thr_header";
@@ -69,6 +71,7 @@ const PANE_CONTEXT: PaneContextValue = {
 
 afterEach(() => {
   cleanup();
+  viewportState.isCompactViewport = false;
   mocks.renameThread.mockReset();
   vi.restoreAllMocks();
   window.localStorage.clear();
@@ -98,6 +101,40 @@ describe("ThreadDetailHeader", () => {
       screen.queryByRole("button", { name: "Hide right panel" }),
     ).toBeNull();
   });
+
+  // A compact viewport opens the right panel as a bottom drawer, so the show
+  // trigger has to disclose that edge rather than the wide-viewport one.
+  it.each([
+    { expectedIcon: "PanelBottom", isCompactViewport: true },
+    { expectedIcon: "PanelRight", isCompactViewport: false },
+  ])(
+    "shows the $expectedIcon glyph on the right-panel trigger",
+    ({ expectedIcon, isCompactViewport }) => {
+      viewportState.isCompactViewport = isCompactViewport;
+
+      render(
+        <PaneContext.Provider value={PANE_CONTEXT}>
+          <ThreadDetailHeader
+            actionsMenu={null}
+            childPillLabel={null}
+            isSecondaryPanelOpen={false}
+            onOpenThreadGitAction={vi.fn()}
+            onToggleSecondaryPanel={vi.fn()}
+            threadHeaderGitActions={[]}
+            threadId={THREAD_ID}
+            threadTitle="Panel state"
+          />
+        </PaneContext.Provider>,
+      );
+
+      const showButton = screen.getByRole("button", {
+        name: "Show right panel",
+      });
+      expect(
+        showButton.querySelector(`[data-icon="${expectedIcon}"]`),
+      ).not.toBeNull();
+    },
+  );
 
   it("keeps thread Full Screen in a split header while its panel is open", () => {
     render(
