@@ -44,6 +44,10 @@ a [localhost link](http://localhost:5173/preview) and an autolink
 https://getbb.app. Hard break follows:
 this line was a single newline.
 
+#1670 (HEIC images not rendered) → partial \`FIX\`, PR #2170 (+139/−3). The agent chose not to
+add a transcoder: the only portable decoder is \`libheif-js\` (LGPL-3.0, ~1.4 MB WASM, patent-
+encumbered codec; the repo ships no LGPL runtime deps) and it would block the server event loop.
+
 Mentions: see @thread:${RAW_ID} and the raw id ${RAW_ID} plus \`${RAW_ID}\` in code.
 A time like 13:30 and a key:value stay literal.
 
