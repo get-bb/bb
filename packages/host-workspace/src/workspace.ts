@@ -19,6 +19,7 @@ import {
 import {
   createTempDir,
   detectGitRepo,
+  detectJjColocatedWorkspace,
   ensureGitRepo,
   getCheckoutRef,
   getCurrentBranch,
@@ -1048,6 +1049,18 @@ export class Workspace {
 
   async commit(options: CommitOptions): Promise<CommitResult> {
     await ensureGitRepo(this.path, this.gitProcessOptions);
+
+    // A git commit in a colocated Jujutsu workspace imports without conflict
+    // but strands the previous working-copy change as a visible anonymous
+    // head in `jj log` and moves no bookmark, so refuse it with a typed error
+    // instead. bb-managed worktrees of a jj repo have no `.jj` directory and
+    // commit normally.
+    if (await detectJjColocatedWorkspace(this.path)) {
+      throw new WorkspaceError(
+        "jj_workspace",
+        "This workspace is managed by jj; use jj to describe or commit the change",
+      );
+    }
 
     return this.withMutation(async () => {
       await this.runGit(["add", "-A"], { cwd: this.path });

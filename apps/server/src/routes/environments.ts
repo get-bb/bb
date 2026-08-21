@@ -79,6 +79,24 @@ async function mapNoChangesTo409<TResult>(
   }
 }
 
+/**
+ * Maps the daemon's typed `jj_workspace` failure (the workspace is a
+ * colocated Jujutsu checkout, where a git commit would strand the change as a
+ * stray head in jj's log) to a 409 the client can present as-is.
+ */
+async function mapJjWorkspaceTo409<TResult>(
+  run: () => Promise<TResult>,
+): Promise<TResult> {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof ApiError && error.body.code === "jj_workspace") {
+      throw new ApiError(409, "jj_workspace", error.body.message);
+    }
+    throw error;
+  }
+}
+
 async function mapPullRequestActionFailureTo409<TResult>(
   run: () => Promise<TResult>,
 ): Promise<TResult> {
@@ -644,9 +662,8 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           });
           const commitMessage = aiMessage ?? COMMIT_FALLBACK_MESSAGE;
 
-          const result = await mapNoChangesTo409(
-            "No uncommitted changes to commit",
-            () =>
+          const result = await mapJjWorkspaceTo409(() =>
+            mapNoChangesTo409("No uncommitted changes to commit", () =>
               runLiveCommandAndWait(deps, {
                 hostId: target.hostId,
                 timeoutMs: COMMAND_TIMEOUT_MS,
@@ -657,6 +674,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
                   message: commitMessage,
                 },
               }),
+            ),
           );
           return context.json({
             ok: true,

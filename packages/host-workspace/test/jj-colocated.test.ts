@@ -136,4 +136,78 @@ describe.skipIf(!jjAvailable)("colocated jj workspaces", () => {
     const filePaths = status.workingTree.files.map((file) => file.path).sort();
     expect(filePaths).toEqual(["README.md", "new.txt"]);
   });
+
+  it("refuses commit in the jj main workspace with a typed jj_workspace error", async () => {
+    const repoPath = await initColocatedJjRepo();
+    await fs.writeFile(path.join(repoPath, "new.txt"), "new\n", "utf8");
+
+    const workspace = new Workspace(repoPath);
+    await expect(
+      workspace.commit({ message: "test", noVerify: true }),
+    ).rejects.toMatchObject({
+      name: "WorkspaceError",
+      code: "jj_workspace",
+    });
+  });
+
+  it("commits normally in a managed worktree of a jj repo", async () => {
+    const repoPath = await initColocatedJjRepo();
+    await runJj(["bookmark", "create", "main", "-r", "@-"], repoPath);
+    const worktreeParent = await makeTempDir("bb-jj-worktree-parent-");
+    const worktreePath = path.join(worktreeParent, "feature");
+    await runGit(["worktree", "add", "-B", "bb/test", worktreePath, "main"], {
+      cwd: repoPath,
+    });
+    await runGit(["config", "user.name", "BB Tests"], { cwd: worktreePath });
+    await runGit(["config", "user.email", "bb@example.com"], {
+      cwd: worktreePath,
+    });
+    await fs.writeFile(path.join(worktreePath, "work.txt"), "work\n", "utf8");
+
+    const workspace = new Workspace(worktreePath);
+    const result = await workspace.commit({
+      message: "worktree commit",
+      noVerify: true,
+    });
+    expect(result.commitSubject).toBe("worktree commit");
+
+    // The commit imports into jj as the bb/test bookmark, without conflicts
+    // or duplicate heads in the source workspace.
+    const bookmarks = await runJj(["bookmark", "list", "--all"], repoPath);
+    expect(bookmarks).toContain("bb/test");
+  });
+
+  it("reset converges cleanly with jj's working-copy snapshotting", async () => {
+    const repoPath = await initColocatedJjRepo();
+    await fs.writeFile(path.join(repoPath, "README.md"), "changed\n", "utf8");
+    await fs.writeFile(path.join(repoPath, "junk.txt"), "junk\n", "utf8");
+    await runJj(["status"], repoPath);
+
+    const workspace = new Workspace(repoPath);
+    await workspace.reset();
+
+    const porcelain = await runGit(["status", "--porcelain"], {
+      cwd: repoPath,
+    });
+    expect(porcelain.stdout.trim()).toBe("");
+    // jj snapshots the restored state without stray heads or conflicts.
+    const jjStatus = await runJj(["status"], repoPath);
+    expect(jjStatus).toContain("The working copy has no changes.");
+  });
+
+  it("rejects squash merge from the jj main workspace as detached_head", async () => {
+    const repoPath = await initColocatedJjRepo();
+    await runJj(["bookmark", "create", "main", "-r", "@-"], repoPath);
+
+    const workspace = new Workspace(repoPath);
+    await expect(
+      workspace.squashMergeInto({
+        targetBranch: "main",
+        commitMessage: "squash",
+      }),
+    ).rejects.toMatchObject({
+      name: "WorkspaceError",
+      code: "detached_head",
+    });
+  });
 });
