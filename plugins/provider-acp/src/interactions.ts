@@ -21,12 +21,14 @@ import { toolKindPresentation } from "./presentation.js";
 import {
   type AcpToolCallOperation,
   type AcpToolCallOperationInput,
+  type AcpToolCallPathOptions,
   classifyAcpToolCall as classifyAcpToolCallOperation,
   extractAcpToolCallPaths,
   resolveAcpFileChangeWriteScope,
 } from "./tool-call-operation.js";
 import {
   classifyAcpToolCall,
+  extractAcpToolCallOutputText,
   type AcpInjectedTool,
 } from "./tool-classification.js";
 import type {
@@ -51,6 +53,7 @@ interface AcpPermissionResponse {
 interface AcpPermissionToolCall extends AcpToolCallOperationInput {
   toolCallId: string;
   kind?: AcpToolKind | undefined;
+  rawKind?: string | undefined;
   /**
    * The in-flight `tool_call` with the same id, when the agent started one
    * before it asked. opencode's `external_directory` permission (a write
@@ -68,12 +71,13 @@ interface AcpPermissionToolCall extends AcpToolCallOperationInput {
  */
 function classifyAcpPermission(
   toolCall: AcpPermissionToolCall,
+  options: AcpToolCallPathOptions | undefined,
 ): AcpToolCallOperation {
-  const own = classifyAcpToolCallOperation(toolCall);
+  const own = classifyAcpToolCallOperation(toolCall, options);
   if (own.kind !== "generic" || !toolCall.startedToolCall) {
     return own;
   }
-  return classifyAcpToolCallOperation(toolCall.startedToolCall);
+  return classifyAcpToolCallOperation(toolCall.startedToolCall, options);
 }
 
 /** The permission's own tool call as the translator's event shape. */
@@ -85,6 +89,7 @@ function permissionToolCallEvent(
     toolCallId: toolCall.toolCallId,
     ...(toolCall.title !== undefined ? { title: toolCall.title } : {}),
     ...(toolCall.kind !== undefined ? { kind: toolCall.kind } : {}),
+    ...(toolCall.rawKind !== undefined ? { rawKind: toolCall.rawKind } : {}),
     ...(toolCall.content !== undefined
       ? { content: [...toolCall.content] }
       : {}),
@@ -104,6 +109,8 @@ function permissionToolCallEvent(
  */
 function buildToolUseSubject(
   toolCall: AcpPermissionToolCall | undefined,
+  reason: string | undefined,
+  options: AcpToolCallPathOptions | undefined,
 ): ToolUseApprovalSubject {
   if (toolCall === undefined) {
     return {
@@ -119,10 +126,15 @@ function buildToolUseSubject(
   const own = classifyAcpToolCall(
     permissionToolCallEvent(toolCall),
     toolCall.injectedTool,
+    options,
   );
   const described =
     own.presentation.title === undefined && toolCall.startedToolCall
-      ? classifyAcpToolCall(toolCall.startedToolCall, toolCall.injectedTool)
+      ? classifyAcpToolCall(
+          toolCall.startedToolCall,
+          toolCall.injectedTool,
+          options,
+        )
       : own;
   return {
     kind: "tool_use",
@@ -133,8 +145,30 @@ function buildToolUseSubject(
         : (toolCall.kind ??
           toolCall.startedToolCall?.kind ??
           described.item.type),
-    presentation: described.presentation,
+    // The agent's reason for asking rides the banner as its detail line.
+    presentation:
+      reason === undefined
+        ? described.presentation
+        : { ...described.presentation, detail: reason },
   };
+}
+
+/**
+ * The agent's stated reason for asking: the permission tool call's `content`
+ * text (Cursor: "Not in allowlist: node"). It is the ask's explanation, not
+ * the call's output.
+ */
+function permissionReason(
+  toolCall: AcpPermissionToolCall | undefined,
+): string | undefined {
+  if (toolCall === undefined || toolCall.content === undefined) {
+    return undefined;
+  }
+  return extractAcpToolCallOutputText({
+    sessionUpdate: "tool_call",
+    toolCallId: toolCall.toolCallId,
+    content: [...toolCall.content],
+  });
 }
 
 export function buildAcpApprovalDecisions(
@@ -160,12 +194,18 @@ export function buildAcpApprovalDecisions(
 export function buildAcpPermissionInteractionPayload(args: {
   toolCall: AcpPermissionToolCall | undefined;
   options: readonly { kind: AcpPermissionOptionKind }[];
+  /** The session cwd relative tool-call paths resolve against. */
+  cwd?: string | undefined;
 }): PendingInteractionPayload {
   const toolCall = args.toolCall;
+  const pathOptions = { cwd: args.cwd };
   const availableDecisions = buildAcpApprovalDecisions(args.options);
-  const operation = toolCall ? classifyAcpPermission(toolCall) : undefined;
+  const reason = permissionReason(toolCall) ?? null;
+  const operation = toolCall
+    ? classifyAcpPermission(toolCall, pathOptions)
+    : undefined;
   if (toolCall && operation?.kind === "file_change") {
-    const ownPaths = extractAcpToolCallPaths(toolCall);
+    const ownPaths = extractAcpToolCallPaths(toolCall, pathOptions);
     return {
       kind: "approval",
       subject: {
@@ -179,7 +219,7 @@ export function buildAcpPermissionInteractionPayload(args: {
         ),
         sessionGrant: null,
       },
-      reason: null,
+      reason,
       availableDecisions,
     };
   }
@@ -194,14 +234,14 @@ export function buildAcpPermissionInteractionPayload(args: {
         actions: [{ type: "unknown", command: operation.command }],
         sessionGrant: null,
       },
-      reason: null,
+      reason,
       availableDecisions,
     };
   }
   return {
     kind: "approval",
-    subject: buildToolUseSubject(toolCall),
-    reason: null,
+    subject: buildToolUseSubject(toolCall, reason ?? undefined, pathOptions),
+    reason,
     availableDecisions,
   };
 }

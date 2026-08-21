@@ -128,13 +128,25 @@ const acpToolCallLocationSchema = z
   .passthrough();
 
 /**
+ * The unstable programmatic tool name (ACP 1.6.0, `unstable_tool_call_name`).
+ * A `null` leaves the name unchanged, so it reads as absent.
+ */
+const acpToolCallNameSchema = z
+  .union([z.string(), z.null()])
+  .transform((value) => value ?? undefined)
+  .optional();
+
+/**
  * The parsed tool-call fields. `kind` and `status` are the normalized
  * vocabularies above; `rawKind` is the agent's own kind when it was not one
- * of them (see `openAcpToolCallEnums`).
+ * of them (see `openAcpToolCallEnums`). `_meta` stays an opaque passthrough
+ * field: vendor side channels are read by the per-agent dialect, never by
+ * this shared schema.
  */
 const acpToolCallFieldsSchema = z.object({
   toolCallId: z.string(),
   title: z.string().optional(),
+  name: acpToolCallNameSchema,
   kind: acpToolKindSchema.optional(),
   rawKind: z.string().optional(),
   status: acpToolCallStatusSchema.optional(),

@@ -16,6 +16,8 @@ import {
   createAcpDeltaTranslator,
   type AcpDeltaTranslator,
 } from "./delta-translation.js";
+import { resolveAcpDialect } from "./dialect.js";
+import { ACP_TOOL_PAYLOAD_MAX_CHARS } from "./tool-classification.js";
 
 /**
  * ACP translation equivalence for the narrow-grammar path.
@@ -36,6 +38,7 @@ const ITEM_ID_PATTERN = /^acp-test-i\d+$/;
 
 interface AcpEquivalenceHarness {
   assembler: DeltaAssembler;
+  translator: AcpDeltaTranslator;
   translate(event: ProviderRuntimeEvent): ThreadEvent[];
   openTurnId(): string;
 }
@@ -50,6 +53,7 @@ function createHarness(): AcpEquivalenceHarness {
   });
   return {
     assembler,
+    translator,
     translate(event) {
       return assembler.assemble({
         threadId: THREAD_ID,
@@ -550,8 +554,9 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
           cwd: "",
           status: "completed",
           approvalStatus: null,
+          // The agent reported no exit code, so the row carries none: an
+          // exit code is never synthesized from the status.
           aggregatedOutput: "1 passed",
-          exitCode: 0,
           presentation: {
             label: { pending: "Running command", completed: "Ran command" },
             icon: { glyph: "Terminal" },
@@ -587,8 +592,11 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
       type: "item/completed",
       item: {
         type: "toolCall",
-        result:
-          '{"output":"","attachments":[{"url":"[image]","contentType":"image/svg+xml"}]}',
+        // rawOutput rides the row as `result`, with the data URL scrubbed.
+        result: {
+          output: "",
+          attachments: [{ url: "[image]", contentType: "image/svg+xml" }],
+        },
       },
     });
     expect(JSON.stringify(events)).not.toContain("PHN2Zy8+");
@@ -1299,6 +1307,454 @@ describe("acp delta translation (native kinds → core kinds)", () => {
  * definition's presentation). ACP gives the bridge no id linking the MCP
  * proxy's call to the agent's own tool_call, so the binding is positional.
  */
+/**
+ * The richer-reporting layer (spike M1-M3, M5-M7): what the bridge now takes
+ * off the wire that it used to parse and drop.
+ */
+describe("acp delta translation (raw payloads and real results)", () => {
+  function startedHarness(): AcpEquivalenceHarness {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    return harness;
+  }
+
+  // M1. The exit code is the agent's, never synthesized from the status:
+  // a failed command with exit 2 must not report 1, and a stderr-only
+  // failure must show the stderr.
+  it("reports the exit code and stderr Cursor sent, not a status guess", () => {
+    const events = startedHarness().translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-exit",
+        title: "`node -e boom`",
+        kind: "execute",
+        status: "failed",
+        rawInput: { command: "node -e boom" },
+        rawOutput: { exitCode: 2, stdout: "", stderr: "SyntaxError: boom\n" },
+      }),
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "item/completed",
+      item: {
+        type: "commandExecution",
+        command: "node -e boom",
+        status: "failed",
+        exitCode: 2,
+        aggregatedOutput: "SyntaxError: boom\n",
+      },
+    });
+  });
+
+  it("reads grok's exit_code and notes a timeout and a signal", () => {
+    const events = startedHarness().translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-grok-exit",
+        title: "Execute `sleep 100`",
+        kind: "execute",
+        status: "failed",
+        rawInput: { command: "sleep 100" },
+        rawOutput: {
+          type: "Bash",
+          exit_code: 124,
+          output_for_prompt: "exit: 124\n",
+          signal: "SIGKILL",
+          timed_out: true,
+        },
+      }),
+    );
+
+    expect(events[0]).toMatchObject({
+      type: "item/completed",
+      item: {
+        type: "commandExecution",
+        exitCode: 124,
+        aggregatedOutput: "exit: 124\n[timed out] [signal SIGKILL]",
+      },
+    });
+  });
+
+  // M2. grok streams cumulative stdout on in_progress updates of a running
+  // command. Before, the update was suppressed and the output vanished.
+  it("streams a running command's cumulative output onto its row", () => {
+    const harness = startedHarness();
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-stream",
+        title: "Execute `tail -f log`",
+        kind: "execute",
+        status: "in_progress",
+        rawInput: { command: "tail -f log" },
+      }),
+    );
+
+    const first = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-stream",
+        status: "in_progress",
+        content: [{ type: "content", content: { type: "text", text: "one\n" } }],
+      }),
+    );
+    expect(first).toEqual([
+      expect.objectContaining({
+        type: "item/commandExecution/outputDelta",
+        delta: "one\n",
+      }),
+    ]);
+
+    // Cumulative: the assembler diffs the snapshot down to the new bytes.
+    const second = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-stream",
+        status: "in_progress",
+        content: [
+          { type: "content", content: { type: "text", text: "one\ntwo\n" } },
+        ],
+      }),
+    );
+    expect(second).toEqual([
+      expect.objectContaining({
+        type: "item/commandExecution/outputDelta",
+        delta: "two\n",
+      }),
+    ]);
+
+    // A tail-window reset re-sends a shorter snapshot; the row resets.
+    const third = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-stream",
+        status: "in_progress",
+        content: [{ type: "content", content: { type: "text", text: "two\n" } }],
+      }),
+    );
+    expect(third).toEqual([
+      expect.objectContaining({
+        type: "item/commandExecution/outputDelta",
+        delta: "two\n",
+        reset: true,
+      }),
+    ]);
+  });
+
+  // M3. rawInput/rawOutput reach the row as args/result, and a failed call
+  // carries its output as the error.
+  it("forwards rawInput as args, rawOutput as result, and the failure text as error", () => {
+    const events = startedHarness().translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-mcp",
+        title: "MCP: lookup",
+        kind: "other",
+        status: "failed",
+        rawInput: { query: "acp", limit: 3 },
+        rawOutput: { message: "upstream refused" },
+      }),
+    );
+
+    expect(events[0]).toMatchObject({
+      type: "item/completed",
+      item: {
+        type: "toolCall",
+        arguments: { query: "acp", limit: 3 },
+        result: { message: "upstream refused" },
+        error: '{"message":"upstream refused"}',
+      },
+    });
+  });
+
+  it("caps an oversized raw payload instead of putting megabytes on the row", () => {
+    const events = startedHarness().translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-huge",
+        title: "MCP: dump",
+        kind: "other",
+        status: "completed",
+        rawOutput: { body: "x".repeat(ACP_TOOL_PAYLOAD_MAX_CHARS + 5_000) },
+      }),
+    );
+
+    const item =
+      events[0]?.type === "item/completed" ? events[0].item : undefined;
+    const result = item?.type === "toolCall" ? item.result : undefined;
+    expect(typeof result).toBe("string");
+    expect(String(result).length).toBeLessThan(
+      ACP_TOOL_PAYLOAD_MAX_CHARS + 200,
+    );
+    expect(String(result)).toContain("more characters truncated");
+  });
+
+  // M6. ACP says locations are absolute; grok sends them relative.
+  it("resolves a relative location and grok's target_file against the session cwd", () => {
+    const translator = createAcpDeltaTranslator({ cwd: "/workspace/app" });
+    const assembler = createDeltaAssembler({
+      providerId: "acp",
+      entropyPrefix: ENTROPY,
+      textDeltaFlushMs: 0,
+    });
+    const translate = (event: ProviderRuntimeEvent) =>
+      assembler.assemble({
+        threadId: THREAD_ID,
+        deltas: translator.translateAcpEvent(event, { threadId: THREAD_ID }),
+      });
+    translate(turnStartedEvent());
+
+    expect(
+      translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "read-rel",
+          title: "Read `README.md`",
+          kind: "read",
+          status: "completed",
+          locations: [{ path: "README.md" }],
+        }),
+      )[0],
+    ).toMatchObject({
+      item: { type: "fileRead", path: "/workspace/app/README.md" },
+    });
+
+    expect(
+      translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "read-target",
+          title: "read_file",
+          kind: "read",
+          status: "completed",
+          rawInput: { target_file: "src/index.ts" },
+        }),
+      )[0],
+    ).toMatchObject({
+      item: { type: "fileRead", path: "/workspace/app/src/index.ts" },
+    });
+  });
+
+  // M7. The programmatic tool name names the row; the dialect supplies the
+  // kind at open so grok's row does not open generic and close as a command.
+  it("names a generic row by the unstable tool name", () => {
+    const events = startedHarness().translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-named",
+        title: "Searching the web",
+        name: "web_search_exa",
+        kind: "other",
+        status: "pending",
+      }),
+    );
+
+    expect(events[0]).toMatchObject({
+      type: "item/started",
+      item: {
+        type: "toolCall",
+        tool: "web_search_exa",
+        presentation: {
+          label: {
+            pending: "Running web_search_exa",
+            completed: "Ran web_search_exa",
+          },
+          title: "Searching the web",
+        },
+      },
+    });
+  });
+
+  it("opens a grok tool call as the kind its dialect reports", () => {
+    const translator = createAcpDeltaTranslator({
+      cwd: "/workspace/app",
+      dialect: resolveAcpDialect({ command: "/usr/local/bin/grok" }),
+    });
+    const assembler = createDeltaAssembler({
+      providerId: "acp",
+      entropyPrefix: ENTROPY,
+      textDeltaFlushMs: 0,
+    });
+    const translate = (event: ProviderRuntimeEvent) =>
+      assembler.assemble({
+        threadId: THREAD_ID,
+        deltas: translator.translateAcpEvent(event, { threadId: THREAD_ID }),
+      });
+    translate(turnStartedEvent());
+
+    // grok's `tool_call` has no kind at all; the kind rides `_meta`.
+    const opened = translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-grok",
+        title: "run_terminal_command",
+        rawInput: { command: "ls", description: "List files" },
+        _meta: {
+          "x.ai/tool": {
+            version: 1,
+            name: "run_terminal_command",
+            kind: "execute",
+            read_only: false,
+          },
+        },
+      }),
+    );
+    expect(opened[0]).toMatchObject({
+      type: "item/started",
+      item: { type: "commandExecution", command: "ls", cwd: "" },
+    });
+    const openedId =
+      opened[0]?.type === "item/started" ? opened[0].item.id : "";
+
+    // …and it closes as the same command row, not a second item.
+    const closed = translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-grok",
+        kind: "execute",
+        title: "Execute `ls`",
+        status: "completed",
+        content: [
+          { type: "content", content: { type: "text", text: "README.md\n" } },
+        ],
+        rawOutput: { type: "Bash", exit_code: 0, output_for_prompt: "exit: 0\n" },
+      }),
+    );
+    expect(closed).toHaveLength(1);
+    expect(closed[0]).toMatchObject({
+      type: "item/completed",
+      item: {
+        type: "commandExecution",
+        id: openedId,
+        exitCode: 0,
+        aggregatedOutput: "README.md\n",
+      },
+    });
+  });
+
+  // M5. Cursor asks for its fetch permission under a different id, and the
+  // ask is the only place the URL appears.
+  it("binds a permission request by kind and gives the row the URL it named", () => {
+    const harness = startedHarness();
+    const opened = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-fetch",
+        title: "Web Fetch",
+        kind: "fetch",
+        status: "in_progress",
+        rawInput: {},
+      }),
+    );
+    expect(opened[0]).toMatchObject({
+      item: { type: "toolCall", tool: "fetch", presentation: { title: "Web Fetch" } },
+    });
+    const openedId =
+      opened[0]?.type === "item/started" ? opened[0].item.id : "";
+
+    const bound = harness.translator.notePermissionToolCall(THREAD_ID, {
+      toolCallId: "web_fetch_0",
+      title: "Fetch https://nodejs.org/dist/index.json",
+      kind: "fetch",
+    });
+    // The approval joins the in-flight call's row, not the agent's ask id.
+    expect(bound.toolCallId).toBe("call-fetch");
+
+    // The row keeps the shape it opened with — a row that opens as one kind
+    // and settles as another is two rows in the timeline — and takes the
+    // headline the ask revealed.
+    expect(
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-fetch",
+          status: "completed",
+          rawOutput: { success: true },
+        }),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          id: openedId,
+          type: "toolCall",
+          tool: "fetch",
+          presentation: expect.objectContaining({
+            title: "Fetch https://nodejs.org/dist/index.json",
+          }),
+        }),
+      }),
+    ]);
+  });
+
+  it("merges a permission that keeps the row's shape", () => {
+    const harness = startedHarness();
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-mcp",
+        title: "MCP: tool",
+        kind: "other",
+        status: "in_progress",
+      }),
+    );
+
+    const bound = harness.translator.notePermissionToolCall(THREAD_ID, {
+      toolCallId: "call-mcp",
+      title: "bb-bridge-AskUserQuestion: AskUserQuestion",
+      kind: "other",
+      rawInput: { question: "Which one?" },
+    });
+    expect(bound.event?.rawInput).toEqual({ question: "Which one?" });
+
+    expect(
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-mcp",
+          status: "completed",
+          rawOutput: { success: true },
+        }),
+      )[0],
+    ).toMatchObject({
+      type: "item/completed",
+      item: {
+        type: "toolCall",
+        tool: "other",
+        arguments: { question: "Which one?" },
+        presentation: { title: "bb-bridge-AskUserQuestion: AskUserQuestion" },
+      },
+    });
+  });
+
+  // #1719: the permission merge must never overwrite a richer call. opencode
+  // asks about a running `edit` under the same id with kind `other`.
+  it("leaves a call that already has a core shape alone", () => {
+    const harness = startedHarness();
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "write-tool-1",
+        title: "Editing notes.md",
+        kind: "edit",
+        status: "pending",
+        locations: [{ path: "/tmp/qa-1719/notes.md" }],
+      }),
+    );
+
+    const bound = harness.translator.notePermissionToolCall(THREAD_ID, {
+      toolCallId: "write-tool-1",
+      title: "/tmp/qa-1719",
+      kind: "other",
+      locations: [{ path: "/tmp/qa-1719/notes.md" }, { path: "/tmp/qa-1719" }],
+    });
+
+    expect(bound.event?.kind).toBe("edit");
+    expect(bound.event?.title).toBe("Editing notes.md");
+  });
+});
+
 describe("acp delta translation (bb-injected tools)", () => {
   const ASK_PRESENTATION = {
     label: { pending: "Asking a question", completed: "Asked a question" },

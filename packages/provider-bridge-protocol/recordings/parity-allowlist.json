@@ -558,5 +558,205 @@
     "path": "/0/children/3/toolName",
     "pr": "#2179",
     "reason": "Projection of the same change: the legacy tool row's toolName is the item's `tool` slot, now the native kind rather than the agent's title (the title is in the persisted presentation, which the presentation-driven projection will read)."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "approval-deny",
+    "layer": "events",
+    "path": "/*/item/exitCode",
+    "pr": "#2211",
+    "reason": "M1: an exit code is the agent's own (`rawOutput.exitCode`/`exit_code`), never synthesized from the ACP status. A tool call and a file change no longer close with a fabricated `exitCode: 0`, and a command that Cursor reported as `exitCode: 1` under an ACP status of `completed` now shows 1."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "approval-deny",
+    "layer": "rows",
+    "path": "/*/children/*/exitCode",
+    "pr": "#2211",
+    "reason": "Projection of M1: the row shows the agent's exit code, or none when the agent reported none."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "steer",
+    "layer": "events",
+    "path": "/*/item/aggregatedOutput",
+    "pr": "#2211",
+    "reason": "M1: a command's aggregated output is the stdout/stderr the agent reported, not its whole rawOutput envelope rendered as JSON text."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "steer",
+    "layer": "events",
+    "path": "/*/item/exitCode",
+    "pr": "#2211",
+    "reason": "M1: an exit code is the agent's own (`rawOutput.exitCode`/`exit_code`), never synthesized from the ACP status. A tool call and a file change no longer close with a fabricated `exitCode: 0`, and a command that Cursor reported as `exitCode: 1` under an ACP status of `completed` now shows 1."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "steer",
+    "layer": "rows",
+    "path": "/*/children/*/exitCode",
+    "pr": "#2211",
+    "reason": "Projection of M1: the row shows the agent's exit code, or none when the agent reported none."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "steer",
+    "layer": "rows",
+    "path": "/*/children/*/output",
+    "pr": "#2211",
+    "reason": "Projection of M1/M3: the row's output is the agent's real stdout/stderr (commands) or its rawOutput value (tools), not the rendered rawOutput envelope."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "subagent",
+    "layer": "events",
+    "path": "/*/item/arguments",
+    "pr": "#2211",
+    "reason": "M3: a generic ACP tool item carries the call's rawInput as `arguments`; the bridge parsed rawInput and then emitted nothing."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "subagent",
+    "layer": "events",
+    "path": "/*/item/result",
+    "pr": "#2211",
+    "reason": "M3: a generic ACP tool item carries the call's rawOutput as `result` \u2014 the JSON value (size-capped, data-URL scrubbed) instead of the close's rendered text."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/*/children/*/toolArgs",
+    "pr": "#2211",
+    "reason": "Projection of M3: the tool row renders the arguments the item now carries."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "events",
+    "path": "/*/item/aggregatedOutput",
+    "pr": "#2211",
+    "reason": "M1: a command's aggregated output is the stdout/stderr the agent reported, not its whole rawOutput envelope rendered as JSON text."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "events",
+    "path": "/*/item/arguments",
+    "pr": "#2211",
+    "reason": "M3: a generic ACP tool item carries the call's rawInput as `arguments`; the bridge parsed rawInput and then emitted nothing."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "events",
+    "path": "/*/item/result",
+    "pr": "#2211",
+    "reason": "M3: a generic ACP tool item carries the call's rawOutput as `result` \u2014 the JSON value (size-capped, data-URL scrubbed) instead of the close's rendered text."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "rows",
+    "path": "/*/children/*/output",
+    "pr": "#2211",
+    "reason": "Projection of M1/M3: the row's output is the agent's real stdout/stderr (commands) or its rawOutput value (tools), not the rendered rawOutput envelope."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "rows",
+    "path": "/*/children/*/toolArgs",
+    "pr": "#2211",
+    "reason": "Projection of M3: the tool row renders the arguments the item now carries."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "user-question",
+    "layer": "events",
+    "path": "/*/item/arguments",
+    "pr": "#2211",
+    "reason": "M3: a generic ACP tool item carries the call's rawInput as `arguments`; the bridge parsed rawInput and then emitted nothing."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "user-question",
+    "layer": "events",
+    "path": "/*/item/result",
+    "pr": "#2211",
+    "reason": "M3: a generic ACP tool item carries the call's rawOutput as `result` \u2014 the JSON value (size-capped, data-URL scrubbed) instead of the close's rendered text."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "user-question",
+    "layer": "rows",
+    "path": "/*/children/*/toolArgs",
+    "pr": "#2211",
+    "reason": "Projection of M3: the tool row renders the arguments the item now carries."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "events",
+    "path": "/*/item/aggregatedOutput",
+    "pr": "#2211",
+    "reason": "M1: a command's aggregated output is the stdout/stderr the agent reported, not its whole rawOutput envelope rendered as JSON text."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "events",
+    "path": "/*/item/arguments",
+    "pr": "#2211",
+    "reason": "M3: a generic ACP tool item carries the call's rawInput as `arguments`; the bridge parsed rawInput and then emitted nothing."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "events",
+    "path": "/*/item/exitCode",
+    "pr": "#2211",
+    "reason": "M1: an exit code is the agent's own (`rawOutput.exitCode`/`exit_code`), never synthesized from the ACP status. A tool call and a file change no longer close with a fabricated `exitCode: 0`, and a command that Cursor reported as `exitCode: 1` under an ACP status of `completed` now shows 1."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "events",
+    "path": "/*/item/result",
+    "pr": "#2211",
+    "reason": "M3: a generic ACP tool item carries the call's rawOutput as `result` \u2014 the JSON value (size-capped, data-URL scrubbed) instead of the close's rendered text."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/*/children/*/exitCode",
+    "pr": "#2211",
+    "reason": "Projection of M1: the row shows the agent's exit code, or none when the agent reported none."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/*/children/*/output",
+    "pr": "#2211",
+    "reason": "Projection of M1/M3: the row's output is the agent's real stdout/stderr (commands) or its rawOutput value (tools), not the rendered rawOutput envelope."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/*/children/*/status",
+    "pr": "#2211",
+    "reason": "Projection of M1: a command Cursor reported as `exitCode: 1` under an ACP status of `completed` now projects as an error row instead of a successful one."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/*/children/*/toolArgs",
+    "pr": "#2211",
+    "reason": "Projection of M3: the tool row renders the arguments the item now carries."
   }
 ]

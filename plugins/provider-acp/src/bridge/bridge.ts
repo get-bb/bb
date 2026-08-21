@@ -70,6 +70,7 @@ import {
   createAcpDeltaTranslator,
   type AcpDeltaTranslator,
 } from "../delta-translation.js";
+import { resolveAcpDialect } from "../dialect.js";
 import {
   buildAcpPermissionInteractionPayload,
   resolveAcpPermissionDecision,
@@ -175,6 +176,8 @@ interface AcpPendingTurnInput {
 interface AcpThreadSession {
   bbThreadId: string;
   providerThreadId: string;
+  /** The session's working directory: the agent's cwd and the path root. */
+  cwd: string;
   /** Every session-scoped notification is translated through this. */
   translator: AcpDeltaTranslator;
   connection: AcpAgentConnection;
@@ -1357,6 +1360,32 @@ function handlePermissionRequest(
     return;
   }
 
+  const toolCall = parsed.data.toolCall;
+  // The permission's tool call is a ToolCallUpdate: it merges into the
+  // in-flight call it describes (same id, else the one in-flight call of its
+  // kind), and the approval subject joins that call's row. This runs before
+  // the permission is answered — an auto-allowed ask (permission mode
+  // "full") describes the call just as well as one the user sees.
+  const bound =
+    toolCall?.toolCallId !== undefined
+      ? session.translator.notePermissionToolCall(session.bbThreadId, {
+          toolCallId: toolCall.toolCallId,
+          ...(toolCall.title !== undefined ? { title: toolCall.title } : {}),
+          ...(toolCall.kind !== undefined ? { kind: toolCall.kind } : {}),
+          ...(toolCall.rawKind !== undefined
+            ? { rawKind: toolCall.rawKind }
+            : {}),
+          ...(toolCall.locations !== undefined
+            ? { locations: toolCall.locations }
+            : {}),
+          ...(toolCall.rawInput !== undefined
+            ? { rawInput: toolCall.rawInput }
+            : {}),
+          ...(toolCall.rawOutput !== undefined
+            ? { rawOutput: toolCall.rawOutput }
+            : {}),
+        })
+      : undefined;
   const pending: PendingAcpPermission = {
     responder,
     options: parsed.data.options,
@@ -1369,28 +1398,31 @@ function handlePermissionRequest(
 
   session.pendingPermissions.add(pending);
 
-  const toolCall = parsed.data.toolCall;
-  const normalizedToolCall = toolCall?.toolCallId
-    ? {
-        toolCallId: toolCall.toolCallId,
-        ...(toolCall.title !== undefined ? { title: toolCall.title } : {}),
-        ...(toolCall.kind !== undefined ? { kind: toolCall.kind } : {}),
-        ...(toolCall.rawInput !== undefined
-          ? { rawInput: toolCall.rawInput }
-          : {}),
-        ...(toolCall.locations !== undefined
-          ? { locations: toolCall.locations }
-          : {}),
-        startedToolCall: session.translator.getMergedToolCall(
-          session.bbThreadId,
-          toolCall.toolCallId,
-        ),
-        injectedTool: session.translator.getInjectedToolBinding(
-          session.bbThreadId,
-          toolCall.toolCallId,
-        ),
-      }
-    : undefined;
+  const normalizedToolCall =
+    toolCall?.toolCallId !== undefined && bound !== undefined
+      ? {
+          toolCallId: bound.toolCallId,
+          ...(toolCall.title !== undefined ? { title: toolCall.title } : {}),
+          ...(toolCall.kind !== undefined ? { kind: toolCall.kind } : {}),
+          ...(toolCall.rawKind !== undefined
+            ? { rawKind: toolCall.rawKind }
+            : {}),
+          ...(toolCall.content !== undefined
+            ? { content: toolCall.content }
+            : {}),
+          ...(toolCall.rawInput !== undefined
+            ? { rawInput: toolCall.rawInput }
+            : {}),
+          ...(toolCall.locations !== undefined
+            ? { locations: toolCall.locations }
+            : {}),
+          startedToolCall: bound.event,
+          injectedTool: session.translator.getInjectedToolBinding(
+            session.bbThreadId,
+            bound.toolCallId,
+          ),
+        }
+      : undefined;
 
   {
     // The session carries the canonical PendingInteractionPayload out and
@@ -1398,6 +1430,7 @@ function handlePermissionRequest(
     const payload = buildAcpPermissionInteractionPayload({
       toolCall: normalizedToolCall,
       options: parsed.data.options,
+      cwd: session.cwd,
     });
     // Turn ids are runtime-minted under the narrow grammar: `turnId: null`
     // asks the runtime to stamp its active turn for this thread (the wire
@@ -1601,7 +1634,10 @@ async function startAgentSession(
     await stopSession(existing);
   }
 
-  const translator = createAcpDeltaTranslator();
+  const translator = createAcpDeltaTranslator({
+    cwd: params.cwd,
+    dialect: resolveAcpDialect(params.agent),
+  });
   // The session's bb-injected tools: a proxied call to one is a bb tool and
   // reads the way its definition says (Q31).
   translator.configureInjectedTools(
@@ -1670,6 +1706,7 @@ async function startAgentSession(
   session = {
     bbThreadId,
     providerThreadId: "",
+    cwd: params.cwd,
     translator,
     connection,
     supportsImageInput: false,

@@ -346,3 +346,79 @@ describe("buildAcpPermissionInteractionPayload file-change subjects", () => {
     });
   });
 });
+
+// M5: a permission's `content` is the agent's reason for asking ("Not in
+// allowlist: node"), not the call's output. It rides the payload's reason and
+// the banner's detail line so the user learns why they are being asked.
+describe("permission reason", () => {
+  it("carries the agent's reason on a command approval", () => {
+    const payload = buildAcpPermissionInteractionPayload({
+      toolCall: {
+        toolCallId: "call-1",
+        title: "`node -e 1`",
+        kind: "execute",
+        rawInput: { command: "node -e 1" },
+        content: [
+          {
+            type: "content",
+            content: { type: "text", text: "Not in allowlist: node" },
+          },
+        ],
+      },
+      options: allowDenyOptions,
+    });
+
+    expect(payload).toMatchObject({
+      kind: "approval",
+      reason: "Not in allowlist: node",
+      subject: { kind: "command", command: "node -e 1" },
+    });
+  });
+
+  it("puts the reason in the tool_use banner's detail", () => {
+    const payload = buildAcpPermissionInteractionPayload({
+      toolCall: {
+        toolCallId: "call-2",
+        title: "MCP: deploy",
+        kind: "other",
+        content: [
+          {
+            type: "content",
+            content: { type: "text", text: "This tool is not allowlisted." },
+          },
+        ],
+      },
+      options: allowDenyOptions,
+    });
+
+    expect(payload).toMatchObject({
+      kind: "approval",
+      reason: "This tool is not allowlisted.",
+      subject: {
+        kind: "tool_use",
+        presentation: { detail: "This tool is not allowlisted." },
+      },
+    });
+  });
+
+  it("resolves a relative permission path against the session cwd", () => {
+    const payload = buildAcpPermissionInteractionPayload({
+      toolCall: {
+        toolCallId: "call-3",
+        title: "Edit notes.md",
+        kind: "edit",
+        locations: [{ path: "notes/todo.md" }],
+      },
+      options: allowDenyOptions,
+      cwd: "/workspace/app",
+    });
+
+    expect(payload).toMatchObject({
+      kind: "approval",
+      subject: {
+        kind: "file_change",
+        writeScope: "/workspace/app/notes/todo.md",
+      },
+    });
+  });
+});

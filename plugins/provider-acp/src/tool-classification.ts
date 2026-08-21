@@ -42,7 +42,9 @@ import {
 import {
   classifyAcpToolCall as classifyAcpToolCallOperation,
   extractAcpToolCallPaths,
+  resolveAcpToolCallPath,
   type AcpToolCallOperation,
+  type AcpToolCallPathOptions,
 } from "./tool-call-operation.js";
 import {
   extractAcpContentText,
@@ -86,12 +88,87 @@ const INLINE_IMAGE_DATA_URL_PATTERN =
   /data:image\/[a-z0-9.+-]+(?:;[^,]*)?;base64,[a-z0-9+/_=-]+/giu;
 
 /**
- * The text output of a tool call: its `content` text blocks, else its
- * `rawOutput` rendered as text. Some ACP agents echo MCP image results as
+ * The most of a tool call's `rawInput` / `rawOutput` the timeline keeps, in
+ * serialized characters. The server truncates string outputs on read; a JSON
+ * object rides the event whole, so the bridge bounds it here.
+ */
+export const ACP_TOOL_PAYLOAD_MAX_CHARS = 64 * 1024;
+
+function scrubInlineImageDataUrls(text: string): string {
+  return text.replace(INLINE_IMAGE_DATA_URL_PATTERN, "[image]");
+}
+
+/** The data-URL scrub, applied to every string inside a JSON value. */
+function scrubToolPayloadStrings(value: unknown): unknown {
+  if (typeof value === "string") {
+    return scrubInlineImageDataUrls(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(scrubToolPayloadStrings);
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        scrubToolPayloadStrings(entry),
+      ]),
+    );
+  }
+  return value;
+}
+
+function truncatedPayloadText(text: string): string {
+  if (text.length <= ACP_TOOL_PAYLOAD_MAX_CHARS) {
+    return text;
+  }
+  const removed = text.length - ACP_TOOL_PAYLOAD_MAX_CHARS;
+  return `${text.slice(0, ACP_TOOL_PAYLOAD_MAX_CHARS)}\n…[${removed.toLocaleString("en-US")} more characters truncated]`;
+}
+
+/**
+ * A tool call's `rawInput` or `rawOutput` as the timeline carries it: the
+ * JSON value with inline image data URLs scrubbed, or — past the size cap —
+ * its rendered text, head-truncated with the same marker the server's own
+ * output truncation writes. Some ACP agents echo MCP image results as
  * data-URL attachments in rawOutput; the envelope stays, the potentially
  * multi-megabyte payload does not reach the timeline.
  */
-export function extractAcpToolCallOutputText(
+export function boundAcpToolPayload(value: unknown): unknown {
+  if (value === undefined) {
+    return undefined;
+  }
+  const scrubbed = scrubToolPayloadStrings(value);
+  const serialized = JSON.stringify(scrubbed);
+  if (serialized === undefined) {
+    return undefined;
+  }
+  if (serialized.length <= ACP_TOOL_PAYLOAD_MAX_CHARS) {
+    return scrubbed;
+  }
+  return truncatedPayloadText(
+    typeof scrubbed === "string" ? scrubbed : extractResultText(scrubbed),
+  );
+}
+
+/**
+ * `rawInput` as `tool.args`: the assembler keeps only a JSON object as the
+ * item's arguments, so a payload past the cap keeps its preview under one
+ * key instead of vanishing.
+ */
+function boundAcpToolArgs(value: unknown): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const bounded = boundAcpToolPayload(value);
+  if (typeof bounded === "string") {
+    return { truncated: bounded };
+  }
+  return bounded !== null && typeof bounded === "object" && !Array.isArray(bounded)
+    ? (bounded as Record<string, unknown>)
+    : undefined;
+}
+
+function extractAcpToolCallContentText(
   event: AcpToolCallUpdateEvent,
 ): string | undefined {
   const chunks: string[] = [];
@@ -104,16 +181,98 @@ export function extractAcpToolCallOutputText(
       chunks.push(text);
     }
   }
-  if (chunks.length > 0) {
-    return chunks.join("\n");
+  return chunks.length > 0 ? chunks.join("\n") : undefined;
+}
+
+/**
+ * The text output of a tool call: its `content` text blocks, else its
+ * `rawOutput` rendered as text (data URLs scrubbed).
+ */
+export function extractAcpToolCallOutputText(
+  event: AcpToolCallUpdateEvent,
+): string | undefined {
+  const contentText = extractAcpToolCallContentText(event);
+  if (contentText !== undefined) {
+    return contentText;
   }
   if (event.rawOutput === undefined) {
     return undefined;
   }
-  const rawOutputText = extractResultText(event.rawOutput)
-    .replace(INLINE_IMAGE_DATA_URL_PATTERN, "[image]")
-    .trim();
+  const rawOutputText = scrubInlineImageDataUrls(
+    extractResultText(event.rawOutput),
+  ).trim();
   return rawOutputText.length > 0 ? rawOutputText : undefined;
+}
+
+/**
+ * What the agents in the wild put in a command's `rawOutput`. Cursor:
+ * `{exitCode, stdout, stderr}`. grok: `{exit_code, output_for_prompt,
+ * signal, timed_out, …}`. ACP itself standardizes none of it.
+ */
+const commandRawOutputSchema = z
+  .object({
+    exitCode: z.number().int().nullable().optional(),
+    exit_code: z.number().int().nullable().optional(),
+    stdout: z.string().optional(),
+    stderr: z.string().optional(),
+    output_for_prompt: z.string().optional(),
+    signal: z.string().nullable().optional(),
+    timed_out: z.boolean().optional(),
+  })
+  .passthrough();
+
+export interface AcpCommandResult {
+  /** The process exit code the agent reported; absent when it reported none. */
+  exitCode?: number;
+  /** The command's output text; absent when the agent reported none. */
+  output?: string;
+}
+
+function joinStreams(stdout: string, stderr: string): string | undefined {
+  if (stdout.length === 0 && stderr.length === 0) {
+    return undefined;
+  }
+  if (stdout.length === 0 || stderr.length === 0) {
+    return stdout.length > 0 ? stdout : stderr;
+  }
+  return stdout.endsWith("\n") ? `${stdout}${stderr}` : `${stdout}\n${stderr}`;
+}
+
+/**
+ * The real result of a command: the exit code the agent reported (never
+ * synthesized from its status) and its output — the `content` text the
+ * agent chose to show, else stdout+stderr from `rawOutput`, else the
+ * rendered `rawOutput`. A timeout or a terminating signal is noted after the
+ * output.
+ */
+export function extractAcpCommandResult(
+  event: AcpToolCallUpdateEvent,
+): AcpCommandResult {
+  const parsed = commandRawOutputSchema.safeParse(event.rawOutput);
+  const raw = parsed.success ? parsed.data : undefined;
+  const exitCode = raw?.exitCode ?? raw?.exit_code ?? undefined;
+  let output = extractAcpToolCallContentText(event);
+  if (output === undefined && raw !== undefined) {
+    output =
+      raw.stdout !== undefined || raw.stderr !== undefined
+        ? joinStreams(raw.stdout ?? "", raw.stderr ?? "")
+        : raw.output_for_prompt;
+  }
+  if (output === undefined) {
+    output = extractAcpToolCallOutputText(event);
+  }
+  const notes = [
+    ...(raw?.timed_out === true ? ["[timed out]"] : []),
+    ...(raw?.signal ? [`[signal ${raw.signal}]`] : []),
+  ];
+  if (notes.length > 0) {
+    const body = output ?? "";
+    output = `${body}${body.length > 0 && !body.endsWith("\n") ? "\n" : ""}${notes.join(" ")}`;
+  }
+  return {
+    ...(exitCode === undefined ? {} : { exitCode }),
+    ...(output === undefined ? {} : { output: scrubInlineImageDataUrls(output) }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +359,7 @@ function fileChangeVerb(
 function buildAcpFileChanges(
   event: AcpToolCallUpdateEvent,
   operation: Extract<AcpToolCallOperation, { kind: "file_change" }>,
+  options: AcpToolCallPathOptions | undefined,
 ): DeltaFileChange[] {
   const changes: DeltaFileChange[] = [];
   for (const entry of event.content ?? []) {
@@ -208,7 +368,7 @@ function buildAcpFileChanges(
     }
     const oldText = entry.oldText ?? undefined;
     changes.push({
-      path: entry.path,
+      path: resolveAcpToolCallPath(entry.path, options),
       kind: oldText === undefined ? "add" : "update",
       ...(oldText === undefined ? {} : { oldText }),
       newText: entry.newText,
@@ -234,10 +394,11 @@ function fileChangeItem(changes: DeltaFileChange[]): AcpClassifiedToolCall {
 function fileReadItem(
   event: AcpToolCallUpdateEvent,
   title: string | undefined,
+  options: AcpToolCallPathOptions | undefined,
 ): AcpClassifiedToolCall | null {
   const ticked = tickedTokenFromTitle(title);
   const path =
-    extractAcpToolCallPaths(event)[0] ??
+    extractAcpToolCallPaths(event, options)[0] ??
     (ticked !== undefined && looksLikePath(ticked) ? ticked : undefined);
   if (path === undefined) {
     return null;
@@ -315,17 +476,42 @@ function reasoningItem(event: AcpToolCallUpdateEvent): AcpClassifiedToolCall {
 }
 
 /**
- * A generic tool names itself by its kind; a kind the wire schema did not
- * know keeps the agent's own word (`rawKind`) in the tool slot and presents
- * as `other`.
+ * The generic fields every `tool` item carries: `rawInput` as `args`,
+ * `rawOutput` as `result`, and the output text as `error` when the call
+ * failed. Absent fields stay absent.
+ */
+function genericToolFields(
+  event: AcpToolCallUpdateEvent,
+): Pick<Extract<DeltaItemShape, { type: "tool" }>, "args" | "result" | "error"> {
+  const args = boundAcpToolArgs(event.rawInput);
+  const result = boundAcpToolPayload(event.rawOutput);
+  const error =
+    event.status === "failed" ? extractAcpToolCallOutputText(event) : undefined;
+  return {
+    ...(args === undefined ? {} : { args }),
+    ...(result === undefined ? {} : { result }),
+    ...(error === undefined ? {} : { error }),
+  };
+}
+
+/**
+ * A generic tool names itself by its programmatic name when the agent
+ * reports one (the unstable `name`, or the dialect's side channel), else by
+ * its kind; a kind the wire schema did not know keeps the agent's own word
+ * (`rawKind`) in the tool slot and presents as `other`.
  */
 function genericToolItem(
-  event: Pick<AcpToolCallUpdateEvent, "kind" | "rawKind">,
+  event: AcpToolCallUpdateEvent,
   title: string | undefined,
 ): AcpClassifiedToolCall {
+  const name = toOptionalString(event.name);
   return {
-    item: { type: "tool", tool: event.rawKind ?? event.kind ?? "tool" },
-    presentation: toolKindPresentation({ kind: event.kind, title }),
+    item: {
+      type: "tool",
+      tool: name ?? event.rawKind ?? event.kind ?? "tool",
+      ...genericToolFields(event),
+    },
+    presentation: toolKindPresentation({ kind: event.kind, name, title }),
   };
 }
 
@@ -334,9 +520,17 @@ function genericToolItem(
  * definition the server handed the bridge says how the row reads, so no
  * tool-name table is needed anywhere downstream.
  */
-function bbToolItem(injected: AcpInjectedTool): AcpClassifiedToolCall {
+function bbToolItem(
+  event: AcpToolCallUpdateEvent,
+  injected: AcpInjectedTool,
+): AcpClassifiedToolCall {
   return {
-    item: { type: "tool", tool: injected.name, server: BB_TOOL_SERVER },
+    item: {
+      type: "tool",
+      tool: injected.name,
+      server: BB_TOOL_SERVER,
+      ...genericToolFields(event),
+    },
     presentation: injected.presentation ?? bbToolPresentation(injected.name),
   };
 }
@@ -352,19 +546,23 @@ function bbToolItem(injected: AcpInjectedTool): AcpClassifiedToolCall {
 export function classifyAcpToolCall(
   event: AcpToolCallUpdateEvent,
   injected?: AcpInjectedTool,
+  options?: AcpToolCallPathOptions,
 ): AcpClassifiedToolCall {
   if (injected !== undefined && isInjectedToolCandidate(event)) {
-    return bbToolItem(injected);
+    return bbToolItem(event, injected);
   }
-  const operation = classifyAcpToolCallOperation(event);
+  const operation = classifyAcpToolCallOperation(event, options);
   if (operation.kind === "command") {
+    // The session cwd resolves paths (M6) but stays off the command shape:
+    // ACP never says where the agent ran a command, and the bb session cwd
+    // is only where the agent process was spawned.
     return {
       item: { type: "command", command: operation.command, cwd: "" },
       presentation: commandPresentation(operation.command),
     };
   }
   if (operation.kind === "file_change") {
-    const changes = buildAcpFileChanges(event, operation);
+    const changes = buildAcpFileChanges(event, operation, options);
     if (changes.length > 0) {
       return fileChangeItem(changes);
     }
@@ -372,7 +570,9 @@ export function classifyAcpToolCall(
   const title = toOptionalString(event.title);
   switch (event.kind) {
     case "read":
-      return fileReadItem(event, title) ?? genericToolItem(event, title);
+      return (
+        fileReadItem(event, title, options) ?? genericToolItem(event, title)
+      );
     case "search":
       return searchItem(event) ?? genericToolItem(event, title);
     case "fetch":

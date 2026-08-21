@@ -40,8 +40,32 @@ const acpRawInputPathSchema = z
     path: z.string().optional(),
     filePath: z.string().optional(),
     file_path: z.string().optional(),
+    /** grok's `read_file` / `search_replace` argument name. */
+    target_file: z.string().optional(),
   })
   .passthrough();
+
+/**
+ * Where a tool call's paths resolve. ACP says `locations[].path` and diff
+ * paths are absolute; grok sends them relative to the session cwd
+ * (`README.md`), so a session resolves every named path against its cwd
+ * before a path reaches an item. Without a cwd the paths pass through as
+ * sent.
+ */
+export interface AcpToolCallPathOptions {
+  cwd?: string | undefined;
+}
+
+export function resolveAcpToolCallPath(
+  value: string,
+  options: AcpToolCallPathOptions | undefined,
+): string {
+  const cwd = options?.cwd;
+  if (cwd === undefined || path.isAbsolute(value) || value.startsWith("~")) {
+    return value;
+  }
+  return path.resolve(cwd, value);
+}
 
 /** The shell command of an execute tool call: `rawInput.command`, else title. */
 export function extractAcpCommand(
@@ -60,20 +84,22 @@ function isNonBlank(value: string | undefined): value is string {
 
 /**
  * Every non-blank path the tool call names: diff content paths, then
- * `locations`, then the conventional `rawInput` path fields.
+ * `locations`, then the conventional `rawInput` path fields — each resolved
+ * against the session cwd when one is given.
  */
 export function extractAcpToolCallPaths(
   event: Pick<AcpToolCallOperationInput, "content" | "locations" | "rawInput">,
+  options?: AcpToolCallPathOptions,
 ): string[] {
   const paths: string[] = [];
   for (const entry of event.content ?? []) {
     if (entry.type === "diff" && isNonBlank(entry.path)) {
-      paths.push(entry.path);
+      paths.push(resolveAcpToolCallPath(entry.path, options));
     }
   }
   for (const location of event.locations ?? []) {
     if (isNonBlank(location.path)) {
-      paths.push(location.path);
+      paths.push(resolveAcpToolCallPath(location.path, options));
     }
   }
   if (paths.length > 0) {
@@ -87,8 +113,9 @@ export function extractAcpToolCallPaths(
     parsed.data.path,
     parsed.data.filePath,
     parsed.data.file_path,
+    parsed.data.target_file,
   ].find(isNonBlank);
-  return rawInputPath === undefined ? [] : [rawInputPath];
+  return rawInputPath === undefined ? [] : [resolveAcpToolCallPath(rawInputPath, options)];
 }
 
 /**
@@ -100,6 +127,7 @@ export function extractAcpToolCallPaths(
  */
 export function classifyAcpToolCall(
   event: AcpToolCallOperationInput,
+  options?: AcpToolCallPathOptions,
 ): AcpToolCallOperation {
   if (event.kind === "execute") {
     const command = extractAcpCommand(event);
@@ -107,7 +135,7 @@ export function classifyAcpToolCall(
       return { kind: "command", command };
     }
   }
-  const paths = extractAcpToolCallPaths(event);
+  const paths = extractAcpToolCallPaths(event, options);
   if (paths.length === 0) {
     return { kind: "generic" };
   }

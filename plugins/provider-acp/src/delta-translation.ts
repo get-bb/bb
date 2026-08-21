@@ -24,6 +24,7 @@ import {
   type ProviderRuntimeEvent,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import type {
+  DeltaItemShape,
   DeltaNoTurnFallback,
   ThreadDelta,
   ThreadEventItemStatus,
@@ -45,13 +46,16 @@ import {
   acpUpdateNotificationParamsSchema,
   acpWarningNotificationParamsSchema,
 } from "./bridge-protocol.js";
+import { GENERIC_ACP_DIALECT, type AcpDialect } from "./dialect.js";
 import {
   COMPACTION_PRESENTATION,
   fileChangePresentation,
   planStepsPresentation,
+  presentationTitle,
 } from "./presentation.js";
 import {
   classifyAcpToolCall,
+  extractAcpCommandResult,
   extractAcpToolCallOutputText,
   isInjectedToolCandidate,
   type AcpClassifiedToolCall,
@@ -76,6 +80,41 @@ import {
  */
 interface AcpDeltaTranslationContext {
   threadId?: string;
+}
+
+/** Per-session translator configuration. */
+export interface AcpDeltaTranslatorOptions {
+  /**
+   * The session's working directory: relative tool-call paths (grok's
+   * `locations: [{path: "README.md"}]`) resolve against it, and it is the
+   * `cwd` of every command item.
+   */
+  cwd?: string | undefined;
+  /** The agent's dialect; generic when absent. */
+  dialect?: AcpDialect | undefined;
+}
+
+/**
+ * A permission request's `toolCall` as the bridge hands it to the translator
+ * (`session/request_permission` carries a full ToolCallUpdate).
+ */
+export interface AcpPermissionToolCallInput {
+  toolCallId: string;
+  title?: string | undefined;
+  kind?: AcpToolCallUpdateEvent["kind"];
+  rawKind?: string | undefined;
+  content?: AcpToolCallUpdateEvent["content"];
+  locations?: AcpToolCallUpdateEvent["locations"];
+  rawInput?: unknown;
+  rawOutput?: unknown;
+}
+
+/** The in-flight call a permission request was bound to. */
+export interface AcpBoundPermissionToolCall {
+  /** The id the approval subject joins: the in-flight call's, else its own. */
+  toolCallId: string;
+  /** The in-flight call after the permission's fields merged in, if bound. */
+  event: AcpToolCallUpdateEvent | undefined;
 }
 
 const ASSISTANT_STREAM_KEY = "assistant";
@@ -145,6 +184,7 @@ function mergeAcpToolCallEvents(
     ...startedRest,
     ...kindFields,
     ...(update.title !== undefined ? { title: update.title } : {}),
+    ...(update.name !== undefined ? { name: update.name } : {}),
     ...(update.status !== undefined ? { status: update.status } : {}),
     ...(update.content !== undefined ? { content: update.content } : {}),
     ...(update.locations !== undefined ? { locations: update.locations } : {}),
@@ -157,13 +197,34 @@ function mergeAcpToolCallEvents(
 // Translator factory
 // ---------------------------------------------------------------------------
 
-export function createAcpDeltaTranslator() {
+/** An unsettled call in the merge cache. */
+interface AcpOpenToolCall {
+  /** The latest merged tool_call event. */
+  event: AcpToolCallUpdateEvent;
+  /**
+   * The item type the call opened as. An update can re-classify the merged
+   * event (grok's first update adds the kind), and only a call that opened
+   * as a command streams output onto its row.
+   */
+  openedType: DeltaItemShape["type"];
+  /**
+   * A better headline a permission request revealed for a row that is
+   * already open (see `notePermissionToolCall`).
+   */
+  permissionTitle?: string;
+}
+
+export function createAcpDeltaTranslator(
+  options: AcpDeltaTranslatorOptions = {},
+) {
+  const dialect = options.dialect ?? GENERIC_ACP_DIALECT;
+  const pathOptions = { cwd: options.cwd };
   /**
    * The merge cache: latest merged tool_call event per unsettled call, in
    * insertion order (which decides turn-end settlement order), keyed
    * `${threadId} ${toolCallId}`.
    */
-  const mergedToolCalls = new Map<string, AcpToolCallUpdateEvent>();
+  const mergedToolCalls = new Map<string, AcpOpenToolCall>();
 
   /**
    * The bb-injected tools of the session, by name. One translator lives per
@@ -187,11 +248,38 @@ export function createAcpDeltaTranslator() {
 
   function threadCallEntries(
     context: AcpDeltaTranslationContext | undefined,
-  ): [string, AcpToolCallUpdateEvent][] {
+  ): [string, AcpOpenToolCall][] {
     const prefix = `${context?.threadId ?? ""} `;
     return [...mergedToolCalls.entries()].filter(([key]) =>
       key.startsWith(prefix),
     );
+  }
+
+  /**
+   * A tool event with the dialect's identity folded in: an absent protocol
+   * `kind` or `name` takes the dialect's answer (grok names and kinds every
+   * call in `_meta` from the `tool_call` on), so the call opens as what it
+   * is. A protocol value always wins.
+   */
+  function withDialectIdentity(
+    event: AcpToolCallUpdateEvent,
+  ): AcpToolCallUpdateEvent {
+    if (dialect.toolIdentity === undefined) {
+      return event;
+    }
+    const identity = dialect.toolIdentity(event);
+    if (identity === undefined) {
+      return event;
+    }
+    return {
+      ...event,
+      ...(event.kind === undefined && identity.kind !== undefined
+        ? { kind: identity.kind }
+        : {}),
+      ...(event.name === undefined && identity.name !== undefined
+        ? { name: identity.name }
+        : {}),
+    };
   }
 
   function clearThreadCalls(
@@ -258,12 +346,12 @@ export function createAcpDeltaTranslator() {
   function noteInjectedToolCall(threadId: string, toolName: string): void {
     const tool = injectedToolsByName.get(toolName) ?? { name: toolName };
     const candidates = threadCallEntries({ threadId }).filter(
-      ([key, event]) =>
-        !injectedToolBindings.has(key) && isInjectedToolCandidate(event),
+      ([key, open]) =>
+        !injectedToolBindings.has(key) && isInjectedToolCandidate(open.event),
     );
     const chosen =
-      candidates.find(([, event]) => event.title?.includes(tool.name)) ??
-      candidates.find(([, event]) => /\bmcp\b/i.test(event.title ?? "")) ??
+      candidates.find(([, open]) => open.event.title?.includes(tool.name)) ??
+      candidates.find(([, open]) => /\bmcp\b/i.test(open.event.title ?? "")) ??
       candidates[0];
     if (chosen !== undefined) {
       injectedToolBindings.set(chosen[0], tool);
@@ -282,6 +370,7 @@ export function createAcpDeltaTranslator() {
     return classifyAcpToolCall(
       event,
       injectedToolBindings.get(callKey(context, event.toolCallId)),
+      pathOptions,
     );
   }
 
@@ -390,34 +479,79 @@ export function createAcpDeltaTranslator() {
     context: AcpDeltaTranslationContext | undefined;
     event: AcpToolCallUpdateEvent;
     status: ThreadEventItemStatus;
+    /** A headline a permission revealed while the row was open. */
+    permissionTitle?: string | undefined;
     noTurnFallback?: DeltaNoTurnFallback;
+  }
+
+  /** The classified call with a permission's headline, when it had one. */
+  function withPermissionTitle(
+    classified: AcpClassifiedToolCall,
+    permissionTitle: string | undefined,
+  ): AcpClassifiedToolCall {
+    const title =
+      permissionTitle === undefined
+        ? undefined
+        : presentationTitle(permissionTitle);
+    return title === undefined
+      ? classified
+      : {
+          item: classified.item,
+          presentation: { ...classified.presentation, title },
+        };
   }
 
   /**
    * The terminal close for a (merged) tool_call event: carries the full
    * terminal shape plus the generic close fields; the assembler applies them
-   * per item type (aggregatedOutput/exitCode to commands, result to tool
-   * calls) exactly as the old per-type completion helpers did.
+   * per item type. A command closes with the exit code and output the agent
+   * reported in `rawOutput` — never an exit code synthesized from the status;
+   * an agent that reports none leaves the row without one. Every other item
+   * closes with its output text as `resultText`.
    */
   function toolCallClose(args: AcpCloseArgs): ThreadDelta {
-    const outputText = extractAcpToolCallOutputText(args.event);
-    const terminal = args.status === "completed" || args.status === "failed";
-    const classified = classifyCall(args.context, args.event);
+    const classified = withPermissionTitle(
+      classifyCall(args.context, args.event),
+      args.permissionTitle,
+    );
     injectedToolBindings.delete(callKey(args.context, args.event.toolCallId));
+    const closeFields =
+      classified.item.type === "command"
+        ? commandCloseFields(args.event)
+        : genericCloseFields(args.event);
     return {
       kind: "item.close",
       key: {
         providerItemId: args.event.toolCallId,
       },
       status: args.status,
-      ...(outputText === undefined
-        ? {}
-        : { resultText: outputText, aggregatedOutput: outputText }),
-      ...(terminal ? { exitCode: args.status === "failed" ? 1 : 0 } : {}),
+      ...closeFields,
       item: classified.item,
       presentation: classified.presentation,
       ...(args.noTurnFallback ? { noTurnFallback: args.noTurnFallback } : {}),
     };
+  }
+
+  function commandCloseFields(
+    event: AcpToolCallUpdateEvent,
+  ): Pick<
+    Extract<ThreadDelta, { kind: "item.close" }>,
+    "aggregatedOutput" | "exitCode" | "resultText"
+  > {
+    const result = extractAcpCommandResult(event);
+    return {
+      ...(result.output === undefined
+        ? {}
+        : { aggregatedOutput: result.output, resultText: result.output }),
+      ...(result.exitCode === undefined ? {} : { exitCode: result.exitCode }),
+    };
+  }
+
+  function genericCloseFields(
+    event: AcpToolCallUpdateEvent,
+  ): Pick<Extract<ThreadDelta, { kind: "item.close" }>, "resultText"> {
+    const outputText = extractAcpToolCallOutputText(event);
+    return outputText === undefined ? {} : { resultText: outputText };
   }
 
   /** Settle every unsettled cached call (turn/compaction end), oldest first. */
@@ -426,13 +560,14 @@ export function createAcpDeltaTranslator() {
     status: ThreadEventItemStatus,
   ): ThreadDelta[] {
     const deltas: ThreadDelta[] = [];
-    for (const [key, event] of threadCallEntries(context)) {
+    for (const [key, open] of threadCallEntries(context)) {
       mergedToolCalls.delete(key);
       deltas.push(
         toolCallClose({
           context,
-          event,
+          event: open.event,
           status,
+          permissionTitle: open.permissionTitle,
         }),
       );
     }
@@ -507,33 +642,37 @@ export function createAcpDeltaTranslator() {
         if (!parsed.success) {
           return suppressedUnhandled(rawEvent);
         }
+        const event = withDialectIdentity(parsed.data);
         // A tool call flushes both open streams before its item.
         const flush = [closeThoughtStream(), closeAssistantStream()];
-        const announcedKey = callKey(context, parsed.data.toolCallId);
-        const bound = bindAnnouncedCall(context, parsed.data);
+        const announcedKey = callKey(context, event.toolCallId);
+        const bound = bindAnnouncedCall(context, event);
         if (bound !== undefined) {
           injectedToolBindings.set(announcedKey, bound);
         }
-        if (isTerminalAcpStatus(parsed.data.status)) {
+        if (isTerminalAcpStatus(event.status)) {
           // Arrived already settled: close-without-open, no cache entry.
           return [
             ...flush,
             toolCallClose({
               context,
-              event: parsed.data,
-              status: mapAcpToolCallStatus(parsed.data.status),
+              event,
+              status: mapAcpToolCallStatus(event.status),
               noTurnFallback: noTurnFallbackFor(rawEvent),
             }),
           ];
         }
-        mergedToolCalls.set(announcedKey, parsed.data);
-        const classified = classifyCall(context, parsed.data);
+        const classified = classifyCall(context, event);
+        mergedToolCalls.set(announcedKey, {
+          event,
+          openedType: classified.item.type,
+        });
         return [
           ...flush,
           {
             kind: "item.open",
             key: {
-              providerItemId: parsed.data.toolCallId,
+              providerItemId: event.toolCallId,
             },
             item: classified.item,
             presentation: classified.presentation,
@@ -547,11 +686,10 @@ export function createAcpDeltaTranslator() {
         if (!parsed.success) {
           return suppressedUnhandled(rawEvent);
         }
-        const key = callKey(context, parsed.data.toolCallId);
-        const merged = mergeAcpToolCallEvents(
-          mergedToolCalls.get(key),
-          parsed.data,
-        );
+        const event = withDialectIdentity(parsed.data);
+        const key = callKey(context, event.toolCallId);
+        const open = mergedToolCalls.get(key);
+        const merged = mergeAcpToolCallEvents(open?.event, event);
         if (isTerminalAcpStatus(merged.status)) {
           mergedToolCalls.delete(key);
           return [
@@ -559,25 +697,49 @@ export function createAcpDeltaTranslator() {
               context,
               event: merged,
               status: mapAcpToolCallStatus(merged.status),
+              permissionTitle: open?.permissionTitle,
               noTurnFallback: noTurnFallbackFor(rawEvent),
             }),
           ];
         }
-        mergedToolCalls.set(key, merged);
-        const progressText = extractAcpToolCallOutputText(parsed.data);
+        const mergedType = classifyCall(context, merged).item.type;
+        mergedToolCalls.set(key, {
+          event: merged,
+          openedType: open?.openedType ?? mergedType,
+          ...(open?.permissionTitle === undefined
+            ? {}
+            : { permissionTitle: open.permissionTitle }),
+        });
+        const progressText = extractAcpToolCallOutputText(event);
+        if (progressText === undefined) {
+          return suppressedUnhandled(rawEvent);
+        }
+        // An in-progress update on a running command carries the output so
+        // far (grok streams cumulative stdout, with tail-window resets): a
+        // cumulative snapshot the assembler diffs onto the row. Output that
+        // arrives with no turn open belongs to a command the turn end
+        // already settled, so it has no row to land on and is dropped.
+        if (
+          event.status === "in_progress" &&
+          mergedType === "command" &&
+          open?.openedType === "command"
+        ) {
+          return [
+            {
+              kind: "command.outputSnapshot",
+              key: { providerItemId: event.toolCallId },
+              text: progressText,
+            },
+          ];
+        }
         // Commands and file changes settle with their output at the close;
         // every other item streams its progress text.
-        const progressItemType = classifyCall(context, merged).item.type;
-        if (
-          progressText &&
-          progressItemType !== "command" &&
-          progressItemType !== "fileChange"
-        ) {
+        if (mergedType !== "command" && mergedType !== "fileChange") {
           return [
             {
               kind: "item.progress",
               key: {
-                providerItemId: parsed.data.toolCallId,
+                providerItemId: event.toolCallId,
               },
               message: progressText,
               noTurnFallback: noTurnFallbackFor(rawEvent),
@@ -856,7 +1018,86 @@ export function createAcpDeltaTranslator() {
     threadId: string,
     toolCallId: string,
   ): AcpToolCallUpdateEvent | undefined {
-    return mergedToolCalls.get(callKey({ threadId }, toolCallId));
+    return mergedToolCalls.get(callKey({ threadId }, toolCallId))?.event;
+  }
+
+  /**
+   * A `session/request_permission` carries a full ToolCallUpdate, and it is
+   * sometimes the richest description of the call the agent ever sends
+   * (Cursor titles its fetch permission "Fetch https://…" while the
+   * tool_call said "Web Fetch" with an empty rawInput). Bind it to the
+   * in-flight call it describes: the call with the same id, else — Cursor
+   * asks under its own id (`web_fetch_0`) — the single in-flight call of the
+   * same kind, the positional rule bb-injected tools already use.
+   *
+   * The merge is additive and never re-shapes an open row. A call that
+   * already has a core shape keeps its own description (opencode's
+   * `external_directory` ask rides the running `edit` call's id with kind
+   * `other` and a bare directory title, #1719). A generic row takes the
+   * permission's fields, but if they would classify it as another shape the
+   * row keeps the shape it opened with and takes only the headline: a row
+   * that opens as one kind and settles as another is two rows in the
+   * timeline, which is worse than a generic row that names its URL.
+   */
+  function notePermissionToolCall(
+    threadId: string,
+    toolCall: AcpPermissionToolCallInput,
+  ): AcpBoundPermissionToolCall {
+    const context = { threadId };
+    const ownKey = callKey(context, toolCall.toolCallId);
+    let boundKey: string | undefined = mergedToolCalls.has(ownKey)
+      ? ownKey
+      : undefined;
+    if (boundKey === undefined) {
+      const sameKind = threadCallEntries(context).filter(
+        ([, open]) =>
+          toolCall.kind !== undefined && open.event.kind === toolCall.kind,
+      );
+      boundKey = sameKind.length === 1 ? sameKind[0]?.[0] : undefined;
+    }
+    const open =
+      boundKey === undefined ? undefined : mergedToolCalls.get(boundKey);
+    if (boundKey === undefined || open === undefined) {
+      return { toolCallId: toolCall.toolCallId, event: undefined };
+    }
+    if (classifyCall(context, open.event).item.type !== "tool") {
+      return { toolCallId: open.event.toolCallId, event: open.event };
+    }
+    const kind =
+      toolCall.kind !== undefined &&
+      (toolCall.kind !== "other" || open.event.kind === undefined)
+        ? toolCall.kind
+        : undefined;
+    const merged = mergeAcpToolCallEvents(open.event, {
+      sessionUpdate: "tool_call_update",
+      toolCallId: open.event.toolCallId,
+      ...(toolCall.title !== undefined ? { title: toolCall.title } : {}),
+      ...(kind !== undefined ? { kind } : {}),
+      ...(kind === "other" && toolCall.rawKind !== undefined
+        ? { rawKind: toolCall.rawKind }
+        : {}),
+      ...(toolCall.locations !== undefined
+        ? { locations: toolCall.locations }
+        : {}),
+      ...(toolCall.rawInput !== undefined
+        ? { rawInput: toolCall.rawInput }
+        : {}),
+      ...(toolCall.rawOutput !== undefined
+        ? { rawOutput: toolCall.rawOutput }
+        : {}),
+    });
+    if (classifyCall(context, merged).item.type === open.openedType) {
+      mergedToolCalls.set(boundKey, { ...open, event: merged });
+      return { toolCallId: merged.toolCallId, event: merged };
+    }
+    mergedToolCalls.set(boundKey, {
+      ...open,
+      ...(toolCall.title === undefined
+        ? {}
+        : { permissionTitle: toolCall.title }),
+    });
+    // The approval still describes what the permission asked about.
+    return { toolCallId: open.event.toolCallId, event: merged };
   }
 
   /** The bb tool an unsettled call is bound to (Q31), for its permission. */
@@ -872,6 +1113,7 @@ export function createAcpDeltaTranslator() {
     getInjectedToolBinding,
     getMergedToolCall,
     noteInjectedToolCall,
+    notePermissionToolCall,
     translateAcpEvent,
   };
 }

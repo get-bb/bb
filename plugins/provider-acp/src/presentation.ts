@@ -242,14 +242,21 @@ const KIND_PRESENTATIONS: Readonly<Record<AcpToolKind, KindPresentationSpec>> =
  * A tool call with no core shape of its own, or one whose core shape the
  * agent left unfilled (a `read` with no path, a `fetch` with no URL): the
  * native kind picks the label and glyph, the agent's title is the headline.
+ * When the agent reports the tool's programmatic name, the label names it
+ * ("Running read_file") under the kind's glyph.
  */
 export function toolKindPresentation(args: {
   kind: AcpToolKind | undefined;
+  name?: string | undefined;
   title: string | undefined;
 }): DeltaPresentation {
   const spec = KIND_PRESENTATIONS[args.kind ?? "other"];
+  const label =
+    args.name === undefined
+      ? spec.label
+      : { pending: `Running ${args.name}`, completed: `Ran ${args.name}` };
   return withTitle(
-    { label: spec.label, icon: { glyph: spec.glyph } },
+    { label, icon: { glyph: spec.glyph } },
     args.title === undefined ? undefined : presentationTitle(args.title),
   );
 }
