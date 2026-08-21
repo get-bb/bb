@@ -25,6 +25,7 @@ import {
   type ParityComparison,
   type RecordedCell,
 } from "./index.js";
+import { loadParityLeg } from "./leg.js";
 import { describeParityValue } from "@bb/provider-bridge-protocol/testing/parity";
 
 interface CliArgs {
@@ -142,6 +143,13 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
+  const [oldLeg, newLeg] = await Promise.all([
+    loadParityLeg(args.oldRoot),
+    loadParityLeg(args.newRoot),
+  ]);
+  process.stdout.write(`old: ${oldLeg.checkoutRoot} (${oldLeg.source})\n`);
+  process.stdout.write(`new: ${newLeg.checkoutRoot} (${newLeg.source})\n\n`);
+
   let failed = 0;
   let skipped = 0;
   for (const cell of cells) {
@@ -160,8 +168,8 @@ async function main(): Promise<void> {
       ? (text: string) => process.stderr.write(text)
       : undefined;
     const [oldInputs, newInputs] = await Promise.all([
-      replayCell(cell, { checkoutRoot: args.oldRoot, timeoutMs: args.timeoutMs, onStderr }),
-      replayCell(cell, { checkoutRoot: args.newRoot, timeoutMs: args.timeoutMs, onStderr }),
+      replayCell(cell, { ...oldLeg, timeoutMs: args.timeoutMs, onStderr }),
+      replayCell(cell, { ...newLeg, timeoutMs: args.timeoutMs, onStderr }),
     ]);
     const comparison = compareCell(cell, oldInputs, newInputs, allowlist);
     const oldCounts = countCellInputs(oldInputs);

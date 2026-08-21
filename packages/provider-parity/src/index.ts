@@ -134,6 +134,9 @@ export interface ReplayCellOptions {
   checkoutRoot: string;
   timeoutMs?: number;
   onStderr?: (text: string) => void;
+  /** The leg's own assembler and projector (see `leg.ts`); defaults to this checkout's. */
+  createAssembler?: CreateParityAssembler;
+  projectRows?: ParityRowProjector;
 }
 
 export function isReplayable(providerId: string): boolean {
@@ -151,10 +154,11 @@ export async function replayCell(
   cell: RecordedCell,
   options: ReplayCellOptions,
 ): Promise<CellInputs & { run: ParityRun }> {
+  const projectRows = options.projectRows ?? projectParityRows;
   const run = await replayRecording({
     recordingDir: cell.dir,
     bridge: { checkoutRoot: options.checkoutRoot, providerId: cell.provider },
-    createAssembler: createParityAssembler,
+    createAssembler: options.createAssembler ?? createParityAssembler,
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
     ...(options.onStderr !== undefined ? { onStderr: options.onStderr } : {}),
   });
@@ -162,7 +166,7 @@ export async function replayCell(
     run,
     events: run.events,
     grammarViolations: run.grammarViolations,
-    rows: projectParityRows({ events: run.events, providerId: cell.provider }),
+    rows: projectRows({ events: run.events, providerId: cell.provider }),
   };
 }
 
