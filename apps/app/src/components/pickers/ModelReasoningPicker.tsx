@@ -13,16 +13,11 @@ import type {
   SystemExecutionOptionsModelLoadError,
   SystemProvidersQuery,
 } from "@bb/server-contract";
-import {
-  reconcileReasoningLevel,
-  type AvailableModel,
-  type ReasoningLevel,
-} from "@bb/domain";
+import type { ReasoningLevel } from "@bb/domain";
 import {
   stripModelBrandPrefix,
   type ProviderPickerOption,
 } from "./model-brand-prefix";
-import { REASONING_LABELS } from "@/lib/reasoning-labels";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
@@ -48,6 +43,7 @@ import {
 } from "@bb/shared-ui/menu-item-hover";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useSystemExecutionOptions } from "@/hooks/queries/system-queries";
+import { resolveModelCatalogSelection } from "@/hooks/thread-creation-options/model-catalog-selection";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
@@ -94,19 +90,9 @@ interface ResolvedProviderPreview {
   supportsServiceTier: boolean;
 }
 
-function resolveModelReasoningLevel(model: AvailableModel): ReasoningLevel {
-  const supported = Array.from(
-    new Set(
-      model.supportedReasoningEfforts.map((effort) => effort.reasoningEffort),
-    ),
-  );
-  return supported.length === 0
-    ? "medium"
-    : reconcileReasoningLevel("medium", supported);
-}
-
 const FAILED_TO_LOAD_MODELS_LABEL = "Failed to load models";
 const EMPTY_MODEL_OPTIONS: readonly ModelPickerOption[] = [];
+const preserveModelLabel = (displayName: string): string => displayName;
 const MODEL_CYCLE_COMMANDS = [
   "modelPicker.cycleModel",
   "modelPicker.cycleModelBackward",
@@ -447,53 +433,35 @@ export function ModelReasoningPicker({
     !previewQuery.isError &&
     previewQuery.data.modelLoadError === null;
 
-  const previewModelOptions = useMemo((): readonly ModelPickerOption[] => {
-    if (!isPreviewing) return modelOptions;
-    const models = previewQuery.data?.models;
-    if (!models || models.length === 0) return [];
-    return models.map((model) => ({
-      value: model.model,
-      label: formatModelLabel
-        ? formatModelLabel(model.displayName || model.model)
-        : model.displayName || model.model,
-      ...(model.routeProviderId
-        ? { routeProviderId: model.routeProviderId }
-        : {}),
-    }));
-  }, [isPreviewing, modelOptions, previewQuery.data?.models, formatModelLabel]);
-  const previewMoreModelOptions = useMemo((): readonly ModelPickerOption[] => {
-    if (!isPreviewing) return moreModelOptions;
-    const models = previewQuery.data?.selectedOnlyModels;
-    if (!models || models.length === 0) return [];
-    return models.map((model) => ({
-      value: model.model,
-      label: formatModelLabel
-        ? formatModelLabel(model.displayName || model.model)
-        : model.displayName || model.model,
-      ...(model.routeProviderId
-        ? { routeProviderId: model.routeProviderId }
-        : {}),
-    }));
-  }, [
-    isPreviewing,
-    moreModelOptions,
-    previewQuery.data?.selectedOnlyModels,
-    formatModelLabel,
-  ]);
-  // While previewing, the reasoning levels belong to the previewed provider's
-  // default model (each provider exposes its own set), so the section reflects
-  // the tab on screen rather than the committed model.
-  const previewDefaultModel = useMemo(() => {
-    if (!isPreviewing) return undefined;
-    const models = previewQuery.data?.models;
-    if (!models || models.length === 0) return undefined;
-    return models.find((model) => model.isDefault) ?? models[0];
-  }, [isPreviewing, previewQuery.data?.models]);
+  const previewSelection = useMemo(
+    () =>
+      isPreviewing
+        ? resolveModelCatalogSelection({
+            models: previewQuery.data?.models ?? [],
+            selectedOnlyModels: previewQuery.data?.selectedOnlyModels ?? [],
+            selectedModel: "",
+            preferredReasoningLevel: reasoningValue,
+            catalogIsVerified: previewCatalogIsVerified,
+            formatModelLabel: formatModelLabel ?? preserveModelLabel,
+          })
+        : null,
+    [
+      formatModelLabel,
+      isPreviewing,
+      previewCatalogIsVerified,
+      previewQuery.data?.models,
+      previewQuery.data?.selectedOnlyModels,
+      reasoningValue,
+    ],
+  );
+  const previewModelOptions = previewSelection?.modelOptions ?? modelOptions;
+  const previewMoreModelOptions =
+    previewSelection?.moreModelOptions ?? moreModelOptions;
   useEffect(() => {
     if (
       !previewCatalogIsVerified ||
-      !previewDefaultModel ||
-      !previewProviderId
+      !previewProviderId ||
+      !previewSelection?.selectedModel
     ) {
       return;
     }
@@ -502,34 +470,19 @@ export function ModelReasoningPicker({
     );
     onProviderPreviewResolved?.({
       providerId: previewProviderId,
-      model: previewDefaultModel.model,
-      reasoningLevel: resolveModelReasoningLevel(previewDefaultModel),
+      model: previewSelection.selectedModel,
+      reasoningLevel: previewSelection.reasoningLevel,
       supportsServiceTier: provider?.capabilities.supportsServiceTier ?? false,
     });
   }, [
     onProviderPreviewResolved,
     previewCatalogIsVerified,
-    previewDefaultModel,
     previewProviderId,
     previewQuery.data?.providers,
+    previewSelection,
   ]);
-  const previewReasoningOptions =
-    useMemo((): readonly PickerOption<ReasoningLevel>[] => {
-      if (!previewDefaultModel) return [];
-      const seen = new Set<ReasoningLevel>();
-      const options: PickerOption<ReasoningLevel>[] = [];
-      for (const effort of previewDefaultModel.supportedReasoningEfforts) {
-        if (seen.has(effort.reasoningEffort)) continue;
-        seen.add(effort.reasoningEffort);
-        options.push({
-          value: effort.reasoningEffort,
-          label: REASONING_LABELS[effort.reasoningEffort],
-        });
-      }
-      return options;
-    }, [previewDefaultModel]);
   const activeReasoningOptions = isPreviewing
-    ? previewReasoningOptions
+    ? (previewSelection?.reasoningOptions ?? [])
     : reasoningOptions;
   const activeModelLoadError = isPreviewing
     ? (previewQuery.data?.modelLoadError ?? null)
@@ -807,8 +760,8 @@ export function ModelReasoningPicker({
       // A controlled parent that has not rendered the provider change yet
       // still needs a concrete model when the user immediately picks one of
       // the new provider's reasoning levels.
-      if (isPreviewing && previewDefaultModel) {
-        onModelChange(previewDefaultModel.model);
+      if (isPreviewing && previewSelection?.selectedModel) {
+        onModelChange(previewSelection.selectedModel);
       }
       onReasoningChange(level);
       // Keep the combined picker open so the model and reasoning effort can be
@@ -818,7 +771,7 @@ export function ModelReasoningPicker({
     },
     [
       isPreviewing,
-      previewDefaultModel,
+      previewSelection,
       onModelChange,
       onReasoningChange,
       previewSelectionBlocked,

@@ -147,7 +147,9 @@ describe("PluginProviderModelPicker", () => {
     cacheCatalog(
       queryClient,
       "cursor",
-      executionOptions([model("cursor-agent", "Cursor Agent", ["high"], true)]),
+      executionOptions([
+        model("cursor-agent", "Cursor Agent", ["medium", "high"], true),
+      ]),
       hostId,
     );
     const onChange = vi.fn();
@@ -156,7 +158,7 @@ describe("PluginProviderModelPicker", () => {
       const [value, setValue] = useState<ExperimentalProviderModelPickerValue>({
         providerId: "codex",
         model: "gpt-5.5",
-        reasoningLevel: "medium",
+        reasoningLevel: "high",
         serviceTier: "fast",
       });
       return (
