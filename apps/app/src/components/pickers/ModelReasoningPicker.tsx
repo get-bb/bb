@@ -720,6 +720,7 @@ export function ModelReasoningPicker({
       return true;
     },
     50,
+    commandShortcutsEnabled,
   );
   // The cycle chords rotate the COMMITTED provider and its lists, never a
   // previewed tab's, so the shortcut means the same thing whether the popover is
@@ -745,6 +746,7 @@ export function ModelReasoningPicker({
       return true;
     },
     50,
+    commandShortcutsEnabled,
   );
   useIndexedAppCommandHandlers(
     PROVIDER_CYCLE_COMMANDS,
@@ -762,6 +764,7 @@ export function ModelReasoningPicker({
       return true;
     },
     50,
+    commandShortcutsEnabled,
   );
   useIndexedAppCommandHandlers(
     REASONING_CYCLE_COMMANDS,
@@ -779,6 +782,7 @@ export function ModelReasoningPicker({
       return true;
     },
     50,
+    commandShortcutsEnabled,
   );
   const handleReasoningSelect = useCallback(
     (level: ReasoningLevel) => {

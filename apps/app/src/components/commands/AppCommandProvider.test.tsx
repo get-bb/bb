@@ -216,6 +216,7 @@ vi.mock("@/lib/bb-desktop", () => ({
 
 interface HandlerProps {
   command?: AppCommandId;
+  enabled?: boolean;
   name: string;
   priority?: number;
   result: boolean;
@@ -223,6 +224,7 @@ interface HandlerProps {
 
 function Handler({
   command = "thread.search",
+  enabled,
   name,
   priority,
   result,
@@ -234,6 +236,7 @@ function Handler({
       return result;
     },
     priority,
+    enabled,
   );
   return null;
 }
@@ -520,6 +523,13 @@ describe("AppCommandProvider", () => {
         <AppCommandProvider>{null}</AppCommandProvider>
       </MemoryRouter>,
     );
+
+    expect(dispatchShortcut().defaultPrevented).toBe(false);
+    expect(testState.calls).toEqual([]);
+  });
+
+  it("does not register a disabled handler", () => {
+    renderProvider(<Handler enabled={false} name="disabled" result={true} />);
 
     expect(dispatchShortcut().defaultPrevented).toBe(false);
     expect(testState.calls).toEqual([]);
