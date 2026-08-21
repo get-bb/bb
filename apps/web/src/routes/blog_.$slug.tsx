@@ -34,7 +34,6 @@ export const Route = createFileRoute("/blog_/$slug")({
         { title },
         { name: "description", content: description },
         ...unfurlMeta(title, description, `/blog/${post.slug}`),
-        { name: "theme-color", content: "#ffffff" },
       ],
       links: [
         {

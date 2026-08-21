@@ -15,7 +15,7 @@
   line-height: 1.08;
   font-weight: 700;
   letter-spacing: -0.035em;
-  color: oklch(0.21 0 0);
+  color: var(--heading);
 }
 
 .page-head .sub {
@@ -107,7 +107,7 @@
   font-weight: 700;
   letter-spacing: -0.03em;
   text-wrap: balance;
-  color: oklch(0.21 0 0);
+  color: var(--heading);
 }
 
 .release-body .lede {
@@ -122,7 +122,7 @@
   font-size: 18px;
   font-weight: 650;
   letter-spacing: -0.015em;
-  color: oklch(0.24 0 0);
+  color: var(--heading-sub);
 }
 
 .release-body h3 + p,
@@ -208,8 +208,8 @@
   overflow: hidden;
   background: var(--surface);
   box-shadow:
-    0 1px 0 color-mix(in oklab, var(--ink) 4%, transparent),
-    0 24px 54px -30px color-mix(in oklab, var(--ink) 30%, transparent);
+    0 1px 0 color-mix(in oklab, var(--shade) 4%, transparent),
+    0 24px 54px -30px color-mix(in oklab, var(--shade) 30%, transparent);
 }
 
 .media-stage {
@@ -253,8 +253,8 @@
   padding: 8px 8px 10px;
   overflow: hidden;
   box-shadow:
-    0 1px 0 color-mix(in oklab, var(--ink) 4%, transparent),
-    0 22px 44px -24px color-mix(in oklab, var(--ink) 32%, transparent);
+    0 1px 0 color-mix(in oklab, var(--shade) 4%, transparent),
+    0 22px 44px -24px color-mix(in oklab, var(--shade) 32%, transparent);
 }
 
 .sidebar-card .side-label:first-child {

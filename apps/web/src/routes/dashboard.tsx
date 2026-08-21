@@ -25,7 +25,6 @@ import {
   getDashboard,
 } from "@/server/fns";
 import type { IssuedCode, MachineSummary, ServerSummary } from "@/server/api";
-import bbIcon from "../assets/bb-icon.png";
 import { DASHBOARD_PATH, connectReturnTo } from "@/lib/connect-return-to";
 import {
   dashboardRefreshIntervalMs,
@@ -75,7 +74,13 @@ type ServerState = Extract<
 function BrandRow() {
   return (
     <div className="mb-[18px] flex items-center gap-2.5">
-      <img src={bbIcon} alt="bb" className="h-[30px] w-[30px] rounded-lg" />
+      {/* One element; styles.css picks the asset off html.dark, so only the
+          variant in use is downloaded (see .bb-mark). */}
+      <span
+        role="img"
+        aria-label="bb"
+        className="bb-mark h-[30px] w-[30px] rounded-lg"
+      />
       <div className="leading-tight">
         <b className="block text-sm font-semibold">bb connect</b>
         <span className="text-xs text-muted-foreground">
