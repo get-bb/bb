@@ -33,7 +33,8 @@ above, the bounded stdin framing, and the signals. A bridge that started
 itself could not be imported by a test, and could not share an artifact with a
 host RPC entry. First-party bridges use exactly this path —
 `plugins/provider-codex/src/bridge/bridge.ts` is the largest worked example,
-and `examples/plugins/echo-provider` the smallest.
+and `examples/plugins/echo-provider` the smallest complete one: it emits every
+grammar v3 shape and uses only the public SDK.
 
 The bundle is self-contained (only node builtins stay external) and may not
 import bb's private `@bb/*` workspace packages at all — an installed plugin

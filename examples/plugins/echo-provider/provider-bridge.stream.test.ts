@@ -282,7 +282,9 @@ describe("the echo bridge's grammar v3 stream", () => {
       },
     });
     expect(
-      events.some((event) => event.type === "item/commandExecution/outputDelta"),
+      events.some(
+        (event) => event.type === "item/commandExecution/outputDelta",
+      ),
     ).toBe(true);
 
     // fileRead and search.
@@ -424,7 +426,9 @@ describe("the echo bridge's grammar v3 stream", () => {
       },
     });
     expect(
-      events.some((event) => event.type === "thread/contextWindowUsage/updated"),
+      events.some(
+        (event) => event.type === "thread/contextWindowUsage/updated",
+      ),
     ).toBe(true);
   });
 

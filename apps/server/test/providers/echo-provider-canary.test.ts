@@ -49,7 +49,10 @@ import {
   seedProjectWithSource,
   seedThread,
 } from "../helpers/seed.js";
-import { createTestAppHarness, type TestAppHarness } from "../helpers/test-app.js";
+import {
+  createTestAppHarness,
+  type TestAppHarness,
+} from "../helpers/test-app.js";
 
 const ECHO_PLUGIN_ROOT = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -106,7 +109,10 @@ function itemOf(rows: StoredRow[], itemKind: string, tool?: string): StoredRow {
       candidate.itemKind === itemKind &&
       (tool === undefined || candidate.data.item?.tool === tool),
   );
-  expect(row, `a completed ${itemKind}${tool ? ` ${tool}` : ""} row`).toBeDefined();
+  expect(
+    row,
+    `a completed ${itemKind}${tool ? ` ${tool}` : ""} row`,
+  ).toBeDefined();
   return row as StoredRow;
 }
 

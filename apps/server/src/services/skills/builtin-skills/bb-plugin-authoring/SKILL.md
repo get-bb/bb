@@ -1218,12 +1218,19 @@ keys, parent refs); the runtime's delta assembler — never the bridge —
 mints every bb turn and item id and constructs the canonical timeline
 events.
 
-**Conformance.** Ship a test that drives
-`@bb/provider-bridge-protocol/conformance` against your bridge in-process:
-export the bridge surface, wire `runBridgeConformance` with a
-transport whose `send` calls it and whose `takeMessages` drains captured
-stdout, and assert all eleven scenarios pass (see
-`examples/plugins/echo-provider/provider-bridge.conformance.test.ts`).
+**Conformance.** Ship a test that drives the published kit,
+`@get-bb/plugin-sdk/provider-bridge/testing`, against your bridge
+in-process: export the bridge surface, wire `experimental_runBridgeConformance`
+with a transport whose `send` calls it and whose `takeMessages` drains
+captured stdout (through `experimental_toConformanceMessages` and the kit's
+delta collector, which is the runtime's real assembler), and assert every
+scenario passes (see
+`examples/plugins/echo-provider/provider-bridge.conformance.test.ts`). The
+same kit assembles your deltas into canonical events, so a second test can
+assert what each row becomes
+(`examples/plugins/echo-provider/provider-bridge.stream.test.ts`). Never
+import a private `@bb/*` package from a plugin: an installed plugin cannot
+resolve it.
 
 **Delivery.** On install/reload the server builds `dist/host.js` and records
 its digest. Thread commands for the provider carry `{pluginId, digest}` to the

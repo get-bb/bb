@@ -168,10 +168,7 @@ interface PendingToolCall {
 
 const pendingToolCalls = new Map<string, PendingToolCall>();
 
-function sendRequest(
-  method: string,
-  params: Record<string, unknown>,
-): string {
+function sendRequest(method: string, params: Record<string, unknown>): string {
   outboundRequestCounter += 1;
   const id = `echo-req-${outboundRequestCounter}`;
   writeMessage({ id, method, params });
@@ -198,9 +195,10 @@ function promptText(input: readonly PromptInput[]): string {
  * none — but a real server always sends one, and the echoed message shows
  * which case this was.
  */
-function parseProviderOptions(
-  options: unknown,
-): { source: "server" | "defaults"; values: EchoProviderOptions } {
+function parseProviderOptions(options: unknown): {
+  source: "server" | "defaults";
+  values: EchoProviderOptions;
+} {
   const parsed = echoProviderOptionsSchema.safeParse(options);
   if (parsed.success) {
     return { source: "server", values: parsed.data };
@@ -251,7 +249,11 @@ function runEchoTurn(args: {
   // boundary claims the turn the pending acceptance opened (`claimIfIdle`)
   // so the thread never hangs active behind a turn that did nothing.
   if (/(?:^|\s)\/noop(?:\s|$)/u.test(prompt)) {
-    deltas.push({ kind: "turn.boundary", status: "completed", claimIfIdle: true });
+    deltas.push({
+      kind: "turn.boundary",
+      status: "completed",
+      claimIfIdle: true,
+    });
     emitDeltas(session.threadId, deltas);
     return;
   }
@@ -565,14 +567,22 @@ function finishEchoTurn(
     {
       kind: "item.open",
       key: { providerItemId: receiptId },
-      item: { type: "extension", kind: ECHO_RECEIPT_KIND, payload: receiptPayload },
+      item: {
+        type: "extension",
+        kind: ECHO_RECEIPT_KIND,
+        payload: receiptPayload,
+      },
       presentation: receiptRow,
     },
     {
       kind: "item.close",
       key: { providerItemId: receiptId },
       status: "completed",
-      item: { type: "extension", kind: ECHO_RECEIPT_KIND, payload: receiptPayload },
+      item: {
+        type: "extension",
+        kind: ECHO_RECEIPT_KIND,
+        payload: receiptPayload,
+      },
       presentation: receiptRow,
     },
   );
