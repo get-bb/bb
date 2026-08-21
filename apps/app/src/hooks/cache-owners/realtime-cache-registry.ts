@@ -736,12 +736,30 @@ export function executeRealtimeDirtyHandlers<
   }
 }
 
-export function shouldFlushThreadChangesImmediately(
+export interface ThreadChangesByFlushPriority {
+  debounced: ThreadChangeKind[] | null;
+  immediate: ThreadChangeKind[] | null;
+}
+
+/**
+ * Split a message's change kinds by the registry's flush priority. Streaming
+ * publishes bundle debounced kinds with immediate ones (events-appended rides
+ * with status-changed), so callers must apply the immediate kinds alone
+ * instead of flushing every buffered invalidation along with them.
+ */
+export function partitionThreadChangesByFlushPriority(
   changes: readonly ThreadChangeKind[],
-): boolean {
-  return changes.some(
-    (change) => REALTIME_THREAD_CHANGE_REGISTRY[change].flush === "immediate",
-  );
+): ThreadChangesByFlushPriority {
+  let debounced: ThreadChangeKind[] | null = null;
+  let immediate: ThreadChangeKind[] | null = null;
+  for (const change of changes) {
+    if (REALTIME_THREAD_CHANGE_REGISTRY[change].flush === "immediate") {
+      (immediate ??= []).push(change);
+    } else {
+      (debounced ??= []).push(change);
+    }
+  }
+  return { debounced, immediate };
 }
 
 export function collectCachedThreadIdsForEnvironment({
