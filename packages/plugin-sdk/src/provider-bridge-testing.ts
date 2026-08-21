@@ -131,3 +131,26 @@ export type {
   BridgeRecordingDirection,
   BridgeRecordingEntry,
 } from "@bb/provider-bridge-protocol/bridge-kit";
+
+// The canonical event vocabulary, by name. A bridge never constructs these
+// (the assembler does), but a bridge's tests assert on what the assembler
+// built — `ThreadEvent` is what every collector, replay and parity function
+// here returns, and the item and presentation types are what an assertion
+// narrows to. Re-exported from bb's domain package and inlined into the
+// published declarations, like `PromptInput` on the root entry.
+export type {
+  ThreadEvent,
+  ThreadEventBackgroundTaskItem,
+  ThreadEventDelegationItem,
+  ThreadEventExtensionItem,
+  ThreadEventFileReadItem,
+  ThreadEventItem,
+  ThreadEventItemPresentation,
+  ThreadEventItemPresentationIcon,
+  ThreadEventItemPresentationLabel,
+  ThreadEventItemPresentationTint,
+  ThreadEventPlanStepsItem,
+  ThreadEventSearchItem,
+  ThreadEventWebFetchItem,
+  ThreadEventWebSearchItem,
+} from "@bb/domain";

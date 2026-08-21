@@ -91,4 +91,33 @@ describe("bundled plugin SDK declarations", () => {
     );
     expect(declarations[5]).toContain("interface ExperimentalHostEntryHarness");
   });
+
+  it("names the canonical event vocabulary in the provider-bridge testing kit", async () => {
+    // A bridge's tests assert on what the assembler built; the types they
+    // narrow to are re-exported from @bb/domain and must arrive inlined, not
+    // as an import a plugin cannot resolve.
+    const testing = await readFile(
+      new URL(
+        "../../bundled-types/bb-plugin-sdk-provider-bridge-testing.d.ts",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    expect(testing).not.toMatch(/from ['"]@bb\//u);
+    expect(testing).not.toMatch(/import\(['"]@bb\//u);
+    for (const name of [
+      "ThreadEvent",
+      "ThreadEventItem",
+      "ThreadEventItemPresentation",
+      "ThreadEventDelegationItem",
+      "ThreadEventExtensionItem",
+    ]) {
+      expect(testing).toMatch(
+        new RegExp(`(?:type|interface) ${name}\\b`, "u"),
+      );
+      expect(testing).toMatch(
+        new RegExp(`export type \\{[^}]*\\b${name}\\b[^}]*\\}`, "u"),
+      );
+    }
+  });
 });

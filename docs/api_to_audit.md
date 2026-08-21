@@ -655,7 +655,7 @@ protocol`'s `assembler`, `conformance`, and `testing` subpaths.
    (`turnId`, `itemId`, `id`, `parentToolCallId`) and drops
    `providerCheckpointId`. Confirm the defaults against a third-party
    bridge's goldens before fixing them.
-3. **Surface size.** 33 value exports plus 43 types. The JSON-RPC harness
+3. **Surface size.** 33 value exports plus 57 types. The JSON-RPC harness
    duplicates a little of the bridge kit's envelope parsing; fold or keep
    deliberately.
 4. **Replay profile shape.** `ReplayProviderProfile` is the three seams the
@@ -676,6 +676,21 @@ protocol`'s `assembler`, `conformance`, and `testing` subpaths.
    recording. It is a textual substitution of a unique temp path; confirm
    no bridge emits that path in a form the substitution misses (URL-encoded,
    JSON-escaped backslashes on Windows).
+7. **The canonical event vocabulary by name.** The kit exports `ThreadEvent`,
+   `ThreadEventItem`, `ThreadEventItemPresentation` (+ its label, icon and
+   tint parts) and the named item kinds (`ThreadEventDelegationItem`,
+   `ThreadEventExtensionItem`, `ThreadEventFileReadItem`,
+   `ThreadEventSearchItem`, `ThreadEventPlanStepsItem`,
+   `ThreadEventWebSearchItem`, `ThreadEventWebFetchItem`,
+   `ThreadEventBackgroundTaskItem`) as types, re-exported from `@bb/domain`
+   and inlined into the bundled declarations. Before this a plugin test named
+   the event type as `ReturnType<BridgeDeltaEventCollector["assembleMessage"]>[number]`.
+   They are types only: a bridge never constructs an event (the assembler
+   does), so no `experimental_` value ships with them. Audit: the persisted
+   vocabulary now has a second public home beside `ProviderInfo` on the root
+   entry; a breaking change to an item shape is a breaking change to the kit.
+   Decide whether the kit should pin a grammar version in its exports (the
+   assembler already names `ASSEMBLER_GRAMMAR_VERSIONS`) before stabilizing.
 
 ## `app.experimental_useProviders` (`@get-bb/plugin-sdk/app`)
 

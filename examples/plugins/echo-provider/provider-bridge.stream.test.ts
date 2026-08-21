@@ -33,6 +33,7 @@ import type {
   BridgeJsonRpcObject,
   BridgeJsonRpcOutputMessage,
   BridgeJsonRpcTestHarness,
+  ThreadEvent,
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
 
 import { handleLine } from "./src/provider-bridge.js";
@@ -45,16 +46,9 @@ import {
   ECHO_STAMP_TOOL_PRESENTATION,
 } from "./src/vocabulary.js";
 
-/**
- * The canonical event type, derived from the kit's collector. The kit does
- * not export `ThreadEvent` by name (its vocabulary lives in bb's private
- * domain package), so a plugin test names it this way.
- */
-type AssembledEvent = ReturnType<
-  BridgeDeltaEventCollector["assembleMessage"]
->[number];
+/** An item lifecycle event: what the assembler builds from `item.open`/`item.close`. */
 type ItemEvent = Extract<
-  AssembledEvent,
+  ThreadEvent,
   { type: "item/started" | "item/completed" }
 >;
 
@@ -160,13 +154,13 @@ function answerToolCall(
   return params;
 }
 
-function assembledEvents(): AssembledEvent[] {
+function assembledEvents(): ThreadEvent[] {
   return harness.messages.flatMap((message) =>
     collector.assembleMessage(message),
   );
 }
 
-function itemEvents(events: AssembledEvent[]): ItemEvent[] {
+function itemEvents(events: ThreadEvent[]): ItemEvent[] {
   return events.filter(
     (event): event is ItemEvent =>
       event.type === "item/started" || event.type === "item/completed",
@@ -174,7 +168,7 @@ function itemEvents(events: AssembledEvent[]): ItemEvent[] {
 }
 
 function completedItem<T extends ItemEvent["item"]["type"]>(
-  events: AssembledEvent[],
+  events: ThreadEvent[],
   type: T,
 ): Extract<ItemEvent["item"], { type: T }> {
   const event = itemEvents(events).find(
