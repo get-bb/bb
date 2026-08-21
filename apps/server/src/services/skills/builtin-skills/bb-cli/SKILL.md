@@ -410,7 +410,13 @@ or artifacts, validation performed, and blockers.
 - Use `bb thread show <thread-id>` for status, parent, environment, pull request
   status, and result.
 - Use `bb thread show <thread-id> --git-diff` to review file changes.
-- Use `bb thread log <thread-id>` to inspect the conversation.
+- Use `bb thread log <thread-id>` to inspect the conversation. The default
+  shows only the newest 20 user-message turns and ends with a notice when older
+  history was omitted; `--limit <n>` (max 100) widens the window and `--all`
+  prints the whole thread. `--json` prints the oldest 100 raw events and warns
+  on stderr when more exist; page with `--after-seq <seq>` or pass `--all`.
+  Grep the `--all` output, not the default page, when checking whether a
+  thread ever received a message.
 - Use `bb thread output <thread-id>` to read the latest final output, or
   `bb thread output --self` for the current thread.
 

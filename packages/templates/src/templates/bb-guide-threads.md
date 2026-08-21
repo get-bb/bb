@@ -133,8 +133,13 @@ Inspecting:
   bb thread log [id]                       Show thread event log
     --self                                 Target current thread
     --format <format>                      Output format: json, minimal, verbose
-    --limit <count>                        Limit entries
-    --after-seq <seq>                      Paginate after sequence number
+    --limit <count>                        Max entries: events for json (oldest first, default 100);
+                                           user-message turns for minimal/verbose (newest first, default 20, max 100)
+    --after-seq <seq>                      Paginate after sequence number (json only)
+    --all                                  Print the whole thread, paging through every entry
+
+  Human formats end with a notice when older history was omitted; --json warns
+  on stderr when more events exist beyond the printed page.
 
   bb thread output [id]                    Get the final output of a thread
     --self                                 Target current thread
