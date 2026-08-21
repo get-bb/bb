@@ -81,7 +81,6 @@ import {
 // of the workspace route chunk.
 import { ThreadDetailView } from "./ThreadDetailView";
 import { RootComposeView } from "@/views/RootComposeView";
-import { PluginDetailPaneView } from "@/views/ToolsView";
 import { PluginPanelView } from "@/views/PluginPanelView";
 import {
   AppPageHeader,
@@ -128,6 +127,20 @@ const LazyPluginPanelRightPanelHost = lazy(() =>
     ({ PluginPanelRightPanelHost }) => ({ default: PluginPanelRightPanelHost }),
   ),
 );
+
+const LazyPluginDetailPaneView = lazy(() =>
+  import("@/views/ToolsView").then(({ PluginDetailPaneView }) => ({
+    default: PluginDetailPaneView,
+  })),
+);
+
+function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
+  return (
+    <Suspense fallback={null}>
+      <LazyPluginDetailPaneView pluginId={pluginId} />
+    </Suspense>
+  );
+}
 
 function PluginPagePanelHost({
   children,
