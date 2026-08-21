@@ -11,20 +11,40 @@ import { StatusGlyph } from "./StatusGlyph";
 import { childrenOf, threadDisplayTitle } from "./inbox";
 
 const MAX_DISCS = 3;
-const CHILD_MENU_WIDTH = 320;
 const CHILD_MENU_VIEWPORT_GUTTER = 8;
 
-function clampCompactMenuLeft(triggerRight: number, viewportWidth: number) {
-  const menuWidth = Math.min(
-    CHILD_MENU_WIDTH,
-    Math.max(0, viewportWidth - CHILD_MENU_VIEWPORT_GUTTER * 2),
-  );
-  const minLeft = CHILD_MENU_VIEWPORT_GUTTER;
+interface CompactViewportBounds {
+  left: number;
+  width: number;
+  safeAreaLeft: number;
+  safeAreaRight: number;
+}
+
+function clampCompactMenuLeft({
+  triggerRight,
+  menuWidth,
+  viewport,
+}: {
+  triggerRight: number;
+  menuWidth: number;
+  viewport: CompactViewportBounds;
+}) {
+  const minLeft =
+    viewport.left + viewport.safeAreaLeft + CHILD_MENU_VIEWPORT_GUTTER;
   const maxLeft = Math.max(
     minLeft,
-    viewportWidth - menuWidth - CHILD_MENU_VIEWPORT_GUTTER,
+    viewport.left +
+      viewport.width -
+      viewport.safeAreaRight -
+      CHILD_MENU_VIEWPORT_GUTTER -
+      menuWidth,
   );
   return Math.min(Math.max(triggerRight - menuWidth, minLeft), maxLeft);
+}
+
+function parsePixelValue(value: string) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 /**
@@ -43,32 +63,64 @@ export function SubagentsChip({
   const actions = useSidebarThreadActions();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const safeAreaProbeRef = useRef<HTMLSpanElement>(null);
+  const [compactViewport, setCompactViewport] =
+    useState<CompactViewportBounds | null>(null);
   const [compactMenuLeft, setCompactMenuLeft] = useState(
     CHILD_MENU_VIEWPORT_GUTTER,
   );
 
-  const updateCompactMenuLeft = useCallback(() => {
-    const trigger = triggerRef.current;
-    if (!trigger) return;
-    setCompactMenuLeft(
-      clampCompactMenuLeft(trigger.getBoundingClientRect().right, innerWidth),
+  const updateCompactViewport = useCallback(() => {
+    const visualViewport = window.visualViewport;
+    const safeAreaProbe = safeAreaProbeRef.current;
+    const safeArea = safeAreaProbe ? getComputedStyle(safeAreaProbe) : null;
+    const next: CompactViewportBounds = {
+      left: visualViewport?.offsetLeft ?? 0,
+      width: visualViewport?.width ?? window.innerWidth,
+      safeAreaLeft: parsePixelValue(safeArea?.paddingLeft ?? ""),
+      safeAreaRight: parsePixelValue(safeArea?.paddingRight ?? ""),
+    };
+    setCompactViewport((current) =>
+      current?.left === next.left &&
+      current.width === next.width &&
+      current.safeAreaLeft === next.safeAreaLeft &&
+      current.safeAreaRight === next.safeAreaRight
+        ? current
+        : next,
     );
   }, []);
 
   useLayoutEffect(() => {
     if (!open || !isCompactViewport) return;
 
-    updateCompactMenuLeft();
+    updateCompactViewport();
     const viewport = window.visualViewport;
-    window.addEventListener("resize", updateCompactMenuLeft);
-    viewport?.addEventListener("resize", updateCompactMenuLeft);
-    viewport?.addEventListener("scroll", updateCompactMenuLeft);
+    window.addEventListener("resize", updateCompactViewport);
+    viewport?.addEventListener("resize", updateCompactViewport);
+    viewport?.addEventListener("scroll", updateCompactViewport);
     return () => {
-      window.removeEventListener("resize", updateCompactMenuLeft);
-      viewport?.removeEventListener("resize", updateCompactMenuLeft);
-      viewport?.removeEventListener("scroll", updateCompactMenuLeft);
+      window.removeEventListener("resize", updateCompactViewport);
+      viewport?.removeEventListener("resize", updateCompactViewport);
+      viewport?.removeEventListener("scroll", updateCompactViewport);
     };
-  }, [isCompactViewport, open, updateCompactMenuLeft]);
+  }, [isCompactViewport, open, updateCompactViewport]);
+
+  useLayoutEffect(() => {
+    if (!open || !isCompactViewport || !compactViewport) return;
+    const trigger = triggerRef.current;
+    const menu = menuRef.current;
+    if (!trigger || !menu) return;
+    const menuWidth = menu.getBoundingClientRect().width;
+    if (menuWidth <= 0) return;
+    setCompactMenuLeft(
+      clampCompactMenuLeft({
+        triggerRight: trigger.getBoundingClientRect().right,
+        menuWidth,
+        viewport: compactViewport,
+      }),
+    );
+  }, [compactViewport, isCompactViewport, open]);
 
   const children = childrenOf(threads, threadId);
   if (children.length === 0) return null;
@@ -84,7 +136,7 @@ export function SubagentsChip({
         aria-expanded={open}
         aria-label={`${children.length} child threads`}
         onClick={() => {
-          if (!open && isCompactViewport) updateCompactMenuLeft();
+          if (!open && isCompactViewport) updateCompactViewport();
           setOpen((value) => !value);
         }}
         className={cn(
@@ -96,6 +148,18 @@ export function SubagentsChip({
         <DiscCluster threads={children} />
         {isCompactViewport ? null : <span className="truncate">{label}</span>}
       </button>
+      {isCompactViewport ? (
+        <span
+          ref={safeAreaProbeRef}
+          data-child-menu-safe-area-probe=""
+          aria-hidden
+          className="pointer-events-none fixed invisible size-0"
+          style={{
+            paddingLeft: "env(safe-area-inset-left)",
+            paddingRight: "env(safe-area-inset-right)",
+          }}
+        />
+      ) : null}
       {open ? (
         <>
           {/* Click-away. Wide headers anchor the menu to this chip; compact
@@ -106,15 +170,31 @@ export function SubagentsChip({
             aria-hidden
           />
           <div
+            ref={menuRef}
             role="menu"
             aria-label="Child threads"
             className={cn(
-              "z-50 w-80 max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-border bg-popover shadow-lg",
+              "z-50 flex max-h-[min(32rem,calc(100dvh-6rem))] w-80 max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-lg",
               isCompactViewport
                 ? "fixed top-[calc(env(safe-area-inset-top)+3.5rem)]"
                 : "absolute right-0 top-9",
             )}
-            style={isCompactViewport ? { left: compactMenuLeft } : undefined}
+            style={
+              isCompactViewport
+                ? {
+                    left: compactMenuLeft,
+                    maxWidth: compactViewport
+                      ? Math.max(
+                          0,
+                          compactViewport.width -
+                            compactViewport.safeAreaLeft -
+                            compactViewport.safeAreaRight -
+                            CHILD_MENU_VIEWPORT_GUTTER * 2,
+                        )
+                      : undefined,
+                  }
+                : undefined
+            }
           >
             <div className="flex items-center gap-2 px-3 pb-1 pt-2.5">
               <span className="text-xs font-semibold">Children</span>
@@ -122,7 +202,7 @@ export function SubagentsChip({
                 {children.length}
               </span>
             </div>
-            <ul className="flex flex-col gap-px p-1.5 pt-0.5">
+            <ul className="flex min-h-0 touch-pan-y flex-col gap-px overflow-y-auto overscroll-contain p-1.5 pt-0.5 [-webkit-overflow-scrolling:touch]">
               {children.map((child) => (
                 <li key={child.id} className="list-none">
                   <button
