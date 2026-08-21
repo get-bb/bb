@@ -692,6 +692,45 @@ export async function getCurrentBranch(
   return branchName || undefined;
 }
 
+/**
+ * A colocated Jujutsu workspace has a `.jj` directory beside the git
+ * checkout. jj keeps git HEAD detached at the working-copy parent there, so
+ * callers use this to tell "jj-managed detached" apart from a plain detached
+ * HEAD. A bb-managed worktree of a jj repo has no `.jj` and reads as plain
+ * git; a jj secondary workspace (`jj workspace add`) has no `.git` at all and
+ * never reaches this check.
+ */
+export async function detectJjColocatedWorkspace(cwd: string): Promise<boolean> {
+  try {
+    const stats = await fs.lstat(path.join(cwd, ".jj"));
+    return stats.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function listBranchesPointingAtHead(
+  cwd: string,
+  options: GitTimeoutOptions = {},
+): Promise<string[]> {
+  const result = await runGit(
+    [
+      "for-each-ref",
+      "--points-at",
+      "HEAD",
+      "--format=%(refname:short)",
+      "refs/heads",
+    ],
+    { cwd, allowFailure: true, timeoutMs: options.timeoutMs },
+  );
+  if (result.exitCode !== 0) {
+    return [];
+  }
+  // for-each-ref output is sorted by refname, so the first entry is the
+  // deterministic lexicographic pick.
+  return trimOutput(result.stdout).split("\n").filter(Boolean);
+}
+
 export async function getCheckoutRef(
   cwd: string,
   options: GitTimeoutOptions = {},
@@ -718,6 +757,10 @@ export async function getCheckoutRef(
   }
 
   if (headSha !== null) {
+    if (await detectJjColocatedWorkspace(cwd)) {
+      const branches = await listBranchesPointingAtHead(cwd, options);
+      return { kind: "detached", headSha, jj: { bookmark: branches[0] ?? null } };
+    }
     return { kind: "detached", headSha };
   }
 

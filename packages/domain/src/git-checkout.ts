@@ -54,6 +54,16 @@ export const gitCheckoutRefSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("detached"),
     headSha: z.string().min(1).nullable(),
+    // Present iff the workspace is a colocated Jujutsu workspace (a `.jj`
+    // directory beside `.git`), where jj pins git HEAD to the working-copy
+    // parent and "detached" is the normal state. `bookmark` is the
+    // lexicographically first `refs/heads` ref pointing at HEAD (jj exports
+    // bookmarks as git branches), or null when no bookmark points there.
+    jj: z
+      .object({
+        bookmark: z.string().min(1).nullable(),
+      })
+      .optional(),
   }),
   z.object({
     kind: z.literal("unborn"),
