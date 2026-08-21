@@ -62,6 +62,7 @@ import {
   acpAgentMessageChunkUpdateSchema,
   acpAgentThoughtChunkUpdateSchema,
   acpPlanUpdateSchema,
+  acpToolCallRawOutputExitCodeSchema,
   acpToolCallUpdateEventSchema,
   acpUsageUpdateSchema,
   extractAcpContentText,
@@ -92,6 +93,28 @@ const PLAN_STEPS_CHANNEL = "planSteps";
 // ---------------------------------------------------------------------------
 // Pure ACP parsing helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * The exit code a command-shaped close carries. ACP's status cannot stand in
+ * for one: Cursor reports a command that exited 1 AND a command that never
+ * spawned (its persistent shell's cwd was deleted, #1529) as
+ * `status: "completed"`, so deriving `0` from the status labelled both as
+ * successes. Use the agent's reported `rawOutput.exitCode` when present; with
+ * none, a failed call is still non-zero (1) and a completed call has no exit
+ * code rather than a fabricated one.
+ */
+function extractAcpExitCode(
+  event: AcpToolCallUpdateEvent,
+  status: ThreadEventItemStatus,
+): number | undefined {
+  const reported = acpToolCallRawOutputExitCodeSchema.safeParse(
+    event.rawOutput,
+  );
+  if (reported.success) {
+    return reported.data.exitCode;
+  }
+  return status === "failed" ? 1 : undefined;
+}
 
 function isTerminalAcpStatus(
   status: AcpToolCallUpdateEvent["status"],
@@ -384,7 +407,7 @@ export function createAcpDeltaTranslator() {
    */
   function toolCallClose(args: AcpCloseArgs): ThreadDelta {
     const outputText = extractAcpToolCallOutputText(args.event);
-    const terminal = args.status === "completed" || args.status === "failed";
+    const exitCode = extractAcpExitCode(args.event, args.status);
     const classified = classifyCall(args.context, args.event);
     injectedToolBindings.delete(callKey(args.context, args.event.toolCallId));
     return {
@@ -396,7 +419,7 @@ export function createAcpDeltaTranslator() {
       ...(outputText === undefined
         ? {}
         : { resultText: outputText, aggregatedOutput: outputText }),
-      ...(terminal ? { exitCode: args.status === "failed" ? 1 : 0 } : {}),
+      ...(exitCode === undefined ? {} : { exitCode }),
       item: classified.item,
       presentation: classified.presentation,
       ...(args.noTurnFallback ? { noTurnFallback: args.noTurnFallback } : {}),

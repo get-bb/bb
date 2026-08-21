@@ -551,7 +551,6 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
           status: "completed",
           approvalStatus: null,
           aggregatedOutput: "1 passed",
-          exitCode: 0,
           presentation: {
             label: { pending: "Running command", completed: "Ran command" },
             icon: { glyph: "Terminal" },
@@ -560,6 +559,98 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
         },
       },
     ]);
+  });
+
+  // Issue #1529: ACP's tool_call_update has no exit-code field and Cursor
+  // reports both "exited 1" and "never ran" (spawn ENOENT after the
+  // persistent shell's cwd was deleted) as `status: "completed"`, so the
+  // status alone must never become an exit code. The real code, when the
+  // agent has one, rides in `rawOutput.exitCode` (shapes recorded from
+  // `cursor-agent acp` 2026.08.11).
+  describe("command exit codes", () => {
+    function completeCommand(
+      harness: AcpEquivalenceHarness,
+      toolCallId: string,
+      command: string,
+      update: Record<string, unknown>,
+    ) {
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId,
+          title: `\`${command}\``,
+          kind: "execute",
+          status: "pending",
+          rawInput: { command },
+        }),
+      );
+      const items = completedItems(
+        harness.translate(
+          updateEvent({
+            sessionUpdate: "tool_call_update",
+            toolCallId,
+            ...update,
+          }),
+        ),
+      );
+      expect(items).toHaveLength(1);
+      const item = items[0];
+      if (item?.type !== "commandExecution") {
+        throw new Error(`expected a commandExecution, got ${item?.type}`);
+      }
+      return item;
+    }
+
+    it("uses rawOutput.exitCode when the agent reports a non-zero exit as completed", () => {
+      const item = completeCommand(startedHarness(), "call-false", "false", {
+        status: "completed",
+        rawOutput: { exitCode: 1, stdout: "", stderr: "" },
+      });
+      expect(item.status).toBe("completed");
+      expect(item.exitCode).toBe(1);
+    });
+
+    it("omits the exit code when a completed call carries no result at all", () => {
+      const item = completeCommand(
+        startedHarness(),
+        "call-8d1faebb\nfc_366d93fb_0",
+        "echo hi; git status",
+        { status: "completed" },
+      );
+      expect(item.status).toBe("completed");
+      expect(item.aggregatedOutput).toBeUndefined();
+      expect(item.exitCode).toBeUndefined();
+    });
+
+    it("keeps exit code 1 for failed calls without a reported exit code", () => {
+      const item = completeCommand(startedHarness(), "call-failed", "boom", {
+        status: "failed",
+        content: [
+          {
+            type: "content",
+            content: { type: "text", text: "boom: not found" },
+          },
+        ],
+      });
+      expect(item.status).toBe("failed");
+      expect(item.exitCode).toBe(1);
+    });
+
+    it("prefers a reported exit code over the failed-status fallback", () => {
+      const item = completeCommand(startedHarness(), "call-127", "nope", {
+        status: "failed",
+        rawOutput: { exitCode: 127, stdout: "", stderr: "nope: not found" },
+      });
+      expect(item.exitCode).toBe(127);
+    });
+
+    it("ignores non-integer exit codes in rawOutput", () => {
+      const item = completeCommand(startedHarness(), "call-str", "true", {
+        status: "completed",
+        rawOutput: { exitCode: "0", stdout: "ok" },
+      });
+      expect(item.exitCode).toBeUndefined();
+    });
   });
 
   it("summarizes inline image attachments from raw tool output", () => {

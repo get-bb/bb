@@ -96,6 +96,15 @@ const acpToolCallLocationSchema = z
   })
   .passthrough();
 
+/**
+ * ACP has no exit-code field on tool calls. Agents that run shells report the
+ * real code inside `rawOutput` (cursor-agent: `{exitCode, stdout, stderr}`);
+ * this is the only field bb reads from that agent-defined payload.
+ */
+export const acpToolCallRawOutputExitCodeSchema = z.object({
+  exitCode: z.number().int(),
+});
+
 const acpToolCallFieldsSchema = z.object({
   toolCallId: z.string(),
   title: z.string().optional(),
