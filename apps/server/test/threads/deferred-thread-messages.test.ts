@@ -9,6 +9,7 @@ import {
   getThread,
   listDeferredThreadMessages,
   listQueuedThreadMessages,
+  markThreadDeleted,
   type DbConnection,
 } from "@bb/db";
 import {
@@ -401,6 +402,59 @@ describe("messages to a thread that awaits user interaction (#1650)", () => {
       await runDeferredThreadMessageSweep(harness.deps);
       const delivered = listTurnRequests(harness.db, thread.id).at(-1);
       expect(delivered?.target.kind).toBe("new-turn");
+      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(0);
+    });
+  });
+
+  it("drops a held message whose sender was deleted in the meantime instead of blocking the ones behind it", async () => {
+    await withTestHarness(async (harness) => {
+      const { interactionId, project, thread } = seedBlockedThread(harness, {
+        hostId: "host-1650-gone-sender",
+      });
+      const worker = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: thread.environmentId,
+        title: "Worker",
+        parentThreadId: thread.id,
+      });
+      for (const [text, senderThreadId] of [
+        ["from the worker", worker.id],
+        ["from the user", undefined],
+      ] as const) {
+        const response = await harness.app.request(
+          `/api/v1/threads/${thread.id}/send`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              mode: "steer-if-active",
+              senderThreadId,
+              input: [{ type: "text", text }],
+            }),
+          },
+        );
+        expect(response.status).toBe(200);
+      }
+      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(2);
+
+      // The worker is deleted while the question is still open. Its tell can
+      // no longer deliver (the sender must be a live reply target), which must
+      // not strand the user's message behind it forever.
+      markThreadDeleted(harness.db, harness.deps.hub, { threadId: worker.id });
+      harness.deps.pendingInteractions.interruptPendingInteraction({
+        interactionId,
+        reason: "answered",
+      });
+      await flushDeferredThreadMessages(harness.deps, thread.id);
+
+      const texts = listTurnRequests(harness.db, thread.id)
+        .slice(1)
+        .map((request) =>
+          request.input
+            .map((part) => (part.type === "text" ? part.text : ""))
+            .join(""),
+        );
+      expect(texts).toEqual(["from the user"]);
       expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(0);
     });
   });

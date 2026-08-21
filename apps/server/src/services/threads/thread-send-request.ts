@@ -11,6 +11,7 @@ import type {
   SendMessageRequest,
   SendMessageResponse,
 } from "@bb/server-contract";
+import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import {
   isCommandTimeoutError,
@@ -163,6 +164,17 @@ async function deliverDeferredThreadMessage(
   }
 }
 
+/**
+ * A 400/404 from the send pipeline means the request references something that
+ * no longer exists. Everything else (409 stopping or environment unavailable,
+ * 422 plugin mention, 502 host away, timeouts) can clear on a later flush.
+ */
+function isDeferredThreadMessageRequestInvalid(error: unknown): boolean {
+  return (
+    error instanceof ApiError && (error.status === 400 || error.status === 404)
+  );
+}
+
 async function flushDeferredThreadMessagesNow(
   deps: LoggedPendingInteractionWorkSessionDeps,
   threadId: string,
@@ -198,15 +210,27 @@ async function flushDeferredThreadMessagesNow(
         return;
       }
     } catch (error) {
-      // Keep this row and the ones behind it so arrival order survives; the
-      // next settle or sweep retries. A thread that is stopping, a host that
-      // is reconnecting, or a fresh interaction all clear on their own.
       const fields = {
         deferredMessageId: row.id,
         kind: payload.kind,
         ...runtimeErrorLogFields(deps.config, error),
         threadId,
       };
+      if (isDeferredThreadMessageRequestInvalid(error)) {
+        // The request itself can no longer be honored (its sender thread was
+        // deleted, its attachment is gone): the same 400 the sender would have
+        // received synchronously. Retrying cannot change that, and leaving the
+        // row would block every later message for this thread.
+        deleteDeferredThreadMessage(deps.db, { id: row.id, threadId });
+        deps.logger.warn(
+          fields,
+          "Dropped deferred thread message: request is no longer valid",
+        );
+        continue;
+      }
+      // Keep this row and the ones behind it so arrival order survives; the
+      // next settle or sweep retries. A thread that is stopping, a host that
+      // is reconnecting, or a fresh interaction all clear on their own.
       if (isCommandTimeoutError(error)) {
         deps.logger.debug(
           fields,
