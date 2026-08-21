@@ -62,7 +62,10 @@ import type {
   ThreadProvisionContext,
   ThreadProvisionEnvironmentIntent,
 } from "./thread-provisioning-context.js";
-import { resolveManagedDefaultBaseBranchSpec } from "../projects/worktree-base-branch.js";
+import {
+  resolveManagedDefaultBaseBranchSpec,
+  resolveManagedNamedBaseBranchSpec,
+} from "../projects/worktree-base-branch.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
 
@@ -230,9 +233,10 @@ function modelCatalogCwdForResolvedEnvironment(
   }
 }
 
-interface ResolveManagedDefaultBaseBranchForCreateArgs {
+interface ResolveManagedBaseBranchForCreateArgs {
   baseBranch: BaseBranchSpec;
   hostId: string;
+  originKind: ThreadOriginKind | null;
   sourcePath: string;
 }
 
@@ -330,11 +334,18 @@ function requireLiveSourceThread(
   return sourceThread;
 }
 
-async function resolveManagedDefaultBaseBranchForCreate(
+/**
+ * Pick the ref a new managed worktree starts from. `host.list_branches`
+ * refreshes the remote-tracking refs and reports how the local default branch
+ * relates to origin; the default spec and a plain name that is the default
+ * branch both prefer origin when local is equal or behind. A fork names the
+ * branch its source environment is on, so it keeps that branch verbatim.
+ */
+async function resolveManagedBaseBranchForCreate(
   deps: ThreadCreateDeps,
-  args: ResolveManagedDefaultBaseBranchForCreateArgs,
+  args: ResolveManagedBaseBranchForCreateArgs,
 ): Promise<BaseBranchSpec> {
-  if (args.baseBranch.kind === "named") {
+  if (args.baseBranch.kind === "named" && args.originKind !== null) {
     return args.baseBranch;
   }
 
@@ -348,7 +359,9 @@ async function resolveManagedDefaultBaseBranchForCreate(
         limit: 1,
       },
     });
-    return resolveManagedDefaultBaseBranchSpec(result);
+    return args.baseBranch.kind === "named"
+      ? resolveManagedNamedBaseBranchSpec(args.baseBranch, result)
+      : resolveManagedDefaultBaseBranchSpec(result);
   } catch (error) {
     deps.logger.warn(
       {
@@ -356,7 +369,7 @@ async function resolveManagedDefaultBaseBranchForCreate(
         sourcePath: args.sourcePath,
         ...runtimeErrorLogFields(deps.config, error),
       },
-      "Failed to resolve smart worktree base branch; using source default",
+      "Failed to resolve smart worktree base branch; using requested base",
     );
     return args.baseBranch;
   }
@@ -820,9 +833,10 @@ export async function createThreadFromRequest(
         type: "direct-managed",
         hostId,
         sourcePath: managedSource.path,
-        baseBranch: await resolveManagedDefaultBaseBranchForCreate(deps, {
+        baseBranch: await resolveManagedBaseBranchForCreate(deps, {
           baseBranch: workspace.baseBranch,
           hostId,
+          originKind,
           sourcePath: managedSource.path,
         }),
         workspaceProvisionType: workspace.type,

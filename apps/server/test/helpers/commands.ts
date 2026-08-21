@@ -129,6 +129,8 @@ const testRpcCursorByHost = new Map<string, number>();
 interface RegisterTestHostRpcCaptureArgs {
   hostId: string;
   sessionId: string;
+  /** Checkout the fake daemon reports for `host.list_branches`. */
+  listBranchesResult?: HostDaemonOnlineRpcResult<"host.list_branches">;
 }
 
 interface TestHostRpcSocket {
@@ -386,7 +388,9 @@ export function registerTestHostRpcCapture(
             requestId: message.requestId,
             commandType: command.type,
             ok: true,
-            result: buildDefaultBranchListResult(command.selectedBranch),
+            result:
+              args.listBranchesResult ??
+              buildDefaultBranchListResult(command.selectedBranch),
           }),
           sessionId: args.sessionId,
         });

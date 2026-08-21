@@ -178,7 +178,7 @@ export function registerSpawnCommand(
     )
     .option(
       "--base-branch <branch>",
-      "Base branch for new managed worktrees. Omit to let bb choose the project's default worktree base.",
+      "Base branch for new managed worktrees. Omit to let bb choose the project's default worktree base; naming the default branch fetches and prefers origin the same way.",
     )
     .option(
       "--machine <id-or-name>",
