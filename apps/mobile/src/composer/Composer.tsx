@@ -544,7 +544,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
               {collapsed && affordance.stop ? (
                 <StopButton
                   onPress={affordance.stop}
-                  style={{ marginRight: 4 }}
+                  // The 44pt input row leaves 4pt above and below the 36pt
+                  // circle. Pull the circle 2pt into the card's 6pt padding so
+                  // the right gap is also 4pt and the circle sits concentric
+                  // with the pill's corner.
+                  style={{ marginRight: -2 }}
                   testID={`${testID}-stop`}
                 />
               ) : collapsed && showVoicePrimary ? (
