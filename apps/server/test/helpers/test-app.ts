@@ -10,8 +10,10 @@ import { createApp } from "../../src/server.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../src/services/machine-auth.js";
 import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
-import { resolveAcpAgentCapabilitiesForProviderId } from "../../src/services/system/acp-launch-spec.js";
 import { registerFirstPartyProviders } from "./provider-registry.js";
+import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
+import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
+import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import { SkillTreeRegistry } from "../../src/services/skills/injected-skills.js";
 import { PluginHostArtifactRegistry } from "../../src/services/plugins/plugin-host-artifact-registry.js";
 import {
@@ -74,6 +76,15 @@ export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
    * registration collides with the pre-registered copy.
    */
   seedFirstPartyProviders?: boolean;
+  /**
+   * Extra provider registrations, exactly as a plugin would make them. The
+   * ACP plugin registers a user's configured agents this way from its own
+   * settings, so a test that needs one registers it here.
+   */
+  extraProviders?: readonly {
+    declaration: PluginProviderDeclaration;
+    pluginId: string;
+  }[];
 };
 
 export const testLogger = {
@@ -134,11 +145,19 @@ export async function createTestAppHarness(
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const workspaceReadCaches = new WorkspaceReadCaches({ hub });
-  const providerRegistry = createProviderRegistryService({
-    resolveAcpAgentCapabilities: (providerId) =>
-      resolveAcpAgentCapabilitiesForProviderId({ config }, providerId),
-  });
+  const providerRegistry = createProviderRegistryService({});
   const pluginHostArtifacts = new PluginHostArtifactRegistry();
+  for (const extra of overrides.extraProviders ?? []) {
+    providerRegistry.register({
+      ...buildPluginProviderRegistration({
+        available: true,
+        pluginId: extra.pluginId,
+        declaration: validatePluginProviderDeclaration(extra.declaration),
+        readSettings: () => ({}),
+      }),
+      pluginId: extra.pluginId,
+    });
+  }
   if (seedFirstPartyProviders) {
     await registerFirstPartyProviders(providerRegistry, {
       artifacts: pluginHostArtifacts,
@@ -167,7 +186,6 @@ export async function createTestAppHarness(
   const config: ServerRuntimeConfig = {
     appVersion: "0.0.0-test",
     builtinSkillsRootPath: join(dataDir, "builtin-skills"),
-    customAcpAgents: [],
     customModels: [],
     dataDir,
     featureFlags: defaultFeatureFlags,

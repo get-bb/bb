@@ -85,7 +85,6 @@ import { resolveSkillCatalog } from "../services/skills/skill-catalog.js";
 import { resolveWorkspaceProjectSkills } from "../services/skills/workspace-skills.js";
 import { resolveSharedSkills } from "../services/skills/shared-skills.js";
 import { assertUsableHostId } from "../services/hosts/primary-host.js";
-import { resolveAcpLaunchSpecForProviderId } from "../services/system/acp-launch-spec.js";
 import {
   resolveProjectCommandWorkspace,
   resolveProjectWorkspaceTarget,
@@ -706,10 +705,13 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         : {}),
       ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
     });
-    const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(
-      deps,
-      query.provider,
-    );
+    // The provider's own skill roots, from its declaration. A provider that
+    // declares none sends none: core never guesses a skill layout.
+    const nativeSkillRoots =
+      deps.providerRegistry.get(query.provider)?.nativeSkillRoots;
+    const hasNativeSkillRoots =
+      nativeSkillRoots !== undefined &&
+      (nativeSkillRoots.user.length > 0 || nativeSkillRoots.project.length > 0);
     const [result, projectSkillSources, sharedSkills] = await Promise.all([
       callHostRetryableOnlineRpc(deps, {
         hostId: workspace.hostId,
@@ -718,8 +720,13 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
           type: "host.list_commands",
           providerId: query.provider,
           cwd: workspace.cwd,
-          ...(acpLaunchSpec?.nativeSkillRoots !== undefined
-            ? { nativeSkillRoots: acpLaunchSpec.nativeSkillRoots }
+          ...(hasNativeSkillRoots
+            ? {
+                nativeSkillRoots: {
+                  user: [...nativeSkillRoots.user],
+                  project: [...nativeSkillRoots.project],
+                },
+              }
             : {}),
         },
       }),

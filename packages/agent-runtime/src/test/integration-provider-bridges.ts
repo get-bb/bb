@@ -18,7 +18,6 @@ import {
   permissionModeSchema,
   providerForkSchema,
 } from "@bb/domain";
-import { isAcpProviderId } from "../provider-catalog.js";
 import type { AgentRuntimeBridgeLaunch } from "../types.js";
 
 export const INTEGRATION_PROVIDER_BRIDGE_MANIFEST_PATH = join(
@@ -77,10 +76,6 @@ function readManifest(): IntegrationProviderBridgeManifest {
  * The `bridgeLaunch` a live test must pass for this provider — an artifact for
  * a graduated plugin, or the daemon-bundled bridge id for Pi. Every provider
  * has one, exactly as on the wire.
- *
- * The ACP fallback mirrors the server's: `acp-*` ids other than the one the
- * plugin declares are resolved at request time and never registered, so they
- * borrow the ACP plugin's artifact.
  */
 export function resolveIntegrationBridgeLaunch(
   providerId: string,
@@ -89,14 +84,6 @@ export function resolveIntegrationBridgeLaunch(
   const direct = manifest[providerId];
   if (direct !== undefined) {
     return direct;
-  }
-  if (isAcpProviderId(providerId)) {
-    const acpEntry = Object.entries(manifest).find(([id]) =>
-      isAcpProviderId(id),
-    );
-    if (acpEntry) {
-      return acpEntry[1];
-    }
   }
   throw new Error(
     `No provider bridge artifact recorded for "${providerId}". ` +

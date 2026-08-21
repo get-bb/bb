@@ -7,6 +7,13 @@
  */
 
 /** Whether an id belongs to the dynamic ACP tier. */
+/**
+ * The `acp-` id prefix. Its last reader is the staged-skill-root matcher
+ * (`runtime-skill-roots.ts`), where the prefix stands in for a bridge
+ * capability bb does not declare yet: an ACP agent needs its skills named
+ * inline rather than discovered from a directory. Everything else that
+ * branched on this prefix is gone.
+ */
 export function isAcpProviderId(value: string): boolean {
   return value.startsWith("acp-");
 }

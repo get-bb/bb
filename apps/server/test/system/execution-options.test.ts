@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import { getAppSettings, setAppSettings } from "@bb/db";
 import {
   hostDaemonServerWsMessageSchema,
@@ -47,6 +48,48 @@ function providerDiscoveryHealth(installed: boolean) {
     },
   };
 }
+
+/**
+ * A user-configured ACP agent, registered the way the ACP plugin registers
+ * one from its own settings. The deprecated `customAcpAgents` config array no
+ * longer reaches the server.
+ */
+function configuredAcpProvider(args: {
+  id: string;
+  displayName: string;
+  launch: Record<string, unknown>;
+}): { declaration: PluginProviderDeclaration; pluginId: string } {
+  return {
+    pluginId: "provider-acp",
+    declaration: {
+      id: args.id,
+      displayName: args.displayName,
+      experimental_family: "acp",
+      experimental_bridgeOptions: { acpLaunchSpec: args.launch as never },
+      capabilities: {
+        experimental_providerHealth: true,
+        experimental_providerUsage: false,
+        experimental_providerInstallation: false,
+        supportsServiceTier: true,
+        supportsNativeUserQuestion: false,
+        supportsManualCompaction: false,
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
+        fork: "none",
+        permissionModes: ["accept-edits", "full"],
+        reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+      },
+      composerActions: [],
+    },
+  };
+}
+
+const EXAMPLE_AGENT_LAUNCH = {
+  displayName: "Example Agent",
+  command: "example-agent",
+  args: ["acp"],
+  env: {},
+};
 
 describe("appendCustomModels", () => {
   it("appends custom models for the requested provider after the catalog", () => {
@@ -570,15 +613,12 @@ describe("resolveSystemExecutionOptions", () => {
     async ({ failStatusRequest }) => {
       await withTestHarness(
         {
-          customAcpAgents: [
-            {
-              id: "example-agent",
+          extraProviders: [
+            configuredAcpProvider({
+              id: "acp-example-agent",
               displayName: "Example Agent",
-              command: "example-agent",
-              args: ["acp"],
-              env: {},
-              supportsManualCompaction: false,
-            },
+              launch: EXAMPLE_AGENT_LAUNCH,
+            }),
           ],
         },
         async (harness) => {
@@ -680,15 +720,12 @@ describe("resolveSystemExecutionOptions", () => {
   it("keeps configured providers and custom models when no host can be resolved", async () => {
     await withTestHarness(
       {
-        customAcpAgents: [
-          {
-            id: "example-agent",
+        extraProviders: [
+          configuredAcpProvider({
+            id: "acp-example-agent",
             displayName: "Example Agent",
-            command: "example-agent",
-            args: ["acp"],
-            env: {},
-            supportsManualCompaction: false,
-          },
+            launch: EXAMPLE_AGENT_LAUNCH,
+          }),
         ],
         customModels: [
           {
@@ -735,77 +772,6 @@ describe("resolveSystemExecutionOptions", () => {
           errorStatus: 502,
         });
         expect(hostLookupWarning?.[0]).not.toHaveProperty("err");
-      },
-    );
-  });
-
-  it("uses the custom ACP config when it collides with a plugin provider", async () => {
-    await withTestHarness(
-      {
-        customAcpAgents: [
-          {
-            id: "opencode",
-            displayName: "Custom opencode",
-            command: "custom-opencode",
-            args: ["serve"],
-            env: { CUSTOM_OPENCODE: "1" },
-            supportsManualCompaction: false,
-          },
-        ],
-      },
-      async (harness) => {
-        const { host, session } = seedHostSession(harness.deps, {
-          id: "host-execution-options-known-acp-override",
-        });
-        const responder = registerHostRpcResponder(harness, {
-          hostId: host.id,
-          sessionId: session.id,
-          handle: (request) => {
-            if (request.command.type === "provider.health") {
-              // acp-omp, acp-grok, and acp-hermes-agent are installed-only
-              // plugin providers that
-              // are not overridden by custom config here, so the server probes
-              // host install status for them.
-              return { ok: true, result: providerDiscoveryHealth(false) };
-            }
-            if (request.command.type === "provider.list_models") {
-              return {
-                ok: true,
-                result: { models: [], selectedOnlyModels: [] },
-              };
-            }
-            throw new Error(`Unexpected RPC command ${request.command.type}`);
-          },
-        });
-
-        const response = await resolveSystemExecutionOptions(harness.deps, {
-          hostId: host.id,
-          providerId: "acp-opencode",
-        });
-
-        const opencodeProviders = response.providers.filter(
-          (provider) => provider.id === "acp-opencode",
-        );
-        expect(opencodeProviders).toHaveLength(1);
-        expect(opencodeProviders[0].displayName).toBe("Custom opencode");
-        expect(
-          responder.requests.filter(
-            (request) => request.command.type === "provider.health",
-          ),
-        ).toHaveLength(3);
-        const modelRequest = responder.requests.find(
-          (request) => request.command.type === "provider.list_models",
-        );
-        expect(modelRequest?.command).toMatchObject({
-          type: "provider.list_models",
-          providerId: "acp-opencode",
-          acpLaunchSpec: {
-            displayName: "Custom opencode",
-            command: "custom-opencode",
-            args: ["serve"],
-            env: { CUSTOM_OPENCODE: "1" },
-          },
-        });
       },
     );
   });
@@ -1076,24 +1042,26 @@ describe("resolveSystemExecutionOptions", () => {
     });
   });
 
-  it("includes custom ACP agents and sends their launch spec when loading models", async () => {
+  it("lists a configured ACP agent and sends its launch spec when loading models", async () => {
     await withTestHarness(
       {
-        customAcpAgents: [
-          {
-            id: "example-agent",
+        extraProviders: [
+          configuredAcpProvider({
+            id: "acp-example-agent",
             displayName: "Example Agent",
-            command: "example-agent",
-            args: ["acp", "--stdio"],
-            env: { EXAMPLE_TOKEN: "test-token" },
-            supportsManualCompaction: false,
-            cwd: "/tmp/example-agent",
-            modelCli: {
-              listArgs: ["models", "--json"],
-              selectFlag: "--model",
-              primaryModels: ["example/default"],
+            launch: {
+              displayName: "Example Agent",
+              command: "example-agent",
+              args: ["acp", "--stdio"],
+              env: { EXAMPLE_TOKEN: "test-token" },
+              cwd: "/tmp/example-agent",
+              modelCli: {
+                listArgs: ["models", "--json"],
+                selectFlag: "--model",
+                primaryModels: ["example/default"],
+              },
             },
-          },
+          }),
         ],
       },
       async (harness) => {
@@ -1127,7 +1095,9 @@ describe("resolveSystemExecutionOptions", () => {
               available: true,
               composerActions: [{ kind: "skills", trigger: "/" }],
               capabilities: expect.objectContaining({
-                supportsFork: true,
+                // A configured agent declares no fork: bb has not read its
+                // `initialize` reply (#1833).
+                supportsFork: false,
                 supportsServiceTier: true,
                 permissionModes: ["accept-edits", "full"],
               }),
@@ -1148,16 +1118,20 @@ describe("resolveSystemExecutionOptions", () => {
         expect(modelRequest?.command).toMatchObject({
           type: "provider.list_models",
           providerId: "acp-example-agent",
-          acpLaunchSpec: {
-            displayName: "Example Agent",
-            command: "example-agent",
-            args: ["acp", "--stdio"],
-            env: { EXAMPLE_TOKEN: "test-token" },
-            cwd: "/tmp/example-agent",
-            modelCli: {
-              listArgs: ["models", "--json"],
-              selectFlag: "--model",
-              primaryModels: ["example/default"],
+          bridgeLaunch: {
+            providerOptions: {
+              acpLaunchSpec: {
+                displayName: "Example Agent",
+                command: "example-agent",
+                args: ["acp", "--stdio"],
+                env: { EXAMPLE_TOKEN: "test-token" },
+                cwd: "/tmp/example-agent",
+                modelCli: {
+                  listArgs: ["models", "--json"],
+                  selectFlag: "--model",
+                  primaryModels: ["example/default"],
+                },
+              },
             },
           },
         });
@@ -1237,53 +1211,6 @@ describe("resolveSystemExecutionOptions", () => {
     );
   });
 
-  // Custom ACP ids run on the ACP plugin's bridge and are never registered
-  // themselves, so with that plugin disabled they have no bridge anywhere.
-  it("omits custom ACP agents when no ACP provider plugin is registered", async () => {
-    await withTestHarness(
-      {
-        seedFirstPartyProviders: false,
-        customAcpAgents: [
-          {
-            id: "example-agent",
-            displayName: "Example Agent",
-            command: "example-agent",
-            args: ["acp", "--stdio"],
-            env: {},
-            supportsManualCompaction: false,
-          },
-        ],
-      },
-      async (harness) => {
-        await registerFirstPartyProviders(harness.deps.providerRegistry, {
-          excludePluginIds: ["provider-acp"],
-        });
-        const { host, session } = seedHostSession(harness.deps, {
-          id: "host-execution-options-no-acp-plugin",
-        });
-        const responder = registerProviderHostRpcResponder(harness, {
-          hostId: host.id,
-          sessionId: session.id,
-        });
-
-        const providers = await listSystemProviderInfos(harness.deps, {
-          hostId: host.id,
-        });
-
-        expect(providers.map((provider) => provider.id)).toEqual([
-          "codex",
-          "claude-code",
-          "pi",
-        ]);
-        // Nothing ACP to offer, so the host is never probed for installed-only
-        // plugin providers either.
-        expect(
-          responder.requests.map((request) => request.command.type),
-        ).toEqual([]);
-      },
-    );
-  });
-
   it("surfaces provider auth-required model load failures", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -1331,19 +1258,21 @@ describe("resolveSystemExecutionOptions", () => {
     ["auth required", "auth_required", "auth_required"],
     ["launch failure", "command_failed", "failed"],
   ] as const)(
-    "surfaces dynamic ACP model-load %s errors with the custom provider identity",
+    "surfaces a configured ACP agent's model-load %s error under its own identity",
     async (_name, hostErrorCode, expectedCode) => {
       await withTestHarness(
         {
-          customAcpAgents: [
-            {
-              id: "broken-agent",
+          extraProviders: [
+            configuredAcpProvider({
+              id: "acp-broken-agent",
               displayName: "Broken Agent",
-              command: "broken-agent",
-              args: [],
-              env: {},
-              supportsManualCompaction: false,
-            },
+              launch: {
+                displayName: "Broken Agent",
+                command: "broken-agent",
+                args: [],
+                env: {},
+              },
+            }),
           ],
         },
         async (harness) => {

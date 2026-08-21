@@ -18,7 +18,6 @@ import type {
   RuntimeThreadExecutionOptions,
   ServiceTier,
 } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type {
   AgentRuntimeBridgeLaunch,
   AgentRuntimeSkillRoot,
@@ -37,7 +36,6 @@ export interface ProviderAcceptedCommandTranslationArgs {
  */
 export interface CreateBridgeAdapterOptions {
   additionalWorkspaceWriteRoots: readonly string[];
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   /**
    * A plugin-delivered bridge artifact resolved to a verified local path by
    * the host daemon, or the id of a bridge the daemon bundles (pi).

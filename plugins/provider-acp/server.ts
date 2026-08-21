@@ -14,6 +14,7 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import {
   customAcpAgentDefinition,
+  mergeConfiguredAcpAgents,
   parseCustomAcpAgents,
   type AcpAgentDefinition,
 } from "./src/agents.js";
@@ -85,15 +86,14 @@ async function resolveCustomAgents(
     bb.log.warn(`Deprecated ACP agent config: ${problem}`);
   }
 
-  const bySlug = new Map(configured.agents.map((agent) => [agent.id, agent]));
-  for (const agent of legacyAgents.agents) {
-    if (bySlug.has(agent.id)) {
-      continue;
-    }
+  const merged = mergeConfiguredAcpAgents({
+    configured: configured.agents,
+    legacy: legacyAgents.agents,
+  });
+  for (const agent of merged.legacyOnly) {
     bb.log.warn(legacyAgentDeprecationMessage(agent));
-    bySlug.set(agent.id, agent);
   }
-  return [...bySlug.values()].map(customAcpAgentDefinition);
+  return merged.agents.map(customAcpAgentDefinition);
 }
 
 export default async function acpProvidersPlugin(

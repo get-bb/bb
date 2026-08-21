@@ -67,19 +67,17 @@ function resolveBundledBridgeModule(
 }
 
 /**
- * A plugin bridge's provider-scoped statics: the environment-level extra write
- * roots and — for the ACP tier — the launch spec the bridge constructs its
- * agent from. Neither has a core field on the canonical wire, and the write
- * roots are a host-local fact the server cannot supply at all.
+ * A plugin bridge's provider-scoped statics: the provider's own declared
+ * bridge options (an ACP agent's launch spec rides there) plus the
+ * environment-level extra write roots, which are a host-local fact the server
+ * cannot supply at all.
  */
 function buildPluginStaticProviderOptions(
   options: CreateBridgeAdapterOptions,
 ): { staticProviderOptions?: Record<string, unknown> } {
   const additionalWorkspaceWriteRoots = options.additionalWorkspaceWriteRoots;
-  const acpLaunchSpec = options.acpLaunchSpec;
   const staticProviderOptions = {
     ...options.bridgeLaunch?.providerOptions,
-    ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
     ...(additionalWorkspaceWriteRoots.length > 0
       ? { additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots] }
       : {}),

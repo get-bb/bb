@@ -235,3 +235,26 @@ export function parseCustomAcpAgents(args: {
   }
   return { agents, problems };
 }
+
+/**
+ * The configured agents, from the plugin's setting and from the deprecated
+ * config array. A setting entry wins over a legacy entry with the same id, so
+ * moving an agent into the setting is the whole migration; the legacy entries
+ * the setting does not cover are returned separately so the caller can log
+ * each one it is still reading.
+ */
+export function mergeConfiguredAcpAgents(args: {
+  configured: readonly CustomAcpAgent[];
+  legacy: readonly CustomAcpAgent[];
+}): { agents: CustomAcpAgent[]; legacyOnly: CustomAcpAgent[] } {
+  const bySlug = new Map(args.configured.map((agent) => [agent.id, agent]));
+  const legacyOnly: CustomAcpAgent[] = [];
+  for (const agent of args.legacy) {
+    if (bySlug.has(agent.id)) {
+      continue;
+    }
+    legacyOnly.push(agent);
+    bySlug.set(agent.id, agent);
+  }
+  return { agents: [...bySlug.values()], legacyOnly };
+}

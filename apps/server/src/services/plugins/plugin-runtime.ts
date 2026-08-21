@@ -204,7 +204,7 @@ const PROVIDER_ICON_CONTENT_TYPES: Record<string, string> = {
  * escaping the plugin root): the provider registers without a servable icon
  * rather than failing the plugin load.
  */
-function readPluginProviderIcon(
+export function readPluginProviderIcon(
   rootDir: string,
   icon: string | undefined,
 ): { bytes: Uint8Array; contentType: string } | null {

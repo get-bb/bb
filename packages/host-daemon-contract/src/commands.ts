@@ -289,7 +289,6 @@ const hostDaemonThreadRuntimeContextSchema = z
     workspaceContext: workspaceContextSchema,
     projectId: z.string().min(1),
     providerId: z.string().min(1),
-    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     options: runtimeThreadExecutionOptionsSchema,
     instructions: z.string().min(1),
@@ -434,7 +433,6 @@ const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
     input: z.array(promptInputSchema).min(1),
     inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
     options: runtimeThreadExecutionOptionsSchema,
-    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     resumeContext: turnResumeContextSchema,
     target: turnSubmitTargetSchema,
@@ -463,7 +461,6 @@ const threadGoalClearCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.goal.clear"),
     options: runtimeThreadExecutionOptionsSchema,
-    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     resumeContext: turnResumeContextSchema,
   })
@@ -1036,7 +1033,6 @@ const hostBranchOptionsResultSchema = projectSourceCheckoutSchema.pick({
 const providerListModelsCommandSchema = z.object({
   type: z.literal("provider.list_models"),
   providerId: z.string().min(1),
-  acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
   bridgeLaunch: hostDaemonBridgeLaunchSchema,
   cwd: z.string().min(1).optional(),
 });
@@ -1045,7 +1041,6 @@ const providerHealthCommandSchema = z
   .object({
     type: z.literal("provider.health"),
     providerId: z.string().min(1),
-    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     cwd: z.string().min(1).optional(),
   })
@@ -1055,7 +1050,6 @@ const providerInstallationStatusCommandSchema = z
   .object({
     type: z.literal("provider.installation.status"),
     providerId: z.string().min(1),
-    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     cwd: z.string().min(1).optional(),
     requirement: z.literal("thread_rewind").optional(),
@@ -1067,7 +1061,6 @@ const providerInstallationRunCommandSchema = z
     type: z.literal("provider.installation.run"),
     providerId: z.string().min(1),
     action: providerCliInstallActionKindSchema,
-    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     cwd: z.string().min(1).optional(),
   })
@@ -1592,7 +1585,6 @@ const providerUsageCommandSchema = z
   .object({
     type: z.literal("provider.usage"),
     providerId: z.string().min(1),
-    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     cwd: z.string().min(1).optional(),
   })

@@ -665,6 +665,70 @@ function validateProviderEnvPassthrough(
   return Object.freeze([...seen]);
 }
 
+const PROVIDER_SKILL_ROOTS_MAX = 32;
+
+/**
+ * A provider's own skill roots. Relative paths without dot segments, so a
+ * declaration cannot reach outside the home directory or the workspace it is
+ * resolved against.
+ */
+function validateProviderNativeSkillRoots(
+  providerId: string,
+  value: unknown,
+): { user: readonly string[]; project: readonly string[] } {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `provider "${providerId}" experimental_nativeSkillRoots must be an object`,
+    );
+  }
+  const read = (key: "user" | "project"): readonly string[] => {
+    const roots = Reflect.get(value, key);
+    if (roots === undefined) {
+      return Object.freeze([]);
+    }
+    if (!Array.isArray(roots)) {
+      throw new Error(
+        `provider "${providerId}" experimental_nativeSkillRoots.${key} must be an array of relative paths`,
+      );
+    }
+    if (roots.length > PROVIDER_SKILL_ROOTS_MAX) {
+      throw new Error(
+        `provider "${providerId}" experimental_nativeSkillRoots.${key} names more than ${PROVIDER_SKILL_ROOTS_MAX} roots`,
+      );
+    }
+    const seen = new Set<string>();
+    for (const root of roots) {
+      if (typeof root !== "string" || root.length === 0) {
+        throw new Error(
+          `provider "${providerId}" experimental_nativeSkillRoots.${key} entries must be non-empty strings`,
+        );
+      }
+      const normalized = root.replaceAll("\\", "/");
+      const invalid =
+        normalized.startsWith("/") ||
+        /^[a-zA-Z]:\//u.test(normalized) ||
+        normalized
+          .split("/")
+          .some(
+            (segment) => segment === "" || segment === "." || segment === "..",
+          );
+      if (invalid) {
+        throw new Error(
+          `provider "${providerId}" experimental_nativeSkillRoots.${key} entries must be relative paths without dot segments`,
+        );
+      }
+      if (seen.has(root)) {
+        throw new Error(
+          `provider "${providerId}" experimental_nativeSkillRoots.${key} repeats ${JSON.stringify(root)}`,
+        );
+      }
+      seen.add(root);
+    }
+    return Object.freeze([...seen]);
+  };
+  return { user: read("user"), project: read("project") };
+}
+
 function validateProviderFallbackModels(
   providerId: string,
   value: unknown,
@@ -1001,6 +1065,13 @@ export function validatePluginProviderDeclaration(
     declaration.experimental_env === undefined
       ? undefined
       : validateProviderEnvPassthrough(id, declaration.experimental_env);
+  const nativeSkillRoots =
+    declaration.experimental_nativeSkillRoots === undefined
+      ? undefined
+      : validateProviderNativeSkillRoots(
+          id,
+          declaration.experimental_nativeSkillRoots,
+        );
   const deriveProviderOptions = declaration.experimental_deriveProviderOptions;
   if (
     deriveProviderOptions !== undefined &&
@@ -1037,6 +1108,11 @@ export function validatePluginProviderDeclaration(
     ...(envPassthrough === undefined
       ? {}
       : { experimental_env: Object.freeze({ passthrough: envPassthrough }) }),
+    ...(nativeSkillRoots === undefined
+      ? {}
+      : {
+          experimental_nativeSkillRoots: Object.freeze(nativeSkillRoots),
+        }),
     ...(deriveProviderOptions === undefined
       ? {}
       : { experimental_deriveProviderOptions: deriveProviderOptions }),

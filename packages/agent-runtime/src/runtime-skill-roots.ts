@@ -59,6 +59,15 @@ function normalizeSkillRoot(
   }
 }
 
+/**
+ * Which staged skill root a provider gets. The `"acp"` root is not a provider
+ * id but a SHAPE: a directory plus an inline manifest, because an ACP agent
+ * cannot discover skills from the directory alone. It is matched by the id
+ * prefix here — the last place in the runtime that reads one — because
+ * nothing on the wire yet says "this bridge needs the manifest shape". A
+ * declared skill-root capability on the provider declaration retires both the
+ * prefix and this comment.
+ */
 function skillRootAppliesToProvider(args: {
   providerId: string;
   skillRoot: AgentRuntimeSkillRoot;

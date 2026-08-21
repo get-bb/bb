@@ -784,6 +784,18 @@ export interface PluginProviderDeclaration {
     passthrough: readonly string[];
   };
   /**
+   * Directories this provider's agent reads its own skills from, relative to
+   * the target host's home directory (`user`) or to the workspace
+   * (`project`). An agent with skills of its own — an ACP agent pointed at
+   * `.cursor/skills`, say — names them here so bb can list them beside its
+   * own; core never guesses a provider's skill layout. Paths are relative and
+   * may not contain dot segments.
+   */
+  experimental_nativeSkillRoots?: {
+    user?: readonly string[];
+    project?: readonly string[];
+  };
+  /**
    * Derive this provider's opaque per-command options. Called synchronously
    * by the server for every session and turn command on a thread of this
    * provider, with the command's {@link PluginProviderOptionsContext}; the

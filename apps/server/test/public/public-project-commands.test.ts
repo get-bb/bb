@@ -8,6 +8,7 @@ import type {
 } from "@bb/host-daemon-contract";
 import { commandListResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
+import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -96,6 +97,48 @@ function legacyCommand(
   };
 }
 
+/**
+ * A user-configured ACP agent, registered the way the ACP plugin registers
+ * one from its own settings. The deprecated `customAcpAgents` config array
+ * no longer reaches the server at all.
+ */
+function configuredAcpProvider(args: {
+  id: string;
+  displayName: string;
+  launch: Record<string, unknown>;
+  nativeSkillRoots?: { user: string[]; project: string[] };
+  supportsManualCompaction?: boolean;
+}): { declaration: PluginProviderDeclaration; pluginId: string } {
+  return {
+    pluginId: "provider-acp",
+    declaration: {
+      id: args.id,
+      displayName: args.displayName,
+      experimental_family: "acp",
+      experimental_bridgeOptions: {
+        acpLaunchSpec: args.launch as never,
+      },
+      ...(args.nativeSkillRoots === undefined
+        ? {}
+        : { experimental_nativeSkillRoots: args.nativeSkillRoots }),
+      capabilities: {
+        experimental_providerHealth: true,
+        experimental_providerUsage: false,
+        experimental_providerInstallation: false,
+        supportsServiceTier: true,
+        supportsNativeUserQuestion: false,
+        supportsManualCompaction: args.supportsManualCompaction ?? false,
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
+        fork: "none",
+        permissionModes: ["accept-edits", "full"],
+        reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+      },
+      composerActions: [],
+    },
+  };
+}
+
 describe("public project command typeahead route", () => {
   it("adds configured shared skills to the provider-neutral catalog", async () => {
     await withTestHarness(
@@ -155,22 +198,26 @@ describe("public project command typeahead route", () => {
     );
   });
 
-  it("passes custom ACP native skill roots to the target host", async () => {
+  // Skill roots are a declared provider fact now: the plugin puts its agent's
+  // own roots on the registration and the server forwards exactly those.
+  it("passes a provider's declared native skill roots to the target host", async () => {
     await withTestHarness(
       {
-        customAcpAgents: [
-          {
-            id: "amp",
+        extraProviders: [
+          configuredAcpProvider({
+            id: "acp-amp",
             displayName: "Amp",
-            command: "amp-acp",
-            args: [],
-            env: {},
-            supportsManualCompaction: false,
+            launch: {
+              displayName: "Amp",
+              command: "amp-acp",
+              args: [],
+              env: {},
+            },
             nativeSkillRoots: {
               user: [".agents/skills"],
               project: [".agents/skills"],
             },
-          },
+          }),
         ],
       },
       async (harness) => {

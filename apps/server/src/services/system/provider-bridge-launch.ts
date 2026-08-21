@@ -2,11 +2,6 @@ import {
   DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS,
   type HostDaemonBridgeLaunch,
 } from "@bb/host-daemon-contract";
-import {
-  ACP_TIER_CAPABILITIES,
-  getAcpProviderServerCapabilities,
-  isAcpProviderId,
-} from "../providers/acp-provider-tier.js";
 import { ApiError } from "../../errors.js";
 import type { ProviderRegistration } from "../providers/provider-registry.js";
 import type { AppDeps } from "../../types.js";
@@ -33,37 +28,27 @@ export function resolveBridgeLaunchForProviderId(
     return null;
   }
   const pluginId = registration.source.pluginId;
-  // The dynamic ACP tier has no registration to read capabilities from, so it
-  // answers from the shared ACP capability set — the same source every other
-  // ACP policy accessor on the registry falls back to.
-  const isOwnRegistration = registration.info.id === providerId;
   const {
     supportsServiceTier,
     supportsThreadArchive,
     supportsThreadRename,
     permissionModes,
-  } = isOwnRegistration
-    ? registration.info.capabilities
-    : ACP_TIER_CAPABILITIES;
-  const fork = isOwnRegistration
-    ? registration.serverCapabilities.fork
-    : getAcpProviderServerCapabilities(providerId).fork;
+  } = registration.info.capabilities;
+  const fork = registration.serverCapabilities.fork;
   return {
     pluginId,
     source,
     providerOptions: { ...registration.bridgeOptions },
     // Declared daemon env the bridge may read, forwarded past the daemon's
-    // `BB_*` spawn sanitization. The dynamic ACP tier borrows the ACP
-    // plugin's declaration along with its artifact.
+    // `BB_*` spawn sanitization.
     envPassthrough: [...registration.envPassthrough],
     // The daemon has no registry: transport the validated declaration's
     // execution capabilities so its adapter accepts the same permission
     // modes and service tier the server already offered to clients. The wire
     // shares the declaration's nouns, so these carry over by name.
     capabilities: {
-      experimental_providerInstallation: isOwnRegistration
-        ? registration.info.experimental_providerInstallation
-        : false,
+      experimental_providerInstallation:
+        registration.info.experimental_providerInstallation,
       supportsServiceTier,
       supportsThreadArchive,
       supportsThreadRename,
@@ -120,49 +105,18 @@ function resolveBridgeSource(
 }
 
 /**
- * Whether the ACP tier has a plugin behind it. User-configured ACP ids are
- * dynamic and run on the bridge of whichever plugin declares the ACP tier.
- * With that plugin disabled or unloaded there is no ACP bridge anywhere, so
- * those agents cannot run and must not be offered.
- */
-export function isAcpProviderTierRegistered(
-  deps: Pick<AppDeps, "providerRegistry">,
-): boolean {
-  return findAcpTierRegistration(deps) !== null;
-}
-
-/**
- * The plugin whose bridge artifact runs this provider id.
- *
- * Normally that is the provider's own registration. User-configured ACP ids
- * are the exception: they are resolved from config at request time and borrow
- * the artifact of whichever plugin declares the ACP tier. Built-in ACP ids
- * have their own registrations and static bridge options.
+ * The plugin whose bridge artifact runs this provider id: its own
+ * registration, always. Every provider is registered by the plugin that owns
+ * it — the ACP agents a user configures are registered by the ACP plugin from
+ * its own settings.
  */
 function resolveBridgeRegistration(
   deps: Pick<AppDeps, "providerRegistry">,
   providerId: string,
 ): (ProviderRegistration & { source: { kind: "plugin" } }) | null {
   const registration = deps.providerRegistry.get(providerId);
-  if (registration !== null) {
-    return registration.source.kind === "plugin" ? registration : null;
-  }
-  if (!isAcpProviderId(providerId)) {
+  if (registration === null) {
     return null;
   }
-  return findAcpTierRegistration(deps);
-}
-
-function findAcpTierRegistration(
-  deps: Pick<AppDeps, "providerRegistry">,
-): (ProviderRegistration & { source: { kind: "plugin" } }) | null {
-  for (const entry of deps.providerRegistry.list()) {
-    if (!isAcpProviderId(entry.info.id)) {
-      continue;
-    }
-    if (entry.source.kind === "plugin") {
-      return entry;
-    }
-  }
-  return null;
+  return registration.source.kind === "plugin" ? registration : null;
 }

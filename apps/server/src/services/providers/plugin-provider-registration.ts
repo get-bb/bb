@@ -251,6 +251,10 @@ export function buildPluginProviderRegistration(args: {
     visibility: declaration.experimental_visibility ?? "always",
     fallbackModels: projectFallbackModels(declaration),
     envPassthrough: declaration.experimental_env?.passthrough ?? [],
+    nativeSkillRoots: {
+      user: declaration.experimental_nativeSkillRoots?.user ?? [],
+      project: declaration.experimental_nativeSkillRoots?.project ?? [],
+    },
     deriveProviderOptions: (context) =>
       deriveValidatedProviderOptions({
         declaration,

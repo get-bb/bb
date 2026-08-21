@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   customAcpAgentDefinition,
   formatCustomAcpProviderId,
+  mergeConfiguredAcpAgents,
   parseCustomAcpAgents,
+  type CustomAcpAgent,
 } from "./agents.js";
 import { acpProviderDeclaration } from "./declaration.js";
 import { KNOWN_ACP_AGENTS, KNOWN_ACP_PROVIDER_IDS } from "./known-agents.js";
@@ -175,5 +177,39 @@ describe("acpProviderDeclaration", () => {
       "Sign in to Amp on the machine, then reload.",
     );
     expect(declaration.capabilities.experimental_providerUsage).toBe(false);
+  });
+});
+
+describe("mergeConfiguredAcpAgents", () => {
+  const agent = (id: string, displayName: string): CustomAcpAgent => ({
+    id,
+    displayName,
+    command: id,
+    args: [],
+    env: {},
+    supportsManualCompaction: false,
+  });
+
+  // The migration: a legacy agent keeps working until the user moves it, and
+  // moving it is exactly "add it to the setting with the same id".
+  it("keeps a legacy agent the setting does not cover, and reports it", () => {
+    const merged = mergeConfiguredAcpAgents({
+      configured: [agent("amp", "Amp")],
+      legacy: [agent("old", "Old Agent")],
+    });
+
+    expect(merged.agents.map((entry) => entry.id)).toEqual(["amp", "old"]);
+    expect(merged.legacyOnly.map((entry) => entry.id)).toEqual(["old"]);
+  });
+
+  it("lets a setting entry win over a legacy entry with the same id", () => {
+    const merged = mergeConfiguredAcpAgents({
+      configured: [agent("amp", "Amp from the setting")],
+      legacy: [agent("amp", "Amp from config.json")],
+    });
+
+    expect(merged.agents).toEqual([agent("amp", "Amp from the setting")]);
+    // Nothing to warn about: the user already moved this one.
+    expect(merged.legacyOnly).toEqual([]);
   });
 });

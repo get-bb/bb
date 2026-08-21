@@ -647,38 +647,6 @@ function terminalDataBase64(byteLength: number): string {
 }
 
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
-  "hostDaemonCommandSchema.acpLaunchSpec":
-    "thread.start and turn.submit include an ACP launch spec only for dynamic ACP providers; built-ins carry plugin-declared bridge options.",
-  "hostDaemonCommandSchema.acpLaunchSpec.cwd":
-    "dynamic ACP launch specs may omit cwd so the daemon uses the thread workspace cwd.",
-  "hostDaemonCommandSchema.acpLaunchSpec.modelCli":
-    "dynamic ACP agents may omit modelCli so ACP uses the shared default-model sentinel path.",
-  "hostDaemonCommandSchema.acpLaunchSpec.modelCli.selectFlag":
-    "dynamic ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
-  "hostDaemonCommandSchema.acpLaunchSpec.reasoningCli":
-    "dynamic ACP agents may omit reasoningCli when reasoning is protocol-native, encoded in model ids, or agent-managed.",
-  "hostDaemonCommandSchema.acpLaunchSpec.reasoningCli.defaultLevel":
-    "ACP reasoning CLI config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonCommandSchema.acpLaunchSpec.reasoningCli.levelValues":
-    "ACP reasoning CLI config only needs levelValues when bb reasoning levels differ from the agent's CLI vocabulary.",
-  "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning":
-    "dynamic ACP agents may omit nativeReasoning when they advertise thought_level themselves or do not support bb-managed ACP reasoning.",
-  "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning.defaultLevel":
-    "ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning.levelValues":
-    "ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
-  "hostDaemonCommandSchema.acpLaunchSpec.nativeSkillRoots":
-    "dynamic ACP agents may omit nativeSkillRoots when they do not expose provider-native skills.",
-  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli":
-    "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
-  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.full":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.workspaceWrite":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.readonly":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.insertAfterArgs":
-    "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
   "hostDaemonCommandSchema.targetPath":
@@ -697,40 +665,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "a tool_use approval's presentation carries a tint only when the bridge wants an accent colour; absence means the neutral row tint, which is not a colour value.",
   "hostDaemonInteractiveRequestSchema.interaction.payload.subject.presentation.title":
     "a tool_use approval's presentation has a title only when the call has a headline (a path, a query); absence means the label stands alone.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec":
-    "provider.list_models includes an ACP launch spec only for dynamic ACP providers; built-ins carry plugin-declared bridge options.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
     "provider.list_models may omit cwd when only user-level provider configuration applies.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.cwd":
-    "dynamic ACP launch specs may omit cwd so the daemon uses the caller's workspace cwd.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.modelCli":
-    "dynamic ACP agents may omit modelCli so ACP uses the shared default-model sentinel path.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.modelCli.selectFlag":
-    "dynamic ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.reasoningCli":
-    "dynamic ACP agents may omit reasoningCli when reasoning is protocol-native, encoded in model ids, or agent-managed.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.reasoningCli.defaultLevel":
-    "ACP reasoning CLI config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.reasoningCli.levelValues":
-    "ACP reasoning CLI config only needs levelValues when bb reasoning levels differ from the agent's CLI vocabulary.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning":
-    "dynamic ACP agents may omit nativeReasoning when they advertise thought_level themselves or do not support bb-managed ACP reasoning.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning.defaultLevel":
-    "ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning.levelValues":
-    "ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeSkillRoots":
-    "dynamic ACP agents may omit nativeSkillRoots when they do not expose provider-native skills.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli":
-    "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.full":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.workspaceWrite":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.readonly":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.insertAfterArgs":
-    "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
   "hostDaemonOnlineRpcCommandSchema.query":
     "host.list_files may omit a search string to list files without filtering.",
   "hostDaemonOnlineRpcCommandSchema.path":
@@ -757,38 +693,6 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread runtime options carry a prompt mode only when the prompt entered one through the provider's declared composer action.",
   "hostDaemonCommandSchema.resumeContext.disallowedTools":
     "turn.submit resume context may omit provider-specific built-in tool removals for providers that do not need them.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec":
-    "turn.submit resume context carries an ACP launch spec only for dynamic ACP providers that may need lazy resume.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.cwd":
-    "resume-context ACP launch specs may omit cwd so the daemon uses the resumed thread workspace cwd.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.modelCli":
-    "resume-context ACP launch specs may omit modelCli so ACP uses the shared default-model sentinel path.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.modelCli.selectFlag":
-    "resume-context ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.reasoningCli":
-    "resume-context ACP launch specs may omit reasoningCli when reasoning is protocol-native, encoded in model ids, or agent-managed.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.reasoningCli.defaultLevel":
-    "resume-context ACP reasoning CLI config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.reasoningCli.levelValues":
-    "resume-context ACP reasoning CLI config only needs levelValues when bb reasoning levels differ from the agent's CLI vocabulary.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning":
-    "resume-context ACP launch specs may omit nativeReasoning when the agent advertises thought_level itself or does not support bb-managed ACP reasoning.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning.defaultLevel":
-    "resume-context ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning.levelValues":
-    "resume-context ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeSkillRoots":
-    "resume-context ACP launch specs may omit nativeSkillRoots when the agent does not expose provider-native skills.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli":
-    "resume-context ACP launch specs may omit permissionCli when the agent's prompt policy does not need launch-time permission flags.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.full":
-    "resume-context ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.workspaceWrite":
-    "resume-context ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.readonly":
-    "resume-context ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.insertAfterArgs":
-    "resume-context ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
 };
 
 describe("host-daemon local schemas", () => {
@@ -1044,6 +948,16 @@ const BRIDGE_LAUNCH = {
   },
 } as const;
 
+/**
+ * An ACP provider's launch: the agent's spec is declared bridge options, so
+ * it rides the same opaque `providerOptions` bag every provider's statics do.
+ */
+const ACP_BRIDGE_LAUNCH = {
+  ...BRIDGE_LAUNCH,
+  pluginId: "provider-acp",
+  providerOptions: { acpLaunchSpec: ACP_LAUNCH_SPEC },
+} as const;
+
 describe("host-daemon command schemas", () => {
   // Version 142 moves built-in ACP discovery into provider bridges and carries
   // provider-owned static bridge options plus installation capability facts.
@@ -1128,7 +1042,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(150);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(151);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -2234,12 +2148,14 @@ describe("host-daemon command schemas", () => {
     );
   });
 
-  it("round-trips dynamic ACP launch specs on provider.list_models, thread.start, and turn.submit", () => {
+  // An ACP agent's launch spec is declared bridge options now, so it rides
+  // `bridgeLaunch.providerOptions` — the same opaque bag every provider's
+  // static options use. The commands carry no provider-named field at all.
+  it("round-trips a provider's declared launch spec on provider.list_models, thread.start, and turn.submit", () => {
     const providerListModelsCommand = {
       type: "provider.list_models",
-      bridgeLaunch: BRIDGE_LAUNCH,
+      bridgeLaunch: ACP_BRIDGE_LAUNCH,
       providerId: "acp-local",
-      acpLaunchSpec: ACP_LAUNCH_SPEC,
       cwd: "/tmp/workspace",
     };
     const providerListModelsRoundTrip = JSON.parse(
@@ -2263,7 +2179,7 @@ describe("host-daemon command schemas", () => {
 
     const threadStartCommand = {
       type: "thread.start",
-      bridgeLaunch: BRIDGE_LAUNCH,
+      bridgeLaunch: ACP_BRIDGE_LAUNCH,
       environmentId: "env_123",
       threadId: "thr_123",
       workspaceContext: {
@@ -2272,7 +2188,6 @@ describe("host-daemon command schemas", () => {
       },
       projectId: "proj_123",
       providerId: "acp-local",
-      acpLaunchSpec: ACP_LAUNCH_SPEC,
       requestId: CLIENT_REQUEST_ID,
       input: [{ type: "text", text: "hello", mentions: [] }],
       options: {
@@ -2298,7 +2213,7 @@ describe("host-daemon command schemas", () => {
 
     const turnSubmitCommand = {
       type: "turn.submit",
-      bridgeLaunch: BRIDGE_LAUNCH,
+      bridgeLaunch: ACP_BRIDGE_LAUNCH,
       environmentId: "env_123",
       threadId: "thr_123",
       requestId: CLIENT_REQUEST_ID,
@@ -2313,9 +2228,8 @@ describe("host-daemon command schemas", () => {
         approvalReviewer: null,
         permissionEscalation: null,
       },
-      acpLaunchSpec: ACP_LAUNCH_SPEC,
       resumeContext: {
-        bridgeLaunch: BRIDGE_LAUNCH,
+        bridgeLaunch: ACP_BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: "/tmp/workspace",
           workspaceProvisionType: "unmanaged",
@@ -2323,7 +2237,6 @@ describe("host-daemon command schemas", () => {
         projectId: "proj_123",
         providerId: "acp-local",
         providerThreadId: "provider_123",
-        acpLaunchSpec: ACP_LAUNCH_SPEC,
         instructions: "Be a helpful thread.",
         dynamicTools: [],
         injectedSkillSources: [],

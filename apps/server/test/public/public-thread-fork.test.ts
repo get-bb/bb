@@ -2,6 +2,7 @@ import { ensurePersonalProject, getThread, listEvents } from "@bb/db";
 import { PERSONAL_PROJECT_ID, turnRequestEventDataSchema } from "@bb/domain";
 import { threadResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
+import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -101,6 +102,42 @@ async function postFork(
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * A user-configured ACP agent, registered the way the ACP plugin registers
+ * one from its own settings. The deprecated `customAcpAgents` config array
+ * no longer reaches the server at all.
+ */
+function configuredAcpProvider(args: {
+  id: string;
+  displayName: string;
+  launch: Record<string, unknown>;
+}): { declaration: PluginProviderDeclaration; pluginId: string } {
+  return {
+    pluginId: "provider-acp",
+    declaration: {
+      id: args.id,
+      displayName: args.displayName,
+      experimental_family: "acp",
+      experimental_bridgeOptions: { acpLaunchSpec: args.launch as never },
+      capabilities: {
+        experimental_providerHealth: true,
+        experimental_providerUsage: false,
+        experimental_providerInstallation: false,
+        supportsServiceTier: true,
+        supportsNativeUserQuestion: false,
+        supportsManualCompaction: false,
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
+        // Cloning at all is what gates the fork affordance.
+        fork: "tip",
+        permissionModes: ["accept-edits", "full"],
+        reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+      },
+      composerActions: [],
+    },
+  };
 }
 
 describe("public thread fork route", () => {
@@ -353,18 +390,20 @@ describe("public thread fork route", () => {
     });
   });
 
-  it("forks a custom ACP provider and uses the returned child session", async () => {
+  it("forks a configured ACP provider and uses the returned child session", async () => {
     await withTestHarness(
       {
-        customAcpAgents: [
-          {
-            id: "test-agent",
+        extraProviders: [
+          configuredAcpProvider({
+            id: "acp-test-agent",
             displayName: "Test Agent",
-            command: "test-agent",
-            args: ["acp"],
-            env: {},
-            supportsManualCompaction: false,
-          },
+            launch: {
+              displayName: "Test Agent",
+              command: "test-agent",
+              args: ["acp"],
+              env: {},
+            },
+          }),
         ],
       },
       async (harness) => {
@@ -410,11 +449,14 @@ describe("public thread fork route", () => {
         if (start.command.type !== "thread.start") {
           throw new Error("Expected thread.start");
         }
+        // The launch spec reaches the bridge through the opaque provider
+        // options every provider uses, from the plugin's own registration.
         expect(start.command).toMatchObject({
           providerId: "acp-test-agent",
-          acpLaunchSpec: {
-            command: "test-agent",
-            args: ["acp"],
+          bridgeLaunch: {
+            providerOptions: {
+              acpLaunchSpec: { command: "test-agent", args: ["acp"] },
+            },
           },
           fork: { sourceProviderThreadId: "provider-acp-source" },
         });

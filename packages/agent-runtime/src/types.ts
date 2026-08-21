@@ -15,7 +15,6 @@ import type {
   ToolCallRequest,
   ToolCallResponse,
 } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type {
   ExperimentalProviderHealthResult,
   ExperimentalProviderInstallationRunResult,
@@ -207,7 +206,6 @@ export interface AgentRuntimeBridgeLaunch {
 }
 
 export interface EnsureProviderArgs {
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   /**
    * Providers with thread-scoped processes use this to start the process for a
@@ -219,7 +217,6 @@ export interface EnsureProviderArgs {
 }
 
 export interface StartThreadArgs {
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   environmentId: string;
   threadId: string;
@@ -245,7 +242,6 @@ export interface StartThreadResult {
 }
 
 interface PrepareThreadRewindArgs {
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   environmentId: string;
   threadId: string;
@@ -270,7 +266,6 @@ interface DiscardThreadRewindArgs {
 }
 
 export interface ResumeThreadArgs {
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   environmentId: string;
   threadId: string;
@@ -381,14 +376,12 @@ interface UnarchiveThreadArgs {
 
 export interface ListModelsArgs {
   providerId: string;
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   cwd?: string;
 }
 
 interface ProviderMaintenanceArgs {
   providerId: string;
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   cwd?: string;
 }

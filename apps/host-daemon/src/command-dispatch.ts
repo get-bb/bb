@@ -234,9 +234,6 @@ async function runProviderInstallationOnHost(
     const maintenanceArgs = {
       providerId: command.providerId,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      ...(command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
       bridgeLaunch,
     };
     const run = await (
@@ -625,9 +622,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     return (options.listModels ?? defaultListModels)({
       providerId: command.providerId,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      ...(command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
       bridgeLaunch,
     });
   },
@@ -639,9 +633,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     return (options.providerHealth ?? defaultProviderHealth)({
       providerId: command.providerId,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      ...(command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
       bridgeLaunch,
     });
   },
@@ -653,9 +644,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     return (options.providerUsage ?? defaultProviderUsage)({
       providerId: command.providerId,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      ...(command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
       bridgeLaunch,
     });
   },
@@ -669,9 +657,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     )({
       providerId: command.providerId,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      ...(command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
       ...(command.requirement !== undefined
         ? { requirement: command.requirement }
         : {}),

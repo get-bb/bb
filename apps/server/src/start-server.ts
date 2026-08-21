@@ -22,7 +22,6 @@ import {
   runStartupRecoverySweep,
 } from "./services/system/periodic-sweeps.js";
 import { createProviderRegistryService } from "./services/providers/provider-registry.js";
-import { resolveAcpAgentCapabilitiesForProviderId } from "./services/system/acp-launch-spec.js";
 import { createTelemetryService } from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
@@ -72,7 +71,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     appVersion: serverConfig.BB_APP_VERSION,
     builtinSkillsRootPath: resolveBuiltinSkillsRootPath(),
     marketplaceUrl: serverConfig.BB_MARKETPLACE_URL,
-    customAcpAgents: [],
     customModels: [],
     dataDir: serverConfig.BB_DATA_DIR,
     featureFlags: serverConfig.featureFlags,
@@ -88,17 +86,10 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     transcriptionModel: serverConfig.BB_TRANSCRIPTION,
   };
 
-  // Reads `runtimeConfig.customAcpAgents` on every call so a `bb-app config
-  // refresh` (which replaces the array in place) is picked up immediately.
   const providerRegistry = createProviderRegistryService({
     // Providers arrive with plugin startup, which runs after the listener is
     // up; provider-routed work waits for it instead of failing on boot.
     deferRegistrationsSettled: true,
-    resolveAcpAgentCapabilities: (providerId) =>
-      resolveAcpAgentCapabilitiesForProviderId(
-        { config: runtimeConfig },
-        providerId,
-      ),
     // Picker order and the default provider are the user's settings.
     readUserProviderPreferences: () => {
       const settings = getAppSettings(db);

@@ -609,9 +609,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         threadId: thread.id,
         options: preparedRuntimeCommand.options,
         resumeContext: preparedRuntimeCommand.resumeContext,
-        ...(preparedRuntimeCommand.acpLaunchSpec !== undefined
-          ? { acpLaunchSpec: preparedRuntimeCommand.acpLaunchSpec }
-          : {}),
         bridgeLaunch: preparedRuntimeCommand.bridgeLaunch,
       },
       hostId: environment.hostId,

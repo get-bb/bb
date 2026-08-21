@@ -1,6 +1,5 @@
 import {
   createAgentRuntime,
-  fingerprintAcpLaunchSpec,
   bridgeLaunchProcessKey,
   type AgentRuntime,
   type AgentRuntimeBridgeLaunch,
@@ -9,7 +8,6 @@ import type { AvailableModel } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
 import type {
   HostDaemonCommand,
-  HostDaemonAcpLaunchSpec,
   ProviderHealthResult,
   ProviderUsageResult,
   HostDaemonBridgeLaunch,
@@ -64,7 +62,6 @@ export interface CommandDispatchOptions {
   eventSink: EventSink;
   listModels?: (args: {
     providerId: string;
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
   }) => Promise<{
@@ -73,19 +70,16 @@ export interface CommandDispatchOptions {
   }>;
   providerHealth?: (args: {
     providerId: string;
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
   }) => Promise<ProviderHealthResult>;
   providerUsage?: (args: {
     providerId: string;
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
   }) => Promise<ProviderUsageResult>;
   providerInstallationStatus?: (args: {
     providerId: string;
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
     requirement?: "thread_rewind";
@@ -93,7 +87,6 @@ export interface CommandDispatchOptions {
   providerInstallationRun?: (args: {
     providerId: string;
     action: "install" | "update";
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
   }) => Promise<ExperimentalProviderInstallationRunResult>;
@@ -227,7 +220,6 @@ export async function shutdownDefaultProviderMaintenanceRuntimes(): Promise<void
 
 export async function defaultListModels(args: {
   providerId: string;
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
 }): Promise<{
   models: AvailableModel[];
@@ -248,14 +240,12 @@ export async function defaultListModels(args: {
 }
 
 function defaultProviderMaintenanceRuntime(args: {
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
 }): AgentRuntime {
-  const runtimeKey =
-    `#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}` +
-    (args.acpLaunchSpec !== undefined
-      ? `#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`
-      : "");
+  // The bridge key already fingerprints the launch's provider options, which
+  // is where a provider's own launch spec rides, so two agents on one bridge
+  // artifact get two runtimes.
+  const runtimeKey = `#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}`;
   let runtime = defaultProviderMaintenanceRuntimes.get(runtimeKey);
   if (!runtime) {
     runtime = createAgentRuntime({
@@ -273,7 +263,6 @@ function defaultProviderMaintenanceRuntime(args: {
 
 export async function defaultProviderHealth(args: {
   providerId: string;
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd?: string;
 }): Promise<ProviderHealthResult> {
@@ -282,7 +271,6 @@ export async function defaultProviderHealth(args: {
 
 export async function defaultProviderUsage(args: {
   providerId: string;
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd?: string;
 }): Promise<ProviderUsageResult> {
@@ -291,7 +279,6 @@ export async function defaultProviderUsage(args: {
 
 export async function defaultProviderInstallationStatus(args: {
   providerId: string;
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd?: string;
   requirement?: "thread_rewind";
@@ -303,7 +290,6 @@ export async function defaultProviderInstallationStatus(args: {
 export async function defaultProviderInstallationRun(args: {
   providerId: string;
   action: "install" | "update";
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd?: string;
 }): Promise<ExperimentalProviderInstallationRunResult> {

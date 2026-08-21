@@ -135,13 +135,18 @@ describe("createAgentRuntime command contracts", () => {
     }
   });
 
-  it("passes acp launch specs to the provider for model list, start, and resume", async () => {
+  // A provider's own launch spec is declared bridge options: it reaches the
+  // bridge as `options.providerOptions`, like every other provider's statics.
+  it("passes a provider's declared launch spec on model list, start, and resume", async () => {
     const { record, runtime } = createContractRuntime();
+    const bridgeLaunch = createScriptedEchoLaunch({
+      providerOptions: { acpLaunchSpec },
+    });
 
     try {
-      await runtime.listModels({ providerId: "acp-custom", acpLaunchSpec });
+      await runtime.listModels({ providerId: "acp-custom", bridgeLaunch });
       await runtime.startThread({
-        acpLaunchSpec,
+        bridgeLaunch,
         environmentId: "env-1",
         threadId: "t-start",
         projectId: "p1",
@@ -149,7 +154,7 @@ describe("createAgentRuntime command contracts", () => {
         options: fullRuntimeOptions,
       });
       await runtime.resumeThread({
-        acpLaunchSpec,
+        bridgeLaunch,
         environmentId: "env-1",
         threadId: "t-resume",
         projectId: "p1",
@@ -230,27 +235,35 @@ describe("createAgentRuntime command contracts", () => {
     }
   });
 
-  it("uses a new provider process cache entry when the acp launch spec changes", async () => {
+  // Two agents can share one bridge artifact, so the process key must
+  // separate them by their declared options — or the second borrows the
+  // first's agent.
+  it("uses a new provider process cache entry when the declared launch spec changes", async () => {
     const { record, runtime } = createContractRuntime();
 
     try {
       await runtime.listModels({
         providerId: "acp-custom",
-        acpLaunchSpec: {
-          ...acpLaunchSpec,
-          env: { CACHE_MARKER: "first" },
-        },
+        bridgeLaunch: createScriptedEchoLaunch({
+          providerOptions: {
+            acpLaunchSpec: { ...acpLaunchSpec, env: { CACHE_MARKER: "first" } },
+          },
+        }),
       });
       await runtime.listModels({
         providerId: "acp-custom",
-        acpLaunchSpec: {
-          ...acpLaunchSpec,
-          env: { CACHE_MARKER: "second" },
-        },
+        bridgeLaunch: createScriptedEchoLaunch({
+          providerOptions: {
+            acpLaunchSpec: {
+              ...acpLaunchSpec,
+              env: { CACHE_MARKER: "second" },
+            },
+          },
+        }),
       });
 
       const requests = record.read();
-      // Two handshakes: each launch spec got its own bridge process.
+      // Two handshakes: each declared launch spec got its own process.
       expect(
         requests.filter((entry) => entry.method === "initialize"),
       ).toHaveLength(2);

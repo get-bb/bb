@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import {
   markThreadDeleted,
   setExperiments,
@@ -153,25 +154,64 @@ function registerRemoteRuntimeFileResponder(
   });
 }
 
+/**
+ * A user-configured ACP agent, registered the way the ACP plugin registers
+ * one from its own settings.
+ */
+function configuredAcpProvider(args: {
+  id: string;
+  displayName: string;
+  launch: Record<string, unknown>;
+}): { declaration: PluginProviderDeclaration; pluginId: string } {
+  return {
+    pluginId: "provider-acp",
+    declaration: {
+      id: args.id,
+      displayName: args.displayName,
+      experimental_family: "acp",
+      experimental_bridgeOptions: { acpLaunchSpec: args.launch as never },
+      capabilities: {
+        experimental_providerHealth: true,
+        experimental_providerUsage: false,
+        experimental_providerInstallation: false,
+        supportsServiceTier: true,
+        supportsNativeUserQuestion: false,
+        supportsManualCompaction: false,
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
+        fork: "none",
+        permissionModes: ["accept-edits", "full"],
+        reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+      },
+      composerActions: [],
+    },
+  };
+}
+
 describe("thread runtime config", () => {
-  it("attaches custom ACP launch specs to thread start and turn submit commands", async () => {
+  // A configured agent's launch spec reaches the bridge the way every
+  // provider's static options do: on the registration, inside the opaque
+  // `bridgeLaunch.providerOptions` bag.
+  it("carries a configured ACP agent's launch spec on thread start and turn submit", async () => {
     await withTestHarness(
       {
-        customAcpAgents: [
-          {
-            id: "custom",
+        extraProviders: [
+          configuredAcpProvider({
+            id: "acp-custom",
             displayName: "Custom ACP",
-            command: "custom-agent",
-            args: ["serve"],
-            env: { CUSTOM_AGENT_TOKEN: "token" },
-            supportsManualCompaction: false,
-            cwd: "/agent-home",
-            modelCli: {
-              listArgs: ["models", "list"],
-              selectFlag: "--model",
-              primaryModels: ["model-a"],
+            launch: {
+              displayName: "Custom ACP",
+              command: "custom-agent",
+              args: ["serve"],
+              env: { CUSTOM_AGENT_TOKEN: "token" },
+              cwd: "/agent-home",
+              modelCli: {
+                listArgs: ["models", "list"],
+                selectFlag: "--model",
+                primaryModels: ["model-a"],
+              },
             },
-          },
+          }),
         ],
       },
       async (harness) => {
@@ -228,7 +268,9 @@ describe("thread runtime config", () => {
           syncGeneratedTitle: false,
           thread,
         });
-        expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
+        expect(startCommand.bridgeLaunch.providerOptions).toMatchObject({
+          acpLaunchSpec: expectedSpec,
+        });
         expect(startCommand.dynamicTools).toEqual([
           expect.objectContaining({
             name: "update_environment_directory",
@@ -249,8 +291,12 @@ describe("thread runtime config", () => {
             thread,
           },
         );
-        expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
-        expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
+        expect(submitCommand.bridgeLaunch.providerOptions).toMatchObject({
+          acpLaunchSpec: expectedSpec,
+        });
+        expect(
+          submitCommand.resumeContext.bridgeLaunch.providerOptions,
+        ).toMatchObject({ acpLaunchSpec: expectedSpec });
         expect(submitCommand.resumeContext.dynamicTools).toEqual([
           expect.objectContaining({
             name: "update_environment_directory",
@@ -364,7 +410,6 @@ describe("thread runtime config", () => {
           syncGeneratedTitle: false,
           thread,
         });
-        expect(startCommand.acpLaunchSpec).toBeUndefined();
         expect(startCommand.bridgeLaunch.providerOptions).toMatchObject({
           acpLaunchSpec: expectedSpec,
         });
@@ -388,11 +433,9 @@ describe("thread runtime config", () => {
             thread,
           },
         );
-        expect(submitCommand.acpLaunchSpec).toBeUndefined();
         expect(submitCommand.bridgeLaunch.providerOptions).toMatchObject({
           acpLaunchSpec: expectedSpec,
         });
-        expect(submitCommand.resumeContext.acpLaunchSpec).toBeUndefined();
         expect(
           submitCommand.resumeContext.bridgeLaunch.providerOptions,
         ).toMatchObject({ acpLaunchSpec: expectedSpec });

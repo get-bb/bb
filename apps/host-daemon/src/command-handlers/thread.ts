@@ -106,9 +106,6 @@ async function requireSupportedProviderCliForThreadStart({
   )({
     providerId: command.providerId,
     bridgeLaunch,
-    ...(command.acpLaunchSpec === undefined
-      ? {}
-      : { acpLaunchSpec: command.acpLaunchSpec }),
     ...(command.type === "thread.rewind.prepare"
       ? { requirement: "thread_rewind" as const }
       : {}),
@@ -182,11 +179,6 @@ async function resumeThreadRuntimeIfMissing(
     options,
   );
   await entry.runtime.resumeThread({
-    ...(command.resumeContext.acpLaunchSpec !== undefined
-      ? { acpLaunchSpec: command.resumeContext.acpLaunchSpec }
-      : command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
     bridgeLaunch,
     environmentId: command.environmentId,
     threadId: command.threadId,
@@ -233,9 +225,6 @@ export async function startThread(
       workspaceContext: command.workspaceContext,
     });
     const result = await entry.runtime.startThread({
-      ...(command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
       bridgeLaunch,
       environmentId: command.environmentId,
       threadId: command.threadId,
@@ -278,9 +267,6 @@ export async function prepareThreadRewind(
     workspaceContext: command.workspaceContext,
   });
   return entry.runtime.prepareThreadRewind({
-    ...(command.acpLaunchSpec !== undefined
-      ? { acpLaunchSpec: command.acpLaunchSpec }
-      : {}),
     bridgeLaunch,
     environmentId: command.environmentId,
     threadId: command.threadId,

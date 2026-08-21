@@ -18,11 +18,6 @@
  * the user's own `providerOrder` setting, and the default provider is the
  * user's `defaultProviderId` setting or the first available entry.
  */
-import {
-  ACP_TIER_CAPABILITIES,
-  getAcpProviderServerCapabilities,
-  isAcpProviderId,
-} from "./acp-provider-tier.js";
 import type {
   AvailableModel,
   ExtensionKind,
@@ -110,6 +105,12 @@ export interface ProviderRegistration {
    */
   envPassthrough: readonly string[];
   /**
+   * Directories this provider's own agent reads skills from, relative to the
+   * target host's home directory or to the workspace. Declared by the plugin;
+   * core never guesses a provider's skill layout.
+   */
+  nativeSkillRoots: { user: readonly string[]; project: readonly string[] };
+  /**
    * The plugin's per-command options hook, bound to this declaration and to
    * the plugin's own settings (read at call time) and validated (bounded
    * plain JSON). The result rides the command as `providerOptions`, opaque to
@@ -148,10 +149,8 @@ export interface ProviderRegistryService {
    */
   getRegistrationRevision(): number;
   /**
-   * Policy accessors: one answer per question, covering registered providers
-   * plus the dynamic ACP tier (acp-* ids resolved from launch specs are never
-   * registered — they fall back to the shared ACP capability set, exactly as
-   * the catalog helpers did). Null when the id belongs to no known provider.
+   * Policy accessors: one answer per question, from the provider's own
+   * registration. Null when the id belongs to no registered provider.
    */
   getServerCapabilities(providerId: string): ProviderServerCapabilities | null;
   getSupportedPermissionModes(
@@ -167,10 +166,8 @@ export interface ProviderRegistryService {
   /**
    * Whether BB can explicitly request context compaction — today by sending a
    * standalone builtin `/compact` prompt, which the provider's bridge maps to
-   * its native compaction command. Registered providers answer from their
-   * projected server capabilities; dynamic ACP ids are per-agent rather than
-   * per-tier, so they answer from the resolved agent's own declaration via
-   * {@link ProviderRegistryDeps.resolveAcpAgentCapabilities}.
+   * its native compaction command. Answered from the provider's own
+   * projected server capabilities.
    */
   supportsManualCompaction(providerId: string): boolean;
   /**
@@ -198,6 +195,7 @@ export interface ProviderRegistryService {
       | "visibility"
       | "fallbackModels"
       | "envPassthrough"
+      | "nativeSkillRoots"
       | "deriveProviderOptions"
     > & {
       bridgeOptions?: ProviderRegistration["bridgeOptions"];
@@ -206,6 +204,7 @@ export interface ProviderRegistryService {
       visibility?: ProviderRegistration["visibility"];
       fallbackModels?: ProviderRegistration["fallbackModels"];
       envPassthrough?: ProviderRegistration["envPassthrough"];
+      nativeSkillRoots?: ProviderRegistration["nativeSkillRoots"];
       deriveProviderOptions?: ProviderRegistration["deriveProviderOptions"];
       /** Omitted by tests that do not care about order: ranks last. */
       installRank?: ProviderInstallRank;
@@ -213,9 +212,7 @@ export interface ProviderRegistryService {
   ): { dispose(): void };
   /**
    * Resolves as soon as the requested provider's plugin has registered, or
-   * when plugin startup settles without it. Dynamic `acp-*` ids share the ACP
-   * tier registration, since those per-agent ids are resolved from config and
-   * are never registered individually.
+   * when plugin startup settles without it.
    *
    * Use this for a request already scoped to one provider. Full provider
    * listings still use {@link whenRegistrationsSettled} so their roster is
@@ -247,16 +244,7 @@ export interface ProviderRegistryService {
  */
 const REGISTRATIONS_SETTLED_TIMEOUT_MS = 30_000;
 
-/**
- * The dynamic ACP tier is resolved from config at request time, so the
- * registry cannot hold those declarations. It takes a resolver instead; an
- * omitted resolver answers "no ACP agent declares anything", which is what
- * tests and pre-config construction want.
- */
 interface ProviderRegistryDeps {
-  resolveAcpAgentCapabilities?: (
-    providerId: string,
-  ) => { supportsManualCompaction: boolean } | null;
   /**
    * The user's picker order and default provider (app settings), read on
    * every listing so a settings change applies to the next request. Omitted
@@ -320,30 +308,14 @@ export function createProviderRegistryService(
     return pluginRegistrations.get(providerId) ?? null;
   }
 
-  // Dynamic `acp-*` ids share one waiter key: any ACP registration releases
-  // them, since those per-agent ids are never registered individually.
-  const ACP_TIER_WAITER_KEY = "acp tier"; // not a valid provider id, so it never collides
-  function registrationWaiterKey(providerId: string): string {
-    return isAcpProviderId(providerId) ? ACP_TIER_WAITER_KEY : providerId;
-  }
-
   function hasProviderRegistration(providerId: string): boolean {
-    if (!isAcpProviderId(providerId)) {
-      return pluginRegistrations.has(providerId);
-    }
-    for (const registeredProviderId of pluginRegistrations.keys()) {
-      if (isAcpProviderId(registeredProviderId)) {
-        return true;
-      }
-    }
-    return false;
+    return pluginRegistrations.has(providerId);
   }
 
   function releaseProviderRegistrationWaiters(providerId: string): void {
-    const key = registrationWaiterKey(providerId);
-    const waiters = providerRegistrationWaiters.get(key);
+    const waiters = providerRegistrationWaiters.get(providerId);
     if (waiters === undefined) return;
-    providerRegistrationWaiters.delete(key);
+    providerRegistrationWaiters.delete(providerId);
     for (const resolve of waiters) resolve();
   }
 
@@ -411,9 +383,6 @@ export function createProviderRegistryService(
       if (registration) {
         return registration.serverCapabilities;
       }
-      if (isAcpProviderId(providerId)) {
-        return getAcpProviderServerCapabilities(providerId);
-      }
       return null;
     },
 
@@ -421,9 +390,6 @@ export function createProviderRegistryService(
       const registration = getRegistration(providerId);
       if (registration) {
         return registration.info.capabilities.permissionModes;
-      }
-      if (isAcpProviderId(providerId)) {
-        return ACP_TIER_CAPABILITIES.permissionModes;
       }
       return null;
     },
@@ -433,9 +399,6 @@ export function createProviderRegistryService(
       if (registration) {
         return registration.info.capabilities.supportsFork;
       }
-      if (isAcpProviderId(providerId)) {
-        return ACP_TIER_CAPABILITIES.supportsFork;
-      }
       return false;
     },
 
@@ -444,9 +407,6 @@ export function createProviderRegistryService(
       if (registration) {
         return registration.info.capabilities.supportsSessionRewind;
       }
-      if (isAcpProviderId(providerId)) {
-        return ACP_TIER_CAPABILITIES.supportsSessionRewind;
-      }
       return false;
     },
 
@@ -454,12 +414,6 @@ export function createProviderRegistryService(
       const registration = getRegistration(providerId);
       if (registration) {
         return registration.serverCapabilities.supportsManualCompaction;
-      }
-      if (isAcpProviderId(providerId)) {
-        return (
-          deps.resolveAcpAgentCapabilities?.(providerId)
-            ?.supportsManualCompaction ?? false
-        );
       }
       return false;
     },
@@ -494,6 +448,10 @@ export function createProviderRegistryService(
         source: { kind: "plugin", pluginId: registration.pluginId },
         fallbackModels: registration.fallbackModels ?? [],
         envPassthrough: registration.envPassthrough ?? [],
+        nativeSkillRoots: registration.nativeSkillRoots ?? {
+          user: [],
+          project: [],
+        },
         deriveProviderOptions:
           registration.deriveProviderOptions ?? (() => ({})),
         ...(registration.icon === undefined ? {} : { icon: registration.icon }),
@@ -521,7 +479,7 @@ export function createProviderRegistryService(
       if (hasProviderRegistration(providerId) || settle === null) {
         return;
       }
-      const key = registrationWaiterKey(providerId);
+      const key = providerId;
       let release!: () => void;
       const registered = new Promise<void>((resolve) => {
         release = resolve;

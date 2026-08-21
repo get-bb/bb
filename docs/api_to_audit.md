@@ -57,6 +57,26 @@ singleton before a host artifact ever needs two configured differently, and
 whether the model-catalog helpers belong in this kit at all or in a
 CLI-model-discovery kit of their own.
 
+## `PluginProviderDeclaration.experimental_nativeSkillRoots`
+
+**What it does.** Names the directories a provider's own agent reads skills
+from, relative to the target host's home directory (`user`) or to the
+workspace (`project`). bb lists those skills beside its own and offers them in
+the composer. It replaces the one thing the server used to dig out of an ACP
+agent's launch spec: before the ACP tier was deleted, `GET /projects/:id/
+commands` read `acpLaunchSpec.nativeSkillRoots` out of a config record. A
+provider's skill layout is the provider's own fact, so it is declared, and
+core never reaches into a plugin's opaque bridge options for it. Validated at
+registration: relative paths only, no dot segments, no duplicates, at most 32
+roots per side.
+
+**Audit before stabilizing.** Decide whether the two-bucket shape (`user`,
+`project`) is the right vocabulary or whether a root should name its own base
+explicitly; confirm the 32-root cap and the relative-path rule against a real
+third-party agent; and decide whether this belongs on the declaration at all
+or should be reported per host by the bridge, since where an agent keeps its
+skills can differ per machine.
+
 ## Bridge record mode (`experimental_recordProviderChildIo` and `experimental_isProviderBridgeRecording`)
 
 **What it does.** `experimental_recordProviderChildIo` tees a provider

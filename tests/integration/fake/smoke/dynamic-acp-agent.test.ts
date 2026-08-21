@@ -1,7 +1,6 @@
 import path from "node:path";
 import { chmodSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { CustomAcpAgent } from "@bb/config/bb-app-managed-config";
 import { systemExecutionOptionsResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { getThreadOutput, sendTextMessage } from "../../helpers/api.js";
@@ -10,7 +9,8 @@ import {
   waitForThreadOutputContaining,
   waitForThreadStatus,
 } from "../../helpers/assertions.js";
-import { withHarness } from "../../helpers/harness.js";
+import { withHarness, type IntegrationHarness } from "../../helpers/harness.js";
+import { registerConfiguredAcpProvider } from "../../../../apps/server/test/helpers/provider-registry.js";
 import { scaleTimeoutMs } from "../../helpers/time.js";
 import {
   createProjectFixture,
@@ -31,30 +31,33 @@ const fixturePath = path.resolve(
 );
 chmodSync(fixturePath, 0o755);
 
-function buildDynamicAcpAgents(): CustomAcpAgent[] {
-  return [
-    {
-      id: "smoke",
+function registerDynamicAcpAgents(harness: IntegrationHarness): void {
+  const registry = harness.server.providerRegistry;
+  registerConfiguredAcpProvider(registry, {
+    id: "acp-smoke",
+    displayName: "Smoke ACP",
+    launch: {
       displayName: "Smoke ACP",
       command: fixturePath,
       args: [],
       env: { BB_DYNAMIC_ACP_SMOKE: "thread" },
-      supportsManualCompaction: false,
       modelCli: {
         listArgs: ["--list-models"],
         selectFlag: "--model",
         primaryModels: ["bb-dynamic-smoke-medium"],
       },
     },
-    {
-      id: "nomodelcli",
+  });
+  registerConfiguredAcpProvider(registry, {
+    id: "acp-nomodelcli",
+    displayName: "No Model CLI ACP",
+    launch: {
       displayName: "No Model CLI ACP",
       command: fixturePath,
       args: [],
       env: {},
-      supportsManualCompaction: false,
     },
-  ];
+  });
 }
 
 describe.sequential("dynamic ACP integration smoke", () => {
@@ -62,7 +65,7 @@ describe.sequential("dynamic ACP integration smoke", () => {
     "spawns configured ACP agents for model list, start, submit, and lazy resume",
     () =>
       withHarness(async (harness) => {
-        harness.server.config.customAcpAgents = buildDynamicAcpAgents();
+        registerDynamicAcpAgents(harness);
 
         const providersResponse = await harness.api.system.providers.$get({});
         expect(providersResponse.status).toBe(200);

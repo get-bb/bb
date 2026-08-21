@@ -201,15 +201,17 @@ describe("provider registry", () => {
   });
 
   it("runs every acp id on the acp plugin's verified artifact", () => {
-    // Only `acp-cursor` is plugin-declared; known and custom ACP agents are
-    // resolved from launch specs at request time and never registered. The
-    // server serves the ACP plugin's artifact for all of them, so the daemon
-    // must route each one onto the generic artifact adapter.
+    // Every ACP agent — bb's known list and the ones a user configures in the
+    // plugin's settings — is registered by the ACP plugin and carries that
+    // plugin's artifact, so the daemon routes each one onto the generic
+    // artifact adapter.
     for (const providerId of ["acp-cursor", "acp-opencode", "acp-custom"]) {
       const provider = createProviderForId(providerId, {
         additionalWorkspaceWriteRoots: [],
-        acpLaunchSpec: dynamicAcpLaunchSpec,
-        bridgeLaunch: ACP_BRIDGE_LAUNCH,
+        bridgeLaunch: {
+          ...ACP_BRIDGE_LAUNCH,
+          providerOptions: { acpLaunchSpec: dynamicAcpLaunchSpec },
+        },
       });
       expect(provider.id).toBe(providerId);
       expectBridgeSpawn(provider, {
@@ -260,11 +262,15 @@ describe("provider registry", () => {
     });
   });
 
-  it("creates a dynamic acp provider from a launch spec", () => {
+  // A user-configured agent is a registration like any other: its launch
+  // spec is declared bridge options, beside the host-local write roots.
+  it("carries a configured acp agent's declared launch spec", () => {
     const provider = createProviderForId("acp-custom", {
       additionalWorkspaceWriteRoots: ["/extra-root"],
-      acpLaunchSpec: dynamicAcpLaunchSpec,
-      bridgeLaunch: ACP_BRIDGE_LAUNCH,
+      bridgeLaunch: {
+        ...ACP_BRIDGE_LAUNCH,
+        providerOptions: { acpLaunchSpec: dynamicAcpLaunchSpec },
+      },
     });
 
     expect(provider.id).toBe("acp-custom");

@@ -8,7 +8,6 @@ import type { AppDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { requireEnvironment } from "../lib/entity-lookup.js";
-import { resolveAcpLaunchSpecForProviderId } from "./acp-launch-spec.js";
 import { listSystemProviderInfos } from "./execution-options.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import { resolveBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
@@ -50,10 +49,6 @@ async function getProviderState(
       "The provider bridge is unavailable.",
     );
   }
-  const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(
-    deps,
-    args.provider.id,
-  );
 
   try {
     const result = await callHostRetryableOnlineRpc(deps, {
@@ -64,7 +59,6 @@ async function getProviderState(
         providerId: args.provider.id,
         bridgeLaunch,
         ...(args.cwd === undefined ? {} : { cwd: args.cwd }),
-        ...(acpLaunchSpec === undefined ? {} : { acpLaunchSpec }),
       },
     });
     if (!result.supported) {

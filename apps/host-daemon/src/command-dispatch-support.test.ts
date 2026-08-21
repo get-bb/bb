@@ -1,6 +1,5 @@
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH } from "../test/command/dispatch-helpers.js";
 
@@ -192,49 +191,31 @@ describe("command dispatch support", () => {
     expect(shutdowns).toEqual(["runtime"]);
   });
 
-  it("forwards acp launch specs to the default model-list runtime", async () => {
-    const launchSpec: HostDaemonAcpLaunchSpec = {
-      displayName: "Custom ACP",
-      command: "custom-agent",
-      args: ["serve"],
-      env: {},
+  // A provider's own launch spec rides `bridgeLaunch.providerOptions`, which
+  // the bridge key fingerprints: two agents on one bridge artifact must not
+  // share a maintenance runtime, or the second borrows the first's agent.
+  it("creates a new default model-list runtime when the provider options change", async () => {
+    const firstLaunch = {
+      ...DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+      providerOptions: {
+        acpLaunchSpec: {
+          displayName: "Custom ACP",
+          command: "custom-agent",
+          args: ["serve"],
+          env: { CACHE_MARKER: "first" },
+        },
+      },
     };
-    const listModels = vi.fn<AgentRuntime["listModels"]>().mockResolvedValue({
-      models: [],
-      selectedOnlyModels: [],
-    });
-    createAgentRuntimeMock.mockReturnValue(
-      makeRuntime({
-        listModels,
-        shutdown: async () => {},
-      }),
-    );
-
-    await defaultListModels({
-      providerId: "acp-custom",
-      acpLaunchSpec: launchSpec,
-      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
-    });
-
-    expect(listModels).toHaveBeenCalledWith({
-      providerId: "acp-custom",
-      acpLaunchSpec: launchSpec,
-      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
-    });
-  });
-
-  it("creates a new default model-list runtime when the acp launch spec changes", async () => {
-    const firstSpec: HostDaemonAcpLaunchSpec = {
-      displayName: "Custom ACP",
-      command: "custom-agent",
-      args: ["serve"],
-      env: { CACHE_MARKER: "first" },
-    };
-    const secondSpec: HostDaemonAcpLaunchSpec = {
-      displayName: "Custom ACP",
-      command: "custom-agent",
-      args: ["serve"],
-      env: { CACHE_MARKER: "second" },
+    const secondLaunch = {
+      ...DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+      providerOptions: {
+        acpLaunchSpec: {
+          displayName: "Custom ACP",
+          command: "custom-agent",
+          args: ["serve"],
+          env: { CACHE_MARKER: "second" },
+        },
+      },
     };
     const shutdowns: string[] = [];
     createAgentRuntimeMock
@@ -264,20 +245,38 @@ describe("command dispatch support", () => {
     await expect(
       defaultListModels({
         providerId: "acp-custom",
-        acpLaunchSpec: firstSpec,
-        bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+        bridgeLaunch: firstLaunch,
       }),
     ).resolves.toMatchObject({ models: [{ id: "first" }] });
     await expect(
       defaultListModels({
         providerId: "acp-custom",
-        acpLaunchSpec: secondSpec,
-        bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+        bridgeLaunch: secondLaunch,
       }),
     ).resolves.toMatchObject({ models: [{ id: "second" }] });
 
     expect(createAgentRuntimeMock).toHaveBeenCalledTimes(2);
     await shutdownDefaultProviderMaintenanceRuntimes();
     expect(shutdowns).toEqual(["first", "second"]);
+  });
+
+  it("forwards the launch to the default model-list runtime", async () => {
+    const listModels = vi.fn<AgentRuntime["listModels"]>().mockResolvedValue({
+      models: [],
+      selectedOnlyModels: [],
+    });
+    createAgentRuntimeMock.mockReturnValue(
+      makeRuntime({ listModels, shutdown: async () => {} }),
+    );
+
+    await defaultListModels({
+      providerId: "acp-custom",
+      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+    });
+
+    expect(listModels).toHaveBeenCalledWith({
+      providerId: "acp-custom",
+      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+    });
   });
 });

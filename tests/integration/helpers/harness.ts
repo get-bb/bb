@@ -20,8 +20,10 @@ import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedu
 import { createApp } from "../../../apps/server/src/server.js";
 import { PendingInteractionLifecycle } from "../../../apps/server/src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../../apps/server/src/services/machine-auth.js";
-import { createProviderRegistryService } from "../../../apps/server/src/services/providers/provider-registry.js";
-import { resolveAcpAgentCapabilitiesForProviderId } from "../../../apps/server/src/services/system/acp-launch-spec.js";
+import {
+  createProviderRegistryService,
+  type ProviderRegistryService,
+} from "../../../apps/server/src/services/providers/provider-registry.js";
 import {
   recordFirstPartyProviderBridgeArtifacts,
   registerFakeProviders,
@@ -78,6 +80,12 @@ export interface RunningTestServer {
   db: DbConnection;
   hub: NotificationHub;
   machineAuth: Awaited<ReturnType<typeof createMachineAuthService>>;
+  /**
+   * Providers come only from plugin registrations. A test that needs a
+   * user-configured agent registers it here, exactly as the owning plugin
+   * would from its own settings.
+   */
+  providerRegistry: ProviderRegistryService;
 }
 
 export interface IntegrationHarness {
@@ -219,7 +227,6 @@ async function startIntegrationServer(
   const config: ServerRuntimeConfig = {
     appVersion: "0.0.0-dev",
     builtinSkillsRootPath,
-    customAcpAgents: [],
     customModels: [],
     dataDir: serverDataDir,
     featureFlags: defaultFeatureFlags,
@@ -264,10 +271,7 @@ async function startIntegrationServer(
   });
   const telemetry = createNoopTelemetryService();
   const skillTreeRegistry = new SkillTreeRegistry();
-  const providerRegistry = createProviderRegistryService({
-    resolveAcpAgentCapabilities: (providerId) =>
-      resolveAcpAgentCapabilitiesForProviderId({ config }, providerId),
-  });
+  const providerRegistry = createProviderRegistryService({});
   // Providers come only from plugin declarations. This harness runs no plugin
   // service, so it registers the first-party declarations directly, exactly as
   // their plugins would.
@@ -353,6 +357,7 @@ async function startIntegrationServer(
     db,
     hub,
     machineAuth,
+    providerRegistry,
     async close(): Promise<void> {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {

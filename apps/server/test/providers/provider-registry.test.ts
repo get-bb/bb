@@ -72,34 +72,16 @@ describe("provider registry policy accessors", () => {
     expect(registry.supportsFork("codex")).toBe(true);
   });
 
-  // The dynamic ACP tier is the one answer source that is not a registration:
-  // acp-* ids resolved from launch specs are never declared by a plugin.
-  it("falls back to the shared ACP tier for unregistered acp-* ids", () => {
+  // The ACP tier is gone: every ACP agent — bb's known list and the ones a
+  // user configures in the plugin's settings — is a registration like any
+  // other, so an unregistered acp-* id is simply unknown.
+  it("answers for an unregistered acp-* id exactly as for any unknown id", () => {
     const registry = createProviderRegistryService();
-    expect(registry.getServerCapabilities("acp-custom-agent")).not.toBeNull();
-    expect(
-      registry.getSupportedPermissionModes("acp-custom-agent"),
-    ).toStrictEqual(["accept-edits", "full"]);
-    expect(typeof registry.supportsFork("acp-custom-agent")).toBe("boolean");
-    // With no resolver wired the tier declares nothing, so an unresolvable
-    // acp-* id cannot claim a per-agent capability.
+    expect(registry.getServerCapabilities("acp-custom-agent")).toBeNull();
+    expect(registry.getSupportedPermissionModes("acp-custom-agent")).toBeNull();
+    expect(registry.supportsFork("acp-custom-agent")).toBe(false);
+    expect(registry.supportsSessionRewind("acp-custom-agent")).toBe(false);
     expect(registry.supportsManualCompaction("acp-opencode")).toBe(false);
-  });
-
-  // Manual compaction is per-agent, not per-tier: it used to be a hardcoded
-  // `["acp-opencode"]` set, and is now the resolved agent's own declaration.
-  it("reads acp compaction support from the resolved agent declaration", () => {
-    const declared = new Map([
-      ["acp-opencode", { supportsManualCompaction: true }],
-      ["acp-omp", { supportsManualCompaction: false }],
-    ]);
-    const registry = createProviderRegistryService({
-      resolveAcpAgentCapabilities: (providerId) =>
-        declared.get(providerId) ?? null,
-    });
-    expect(registry.supportsManualCompaction("acp-opencode")).toBe(true);
-    expect(registry.supportsManualCompaction("acp-omp")).toBe(false);
-    expect(registry.supportsManualCompaction("acp-custom-agent")).toBe(false);
   });
 
   it("answers null/false for unknown provider ids", () => {
@@ -344,15 +326,25 @@ describe("provider registry", () => {
     expect(unrelatedProviderReady).toBe(true);
   });
 
-  it("uses the shared ACP tier registration to release dynamic ACP waits", async () => {
+  // Every ACP agent has its own registration now, so a wait is released by
+  // that agent's own registration and by nothing else. A sibling ACP provider
+  // used to release it, which meant a request could proceed against a
+  // provider that had not registered.
+  it("releases an ACP wait only on that agent's own registration", async () => {
     const registry = createProviderRegistryService({
       deferRegistrationsSettled: true,
     });
-    const ready = registry.whenProviderRegistered("acp-opencode");
+    let released = false;
+    const ready = registry.whenProviderRegistered("acp-opencode").then(() => {
+      released = true;
+    });
 
     registerProvider(registry, "acp-cursor", "provider-acp");
+    await Promise.resolve();
+    expect(released).toBe(false);
 
+    registerProvider(registry, "acp-opencode", "provider-acp");
     await ready;
-    expect(registry.get("acp-opencode")).toBeNull();
+    expect(registry.get("acp-opencode")).not.toBeNull();
   });
 });

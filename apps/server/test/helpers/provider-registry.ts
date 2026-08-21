@@ -29,6 +29,7 @@ import type {
   PluginProviderDeclaration,
 } from "@get-bb/plugin-sdk";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
+import { readPluginProviderIcon } from "../../src/services/plugins/plugin-runtime.js";
 import {
   createProviderRegistryService,
   type ProviderRegistryService,
@@ -75,6 +76,27 @@ async function loadDeclarations(
     settings: {
       define: () => ({ get: async () => ({}), onChange: () => undefined }),
     },
+    // A provider plugin may also probe its agents through its own host RPC
+    // and log what it finds. There is no daemon here, so the stub answers
+    // "no hosts" — which is exactly what a plugin sees on a server whose
+    // hosts are all offline, and it must still register its declarations.
+    hosts: {
+      experimental_client: () => ({
+        call: async () => {
+          throw new Error("no host in the declaration capture stub");
+        },
+        experimental_onWorkerExit: () => () => undefined,
+        experimental_onSignal: () => () => undefined,
+      }),
+    },
+    sdk: { hosts: { list: async () => [] } },
+    log: {
+      debug: () => undefined,
+      info: () => undefined,
+      warn: () => undefined,
+      error: () => undefined,
+    },
+    onDispose: () => undefined,
   } as unknown as BbPluginApi;
   (entry as (bb: BbPluginApi) => void)(bb);
   if (captured.length === 0) {
@@ -132,6 +154,12 @@ export async function registerFirstPartyProviders(
     }
     const declarations = await loadDeclarations(pluginId);
     for (const declaration of declarations) {
+      // The icon byte snapshot the plugin runtime captures at registration;
+      // the provider-logo route serves exactly these bytes.
+      const icon = readPluginProviderIcon(
+        pluginRootDir(pluginId),
+        declaration.icon,
+      );
       registry.register({
         ...buildPluginProviderRegistration({
           available: !unavailable.has(pluginId),
@@ -139,6 +167,7 @@ export async function registerFirstPartyProviders(
           declaration,
           readSettings: NO_PLUGIN_SETTINGS,
         }),
+        ...(icon === null ? {} : { icon }),
         pluginId,
         // The bundled order: codex, claude-code, pi, acp — the same install
         // rank the plugin runtime assigns from the bundled plugin list.
@@ -328,4 +357,49 @@ export async function registerFakeProviders(
     });
     artifacts.set(pluginId, artifact);
   }
+}
+
+/**
+ * Register a user-configured ACP agent the way the ACP plugin registers one
+ * from its own settings: its launch spec is declared bridge options, and it
+ * runs on the ACP plugin's own artifact.
+ */
+export function registerConfiguredAcpProvider(
+  registry: ProviderRegistryService,
+  args: {
+    id: string;
+    displayName: string;
+    launch: Record<string, unknown>;
+    supportsManualCompaction?: boolean;
+  },
+): void {
+  const pluginId = "provider-acp";
+  registry.register({
+    ...buildPluginProviderRegistration({
+      available: true,
+      pluginId,
+      declaration: validatePluginProviderDeclaration({
+        id: args.id,
+        displayName: args.displayName,
+        experimental_family: "acp",
+        experimental_bridgeOptions: { acpLaunchSpec: args.launch as never },
+        capabilities: {
+          experimental_providerHealth: true,
+          experimental_providerUsage: false,
+          experimental_providerInstallation: false,
+          supportsServiceTier: true,
+          supportsNativeUserQuestion: false,
+          supportsManualCompaction: args.supportsManualCompaction ?? false,
+          supportsThreadArchive: false,
+          supportsThreadRename: false,
+          fork: "none",
+          permissionModes: ["accept-edits", "full"],
+          reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+        },
+        composerActions: [],
+      }),
+      readSettings: NO_PLUGIN_SETTINGS,
+    }),
+    pluginId,
+  });
 }

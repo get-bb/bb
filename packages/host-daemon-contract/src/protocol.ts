@@ -1,3 +1,18 @@
+// Version 151 removes the typed `acpLaunchSpec` field from every command
+// schema that carried it (the thread runtime context and its resume contexts,
+// turn.submit, thread.goal.clear, and the five sessionless provider commands).
+// An ACP agent's launch spec now reaches its bridge the way every other
+// provider's static options do: inside `bridgeLaunch.providerOptions`, which
+// the owning plugin declares. The daemon→bridge hop is unchanged — the bridge
+// has always read `providerOptions.acpLaunchSpec` — and so is the process
+// key, which already fingerprints the launch's provider options. The command
+// schemas are strict, so a version-150 server sending the field to a
+// version-151 daemon is rejected outright; the reverse direction is quiet but
+// wrong, because a 150 daemon's dynamic ACP tier would launch whichever agent
+// its borrowed registration named. The mismatch is what moves an enrolled
+// machine onto a daemon that speaks this shape. This finishes what version
+// 149 started: the last provider-named field is gone from the wire.
+//
 // Version 150 adds an OPTIONAL `presentation` to each bb-injected tool
 // definition (`dynamicTools[]` on thread.start, turn.submit and the resume
 // contexts): how a call to the tool reads as a timeline row (grammar v3),
@@ -154,7 +169,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 150 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 151 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —
