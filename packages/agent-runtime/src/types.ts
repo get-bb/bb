@@ -235,9 +235,14 @@ export interface StartThreadArgs {
   instructionMode?: InstructionMode;
   /**
    * Present means fork the new thread from this source provider session
-   * instead of starting fresh; absent means a normal start.
+   * instead of starting fresh; absent means a normal start. The clone retains
+   * the source history through `sourceProviderCheckpointId`; an absent
+   * checkpoint clones the session tip.
    */
-  fork?: { sourceProviderThreadId: string };
+  fork?: {
+    sourceProviderThreadId: string;
+    sourceProviderCheckpointId?: string;
+  };
 }
 
 export interface StartThreadResult {

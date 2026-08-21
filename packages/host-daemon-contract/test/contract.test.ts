@@ -749,6 +749,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start may include a storage path so the daemon creates the directory before the agent starts.",
   "hostDaemonCommandSchema.fork":
     "thread.start omits fork unless the new thread should clone an existing provider session; absent means a normal start.",
+  "hostDaemonCommandSchema.fork.sourceProviderCheckpointId":
+    "thread.start.fork names a checkpoint only when the clone should stop at an earlier source turn; absent means clone the session tip.",
   "hostDaemonCommandSchema.inputGroups":
     "thread.start and turn.submit omit inputGroups for ordinary single user-message turns; presence preserves grouped user messages within one turn.",
   "hostDaemonCommandSchema.disallowedTools":
@@ -1131,7 +1133,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(152);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(153);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

@@ -7,6 +7,7 @@ import {
 import {
   PERSONAL_PROJECT_ID,
   turnRequestEventDataSchema,
+  turnScope,
   type PermissionMode,
 } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
@@ -23,6 +24,7 @@ import {
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
+  seedEvent,
   seedHostSession,
   seedPrimaryHost,
   seedProjectWithSource,
@@ -203,6 +205,21 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
         providerThreadId: "provider-earlier-source",
         sequence: 5,
       });
+      // The earlier turn's completion names the session that recorded the
+      // checkpoint; the later turn runs in a replacement session.
+      seedEvent(harness.deps, {
+        threadId: sourceThread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-earlier-source",
+        sequence: 6,
+        type: "turn/completed",
+        scope: turnScope("turn-earlier-source"),
+        data: {
+          providerThreadId: "provider-earlier-source",
+          status: "completed",
+          providerCheckpointId: "checkpoint-earlier-source",
+        },
+      });
       seedTurnStarted(harness.deps, {
         threadId: sourceThread.id,
         turnId: "turn-later-source",
@@ -244,6 +261,7 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
       expect(queuedStart.command.input).toEqual(forkInput);
       expect(queuedStart.command.fork).toEqual({
         sourceProviderThreadId: "provider-earlier-source",
+        sourceProviderCheckpointId: "checkpoint-earlier-source",
       });
     });
   });

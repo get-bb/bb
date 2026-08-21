@@ -229,6 +229,9 @@ export {
 export {
   appendDaemonEventsInTransaction,
   appendStoredThreadEvent,
+  copyStoredThreadEventsInTransaction,
+  findLastCompletedRootStoredTurn,
+  findLastRootStoredTurnStarted,
   appendStoredThreadEventsInTransaction,
   deleteThreadEventSuffixInTransaction,
   getHighWaterMarks,
@@ -237,7 +240,6 @@ export {
   hasRootStoredTurnStarted,
   hasStoredTurnStarted,
   getLastStoredProviderThreadId,
-  getStoredProviderThreadIdAtOrBeforeSequence,
   getLastStoredTurnRequestEvent,
   getStoredTurnRequestEventForTurn,
   getLatestThreadOutputEventRow,

@@ -34,7 +34,7 @@ Spawning:
     --image <path>                 Host-readable absolute or uploaded image path
     --origin-kind <kind>           Create a fork thread
     --source-thread <id>           Source thread for a fork
-    --source-seq-end <seq>         Last included source event sequence
+    --source-seq-end <seq>         Fork after the source turn containing this event sequence
 
   Execution defaults resolve from explicit flags, live parent execution, and
   remembered project defaults. With no remembered model, bb uses the explicitly
@@ -65,7 +65,7 @@ Forking:
   bb thread fork <source-thread-id> [options]
 
     --prompt <prompt>              Optional first prompt; omit for an idle fork
-    --source-seq-end <seq>         Fork at this source event sequence (tip by default)
+    --source-seq-end <seq>         Fork after the source turn containing this event sequence (tip by default)
     --workspace <mode>             isolated (default) or reuse
     --title <title>                Thread title
     --permission-mode <mode>       Inherit source by default; accepts accept-edits, auto, full
@@ -74,7 +74,13 @@ Forking:
     --file <path>                  Host-readable absolute or uploaded file path
     --image <path>                 Host-readable absolute or uploaded image path
 
-  Forks clone the source provider session on the same machine. Isolated forks
+  Forks clone the source provider session on the same machine and inherit the
+  source conversation in their timeline. --source-seq-end anchors the fork on
+  the completed source turn that contains that sequence: the clone and the
+  inherited timeline both end with that turn (an anchor on a user message
+  branches before it, like editing it). Without it a fork clones the session
+  tip and inherits every completed turn. Providers that can only clone a whole
+  session accept an anchor only on the source's latest turn. Isolated forks
   create a fresh managed worktree (or personal workspace for personal threads);
   reuse attaches the source environment. Omit --prompt to create an idle fork.
 

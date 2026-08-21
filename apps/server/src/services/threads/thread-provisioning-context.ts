@@ -58,6 +58,8 @@ const threadProvisionEnvironmentIntentSchema = z.discriminatedUnion("type", [
 
 const threadForkDescriptorSchema = z.object({
   sourceProviderThreadId: z.string().min(1),
+  // The provider checkpoint the clone retains through; absent clones the tip.
+  sourceProviderCheckpointId: z.string().min(1).optional(),
 });
 
 const threadProvisionCommonPayloadSchema = z.object({

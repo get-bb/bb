@@ -167,6 +167,12 @@ const agentOnlyPromptInputSchema = promptInputSchema.and(
 export const forkThreadRequestSchema = z
   .object({
     sourceThreadId: z.string().min(1),
+    /**
+     * Anchor the fork on the completed source turn containing this sequence:
+     * the cloned provider session and the inherited timeline both end with
+     * that turn (a user message row anchors before its own turn). Absent
+     * forks the session tip and inherits every completed turn.
+     */
     sourceSeqEnd: z.number().int().nonnegative().optional(),
     input: z.array(promptInputSchema).min(1).optional(),
     /** Context persisted on the fork start but hidden from user-facing output. */
