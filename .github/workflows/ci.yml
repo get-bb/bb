@@ -72,6 +72,12 @@ jobs:
       - name: Check app bundle budgets
         run: node apps/app/scripts/check-bundle-budget.mjs
 
+      # Provider-literal ratchet (G1 of the provider-plugin migration):
+      # core must never gain a new provider-id carve-out; the per-file
+      # baseline may only shrink. See docs/provider-plugin-api.md.
+      - name: Check provider-literal ratchet
+        run: node scripts/check-provider-literal-ratchet.mjs
+
       # Exceeding the Actions cache quota is silent: GitHub evicts entries
       # without failing or warning anything, so the only symptom is caches
       # quietly ceasing to hit. Warn while there is still headroom.
