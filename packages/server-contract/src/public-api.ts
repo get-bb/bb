@@ -211,7 +211,7 @@ import type {
   WorkspacePathListResponse,
 } from "./api-types.js";
 import type {
-  ThreadTabsResponse,
+  ThreadTabsWireResponse,
   UpdateThreadTabsRequest,
 } from "./api/thread-tabs.js";
 import { updateThreadTabsRequestSchema } from "./api/thread-tabs.js";
@@ -1106,7 +1106,7 @@ export const publicApiRoutes = {
       path: "/threads/:id/tabs",
       method: "get",
       request: noRequest<PathId>(),
-      response: jsonResponse<ThreadTabsResponse>(),
+      response: jsonResponse<ThreadTabsWireResponse>(),
     }),
     updateTabs: defineRoute({
       path: "/threads/:id/tabs",
@@ -1115,7 +1115,7 @@ export const publicApiRoutes = {
         updateThreadTabsRequestSchema,
       ),
       response: [
-        jsonResponse<ThreadTabsResponse>(),
+        jsonResponse<ThreadTabsWireResponse>(),
         jsonResponse<ApiError>({ status: 409 }),
       ],
     }),

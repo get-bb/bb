@@ -204,6 +204,11 @@ export const threadTabsResponseSchema = z
   })
   .strict();
 export type ThreadTabsResponse = z.infer<typeof threadTabsResponseSchema>;
+/**
+ * The JSON the tabs routes send: defaulted fields (`hostId`) may be absent.
+ * Clients parse it with `threadTabsResponseSchema`, which fills them in.
+ */
+export type ThreadTabsWireResponse = z.input<typeof threadTabsResponseSchema>;
 
 export const updateThreadTabsRequestSchema = z
   .object({
