@@ -213,7 +213,7 @@ describe("builtin plugin reconciliation", () => {
       ["automations", "Clock"],
       ["connect", "Smartphone"],
       ["custom-instructions", "EditFile"],
-      ["dev-tools", "Code"],
+      ["plugin-api-tester", "Code"],
       ["inline-vis", "AppWindow"],
       ["keep-awake", "Coffee"],
       ["pdf-preview", "FileText"],
@@ -441,13 +441,13 @@ describe("builtin plugin reconciliation", () => {
     expect(loadCount()).toBe(0);
   });
 
-  it("resolves the dev tools first-install default from the runtime", () => {
+  it("resolves the Plugin API Tester first-install default from the runtime", () => {
     const production = listBundledPluginRegistrations({
       isDevelopment: false,
-    }).find((builtin) => builtin.name === "dev-tools");
+    }).find((builtin) => builtin.name === "plugin-api-tester");
     const development = listBundledPluginRegistrations({
       isDevelopment: true,
-    }).find((builtin) => builtin.name === "dev-tools");
+    }).find((builtin) => builtin.name === "plugin-api-tester");
 
     expect(production?.defaultEnabled).toBe(false);
     expect(development?.defaultEnabled).toBe(true);

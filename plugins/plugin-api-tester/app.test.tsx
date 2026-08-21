@@ -7,17 +7,17 @@ const app = await loadPluginApp(() => import("./app"));
 
 afterEach(cleanup);
 
-describe("dev tools panel", () => {
+describe("Plugin API Tester panel", () => {
   it("registers and renders the placeholder panel", async () => {
     expect(app.navPanels).toHaveLength(1);
     expect(app.navPanels[0]).toMatchObject({
-      id: "dev-tools",
-      title: "Dev tools",
+      id: "plugin-api-tester",
+      title: "Plugin API Tester",
       icon: "Code",
-      path: "dev-tools",
+      path: "plugin-api-tester",
     });
 
     const slot = renderSlot(app.navPanels[0]!, { subPath: "" });
-    expect(await slot.findByText("Dev tools are active")).toBeTruthy();
+    expect(await slot.findByText("Plugin API Tester is active")).toBeTruthy();
   });
 });

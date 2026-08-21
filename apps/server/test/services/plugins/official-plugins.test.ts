@@ -92,7 +92,7 @@ describe("official plugin registry invariants", () => {
       automations: "Workflow management",
       connect: "Host access",
       "custom-instructions": "Context & knowledge",
-      "dev-tools": "Developer tools",
+      "plugin-api-tester": "Developer tools",
       docs: "Context & knowledge",
       github: "Developer tools",
       "inline-vis": "Interface",

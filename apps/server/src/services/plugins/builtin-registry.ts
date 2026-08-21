@@ -69,8 +69,8 @@ export const BUILTIN_PLUGINS = [
     category: "Context & knowledge",
   },
   {
-    name: "dev-tools",
-    pluginId: "dev-tools",
+    name: "plugin-api-tester",
+    pluginId: "plugin-api-tester",
     defaultEnabled: false,
     defaultEnabledInDevelopment: true,
     category: "Developer tools",

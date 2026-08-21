@@ -1,16 +1,16 @@
 {
-  "name": "bb-plugin-dev-tools",
+  "name": "bb-plugin-plugin-api-tester",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Development tools for working on bb.",
+  "description": "Exercise and inspect bb plugin API surfaces during development.",
   "engines": {
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.4.10"
   },
   "bb": {
-    "name": "Dev tools",
-    "description": "Development tools for working on bb.",
+    "name": "Plugin API Tester",
+    "description": "Exercise and inspect bb plugin API surfaces during development.",
     "branding": {
       "icon": "Code"
     },
