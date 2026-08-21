@@ -491,9 +491,12 @@ describe("ModelReasoningPicker", () => {
     );
     expect(menu.className).toContain("overflow-y-auto");
     expect(menu.className).toContain("overscroll-contain");
+    expect(
+      screen.getByRole("listbox", { name: "Models" }).className,
+    ).toContain("shrink-0");
   });
 
-  it("leaves compact drawer height and scrolling to the responsive shell", () => {
+  it("leaves compact drawer height and scrolling to the responsive shell", async () => {
     renderPicker({ compact: true, modelOptions: manyCodexModels });
 
     fireEvent.click(
@@ -503,6 +506,9 @@ describe("ModelReasoningPicker", () => {
     expect(screen.getByRole("dialog").className).not.toContain(
       "max-h-[var(--radix-popover-content-available-height)]",
     );
+    expect(
+      (await screen.findByRole("listbox", { name: "Models" })).className,
+    ).not.toContain("shrink-0");
   });
 
   it("commits a provider tab immediately and keeps its models selectable", async () => {

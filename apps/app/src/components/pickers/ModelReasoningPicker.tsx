@@ -1007,7 +1007,10 @@ export function ModelReasoningPicker({
             className={cn(
               "overflow-y-auto px-1 pb-1 pt-0",
               !isCompactViewport &&
-                "max-h-[min(250px,var(--radix-popover-content-available-height,250px)-80px)]",
+                // Preserve the model scroller's intended height when the outer
+                // menu is capped; otherwise this flex item collapses before the
+                // full desktop menu can scroll to the reasoning controls.
+                "shrink-0 max-h-[min(250px,var(--radix-popover-content-available-height,250px)-80px)]",
             )}
           >
             {isShowingModelError ? null : (
