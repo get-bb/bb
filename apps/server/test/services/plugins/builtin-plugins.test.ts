@@ -30,6 +30,7 @@ import {
   BUILTIN_PLUGIN_NAMES,
   BUILTIN_PLUGINS,
   OFFICIAL_PLUGINS,
+  listBundledPluginRegistrations,
   resolveBuiltinPluginRootPath,
 } from "../../../src/services/plugins/builtin-registry.js";
 import { copyBuiltinPlugins } from "../../../scripts/copy-builtin-plugins.js";
@@ -212,6 +213,7 @@ describe("builtin plugin reconciliation", () => {
       ["automations", "Clock"],
       ["connect", "Smartphone"],
       ["custom-instructions", "EditFile"],
+      ["dev-tools", "Code"],
       ["inline-vis", "AppWindow"],
       ["keep-awake", "Coffee"],
       ["pdf-preview", "FileText"],
@@ -437,6 +439,18 @@ describe("builtin plugin reconciliation", () => {
       { id: "builtin-fixture", enabled: false, status: "disabled" },
     ]);
     expect(loadCount()).toBe(0);
+  });
+
+  it("resolves the dev tools first-install default from the runtime", () => {
+    const production = listBundledPluginRegistrations({
+      isDevelopment: false,
+    }).find((builtin) => builtin.name === "dev-tools");
+    const development = listBundledPluginRegistrations({
+      isDevelopment: true,
+    }).find((builtin) => builtin.name === "dev-tools");
+
+    expect(production?.defaultEnabled).toBe(false);
+    expect(development?.defaultEnabled).toBe(true);
   });
 
   it("ships Workflows disabled on a fresh database", async () => {

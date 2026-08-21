@@ -14,6 +14,8 @@ export interface BundledPluginDefinition {
   autoInstall: boolean;
   /** enabled value on first install (auto or store). */
   defaultEnabled: boolean;
+  /** Optional first-install override when NODE_ENV is development. */
+  defaultEnabledInDevelopment?: boolean;
   /** Browse-tab grouping; only meaningful for store entries. */
   category?: string;
 }
@@ -65,6 +67,13 @@ export const BUILTIN_PLUGINS = [
     pluginId: "custom-instructions",
     defaultEnabled: true,
     category: "Context & knowledge",
+  },
+  {
+    name: "dev-tools",
+    pluginId: "dev-tools",
+    defaultEnabled: false,
+    defaultEnabledInDevelopment: true,
+    category: "Developer tools",
   },
   {
     name: "inline-vis",
@@ -236,9 +245,17 @@ export function resolveBuiltinPluginRootPath(name: string): string {
   });
 }
 
-export function listBundledPluginRegistrations(): BundledPluginRegistration[] {
+export function listBundledPluginRegistrations(args?: {
+  isDevelopment?: boolean;
+}): BundledPluginRegistration[] {
+  const isDevelopment =
+    args?.isDevelopment ?? process.env.NODE_ENV === "development";
   return BUNDLED_PLUGINS.map((plugin) => ({
     ...plugin,
+    defaultEnabled:
+      isDevelopment && plugin.defaultEnabledInDevelopment !== undefined
+        ? plugin.defaultEnabledInDevelopment
+        : plugin.defaultEnabled,
     rootDir: resolveBuiltinPluginRootPath(plugin.name),
   }));
 }
