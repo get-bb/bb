@@ -13,10 +13,18 @@ import type {
 } from "@bb/server-contract";
 import { durationToCompactString } from "@bb/thread-view";
 import { useEffect, useState, type ReactNode } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import Svg, { Circle } from "react-native-svg";
+import { usePickerSheetMaxHeight } from "@/screens/pickers";
 import { useTheme } from "@/theme";
-import { cn, Icon, Spinner, Text, type IconName } from "@/ui";
+import { cn, Icon, Sheet, Spinner, Text, useSheet, type IconName } from "@/ui";
 import {
   WorkflowPhaseStrip,
   WorkflowProgressView,
@@ -34,77 +42,111 @@ import {
 } from "./cards-model";
 
 /**
- * Ports of the web prompt-stack cards
+ * The phone's take on the web prompt-stack cards
  * (apps/app/src/components/promptbox/banner/*): running workflows,
- * background commands / agents, plan mode (Exit), goal (Clear), to-dos,
- * model fallback. Each is a collapsible row above the composer.
+ * background commands / agents, plan mode (Exit), goal (Clear), to-dos.
+ * The web stacks one collapsible card per item above the composer; on a
+ * phone five cards push the timeline off the screen, so each item is a
+ * chip in one horizontal row instead, and a tap opens a bottom sheet with
+ * the detail the web card shows expanded.
  */
 
-interface PromptStackCardAction {
+interface PromptChipAction {
   label: string;
   onPress: () => void;
   pending: boolean;
   testID?: string;
 }
 
-interface PromptStackCardProps {
+interface PromptChipProps {
   icon: IconName;
   label: string;
-  expanded: boolean;
-  onToggle: () => void;
+  /** Muted segment after the label ("0/4 agents", "3/7"). */
+  detail?: string;
   /** Trailing "X" action (exit plan mode / clear goal). */
-  action?: PromptStackCardAction | null;
-  /** Rendered under the header row while collapsed (workflow phase strip). */
-  belowHeader?: ReactNode;
-  /** Shimmer the label (a live activity). */
+  action?: PromptChipAction | null;
+  /** Pulse a dot in place of the icon (a live activity). */
   live?: boolean;
+  /** Sheet title; also names the chip for the screen reader. */
+  sheetTitle: string;
+  /** Sheet body. */
   children: ReactNode;
   testID?: string;
 }
 
-function PromptStackCard({
+/** Pulsing dot for live activity chips. */
+function LiveDot() {
+  const { tokens } = useTheme();
+  const opacity = useSharedValue(1);
+  useEffect(() => {
+    opacity.set(
+      withRepeat(
+        withSequence(
+          withTiming(0.35, { duration: 800 }),
+          withTiming(1, { duration: 800 }),
+        ),
+        -1,
+      ),
+    );
+  }, [opacity]);
+  const animated = useAnimatedStyle(() => ({ opacity: opacity.get() }));
+  return (
+    <Animated.View
+      style={[
+        {
+          width: 7,
+          height: 7,
+          borderRadius: 4,
+          backgroundColor: tokens.success,
+        },
+        animated,
+      ]}
+    />
+  );
+}
+
+function PromptChip({
   icon,
   label,
-  expanded,
-  onToggle,
+  detail,
   action,
-  belowHeader,
   live = false,
+  sheetTitle,
   children,
   testID,
-}: PromptStackCardProps) {
+}: PromptChipProps) {
   const { tokens } = useTheme();
+  const sheet = useSheet();
+  const maxHeight = usePickerSheetMaxHeight();
   return (
-    <View
-      className="overflow-hidden rounded-md border border-border bg-surface-raised-solid"
-      testID={testID}
-    >
-      <View className="flex-row items-center">
+    <>
+      <View
+        className="h-9 flex-row items-center overflow-hidden rounded-full border border-pill-surface-border bg-surface-raised-solid"
+        testID={testID}
+      >
         <Pressable
           accessibilityRole="button"
-          accessibilityState={{ expanded }}
-          onPress={onToggle}
-          className="min-h-8 min-w-0 flex-1 flex-row items-center gap-1.5 px-3 py-1.5 active:bg-state-hover"
+          accessibilityLabel={`${sheetTitle}: ${label}${detail ? ` ${detail}` : ""}`}
+          onPress={sheet.present}
+          className={cn(
+            "h-full flex-row items-center gap-1.5 pl-3",
+            action ? "pr-2" : "pr-3",
+            "active:bg-state-hover",
+          )}
         >
-          <Icon
-            name={icon}
-            size={14}
-            color={live ? tokens.mutedForeground : tokens.foreground}
-          />
-          <Text
-            className={cn(
-              "min-w-0 flex-1 text-xs",
-              live && "text-muted-foreground",
-            )}
-            numberOfLines={1}
-          >
+          {live ? (
+            <LiveDot />
+          ) : (
+            <Icon name={icon} size={14} color={tokens.pillIcon} />
+          )}
+          <Text variant="label" numberOfLines={1} className="max-w-[180px]">
             {label}
           </Text>
-          <Icon
-            name={expanded ? "ChevronUp" : "ChevronDown"}
-            size={14}
-            color={tokens.mutedForeground}
-          />
+          {detail ? (
+            <Text variant="caption" numberOfLines={1}>
+              {detail}
+            </Text>
+          ) : null}
         </Pressable>
         {action ? (
           <Pressable
@@ -113,7 +155,7 @@ function PromptStackCard({
             accessibilityState={{ disabled: action.pending }}
             disabled={action.pending}
             onPress={action.onPress}
-            className="h-8 w-8 items-center justify-center border-l border-border active:bg-state-hover"
+            className="h-full w-8 items-center justify-center border-l border-pill-surface-border active:bg-state-hover"
             testID={action.testID}
           >
             {action.pending ? (
@@ -124,13 +166,20 @@ function PromptStackCard({
           </Pressable>
         ) : null}
       </View>
-      {belowHeader}
-      {expanded ? (
-        <View className="border-t border-border bg-popover px-3 pb-2.5 pt-2">
+      <Sheet
+        controller={sheet}
+        title={sheetTitle}
+        layout="scroll"
+        maxDynamicContentSize={maxHeight}
+      >
+        <View
+          className="px-4 pb-2 pt-3"
+          testID={testID ? `${testID}-sheet` : undefined}
+        >
           {children}
         </View>
-      ) : null}
-    </View>
+      </Sheet>
+    </>
   );
 }
 
@@ -157,56 +206,93 @@ function workflowAgentProgressLabel(
   return `${settled}/${agents.length} agents`;
 }
 
-/**
- * One running Workflow tool run (web ThreadWorkflowCard): name, agent
- * progress and live duration collapsed, the phase/agent tree expanded.
- * Drops out once the workflow settles (its timeline row keeps the outcome).
- */
-export function ThreadWorkflowCard({
+/** One workflow inside the Workflows sheet: header, phase strip, agent tree. */
+function WorkflowSheetSection({
   workflow,
+  first,
 }: {
   workflow: TimelineWorkflowWorkRow;
+  first: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  if (workflow.status !== "pending") return null;
+  const { tokens } = useTheme();
   const name = workflow.workflowName ?? workflow.description;
   const progress = workflowAgentProgressLabel(workflow);
   const body = workflowBodyKind(workflow);
   return (
-    <PromptStackCard
-      icon="Workflow"
-      label={progress ? `${name} · ${progress}` : name}
-      live
-      expanded={expanded}
-      onToggle={() => setExpanded((value) => !value)}
-      belowHeader={
-        body.kind === "tree" ? (
-          <View className="px-3 pb-2">
-            <WorkflowPhaseStrip progress={body.snapshot} settled={false} />
-          </View>
-        ) : null
-      }
-      testID="thread-card-workflow"
+    <View
+      className={cn("gap-2 py-3", !first && "border-t border-border-hairline")}
+      testID={`thread-chip-workflow-${workflow.id}`}
     >
-      <View className="flex-row items-center justify-between gap-2 pb-1">
-        <Text variant="caption" numberOfLines={1} className="min-w-0 flex-1">
-          {workflow.description}
+      <View className="flex-row items-center gap-2">
+        <Icon name="Workflow" size={14} color={tokens.mutedForeground} />
+        <Text variant="label" numberOfLines={1} className="min-w-0 flex-1">
+          {name}
         </Text>
+        {progress ? <Text variant="caption">{progress}</Text> : null}
         <LiveDuration startedAt={workflow.startedAt} />
       </View>
+      {workflow.workflowName ? (
+        <Text variant="caption" numberOfLines={2}>
+          {workflow.description}
+        </Text>
+      ) : null}
       {body.kind === "tree" ? (
-        <WorkflowProgressView
-          progress={body.snapshot}
-          settled={false}
-          error={workflow.error}
-        />
+        <>
+          <WorkflowPhaseStrip progress={body.snapshot} settled={false} />
+          <WorkflowProgressView
+            progress={body.snapshot}
+            settled={false}
+            error={workflow.error}
+          />
+        </>
       ) : body.kind === "text" ? (
         <Text variant="caption">{body.text}</Text>
       ) : null}
-    </PromptStackCard>
+    </View>
   );
 }
 
+/**
+ * Running Workflow tool runs (web ThreadWorkflowCard, one per workflow):
+ * a single chip named after the workflow (or counting them), the sheet
+ * lists each with its phase strip and agent tree. A workflow drops out
+ * once it settles (its timeline row keeps the outcome).
+ */
+export function ThreadWorkflowsChip({
+  workflows,
+}: {
+  workflows: readonly TimelineWorkflowWorkRow[];
+}) {
+  const running = workflows.filter((workflow) => workflow.status === "pending");
+  if (running.length === 0) return null;
+  const single = running.length === 1 ? running[0] : null;
+  return (
+    <PromptChip
+      icon="Workflow"
+      live
+      label={
+        single
+          ? (single.workflowName ?? single.description)
+          : `${running.length} workflows`
+      }
+      detail={
+        single ? (workflowAgentProgressLabel(single) ?? undefined) : undefined
+      }
+      sheetTitle={single ? "Workflow" : "Workflows"}
+      testID="thread-chip-workflows"
+    >
+      {running.map((workflow, index) => (
+        <WorkflowSheetSection
+          key={workflow.id}
+          workflow={workflow}
+          first={index === 0}
+        />
+      ))}
+    </PromptChip>
+  );
+}
+
+/** Chip copy: "2 commands", "1 agent", "3 tasks" (the sheet title says "background"). */
 function backgroundActivityLabel(
   commands: readonly TimelineWorkflowWorkRow[],
 ): string {
@@ -215,37 +301,35 @@ function backgroundActivityLabel(
   ).length;
   const commandCount = commands.length - agentCount;
   if (commandCount === 0) {
-    return `Running ${agentCount} background agent${agentCount === 1 ? "" : "s"}`;
+    return `${agentCount} agent${agentCount === 1 ? "" : "s"}`;
   }
   if (agentCount === 0) {
-    return `Running ${commandCount} background command${commandCount === 1 ? "" : "s"}`;
+    return `${commandCount} command${commandCount === 1 ? "" : "s"}`;
   }
-  return `Running ${commands.length} background activities`;
+  return `${commands.length} tasks`;
 }
 
 /**
  * Live backgrounded commands / agents that are not workflows (web
- * ThreadBackgroundCommandsCard, compact layout): a count collapsed, one
- * line per task (description, model, live duration) expanded.
+ * ThreadBackgroundCommandsCard): a count on the chip, one line per task
+ * (description, model, live duration) in the sheet.
  */
-export function ThreadBackgroundCommandsCard({
+export function ThreadBackgroundCommandsChip({
   commands,
 }: {
   commands: readonly TimelineWorkflowWorkRow[];
 }) {
-  const [expanded, setExpanded] = useState(false);
   const { tokens } = useTheme();
   if (commands.length === 0) return null;
   return (
-    <PromptStackCard
+    <PromptChip
       icon="Terminal"
-      label={backgroundActivityLabel(commands)}
       live
-      expanded={expanded}
-      onToggle={() => setExpanded((value) => !value)}
-      testID="thread-card-background-commands"
+      label={backgroundActivityLabel(commands)}
+      sheetTitle="Background activity"
+      testID="thread-chip-background-commands"
     >
-      <View className="gap-1.5">
+      <View className="gap-2 py-1">
         {commands.map((row) => {
           const isAgent = isBackgroundAgentTaskType(row.taskType);
           return (
@@ -256,7 +340,7 @@ export function ThreadBackgroundCommandsCard({
                 color={tokens.mutedForeground}
               />
               <Text
-                className="min-w-0 flex-1 text-xs"
+                className="min-w-0 flex-1 text-sm"
                 numberOfLines={1}
                 accessibilityLabel={`${isAgent ? "Background agent" : "Background command"}: ${row.description}`}
               >
@@ -272,11 +356,11 @@ export function ThreadBackgroundCommandsCard({
           );
         })}
       </View>
-    </PromptStackCard>
+    </PromptChip>
   );
 }
 
-export function ThreadPromptModeCard({
+export function ThreadPromptModeChip({
   activePromptMode,
   onExitPlanMode,
   isExitPending = false,
@@ -286,35 +370,33 @@ export function ThreadPromptModeCard({
   onExitPlanMode?: () => void;
   isExitPending?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
   if (activePromptMode?.mode !== "plan") return null;
   const prompt = activePromptMode.prompt.trim();
   return (
-    <PromptStackCard
+    <PromptChip
       icon="ListTodo"
       label="Plan"
-      expanded={expanded}
-      onToggle={() => setExpanded((value) => !value)}
       action={
         onExitPlanMode
           ? {
               label: "Exit plan mode",
               onPress: onExitPlanMode,
               pending: isExitPending,
-              testID: "thread-card-plan-exit",
+              testID: "thread-chip-plan-exit",
             }
           : null
       }
-      testID="thread-card-plan"
+      sheetTitle="Plan mode"
+      testID="thread-chip-plan"
     >
-      <Text className="text-xs text-foreground/90">
+      <Text className="text-sm text-foreground/90">
         {prompt.length > 0 ? prompt : "Plan mode is active."}
       </Text>
-    </PromptStackCard>
+    </PromptChip>
   );
 }
 
-export function ThreadGoalCard({
+export function ThreadGoalChip({
   goal,
   onClearGoal,
   isClearPending = false,
@@ -324,32 +406,30 @@ export function ThreadGoalCard({
   onClearGoal?: () => void;
   isClearPending?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const { tokens } = useTheme();
   if (!goal || goal.status !== "active") return null;
   const objective = goal.objective.trim();
   return (
-    <PromptStackCard
+    <PromptChip
       icon="Target"
       label="Goal"
-      expanded={expanded}
-      onToggle={() => setExpanded((value) => !value)}
       action={
         onClearGoal
           ? {
               label: "Clear goal",
               onPress: onClearGoal,
               pending: isClearPending,
-              testID: "thread-card-goal-clear",
+              testID: "thread-chip-goal-clear",
             }
           : null
       }
-      testID="thread-card-goal"
+      sheetTitle="Goal"
+      testID="thread-chip-goal"
     >
-      <Text className="text-xs text-foreground/90">
+      <Text className="text-sm text-foreground/90">
         {objective.length > 0 ? objective : "No goal objective."}
       </Text>
-      <View className="flex-row flex-wrap items-center gap-x-4 gap-y-1 pt-2">
+      <View className="flex-row flex-wrap items-center gap-x-4 gap-y-1 pt-3">
         <View className="flex-row items-center gap-1.5">
           <Icon name="Zap" size={14} color={tokens.mutedForeground} />
           <Text variant="caption">{formatGoalTokenUsage(goal)}</Text>
@@ -361,7 +441,7 @@ export function ThreadGoalCard({
           </Text>
         </View>
       </View>
-    </PromptStackCard>
+    </PromptChip>
   );
 }
 
@@ -369,24 +449,23 @@ function todoIcon(status: ThreadTimelinePendingTodoItemStatus): IconName {
   return status === "completed" ? "Check" : "Square";
 }
 
-export function ThreadTodoCard({
+export function ThreadTodoChip({
   pendingTodos,
 }: {
   pendingTodos: ThreadTimelinePendingTodos | null;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const { tokens } = useTheme();
   const items = pendingTodos?.items ?? [];
   if (items.length === 0) return null;
   return (
-    <PromptStackCard
+    <PromptChip
       icon="ListTodo"
-      label={summarizeTodoItems(items)}
-      expanded={expanded}
-      onToggle={() => setExpanded((value) => !value)}
-      testID="thread-card-todos"
+      label="To-dos"
+      detail={summarizeTodoItems(items)}
+      sheetTitle="To-dos"
+      testID="thread-chip-todos"
     >
-      <View className="gap-1">
+      <View className="gap-2 py-1">
         {sortTodoItems(items).map((item) => (
           <View key={item.id} className="flex-row items-center gap-2">
             <Icon
@@ -400,7 +479,7 @@ export function ThreadTodoCard({
             />
             <Text
               className={cn(
-                "min-w-0 flex-1 text-xs",
+                "min-w-0 flex-1 text-sm",
                 item.status === "completed"
                   ? "text-muted-foreground line-through"
                   : item.status === "pending"
@@ -414,7 +493,99 @@ export function ThreadTodoCard({
           </View>
         ))}
       </View>
-    </PromptStackCard>
+    </PromptChip>
+  );
+}
+
+export interface ThreadPromptChipsProps {
+  workflows: readonly TimelineWorkflowWorkRow[];
+  backgroundCommands: readonly TimelineWorkflowWorkRow[];
+  activePromptMode: ThreadTimelineActivePromptMode | null;
+  onExitPlanMode?: () => void;
+  isExitPending?: boolean;
+  goal: ThreadTimelineGoal | null;
+  onClearGoal?: () => void;
+  isClearPending?: boolean;
+  pendingTodos: ThreadTimelinePendingTodos | null;
+  testID?: string;
+}
+
+/** Does the chip row have anything to show for these inputs? */
+export function hasThreadPromptChips({
+  workflows,
+  backgroundCommands,
+  activePromptMode,
+  goal,
+  pendingTodos,
+}: Pick<
+  ThreadPromptChipsProps,
+  | "workflows"
+  | "backgroundCommands"
+  | "activePromptMode"
+  | "goal"
+  | "pendingTodos"
+>): boolean {
+  return (
+    workflows.some((workflow) => workflow.status === "pending") ||
+    backgroundCommands.length > 0 ||
+    activePromptMode?.mode === "plan" ||
+    goal?.status === "active" ||
+    (pendingTodos?.items.length ?? 0) > 0
+  );
+}
+
+/**
+ * The chip row above the composer: one horizontal, scrollable line no
+ * matter how many things run. Renders nothing when no chip applies, so
+ * the stack's gap does not open up for an empty row.
+ */
+export function ThreadPromptChips({
+  workflows,
+  backgroundCommands,
+  activePromptMode,
+  onExitPlanMode,
+  isExitPending,
+  goal,
+  onClearGoal,
+  isClearPending,
+  pendingTodos,
+  testID = "thread-prompt-chips",
+}: ThreadPromptChipsProps) {
+  if (
+    !hasThreadPromptChips({
+      workflows,
+      backgroundCommands,
+      activePromptMode,
+      goal,
+      pendingTodos,
+    })
+  ) {
+    return null;
+  }
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      // Bleed to the screen edge so a half-visible chip hints at the scroll.
+      className="-mx-3"
+      contentContainerStyle={{ gap: 6, paddingHorizontal: 12 }}
+      testID={testID}
+    >
+      <ThreadWorkflowsChip workflows={workflows} />
+      <ThreadBackgroundCommandsChip commands={backgroundCommands} />
+      <ThreadPromptModeChip
+        activePromptMode={activePromptMode}
+        onExitPlanMode={onExitPlanMode}
+        isExitPending={isExitPending}
+      />
+      <ThreadGoalChip
+        goal={goal}
+        onClearGoal={onClearGoal}
+        isClearPending={isClearPending}
+      />
+      <ThreadTodoChip pendingTodos={pendingTodos} />
+    </ScrollView>
   );
 }
 

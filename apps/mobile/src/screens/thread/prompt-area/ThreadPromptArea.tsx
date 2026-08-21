@@ -24,14 +24,11 @@ import {
   type ThreadContextBannerProps,
 } from "../banner/ThreadContextBanner";
 import {
-  ThreadBackgroundCommandsCard,
+  hasThreadPromptChips,
   ThreadContextWindowIndicator,
-  ThreadGoalCard,
   ThreadModelFallbackCard,
-  ThreadPromptModeCard,
-  ThreadTodoCard,
-  ThreadWorkflowCard,
-} from "../cards/ThreadPromptStackCards";
+  ThreadPromptChips,
+} from "../cards/ThreadPromptStackChips";
 import {
   ChildThreadPendingInteractions,
   PendingInteractionBanner,
@@ -70,13 +67,13 @@ const MAX_PROMPT_AREA_WINDOW_FRACTION = 0.6;
 /**
  * The bottom of the thread screen (port of apps/app ThreadDetailPromptArea):
  * either the pending-interaction banner (with the child rows and the plan /
- * goal cards) or the prompt stack — child rows, workflows, background
- * commands, plan, goal, to-dos, the context banner, model fallback, the
- * queued-message list — above the follow-up composer with its execution
- * pills and context-window readout. Archived threads and gone environments
- * keep the stack but hide the composer; so does a thread that is still
- * loading (web parity: the prompt area needs the loaded thread), so nothing
- * is ever typed into a draft keyed on a placeholder project id.
+ * goal chips) or the prompt stack — child rows, the chip row (workflows,
+ * background commands, plan, goal, to-dos), the context banner, model
+ * fallback, the queued-message list — above the follow-up composer with its
+ * execution pills and context-window readout. Archived threads and gone
+ * environments keep the stack but hide the composer; so does a thread that
+ * is still loading (web parity: the prompt area needs the loaded thread), so
+ * nothing is ever typed into a draft keyed on a placeholder project id.
  */
 export function ThreadPromptArea({
   threadId,
@@ -103,24 +100,23 @@ export function ThreadPromptArea({
   const { height: windowHeight } = useWindowDimensions();
   const cancelPlan = useCancelThreadPlan();
   const clearGoal = useClearThreadGoal();
-  const planCard = (
-    <ThreadPromptModeCard
-      activePromptMode={activePromptMode}
-      onExitPlanMode={
-        composer.hidden ? undefined : () => cancelPlan.mutate(threadId)
-      }
-      isExitPending={cancelPlan.isPending}
-    />
-  );
-  const goalCard = (
-    <ThreadGoalCard
-      goal={goal}
-      onClearGoal={
-        composer.hidden ? undefined : () => clearGoal.mutate(threadId)
-      }
-      isClearPending={clearGoal.isPending}
-    />
-  );
+  const chipActions = {
+    activePromptMode,
+    onExitPlanMode: composer.hidden
+      ? undefined
+      : () => cancelPlan.mutate(threadId),
+    isExitPending: cancelPlan.isPending,
+    goal,
+    onClearGoal: composer.hidden ? undefined : () => clearGoal.mutate(threadId),
+    isClearPending: clearGoal.isPending,
+  };
+  const stackChips = {
+    workflows: activeWorkflows,
+    backgroundCommands: activeBackgroundCommands,
+    activePromptMode,
+    goal,
+    pendingTodos: composer.hidden ? null : pendingTodos,
+  };
   const composerActions = useMemo<ComposerAction[]>(
     () => [
       {
@@ -137,11 +133,7 @@ export function ThreadPromptArea({
   // Skip the stack's bottom gap when nothing renders in it.
   const stackHasContent =
     childPendingInteractions.length > 0 ||
-    activeWorkflows.length > 0 ||
-    activeBackgroundCommands.length > 0 ||
-    activePromptMode?.mode === "plan" ||
-    goal?.status === "active" ||
-    (!composer.hidden && (pendingTodos?.items.length ?? 0) > 0) ||
+    hasThreadPromptChips(stackChips) ||
     contextBanner.layout.kind !== "hidden" ||
     modelFallback !== null ||
     (!composer.hidden && queuedMessages.length > 0);
@@ -161,8 +153,13 @@ export function ThreadPromptArea({
           testID="thread-prompt-area-banner"
         >
           <ChildThreadPendingInteractions items={childPendingInteractions} />
-          {activePromptMode ? planCard : null}
-          {goal ? goalCard : null}
+          <ThreadPromptChips
+            {...chipActions}
+            workflows={[]}
+            backgroundCommands={[]}
+            pendingTodos={null}
+            testID="thread-prompt-area-banner-chips"
+          />
           <PendingInteractionBanner
             interaction={pendingInteraction}
             threadId={threadId}
@@ -180,15 +177,7 @@ export function ThreadPromptArea({
             testID="thread-prompt-stack"
           >
             <ChildThreadPendingInteractions items={childPendingInteractions} />
-            {activeWorkflows.map((workflow) => (
-              <ThreadWorkflowCard key={workflow.id} workflow={workflow} />
-            ))}
-            <ThreadBackgroundCommandsCard commands={activeBackgroundCommands} />
-            {planCard}
-            {goalCard}
-            <ThreadTodoCard
-              pendingTodos={composer.hidden ? null : pendingTodos}
-            />
+            <ThreadPromptChips {...chipActions} {...stackChips} />
             <ThreadContextBanner {...contextBanner} />
             {modelFallback ? (
               <ThreadModelFallbackCard

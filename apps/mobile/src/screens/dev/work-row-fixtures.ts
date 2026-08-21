@@ -270,6 +270,57 @@ function workflow(
   };
 }
 
+/**
+ * The prompt chip row's live inputs (`ThreadPromptChips`): two running
+ * workflows and three background tasks (two commands, one agent), so the
+ * Interactions showcase can render the row and its sheets without a provider.
+ */
+export function buildPromptChipWorkFixtures(): {
+  workflows: TimelineWorkflowWorkRow[];
+  backgroundCommands: TimelineWorkflowWorkRow[];
+} {
+  const startedAt = Date.now();
+  return {
+    workflows: [
+      workflow("chip-wf-1", {
+        workflowName: "fix-confirmed-bugs",
+        description: "Fix the confirmed bugs from the triage pass",
+        startedAt: startedAt - 4 * 60_000,
+      }),
+      workflow("chip-wf-2", {
+        workflowName: "revise-one-pr",
+        description: "Revise PR #2131 after review",
+        startedAt: startedAt - 13 * 60_000,
+        workflow: FAILED_SNAPSHOT,
+      }),
+    ],
+    backgroundCommands: [
+      workflow("chip-bg-1", {
+        taskType: "local_bash",
+        workflowName: null,
+        description: "pnpm exec turbo run test --filter=@bb/server",
+        workflow: null,
+        startedAt: startedAt - 2 * 60_000,
+      }),
+      workflow("chip-bg-2", {
+        taskType: "local_bash",
+        workflowName: null,
+        description: "scripts/bb-dev-app --port 4010",
+        workflow: null,
+        startedAt: startedAt - 9 * 60_000,
+      }),
+      workflow("chip-bg-3", {
+        taskType: "local_agent",
+        workflowName: null,
+        description: "Audit the migration for missing indexes",
+        model: "claude-opus-4-1",
+        workflow: null,
+        startedAt: startedAt - 40_000,
+      }),
+    ],
+  };
+}
+
 type ApprovalFixture =
   | {
       approvalKind: "file-edit";

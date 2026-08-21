@@ -15,7 +15,7 @@ thread creation on the shared composer (mentions, attachments, voice, fork /
 handoff seeds), the thread detail screen (`/threads/[id]`: the virtualized
 timeline with every row kind, markdown, inline diffs, terminal output, images +
 lightbox, sticky-bottom, older pages, unread divider; the
-prompt area with pending-interaction banners, prompt-stack cards, the context
+prompt area with pending-interaction banners, the prompt chip row, the context
 banner, the queued-message list and the follow-up composer; header / message /
 git action sheets), deep links, and the workspace panel
 (a bottom sheet with Info · Diff · Files · Terminal + the thread's synced file
@@ -106,9 +106,10 @@ src/
                          thread/ — thread detail: ThreadDetailScreen (list +
                          prompt area inside KeyboardPaddingView), the native
                          header pieces (title + status subtitle, panel + "…"),
-                         cards/ (workflow, background commands, plan + Exit,
-                         goal + Clear, to-dos, model fallback, context-window
-                         ring), prompt-area/
+                         cards/ (the prompt chip row: workflows, background
+                         tasks, plan + Exit, goal + Clear, to-dos, each a pill
+                         that opens a detail sheet; model fallback,
+                         context-window ring), prompt-area/
                          (ThreadPromptArea: banner-or-stack + the follow-up
                          Composer; useFollowUpComposer: draft, submit mode,
                          send / queue / steer / stop, edit modes, quoting;

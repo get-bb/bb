@@ -1,5 +1,5 @@
-// Dev-only showcase for the pending-interaction banners and the queued
-// messages list: synthetic payloads for every variant (approval subjects,
+// Dev-only showcase for the pending-interaction banners, the prompt chip
+// row and the queued messages list: synthetic payloads for every variant (approval subjects,
 // user questions, the two plugin forms, unknown/malformed plugin
 // interactions) rendered through the real components. Taps hit the real
 // mutations against the active profile with invalid ids, so they exercise
@@ -15,6 +15,7 @@ import {
   ChildThreadPendingInteractions,
   PendingInteractionBanner,
 } from "../thread/interactions";
+import { ThreadPromptChips } from "../thread/cards/ThreadPromptStackChips";
 import { QueuedMessagesList } from "../thread/queue";
 import { LiveThreadInteractions } from "./LiveThreadInteractions";
 import {
@@ -22,6 +23,8 @@ import {
   buildQueuedMessageFixtures,
   DEV_THREAD_ID,
 } from "./interaction-fixtures";
+import { buildPromptChipStateFixtures } from "./prompt-chip-fixtures";
+import { buildPromptChipWorkFixtures } from "./work-row-fixtures";
 
 const MODES: ThemeModePreference[] = ["system", "light", "dark"];
 
@@ -31,6 +34,8 @@ export function InteractionsShowcaseScreen() {
   const [showSource, setShowSource] = useState(false);
   const fixtures = useMemo(() => buildInteractionFixtures(), []);
   const queued = useMemo(() => buildQueuedMessageFixtures(), []);
+  const chipWork = useMemo(() => buildPromptChipWorkFixtures(), []);
+  const chipState = useMemo(() => buildPromptChipStateFixtures(), []);
   if (!connection) {
     // The banners' mutations need the active profile's SDK client.
     return (
@@ -88,6 +93,17 @@ export function InteractionsShowcaseScreen() {
       <View className="gap-1">
         <Text variant="sectionLabel">Child threads waiting</Text>
         <ChildThreadPendingInteractions items={childItems} />
+      </View>
+      <View className="gap-1">
+        <Text variant="sectionLabel">Prompt chips</Text>
+        <View className="px-3" testID="dev-prompt-chips">
+          <ThreadPromptChips
+            {...chipWork}
+            {...chipState}
+            onExitPlanMode={() => toast.info("Exit plan mode")}
+            onClearGoal={() => toast.info("Clear goal")}
+          />
+        </View>
       </View>
       <View className="gap-1">
         <Text variant="sectionLabel">Queued messages</Text>
