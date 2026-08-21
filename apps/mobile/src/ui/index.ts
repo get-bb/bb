@@ -22,7 +22,9 @@ export {
   SheetTextInput,
   useSheet,
   type SheetController,
+  type SheetHandle,
 } from "./Sheet";
+export { ShimmerIcon } from "./ShimmerIcon";
 export { ShimmerText } from "./ShimmerText";
 export { Skeleton } from "./Skeleton";
 export { Spinner } from "./Spinner";

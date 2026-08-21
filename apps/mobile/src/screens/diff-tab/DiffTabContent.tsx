@@ -30,7 +30,7 @@ import { useEnvironment } from "@/data/environments";
 import { removeEnvironmentDiffPatchQueries } from "@/lib/query/diff-patch-cache";
 import { environmentWorkStatusQueryKeyPrefix } from "@/lib/query/query-keys";
 import { Button, EmptyStatePanel, Skeleton, Text, useSheet } from "@/ui";
-import { MergeBasePickerSheet } from "../thread/banner/MergeBasePickerSheet";
+import { MergeBasePickerSheet } from "../thread/context/MergeBasePickerSheet";
 import { DiffTabFileCard } from "./DiffTabFileCard";
 import { DiffTabHeader } from "./DiffTabHeader";
 import { DiffTargetPickerSheet } from "./DiffTargetPickerSheet";

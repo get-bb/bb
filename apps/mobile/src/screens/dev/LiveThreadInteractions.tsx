@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { View } from "react-native";
 import {
@@ -12,13 +13,13 @@ import {
 } from "@/data/thread-detail";
 import { getThreadDisplayTitle, useThread } from "@/data/threads";
 import { Button, Input, Text, toast } from "@/ui";
-import {
-  ChildThreadPendingInteractions,
-  PendingInteractionBanner,
-} from "../thread/interactions";
+import { threadHref } from "../shell/hrefs";
+import { ThreadChildThreadsChip } from "../thread/context/ThreadContextChips";
+import { PendingInteractionBanner } from "../thread/interactions";
 import { QueuedMessagesList } from "../thread/queue";
 
 function LiveThread({ threadId }: { threadId: string }) {
+  const router = useRouter();
   const thread = useThread(threadId);
   const interactions = useThreadPendingInteractions(threadId);
   const queued = useThreadQueuedMessages(threadId);
@@ -50,7 +51,13 @@ function LiveThread({ threadId }: { threadId: string }) {
           No pending interaction.
         </Text>
       )}
-      <ChildThreadPendingInteractions items={childItems} />
+      <View className="flex-row">
+        <ThreadChildThreadsChip
+          layout={{ kind: "hidden" }}
+          childPendingInteractions={childItems}
+          onOpenThread={(id) => router.push(threadHref(id))}
+        />
+      </View>
       <QueuedMessagesList
         threadId={threadId}
         queuedMessages={queued.data ?? []}

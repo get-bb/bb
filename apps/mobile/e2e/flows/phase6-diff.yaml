@@ -27,15 +27,19 @@ env:
       id: "thread-detail-title"
       text: "${THREAD_TITLE}"
     timeout: 30000
-# The dirty worktree shows the changed-files row with its "Open diff" action.
+# The dirty worktree shows the changed-files chip; its sheet has "Open diff".
 - extendedWaitUntil:
     visible:
-      id: "thread-banner-git"
+      id: "thread-chip-changes"
     timeout: 30000
-- assertVisible:
-    id: "thread-banner-open-diff"
 - tapOn:
-    id: "thread-banner-open-diff"
+    id: "thread-chip-changes"
+- extendedWaitUntil:
+    visible:
+      id: "thread-chip-open-diff"
+    timeout: 10000
+- tapOn:
+    id: "thread-chip-open-diff"
 - extendedWaitUntil:
     visible:
       id: "diff-tab-header"
@@ -95,9 +99,9 @@ env:
     visible: "> diff --git a/alpha.txt b/alpha.txt.*"
     timeout: 15000
 - takeScreenshot: phase6-diff-add-to-chat
-# A file row in the expanded banner opens the diff focused on that file.
+# A file row in the changes sheet opens the diff focused on that file.
 - tapOn:
-    id: "thread-banner-git"
+    id: "thread-chip-changes"
 - extendedWaitUntil:
     visible:
       id: "workspace-changes-list"

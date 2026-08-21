@@ -54,8 +54,8 @@ import {
 import { ThreadGitActionSheet } from "./actions/ThreadGitActionSheet";
 import { useMessageActionHandlers } from "./actions/use-message-action-handlers";
 import { useThreadGitActions } from "./actions/use-thread-git-actions";
-import { MergeBasePickerSheet } from "./banner/MergeBasePickerSheet";
-import { useThreadContextBanner } from "./banner/use-thread-context-banner";
+import { MergeBasePickerSheet } from "./context/MergeBasePickerSheet";
+import { useThreadContextChips } from "./context/use-thread-context-chips";
 import { ThreadPromptArea } from "./prompt-area/ThreadPromptArea";
 import { useFollowUpComposer } from "./prompt-area/use-follow-up-composer";
 import { ThreadHeaderActions, ThreadHeaderTitle } from "./ThreadDetailHeader";
@@ -207,16 +207,16 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
   // facts the header git sheet shares with it.
   // The banner's changed-files rows open the panel's Diff tab (focused on
   // the tapped file).
-  const contextBanner = useThreadContextBanner({
+  const contextChips = useThreadContextChips({
     threadId,
     thread,
     openDiff: panel.openDiff,
   });
   const gitActions = useThreadGitActions({
     thread,
-    environment: contextBanner.workspace.environment,
-    workspaceStatus: contextBanner.workspace.status,
-    mergeBaseBranch: contextBanner.workspace.mergeBaseBranch,
+    environment: contextChips.workspace.environment,
+    workspaceStatus: contextChips.workspace.status,
+    mergeBaseBranch: contextChips.workspace.mergeBaseBranch,
   });
   const gitSheet = useSheet();
   // Header "…" menu (rename, pin, read state, move, links, archive, delete).
@@ -234,7 +234,7 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
     if (router.canGoBack()) router.back();
     else router.replace("/");
   }, [router]);
-  const environmentGoneStatus = contextBanner.workspace.environmentGoneStatus;
+  const environmentGoneStatus = contextChips.workspace.environmentGoneStatus;
   // The follow-up composer: per-thread draft, submit mode, send / queue /
   // steer, stop, edit modes, quoting. Submissions scroll the list down.
   const scrollTimelineToEnd = useCallback(() => {
@@ -494,8 +494,8 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
             pendingTodos={pendingTodos}
             modelFallback={modelFallback}
             contextWindowUsage={contextWindowUsage}
-            contextBanner={contextBanner.banner}
-            onHandoffToNewThread={contextBanner.handoffToNewThread}
+            contextChips={contextChips.chips}
+            onHandoffToNewThread={contextChips.handoffToNewThread}
           />
         </OverlayBounds>
       </KeyboardPaddingView>
@@ -504,8 +504,8 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
           controller={threadActions}
           thread={thread}
           onDeleted={handleDeleted}
-          onHandoffToNewThread={contextBanner.handoffToNewThread}
-          onNewThreadInWorktree={contextBanner.newThreadInWorktree}
+          onHandoffToNewThread={contextChips.handoffToNewThread}
+          onNewThreadInWorktree={contextChips.newThreadInWorktree}
           leadingActions={menuLeadingActions}
           headerDetail={menuDetail.length > 0 ? menuDetail : null}
         />
@@ -513,23 +513,23 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
       <ThreadGitActionSheet
         controller={gitSheet}
         actions={gitActions.actions}
-        branchName={contextBanner.workspace.branchName}
-        gitStatus={contextBanner.workspace.gitStatus}
-        changedFiles={contextBanner.workspace.changedFiles}
+        branchName={contextChips.workspace.branchName}
+        gitStatus={contextChips.workspace.gitStatus}
+        changedFiles={contextChips.workspace.changedFiles}
         mergeBaseBranch={
-          contextBanner.workspace.showMergeBase
-            ? (contextBanner.workspace.mergeBaseBranch ?? null)
+          contextChips.workspace.showMergeBase
+            ? (contextChips.workspace.mergeBaseBranch ?? null)
             : null
         }
         onPickMergeBase={
-          contextBanner.workspace.showMergeBase
-            ? contextBanner.mergeBaseSheet.present
+          contextChips.workspace.showMergeBase
+            ? contextChips.mergeBaseSheet.present
             : null
         }
         pending={gitActions.pending}
         onRun={gitActions.run}
       />
-      <MergeBasePickerSheet {...contextBanner.mergeBasePicker} />
+      <MergeBasePickerSheet {...contextChips.mergeBasePicker} />
     </TimelineRowHostProvider>
   );
 }

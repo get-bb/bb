@@ -28,20 +28,27 @@ env:
       id: "thread-detail-title"
       text: "${THREAD_TITLE}"
     timeout: 30000
-# Context banner: the dirty worktree shows the changed-files row; expand it.
+# Context chips: the dirty worktree shows the changed-files chip; open its sheet.
 - extendedWaitUntil:
     visible:
-      id: "thread-banner-git"
+      id: "thread-chip-changes"
     timeout: 30000
 - tapOn:
-    id: "thread-banner-git"
+    id: "thread-chip-changes"
 - extendedWaitUntil:
     visible:
       id: "workspace-changes-list"
     timeout: 10000
 - assertVisible:
-    id: "thread-banner-merge-base"
-- takeScreenshot: phase4b-banner
+    id: "thread-chip-merge-base"
+- takeScreenshot: phase4b-changes-sheet
+# Tap the backdrop to close the sheet before the header menu.
+- tapOn:
+    point: "50%,15%"
+- extendedWaitUntil:
+    notVisible:
+      id: "thread-chip-changes-sheet"
+    timeout: 10000
 # Git sheet from the "…" menu (the header has no second row).
 - tapOn:
     id: "thread-actions-button"

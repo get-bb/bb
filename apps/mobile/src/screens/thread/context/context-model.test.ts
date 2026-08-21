@@ -3,9 +3,10 @@ import { threadListEntry } from "@/data/test/fixtures";
 import {
   buildChildThreadsSection,
   buildParentThreadSection,
-  resolveThreadBannerLayout,
-  type ThreadBannerSections,
-} from "./banner-model";
+  mergeChildThreadItems,
+  resolveThreadContextLayout,
+  type ThreadContextSections,
+} from "./context-model";
 
 const SIDE_CHAT = "side-chat";
 
@@ -154,8 +155,66 @@ describe("buildChildThreadsSection", () => {
   });
 });
 
-describe("resolveThreadBannerLayout", () => {
-  const empty: ThreadBannerSections = {
+describe("mergeChildThreadItems", () => {
+  const child = (id: string, hasPendingInteraction: boolean) => ({
+    id,
+    title: `Child ${id}`,
+    hasPendingInteraction,
+  });
+
+  it("lists fetched pending children once with their summary, then the rest blocked-first", () => {
+    const section = {
+      items: [
+        child("running", false),
+        child("blocked", true),
+        child("asked", true),
+      ],
+      pendingCount: 2,
+      label: "2 child threads need input",
+      primary: child("blocked", true),
+    };
+    expect(
+      mergeChildThreadItems(section, [
+        {
+          id: "asked",
+          title: "Child asked",
+          pendingSummary: "Approve: rm -rf",
+        },
+      ]),
+    ).toEqual([
+      {
+        id: "asked",
+        title: "Child asked",
+        pendingSummary: "Approve: rm -rf",
+        hasPendingInteraction: true,
+      },
+      {
+        id: "blocked",
+        title: "Child blocked",
+        pendingSummary: null,
+        hasPendingInteraction: true,
+      },
+      {
+        id: "running",
+        title: "Child running",
+        pendingSummary: null,
+        hasPendingInteraction: false,
+      },
+    ]);
+  });
+
+  it("shows pending children while the section is hidden, and nothing without either", () => {
+    expect(
+      mergeChildThreadItems(null, [
+        { id: "a", title: "A", pendingSummary: "Question" },
+      ]),
+    ).toHaveLength(1);
+    expect(mergeChildThreadItems(null, [])).toEqual([]);
+  });
+});
+
+describe("resolveThreadContextLayout", () => {
+  const empty: ThreadContextSections = {
     archived: null,
     environmentGone: null,
     parent: null,
@@ -165,21 +224,22 @@ describe("resolveThreadBannerLayout", () => {
   };
   const parent = { threadId: "p", title: "P", relationship: "parent" as const };
 
-  it("replaces live sections with the read-only row when archived or the environment is gone", () => {
+  it("replaces live sections with the read-only chip when archived or the environment is gone", () => {
     expect(
-      resolveThreadBannerLayout(
+      resolveThreadContextLayout(
         { ...empty, archived: { archivedAt: 1 }, parent },
         { gitSectionPending: false },
       ),
     ).toEqual({
       kind: "read-only",
-      statusLabel: "Thread is archived",
+      statusLabel: "Archived",
+      description: "This thread is archived. Unarchive it to continue.",
       icon: "Archive",
       offerUnarchive: true,
       parent,
     });
     expect(
-      resolveThreadBannerLayout(
+      resolveThreadContextLayout(
         {
           ...empty,
           archived: { archivedAt: 1 },
@@ -196,16 +256,16 @@ describe("resolveThreadBannerLayout", () => {
 
   it("hides while the git section is pending and when nothing applies", () => {
     expect(
-      resolveThreadBannerLayout(
+      resolveThreadContextLayout(
         { ...empty, parent },
         { gitSectionPending: true },
       ),
     ).toEqual({ kind: "hidden" });
     expect(
-      resolveThreadBannerLayout(empty, { gitSectionPending: false }),
+      resolveThreadContextLayout(empty, { gitSectionPending: false }),
     ).toEqual({ kind: "hidden" });
     expect(
-      resolveThreadBannerLayout(
+      resolveThreadContextLayout(
         { ...empty, parent },
         { gitSectionPending: false },
       ),

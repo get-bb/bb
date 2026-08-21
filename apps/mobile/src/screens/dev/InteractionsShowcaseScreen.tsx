@@ -11,11 +11,8 @@ import { useTheme } from "@/theme";
 import type { ThemeModePreference } from "@/theme/theme-preference";
 import { Button, EmptyStatePanel, Text, toast } from "@/ui";
 import { Screen } from "../shell/Screen";
-import {
-  ChildThreadPendingInteractions,
-  PendingInteractionBanner,
-} from "../thread/interactions";
 import { ThreadPromptChips } from "../thread/cards/ThreadPromptStackChips";
+import { PendingInteractionBanner } from "../thread/interactions";
 import { QueuedMessagesList } from "../thread/queue";
 import { LiveThreadInteractions } from "./LiveThreadInteractions";
 import {
@@ -23,7 +20,10 @@ import {
   buildQueuedMessageFixtures,
   DEV_THREAD_ID,
 } from "./interaction-fixtures";
-import { buildPromptChipStateFixtures } from "./prompt-chip-fixtures";
+import {
+  buildPromptChipContextFixture,
+  buildPromptChipStateFixtures,
+} from "./prompt-chip-fixtures";
 import { buildPromptChipWorkFixtures } from "./work-row-fixtures";
 
 const MODES: ThemeModePreference[] = ["system", "light", "dark"];
@@ -36,6 +36,10 @@ export function InteractionsShowcaseScreen() {
   const queued = useMemo(() => buildQueuedMessageFixtures(), []);
   const chipWork = useMemo(() => buildPromptChipWorkFixtures(), []);
   const chipState = useMemo(() => buildPromptChipStateFixtures(), []);
+  const chipContext = useMemo(
+    () => buildPromptChipContextFixture((message) => toast.info(message)),
+    [],
+  );
   if (!connection) {
     // The banners' mutations need the active profile's SDK client.
     return (
@@ -91,15 +95,14 @@ export function InteractionsShowcaseScreen() {
         </View>
       ))}
       <View className="gap-1">
-        <Text variant="sectionLabel">Child threads waiting</Text>
-        <ChildThreadPendingInteractions items={childItems} />
-      </View>
-      <View className="gap-1">
         <Text variant="sectionLabel">Prompt chips</Text>
         <View className="px-3" testID="dev-prompt-chips">
           <ThreadPromptChips
             {...chipWork}
             {...chipState}
+            context={chipContext}
+            childPendingInteractions={childItems}
+            modelFallback={chipState.modelFallback}
             onExitPlanMode={() => toast.info("Exit plan mode")}
             onClearGoal={() => toast.info("Clear goal")}
           />

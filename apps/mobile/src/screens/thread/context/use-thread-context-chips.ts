@@ -38,14 +38,14 @@ import {
   buildParentThreadSection,
   resolveEnvironmentGoneStatus,
   resolveRelatedThreadId,
-  resolveThreadBannerLayout,
+  resolveThreadContextLayout,
   type EnvironmentGoneStatus,
-  type ThreadBannerLayout,
-} from "./banner-model";
+  type ThreadContextLayout,
+} from "./context-model";
 import type { MergeBasePickerSheetProps } from "./MergeBasePickerSheet";
-import type { ThreadContextBannerProps } from "./ThreadContextBanner";
+import type { ThreadContextChipsProps } from "./ThreadContextChips";
 
-interface UseThreadContextBannerArgs {
+interface UseThreadContextChipsArgs {
   threadId: string;
   /** The open thread; undefined while it loads. */
   thread: ThreadResponse | undefined;
@@ -57,12 +57,12 @@ interface UseThreadContextBannerArgs {
   openDiff: ((path?: string) => void) | null;
 }
 
-interface ThreadContextBannerState {
-  /** Props for `<ThreadContextBanner>`. */
-  banner: ThreadContextBannerProps;
-  /** Props for the `<MergeBasePickerSheet>` the banner / git sheet open. */
+interface ThreadContextChipsState {
+  /** Props for the context chips in the prompt-chip row. */
+  chips: ThreadContextChipsProps;
+  /** Props for the `<MergeBasePickerSheet>` the changes chip / git sheet open. */
   mergeBasePicker: MergeBasePickerSheetProps;
-  /** Workspace facts the header git sheet shares with the banner. */
+  /** Workspace facts the header git sheet shares with the chips. */
   workspace: {
     environment: Environment | undefined;
     /** Ready, git-backed environment: the git / PR surfaces apply. */
@@ -95,17 +95,17 @@ function isProvisionedWorktree(environment: Environment | undefined): boolean {
 }
 
 /**
- * Data assembly for the thread context banner (the mobile counterpart of
+ * Data assembly for the thread context chips (the mobile counterpart of
  * the ThreadDetailView / ThreadDetailPromptArea banner wiring): environment
  * record, workspace status + merge base, pull request + actions, related
  * (parent / fork source) thread, active children, archive state, and the
  * "handoff" / "new thread in worktree" navigations.
  */
-export function useThreadContextBanner({
+export function useThreadContextChips({
   threadId,
   thread,
   openDiff,
-}: UseThreadContextBannerArgs): ThreadContextBannerState {
+}: UseThreadContextChipsArgs): ThreadContextChipsState {
   const router = useRouter();
   const environmentId = thread?.environmentId ?? null;
   const environmentQuery = useEnvironment(environmentId);
@@ -154,9 +154,9 @@ export function useThreadContextBanner({
     [workspaceStatus],
   );
 
-  const layout = useMemo<ThreadBannerLayout>(() => {
+  const layout = useMemo<ThreadContextLayout>(() => {
     if (!thread) return { kind: "hidden" };
-    return resolveThreadBannerLayout(
+    return resolveThreadContextLayout(
       {
         archived:
           thread.archivedAt !== null ? { archivedAt: thread.archivedAt } : null,
@@ -264,7 +264,7 @@ export function useThreadContextBanner({
   }, [router, thread]);
 
   const { setMergeBaseBranch } = mergeBase;
-  const banner: ThreadContextBannerProps = {
+  const chips: ThreadContextChipsProps = {
     layout,
     onOpenThread,
     onPressFile,
@@ -303,7 +303,7 @@ export function useThreadContextBanner({
   });
 
   return {
-    banner,
+    chips,
     mergeBasePicker: {
       controller: mergeBaseSheet,
       environmentId,

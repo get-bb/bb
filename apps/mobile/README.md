@@ -105,10 +105,11 @@ src/
                          thread/ — thread detail: ThreadDetailScreen (list +
                          prompt area inside KeyboardPaddingView), the native
                          header pieces (title + status subtitle, panel + "…"),
-                         cards/ (the prompt chip row: workflows, background
-                         tasks, plan + Exit, goal + Clear, to-dos, each a pill
-                         that opens a detail sheet; model fallback,
-                         context-window ring), prompt-area/
+                         cards/ (PromptChip + the prompt chip row: workflows,
+                         background tasks (glyph shimmers while live), plan +
+                         Exit, goal + Clear, to-dos, model fallback, plus the
+                         context/ chips, each a pill that opens a detail
+                         sheet; context-window ring), prompt-area/
                          (ThreadPromptArea: banner-or-stack + the follow-up
                          Composer; useFollowUpComposer: draft, submit mode,
                          send / queue / steer / stop, edit modes, quoting;
@@ -128,12 +129,13 @@ src/
                          host/ TimelineRowHostProvider (server URL, sender
                          metadata, thread navigation, image lightbox,
                          long-press message actions); lightbox/);
-                         banner/ — ThreadContextBanner (parent / fork row,
-                         active children card, pull request row + Mark ready /
-                         Merge sheet, changed-files row → WorkspaceChangesList +
-                         merge-base row → MergeBasePickerSheet, archived /
-                         environment-gone rows), use-thread-context-banner.ts
-                         (data assembly), pure banner-model.ts;
+                         context/ — ThreadContextChips (related-thread chip,
+                         child threads / needs-input chip, pull request chip +
+                         Mark ready / merge methods, changed-files chip → sheet
+                         with WorkspaceChangesList, merge base →
+                         MergeBasePickerSheet, Open diff; archived /
+                         environment-gone status chip), use-thread-context-chips.ts
+                         (data assembly), pure context-model.ts;
                          actions/ — MessageActionSheet + message-actions-model
                          (copy / quote paragraph / add to chat / edit / fork /
                          send to main), useMessageActionHandlers (fork →
@@ -146,7 +148,7 @@ src/
                          interactions/ — PendingInteractionBanner (approval /
                          user question / ask-user-question + secret-request
                          plugin forms / unsupported-plugin card), QuestionForm,
-                         SecretRequestForm, ChildThreadPendingInteractions;
+                         SecretRequestForm;
                          queue/ — QueuedMessagesList (send now, edit via
                          onEdit, move up/down, group toggle, delete);
                          dev/ — renderer showcases (markdown, work rows) +

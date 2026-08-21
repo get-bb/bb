@@ -45,12 +45,12 @@ import {
   useSheet,
   type IconName,
 } from "@/ui";
-import { MergeBasePickerSheet } from "../thread/banner/MergeBasePickerSheet";
+import { MergeBasePickerSheet } from "../thread/context/MergeBasePickerSheet";
 import {
   PullRequestStatusPill,
   pullRequestToneColor,
-} from "../thread/banner/PullRequestStatusPill";
-import { WorkspaceChangesList } from "../thread/banner/WorkspaceChangesList";
+} from "../thread/context/PullRequestStatusPill";
+import { WorkspaceChangesList } from "../thread/context/WorkspaceChangesList";
 import { threadHref } from "../shell/hrefs";
 import { usePanel } from "./PanelProvider";
 import type { PanelTabContentProps } from "./registry";
