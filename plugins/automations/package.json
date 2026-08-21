@@ -10,7 +10,8 @@
     "./rpc-types": "./src/rpc-types.ts"
   },
   "engines": {
-    "bb": ">=0.0"
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.4.13"
   },
   "bb": {
     "name": "Automations",

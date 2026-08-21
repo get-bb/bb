@@ -71,7 +71,10 @@ export function registerForkCommand(
     .description("Fork a thread at its tip or a source event sequence")
     .option("--prompt <prompt>", "Optional first prompt; omit for an idle fork")
     .option("--title <title>", "Thread title")
-    .option("--source-seq-end <seq>", "Last included source event sequence")
+    .option(
+      "--source-seq-end <seq>",
+      "Fork after the source turn containing this event sequence",
+    )
     .option("--workspace <mode>", "Workspace: isolated (default) or reuse")
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .option("--visibility <visibility>", "Thread visibility: visible or hidden")

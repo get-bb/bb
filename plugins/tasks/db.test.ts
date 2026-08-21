@@ -59,7 +59,7 @@ describe("tasks storage", () => {
             { count: number }
           >("SELECT COUNT(*) AS count FROM schema_version")
           .get()?.count,
-      ).toBe(5);
+      ).toBe(6);
     } finally {
       await harness.dispose();
     }
@@ -69,7 +69,7 @@ describe("tasks storage", () => {
     const { db, harness } = setup();
     try {
       db.exec(`
-        DELETE FROM schema_version WHERE version = 3;
+        DELETE FROM schema_version WHERE version IN (3, 6);
         DROP TABLE presets;
         CREATE TABLE presets (
           id TEXT PRIMARY KEY,
@@ -99,6 +99,7 @@ describe("tasks storage", () => {
         environmentKind: "project-default",
         baseBranch: null,
         machineId: null,
+        serviceTier: null,
       });
     } finally {
       await harness.dispose();
@@ -787,6 +788,7 @@ describe("tasks storage", () => {
         providerId: "openai",
         modelId: "gpt-5",
         reasoningLevel: "high",
+        serviceTier: null,
         permissionMode: "accept-edits",
         environmentKind: "project-default" as const,
         baseBranch: null,

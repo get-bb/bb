@@ -1480,6 +1480,61 @@ export interface ThreadChatProps {
 }
 
 // ---------------------------------------------------------------------------
+// experimental_ProviderModelPicker — host-owned execution selection.
+// ---------------------------------------------------------------------------
+
+/** The controlled execution selection resolved by the picker. */
+export interface ExperimentalProviderModelPickerValue {
+  providerId: string;
+  model: string;
+  reasoningLevel: ReasoningLevel;
+  /** Present only when the selected provider supports service tiers. */
+  serviceTier?: ServiceTier;
+}
+
+/** Where the picker resolves the live provider and model catalog. */
+export type ExperimentalProviderModelPickerRouting =
+  | { kind: "host"; hostId: string }
+  | { kind: "environment"; environmentId: string };
+
+/**
+ * Props of the host-owned `experimental_ProviderModelPicker` component.
+ * Provider switches emit one coherent value after the live catalog resolves
+ * its default model, reasoning level, and service-tier capability. Failed or
+ * empty catalogs leave `value` unchanged. Omit `routing` to use bb's
+ * primary-machine routing. Environment routing is required when a provider's
+ * model catalog depends on the selected workspace.
+ */
+export interface ExperimentalProviderModelPickerProps {
+  value: ExperimentalProviderModelPickerValue;
+  onChange(value: ExperimentalProviderModelPickerValue): void;
+  /** Route discovery through an explicit machine or existing environment. */
+  routing?: ExperimentalProviderModelPickerRouting;
+  /** Allow switching providers. Defaults to true; false hides provider tabs. */
+  allowProviderChange?: boolean;
+  /** Horizontal popover alignment. Defaults to `"start"`. */
+  align?: "start" | "center" | "end";
+  /** Render the shared selection summary without allowing changes. */
+  disabled?: boolean;
+  className?: string;
+}
+
+/** Props of BB's controlled, host-resolved permission-mode picker. */
+export interface ExperimentalPermissionModePickerProps {
+  /** Provider whose supported modes determine the available choices. */
+  providerId: string;
+  value: PermissionMode;
+  onChange(value: PermissionMode): void;
+  /** Route capability and machine-ceiling resolution like the execution picker. */
+  routing?: ExperimentalProviderModelPickerRouting;
+  /** Horizontal menu alignment. Defaults to `"end"`. */
+  align?: "start" | "center" | "end";
+  /** Render the resolved mode without allowing changes. */
+  disabled?: boolean;
+  className?: string;
+}
+
+// ---------------------------------------------------------------------------
 // experimental_NewThreadComposer — the host-owned new-thread compose surface.
 // ---------------------------------------------------------------------------
 
@@ -1881,6 +1936,19 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md for what to audit before the prefix drops.
    */
   experimental_NewThreadComposer: ComponentType<NewThreadComposerProps>;
+  /**
+   * BB's controlled provider/model/reasoning picker. Provider changes emit
+   * only after the new provider's verified defaults and capabilities resolve,
+   * so `onChange` always receives one coherent value. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_ProviderModelPicker: ComponentType<ExperimentalProviderModelPickerProps>;
+  /**
+   * BB's controlled permission-mode picker. The host resolves provider
+   * capabilities and the routed machine's permission ceiling. Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_PermissionModePicker: ComponentType<ExperimentalPermissionModePickerProps>;
   /**
    * The host-owned source viewer (see {@link SourceCodeProps}). Renders
    * supplied source text with BB's syntax highlighting, gutters, and live code

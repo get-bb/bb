@@ -39,6 +39,8 @@ export interface PermissionModePickerProps {
   defaultOpen?: boolean;
   /** Whether the menu blocks page interaction. Defaults to Radix's true; pass false in stories. */
   modal?: boolean;
+  /** Horizontal menu alignment. Defaults to "end". */
+  align?: "start" | "center" | "end";
   /** Temporary effective mode display; does not change the stored permission value. */
   displayOverride?: {
     label: string;
@@ -53,6 +55,8 @@ export interface PermissionModePickerProps {
   disabled?: boolean;
   /** Keep the chevron visible while disabled, used for plan-mode permission locks. */
   showChevronWhenDisabled?: boolean;
+  /** Show a locked summary when the provider exposes only one mode. */
+  showWhenSingleOption?: boolean;
 }
 
 /**
@@ -71,15 +75,21 @@ export function PermissionModePicker({
   muted = true,
   defaultOpen,
   modal,
+  align = "end",
   displayOverride,
   disabled,
   showChevronWhenDisabled,
+  showWhenSingleOption = false,
 }: PermissionModePickerProps) {
   const compactOptions = useMemo(
     () => addPermissionModeCompactLabels(options),
     [options],
   );
-  if (!supported || value === undefined || options.length <= 1) {
+  if (
+    !supported ||
+    value === undefined ||
+    (!showWhenSingleOption && options.length <= 1)
+  ) {
     return null;
   }
   return (
@@ -93,9 +103,9 @@ export function PermissionModePicker({
       muted={muted}
       defaultOpen={defaultOpen}
       modal={modal}
-      align="end"
+      align={align}
       displayOverride={displayOverride}
-      disabled={disabled}
+      disabled={disabled || options.length <= 1}
       showChevronWhenDisabled={showChevronWhenDisabled}
     />
   );

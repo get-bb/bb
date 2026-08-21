@@ -2001,22 +2001,16 @@ export function applyThreadLifecycleEventInTransaction(
  * event against THREAD_LIFECYCLE and its supersession predicates, and applies
  * the transition with a status compare-and-set — all in one transaction.
  * Never throws on stale or illegal events; returns a typed outcome for the
- * caller to log. Use applyThreadLifecycleEventInTransaction from inside an
- * existing transaction (the caller then owns notification).
+ * caller to log. The caller owns the `status-changed` notification: its
+ * metadata carries the post-transition runtime, which only the server can
+ * resolve (host connectivity lives outside the database).
  */
 export function applyThreadLifecycleEvent(
   db: DbConnection,
-  notifier: DbNotifier,
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
-  const outcome = db.transaction(
+  return db.transaction(
     (tx) => applyThreadLifecycleEventInTransaction(tx, args),
     { behavior: "immediate" },
   );
-  if (outcome.applied) {
-    notifier.notifyThread(args.threadId, ["status-changed"], {
-      projectId: outcome.thread.projectId,
-    });
-  }
-  return outcome;
 }

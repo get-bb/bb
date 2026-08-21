@@ -63,6 +63,8 @@ import {
   type ExperimentalOpenFixedTabOptions,
   type ExperimentalPluginFixedTabReference,
   type NewThreadComposerProps,
+  type ExperimentalPermissionModePickerProps,
+  type ExperimentalProviderModelPickerProps,
   type ThreadChatProps,
   type DiffProps,
   type SourceCodeProps,
@@ -498,6 +500,145 @@ function TestNewThreadComposer({
   );
 }
 
+function TestProviderModelPicker({
+  value,
+  onChange,
+  routing,
+  allowProviderChange = true,
+  align = "start",
+  disabled,
+  className,
+}: ExperimentalProviderModelPickerProps) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const reasoningLevels = [
+    "none",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "ultracode",
+    "max",
+    "ultra",
+  ] as const;
+
+  return (
+    <div
+      data-testid="bb-provider-model-picker"
+      data-routing-kind={routing?.kind ?? "primary"}
+      data-routing-id={
+        routing === undefined
+          ? ""
+          : routing.kind === "host"
+            ? routing.hostId
+            : routing.environmentId
+      }
+      data-disabled={disabled ? "true" : "false"}
+      data-provider-change-allowed={allowProviderChange ? "true" : "false"}
+      data-align={align}
+      className={className}
+    >
+      <fieldset disabled={disabled} className="contents">
+        <input
+          aria-label="Provider ID"
+          disabled={!allowProviderChange}
+          value={draft.providerId}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              providerId: event.target.value,
+            }))
+          }
+        />
+        <input
+          aria-label="Model"
+          value={draft.model}
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, model: event.target.value }))
+          }
+        />
+        <input
+          aria-label="Reasoning level"
+          value={draft.reasoningLevel}
+          onChange={(event) => {
+            const reasoningLevel = reasoningLevels.find(
+              (candidate) => candidate === event.target.value,
+            );
+            if (reasoningLevel === undefined) return;
+            setDraft((current) => ({ ...current, reasoningLevel }));
+          }}
+        />
+        <select
+          aria-label="Service tier"
+          value={draft.serviceTier ?? ""}
+          onChange={(event) =>
+            setDraft((current) => {
+              const serviceTier = event.target.value;
+              if (serviceTier !== "fast" && serviceTier !== "default") {
+                const next = { ...current };
+                delete next.serviceTier;
+                return next;
+              }
+              return { ...current, serviceTier };
+            })
+          }
+        >
+          <option value="">Unsupported</option>
+          <option value="default">Default</option>
+          <option value="fast">Fast</option>
+        </select>
+        <button type="button" onClick={() => onChange(draft)}>
+          Apply execution selection
+        </button>
+      </fieldset>
+    </div>
+  );
+}
+
+function TestPermissionModePicker({
+  providerId,
+  value,
+  onChange,
+  routing,
+  align = "end",
+  disabled,
+  className,
+}: ExperimentalPermissionModePickerProps) {
+  return (
+    <select
+      aria-label="Permission mode"
+      value={value}
+      disabled={disabled}
+      data-testid="bb-permission-mode-picker"
+      data-provider-id={providerId}
+      data-align={align}
+      data-routing-kind={routing?.kind ?? "primary"}
+      data-routing-id={
+        routing === undefined
+          ? ""
+          : routing.kind === "host"
+            ? routing.hostId
+            : routing.environmentId
+      }
+      className={className}
+      onChange={(event) => {
+        const permissionMode = event.target.value;
+        if (
+          permissionMode === "accept-edits" ||
+          permissionMode === "auto" ||
+          permissionMode === "full"
+        ) {
+          onChange(permissionMode);
+        }
+      }}
+    >
+      <option value="accept-edits">Accept Edits</option>
+      <option value="auto">Approve for me</option>
+      <option value="full">Full Access</option>
+    </select>
+  );
+}
+
 /**
  * Stand-in for the host-owned source viewer: emits the raw source in a
  * recognizable wrapper carrying the resolved presentation, so plugin tests can
@@ -655,6 +796,8 @@ const testPluginSdkApp = {
   experimental_FileLink: TestFileLink,
   experimental_UrlLink: TestUrlLink,
   experimental_NewThreadComposer: TestNewThreadComposer,
+  experimental_ProviderModelPicker: TestProviderModelPicker,
+  experimental_PermissionModePicker: TestPermissionModePicker,
   experimental_SourceCode: TestSourceCode,
   experimental_Diff: TestDiff,
   experimental_useSidebarThreads(): PluginSidebarThreadsState {

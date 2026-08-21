@@ -1,5 +1,10 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
-import type { Thread, ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
+import type {
+  Thread,
+  ThreadListEntry,
+  ThreadStatusChangeMetadata,
+  ThreadWithRuntime,
+} from "@bb/domain";
 import {
   applyToCachedThreadLists,
   getCachedThreadLists,
@@ -23,6 +28,7 @@ import {
   environmentQueryKey,
   environmentWorkStatusQueryKey,
   environmentWorkStatusQueryKeyPrefix,
+  SIDEBAR_NAVIGATION_QUERY_KEY,
   sidebarNavigationQueryKey,
   THREADS_QUERY_KEY,
   threadQueryKey,
@@ -703,4 +709,46 @@ export function updateCachedThreadListPendingInteractionState(
       thread.id === threadId ? { ...thread, hasPendingInteraction } : thread,
     );
   });
+}
+
+/**
+ * Writes the row fields a lifecycle transition rewrites (status, runtime,
+ * activity, attention and update times) into every cached thread list and
+ * the sidebar bootstrap. Status never changes list membership (lists filter
+ * on project, parent, archive state), so a row that is not cached needs
+ * nothing: the query that will load it reads the current status.
+ */
+export function updateCachedThreadListStatusState(
+  queryClient: QueryClient,
+  threadId: string,
+  statusChange: ThreadStatusChangeMetadata,
+): void {
+  applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) => {
+    if (!list.some((thread) => thread.id === threadId)) {
+      return list;
+    }
+    return list.map((thread) =>
+      thread.id === threadId ? { ...thread, ...statusChange } : thread,
+    );
+  });
+}
+
+/**
+ * Thread list and sidebar queries with a fetch in flight. Such a fetch read
+ * the database before the change that is being patched in, so its response
+ * would overwrite the patch when it lands.
+ */
+export function getFetchingThreadListQueryKeys(
+  queryClient: QueryClient,
+): QueryKey[] {
+  return queryClient
+    .getQueryCache()
+    .findAll({ fetchStatus: "fetching" })
+    .map((query) => query.queryKey)
+    .filter(
+      (queryKey) =>
+        queryKey[0] === SIDEBAR_NAVIGATION_QUERY_KEY ||
+        getThreadListFiltersFromQueryKey(queryKey) !== undefined ||
+        getArchivedThreadListFiltersFromQueryKey(queryKey) !== undefined,
+    );
 }

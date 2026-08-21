@@ -46,6 +46,7 @@ import {
   parseRejectedUsersFromClientRequest,
   parseUsersFromClientRequest,
   parseLegacyUserMessage,
+  parseProviderUserMessage,
 } from "./user-message-parsing.js";
 import { isTerminalBufferedTextFlushEvent } from "./assistant-buffering.js";
 import {
@@ -842,6 +843,12 @@ function buildFlatProjectionData(
       for (const userFromClientRequest of usersFromClientRequest) {
         appendProjectedUserMessage(state, userFromClientRequest);
       }
+      continue;
+    }
+
+    const providerUserMessage = parseProviderUserMessage(decoded, meta);
+    if (providerUserMessage) {
+      appendProjectedUserMessage(state, providerUserMessage);
       continue;
     }
 

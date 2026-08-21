@@ -5,7 +5,6 @@ import {
   type AutomationCollectionMode,
 } from "bb-plugin-automations/overview-view";
 import type {
-  AutomationExecutionOptionsResponse,
   AutomationResponse,
   AutomationRunResponse,
   AutomationsOverviewResponse,
@@ -17,16 +16,6 @@ export default {
 };
 
 const noop = () => {};
-const executionOptions: AutomationExecutionOptionsResponse = {
-  models: [
-    {
-      id: "claude:claude-opus-5",
-      model: "claude-opus-5",
-      displayName: "Opus 5",
-    },
-  ],
-  permissionModes: ["accept-edits", "auto", "full"],
-};
 const now = new Date(2027, 0, 15, 9).getTime();
 
 function automation(
@@ -49,6 +38,7 @@ function automation(
       prompt: `Run ${name.toLowerCase()}.`,
       providerId: "claude",
       model: "claude-opus-5",
+      reasoningLevel: "medium",
       permissionMode: "auto",
       environment: { type: "host", workspace: { type: "personal" } },
     },
@@ -197,6 +187,7 @@ const DETAIL_AUTOMATION = automation("nightly-digest", "Nightly digest", {
     prompt: "Summarize yesterday's commits and open pull requests.",
     providerId: "claude",
     model: "claude-opus-5[1m]",
+    reasoningLevel: "medium",
     permissionMode: "auto",
     environment: { type: "host", workspace: { type: "personal" } },
   },
@@ -217,6 +208,7 @@ const PROJECT_AUTOMATION: AutomationResponse = {
     prompt: "Summarize yesterday's commits and open pull requests.",
     providerId: "claude",
     model: "claude-opus-5[1m]",
+    reasoningLevel: "medium",
     permissionMode: "auto",
     environment: {
       type: "host",
@@ -243,6 +235,7 @@ const PROVIDER_AUTOMATIONS = [
         prompt: "Summarize yesterday's commits and open pull requests.",
         providerId: "codex",
         model: "gpt-5.6-sol",
+        reasoningLevel: "medium",
         permissionMode: "auto",
         environment: { type: "host", workspace: { type: "personal" } },
       },
@@ -256,6 +249,7 @@ const PROVIDER_AUTOMATIONS = [
         prompt: "Summarize yesterday's commits and open pull requests.",
         providerId: "pi",
         model: "pi-model",
+        reasoningLevel: "medium",
         permissionMode: "auto",
         environment: { type: "host", workspace: { type: "personal" } },
       },
@@ -269,6 +263,7 @@ const PROVIDER_AUTOMATIONS = [
         prompt: "Summarize yesterday's commits and open pull requests.",
         providerId: "acp-cursor",
         model: "cursor-small",
+        reasoningLevel: "medium",
         permissionMode: "auto",
         environment: { type: "host", workspace: { type: "personal" } },
       },
@@ -282,6 +277,7 @@ const PROVIDER_AUTOMATIONS = [
         prompt: "Summarize yesterday's commits and open pull requests.",
         providerId: "custom-provider",
         model: "custom-model-v2",
+        reasoningLevel: "medium",
         permissionMode: "auto",
         environment: { type: "host", workspace: { type: "personal" } },
       },
@@ -443,9 +439,6 @@ function AutomationDetail({
       }}
       actionPending={false}
       editing={false}
-      executionOptions={executionOptions}
-      permissionModes={["accept-edits", "auto", "full"]}
-      executionOptionsError={null}
       onToggle={noop}
       onEdit={noop}
       onCancelEdit={noop}

@@ -38,6 +38,7 @@ const presetExecutionSchema = z
       "max",
       "ultra",
     ]),
+    serviceTier: z.enum(["default", "fast"]).nullable(),
     permissionMode: presetPermissionModeSchema,
   })
   .strict();
@@ -316,6 +317,7 @@ export function handlers(
         providerId: preset.providerId,
         model: preset.modelId,
         reasoningLevel: preset.reasoningLevel,
+        serviceTier: preset.serviceTier,
         permissionMode: preset.permissionMode,
       });
       const prompt = buildSeedPrompt({
@@ -336,6 +338,9 @@ export function handlers(
           providerId: execution.providerId,
           model: execution.model,
           reasoningLevel: execution.reasoningLevel,
+          ...(execution.serviceTier === null
+            ? {}
+            : { serviceTier: execution.serviceTier }),
           permissionMode: execution.permissionMode,
           title,
           prompt,

@@ -2,6 +2,8 @@ import type { TaskSort } from "../shared/pagination.js";
 import type {
   PRESET_ENVIRONMENT_KINDS,
   PresetPermissionMode,
+  PresetReasoningLevel,
+  PresetServiceTier,
   TASK_THREAD_LIVE_STATUSES,
   TaskPriority,
   TaskStatus,
@@ -101,7 +103,8 @@ export interface Preset {
   name: string;
   providerId: string;
   modelId: string;
-  reasoningLevel: string;
+  reasoningLevel: PresetReasoningLevel;
+  serviceTier: PresetServiceTier | null;
   permissionMode: PresetPermissionMode;
   environmentKind: PresetEnvironmentKind;
   baseBranch: string | null;
@@ -263,7 +266,8 @@ export interface CreatePresetInput {
   name: string;
   providerId: string;
   modelId: string;
-  reasoningLevel: string;
+  reasoningLevel: PresetReasoningLevel;
+  serviceTier: PresetServiceTier | null;
   permissionMode: PresetPermissionMode;
   environmentKind: PresetEnvironmentKind;
   baseBranch: string | null;
@@ -276,7 +280,8 @@ export interface UpdatePresetInput {
   name?: string;
   providerId?: string;
   modelId?: string;
-  reasoningLevel?: string;
+  reasoningLevel?: PresetReasoningLevel;
+  serviceTier?: PresetServiceTier | null;
   permissionMode?: PresetPermissionMode;
   environmentKind?: PresetEnvironmentKind;
   baseBranch?: string | null;

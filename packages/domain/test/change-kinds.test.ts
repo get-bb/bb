@@ -38,6 +38,19 @@ const maximalThreadMetadata: ThreadChangeMetadata = {
   eventTypes: [...threadEventTypeValues],
   hasPendingInteraction: true,
   projectId: "proj_1",
+  statusChange: {
+    status: "active",
+    runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+    activity: {
+      activeBackgroundAgentCount: 1,
+      activeBackgroundCommandCount: 1,
+      activeGoalCount: 1,
+      activePlanModeCount: 1,
+      activeWorkflowCount: 1,
+    },
+    latestAttentionAt: 1_000,
+    updatedAt: 2_000,
+  },
 };
 
 /**
@@ -113,6 +126,44 @@ describe("lenient changed-message schema parity", () => {
       expect(changedMessageLenientSchema.parse(message)).toEqual(message);
     },
   );
+
+  it("drops a status change a stale client cannot parse but keeps the message", () => {
+    // A newer server may ship a runtime display status this client does not
+    // know. The client must still learn that the status changed (and refetch)
+    // rather than lose the whole notification.
+    const parsed = changedMessageLenientSchema.parse({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: {
+        projectId: "proj_1",
+        statusChange: {
+          status: "active",
+          runtime: {
+            displayStatus: "teleporting",
+            hostReconnectGraceExpiresAt: null,
+          },
+          activity: {
+            activeBackgroundAgentCount: 0,
+            activeBackgroundCommandCount: 0,
+            activeGoalCount: 0,
+            activePlanModeCount: 0,
+            activeWorkflowCount: 0,
+          },
+          latestAttentionAt: 1_000,
+          updatedAt: 2_000,
+        },
+      },
+      changes: ["status-changed"],
+    });
+    expect(parsed).toEqual({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { projectId: "proj_1" },
+      changes: ["status-changed"],
+    });
+  });
 
   it("keeps the maximal fixtures covering every declared strict field", () => {
     const strictOptions = strictOptionsByEntity();

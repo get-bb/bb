@@ -67,7 +67,12 @@ async function setUpPluginHarness(serverSource: string): Promise<{
 }
 
 function lifecycleDeps(harness: TestAppHarness) {
-  return { db: harness.db, hub: harness.hub, logger: testLogger };
+  return {
+    db: harness.db,
+    hub: harness.hub,
+    logger: testLogger,
+    providerRegistry: harness.deps.providerRegistry,
+  };
 }
 
 describe("plugin thread lifecycle events", () => {

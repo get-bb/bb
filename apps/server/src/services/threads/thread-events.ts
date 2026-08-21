@@ -6,7 +6,6 @@ import {
   getLastStoredProviderThreadId,
   getLastStoredTurnRequestEvent,
   getStoredTurnRequestEventForTurn,
-  getStoredProviderThreadIdAtOrBeforeSequence,
   getThread,
   listStoredTurnStartedKeys,
   noopNotifier,
@@ -965,16 +964,6 @@ export function getLastProviderThreadId(
   threadId: string,
 ): string | null {
   return getLastStoredProviderThreadId(deps.db, threadId);
-}
-
-export function getProviderThreadIdAtOrBeforeSequence(
-  deps: ThreadEventReadDeps,
-  args: {
-    sequence: number;
-    threadId: string;
-  },
-): string | null {
-  return getStoredProviderThreadIdAtOrBeforeSequence(deps.db, args);
 }
 
 export function getLastExecutionOptions(

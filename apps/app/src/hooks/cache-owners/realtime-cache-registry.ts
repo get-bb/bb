@@ -41,6 +41,7 @@ import type {
   SystemChangeKind,
   ThreadChangeKind,
   ThreadEventType,
+  ThreadStatusChangeMetadata,
   ThreadWithRuntime,
 } from "@bb/domain";
 import {
@@ -54,9 +55,11 @@ import {
   getEnvironmentBranchListInvalidationQueryKeys,
   getEnvironmentRecordInvalidationQueryKeys,
   getEnvironmentWorkspaceStateInvalidationQueryKeys,
+  getFetchingThreadListQueryKeys,
   isArchivedThreadListQueryKey,
   removeEnvironmentDiffPatchQueries,
   updateCachedThreadListPendingInteractionState,
+  updateCachedThreadListStatusState,
 } from "./query-cache";
 import {
   getCachedThreadLists,
@@ -207,8 +210,7 @@ function hasActiveQueries(
   queryKey: QueryKey,
 ): boolean {
   return (
-    queryClient.getQueryCache().findAll({ queryKey, type: "active" }).length >
-    0
+    queryClient.getQueryCache().findAll({ queryKey, type: "active" }).length > 0
   );
 }
 
@@ -430,7 +432,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "status-changed": {
     flush: "immediate",
     dirty: [
-      dirtyActiveThreadListQueries, // List rows render status/runtime badges; archived pages only go stale.
+      patchThreadListStatusState, // List rows patch status/runtime from notification metadata; refetch only without it.
       dirtyThreadDetailQueries, // Detail controls and banners depend on status.
     ],
   },
@@ -649,6 +651,7 @@ interface ThreadRealtimeDirtyContext extends RealtimeDirtyContext {
   flushOnce: (key: string) => boolean;
   hasPendingInteraction: boolean | undefined;
   projectId: string | undefined;
+  statusChange: ThreadStatusChangeMetadata | undefined;
   threadId: string | undefined;
 }
 
@@ -903,8 +906,9 @@ function dirtyThreadTimelineQueries({
   const timelineQueryKeys = getThreadTimelineWindowInvalidationQueryKeys({
     threadId,
   });
-  const outlineQueryKeys =
-    getThreadConversationOutlineInvalidationQueryKeys({ threadId });
+  const outlineQueryKeys = getThreadConversationOutlineInvalidationQueryKeys({
+    threadId,
+  });
   const outlineMayHaveChanged =
     eventTypes === undefined || eventTypes.includes("turn/completed");
   if (
@@ -1078,6 +1082,32 @@ function patchThreadListPendingInteractionState({
     threadId,
     hasPendingInteraction,
   );
+}
+
+/**
+ * A status change rewrites a handful of row fields and never moves a thread
+ * between lists, so when the notification carries them the cached rows are
+ * patched in place. The alternative is what the fallback still does for
+ * pushes without the row (older servers, writers inside a transaction that
+ * cannot resolve the runtime): refetch every active thread list plus the
+ * sidebar bootstrap, which is ~1 KB per unarchived thread, twice per turn.
+ *
+ * A list fetch already in flight read the database before this transition
+ * and would overwrite the patch when it lands, so those queries are
+ * invalidated, which cancels and restarts them.
+ */
+function patchThreadListStatusState(
+  context: ThreadRealtimeDirtyContext,
+): QueryKey[] {
+  const { queryClient, statusChange, threadId } = context;
+  if (!threadId || !statusChange) {
+    return dirtyActiveThreadListQueries(context);
+  }
+  updateCachedThreadListStatusState(queryClient, threadId, statusChange);
+  for (const queryKey of getFetchingThreadListQueryKeys(queryClient)) {
+    queryClient.invalidateQueries({ exact: true, queryKey });
+  }
+  return [threadSearchQueryKeyPrefix()]; // Result rows render status but are not list-shaped.
 }
 
 function dirtyEnvironmentRecordQueries(

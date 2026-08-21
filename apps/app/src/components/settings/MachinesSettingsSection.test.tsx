@@ -165,7 +165,7 @@ describe("MachinesSettingsSection", () => {
     expect(screen.getByText("primary")).toBeDefined();
     expect(screen.getByText("Online")).toBeDefined();
     expect(screen.getByText(/^Offline · last seen/u)).toBeDefined();
-    expect(screen.getByText("2 projects")).toBeDefined();
+    expect(await screen.findByText("2 projects")).toBeDefined();
     expect(screen.getByText("1 project")).toBeDefined();
     expect(screen.getAllByText("Full Access")).toHaveLength(2);
     expect(screen.getByText("macOS")).toBeDefined();

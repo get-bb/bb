@@ -375,8 +375,15 @@ const threadStartCommandSchema = hostDaemonThreadTargetSchema
     inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
     threadStoragePath: z.string().min(1).optional(),
     /** Present means fork the new thread from this source provider session
-     *  instead of starting fresh; absent means a normal start. */
-    fork: z.object({ sourceProviderThreadId: z.string().min(1) }).optional(),
+     *  instead of starting fresh; absent means a normal start. The clone
+     *  retains the source history through `sourceProviderCheckpointId`; an
+     *  absent checkpoint clones the session tip. */
+    fork: z
+      .object({
+        sourceProviderThreadId: z.string().min(1),
+        sourceProviderCheckpointId: z.string().min(1).optional(),
+      })
+      .optional(),
   })
   .strict()
   .superRefine((value, ctx) => {

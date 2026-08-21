@@ -46,15 +46,6 @@ interface SummaryRow {
   active_agent_count: number;
 }
 
-const PRESET_REASONING_LEVELS = [
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-  "ultra",
-] as const;
-
 const MAX_THREAD_SEARCH_RESULTS = 10;
 
 export interface TasksApiStore {
@@ -1011,44 +1002,6 @@ export function registerHandlers(
     },
     listPresets() {
       return { presets: store.tasks.listPresets() };
-    },
-    async listProviders() {
-      const providers = await bb.sdk.providers.list();
-      return {
-        providers: providers.map((provider) => ({
-          id: provider.id,
-          name: provider.displayName,
-          permissionModes: provider.capabilities.permissionModes,
-        })),
-      };
-    },
-    async listProviderModels(input) {
-      const result = await bb.sdk.providers.models({
-        providerId: input.providerId,
-      });
-      const supportedReasoningLevels = new Set(
-        result.models.flatMap((model) =>
-          model.supportedReasoningEfforts.map(
-            (effort) => effort.reasoningEffort,
-          ),
-        ),
-      );
-      const reasoningLevels = PRESET_REASONING_LEVELS.filter((level) =>
-        supportedReasoningLevels.has(level),
-      );
-      return {
-        models: result.models.map((model) => ({
-          id: model.model,
-          name: model.displayName,
-          isDefault: model.isDefault,
-        })),
-        // The SDK has model-level reasoning metadata but no provider-level
-        // list. Fall back to the standard picker levels when models omit it.
-        reasoningLevels:
-          reasoningLevels.length > 0
-            ? reasoningLevels
-            : [...PRESET_REASONING_LEVELS],
-      };
     },
     async listMachines() {
       const machines = await bb.sdk.hosts.list();

@@ -108,6 +108,11 @@ interface AssistantCompletedArgs extends ProviderTurnEventOptions {
   text: string;
 }
 
+interface ProviderUserMessageArgs extends ProviderTurnEventOptions {
+  itemId?: string;
+  text: string;
+}
+
 interface ClientTurnRejectedArgs extends EventFactoryRowOptions {
   message?: string;
   reason?: string;
@@ -336,6 +341,9 @@ export interface TimelineEventFactory {
   providerUnhandled(
     args?: ProviderUnhandledArgs,
   ): ThreadEventRowOfType<"provider/unhandled">;
+  providerUserMessage(
+    args: ProviderUserMessageArgs,
+  ): ThreadEventRowOfType<"item/completed">;
   providerWarning(
     args?: ProviderWarningArgs,
   ): ThreadEventRowOfType<"provider/warning">;
@@ -546,6 +554,24 @@ export function createTimelineEventFactory(
             type: "agentMessage",
             id: args.itemId ?? `assistant-${base.seq}`,
             text: args.text,
+            ...(args.parentToolCallId
+              ? { parentToolCallId: args.parentToolCallId }
+              : {}),
+          },
+        },
+      };
+    },
+    providerUserMessage(args) {
+      const base = nextProviderTurnScopedRowBase("provider-user-message", args);
+      return {
+        ...base,
+        type: "item/completed",
+        data: {
+          ...providerFields(args),
+          item: {
+            type: "userMessage",
+            id: args.itemId ?? `provider-input-${base.seq}`,
+            content: [{ type: "text", text: args.text }],
             ...(args.parentToolCallId
               ? { parentToolCallId: args.parentToolCallId }
               : {}),

@@ -14,6 +14,19 @@ export const AUTOMATION_RUNS_LIMIT_MAX = 200;
 
 export const permissionModeSchema = z.enum(["accept-edits", "auto", "full"]);
 export type PermissionMode = z.infer<typeof permissionModeSchema>;
+export const reasoningLevelSchema = z.enum([
+  "none",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "ultracode",
+  "max",
+  "ultra",
+]);
+export type ReasoningLevel = z.infer<typeof reasoningLevelSchema>;
+export const serviceTierSchema = z.enum(["default", "fast"]);
+export type ServiceTier = z.infer<typeof serviceTierSchema>;
 
 export const unmanagedBranchSpecSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("existing"), name: z.string().min(1) }).strict(),
@@ -125,6 +138,8 @@ const automationAgentExecutionSchema = z
     prompt: z.string().min(1).max(AUTOMATION_PROMPT_MAX_LENGTH),
     providerId: z.string().min(1),
     model: z.string().min(1),
+    reasoningLevel: reasoningLevelSchema.default("medium"),
+    serviceTier: serviceTierSchema.optional(),
     permissionMode: permissionModeSchema,
     environment: agentEnvironmentSchema,
     targetThreadId: z.string().min(1).optional(),
@@ -208,7 +223,11 @@ const agentExecutionTargetSchema = z.discriminatedUnion("type", [
 const agentExecutionUpdateSchema = z
   .object({
     prompt: z.string().min(1).max(AUTOMATION_PROMPT_MAX_LENGTH).optional(),
+    providerId: z.string().min(1).optional(),
     model: z.string().min(1).optional(),
+    reasoningLevel: reasoningLevelSchema.optional(),
+    /** Null explicitly clears a tier that the previous provider supported. */
+    serviceTier: serviceTierSchema.nullable().optional(),
     permissionMode: permissionModeSchema.optional(),
     target: agentExecutionTargetSchema.optional(),
   })
@@ -216,39 +235,15 @@ const agentExecutionUpdateSchema = z
   .refine(
     (value) =>
       value.prompt !== undefined ||
+      value.providerId !== undefined ||
       value.model !== undefined ||
+      value.reasoningLevel !== undefined ||
+      value.serviceTier !== undefined ||
       value.permissionMode !== undefined ||
       value.target !== undefined,
     { message: "at least one agent execution field is required" },
   );
 export type AgentExecutionUpdate = z.infer<typeof agentExecutionUpdateSchema>;
-
-export const automationExecutionOptionsResponseSchema = z
-  .object({
-    models: z.array(
-      z
-        .object({
-          id: z.string().min(1),
-          model: z.string().min(1),
-          displayName: z.string().min(1),
-        })
-        .strict(),
-    ),
-    permissionModes: z.array(permissionModeSchema),
-  })
-  .strict();
-export type AutomationExecutionOptionsResponse = z.infer<
-  typeof automationExecutionOptionsResponseSchema
->;
-
-export const automationPermissionOptionsResponseSchema = z
-  .object({
-    permissionModes: z.array(permissionModeSchema),
-  })
-  .strict();
-export type AutomationPermissionOptionsResponse = z.infer<
-  typeof automationPermissionOptionsResponseSchema
->;
 
 export const automationResponseSchema = z
   .object({

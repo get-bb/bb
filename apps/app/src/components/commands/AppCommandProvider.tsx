@@ -413,6 +413,7 @@ export function useAppCommandHandler(
   command: AppCommandId,
   handler: AppCommandHandler,
   priority = 0,
+  enabled = true,
 ): void {
   const registerHandler = useContext(AppCommandContextValue)?.registerHandler;
   const handlerRef = useRef(handler);
@@ -420,18 +421,19 @@ export function useAppCommandHandler(
     handlerRef.current = handler;
   }, [handler]);
   useEffect(() => {
-    if (!registerHandler) return;
+    if (!registerHandler || !enabled) return;
     return registerHandler(command, {
       handler: (invocation) => handlerRef.current(invocation),
       priority,
     });
-  }, [command, priority, registerHandler]);
+  }, [command, enabled, priority, registerHandler]);
 }
 
 export function useIndexedAppCommandHandlers(
   commands: readonly AppCommandId[],
   handler: (index: number, invocation: AppCommandInvocation) => boolean,
   priority = 0,
+  enabled = true,
 ): void {
   const registerHandler = useContext(AppCommandContextValue)?.registerHandler;
   const handlerRef = useRef(handler);
@@ -439,7 +441,7 @@ export function useIndexedAppCommandHandlers(
     handlerRef.current = handler;
   }, [handler]);
   useEffect(() => {
-    if (!registerHandler) return;
+    if (!registerHandler || !enabled) return;
     const unregister = commands.map((command, index) =>
       registerHandler(command, {
         handler: (invocation) => handlerRef.current(index, invocation),
@@ -449,7 +451,7 @@ export function useIndexedAppCommandHandlers(
     return () => {
       unregister.forEach((dispose) => dispose());
     };
-  }, [commands, priority, registerHandler]);
+  }, [commands, enabled, priority, registerHandler]);
 }
 
 /**

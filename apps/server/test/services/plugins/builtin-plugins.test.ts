@@ -212,6 +212,7 @@ describe("builtin plugin reconciliation", () => {
       ["automations", "Clock"],
       ["connect", "Smartphone"],
       ["custom-instructions", "EditFile"],
+      ["plugin-api-tester", "Beaker"],
       ["inline-vis", "AppWindow"],
       ["keep-awake", "Coffee"],
       ["pdf-preview", "FileText"],
@@ -437,6 +438,14 @@ describe("builtin plugin reconciliation", () => {
       { id: "builtin-fixture", enabled: false, status: "disabled" },
     ]);
     expect(loadCount()).toBe(0);
+  });
+
+  it("ships Plugin API Tester disabled on a fresh database", () => {
+    const pluginApiTester = BUILTIN_PLUGINS.find(
+      (builtin) => builtin.name === "plugin-api-tester",
+    );
+
+    expect(pluginApiTester?.defaultEnabled).toBe(false);
   });
 
   it("ships Workflows disabled on a fresh database", async () => {

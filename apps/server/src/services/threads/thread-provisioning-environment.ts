@@ -74,7 +74,10 @@ import {
 
 export type ThreadProvisioningDeps = CommandResultSideEffectsDeps;
 
-type ThreadProvisionWriteDeps = Pick<AppDeps, "db" | "hub" | "logger">;
+type ThreadProvisionWriteDeps = Pick<
+  AppDeps,
+  "db" | "hub" | "logger" | "providerRegistry"
+>;
 type DirectUnmanagedIntent = Extract<
   ThreadProvisionEnvironmentIntent,
   { type: "direct-unmanaged" }
@@ -364,7 +367,7 @@ export function ensureWorkspaceReadyEventInTransaction(
 }
 
 export function failThreadProvisioning(
-  deps: Pick<AppDeps, "db" | "hub" | "logger">,
+  deps: Pick<AppDeps, "db" | "hub" | "logger" | "providerRegistry">,
   args: FailThreadProvisioningArgs,
 ): void {
   forgetActiveThreadProvisionContext(args.thread.id);

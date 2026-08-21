@@ -36,7 +36,7 @@ if (!window.matchMedia) {
 // imported before it runs.
 const app = await loadPluginApp(() => import("../../app"));
 const { derivePrefix } = await import("./shared.js");
-const { defaultPermissionMode, describePresetEnvironment, savePresetDraft } =
+const { describePresetEnvironment, savePresetDraft } =
   await import("./preset-dialog.js");
 
 afterEach(cleanup);
@@ -563,6 +563,7 @@ function presetRow(overrides: Record<string, unknown> = {}) {
     providerId: "claude-code",
     modelId: "claude-sonnet-5",
     reasoningLevel: "medium",
+    serviceTier: null,
     permissionMode: "accept-edits",
     environmentKind: "new-worktree",
     baseBranch: "main",
@@ -601,21 +602,13 @@ describe("describePresetEnvironment", () => {
   });
 });
 
-describe("preset permission defaults", () => {
-  it("prefers Auto and otherwise falls back to Full Access", () => {
-    expect(defaultPermissionMode(["accept-edits", "auto", "full"])).toBe(
-      "auto",
-    );
-    expect(defaultPermissionMode(["accept-edits", "full"])).toBe("full");
-  });
-});
-
 describe("savePresetDraft", () => {
   const draft = {
     name: "FB3",
     providerId: "claude-code",
     modelId: "claude-sonnet-5",
     reasoningLevel: "medium",
+    serviceTier: undefined,
     permissionMode: "accept-edits",
     environmentKind: "new-worktree",
     baseBranch: " main ",
@@ -679,7 +672,10 @@ describe("savePresetDraft", () => {
 });
 
 describe("PresetDialog environment section", () => {
-  function renderManagePresets(presets: unknown[]) {
+  function renderManagePresets(
+    presets: unknown[],
+    rpcOverrides: Record<string, unknown> = {},
+  ) {
     return renderSlot(
       app.navPanels[0]!,
       { subPath: "manage" },
@@ -691,22 +687,8 @@ describe("PresetDialog environment section", () => {
           sidebarSummary: () => ({ projects: [] }),
           listTasks: () => ({ tasks: [] }),
           listLabels: () => ({ labels: [] }),
-          listProviders: () => ({
-            providers: [
-              {
-                id: "claude-code",
-                name: "Claude Code",
-                permissionModes: ["accept-edits", "auto", "full"],
-              },
-            ],
-          }),
-          listProviderModels: () => ({
-            models: [
-              { id: "claude-sonnet-5", name: "Sonnet", isDefault: true },
-            ],
-            reasoningLevels: ["low", "medium", "high", "ultra"],
-          }),
           listMachines: () => ({ machines: MACHINES }),
+          ...rpcOverrides,
         },
       },
     );
@@ -727,7 +709,18 @@ describe("PresetDialog environment section", () => {
     expect(branch.placeholder).toBe("project default base — leave empty");
     expect(slot.getByLabelText("Machine")).toBeDefined();
     await waitFor(() =>
-      expect(slot.getByLabelText("Reasoning").textContent).toContain("ultra"),
+      expect(
+        (slot.getByLabelText("Reasoning level") as HTMLInputElement).value,
+      ).toBe("ultra"),
+    );
+    expect(
+      slot.getByTestId("bb-provider-model-picker").dataset.routingKind,
+    ).toBe("host");
+    expect(slot.getByTestId("bb-provider-model-picker").dataset.routingId).toBe(
+      "mach_1",
+    );
+    expect(slot.getByTestId("bb-permission-mode-picker").dataset.align).toBe(
+      "start",
     );
   });
 
@@ -748,6 +741,47 @@ describe("PresetDialog environment section", () => {
     await slot.findByLabelText("Execution environment");
     expect(slot.queryByLabelText("Base branch")).toBeNull();
     expect(slot.queryByLabelText("Machine")).toBeNull();
+  });
+
+  it("saves the host picker's provider, model, reasoning, and tier together", async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const slot = renderManagePresets([presetRow()], {
+      updatePreset: (input: Record<string, unknown>) => {
+        updates.push(input);
+        return { preset: { ...presetRow(), ...input } };
+      },
+    });
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Presets" }));
+    fireEvent.click(
+      await slot.findByRole("button", {
+        name: "Edit preset FB3 BE live worktree",
+      }),
+    );
+
+    fireEvent.change(await slot.findByLabelText("Provider ID"), {
+      target: { value: "codex" },
+    });
+    fireEvent.change(slot.getByLabelText("Model"), {
+      target: { value: "gpt-5.6-sol" },
+    });
+    fireEvent.change(slot.getByLabelText("Reasoning level"), {
+      target: { value: "high" },
+    });
+    fireEvent.change(slot.getByLabelText("Service tier"), {
+      target: { value: "fast" },
+    });
+    fireEvent.click(
+      slot.getByRole("button", { name: "Apply execution selection" }),
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Save preset" }));
+
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]).toMatchObject({
+      providerId: "codex",
+      modelId: "gpt-5.6-sol",
+      reasoningLevel: "high",
+      serviceTier: "fast",
+    });
   });
 });
 

@@ -408,6 +408,21 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
   }),
 
   /**
+   * Input the provider itself injected into the conversation, with no bb
+   * client request behind it (a pi extension's `sendMessage` custom message
+   * that triggered or steered a turn). The assembler records it as a
+   * `userMessage` item in the open turn so the transcript shows what the
+   * model was answering. Dropped silently when no turn is open: the provider
+   * appended it to its own context without running the agent, so there is no
+   * bb turn to attach it to.
+   */
+  z.object({
+    kind: z.literal("input.provider"),
+    text: z.string().min(1),
+    parentRef: deltaKeyPartSchema.optional(),
+  }),
+
+  /**
    * An explicit provider signal opened work (pi `agent_start`, codex
    * `turn/started`). With `providerTurnId` the turn lives in the keyed
    * provider-turn space: several may be open at once (codex multiplexes

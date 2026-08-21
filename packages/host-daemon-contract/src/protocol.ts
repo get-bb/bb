@@ -1,3 +1,15 @@
+// Version 153 adds the optional `sourceProviderCheckpointId` to
+// `thread.start.fork`. A fork requested at an earlier source sequence now
+// clones the source session through that turn's recorded checkpoint instead
+// of silently cloning the tip. An older daemon would strip the field and
+// clone the tip, so it must update before it serves such a start.
+//
+// Version 152 records a displayed Pi extension message (`pi.sendMessage` with
+// `triggerTurn`, e.g. a process-completion notification) as the `userMessage`
+// item of the turn it woke, and stops surfacing its `message_start`/
+// `message_end` boundaries as `provider/unhandled`. Older daemons emit the
+// unhandled rows and no input for extension-triggered turns.
+//
 // Version 151 lets the daemon re-resolve an auto/steer turn target from its
 // live runtime after the server observed an active thread but before it had a
 // turn id. A command that an older daemon reports as `appliedAs: "new-turn"`
@@ -160,7 +172,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 151 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 153 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

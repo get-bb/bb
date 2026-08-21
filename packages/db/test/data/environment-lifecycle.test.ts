@@ -286,7 +286,7 @@ describe("applyEnvironmentLifecycleEvent", () => {
 
     // A stopping thread blocks the claim even after deletion intent.
     requireThreadLifecycleEventApplied(
-      applyThreadLifecycleEvent(db, noopNotifier, {
+      applyThreadLifecycleEvent(db, {
         event: { type: "stop.requested" },
         threadId: thread.id,
       }),

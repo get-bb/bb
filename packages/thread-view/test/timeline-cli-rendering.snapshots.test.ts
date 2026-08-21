@@ -165,6 +165,98 @@ describe("timeline CLI rendering snapshots", () => {
     `);
   });
 
+  it("shows provider-injected input as a system-initiated steer of its turn", () => {
+    // A Pi extension woke the thread (`pi.sendMessage` with `triggerTurn`):
+    // no client request exists, the runtime recorded a `userMessage` item.
+    // It must not become a `message` row: timeline pagination anchors pages on
+    // those and only knows the ones backed by `client/turn/requested`.
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const events: TimelineFixtureEvent[] = [
+      event.clientTurnRequested({
+        target: { kind: "new-turn" },
+        text: "Reply only with ok.",
+      }),
+      event.turnStarted({ turnId: "turn-1" }),
+      event.assistantCompleted({
+        itemId: "assistant-1",
+        text: "ok",
+        turnId: "turn-1",
+      }),
+      event.turnCompleted({ turnId: "turn-1" }),
+      event.turnStarted({ turnId: "turn-2" }),
+      event.providerUserMessage({
+        text: '<process_event kind="success">Process completed successfully</process_event>',
+        turnId: "turn-2",
+      }),
+      event.assistantCompleted({
+        itemId: "assistant-2",
+        text: "The sleep process finished.",
+        turnId: "turn-2",
+      }),
+      event.turnCompleted({ turnId: "turn-2" }),
+    ];
+    const timeline = renderIdleTimeline(events);
+
+    expect(
+      timeline.messages.flatMap((message) =>
+        message.kind === "user"
+          ? [
+              {
+                initiator: message.initiator,
+                scope: message.scope,
+                text: message.text,
+              },
+            ]
+          : [],
+      ),
+    ).toEqual([
+      {
+        initiator: "user",
+        scope: { kind: "thread" },
+        text: "Reply only with ok.",
+      },
+      {
+        initiator: "system",
+        scope: { kind: "turn", turnId: "turn-2" },
+        text: '<process_event kind="success">Process completed successfully</process_event>',
+      },
+    ]);
+    expect(timeline.rows).toContainEqual(
+      expect.objectContaining({
+        kind: "turn",
+        turnId: "turn-2",
+        children: [
+          expect.objectContaining({
+            kind: "conversation",
+            role: "user",
+            initiator: "system",
+            turnRequest: {
+              isGrouped: false,
+              kind: "steer",
+              status: "accepted",
+            },
+            text: '<process_event kind="success">Process completed successfully</process_event>',
+          }),
+        ],
+      }),
+    );
+    expect(timeline.text).toMatchInlineSnapshot(`
+      "── User ────────────────────────────────────────────────────
+      Reply only with ok.
+
+      ── Assistant ───────────────────────────────────────────────
+      ok
+
+      ── Worked for (3ms) ────────────────────────────────────────
+        ── User
+        <process_event kind="success">Process completed successfully</process_event>
+        steer
+
+      ── Assistant ───────────────────────────────────────────────
+      The sleep process finished."
+    `);
+  });
+
   it("snapshots streaming CLI prefixes before the final idle state", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const events = [

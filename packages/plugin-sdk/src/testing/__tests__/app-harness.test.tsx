@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { useEffect, useState } from "react";
-import { cleanup, fireEvent, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
@@ -25,6 +25,8 @@ const {
   definePluginApp,
   experimental_FileLink: FileLink,
   experimental_UrlLink: UrlLink,
+  experimental_ProviderModelPicker: ProviderModelPicker,
+  experimental_PermissionModePicker: PermissionModePicker,
   experimental_useAppPanel,
   experimental_useFixedTabTarget,
   ThreadChat,
@@ -116,6 +118,92 @@ function TypedRpcPanel() {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+});
+
+describe("experimental_ProviderModelPicker test runtime", () => {
+  it("applies all execution edits as one controlled value", () => {
+    const onChange = vi.fn();
+    const picker = render(
+      <ProviderModelPicker
+        value={{
+          providerId: "codex",
+          model: "gpt-5.5",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+        }}
+        onChange={onChange}
+        routing={{ kind: "host", hostId: "host-test" }}
+        align="end"
+      />,
+    );
+
+    fireEvent.change(picker.getByRole("textbox", { name: "Provider ID" }), {
+      target: { value: "claude-code" },
+    });
+    fireEvent.change(picker.getByRole("textbox", { name: "Model" }), {
+      target: { value: "claude-opus-4-7" },
+    });
+    fireEvent.change(picker.getByRole("textbox", { name: "Reasoning level" }), {
+      target: { value: "xhigh" },
+    });
+    fireEvent.change(picker.getByRole("combobox", { name: "Service tier" }), {
+      target: { value: "fast" },
+    });
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      picker.getByRole("button", { name: "Apply execution selection" }),
+    );
+    expect(onChange).toHaveBeenCalledWith({
+      providerId: "claude-code",
+      model: "claude-opus-4-7",
+      reasoningLevel: "xhigh",
+      serviceTier: "fast",
+    });
+    expect(
+      picker.getByTestId("bb-provider-model-picker").dataset.routingKind,
+    ).toBe("host");
+    expect(
+      picker.getByTestId("bb-provider-model-picker").dataset.routingId,
+    ).toBe("host-test");
+    expect(picker.getByTestId("bb-provider-model-picker").dataset.align).toBe(
+      "end",
+    );
+  });
+});
+
+describe("experimental_PermissionModePicker test runtime", () => {
+  it("exposes the controlled mode, provider, and routing", () => {
+    const onChange = vi.fn();
+    const picker = render(
+      <PermissionModePicker
+        providerId="codex"
+        value="auto"
+        onChange={onChange}
+        routing={{ kind: "environment", environmentId: "env-test" }}
+        align="start"
+      />,
+    );
+
+    fireEvent.change(
+      picker.getByRole("combobox", { name: "Permission mode" }),
+      { target: { value: "full" } },
+    );
+
+    expect(onChange).toHaveBeenCalledWith("full");
+    expect(
+      picker.getByTestId("bb-permission-mode-picker").dataset.providerId,
+    ).toBe("codex");
+    expect(
+      picker.getByTestId("bb-permission-mode-picker").dataset.routingKind,
+    ).toBe("environment");
+    expect(
+      picker.getByTestId("bb-permission-mode-picker").dataset.routingId,
+    ).toBe("env-test");
+    expect(picker.getByTestId("bb-permission-mode-picker").dataset.align).toBe(
+      "start",
+    );
+  });
 });
 
 function Panel({ subPath }: PluginNavPanelProps) {

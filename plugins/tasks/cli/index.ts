@@ -115,8 +115,8 @@ Pass --machine to target another enrolled machine explicitly.`;
 const PRESET_HELP = `Usage:
   bb tasks preset list [--json]
   bb tasks preset show <name-or-id> [--json]
-  bb tasks preset create --name <name> --provider <id> --model <id> --reasoning <level> --permission <accept-edits|auto|full> [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
-  bb tasks preset update <name-or-id> [--name <name>] [--provider <id>] [--model <id>] [--reasoning <level>] [--permission <accept-edits|auto|full>] [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
+  bb tasks preset create --name <name> --provider <id> --model <id> --reasoning <level> --permission <accept-edits|auto|full> [--service-tier default|fast|none] [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
+  bb tasks preset update <name-or-id> [--name <name>] [--provider <id>] [--model <id>] [--reasoning <level>] [--permission <accept-edits|auto|full>] [--service-tier default|fast|none] [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
   bb tasks preset delete <name-or-id> [--json]`;
 const DISPATCH_HELP =
   "Usage: bb tasks dispatch <key> --preset <name> [--instructions <extra>] [--json]";
@@ -444,6 +444,17 @@ function parsePresetEnvironment(
   if (value === "worktree") return "new-worktree";
   throw new CliError(
     `invalid --environment ${value}; expected project-default or worktree`,
+  );
+}
+
+function parsePresetServiceTier(
+  value: string | undefined,
+): "default" | "fast" | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === "default" || value === "fast") return value;
+  if (value === "none") return null;
+  throw new CliError(
+    `invalid --service-tier ${value}; expected default, fast, or none`,
   );
 }
 
@@ -1622,6 +1633,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
             "PROVIDER",
             "MODEL",
             "REASONING",
+            "SERVICE TIER",
             "PERMISSION",
             "ENVIRONMENT",
             "BASE BRANCH",
@@ -1634,6 +1646,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
             preset.providerId,
             preset.modelId,
             preset.reasoningLevel,
+            preset.serviceTier ?? "-",
             preset.permissionMode,
             preset.environmentKind === "new-worktree"
               ? "worktree"
@@ -1662,6 +1675,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
           ["Provider", preset.providerId],
           ["Model", preset.modelId],
           ["Reasoning", preset.reasoningLevel],
+          ["Service tier", preset.serviceTier ?? "-"],
           ["Permission", preset.permissionMode],
           [
             "Environment",
@@ -1683,6 +1697,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
       "provider",
       "model",
       "reasoning",
+      "service-tier",
       "permission",
       "environment",
       "base-branch",
@@ -1704,6 +1719,8 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
           providerId: requireOption(args, "provider"),
           modelId: requireOption(args, "model"),
           reasoningLevel: requireOption(args, "reasoning"),
+          serviceTier:
+            parsePresetServiceTier(option(args, "service-tier")) ?? null,
           permissionMode: requireOption(args, "permission"),
           environmentKind,
           baseBranch: baseBranch ?? null,
@@ -1726,6 +1743,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
       "provider",
       "model",
       "reasoning",
+      "service-tier",
       "permission",
       "environment",
       "base-branch",
@@ -1754,6 +1772,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
           providerId: option(args, "provider"),
           modelId: option(args, "model"),
           reasoningLevel: option(args, "reasoning"),
+          serviceTier: parsePresetServiceTier(option(args, "service-tier")),
           permissionMode: option(args, "permission"),
           environmentKind:
             environmentOption === undefined ? undefined : environmentKind,

@@ -117,6 +117,10 @@ export async function executeAgentRun(
         title: args.automation.name,
         providerId: args.execution.providerId,
         model: args.execution.model,
+        reasoningLevel: args.execution.reasoningLevel,
+        ...(args.execution.serviceTier === undefined
+          ? {}
+          : { serviceTier: args.execution.serviceTier }),
         permissionMode: args.execution.permissionMode,
       }),
     );

@@ -67,6 +67,12 @@ export const BUILTIN_PLUGINS = [
     category: "Context & knowledge",
   },
   {
+    name: "plugin-api-tester",
+    pluginId: "plugin-api-tester",
+    defaultEnabled: false,
+    category: "Developer tools",
+  },
+  {
     name: "inline-vis",
     pluginId: "inline-vis",
     defaultEnabled: true,

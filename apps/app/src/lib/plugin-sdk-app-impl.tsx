@@ -2,6 +2,8 @@ import { useCallback, useMemo } from "react";
 import type { MarkdownProps, PluginSdkApp } from "@get-bb/plugin-sdk";
 import { PluginDiff } from "@/components/plugin/PluginDiff";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
+import { PluginProviderModelPicker } from "@/components/plugin/PluginProviderModelPicker";
+import { PluginPermissionModePicker } from "@/components/plugin/PluginPermissionModePicker";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
 import { ExperimentalUrlLink } from "@/components/plugin/ExperimentalUrlLink";
@@ -71,6 +73,10 @@ export const pluginSdkAppImplementation = {
   // Experimental (see docs/api_to_audit.md): the create-side counterpart to
   // ThreadChat.
   experimental_NewThreadComposer: PluginNewThreadComposer,
+  // Experimental (see docs/api_to_audit.md): bb's compact execution picker
+  // exposed as one controlled, atomic value.
+  experimental_ProviderModelPicker: PluginProviderModelPicker,
+  experimental_PermissionModePicker: PluginPermissionModePicker,
   // Experimental (see docs/api_to_audit.md): the host-owned code renderers.
   // Both resolve any active plugin replacement, so first-party surfaces and
   // plugins share one boundary.

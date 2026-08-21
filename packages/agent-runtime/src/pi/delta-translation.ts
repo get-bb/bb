@@ -65,6 +65,8 @@ const piEventTypeSchema = z
       "agent_start",
       "compaction_end",
       "compaction_start",
+      "message_end",
+      "message_start",
       "message_update",
       "tool_execution_end",
       "tool_execution_start",
@@ -137,6 +139,26 @@ const piConversationMessageSchema = z
     provider: z.string().optional(),
     model: z.string().optional(),
     usage: piAssistantUsageSchema.optional(),
+  })
+  .passthrough();
+
+/**
+ * Pi's `message_start`/`message_end` for an extension-injected message
+ * (`pi.sendMessage`, Pi's `CustomMessage`). Only this role is parsed: bb
+ * already owns the user, assistant, and tool-result boundaries through its own
+ * input lifecycle and the streamed/terminal assistant payloads. `display`
+ * is the extension's own statement of whether the message is meant to be seen.
+ */
+const piCustomMessageBoundaryEventSchema = z
+  .object({
+    type: z.enum(["message_end", "message_start"]),
+    message: z
+      .object({
+        role: z.literal("custom"),
+        content: z.union([z.string(), z.array(piMessageContentBlockSchema)]),
+        display: z.boolean(),
+      })
+      .passthrough(),
   })
   .passthrough();
 
@@ -670,6 +692,27 @@ export function createPiDeltaTranslator(
         return [{ kind: "turn.open" }];
       }
 
+      case "message_end":
+      case "message_start": {
+        const piEvent = piCustomMessageBoundaryEventSchema.safeParse(event);
+        // Non-custom boundaries translate to nothing on purpose; the
+        // visibility metadata rates them noise (known roles) or unknown.
+        if (!piEvent.success) {
+          return [];
+        }
+        if (
+          piEvent.data.type === "message_end" ||
+          !piEvent.data.message.display
+        ) {
+          return [];
+        }
+        const text = extractCustomMessageText(piEvent.data.message.content);
+        if (text === undefined) {
+          return [];
+        }
+        return [{ kind: "input.provider", text, ...parentRefField }];
+      }
+
       case "compaction_start": {
         const parsed = piCompactionStartEventSchema.safeParse(event);
         if (!parsed.success) {
@@ -1016,6 +1059,24 @@ function extractAssistantText(message: PiAssistantMessage): string | undefined {
     }
   }
   const text = chunks.join("\n").trim();
+  return text.length > 0 ? text : undefined;
+}
+
+function extractCustomMessageText(
+  content: z.infer<
+    typeof piCustomMessageBoundaryEventSchema
+  >["message"]["content"],
+): string | undefined {
+  const text = (
+    typeof content === "string"
+      ? content
+      : content
+          .flatMap((block) => {
+            const parsedBlock = textBlockSchema.safeParse(block);
+            return parsedBlock.success ? [parsedBlock.data.text] : [];
+          })
+          .join("\n")
+  ).trim();
   return text.length > 0 ? text : undefined;
 }
 

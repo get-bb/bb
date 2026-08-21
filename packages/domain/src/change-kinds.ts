@@ -4,6 +4,11 @@ import {
   threadEventTypeValues,
   type ThreadEventType,
 } from "./provider-event.js";
+import {
+  threadActivityStateSchema,
+  threadRuntimeStateSchema,
+  threadStatusSchema,
+} from "./thread.js";
 
 export const THREAD_CHANGE_KINDS = [
   "thread-created",
@@ -194,12 +199,35 @@ export function realtimeSubscriptionTargetKey(
   }
 }
 
+/**
+ * The thread list row fields a lifecycle transition rewrites, carried on a
+ * `status-changed` notification so clients patch the cached row instead of
+ * refetching every thread list (the sidebar bootstrap is ~1 KB per thread).
+ * `activity` is included because the plan-mode and goal counts are gated on
+ * the thread status server-side and nothing else pushes them to list rows.
+ * Producers that cannot resolve the post-transition runtime omit the whole
+ * field; clients then fall back to refetching.
+ */
+export const threadStatusChangeMetadataSchema = z
+  .object({
+    status: threadStatusSchema,
+    runtime: threadRuntimeStateSchema,
+    activity: threadActivityStateSchema,
+    latestAttentionAt: z.number(),
+    updatedAt: z.number(),
+  })
+  .strict();
+export type ThreadStatusChangeMetadata = z.infer<
+  typeof threadStatusChangeMetadataSchema
+>;
+
 export const threadChangeMetadataSchema = z
   .object({
     backgroundActivityChanged: z.boolean().optional(),
     eventTypes: z.array(threadEventTypeSchema).readonly().optional(),
     hasPendingInteraction: z.boolean().optional(),
     projectId: z.string().optional(),
+    statusChange: threadStatusChangeMetadataSchema.optional(),
   })
   .strict();
 export type ThreadChangeMetadata = z.infer<typeof threadChangeMetadataSchema>;
@@ -308,6 +336,10 @@ const threadChangeMetadataLenientSchema = z.object({
     .optional(),
   hasPendingInteraction: z.boolean().optional(),
   projectId: z.string().optional(),
+  // A newer server may emit a status or runtime display value this client
+  // does not know. Dropping just this field keeps the message and makes the
+  // client fall back to a refetch for the row.
+  statusChange: threadStatusChangeMetadataSchema.optional().catch(undefined),
 });
 
 const threadChangedMessageLenientSchema = z.object({

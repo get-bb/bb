@@ -23,9 +23,10 @@ import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 import { buildExecutionOptions } from "./thread-commands.js";
 import {
-  getLastProviderThreadId,
-  getProviderThreadIdAtOrBeforeSequence,
-} from "./thread-events.js";
+  copyForkSourceHistory,
+  resolveThreadForkPoint,
+  type ThreadForkPoint,
+} from "./thread-fork-history.js";
 import {
   rememberProjectExecutionDefaultsForCreate,
   resolveProjectExecutionDefaultsForCreate,
@@ -58,7 +59,6 @@ import {
   requestThreadProvision,
 } from "./thread-provisioning.js";
 import type {
-  ThreadForkDescriptor,
   ThreadProvisionContext,
   ThreadProvisionEnvironmentIntent,
 } from "./thread-provisioning-context.js";
@@ -90,12 +90,12 @@ interface CreateProvisioningThreadArgs {
   executionDefaults: Parameters<
     typeof buildExecutionOptions
   >[2]["projectDefaults"];
-  fork: ThreadForkDescriptor | null;
+  fork: ThreadForkPoint | null;
   request: ThreadCreateServiceRequest;
   providerInput?: ThreadCreateServiceRequestInput["input"];
 }
 
-interface ResolveForkDescriptorArgs {
+interface ResolveForkPointArgs {
   childHostId: string;
   originKind: ThreadOriginKind | null;
   providerId: string;
@@ -152,22 +152,23 @@ async function resolveCatalogExecutionDefaults(
 }
 
 /**
- * Resolve the native-fork descriptor for a source-derived thread, or null when
- * it cannot be provisioned as a fork. Both forks and side chats are native
- * forks: they clone the source thread's provider session at its branch point so
- * the new thread carries the full conversation history (a fork then waits idle;
- * a side chat runs its question turn). Forking requires: a live source thread
- * (any non-null originKind), a provider that supports native fork, a source that
- * already has a provider session, and a new workspace on the same host as the
- * source (a cross-host clone of a provider session is not possible).
+ * Resolve the native-fork point for a source-derived thread, or null when it
+ * cannot be provisioned as a fork. Both forks and side chats are native forks:
+ * they clone the source thread's provider session at its branch point so the
+ * new thread carries the conversation history, and they inherit the source's
+ * timeline through that same point (a fork then waits idle; a side chat runs
+ * its question turn). Forking requires: a live source thread (any non-null
+ * originKind), a provider that supports native fork, a source that already has
+ * a provider session, and a new workspace on the same host as the source (a
+ * cross-host clone of a provider session is not possible).
  * Returns null when the request has no source provenance or the source session
- * cannot be cloned; the consumer treats a null descriptor for a source-derived
+ * cannot be cloned; the consumer treats a null fork point for a source-derived
  * thread as an unforkable error rather than a silent fresh start.
  */
-function resolveForkDescriptor(
+function resolveForkPoint(
   deps: Pick<ThreadCreateDeps, "db" | "providerRegistry">,
-  args: ResolveForkDescriptorArgs,
-): ThreadForkDescriptor | null {
+  args: ResolveForkPointArgs,
+): ThreadForkPoint | null {
   if (args.originKind === null || args.sourceThread === null) {
     return null;
   }
@@ -177,16 +178,6 @@ function resolveForkDescriptor(
   // A provider session ID is opaque to every other provider, so a fork is
   // possible only when the source and the child use the same provider.
   if (args.sourceThread.providerId !== args.providerId) {
-    return null;
-  }
-  const sourceProviderThreadId =
-    args.sourceSeqEnd === undefined
-      ? getLastProviderThreadId(deps, args.sourceThread.id)
-      : getProviderThreadIdAtOrBeforeSequence(deps, {
-          sequence: args.sourceSeqEnd,
-          threadId: args.sourceThread.id,
-        });
-  if (sourceProviderThreadId === null) {
     return null;
   }
   const sourceEnvironmentId = args.sourceThread.environmentId;
@@ -200,7 +191,10 @@ function resolveForkDescriptor(
   ) {
     return null;
   }
-  return { sourceProviderThreadId };
+  return resolveThreadForkPoint(deps, {
+    sourceSeqEnd: args.sourceSeqEnd,
+    sourceThread: args.sourceThread,
+  });
 }
 
 function childHostIdForResolvedEnvironment(
@@ -481,6 +475,23 @@ async function createProvisioningThread(
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
   let context: ThreadProvisionContext;
   try {
+    // The clone the provider makes of the source session is invisible to the
+    // timeline, so a fork inherits the source's conversation rows through the
+    // same branch point before its own thread-start rows are appended. Only a
+    // visible fork does: it is the thread page the user continues on. A hidden
+    // fork is an aside (a side chat) or a plugin worker rendered by its owner
+    // next to the source, so its own timeline holds only what it adds.
+    if (
+      args.fork !== null &&
+      args.fork.historyEndSequence !== null &&
+      args.request.visibility === "visible"
+    ) {
+      copyForkSourceHistory(deps, {
+        fork: thread,
+        historyEndSequence: args.fork.historyEndSequence,
+        sourceThreadId: args.fork.sourceThreadId,
+      });
+    }
     execution = await buildExecutionOptions(deps, args.request, {
       ...(args.executionDefaults
         ? { projectDefaults: args.executionDefaults }
@@ -494,7 +505,7 @@ async function createProvisioningThread(
       thread,
       environmentIntent: args.environmentIntent,
       execution,
-      fork: args.fork,
+      fork: args.fork?.descriptor ?? null,
       input: args.request.input,
       ...(args.providerInput !== undefined
         ? { providerInput: args.providerInput }
@@ -853,7 +864,7 @@ export async function createThreadFromRequest(
     }
   }
 
-  const fork = resolveForkDescriptor(deps, {
+  const fork = resolveForkPoint(deps, {
     childHostId,
     originKind: request.originKind ?? null,
     providerId: request.providerId,
