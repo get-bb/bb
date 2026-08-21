@@ -93,8 +93,8 @@ const CLAUDE_CODE_PROVIDER_ID = "claude-code";
 // while the first execution-options probe is in flight on an install that has
 // never cached a probe result; every later render uses last-seen real data.
 // Values are copied verbatim from the retired app-side catalog import so the
-// preload window looks identical; graduation moves this server-side and
-// deletes it (plans/agent-provider-plugin-surface.md, phase 6).
+// preload window looks identical. This placeholder should move server-side and
+// be deleted from the app.
 // ---------------------------------------------------------------------------
 
 const XHIGH_LADDER = [

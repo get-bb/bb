@@ -1,7 +1,6 @@
 # ACP providers
 
-First-party plugin for ACP (Agent Client Protocol) agent providers — phase 4
-of `plans/agent-provider-plugin-surface.md`.
+First-party plugin for ACP (Agent Client Protocol) agent providers.
 
 Today this plugin registers only the `acp-cursor` (Cursor) provider
 declaration. The rest of BB's ACP surface — the known-agents list (opencode,

@@ -470,7 +470,7 @@ export interface PluginAgentConfiguration {
 }
 
 // ---------------------------------------------------------------------------
-// Agent provider declarations (plans/agent-provider-plugin-surface.md §3).
+// Agent provider declarations.
 // ---------------------------------------------------------------------------
 
 /**

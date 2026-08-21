@@ -14,7 +14,7 @@
  * per consumer is the established shape on this branch — a shared package for
  * it is exactly the coupling the provider catalog package was deleted to
  * remove. They converge when the claude-code plugin owns its provider metadata
- * and serves these rows (wave 5 of plans/agent-provider-plugin-surface.md).
+ * and serves these rows.
  */
 import {
   HIGH_REASONING_EFFORT,
