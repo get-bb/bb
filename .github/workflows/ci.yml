@@ -76,7 +76,9 @@ jobs:
       # core must never gain a new provider-id carve-out; the per-file
       # baseline may only shrink. See docs/provider-plugin-api.md.
       - name: Check provider-literal ratchet
-        run: node scripts/check-provider-literal-ratchet.mjs
+        run: |
+          git fetch --depth=1 origin "${{ github.base_ref || github.event.repository.default_branch }}" || true
+          node scripts/check-provider-literal-ratchet.mjs --base "origin/${{ github.base_ref || github.event.repository.default_branch }}"
 
       # Exceeding the Actions cache quota is silent: GitHub evicts entries
       # without failing or warning anything, so the only symptom is caches
