@@ -75,6 +75,7 @@ import {
   type ProviderPostInitializeRequest,
   type ProviderRuntimeEvent,
   experimental_defineProviderBridge,
+  type ProviderRecoveryHint,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import {
@@ -322,6 +323,62 @@ const CODEX_INITIALIZE_PARAMS = {
 const CHILD_REQUEST_TIMEOUT_MS = 60_000;
 const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
   /\b(?:session|thread)\s+\S+\s+is archived\b/i;
+/**
+ * A brand-new rollout file can exist before its first record is written, and
+ * a rename landing in that window fails until codex flushes. The bridge owns
+ * this retry: only that error is retried, backing off after each attempt,
+ * then one final attempt whose failure propagates as a plain error.
+ */
+const CODEX_EMPTY_ROLLOUT_RENAME_ERROR_PATTERN = /\brollout at .+ is empty\b/i;
+const CODEX_RENAME_RETRY_DELAYS_MS = [50, 200] as const;
+/**
+ * Terminal account errors. Codex reports most of them with a structured
+ * `errorInfo`, but a real `401 Unauthorized: Missing bearer…` can arrive as
+ * category `unknown` with the signal only in the text (#130), so the text is
+ * the fallback. Both classifications live here, in the bridge that knows
+ * codex's wording; the runtime sees only the typed hint.
+ */
+const CODEX_AUTH_REQUIRED_TEXT_PATTERN =
+  /\b(?:40[13]|auth(?:entication|orization)?|unauthori[sz]ed)\b/i;
+const CODEX_RATE_LIMITED_TEXT_PATTERN =
+  /\b(?:429|credits?|quota|rate[-\s]?limit(?:ed)?|usage limit)\b/i;
+
+function classifyTerminalAccountError(
+  delta: Extract<ThreadDelta, { kind: "provider.error" }>,
+): "authRequired" | "rateLimited" | null {
+  const category = delta.errorInfo?.category;
+  if (category === "unauthorized") {
+    return "authRequired";
+  }
+  if (category === "rate-limit") {
+    return "rateLimited";
+  }
+  if (category !== undefined && category !== "unknown") {
+    return null;
+  }
+  const text = [delta.message, delta.detail]
+    .filter((part) => part !== undefined)
+    .join("\n");
+  if (CODEX_AUTH_REQUIRED_TEXT_PATTERN.test(text)) {
+    return "authRequired";
+  }
+  if (CODEX_RATE_LIMITED_TEXT_PATTERN.test(text)) {
+    return "rateLimited";
+  }
+  return null;
+}
+
+function archivedSessionHint(message: string): ProviderRecoveryHint | null {
+  return CODEX_ARCHIVED_SESSION_ERROR_PATTERN.test(message)
+    ? { kind: "sessionArchived", message, retryable: true }
+    : null;
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 const MISSING_CODEX_CLI_GUIDANCE =
   "bb could not find the Codex CLI on this machine. Install Codex (https://developers.openai.com/codex/cli) or put `codex` on PATH, then retry.";
 
@@ -390,6 +447,14 @@ interface CodexBridgeSession {
    * every thread/delta for the session, so these flush right after it.
    */
   pendingPreIdentityDeltas: ThreadDelta[];
+  /**
+   * Set by a terminal account error (401/403/429, quota, credits). The
+   * app-server child caches its credentials at startup, so the next turn
+   * rebuilds the child from the rollout before it dispatches; that is how an
+   * external `codex login` takes effect without a bb restart (#130, moved
+   * here from the runtime).
+   */
+  rebuildBeforeNextTurnReason: string | null;
   closing: boolean;
 }
 
@@ -627,10 +692,44 @@ function handleChildNotification(
       announceSessionIdentity(session, parsed.data.thread.id);
     }
   }
-  sendThreadDeltas(
-    session,
-    session.translator.translateEvent(toProviderRuntimeEvent(method, params)),
+  const deltas = session.translator.translateEvent(
+    toProviderRuntimeEvent(method, params),
   );
+  sendThreadDeltas(session, deltas);
+  for (const delta of deltas) {
+    if (delta.kind === "provider.error" && delta.willRetry !== true) {
+      emitTerminalAccountErrorHint(session, delta);
+    }
+  }
+}
+
+/**
+ * A terminal account error ends the turn (the `provider.error` delta already
+ * carries the row). The typed hint tells the runtime what kind it was, and
+ * the session is marked so its next turn rebuilds the child: codex caches
+ * credentials per process, and a rebuild is how a re-login takes effect.
+ */
+function emitTerminalAccountErrorHint(
+  session: CodexBridgeSession,
+  delta: Extract<ThreadDelta, { kind: "provider.error" }>,
+): void {
+  const kind = classifyTerminalAccountError(delta);
+  if (kind === null) {
+    return;
+  }
+  const message = delta.detail ?? delta.message;
+  session.rebuildBeforeNextTurnReason =
+    kind === "authRequired"
+      ? "codex session restarted after an authentication failure so a new login can take effect."
+      : "codex session restarted after a rate limit so a refreshed account state can take effect.";
+  // Unsolicited: no runtime request failed here, the child's own turn did.
+  sendNotification(BRIDGE_NOTIFICATION_METHODS.providerRecovery, {
+    threadId: session.bbThreadId,
+    kind,
+    message,
+    // The turn already failed; nothing is replayed on the hint's account.
+    retryable: false,
+  });
 }
 
 const codexChildToolCallParamsSchema = z.object({
@@ -955,6 +1054,7 @@ async function constructThreadSession(
     awaitingReplayedUsage: args.request.kind !== "start",
     identityAnnounced: false,
     pendingPreIdentityDeltas: [],
+    rebuildBeforeNextTurnReason: null,
     closing: false,
   };
   sessionsByBbThreadId.set(args.threadId, session);
@@ -1307,14 +1407,20 @@ function sendConstructionError(
   resumable: boolean,
 ): void {
   const message = describeCodexLaunchError(error);
-  // Codex's archived-session failure becomes the typed protocol error; the
-  // original text is preserved because the runtime's unarchive-and-retry
-  // recovery matches on it.
-  if (resumable && CODEX_ARCHIVED_SESSION_ERROR_PATTERN.test(message)) {
-    sendError(id, BRIDGE_JSON_RPC_ERRORS.SESSION_NOT_RESTORABLE, message);
-    return;
-  }
-  sendError(id, BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR, message);
+  // An archived session carries the `sessionArchived` hint on the error: the
+  // runtime unarchives the session (a fork's source, on a fork) and retries
+  // the construction once. A resume additionally gets the typed
+  // SESSION_NOT_RESTORABLE code. The original text is preserved for the
+  // user-visible failure when that recovery cannot run.
+  const recovery = archivedSessionHint(message);
+  sendError(
+    id,
+    resumable && recovery !== null
+      ? BRIDGE_JSON_RPC_ERRORS.SESSION_NOT_RESTORABLE
+      : BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+    message,
+    recovery === null ? undefined : { recovery },
+  );
 }
 
 /**
@@ -1378,6 +1484,12 @@ async function requireLiveSessionForTurn(
       session,
       params.options,
       "codex app-server exited; the session was restored from its rollout.",
+    );
+  } else if (session.rebuildBeforeNextTurnReason !== null) {
+    session = await rebuildThreadSession(
+      session,
+      params.options,
+      session.rebuildBeforeNextTurnReason,
     );
   } else if (signature !== session.constructionSignature) {
     session = await rebuildThreadSession(
@@ -1459,11 +1571,9 @@ async function handleTurnStart(
   try {
     live = await requireLiveSessionForTurn(params);
   } catch (error) {
-    sendError(
-      id,
-      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
-      error instanceof Error ? error.message : String(error),
-    );
+    // A rebuild resumes the rollout, so an archived session surfaces here
+    // with the same typed hint a thread/resume would carry.
+    rejectWithCodexError(id, error);
     return;
   }
   const { session, connection } = live;
@@ -1577,11 +1687,7 @@ async function handleTurnSteer(
     ]);
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
-    sendError(
-      id,
-      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
-      error instanceof Error ? error.message : String(error),
-    );
+    rejectWithCodexError(id, error);
   }
 }
 
@@ -1651,12 +1757,7 @@ async function handleThreadMaintenance(
 ): Promise<void> {
   try {
     await withChildForThread(params.threadId, (connection) =>
-      connection.request({
-        method: request.method,
-        params: request.params,
-        resultSchema: ignoredChildResultSchema,
-        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-      }),
+      sendMaintenanceRequestWithRetries(connection, request),
     );
     if (options?.releaseAfter) {
       const session = sessionsByBbThreadId.get(params.threadId);
@@ -1666,14 +1767,66 @@ async function handleThreadMaintenance(
     }
     sendResult(id, { ok: true });
   } catch (error) {
-    // Codex error text passes through verbatim: the runtime's rename
-    // rollout-retry and archive-idempotency tolerances match on it.
-    sendError(
-      id,
-      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
-      describeCodexLaunchError(error),
-    );
+    // Codex error text passes through verbatim: the runtime's
+    // archive-idempotency tolerance matches on it. An archived session gets
+    // the typed hint on the error.
+    rejectWithCodexError(id, error);
   }
+}
+
+/**
+ * Reject a runtime request with codex's error text. An archived-session
+ * failure carries the `sessionArchived` hint as `error.data.recovery` so the
+ * runtime can unarchive and retry once; every other failure is a plain error.
+ */
+function rejectWithCodexError(id: string | number, error: unknown): void {
+  const message = describeCodexLaunchError(error);
+  const recovery = archivedSessionHint(message);
+  if (recovery !== null) {
+    sendError(id, BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR, message, { recovery });
+    return;
+  }
+  sendError(id, BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR, message);
+}
+
+/**
+ * One maintenance request against a child. `thread/name/set` retries the
+ * empty-rollout window (see CODEX_EMPTY_ROLLOUT_RENAME_ERROR_PATTERN); every
+ * other method and every other error fails on the first attempt.
+ */
+async function sendMaintenanceRequestWithRetries(
+  connection: CodexAppServerConnection,
+  request: { method: string; params: Record<string, unknown> },
+): Promise<void> {
+  const sendOnce = (): Promise<unknown> =>
+    connection.request({
+      method: request.method,
+      params: request.params,
+      resultSchema: ignoredChildResultSchema,
+      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+    });
+  if (request.method !== "thread/name/set") {
+    await sendOnce();
+    return;
+  }
+  for (const retryDelayMs of CODEX_RENAME_RETRY_DELAYS_MS) {
+    try {
+      await sendOnce();
+      return;
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !CODEX_EMPTY_ROLLOUT_RENAME_ERROR_PATTERN.test(error.message)
+      ) {
+        throw error;
+      }
+      process.stderr.write(
+        `codex rollout is not ready; retrying rename in ${retryDelayMs}ms.\n`,
+      );
+      await delay(retryDelayMs);
+    }
+  }
+  await sendOnce();
 }
 
 async function handleSkillsConfigure(

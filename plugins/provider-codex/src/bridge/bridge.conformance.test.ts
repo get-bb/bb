@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,10 +50,20 @@ let workspaceDir: string;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-conformance-ws-"));
+  // The kit's recovery/session-archived rule archives the session (the
+  // bridge kills that thread's child) and resumes it on a fresh child, so
+  // the fake's archive state has to outlive one child process.
+  const fakeScriptPath = join(workspaceDir, "fake-codex-script.json");
+  writeFileSync(
+    fakeScriptPath,
+    JSON.stringify({
+      archiveStatePath: join(workspaceDir, "fake-codex-archived.json"),
+    }),
+  );
   vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", process.execPath);
   vi.stubEnv(
     "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
-    JSON.stringify([fakeAppServerPath]),
+    JSON.stringify([fakeAppServerPath, fakeScriptPath]),
   );
   output = captureBridgeJsonRpcOutput();
 });
@@ -138,6 +148,7 @@ it("passes the canonical protocol suite against supervised fake app-server child
     "stop/release-not-interrupted": "pass",
     "session/resume-id-uniqueness": "pass",
     "turn/settles-without-activity": "pass",
+    "recovery/session-archived": "pass",
   });
 
   // Stronger than `report.passed`: no rule may be non-green, not even skipped.

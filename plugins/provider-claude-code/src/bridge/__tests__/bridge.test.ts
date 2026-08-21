@@ -3625,6 +3625,21 @@ describe("bridge", () => {
       expect(getFailedTurns(bridge.messages)).toHaveLength(1);
       expect(queries).toHaveLength(1);
       expect(queries[0]?.close).not.toHaveBeenCalled();
+      // The failure is typed for the runtime: one unsolicited authRequired
+      // hint beside the turn's provider.error row, and nothing on a request
+      // (no request failed here).
+      expect(
+        bridge.messages
+          .filter((message) => message.method === "provider/recovery")
+          .map((message) => message.params),
+      ).toEqual([
+        {
+          threadId,
+          kind: "authRequired",
+          message: expect.stringContaining("authenticate"),
+          retryable: false,
+        },
+      ]);
 
       bridge.sendRequest(
         3,

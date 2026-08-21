@@ -21,6 +21,11 @@
  * - `fail_turn:<text>` / `prestart_fail:<text>` — raise a provider error
  *   carrying the text (underscores read as spaces) and settle the turn as
  *   failed, after or before the turn opens.
+ * - `recover:<kind>` — send an unsolicited `provider/recovery` notification
+ *   of that kind (`retryable: false`) for the thread right after the plan's
+ *   deltas: after the terminal delta of a failed or completed turn, after
+ *   `turn.open` for a held turn. `recover_now:<kind>` sends it right after
+ *   `turn.open` instead, while the turn is still running.
  * - otherwise the turn answers `Response to: <prompt text>`.
  *
  * Process- and session-level behaviour (archived sessions, failing commands,
@@ -63,6 +68,8 @@ import {
   turnStartParamsSchema,
   turnSteerParamsSchema,
   experimental_defineProviderBridge,
+  providerRecoveryKindSchema,
+  type ProviderRecoveryHint,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { appendFileSync } from "node:fs";
 import { z } from "zod";
@@ -129,6 +136,16 @@ export const scriptedEchoOptionsSchema = z
           message: z.string(),
           code: z.number().int().optional(),
           times: z.number().int().positive().optional(),
+          /**
+           * Attach a typed recovery hint to the rejection
+           * (`error.data.recovery`, the message is the entry's message).
+           */
+          recovery: z
+            .object({
+              kind: providerRecoveryKindSchema,
+              retryable: z.boolean(),
+            })
+            .optional(),
         }),
       )
       .optional(),
@@ -269,6 +286,8 @@ type PendingReply =
 const sessions = new Map<string, Session>();
 const pendingReplies = new Map<JsonRpcId, PendingReply>();
 const unarchivedSessionIds = new Set<string>();
+/** Sessions `thread/archive` archived at runtime (until `thread/unarchive`). */
+const archivedSessionIds = new Set<string>();
 /** How many times each method has failed under a bounded `failMethods` entry. */
 const scriptedFailureCounts = new Map<ScriptedMethod, number>();
 let discardFailed = false;
@@ -305,6 +324,21 @@ function notify(method: string, params: Record<string, unknown>): void {
 
 function emitDeltas(threadId: string, deltas: ThreadDelta[]): void {
   notify(THREAD_DELTA_NOTIFICATION_METHOD, { threadId, deltas });
+}
+
+function emitRecoveryHint(
+  threadId: string,
+  kind: ProviderRecoveryHint["kind"] | null,
+): void {
+  if (kind === null) {
+    return;
+  }
+  notify(BRIDGE_NOTIFICATION_METHODS.providerRecovery, {
+    threadId,
+    kind,
+    message: `scripted ${kind}`,
+    retryable: false,
+  });
 }
 
 function sendRequest(
@@ -350,6 +384,10 @@ interface TurnPlan {
    * error before the turn opens (a turnless, thread-scoped error).
    */
   failure: { text: string; beforeTurn: boolean } | null;
+  /** `recover:<kind>`: an unsolicited recovery hint after the plan's deltas. */
+  recoverKind: ProviderRecoveryHint["kind"] | null;
+  /** `recover_now:<kind>`: the hint right after `turn.open`, mid-turn. */
+  recoverNowKind: ProviderRecoveryHint["kind"] | null;
 }
 
 function promptText(input: readonly PromptInput[]): string {
@@ -379,7 +417,17 @@ function parseTurnPlan(inputText: string): TurnPlan {
     inputText,
   );
   const failureText = prestartFailMatch?.[1] ?? failMatch?.[1];
+  const recoverMatch = /(?:^|\s)recover:([^\s]+)(?:\s|$)/u.exec(inputText);
+  const recoverKind = providerRecoveryKindSchema.safeParse(recoverMatch?.[1]);
+  const recoverNowMatch = /(?:^|\s)recover_now:([^\s]+)(?:\s|$)/u.exec(
+    inputText,
+  );
+  const recoverNowKind = providerRecoveryKindSchema.safeParse(
+    recoverNowMatch?.[1],
+  );
   return {
+    recoverKind: recoverKind.success ? recoverKind.data : null,
+    recoverNowKind: recoverNowKind.success ? recoverNowKind.data : null,
     approvalKind,
     delayMs: delayMatch?.[1] === undefined ? 0 : Number(delayMatch[1]),
     questionRequested: questionMatch !== null,
@@ -547,12 +595,14 @@ function scheduleCompletion(
   session: Session,
   responseText: string,
   delayMs: number,
+  recoverKind: ProviderRecoveryHint["kind"] | null = null,
 ): void {
   if (session.activeTurn === null) {
     return;
   }
   session.activeTurn.timer = setTimeout(() => {
     completeTurn(session, "completed", responseText);
+    emitRecoveryHint(session.threadId, recoverKind);
   }, delayMs);
 }
 
@@ -581,6 +631,7 @@ function beginTurn(args: {
         settlesTurn: true,
       },
     ]);
+    emitRecoveryHint(session.threadId, plan.recoverKind);
     return;
   }
   session.turnCount += 1;
@@ -605,8 +656,10 @@ function beginTurn(args: {
     });
   }
   emitDeltas(session.threadId, deltas);
+  emitRecoveryHint(session.threadId, plan.recoverNowKind);
 
   if (plan.holdTurn) {
+    emitRecoveryHint(session.threadId, plan.recoverKind);
     return;
   }
   if (plan.failure !== null) {
@@ -621,6 +674,7 @@ function beginTurn(args: {
         providerTurnId,
       },
     ]);
+    emitRecoveryHint(session.threadId, plan.recoverKind);
     return;
   }
 
@@ -685,7 +739,7 @@ function beginTurn(args: {
     });
     return;
   }
-  scheduleCompletion(session, plan.responseText, plan.delayMs);
+  scheduleCompletion(session, plan.responseText, plan.delayMs, plan.recoverKind);
 }
 
 // ---------------------------------------------------------------------------
@@ -801,20 +855,31 @@ function archivedSessionError(providerThreadId: string): string {
 
 /**
  * The archived-session gate: a fork reads its source session, everything
- * else acts on the thread's own session.
+ * else acts on the thread's own session. A session is archived when the
+ * `archivedSession` script says so from the start (until the first
+ * `thread/unarchive`) or when `thread/archive` archived it at runtime.
  */
 function rejectIfArchived(
   id: JsonRpcId,
   options: ScriptedEchoOptions,
   providerThreadId: string,
 ): boolean {
-  if (
-    options.archivedSession !== true ||
-    unarchivedSessionIds.has(providerThreadId)
-  ) {
+  const scriptedArchived =
+    options.archivedSession === true &&
+    !unarchivedSessionIds.has(providerThreadId);
+  if (!scriptedArchived && !archivedSessionIds.has(providerThreadId)) {
     return false;
   }
-  respondError(id, -32000, archivedSessionError(providerThreadId));
+  const message = archivedSessionError(providerThreadId);
+  // The codex shape: the text for the legacy runtime gate, the typed hint
+  // on the error for the runtime's unarchive-and-retry action.
+  respondError(id, -32000, message, {
+    recovery: {
+      kind: "sessionArchived",
+      message,
+      retryable: true,
+    } satisfies ProviderRecoveryHint,
+  });
   if (options.exitAfterArchivedError === true) {
     exitProcess();
   }
@@ -1120,11 +1185,14 @@ const handlers: Record<string, RequestHandler> = {
       return;
     }
     if (session.activeTurn === null) {
-      respondError(
-        id,
-        BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
-        `No active turn to steer (expected ${parsed.data.expectedTurnId})`,
-      );
+      const message = `No active turn to steer (expected ${parsed.data.expectedTurnId})`;
+      respondError(id, BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN, message, {
+        recovery: {
+          kind: "staleTurn",
+          message,
+          retryable: false,
+        } satisfies ProviderRecoveryHint,
+      });
       return;
     }
     // The steer is acknowledged into the live turn; the echo answers the
@@ -1196,6 +1264,7 @@ const handlers: Record<string, RequestHandler> = {
       );
       return;
     }
+    archivedSessionIds.add(parsed.data.providerThreadId);
     respondResult(id, {});
   },
 
@@ -1216,6 +1285,7 @@ const handlers: Record<string, RequestHandler> = {
       return;
     }
     unarchivedSessionIds.add(parsed.data.providerThreadId);
+    archivedSessionIds.delete(parsed.data.providerThreadId);
     respondResult(id, {});
   },
 
@@ -1316,7 +1386,20 @@ function applyScriptedMethodPolicy(
     const failedSoFar = scriptedFailureCounts.get(scripted.data) ?? 0;
     if (failure.times === undefined || failedSoFar < failure.times) {
       scriptedFailureCounts.set(scripted.data, failedSoFar + 1);
-      respondError(id, failure.code ?? -32000, failure.message);
+      respondError(
+        id,
+        failure.code ?? -32000,
+        failure.message,
+        failure.recovery === undefined
+          ? undefined
+          : {
+              recovery: {
+                kind: failure.recovery.kind,
+                message: failure.message,
+                retryable: failure.recovery.retryable,
+              } satisfies ProviderRecoveryHint,
+            },
+      );
       return "handled";
     }
   }

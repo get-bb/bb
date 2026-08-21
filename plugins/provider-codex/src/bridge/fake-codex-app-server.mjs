@@ -23,7 +23,13 @@
  * behavior below is unchanged.
  */
 
-import { closeSync, openSync, readFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { createInterface } from "node:readline";
 
 let threadCounter = 0;
@@ -135,7 +141,49 @@ const scriptPath = process.argv[2];
 const script = scriptPath ? JSON.parse(readFileSync(scriptPath, "utf8")) : null;
 const scriptedTurns = script?.turns ?? null;
 const modelListFailOnceMarkerPath = script?.modelListFailOnceMarkerPath ?? null;
+/**
+ * `archiveStatePath`: a JSON file of archived thread ids shared by every fake
+ * child the bridge spawns from one script. The real app-server keeps archive
+ * state on disk (the rollout moves to an archived dir), so an archive seen by
+ * one child must refuse a resume in the next — the bridge kills a thread's
+ * child on archive and resumes on a fresh one.
+ */
+const archiveStatePath = script?.archiveStatePath ?? null;
+/**
+ * `renameEmptyRolloutFailures`: how many `thread/name/set` calls fail with the
+ * real app-server's "rollout … is empty" error before one succeeds — the
+ * window between a rollout file's creation and its first record.
+ */
+let renameEmptyRolloutFailuresLeft = script?.renameEmptyRolloutFailures ?? 0;
+const archivedThreadIds = new Set();
 let scriptedTurnIndex = 0;
+
+function readArchivedThreadIds() {
+  if (archiveStatePath === null) {
+    return archivedThreadIds;
+  }
+  if (!existsSync(archiveStatePath)) {
+    return new Set();
+  }
+  return new Set(JSON.parse(readFileSync(archiveStatePath, "utf8")));
+}
+
+function setThreadArchived(threadId, archived) {
+  const ids = readArchivedThreadIds();
+  if (archived) {
+    ids.add(threadId);
+  } else {
+    ids.delete(threadId);
+  }
+  if (archiveStatePath === null) {
+    return;
+  }
+  writeFileSync(archiveStatePath, JSON.stringify([...ids]));
+}
+
+function isThreadArchived(threadId) {
+  return readArchivedThreadIds().has(threadId);
+}
 
 function shouldFailThisModelList() {
   if (modelListFailOnceMarkerPath === null) {
@@ -188,9 +236,29 @@ function requestFromClient(method, params) {
   });
 }
 
+/**
+ * `turnCursorPath`: persists the scripted-turn cursor across child processes,
+ * so a script whose Nth turn must run on a REBUILT child (the bridge replaces
+ * a thread's app-server after a terminal account error) keeps counting where
+ * the previous child stopped.
+ */
+const turnCursorPath = script?.turnCursorPath ?? null;
+
+function takeScriptedTurnIndex() {
+  if (turnCursorPath === null) {
+    const index = scriptedTurnIndex;
+    scriptedTurnIndex += 1;
+    return index;
+  }
+  const index = existsSync(turnCursorPath)
+    ? Number(readFileSync(turnCursorPath, "utf8"))
+    : 0;
+  writeFileSync(turnCursorPath, String(index + 1));
+  return index;
+}
+
 async function runScriptFileTurn(threadId) {
-  const turn = scriptedTurns[scriptedTurnIndex] ?? [];
-  scriptedTurnIndex += 1;
+  const turn = scriptedTurns[takeScriptedTurnIndex()] ?? [];
   for (const entry of turn) {
     const params = withThreadId(entry.params ?? {}, threadId);
     if (entry.kind === "request") {
@@ -260,7 +328,10 @@ async function handleRequest(message) {
       // Scripted archived-session rejection: the real app-server refuses to
       // resume an archived thread with an error naming the session. Tests use
       // an `archived-` provider-thread-id prefix to trigger it.
-      if (String(params.threadId).startsWith("archived-")) {
+      if (
+        String(params.threadId).startsWith("archived-") ||
+        isThreadArchived(params.threadId)
+      ) {
         respondError(
           id,
           -32603,
@@ -279,6 +350,19 @@ async function handleRequest(message) {
       return;
     }
     case "thread/fork": {
+      // The real app-server reads the source rollout; an archived source is
+      // refused with the same wording a resume gets.
+      if (
+        String(params.threadId).startsWith("archived-") ||
+        isThreadArchived(params.threadId)
+      ) {
+        respondError(
+          id,
+          -32603,
+          `session ${params.threadId} is archived; unarchive it and retry`,
+        );
+        return;
+      }
       threadCounter += 1;
       const replaysUsage = String(params.threadId).startsWith("usage-replay-");
       const threadId = replaysUsage
@@ -366,10 +450,27 @@ async function handleRequest(message) {
       respond(id, {});
       return;
     }
-    case "thread/compact/start":
     case "thread/archive":
+      setThreadArchived(params.threadId, true);
+      respond(id, {});
+      return;
     case "thread/unarchive":
+      setThreadArchived(params.threadId, false);
+      respond(id, {});
+      return;
     case "thread/name/set":
+      if (renameEmptyRolloutFailuresLeft > 0) {
+        renameEmptyRolloutFailuresLeft -= 1;
+        respondError(
+          id,
+          -32603,
+          `failed to set thread name: rollout at /tmp/${params.threadId}.jsonl is empty`,
+        );
+        return;
+      }
+      respond(id, {});
+      return;
+    case "thread/compact/start":
     case "thread/goal/clear":
       respond(id, {});
       return;

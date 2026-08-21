@@ -112,6 +112,12 @@ export interface AgentRuntimeOptions {
    * accepted turn never starts). Defaults: 120s threshold, 15s sweep.
    */
   turnStartWatchdog?: { thresholdMs?: number; intervalMs?: number };
+  /**
+   * The retry ladder for a request a bridge rejected with a retryable
+   * `rateLimited` recovery hint: one re-send per entry, after that delay.
+   * Default: [2s, 8s]. Tests shorten it.
+   */
+  rateLimitRetry?: { delaysMs?: readonly number[] };
 
   /** Optional caller-provided skill roots to expose to provider sessions. */
   skillRoots?: readonly AgentRuntimeSkillRoot[];
@@ -137,11 +143,12 @@ export interface AgentRuntimeOptions {
   onProcessExit?: (info: AgentRuntimeProcessExitInfo) => void;
 
   /**
-   * Called when a bridge raises a typed `provider/recovery` hint. The runtime
-   * parses and forwards; it does not act on the kind yet (the recovery
-   * actions — unarchive-and-retry, bridge restart, stale-steer drop, retry
-   * scheduling — land with the runtime cleanup workstream). A runtime signal,
-   * never a timeline event.
+   * Called when a bridge raises a typed `provider/recovery` hint, after the
+   * runtime has recorded it for the action it drives (unarchive-and-retry,
+   * typed `auth_required` rejection, bridge restart, stale-steer drop,
+   * rate-limit retry). The host uses the forward for what the runtime cannot
+   * do itself, such as re-checking provider health after `authRequired`. A
+   * runtime signal, never a timeline event.
    */
   onProviderRecovery?: (hint: AgentRuntimeProviderRecoveryHint) => void;
 }

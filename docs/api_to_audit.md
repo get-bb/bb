@@ -34,6 +34,24 @@ hook; confirm the `{ threadId | null }` scope is the right key once bridges
 multiplex several threads over one child; and settle the recording entry
 shape (`{ ts, run, seq, dir, line }`) as a documented fixture format.
 
+## `experimental_BridgeRecoveryError`
+
+**What it does.** A request handler throws it to reject the request with a
+typed recovery hint: `runBridgeRequest` answers with the given JSON-RPC
+`code` and `error.data.recovery { kind, message, retryable }`, the same way a
+`ProviderRequestDecodeError` becomes `INVALID_PARAMS`. A handler that answers
+by hand passes the hint to `sendError(id, code, message, { recovery })`
+instead. The runtime reads the hint from the rejected request
+(`JsonRpcResponseError.recovery`) and acts on the kind; see
+[provider-bridge-protocol.md](provider-bridge-protocol.md), "Recovery hints".
+
+**Audit before stabilizing.** Confirm the five kinds cover what third-party
+bridges need to say about a rejection (a `notInstalled`/`needsUpdate` kind
+for installation was deliberately left to `provider/installation/*`). Decide
+whether `retryable` should be per kind (only `sessionArchived` and
+`rateLimited` read it today) and whether the runtime should bound the
+`rateLimited` ladder from the hint rather than from a constant.
+
 ## Provider bridge maintenance (`PluginProviderCapabilities.experimental_providerHealth`, `PluginProviderCapabilities.experimental_providerUsage`, `PluginProviderCapabilities.experimental_providerInstallation`, `ProviderInfo.experimental_providerHealth`, `ProviderInfo.experimental_providerUsage`, `ProviderInfo.experimental_providerInstallation`, `BRIDGE_REQUEST_METHODS.experimentalProviderHealth`, `BRIDGE_REQUEST_METHODS.experimentalProviderUsage`, `BRIDGE_REQUEST_METHODS.experimentalProviderInstallationStatus`, `BRIDGE_REQUEST_METHODS.experimentalProviderInstallationRun`, `experimental_providerMaintenanceParamsSchema`, `experimental_providerHealthSchema`, `experimental_providerHealthResultSchema`, `experimental_providerUsageSchema`, `experimental_providerUsageWindowSchema`, `experimental_providerUsageResultSchema`, and the `experimental_providerInstallation*` schemas/types)
 
 **What it does.** Adds optional, sessionless `provider/health`,

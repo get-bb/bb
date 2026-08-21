@@ -1463,8 +1463,11 @@ export class RuntimeManager {
       onInteractiveRequest: this.options.onInteractiveRequest,
       onStderr: this.options.onStderr,
       onProviderRecovery: (hint) => {
-        // Parse-and-forward only: the recovery actions land with the runtime
-        // cleanup workstream. Logged so a hint is never silently consumed.
+        // The runtime has already acted on the kind (unarchive-and-retry,
+        // typed auth_required rejection, bridge restart, stale-steer drop,
+        // rate-limit retry). Provider health is pulled on demand by the
+        // server, so there is no host-side cache to invalidate here; the
+        // hint is logged so it is never silently consumed.
         this.options.logger?.debug(
           {
             environmentId: args.environmentId,

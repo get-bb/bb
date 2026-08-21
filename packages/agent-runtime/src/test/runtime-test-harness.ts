@@ -11,7 +11,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { JsonObject } from "@bb/domain";
+import type { JsonObject, ProviderRecoveryKind } from "@bb/domain";
 import { createAgentRuntime } from "../runtime.js";
 import type {
   AgentRuntime,
@@ -80,6 +80,8 @@ export interface ScriptedEchoLaunchScript {
     message: string;
     code?: number;
     times?: number;
+    /** A typed recovery hint on the rejection (`error.data.recovery`). */
+    recovery?: { kind: ProviderRecoveryKind; retryable: boolean };
   }[];
   goalClearNotifyDelayMs?: number;
   /** The `cleared` value `thread/goal/clear` answers (default true). */

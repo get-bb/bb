@@ -1,4 +1,4 @@
-export { createAgentRuntime } from "./runtime.js";
+export { AgentRuntimeRecoveryError, createAgentRuntime } from "./runtime.js";
 export {
   fingerprintAcpLaunchSpec,
   bridgeLaunchProcessKey,

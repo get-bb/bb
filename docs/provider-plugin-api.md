@@ -134,6 +134,19 @@ Recovery is typed, never text-matched:
   message: string, retryable: boolean }
 ```
 
+One payload, two carriers. Rejecting a request? Put the hint in the error
+response as `error.data.recovery` — throw `experimental_BridgeRecoveryError`
+from the handler, or call `sendError(id, code, message, { recovery })`; the
+JSON-RPC id is the correlation. No request to reject (a terminal 401
+mid-turn)? Send the `provider/recovery` notification with the hint and the
+`threadId`. Never both for one event. The runtime acts on `kind` alone:
+`sessionArchived` unarchives and retries the rejected request once;
+`authRequired` rejects with a typed `auth_required` error; `restartRecommended`
+restarts the bridge process and resumes the thread; `staleTurn` drops the
+steer; `rateLimited` retries a `retryable` rejection on a short bounded
+ladder. A bridge that can heal itself (rebuild its own child before the next
+turn) does so and still sends the hint so the failure is typed.
+
 The delta assembler stays in the daemon, is generic for extension kinds, and
 ships with the conformance kit and JSON-RPC harness as
 `@get-bb/plugin-sdk/provider-bridge/testing`. The ACP bridge ships as

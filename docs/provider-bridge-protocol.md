@@ -251,9 +251,42 @@ range is what gates a bridge: every bridge in this repo reports
   `session/replaced`, not a delta: `{ threadId?, kind: sessionArchived |
 authRequired | restartRecommended | staleTurn | rateLimited, message,
 retryable }`. The runtime acts on the kind and never matches error text.
-  Today the bridge adapter decodes it and the runtime forwards it to its
-  `onProviderRecovery` hook (the daemon logs it); the per-kind actions land
-  with the runtime cleanup workstream.
+  See "Recovery hints" below for the actions and the carrier.
+
+### Recovery hints
+
+A hint says what went wrong in the provider's own terms and what the runtime
+may do about it. The `provider/error` delta beside it still carries the
+user-visible row; the hint carries the action. The runtime keys on `kind`
+only and never consults the provider id:
+
+| `kind` | Runtime action |
+| --- | --- |
+| `sessionArchived` | `thread/unarchive` the session, then retry the rejected request once (`retryable: true`). |
+| `authRequired` | Reject the request with a typed `auth_required` error (no text match anywhere downstream) and forward the hint so the host can re-check provider health. |
+| `restartRecommended` | Stop the bridge process the thread runs on and resume the thread on a fresh one — right away when the thread is idle, otherwise before its next turn. |
+| `staleTurn` | Drop the steer: the turn it targeted is gone, and the runtime reports the steer as stale instead of failing it. |
+| `rateLimited` | With `retryable: true` on a rejected request: retry on a short bounded ladder and surface the last failure. With `retryable: false` (a turn that already failed): forward only; the runtime never re-runs a user's turn on its own. |
+
+One payload, two carriers. **Rejecting a request? Put the hint in
+`error.data.recovery`.** A hint that explains a rejected runtime request (a
+resume against an archived session) rides that request's JSON-RPC error
+response as `error.data.recovery { kind, message, retryable }`; the JSON-RPC
+`id` is the correlation, and the payload names no thread because the request
+already does. A handler throws `experimental_BridgeRecoveryError` and
+`runBridgeRequest` writes the response, or it calls
+`sendError(id, code, message, { recovery })` by hand. **No request to
+reject? Send `provider/recovery`.** The notification is for unsolicited hints
+only — a terminal 401 or 429 the provider raised mid-turn, an SDK auth
+failure — and carries `threadId` for a session-scoped condition. Never send
+both for one event. `data` is optional and additive; a response without it,
+or with a malformed one, is a plain failure, and a request that times out or
+whose bridge exits has no response and therefore no hint.
+
+A bridge that can heal itself does not ask the runtime to: the codex bridge
+rebuilds a thread's `codex app-server` child before the next turn after a
+terminal account error, and the claude bridge replaces its CLI child the same
+way; both still emit `authRequired`/`rateLimited` so the failure is typed.
 
 The assembler builds every v3 core kind: `fileRead`, `search` and
 `planSteps` open pending and settle from the terminal shape like `command`;

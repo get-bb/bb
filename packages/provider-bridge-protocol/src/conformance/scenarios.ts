@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_REQUEST_METHODS,
+  bridgeErrorDataSchema,
   initializeResultSchema,
   negotiateGrammarVersion,
   threadIdentityResultSchema,
@@ -605,8 +606,115 @@ export async function runSessionLifecycleScenarios(
   }
 
   results.push(...(await runZeroWorkTurnScenario(context, threadId)));
+  results.push(...(await runArchivedResumeRecoveryScenario(context, threadId)));
 
   return results;
+}
+
+const SESSION_ARCHIVED_RECOVERY_ID = "recovery/session-archived";
+const SESSION_ARCHIVED_RECOVERY_TITLE =
+  "resuming an archived session is rejected with a sessionArchived hint";
+
+/**
+ * recovery/session-archived: a bridge that archives sessions must say so in
+ * the runtime's vocabulary when a resume hits an archived one — the rejection
+ * carries `error.data.recovery { kind: "sessionArchived" }`, which is what
+ * lets the runtime unarchive and retry without matching provider text. A
+ * bridge with no archive (thread/archive rejected) or one that resumes an
+ * archived session anyway has nothing to report here and produces no result
+ * for the rule (like turn/settles-without-activity), so its report stays
+ * fully green.
+ *
+ * Runs last: it archives and unarchives the lifecycle session, and leaves it
+ * resumed so the transport's close sees a live session.
+ */
+async function runArchivedResumeRecoveryScenario(
+  context: ScenarioContext,
+  threadId: string,
+): Promise<ConformanceCheckResult[]> {
+  const { client, fixture } = context;
+  const providerThreadId = context.providerThreadId;
+  if (providerThreadId === undefined) {
+    return [
+      skipped(
+        SESSION_ARCHIVED_RECOVERY_ID,
+        SESSION_ARCHIVED_RECOVERY_TITLE,
+        "prerequisite session/start-identity failed",
+      ),
+    ];
+  }
+  const archiveId = client.request(BRIDGE_REQUEST_METHODS.threadArchive, {
+    threadId,
+    providerThreadId,
+  });
+  const archiveResponse = await client.waitForResponse(archiveId);
+  if (archiveResponse === null) {
+    return [
+      fail(
+        SESSION_ARCHIVED_RECOVERY_ID,
+        SESSION_ARCHIVED_RECOVERY_TITLE,
+        "thread/archive was not answered",
+      ),
+    ];
+  }
+  if (archiveResponse.error !== undefined) {
+    // No archive on this bridge: nothing to say about archived sessions.
+    return [];
+  }
+
+  const resumeParams = {
+    threadId,
+    cwd: fixture.cwd,
+    providerThreadId,
+    options: defaultOptions(fixture),
+    instructionMode: "append",
+  };
+  const resumeId = client.request(
+    BRIDGE_REQUEST_METHODS.threadResume,
+    resumeParams,
+  );
+  const resumeResponse = await client.waitForResponse(resumeId);
+
+  const unarchiveId = client.request(BRIDGE_REQUEST_METHODS.threadUnarchive, {
+    threadId,
+    providerThreadId,
+  });
+  await client.waitForResponse(unarchiveId);
+
+  if (resumeResponse === null) {
+    return [
+      fail(
+        SESSION_ARCHIVED_RECOVERY_ID,
+        SESSION_ARCHIVED_RECOVERY_TITLE,
+        "thread/resume of the archived session was not answered",
+      ),
+    ];
+  }
+  if (resumeResponse.error === undefined) {
+    // This bridge resumes an archived session; no recovery is needed.
+    return [];
+  }
+  // Leave the session live again for whatever runs after the kit.
+  const reResumeId = client.request(
+    BRIDGE_REQUEST_METHODS.threadResume,
+    resumeParams,
+  );
+  await client.waitForResponse(reResumeId);
+
+  const data = bridgeErrorDataSchema.safeParse(resumeResponse.error.data);
+  const kind = data.success ? data.data.recovery?.kind : undefined;
+  if (kind !== "sessionArchived") {
+    return [
+      fail(
+        SESSION_ARCHIVED_RECOVERY_ID,
+        SESSION_ARCHIVED_RECOVERY_TITLE,
+        `the rejection carried ${
+          kind === undefined ? "no recovery hint" : `kind "${kind}"`
+        }: ${JSON.stringify(resumeResponse.error)}`,
+      ),
+    ];
+  }
+  return [pass(SESSION_ARCHIVED_RECOVERY_ID, SESSION_ARCHIVED_RECOVERY_TITLE)];
 }
 
 const SETTLES_WITHOUT_ACTIVITY_ID = "turn/settles-without-activity";

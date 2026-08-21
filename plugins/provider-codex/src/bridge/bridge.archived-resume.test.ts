@@ -8,11 +8,13 @@ import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestH
 import { handleLine } from "./bridge.js";
 
 /**
- * Historical fix a4e3011b0: when the app-server rejects a resume because the
- * codex session is archived, the bridge's error reply must carry the original
- * error text VERBATIM. The runtime's unarchive-and-retry recovery
- * (`CODEX_ARCHIVED_SESSION_ERROR_PATTERN` in `runtime.ts`) matches on that
- * text; rewording or wrapping it silently disables the recovery.
+ * When the app-server rejects a resume because the codex session is archived,
+ * the bridge's error reply carries the typed `sessionArchived` hint as
+ * `error.data.recovery` — that is what drives the runtime's
+ * unarchive-and-retry — and the original error text VERBATIM for the
+ * user-visible failure when the recovery cannot run (historical fix
+ * a4e3011b0: the runtime's legacy text gate still reads it until the
+ * deletion layer removes it).
  */
 
 const THREAD_ID = "thr_archived_resume_1";
@@ -78,4 +80,31 @@ it("preserves the archived-session error text verbatim on a rejected resume", as
   // Verbatim: any wrapping or rewording breaks the runtime's regex match.
   expect(response.error?.message).toBe(ARCHIVED_ERROR_TEXT);
   expect(response.error?.message).toMatch(RUNTIME_UNARCHIVE_RETRY_PATTERN);
+  // The typed hint rides the rejection: the runtime acts on this, not text.
+  expect(response.error?.data).toEqual({
+    recovery: {
+      kind: "sessionArchived",
+      message: ARCHIVED_ERROR_TEXT,
+      retryable: true,
+    },
+  });
+}, 30_000);
+
+it("attaches the sessionArchived hint to a fork whose source is archived", async () => {
+  harness.sendRequest(2, "thread/fork", {
+    threadId: THREAD_ID,
+    sourceProviderThreadId: ARCHIVED_PROVIDER_THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: { ...sessionOptions },
+  });
+  const response = await harness.waitForResponse(2);
+
+  expect(response.result).toBeUndefined();
+  // A fork cannot be retried against the same rollout, so it keeps the
+  // generic code; the hint names the recovery all the same.
+  expect(response.error?.code).toBe(BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR);
+  expect(response.error?.data).toMatchObject({
+    recovery: { kind: "sessionArchived", retryable: true },
+  });
 }, 30_000);

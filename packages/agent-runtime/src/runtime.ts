@@ -65,6 +65,7 @@ import { RuntimeBackgroundWorkState } from "./runtime-background-work-state.js";
 import { RuntimeTurnState } from "./runtime-turn-state.js";
 import type {
   AgentRuntime,
+  AgentRuntimeProviderRecoveryHint,
   AgentRuntimeBridgeLaunch,
   AgentRuntimeExecutionOptions,
   AgentRuntimeOptions,
@@ -145,16 +146,55 @@ interface ResolveProviderProcessKeyArgs {
 interface ArchiveOrUnarchiveThreadArgs {
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   commandType: "thread/archive" | "thread/unarchive";
+  /** The process to use when the thread has no runtime config (a staging fork). */
+  processKey?: string;
   providerId: string;
   providerThreadId: string;
   threadId: string;
 }
 
-interface CodexArchivedSessionRecoveryArgs {
+/**
+ * What a request needs so the runtime can act on the recovery hint a bridge
+ * attaches to its rejection: the session to unarchive, the thread to retry.
+ * `bridgeLaunch`/`processKey` pin the process for a thread that has no
+ * runtime config yet (a rewind staging fork).
+ */
+interface RequestRecoveryArgs {
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
+  processKey?: string;
   providerId: string;
   providerThreadId: string;
   threadId: string;
 }
+
+/**
+ * A runtime request the bridge rejected with a typed recovery hint. `code` is
+ * the host-side failure code (`getErrorCode` in the daemon reads a string
+ * `code` before any message text), so an `authRequired` rejection reaches the
+ * server as `auth_required` without a regex anywhere on the way.
+ */
+export class AgentRuntimeRecoveryError extends Error {
+  readonly code: "auth_required" | "rate_limited";
+  readonly recovery: AgentRuntimeProviderRecoveryHint;
+
+  constructor(args: {
+    code: "auth_required" | "rate_limited";
+    message: string;
+    recovery: AgentRuntimeProviderRecoveryHint;
+    cause: unknown;
+  }) {
+    super(args.message, { cause: args.cause });
+    this.name = "AgentRuntimeRecoveryError";
+    this.code = args.code;
+    this.recovery = args.recovery;
+  }
+}
+
+/**
+ * A `rateLimited { retryable: true }` rejection is retried on this ladder;
+ * the failure after the last rung propagates as a typed error.
+ */
+const DEFAULT_RATE_LIMITED_RETRY_DELAYS_MS = [2_000, 8_000] as const;
 
 interface ResolveProviderRequestThreadIdArgs extends ResolveRuntimeProviderRequestThreadIdArgs {
   proc: ProviderProcess;
@@ -326,6 +366,16 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const threadIdentityRegistry = new RuntimeThreadIdentityRegistry();
   const threadRuntimeConfigs = new Map<string, ThreadRuntimeConfig>();
   const codexThreadsRequiringAccountRestart = new Set<string>();
+  const rateLimitedRetryDelaysMs =
+    options.rateLimitRetry?.delaysMs ?? DEFAULT_RATE_LIMITED_RETRY_DELAYS_MS;
+  /**
+   * Threads whose bridge raised `restartRecommended` while a turn was
+   * active: the restart runs before the thread's next turn or steer.
+   */
+  const threadsAwaitingBridgeRestart = new Map<
+    string,
+    AgentRuntimeProviderRecoveryHint
+  >();
   const idleProviderSessionSinceMsByThreadId = new Map<string, number>();
   // Accepted turn dispatches awaiting the provider's turn/started. The
   // watchdog makes a stalled entry visible instead of silently hung (#1156's
@@ -479,7 +529,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     message: SendJsonRpcRequestArgs<TResult>["message"];
     resultSchema: SendJsonRpcRequestArgs<TResult>["resultSchema"];
     timeoutMs?: number;
-    recovery?: CodexArchivedSessionRecoveryArgs;
+    recovery?: RequestRecoveryArgs;
   }): Promise<TResult> {
     const request = {
       child: args.proc.child,
@@ -494,41 +544,177 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       return await sendJsonRpcRequest(request);
     } catch (error) {
       const recovery = args.recovery;
-      if (
-        !recovery ||
-        !isCodexArchivedSessionError(recovery.providerId, error)
-      ) {
+      if (!recovery) {
         throw error;
       }
-
-      options.onStderr?.(
-        `Codex session "${recovery.providerThreadId}" is archived; unarchiving before retrying thread "${recovery.threadId}".`,
-      );
-      let retryProc: ProviderProcess;
-      try {
-        await archiveOrUnarchiveThread({
-          commandType: "thread/unarchive",
-          ...recovery,
+      // The hint rides the rejection itself (`error.data.recovery`), so it
+      // can only ever explain this request. A timeout or a bridge exit has no
+      // response and therefore no hint.
+      const hint = stampRecoveryHint(error, recovery);
+      // Legacy gate: the codex-shaped text match survives until the typed
+      // hint has shipped in every bridge the runtime can meet (it is deleted
+      // in the next layer). A hint always wins over the text.
+      if (
+        (hint?.kind === "sessionArchived" && hint.retryable) ||
+        (hint === null && isCodexArchivedSessionError(recovery.providerId, error))
+      ) {
+        return await unarchiveAndRetryRequest({
+          error,
+          proc: args.proc,
+          recovery,
+          request,
         });
-        // Unarchiving can replace an exited provider process, so resolve the
-        // process again instead of writing to the captured child's stdin.
-        retryProc = providerProcesses.requireProviderProcess({
-          processKey: args.proc.processKey,
-          providerId: args.proc.providerId,
-        });
-      } catch (recoveryError) {
-        // The archived-session error names the session and the CLI command
-        // that fixes it, so keep it as the reported failure whenever the
-        // recovery itself could not run.
-        throw new Error(error.message, { cause: recoveryError });
       }
-
-      return sendJsonRpcRequest({
-        ...request,
-        child: retryProc.child,
-        pending: retryProc.pending,
-      });
+      if (hint === null) {
+        throw error;
+      }
+      switch (hint.kind) {
+        case "sessionArchived":
+          // Not retryable: the bridge says the session cannot be unarchived
+          // from here (a fork source it cannot reopen, for example).
+          throw error;
+        case "authRequired":
+          throw new AgentRuntimeRecoveryError({
+            cause: error,
+            code: "auth_required",
+            message: hint.message,
+            recovery: hint,
+          });
+        case "rateLimited":
+          if (!hint.retryable) {
+            throw new AgentRuntimeRecoveryError({
+              cause: error,
+              code: "rate_limited",
+              message: hint.message,
+              recovery: hint,
+            });
+          }
+          return await retryRateLimitedRequest({
+            error,
+            hint,
+            proc: args.proc,
+            recovery,
+            request,
+          });
+        case "restartRecommended":
+          // The request itself failed and is reported as is; the restart runs
+          // once this operation is over (before the thread's next turn).
+          scheduleBridgeRestart({
+            hint,
+            proc: args.proc,
+            threadId: recovery.threadId,
+          });
+          throw error;
+        case "staleTurn":
+          // Only a steer can be stale; steerTurn claims this hint itself.
+          throw error;
+      }
     }
+  }
+
+  /** The rejection's hint, stamped with the provider and thread it is about. */
+  function stampRecoveryHint(
+    error: unknown,
+    recovery: RequestRecoveryArgs,
+  ): AgentRuntimeProviderRecoveryHint | null {
+    if (!(error instanceof JsonRpcResponseError) || error.recovery === null) {
+      return null;
+    }
+    return {
+      providerId: recovery.providerId,
+      threadId: recovery.threadId,
+      ...error.recovery,
+    };
+  }
+
+  interface RetryableRequestArgs<TResult> {
+    error: unknown;
+    proc: ProviderProcess;
+    recovery: RequestRecoveryArgs;
+    request: SendJsonRpcRequestArgs<TResult>;
+  }
+
+  /** `sessionArchived`: unarchive the session, then retry the request once. */
+  async function unarchiveAndRetryRequest<TResult>(
+    args: RetryableRequestArgs<TResult>,
+  ): Promise<TResult> {
+    const { error, recovery } = args;
+    options.onStderr?.(
+      `Session "${recovery.providerThreadId}" is archived; unarchiving before retrying thread "${recovery.threadId}".`,
+    );
+    let retryProc: ProviderProcess;
+    try {
+      await archiveOrUnarchiveThread({
+        commandType: "thread/unarchive",
+        ...recovery,
+      });
+      // Unarchiving can replace an exited provider process, so resolve the
+      // process again instead of writing to the captured child's stdin.
+      retryProc = providerProcesses.requireProviderProcess({
+        processKey: args.proc.processKey,
+        providerId: args.proc.providerId,
+      });
+    } catch (recoveryError) {
+      // The archived-session error names the session and the CLI command
+      // that fixes it, so keep it as the reported failure whenever the
+      // recovery itself could not run.
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(message, { cause: recoveryError });
+    }
+
+    return sendJsonRpcRequest({
+      ...args.request,
+      child: retryProc.child,
+      pending: retryProc.pending,
+    });
+  }
+
+  /**
+   * `rateLimited { retryable: true }`: re-send on a short bounded ladder. A
+   * rung that rejects with a fresh non-retryable hint stops the ladder; the
+   * failure after the last rung surfaces as the typed error.
+   */
+  async function retryRateLimitedRequest<TResult>(
+    args: RetryableRequestArgs<TResult> & {
+      hint: AgentRuntimeProviderRecoveryHint;
+    },
+  ): Promise<TResult> {
+    let lastError = args.error;
+    let lastHint = args.hint;
+    for (const retryDelayMs of rateLimitedRetryDelaysMs) {
+      options.onStderr?.(
+        `Provider "${args.recovery.providerId}" is rate limited; retrying thread "${args.recovery.threadId}" in ${retryDelayMs}ms.`,
+      );
+      await delay(retryDelayMs);
+      const proc = providerProcesses.requireProviderProcess({
+        processKey: args.proc.processKey,
+        providerId: args.proc.providerId,
+      });
+      try {
+        return await sendJsonRpcRequest({
+          ...args.request,
+          child: proc.child,
+          pending: proc.pending,
+        });
+      } catch (retryError) {
+        lastError = retryError;
+        const nextHint = stampRecoveryHint(retryError, args.recovery);
+        if (nextHint === null) {
+          // The bridge rejected for a different, untyped reason: report it.
+          throw retryError;
+        }
+        lastHint = nextHint;
+        if (!(nextHint.kind === "rateLimited" && nextHint.retryable)) {
+          break;
+        }
+      }
+    }
+    throw new AgentRuntimeRecoveryError({
+      cause: lastError,
+      code: lastHint.kind === "authRequired" ? "auth_required" : "rate_limited",
+      message: lastHint.message,
+      recovery: lastHint,
+    });
   }
 
   function skillRootsForProvider(
@@ -617,6 +803,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
   function clearThreadRuntimeConfig(threadId: string): void {
     codexThreadsRequiringAccountRestart.delete(threadId);
+    threadsAwaitingBridgeRestart.delete(threadId);
     idleProviderSessionSinceMsByThreadId.delete(threadId);
     pendingTurnStarts.delete(threadId);
     threadGoalState.clearThread(threadId);
@@ -849,7 +1036,175 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       processKey: proc.processKey,
       providerId: proc.providerId,
     });
+    await resumeThreadFromConfig({
+      currentConfig,
+      instructions: args.instructions,
+      options: args.options,
+      providerThreadId,
+      threadId: args.threadId,
+    });
+  }
 
+  /**
+   * An unsolicited `provider/recovery` notification: a condition with no
+   * runtime request to ride on (a terminal 401 mid-turn). A hint that
+   * explains a rejected request arrives on that request's error response
+   * instead (see sendCommand). Actions key on `kind` only; the provider id
+   * is never consulted.
+   */
+  function handleRecoveryHint(args: {
+    hint: AgentRuntimeProviderRecoveryHint;
+    proc: ProviderProcess;
+  }): void {
+    const { hint } = args;
+    options.onProviderRecovery?.(hint);
+    if (hint.kind === "restartRecommended" && hint.threadId !== undefined) {
+      scheduleBridgeRestart({ proc: args.proc, hint, threadId: hint.threadId });
+    }
+  }
+
+  /**
+   * `restartRecommended`: replace the bridge process the thread runs on and
+   * resume the thread on the fresh one. Runs right away when the thread is
+   * idle; a thread with an active turn keeps its turn and restarts before
+   * the next turn or steer (`restartThreadBridgeIfRecommended`).
+   */
+  function scheduleBridgeRestart(args: {
+    hint: AgentRuntimeProviderRecoveryHint;
+    proc: ProviderProcess;
+    threadId: string;
+  }): void {
+    if (!threadRuntimeConfigs.has(args.threadId)) {
+      return;
+    }
+    threadsAwaitingBridgeRestart.set(args.threadId, args.hint);
+    if (
+      turnState.getActiveTurnId(args.threadId) !== null ||
+      threadHasInFlightOperation(args.threadId)
+    ) {
+      return;
+    }
+    void runThreadOperation({
+      threadId: args.threadId,
+      work: async () => {
+        const currentConfig = threadRuntimeConfigs.get(args.threadId);
+        if (!currentConfig) {
+          threadsAwaitingBridgeRestart.delete(args.threadId);
+          return;
+        }
+        await restartThreadBridgeIfRecommended({
+          threadId: args.threadId,
+          options: currentConfig.options,
+          instructions: currentConfig.instructions,
+        });
+      },
+    }).catch((error: unknown) => {
+      options.onStderr?.(
+        `Bridge restart for thread "${args.threadId}" failed: ${error instanceof Error ? error.message : String(error)}`,
+        args.threadId,
+      );
+    });
+  }
+
+  /**
+   * A bridge process hosts every live thread of its provider in the
+   * environment, so restarting it for one thread restarts it for all of
+   * them. The restart runs only while no other thread on the process is
+   * mid-turn — the hint is a recommendation, never a reason to kill another
+   * thread's work — and every hosted thread is resumed on the fresh process.
+   * A deferred restart stays marked and is tried again at the hinted
+   * thread's next turn or steer.
+   */
+  async function restartThreadBridgeIfRecommended(
+    args: RestartCodexThreadForNextTurnArgs,
+  ): Promise<void> {
+    const hint = threadsAwaitingBridgeRestart.get(args.threadId);
+    if (hint === undefined) {
+      return;
+    }
+    const currentConfig = threadRuntimeConfigs.get(args.threadId);
+    if (!currentConfig) {
+      threadsAwaitingBridgeRestart.delete(args.threadId);
+      return;
+    }
+    if (turnState.getActiveTurnId(args.threadId) !== null) {
+      return;
+    }
+    const proc = providerProcesses.requireProviderProcess({
+      processKey: currentConfig.processKey,
+      providerId: currentConfig.providerId,
+    });
+    const hostedThreadIds = [...proc.identity.threadIds].filter(
+      (threadId) => threadId !== args.threadId,
+    );
+    const busyThreadId = hostedThreadIds.find(
+      (threadId) =>
+        turnState.getActiveTurnId(threadId) !== null ||
+        pendingTurnStarts.has(threadId) ||
+        threadHasInFlightOperation(threadId),
+    );
+    if (busyThreadId !== undefined) {
+      options.onStderr?.(
+        `Deferring the "${currentConfig.providerId}" bridge restart recommended for thread "${args.threadId}": thread "${busyThreadId}" is mid-turn on the same process.`,
+        args.threadId,
+      );
+      return;
+    }
+    threadsAwaitingBridgeRestart.delete(args.threadId);
+    const providerThreadId = requireProviderThreadId(args.threadId);
+    // Snapshot before the shutdown detaches every hosted thread.
+    const hostedSessions = hostedThreadIds.flatMap((threadId) => {
+      const config = threadRuntimeConfigs.get(threadId);
+      const hostedProviderThreadId =
+        threadIdentityRegistry.getProviderThreadId(threadId);
+      return config !== undefined && hostedProviderThreadId !== undefined
+        ? [{ config, providerThreadId: hostedProviderThreadId, threadId }]
+        : [];
+    });
+    options.onStderr?.(
+      `Restarting the "${currentConfig.providerId}" bridge for thread "${args.threadId}": ${hint.message}`,
+      args.threadId,
+    );
+    await providerProcesses.shutdownProvider({
+      processKey: proc.processKey,
+      providerId: proc.providerId,
+    });
+    await resumeThreadFromConfig({
+      currentConfig,
+      instructions: args.instructions,
+      options: args.options,
+      providerThreadId,
+      threadId: args.threadId,
+    });
+    for (const hosted of hostedSessions) {
+      try {
+        await resumeThreadFromConfig({
+          currentConfig: hosted.config,
+          instructions: hosted.config.instructions,
+          options: hosted.config.options,
+          providerThreadId: hosted.providerThreadId,
+          threadId: hosted.threadId,
+        });
+      } catch (error) {
+        // The thread is no longer live; the server resumes it on its next
+        // turn, as after any provider exit.
+        options.onStderr?.(
+          `Failed to resume thread "${hosted.threadId}" after the bridge restart: ${error instanceof Error ? error.message : String(error)}`,
+          hosted.threadId,
+        );
+      }
+    }
+  }
+
+  /** Re-resume a thread from the config its live session was built with. */
+  async function resumeThreadFromConfig(args: {
+    currentConfig: ThreadRuntimeConfig;
+    instructions: string | undefined;
+    options: AgentRuntimeExecutionOptions;
+    providerThreadId: string;
+    threadId: string;
+  }): Promise<void> {
+    const { currentConfig } = args;
     const resumeInstructions = args.instructions ?? currentConfig.instructions;
     await runtime.resumeThread({
       // A graduated provider has no daemon-bundled bridge, so the restart can
@@ -862,7 +1217,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       ...(currentConfig.projectId !== undefined
         ? { projectId: currentConfig.projectId }
         : {}),
-      providerThreadId,
+      providerThreadId: args.providerThreadId,
       providerId: currentConfig.providerId,
       options: args.options,
       ...(resumeInstructions !== undefined
@@ -896,6 +1251,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     const bridgeLaunch = args.bridgeLaunch ?? threadConfig?.bridgeLaunch;
     const processKey =
       threadConfig?.processKey ??
+      args.processKey ??
       resolveProviderProcessKey({
         ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
         providerId,
@@ -1170,13 +1526,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     ) {
       return;
     }
-    // A typed recovery hint is a runtime signal, not timeline traffic: parse
-    // and forward it, and let the translator see nothing of it.
+    // A typed recovery hint is a runtime signal, not timeline traffic: act on
+    // it, forward it, and let the translator see nothing of it.
     const recoveryHint = args.proc.adapter.decodeRecoveryHint?.(args.parsed);
     if (recoveryHint !== null && recoveryHint !== undefined) {
-      options.onProviderRecovery?.({
-        providerId: args.proc.providerId,
-        ...recoveryHint,
+      handleRecoveryHint({
+        hint: { providerId: args.proc.providerId, ...recoveryHint },
+        proc: args.proc,
       });
       return;
     }
@@ -1685,6 +2041,17 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               message: command,
               resultSchema: threadIdentityResultSchema,
               timeoutMs: THREAD_CREATION_REQUEST_TIMEOUT_MS,
+              // The staging fork reads the source session, so an archived
+              // source is recovered the way a plain fork's is: the hint
+              // rides this request's own rejection, and the staging thread's
+              // suppressed event stream plays no part in it.
+              recovery: {
+                ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+                processKey,
+                providerId,
+                providerThreadId: sourceProviderThreadId,
+                threadId: stagingThreadId,
+              },
             });
             // An ambiguous threadId is not sufficient to adopt a provider
             // thread, but it is safe to use for best-effort cleanup because
@@ -1928,8 +2295,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             options: execOpts,
             instructions,
           });
-          // An account restart replaces a thread-scoped Codex process, so
-          // resolve the process again before constructing the turn command.
+          await restartThreadBridgeIfRecommended({
+            threadId,
+            options: execOpts,
+            instructions,
+          });
+          // A restart replaces the thread's provider process, so resolve the
+          // process again before constructing the turn command.
           const proc = requireProviderProcessForThread(threadId);
           assertProviderSupportsExecutionOptions({
             adapter: proc.adapter,
@@ -2025,8 +2397,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             options: execOpts,
             instructions,
           });
-          // An account restart replaces a thread-scoped Codex process, so
-          // resolve the process again before constructing the steer command.
+          await restartThreadBridgeIfRecommended({
+            threadId,
+            options: execOpts,
+            instructions,
+          });
+          // A restart replaces the thread's provider process, so resolve the
+          // process again before constructing the steer command.
           const proc = requireProviderProcessForThread(threadId);
           await reconfigureThreadIfNeeded({
             threadId,
@@ -2064,6 +2441,19 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               },
             });
           } catch (error) {
+            // `staleTurn`: the turn this steer targeted is gone. sendCommand
+            // rethrows the rejection with its hint for the steer to read.
+            if (
+              error instanceof JsonRpcResponseError &&
+              error.recovery?.kind === "staleTurn"
+            ) {
+              options.onStderr?.(
+                `Dropping stale steer for thread "${threadId}": ${error.recovery.message}`,
+                threadId,
+              );
+              turnState.clearThread(threadId);
+              return { status: "stale", activeTurnId: null };
+            }
             if (
               error instanceof JsonRpcResponseError &&
               isAcpProviderId(pid) &&
@@ -2199,6 +2589,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                 proc,
                 message: cmd,
                 resultSchema: ignoredJsonRpcResultSchema,
+                recovery: {
+                  providerId: pid,
+                  providerThreadId: adapterCommand.providerThreadId,
+                  threadId,
+                },
               });
             },
             threadId,

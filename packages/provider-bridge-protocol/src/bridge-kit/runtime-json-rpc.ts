@@ -1,6 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import type { Writable } from "node:stream";
 import { z } from "zod";
+import { bridgeErrorDataSchema, type ProviderRecoveryHint } from "../errors.js";
 import type { ProviderRequestCommandPlan } from "./contracts.js";
 
 export type JsonRpcObject = Record<string, unknown>;
@@ -50,11 +51,22 @@ export class ProviderResponseEncodeError extends Error {
 
 export class JsonRpcResponseError extends Error {
   readonly code: number;
+  /**
+   * The bridge's typed recovery hint for this rejection (`error.data.
+   * recovery`), or null for a plain failure. A timeout or a bridge exit
+   * never carries one: those reject without a response.
+   */
+  readonly recovery: ProviderRecoveryHint | null;
 
-  constructor(code: number, message: string) {
+  constructor(
+    code: number,
+    message: string,
+    recovery: ProviderRecoveryHint | null = null,
+  ) {
     super(message);
     this.name = "JsonRpcResponseError";
     this.code = code;
+    this.recovery = recovery;
   }
 }
 
@@ -163,9 +175,22 @@ function jsonRpcResponseError(error: unknown): Error {
     typeof error.code === "number" &&
     typeof error.message === "string"
   ) {
-    return new JsonRpcResponseError(error.code, error.message);
+    return new JsonRpcResponseError(
+      error.code,
+      error.message,
+      decodeRecoveryHint(error.data),
+    );
   }
   return new Error(formatJsonRpcErrorMessage(error));
+}
+
+/** A malformed `data` is a plain failure, like a missing one. */
+function decodeRecoveryHint(data: unknown): ProviderRecoveryHint | null {
+  if (data === undefined) {
+    return null;
+  }
+  const parsed = bridgeErrorDataSchema.safeParse(data);
+  return parsed.success ? (parsed.data.recovery ?? null) : null;
 }
 
 function isClosedJsonRpcStdinError(error: Error): boolean {

@@ -232,6 +232,12 @@ interface ThreadSession {
    * next turn so a terminal reauthentication can take effect.
    */
   restartBeforeNextTurnReason: string | null;
+  /**
+   * The recovery kind already raised for the turn in flight, so the SDK's
+   * synthetic assistant error and the result that follows it yield one hint,
+   * not two. Cleared when the turn settles.
+   */
+  recoveryHintRaisedThisTurn: "authRequired" | "rateLimited" | null;
   streamEnded: boolean;
   /** Every session-scoped notification is translated through this. */
   translator: ClaudeDeltaTranslator;
@@ -659,13 +665,102 @@ function emitForSession(
   method: string,
   params: Record<string, unknown>,
 ): void {
-  sendThreadDeltas(
-    threadId,
-    threadSession.translator.translate(
-      { jsonrpc: "2.0", method, params },
-      { threadId },
-    ),
+  const deltas = threadSession.translator.translate(
+    { jsonrpc: "2.0", method, params },
+    { threadId },
   );
+  sendThreadDeltas(threadId, deltas);
+  for (const delta of deltas) {
+    if (delta.kind === "provider.error" && delta.willRetry !== true) {
+      const category = delta.errorInfo?.category;
+      const kind =
+        category === "unauthorized"
+          ? "authRequired"
+          : category === "rate-limit"
+            ? "rateLimited"
+            : null;
+      if (kind !== null) {
+        emitTerminalAccountErrorHint(
+          threadSession,
+          threadId,
+          kind,
+          delta.detail ?? delta.message,
+        );
+      }
+    }
+    if (delta.kind === "turn.boundary" || delta.kind === "session.reset") {
+      threadSession.recoveryHintRaisedThisTurn = null;
+    }
+  }
+}
+
+/**
+ * A terminal account error (the SDK's `authentication_failed` /
+ * `oauth_org_not_allowed`, a 401/403, a 429 or hard rate-limit rejection)
+ * fails the turn through its `provider.error` delta. The hint beside it is
+ * unsolicited — no runtime request failed — and tells the runtime the kind
+ * without any text on the runtime side. One hint per turn: the SDK reports
+ * the same failure as a synthetic assistant error and again on the result.
+ * The CLI child is rebuilt before the next turn by
+ * `restartBeforeNextTurnReason`; no restart is asked of the runtime.
+ */
+function emitTerminalAccountErrorHint(
+  threadSession: ThreadSession,
+  threadId: string,
+  kind: "authRequired" | "rateLimited",
+  message: string,
+): void {
+  if (threadSession.recoveryHintRaisedThisTurn === kind) {
+    return;
+  }
+  threadSession.recoveryHintRaisedThisTurn = kind;
+  send({
+    jsonrpc: "2.0",
+    method: BRIDGE_NOTIFICATION_METHODS.providerRecovery,
+    params: {
+      threadId,
+      kind,
+      message,
+      // The turn already failed; nothing is replayed on the hint's account.
+      retryable: false,
+    },
+  });
+}
+
+/**
+ * The text of a synthetic assistant error: the SDK puts the human-readable
+ * failure in the message's text blocks, with the typed code beside it.
+ */
+function getAssistantMessageErrorText(message: SDKMessage): string {
+  if (message.type === "assistant") {
+    const text = message.message.content
+      .flatMap((block) => (block.type === "text" ? [block.text] : []))
+      .join("\n")
+      .trim();
+    if (text.length > 0) {
+      return text;
+    }
+    return `Claude reported ${message.error ?? "an account error"}`;
+  }
+  return "Claude reported an account error";
+}
+
+/** The SDK's synthetic assistant errors the hint must name by kind. */
+function getAssistantMessageRecoveryKind(
+  message: SDKMessage,
+): "authRequired" | "rateLimited" | null {
+  if (message.type !== "assistant") {
+    return null;
+  }
+  switch (message.error) {
+    case "authentication_failed":
+    case "oauth_org_not_allowed":
+      return "authRequired";
+    case "rate_limit":
+      return "rateLimited";
+    default:
+      return null;
+  }
 }
 
 function emitSessionError(
@@ -874,6 +969,7 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     sessionSerial,
     closing: false,
     restartBeforeNextTurnReason: null,
+    recoveryHintRaisedThisTurn: null,
     streamEnded: false,
     translator,
     pendingInteractiveRequests: new Map(),
@@ -1306,6 +1402,18 @@ function createOnSdkMessage(
       threadId: args.threadIdRef.current,
       message,
     });
+    // The synthetic assistant error is the SDK's typed report of an account
+    // failure; the result that follows repeats it as prose, so the hint is
+    // raised here, where the kind is certain.
+    const recoveryKind = getAssistantMessageRecoveryKind(message);
+    if (recoveryKind !== null) {
+      emitTerminalAccountErrorHint(
+        threadSession,
+        args.threadIdRef.current,
+        recoveryKind,
+        getAssistantMessageErrorText(message),
+      );
+    }
   };
 }
 

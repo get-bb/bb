@@ -6,7 +6,7 @@ export interface JsonRpcWireMessage {
   method?: string;
   params?: unknown;
   result?: unknown;
-  error?: { code?: unknown; message?: unknown };
+  error?: { code?: unknown; message?: unknown; data?: unknown };
 }
 
 function isWireMessage(value: unknown): value is JsonRpcWireMessage {

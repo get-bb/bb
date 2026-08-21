@@ -63,5 +63,9 @@ it("passes the canonical protocol suite", async () => {
   expect(report.results.filter((result) => result.status !== "pass")).toEqual(
     [],
   );
+  // The echo archives, so the kit must have exercised the typed rejection.
+  expect(report.results.map((result) => result.id)).toContain(
+    "recovery/session-archived",
+  );
   expect(report.passed).toBe(true);
 }, 30_000);
