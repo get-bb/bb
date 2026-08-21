@@ -26,6 +26,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     displayName: "Codex",
     supportsThreadArchive: true,
     supportsThreadRename: true,
+    fork: "checkpoint",
     supportsManualCompaction: true,
     supportsUsage: true,
     visibility: "always",
@@ -38,6 +39,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     displayName: "Claude Code",
     supportsThreadArchive: false,
     supportsThreadRename: false,
+    fork: "checkpoint",
     supportsManualCompaction: true,
     supportsUsage: true,
     visibility: "always",
@@ -50,6 +52,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     displayName: "Pi",
     supportsThreadArchive: false,
     supportsThreadRename: false,
+    fork: "checkpoint",
     supportsManualCompaction: true,
     supportsUsage: false,
     visibility: "always",
@@ -62,6 +65,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     displayName: "Cursor",
     supportsThreadArchive: false,
     supportsThreadRename: false,
+    fork: "none",
     supportsManualCompaction: false,
     supportsUsage: true,
     visibility: "always",
@@ -74,6 +78,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     displayName: "opencode",
     supportsThreadArchive: false,
     supportsThreadRename: false,
+    fork: "tip",
     supportsManualCompaction: true,
     supportsUsage: false,
     visibility: "installed",
@@ -86,6 +91,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     displayName: "omp",
     supportsThreadArchive: false,
     supportsThreadRename: false,
+    fork: "tip",
     supportsManualCompaction: false,
     supportsUsage: false,
     visibility: "installed",
@@ -98,6 +104,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     displayName: "Grok Build",
     supportsThreadArchive: false,
     supportsThreadRename: false,
+    fork: "none",
     supportsManualCompaction: false,
     supportsUsage: false,
     visibility: "installed",
@@ -110,6 +117,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     displayName: "Hermes Agent",
     supportsThreadArchive: false,
     supportsThreadRename: false,
+    fork: "tip",
     supportsManualCompaction: false,
     supportsUsage: false,
     visibility: "installed",
@@ -191,6 +199,16 @@ describe("first-party provider plugins", () => {
           expect(registry.supportsManualCompaction(plugin.providerId)).toBe(
             plugin.supportsManualCompaction,
           );
+          // Fork is declared per agent, not per tier: the ACP bridge refuses
+          // `session/fork` for agents whose `initialize` reply does not
+          // advertise it (cursor-agent, grok), so a declaration above what the
+          // agent answers makes POST /threads/fork create a thread that dies
+          // on start (#1833). The declaration is the server's fork gate and
+          // the app's fork affordance, so it must match the agent.
+          expect(registration.serverCapabilities.fork, label).toBe(plugin.fork);
+          expect(registry.supportsFork(plugin.providerId), label).toBe(
+            plugin.fork !== "none",
+          );
           expect(registration.info.experimental_providerUsage, label).toBe(
             plugin.supportsUsage,
           );
@@ -206,6 +224,15 @@ describe("first-party provider plugins", () => {
         );
         expect(infos.map((info) => info.logoUrl)).toEqual(
           ALWAYS_VISIBLE_PROVIDER_IDS.map(expectedLogoUrl),
+        );
+        // The client-facing fork flag (the app's "Fork into new thread"
+        // affordance) agrees with the declaration.
+        expect(
+          infos.map((info) => [info.id, info.capabilities.supportsFork]),
+        ).toEqual(
+          FIRST_PARTY_PROVIDER_DECLARATIONS.filter(
+            (plugin) => plugin.visibility === "always",
+          ).map((plugin) => [plugin.providerId, plugin.fork !== "none"]),
         );
       },
     );
@@ -327,7 +354,8 @@ describe("first-party provider plugins", () => {
             supportsServiceTier: true,
             supportsNativeUserQuestion: false,
             permissionModes: ["accept-edits", "full"],
-            supportsFork: true,
+            // cursor-agent does not advertise ACP session/fork (#1833).
+            supportsFork: false,
             supportsSessionRewind: false,
           },
           composerActions: [skills],

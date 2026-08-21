@@ -9,6 +9,14 @@ const ACP_BASE_CAPABILITIES = {
   experimental_providerInstallation: false,
   supportsServiceTier: true,
   supportsNativeUserQuestion: false,
+  // ACP session/fork clones a whole session (tip only, no checkpoint rewind),
+  // and it is an unstable ACP extension that not every agent implements. The
+  // bridge refuses `session/fork` for an agent whose `initialize` reply does
+  // not advertise `sessionCapabilities.fork`, but only after the server has
+  // already created and started the fork thread. So this declaration, which
+  // is the server's fork gate and the app's fork affordance, must match what
+  // the agent actually advertises: override it with "none" for agents that
+  // do not (#1833).
   fork: "tip" as const,
   supportsManualCompaction: false,
   supportsThreadArchive: false,
@@ -76,6 +84,9 @@ const ACP_PROVIDERS: readonly PluginProviderDeclaration[] = [
       ...ACP_BASE_CAPABILITIES,
       experimental_providerUsage: true,
       experimental_providerInstallation: true,
+      // cursor-agent (2026.08.11) advertises `sessionCapabilities: { list }`
+      // only; no session/fork.
+      fork: "none",
     },
     composerActions: [],
   },
@@ -166,6 +177,9 @@ const ACP_PROVIDERS: readonly PluginProviderDeclaration[] = [
     },
     capabilities: {
       ...ACP_BASE_CAPABILITIES,
+      // `grok agent stdio` advertises `sessionCapabilities: { list, resume,
+      // close }`; no session/fork.
+      fork: "none",
       reasoningLevels: ["low", "medium", "high"],
     },
     composerActions: [],
