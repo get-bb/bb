@@ -68,9 +68,11 @@ function renderCompact() {
 
 function mockCompactGeometry({
   triggerRight,
+  triggerBottom = 48,
   menuWidth,
 }: {
   triggerRight: number;
+  triggerBottom?: number;
   menuWidth: number;
 }) {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
@@ -79,7 +81,7 @@ function mockCompactGeometry({
         this instanceof HTMLButtonElement &&
         this.getAttribute("aria-label")?.endsWith("child threads")
       ) {
-        return { right: triggerRight } as DOMRect;
+        return { right: triggerRight, bottom: triggerBottom } as DOMRect;
       }
       if (this.getAttribute("role") === "menu") {
         return { width: menuWidth } as DOMRect;
@@ -91,26 +93,44 @@ function mockCompactGeometry({
 
 function stubVisualViewport({
   left = 0,
+  top = 0,
   width,
+  height = 844,
 }: {
   left?: number;
+  top?: number;
   width: number;
+  height?: number;
 }) {
   vi.stubGlobal("visualViewport", {
     offsetLeft: left,
+    offsetTop: top,
     width,
+    height,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   });
 }
 
-function setSafeArea(left: number, right: number) {
+function setSafeArea({
+  left = 0,
+  top = 0,
+  right = 0,
+  bottom = 0,
+}: {
+  left?: number;
+  top?: number;
+  right?: number;
+  bottom?: number;
+}) {
   const probe = document.querySelector<HTMLElement>(
     "[data-child-menu-safe-area-probe]",
   );
   if (!probe) throw new Error("Missing safe-area probe");
   probe.style.paddingLeft = `${left}px`;
+  probe.style.paddingTop = `${top}px`;
   probe.style.paddingRight = `${right}px`;
+  probe.style.paddingBottom = `${bottom}px`;
 }
 
 afterEach(() => {
@@ -159,7 +179,7 @@ describe("SubagentsChip menu position", () => {
   it("keeps the menu inside horizontal safe-area insets", () => {
     renderCompact();
     stubVisualViewport({ width: 390 });
-    setSafeArea(44, 20);
+    setSafeArea({ left: 44, right: 20 });
     mockCompactGeometry({ triggerRight: 380, menuWidth: 310 });
 
     fireEvent.click(screen.getByRole("button", { name: "1 child threads" }));
@@ -167,6 +187,23 @@ describe("SubagentsChip menu position", () => {
     const menu = screen.getByRole("menu", { name: "Child threads" });
     expect(menu.style.maxWidth).toBe("310px");
     expect(menu.style.left).toBe("52px");
+  });
+
+  it("keeps the menu inside the visual viewport height", () => {
+    renderCompact();
+    stubVisualViewport({ top: 200, width: 390, height: 300 });
+    setSafeArea({ top: 10, bottom: 20 });
+    mockCompactGeometry({
+      triggerRight: 380,
+      triggerBottom: 260,
+      menuWidth: 320,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "1 child threads" }));
+
+    const menu = screen.getByRole("menu", { name: "Child threads" });
+    expect(menu.style.top).toBe("268px");
+    expect(menu.style.maxHeight).toBe("min(32rem, 204px)");
   });
 
   it("keeps the desktop menu anchored to its header chip", () => {
