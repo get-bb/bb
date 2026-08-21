@@ -32,6 +32,7 @@ import {
   PluginDetail,
   PluginDetailBanners,
   pluginIsLocalSource,
+  pluginRemovalDescription,
   pluginRemovalLabel,
 } from "@/components/tools/PluginDetail";
 import {
@@ -365,11 +366,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
                     ? "Remove plugin from bb?"
                     : "Uninstall plugin?"
                 }
-                description={
-                  pluginIsLocalSource(deleteTarget)
-                    ? `Remove "${deleteTarget.id}" from bb and delete its settings? Its source files will stay on disk.`
-                    : `Uninstall "${deleteTarget.id}" and delete its managed files and settings?`
-                }
+                description={pluginRemovalDescription(deleteTarget)}
                 confirmLabel={pluginRemovalLabel(deleteTarget)}
                 pending={pluginDelete.isPending}
                 onConfirm={() => pluginDelete.mutate(deleteTarget)}

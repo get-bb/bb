@@ -6,6 +6,7 @@ import {
   describePluginRow,
   filterPlugins,
   pluginDisplayName,
+  pluginRemovalDescription,
   pluginRemovalLabel,
   pluginRowSignal,
   sortPlugins,
@@ -325,11 +326,7 @@ export function PluginsScreen() {
             ? `${pluginRemovalLabel(target)} ${pluginDisplayName(target)}?`
             : undefined
         }
-        message={
-          target && target.source.startsWith("path:")
-            ? "bb stops loading this plugin. Its files stay where they are."
-            : "bb stops the plugin and deletes its installed files. Its settings and data are kept for a reinstall."
-        }
+        message={target ? pluginRemovalDescription(target) : undefined}
         actions={
           target
             ? [

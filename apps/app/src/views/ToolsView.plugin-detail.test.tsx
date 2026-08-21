@@ -551,6 +551,85 @@ describe("BB Official plugin detail routing", () => {
   });
 });
 
+describe("plugin removal confirmation", () => {
+  it("warns that removing a local plugin deletes its settings, secrets, and schedules and names the move path", async () => {
+    // The wire shape of GET /api/v1/plugins (server-contract InstalledPlugin).
+    const localPlugin = {
+      id: "github",
+      source: "path:/Users/you/src/bb-plugin-github",
+      rootDir: "/Users/you/src/bb-plugin-github",
+      version: "0.1.0",
+      provenance: "direct",
+      isOrphanedBuiltin: false,
+      publisherLabel: null,
+      sourceDisplay: "path · /Users/you/src/bb-plugin-github",
+      updateState: {},
+      enabled: true,
+      description: "Browse GitHub issues and pull requests in BB.",
+      name: "GitHub",
+      icon: "Github",
+      iconUrl: null,
+      status: "running",
+      statusDetail: null,
+      handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+      services: [],
+      schedules: [],
+      cliCommand: null,
+      capabilities: [],
+      hasSettings: false,
+      app: { hasApp: false, bundle: null },
+      logoUrl: null,
+      logoDarkUrl: null,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugins") {
+          return new Response(
+            JSON.stringify({ enabled: true, plugins: [localPlugin] }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
+        <Routes>
+          <Route path="/extensions/plugins/:pluginId" element={<ToolsView />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: QueryClientWrapper },
+    );
+
+    expect(await screen.findByRole("heading", { name: "GitHub" })).toBeTruthy();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "GitHub actions" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Remove from bb" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Remove plugin from bb?" }),
+    ).toBeTruthy();
+    // The server's remove() deletes settings, secrets, and schedules for every
+    // source kind; only the files of a local plugin stay. Re-pointing the id at
+    // another directory is an install, not a remove, and keeps that state.
+    const description = screen.getByText(/Remove "github" from bb/);
+    expect(description.textContent).toContain(
+      "delete its settings, secrets, and schedules",
+    );
+    expect(description.textContent).toContain("source files stay on disk");
+    expect(description.textContent).toContain("install the new path instead");
+  });
+});
+
 describe("PluginDetail banner precedence", () => {
   const managedPlugin: PluginListItem = {
     ...GITHUB_PLUGIN,

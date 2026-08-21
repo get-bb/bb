@@ -892,6 +892,102 @@ describe("plugin service", () => {
     });
   });
 
+  it("keeps a moved path plugin disabled instead of starting it", async () => {
+    const serverSource = (marker: string) => `
+      export default function plugin() {
+        globalThis.__disabledMoveStarted = "${marker}";
+      }`;
+    const checkoutA = await writePlugin(join(workDir, "a"), {
+      name: "bb-plugin-dormant",
+      serverSource: serverSource("a"),
+    });
+    const checkoutB = await writePlugin(join(workDir, "b"), {
+      name: "bb-plugin-dormant",
+      serverSource: serverSource("b"),
+    });
+    await service.installPath(checkoutA);
+    expect(await service.setEnabled("dormant", false)).toMatchObject({
+      enabled: false,
+      status: "disabled",
+    });
+    delete (globalThis as Record<string, unknown>).__disabledMoveStarted;
+
+    const moved = await service.installPath(checkoutB);
+
+    expect(moved).toMatchObject({
+      id: "dormant",
+      enabled: false,
+      status: "disabled",
+      source: `path:${checkoutB}`,
+    });
+    expect(getInstalledPlugin(db, "dormant")).toMatchObject({
+      enabled: false,
+      rootDir: checkoutB,
+    });
+    expect(
+      (globalThis as Record<string, unknown>).__disabledMoveStarted,
+    ).toBeUndefined();
+    expect(service.getApi("dormant")).toBeUndefined();
+
+    // Re-enabling runs the new checkout.
+    expect(await service.setEnabled("dormant", true)).toMatchObject({
+      status: "running",
+    });
+    expect((globalThis as Record<string, unknown>).__disabledMoveStarted).toBe(
+      "b",
+    );
+  });
+
+  it("rejects a path move whose new checkout fails to start and keeps the old install running", async () => {
+    const checkoutA = await writePlugin(join(workDir, "a"), {
+      name: "bb-plugin-brittle",
+      version: "0.2.0",
+      serverSource: `
+        export default function plugin(bb) {
+          bb.settings.define({
+            token: { type: "string", label: "Token", secret: true },
+          });
+          globalThis.__brittleCheckout = "a";
+        }`,
+    });
+    // A valid package whose factory throws: validation passes, loading fails.
+    const checkoutB = await writePlugin(join(workDir, "b"), {
+      name: "bb-plugin-brittle",
+      version: "0.3.0",
+      serverSource: `
+        export default function plugin() {
+          globalThis.__brittleCheckout = "b";
+          throw new Error("boom at startup");
+        }`,
+    });
+    await service.installPath(checkoutA);
+    await service.updateSettings("brittle", { token: "s3cret" });
+
+    await expect(service.installPath(checkoutB)).rejects.toThrowError(
+      /failed to start from path:.*boom at startup.*was kept/,
+    );
+
+    // The old registration and instance are back, with their configuration.
+    expect(getInstalledPlugin(db, "brittle")).toMatchObject({
+      sourcePath: checkoutA,
+      rootDir: checkoutA,
+      version: "0.2.0",
+      enabled: true,
+    });
+    expect(service.list().find((p) => p.id === "brittle")).toMatchObject({
+      source: `path:${checkoutA}`,
+      version: "0.2.0",
+      status: "running",
+    });
+    expect((globalThis as Record<string, unknown>).__brittleCheckout).toBe(
+      "a",
+    );
+    expect(service.getApi("brittle")).toBeDefined();
+    expect((await service.getSettings("brittle"))?.values).toEqual({
+      token: { set: true },
+    });
+  });
+
   it("warns when a path plugin is installed from inside a managed workspace", async () => {
     const warnSpy = vi.spyOn(logger, "warn");
     // dataDir is <workDir>/data; install from <dataDir>/personal-workspaces/env_X/...

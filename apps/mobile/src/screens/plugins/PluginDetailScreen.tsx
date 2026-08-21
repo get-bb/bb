@@ -6,6 +6,7 @@ import { View } from "react-native";
 import {
   describePluginSettingsAvailability,
   pluginDisplayName,
+  pluginRemovalDescription,
   pluginRemovalLabel,
   pluginRuntimeStatusPresentation,
   pluginSettingsAvailability,
@@ -210,11 +211,7 @@ export function PluginDetailScreen() {
       <ActionSheet
         controller={confirmRemove}
         title={plugin ? `${pluginRemovalLabel(plugin)} ${name}?` : undefined}
-        message={
-          plugin && plugin.source.startsWith("path:")
-            ? "bb stops loading this plugin. Its files stay where they are."
-            : "bb stops the plugin and deletes its installed files. Its settings and data are kept for a reinstall."
-        }
+        message={plugin ? pluginRemovalDescription(plugin) : undefined}
         actions={
           plugin
             ? [

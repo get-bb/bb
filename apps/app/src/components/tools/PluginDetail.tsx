@@ -79,6 +79,18 @@ export function pluginRemovalLabel(plugin: PluginListItem): string {
   return pluginIsLocalSource(plugin) ? "Remove from bb" : "Uninstall";
 }
 
+/**
+ * What a removal deletes, matching the server's `remove`: settings, secrets,
+ * and schedules go with the registration on every source kind; only managed
+ * git/npm files are deleted from disk. Moving a local plugin is an install of
+ * the new path, which keeps that configuration.
+ */
+export function pluginRemovalDescription(plugin: PluginListItem): string {
+  return pluginIsLocalSource(plugin)
+    ? `Remove "${plugin.id}" from bb and delete its settings, secrets, and schedules? Its source files stay on disk. To move it to another directory, install the new path instead; that keeps its settings.`
+    : `Uninstall "${plugin.id}" and delete its managed files, settings, secrets, and schedules?`;
+}
+
 function PluginPath({ path }: { path: string }) {
   const { copied, copy } = useClipboardCopy({
     text: path,

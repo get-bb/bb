@@ -400,7 +400,12 @@ Reinstalling an already-installed managed plugin is refused — use
 leaves the latest failure visible as needing attention. Exact npm versions,
 git tags and commits, path sources, and bundled official plugins are pinned;
 npm ranges/omitted specs/dist-tags, omitted Git refs (the repository default
-branch), Git branches, and Git semver ranges track compatible updates.
+branch), Git branches, and Git semver ranges track compatible updates. A
+pinned git:/npm: source changes only through `bb plugin remove` (which
+deletes the plugin's settings, secrets, and schedules) and a fresh install. A
+local path plugin is never removed to change it: edit it in place and
+`bb plugin reload <id>`, or `bb plugin install path:<new dir>` to move it to
+another directory; both keep its configuration.
 
 Git semver ranges
 

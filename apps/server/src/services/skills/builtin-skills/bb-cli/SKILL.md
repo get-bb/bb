@@ -843,7 +843,11 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     updates for tracking sources, including newer tags that satisfy a Git
     semver range. Same full-trust confirmation as install (`--yes` skips;
     non-TTY refuses without it). Use `bb plugin outdated` to preview available
-    updates; changing a pinned source requires reinstalling it after removal.
+    updates. Changing a pinned git:/npm: source requires `bb plugin remove`
+    (which deletes the plugin's settings, secrets, and schedules) and a fresh
+    install. A local path plugin is never removed to change it: edit it in
+    place and `bb plugin reload <id>`, or `bb plugin install path:<new dir>`
+    to move it; both keep its configuration.
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
   - `bb plugin source <id> [--json]` — requested and resolved source, the

@@ -14,6 +14,7 @@ export {
   normalizePluginSourceInput,
   pluginDisplayName,
   pluginIsLocalSource,
+  pluginRemovalDescription,
   pluginRemovalLabel,
   pluginRowSignal,
   pluginRuntimeStatusPresentation,

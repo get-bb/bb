@@ -480,7 +480,7 @@ function BrowseCard({
       >
         <ConfirmDeleteDialogContent
           title={`Uninstall ${entry.displayName}?`}
-          description="The plugin will be removed from this BB host. Plugin data may be retained for a future reinstall."
+          description="The plugin, its installed files, and its settings, secrets, and schedules are removed from this BB host."
           confirmLabel={uninstall.isPending ? "Uninstalling…" : "Uninstall"}
           pending={uninstall.isPending}
           onConfirm={() => uninstall.mutate()}

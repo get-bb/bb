@@ -8,6 +8,7 @@ import {
   groupCatalogEntries,
   normalizeMarketplaceSourceInput,
   normalizePluginSourceInput,
+  pluginRemovalDescription,
   pluginRowSignal,
   pluginSettingFieldValue,
   pluginSettingsAvailability,
@@ -271,5 +272,27 @@ describe("source input normalization", () => {
       normalizeMarketplaceSourceInput("http://insecure/m.json"),
     ).toBeNull();
     expect(normalizeMarketplaceSourceInput("some words")).toBeNull();
+  });
+});
+
+describe("pluginRemovalDescription", () => {
+  it("states the server's deletion policy for every source kind", () => {
+    // remove() deletes settings, secrets, and schedules regardless of source;
+    // a local plugin's files stay, and a move (install the new path) keeps
+    // its configuration.
+    const local = pluginRemovalDescription(
+      plugin({ source: "path:/Users/you/bb-plugin-github" }),
+    );
+    expect(local).toMatch(/settings, secrets, and schedules/);
+    expect(local).toMatch(/files stay/);
+    expect(local).toMatch(/install the new path/);
+    expect(local).not.toMatch(/kept for a reinstall/);
+    const managed = pluginRemovalDescription(
+      plugin({ source: "npm:@example/github@^1" }),
+    );
+    expect(managed).toMatch(
+      /installed files, settings, secrets, and schedules/,
+    );
+    expect(managed).not.toMatch(/kept/);
   });
 });

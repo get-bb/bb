@@ -612,7 +612,10 @@ export function createPluginUpdates(
         if (resolution.outcome === "pinned") {
           return {
             ok: false,
-            error: `plugin "${id}" is pinned by its source intent; remove and reinstall it with an npm range, a git branch, or a git semver range to track updates`,
+            error:
+              row.sourceKind === "path"
+                ? `plugin "${id}" is a local path source with no update channel; edit it in place and run \`bb plugin reload ${id}\`, or move it with \`bb plugin install path:<new directory>\` (settings, secrets, and schedules are kept)`
+                : `plugin "${id}" is pinned by its source intent; remove and reinstall it with an npm range, a git branch, or a git semver range to track updates`,
           };
         }
         if (resolution.outcome === "incompatible") {

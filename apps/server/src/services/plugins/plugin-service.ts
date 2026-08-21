@@ -1058,6 +1058,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     withLifecycleLock,
     disposeOne,
     loadOne,
+    statuses,
     validateInstallDir: (args) => managedValidateInstallDir(args),
     checkEngineRange,
     checkPluginSdkRange,
