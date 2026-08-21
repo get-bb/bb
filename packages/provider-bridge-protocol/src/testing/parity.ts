@@ -393,7 +393,9 @@ function sleep(ms: number): Promise<void> {
  */
 export async function replayRecording(options: ReplayRecordingOptions): Promise<ParityRun> {
   const timeoutMs = options.timeoutMs ?? 15_000;
-  const orderTimeoutMs = options.orderTimeoutMs ?? 2_000;
+  // Generous on purpose: only a bridge that diverges from the recording ever
+  // waits this long, while a slow CI runner must never trip it for a healthy one.
+  const orderTimeoutMs = options.orderTimeoutMs ?? 5_000;
   const settleMs = options.settleMs ?? 750;
   const providerId = options.bridge.providerId;
   const profile = resolveReplayProfile(providerId);

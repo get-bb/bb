@@ -64,6 +64,13 @@ for the entry format. Raw recordings can contain secrets and absolute paths.
 Run `node scripts/provider-recordings/redact.mjs <raw-dir> <out-dir>` before
 you share one, and never commit a raw recording.
 
+To compare two checkouts' bridges on the committed recordings, run
+`pnpm parity --old <checkout> --new . [--provider <id>] [--cell <name>]`.
+Each leg replays every cell through its own bridge, assembler, and timeline
+projection; the run prints a PASS/FAIL line per cell with event and row
+counts and exits non-zero on any diff outside
+`packages/provider-bridge-protocol/recordings/parity-allowlist.json`.
+
 ## Performance Fixture Database
 
 Use `pnpm seed:perf` to fill a dev database with a large, realistic fixture:

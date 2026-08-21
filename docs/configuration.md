@@ -983,3 +983,12 @@ intended mode so ambient shell state does not silently retarget bb.
 
 Use `pnpm reset` or `pnpm reset:dev` to clear a data directory. These only
 remove bb-managed state, not provider credentials.
+
+`BB_PROVIDER_BRIDGE_RECORD_DIR=<dir>` in the host daemon's environment turns
+on bridge record mode: every provider bridge writes the lines that cross its
+runtime and provider wires as NDJSON under `<dir>/<providerId>/<threadId>/`.
+It is a development and diagnostics knob, off by default, and never reaches a
+provider child. See [provider-bridge-protocol.md](provider-bridge-protocol.md),
+"Record mode", and [debugging-and-qa.md](debugging-and-qa.md). Raw recordings
+can contain secrets; redact them with `scripts/provider-recordings/redact.mjs`
+before you share them.
