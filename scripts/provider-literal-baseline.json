@@ -1,6 +1,6 @@
 {
   "_comment": "Provider-literal ratchet (G1). Per-file occurrence count of provider-ID references in core. May only go DOWN. Regenerate: node scripts/check-provider-literal-ratchet.mjs --write. Delete this file and the guard when empty.",
-  "total": 147,
+  "total": 139,
   "files": {
     "apps/app/src/components/tools/SkillsCollection.tsx": 3,
     "apps/app/src/lib/provider-icon.ts": 15,
@@ -38,8 +38,6 @@
     "packages/test-helpers/src/provider-models.ts": 1,
     "packages/thread-view/src/active-prompt-mode-extraction.ts": 2,
     "packages/thread-view/src/model-fallback-extraction.ts": 1,
-    "plugins/automations/lib/model-label.ts": 5,
-    "plugins/automations/lib/provider-icon.tsx": 3,
     "plugins/tasks/cli/index.ts": 2,
     "plugins/tasks/views/activity/provider-logo.tsx": 6
   }
