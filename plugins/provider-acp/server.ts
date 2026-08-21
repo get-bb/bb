@@ -1,229 +1,142 @@
-import type {
-  BbPluginApi,
-  PluginProviderDeclaration,
-} from "@get-bb/plugin-sdk";
+/**
+ * The ACP providers plugin.
+ *
+ * The plugin owns its agents: the list bb ships knowledge of, and the ones a
+ * user configures in this plugin's own settings. Both become registrations
+ * here, at runtime, and a settings change re-registers without a restart —
+ * one plugin, N providers, no core table of ACP agents anywhere.
+ *
+ * The host side is one re-export of the published kit (`src/host.ts`), so
+ * this file is the whole of bb's ACP privilege: a list of agents anyone could
+ * have written.
+ */
 
-const ACP_BASE_CAPABILITIES = {
-  experimental_providerHealth: true,
-  experimental_providerUsage: false,
-  experimental_providerInstallation: false,
-  supportsServiceTier: true,
-  supportsNativeUserQuestion: false,
-  // ACP session/fork clones a whole session (tip only, no checkpoint rewind),
-  // and it is an unstable ACP extension that not every agent implements. The
-  // bridge refuses `session/fork` for an agent whose `initialize` reply does
-  // not advertise `sessionCapabilities.fork`, but only after the server has
-  // already created and started the fork thread. So this declaration, which
-  // is the server's fork gate and the app's fork affordance, must match what
-  // the agent actually advertises: override it with "none" for agents that
-  // do not (#1833).
-  fork: "tip" as const,
-  supportsManualCompaction: false,
-  supportsThreadArchive: false,
-  supportsThreadRename: false,
-  permissionModes: ["accept-edits", "full"] as const,
-  reasoningLevels: ["low", "medium", "high", "xhigh", "max"] as const,
-};
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  customAcpAgentDefinition,
+  parseCustomAcpAgents,
+  type AcpAgentDefinition,
+} from "./src/agents.js";
+import { acpProviderDeclaration } from "./src/declaration.js";
+import {
+  KNOWN_ACP_AGENTS,
+  KNOWN_ACP_PROVIDER_IDS,
+} from "./src/known-agents.js";
+import {
+  legacyAgentDeprecationMessage,
+  readLegacyCustomAcpAgents,
+} from "./src/legacy-config.js";
 
-/** Cursor exposes a `-fast` model tail the bridge resolves from the tier. */
-const ACP_SERVICE_TIERS = [
-  { id: "default", label: "Default" },
-  { id: "fast", label: "Fast" },
-] as const;
+export { CURSOR_PRIMARY_MODELS } from "./src/known-agents.js";
 
-/** Provider copy for core surfaces, per agent: how to sign in and install. */
-function acpStrings(args: {
-  name: string;
-  signInCommand: string;
-  installUrl: string;
-  iconTint?: { light: string; dark: string };
-}) {
-  return {
-    signInHint: `Run \`${args.signInCommand}\` on the machine to sign in.`,
-    expiredHint: `Your ${args.name} session expired. Run \`${args.signInCommand}\`, then reload.`,
-    installUrl: args.installUrl,
-    ...(args.iconTint === undefined ? {} : { iconTint: args.iconTint }),
-  };
+const CUSTOM_AGENTS_SETTING_DESCRIPTION =
+  'A JSON array of ACP agents to add, for example [{"id":"amp","displayName":"Amp","command":"amp","args":["acp"]}]. ' +
+  'Each agent needs "id" (lowercase letters, digits and dashes), "displayName" and "command"; ' +
+  '"args", "env", "cwd", "modelCli", "reasoningCli", "nativeReasoning", "nativeSkillRoots" and "supportsManualCompaction" are optional. ' +
+  "The provider id is acp-<id> and never changes once a thread has used it.";
+
+/**
+ * The configured agents, from this plugin's setting and — until the
+ * deprecation window closes — from the old `customAcpAgents` array in
+ * config.json. A setting entry wins over a legacy entry with the same id, so
+ * moving an agent into the setting is the whole migration.
+ */
+async function resolveCustomAgents(
+  bb: BbPluginApi,
+  settingValue: string | undefined,
+): Promise<AcpAgentDefinition[]> {
+  const entries: unknown[] = [];
+  const trimmed = settingValue?.trim() ?? "";
+  if (trimmed.length > 0) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (!Array.isArray(parsed)) {
+        bb.log.warn(
+          'The ACP "customAgents" setting must be a JSON array; ignoring it.',
+        );
+      } else {
+        entries.push(...parsed);
+      }
+    } catch (error) {
+      bb.log.warn(
+        `The ACP "customAgents" setting is not valid JSON; ignoring it: ${String(error)}`,
+      );
+    }
+  }
+  const configured = parseCustomAcpAgents({
+    entries,
+    reservedProviderIds: KNOWN_ACP_PROVIDER_IDS,
+  });
+  for (const problem of configured.problems) {
+    bb.log.warn(`ACP custom agent setting: ${problem}`);
+  }
+
+  const legacy = await readLegacyCustomAcpAgents();
+  if (legacy.problem !== undefined) {
+    bb.log.warn(`Deprecated ACP agent config: ${legacy.problem}`);
+  }
+  const legacyAgents = parseCustomAcpAgents({
+    entries: legacy.entries,
+    reservedProviderIds: KNOWN_ACP_PROVIDER_IDS,
+  });
+  for (const problem of legacyAgents.problems) {
+    bb.log.warn(`Deprecated ACP agent config: ${problem}`);
+  }
+
+  const bySlug = new Map(configured.agents.map((agent) => [agent.id, agent]));
+  for (const agent of legacyAgents.agents) {
+    if (bySlug.has(agent.id)) {
+      continue;
+    }
+    bb.log.warn(legacyAgentDeprecationMessage(agent));
+    bySlug.set(agent.id, agent);
+  }
+  return [...bySlug.values()].map(customAcpAgentDefinition);
 }
 
-export const CURSOR_PRIMARY_MODELS = [
-  "auto",
-  "cursor-grok-4.6-medium",
-  "gpt-5.6-sol-medium",
-  "claude-opus-5-thinking-medium",
-  "claude-fable-5-thinking-medium",
-  "composer-2.5",
-];
-
-const ACP_PROVIDERS: readonly PluginProviderDeclaration[] = [
-  {
-    id: "acp-cursor",
-    displayName: "Cursor",
-    icon: "./icons/cursor.svg",
-    experimental_strings: acpStrings({
-      name: "Cursor",
-      signInCommand: "cursor-agent login",
-      installUrl: "https://cursor.com/docs/cli/installation",
-      iconTint: { light: "#111827", dark: "#F5F5F5" },
-    }),
-    experimental_serviceTiers: [...ACP_SERVICE_TIERS],
-    experimental_bridgeOptions: {
-      // Which vendor side channels the bridge reads for this agent
-      // (packages/provider-bridge-acp/src/dialect.ts). Declared per registration so
-      // a third-party plugin that registers a known agent gets the same
-      // reporting fidelity a first-party registration does.
-      acpDialect: "cursor",
-      acpLaunchSpec: {
-        displayName: "Cursor",
-        command: "cursor-agent",
-        args: ["acp"],
-        env: {},
-        modelCli: {
-          listArgs: ["--list-models"],
-          selectFlag: "--model",
-          primaryModels: CURSOR_PRIMARY_MODELS,
-        },
-      },
-    },
-    capabilities: {
-      ...ACP_BASE_CAPABILITIES,
-      experimental_providerUsage: true,
-      experimental_providerInstallation: true,
-      // cursor-agent (2026.08.11) advertises `sessionCapabilities: { list }`
-      // only; no session/fork.
-      fork: "none",
-    },
-    composerActions: [],
-  },
-  {
-    id: "acp-opencode",
-    displayName: "opencode",
-    experimental_visibility: "installed",
-    experimental_strings: acpStrings({
-      name: "opencode",
-      signInCommand: "opencode auth login",
-      installUrl: "https://opencode.ai/docs",
-      iconTint: { light: "#2563EB", dark: "#2563EB" },
-    }),
-    experimental_serviceTiers: [...ACP_SERVICE_TIERS],
-    experimental_bridgeOptions: {
-      acpLaunchSpec: {
-        displayName: "opencode",
-        command: "opencode",
-        args: ["acp"],
-        env: {},
-      },
-    },
-    capabilities: {
-      ...ACP_BASE_CAPABILITIES,
-      supportsManualCompaction: true,
-    },
-    composerActions: [],
-  },
-  {
-    id: "acp-omp",
-    displayName: "omp",
-    experimental_visibility: "installed",
-    experimental_strings: acpStrings({
-      name: "omp",
-      signInCommand: "omp login",
-      installUrl: "https://github.com/can1357/omp",
-      iconTint: { light: "#9333EA", dark: "#9333EA" },
-    }),
-    experimental_serviceTiers: [...ACP_SERVICE_TIERS],
-    experimental_bridgeOptions: {
-      acpLaunchSpec: {
-        displayName: "omp",
-        command: "omp",
-        args: ["acp"],
-        env: {},
-      },
-    },
-    capabilities: ACP_BASE_CAPABILITIES,
-    composerActions: [],
-  },
-  {
-    id: "acp-grok",
-    displayName: "Grok Build",
-    experimental_visibility: "installed",
-    experimental_strings: acpStrings({
-      name: "Grok Build",
-      signInCommand: "grok login",
-      installUrl: "https://docs.x.ai/docs/grok-build",
-    }),
-    experimental_serviceTiers: [...ACP_SERVICE_TIERS],
-    experimental_bridgeOptions: {
-      acpDialect: "grok",
-      acpLaunchSpec: {
-        displayName: "Grok Build",
-        command: "grok",
-        args: ["agent", "stdio"],
-        env: {},
-        modelCli: {
-          listArgs: ["models"],
-          selectFlag: "--model",
-          primaryModels: ["grok-4.5", "grok-composer-2.5-fast"],
-        },
-        permissionCli: {
-          full: ["--always-approve"],
-          insertAfterArgs: 1,
-        },
-        reasoningCli: {
-          flag: "--reasoning-effort",
-          supportedLevels: ["low", "medium", "high"],
-          levelValues: {
-            none: "low",
-            xhigh: "high",
-            ultracode: "high",
-            max: "high",
-          },
-          defaultLevel: "high",
-        },
-      },
-    },
-    capabilities: {
-      ...ACP_BASE_CAPABILITIES,
-      // `grok agent stdio` advertises `sessionCapabilities: { list, resume,
-      // close }`; no session/fork.
-      fork: "none",
-      reasoningLevels: ["low", "medium", "high"],
-    },
-    composerActions: [],
-  },
-  {
-    id: "acp-hermes-agent",
-    displayName: "Hermes Agent",
-    experimental_visibility: "installed",
-    experimental_strings: acpStrings({
-      name: "Hermes Agent",
-      signInCommand: "hermes login",
-      installUrl: "https://hermes-agent.nousresearch.com",
-    }),
-    experimental_serviceTiers: [...ACP_SERVICE_TIERS],
-    experimental_bridgeOptions: {
-      acpLaunchSpec: {
-        displayName: "Hermes Agent",
-        command: "hermes",
-        args: ["acp"],
-        env: {},
-        nativeReasoning: {
-          configId: "reasoning_effort",
-          supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
-          defaultLevel: "medium",
-        },
-      },
-    },
-    capabilities: {
-      ...ACP_BASE_CAPABILITIES,
-      reasoningLevels: ["none", "low", "medium", "high", "xhigh", "max"],
-    },
-    composerActions: [],
-  },
-];
-
-/** Registers every built-in ACP launch profile; the bridge owns discovery. */
-export default function plugin(bb: BbPluginApi) {
-  for (const provider of ACP_PROVIDERS) {
-    bb.providers.register(provider);
+export default async function acpProvidersPlugin(
+  bb: BbPluginApi,
+): Promise<void> {
+  for (const agent of KNOWN_ACP_AGENTS) {
+    bb.providers.register(acpProviderDeclaration(agent));
   }
+
+  const settings = bb.settings.define({
+    customAgents: {
+      type: "string",
+      label: "Custom agents",
+      description: CUSTOM_AGENTS_SETTING_DESCRIPTION,
+      default: "",
+    },
+  });
+
+  // Configured agents are re-registered whenever the setting changes: the
+  // registry hands back a disposer per registration, and re-registering an
+  // id this plugin already owns is only allowed after that disposer runs.
+  let disposeCustomAgents: (() => void)[] = [];
+  async function registerCustomAgents(settingValue: string): Promise<void> {
+    for (const dispose of disposeCustomAgents.splice(0)) {
+      dispose();
+    }
+    const agents = await resolveCustomAgents(bb, settingValue);
+    disposeCustomAgents = agents.map(
+      (agent) => bb.providers.register(acpProviderDeclaration(agent)).dispose,
+    );
+    if (agents.length > 0) {
+      bb.log.info(`Registered ${agents.length} configured ACP agent(s).`);
+    }
+  }
+
+  const initial = await settings.get();
+  await registerCustomAgents(initial.customAgents);
+  settings.onChange((next) => {
+    void registerCustomAgents(next.customAgents).catch((error: unknown) => {
+      bb.log.error(`Could not re-register the configured ACP agents: ${String(error)}`);
+    });
+  });
+  bb.onDispose(() => {
+    for (const dispose of disposeCustomAgents.splice(0)) {
+      dispose();
+    }
+  });
 }

@@ -315,128 +315,48 @@ simply unavailable.
 
 ## Custom ACP Agents
 
-Known ACP agents can appear automatically when their CLI is installed on the
-host. For example, bb exposes `acp-opencode` when `opencode` is on PATH and can
-be launched as `opencode acp`, and `acp-omp` when `omp` (oh-my-pi) is on PATH
-and can be launched as `omp acp`. It also exposes `acp-grok` when Grok Build's
-`grok` CLI is on PATH and can be launched as `grok agent stdio`, and
-`acp-hermes-agent` when Hermes' `hermes` CLI is on PATH and can be launched as
-`hermes acp`.
+Known ACP agents appear when their CLI is installed on the host. bb exposes
+`acp-opencode` when `opencode` is on PATH and can be launched as `opencode acp`,
+`acp-omp` when `omp` (oh-my-pi) is on PATH, `acp-grok` when Grok Build's `grok`
+CLI is on PATH and can be launched as `grok agent stdio`, and
+`acp-hermes-agent` when Hermes' `hermes` CLI is on PATH. `acp-cursor` is always
+listed.
 
-Register custom ACP agents by editing `customAcpAgents` in `~/.bb/config.json`.
-There is no `bb-app config set` or `unset` command for this list, matching the
-manual-file workflow used for custom models. After editing the file, run
-`npx bb-app config refresh` to apply it to a running local server, or restart bb.
-Use `customAcpAgents` for arbitrary ACP agents, or to override the launch
-command for a known provider id such as `acp-opencode`. To override
-`acp-opencode`, set `"id": "opencode"`; bb derives the provider id by adding
-the `acp-` prefix.
+Add your own agent through the ACP providers plugin's `customAgents` setting,
+which holds a JSON array:
 
-Example:
-
-```json
-{
-  "customAcpAgents": [
-    {
-      "id": "my-agent",
-      "displayName": "My Agent",
-      "command": "my-agent",
-      "logo": "agent-logos/my-agent.svg",
-      "args": ["acp"],
-      "env": {
-        "MY_AGENT_MODE": "bb"
-      },
-      "cwd": "/Users/me/project",
-      "modelCli": {
-        "listArgs": ["--list-models"],
-        "selectFlag": "--model",
-        "primaryModels": ["default"]
-      },
-      "reasoningCli": {
-        "flag": "--reasoning-effort",
-        "supportedLevels": ["low", "medium", "high"],
-        "levelValues": {
-          "max": "high"
-        },
-        "defaultLevel": "high"
-      },
-      "nativeReasoning": {
-        "configId": "reasoning_effort",
-        "supportedLevels": ["none", "low", "medium", "high", "xhigh", "max"],
-        "defaultLevel": "medium"
-      }
-    }
-  ]
-}
+```bash
+bb plugin config provider-acp set customAgents '[
+  {"id": "amp", "displayName": "Amp", "command": "amp", "args": ["acp"]}
+]'
 ```
 
-`id` is a slug matching `^[a-z0-9][a-z0-9-]*$`. bb derives the provider id by
-prefixing it with `acp-`, so the example appears as `acp-my-agent` in
-`bb provider list`, `bb provider models acp-my-agent`, and provider pickers.
-The derived id must not collide with an always-visible built-in provider such
-as `acp-cursor` or with another custom ACP agent. It may match an
-installed-only ACP plugin provider such as `acp-opencode`, in which case the
-custom config wins.
+Each entry needs `id` (lowercase letters, digits and dashes), `displayName`,
+and `command`. bb derives the provider id `acp-<id>`; it never changes once a
+thread has used it, and it may not shadow a known agent. Optional fields:
+`args`, `env`, `cwd`, `modelCli` (CLI model listing and selection),
+`reasoningCli` (launch-time reasoning flags), `nativeReasoning` (ACP
+`session/set_config_option` reasoning), `nativeSkillRoots` (native skills in
+the composer), `supportsManualCompaction` (only if the agent accepts an
+explicit compaction request — bb hides `/compact` otherwise), and `dialect`
+(the vendor side channels bb reads for the agent: `cursor` or `grok`).
 
-`command` is the executable name or path. bb runs it directly with the `args`
-array; it is not a shell command line. `env` adds environment variables for the
-agent process. `cwd` is optional; omit it to use the thread workspace directory.
+The change applies immediately: the plugin re-registers its providers when the
+setting changes, with no restart and no `config refresh`.
 
-`logo` is optional and accepts an SVG, PNG, or WebP file path. Relative paths
-resolve from the bb data directory (for example,
-`~/.bb/agent-logos/my-agent.svg`); absolute paths are also supported. bb serves
-the file to app clients and uses it in provider and model pickers. Omit `logo`
-to use a vendored brand icon for a recognized ACP id or the generic ACP icon.
+A configured agent's command is local code execution and only works with a
+co-located daemon.
 
-`modelCli` is optional. When present, `listArgs` are used to ask the agent for
-models, `selectFlag` is the flag bb passes when launching with a selected model,
-and `primaryModels` marks preferred models in the picker. ACP agents that
-advertise models over the protocol are auto-discovered without `modelCli`; keep
-`modelCli` for CLI-style agents such as Cursor.
+### The deprecated `customAcpAgents` config array
 
-`reasoningCli` is optional. Use it only when the agent accepts reasoning as a
-global launch flag rather than advertising a protocol `thought_level` option or
-encoding effort in model ids. `flag` is inserted before the ACP agent args,
-`supportedLevels` controls the picker levels, `defaultLevel` controls the
-picker default, and `levelValues` maps bb reasoning levels to the agent's CLI
-vocabulary when they differ.
-
-`supportsManualCompaction` is optional and defaults to `false`. Set it to
-`true` only when the agent accepts an explicit compaction request; ACP itself
-advertises nothing about compaction, so the agent definition is what declares
-it. bb hides the built-in `/compact` command for agents that do not. OpenCode
-declares it; Cursor does not.
-
-`nativeReasoning` is optional. Use it for ACP agents that accept reasoning via
-`session/set_config_option` but do not advertise a `thought_level` config option
-during model discovery. `configId` is the ACP config id to set,
-`supportedLevels` controls the picker levels, `defaultLevel` controls the
-picker default, and `levelValues` maps bb reasoning levels to the agent's ACP
-config vocabulary when they differ. Hermes Agent uses this with
-`configId: "reasoning_effort"`.
-
-For ACP-native agents, bb also uses a protocol `thought_level` config option
-when the selected model advertises one. The selected reasoning level is applied
-with `session/set_config_option` before the first prompt. Models without that
-option keep agent-managed reasoning unless the provider launch spec declares
-`nativeReasoning`. Cursor is intentionally separate: it encodes reasoning in
-model ids discovered through `modelCli`, not in an ACP `thought_level` option.
-Grok Build is also separate: it uses `reasoningCli` to launch
-`grok --reasoning-effort <level> agent stdio`.
-
-When an agent declares `thought_level` with no options, bb hides the reasoning
-control. bb also hides it when none of the declared values map to a supported bb
-reasoning level. Omitting `thought_level` keeps the agent-managed reasoning
-fallback for agents that do not advertise this capability.
-
-Custom ACP agents are supported only with the co-located daemon from the same
-machine as the server. A command path in server config is host-local and is not
-meaningful for a remote daemon.
-
-Security note: `command` is arbitrary local code execution by design. Anyone who
-can write `~/.bb/config.json` can cause bb to run that command as the local user
-when the provider is used. Treat `config.json` write access as the trust
-boundary.
+Before ACP agents were plugin-owned, custom agents lived in `customAcpAgents`
+in `~/.bb/config.json`. bb still **reads** that array so an existing agent keeps
+working, logs a deprecation warning for each one, and never writes to it.
+Support ends in 0.40 — move each entry into the `customAgents` setting above.
+The two shapes are identical except that the setting has no `logo` field: a
+plugin-registered provider's icon is a host glyph or an asset the plugin ships,
+so a configured agent shows the generic tool glyph. A setting entry wins over a
+config entry with the same `id`.
 
 ## Custom Models
 

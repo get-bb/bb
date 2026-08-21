@@ -342,20 +342,17 @@ environment pull-request show <id>`. Diff commands require an explicit target
 - Cursor ACP threads discover project skills from `.cursor/skills`. This root
   can link to `.agents/skills`. `bb skill list` shows linked Cursor skills under
   `cursor-project` and keeps them read-only.
-- Custom ACP agents can be registered in the app data-dir `config.json` under
-  `customAcpAgents`. The user supplies a slug `id`; bb exposes it as provider
-  id `acp-<id>`. Custom config wins if it uses the same provider id as a known
-  ACP agent, so overriding `acp-opencode` uses `"id": "opencode"`. This list
-  has no set/unset CLI surface, so edit the JSON and run `bb-app config refresh`
-  or restart bb. The configured command is local code execution and only works
-  with a co-located daemon. Optional `logo` accepts an SVG, PNG, or WebP path;
-  relative paths resolve from the bb data dir. Custom ACP agents can use
-  `modelCli` for CLI model listing/selection, `reasoningCli` for launch-time
-  reasoning flags, and `nativeReasoning` for ACP `session/set_config_option`
-  reasoning. Optional
-  `nativeSkillRoots.user` paths resolve from the target
-  host home directory. Optional `nativeSkillRoots.project` paths resolve from
-  the selected workspace. The composer lists skills from these roots.
+- Custom ACP agents live in the ACP providers plugin's `customAgents` setting,
+  a JSON array: `bb plugin config provider-acp set customAgents '[{"id":"amp",
+  "displayName":"Amp","command":"amp","args":["acp"]}]'`. The user supplies a
+  slug `id`; bb exposes it as provider id `acp-<id>`, which is permanent and
+  cannot shadow a known agent. The plugin re-registers as soon as the setting
+  changes. The configured command is local code execution and only works with a
+  co-located daemon. Optional per-agent fields: `args`, `env`, `cwd`,
+  `modelCli`, `reasoningCli`, `nativeReasoning`, `nativeSkillRoots`,
+  `supportsManualCompaction`, and `dialect` (`cursor` or `grok`). The old
+  `customAcpAgents` array in `config.json` is deprecated; bb reads it and warns
+  until 0.40.
 - Top-level `customModels` in the same `config.json` registers extra picker
   models. `providerId` accepts a built-in provider id or any `acp-*` provider
   id. The provider must still accept the id: `claude-code` and `codex` accept
