@@ -735,9 +735,14 @@ jobs:
     with:
       profile: production
       submit: true
-      # The reusable workflow keeps the numeric base (0.38.1 for
-      # 0.38.1-nightly.N.M); iOS rejects prerelease version strings.
-      version: ${{ needs.publish-nightly.outputs.version || needs.publish.outputs.version }}
+      # An empty version keeps the marketing version committed in
+      # apps/mobile/app.json. TestFlight needs a Beta App Review for the
+      # first build of each new marketing version, so a nightly that tracked
+      # the bb-app version (0.39.0, 0.39.1, ...) blocked external testers
+      # every time the base version moved. With a pinned version, the remote
+      # EAS build number tells nightly builds apart and later builds skip
+      # the review.
+      version: ""
     secrets:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}

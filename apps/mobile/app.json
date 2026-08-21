@@ -3,7 +3,7 @@
     "name": "bb",
     "slug": "bb-app",
     "owner": "bb-team",
-    "version": "0.0.1",
+    "version": "0.39.0",
     "scheme": "bb",
     "orientation": "default",
     "icon": "./assets/icon.png",

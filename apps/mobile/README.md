@@ -794,7 +794,12 @@ push key); nobody needs a local Xcode signing setup to ship.
   Run it alone from the Actions tab ("Mobile iOS (EAS)") or
   `gh workflow run mobile-ios-eas.yml -f profile=production -f submit=true`.
   The nightly `publish-bb-app.yml` calls the same workflow after the npm
-  nightly publish with the numeric base of the nightly version. Repo
+  nightly publish with an empty `version`, so every nightly keeps the
+  marketing version committed in `app.json` and only the EAS build number
+  moves. This is deliberate: TestFlight needs a Beta App Review for the
+  first build of each new marketing version, and later builds of the same
+  version skip it. Bump `app.json` `version` only when you want a new
+  review, for example for a store release. Repo
   secrets: `EXPO_TOKEN` (a robot token from the `bb-team` Expo org) and
   `ASC_API_KEY_P8` (the `.p8` contents).
 - The `expo-modules-jsi` pnpm patch and the `lightningcss` override ship
@@ -814,8 +819,12 @@ push key); nobody needs a local Xcode signing setup to ship.
 App Store Connect finishes processing it, usually within 30 minutes. The group
 `bb team` exists and the nightly feeds it.
 
-**External testers** need a Beta App Review on the first build, and Apple
-usually auto-approves later builds. Before a build can go to an external group,
+**External testers** need a Beta App Review on the first build of each
+marketing version, and Apple usually auto-approves later builds of that
+version. The nightly keeps one marketing version for this reason (see "CI"
+above). Turn on "Automatically distribute builds" on the external group so new
+nightly builds reach it without a manual step. Before a build can go to an
+external group,
 App Store Connect needs all of this:
 
 - **Test Information** (`betaAppLocalizations`): a feedback email, a beta

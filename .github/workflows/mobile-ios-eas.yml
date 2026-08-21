@@ -107,8 +107,8 @@ jobs:
           set -euo pipefail
 
           # iOS accepts only numeric dotted versions, so a prerelease version
-          # (0.38.1-nightly.N.M from the nightly publish) carries its base
-          # 0.38.1; the remote EAS build number tells builds apart.
+          # (0.38.1-nightly.N.M) carries its base 0.38.1; the remote EAS
+          # build number tells builds apart.
           MOBILE_VERSION="${MOBILE_VERSION%%-*}"
           if [[ ! "$MOBILE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Marketing version must be numeric (X.Y.Z), got '${MOBILE_VERSION}'."
