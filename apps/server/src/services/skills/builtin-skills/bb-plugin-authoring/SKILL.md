@@ -1232,6 +1232,26 @@ assert what each row becomes
 import a private `@bb/*` package from a plugin: an installed plugin cannot
 resolve it.
 
+**Recorded replay.** The same kit ships the regression oracle the first-party
+bridges use. Record a real session: start the host daemon with
+`BB_PROVIDER_BRIDGE_RECORD_DIR=<dir>` in its environment, run a thread on
+your provider, and bb writes `<dir>/<providerId>/<threadId>/<direction>.ndjson`
+(a bridge that spawns a CLI also calls `experimental_recordProviderChildIo`
+right after `spawn()`). Commit the lanes under your plugin, then replay them in
+a test: `experimental_resolveProviderBridgeLaunch({ modulePath, pluginId })`
+builds the bridge process exactly as the runtime spawns it,
+`experimental_replayRecording` drives the recorded runtime lane into it and
+answers its requests with the recorded answers, and
+`experimental_compareParity` diffs the assembled events against the
+recording's own (`experimental_assembleRecordedEvents`); `experimental_checkRecordedCellReplay`
+adds the recorded-cell conformance verdicts. A bridge with a provider child
+passes a `ReplayProviderProfile` whose `env` (or `rewriteRuntimeLine`) points
+the child at the kit's replay script. When a deliberate bridge change alters
+the stream, `experimental_rerecordCurrentBridgeLane` writes the new
+expectation beside the recording (`bridge→runtime.current.ndjson`); the
+recording itself is never rewritten. See
+`examples/plugins/echo-provider/provider-bridge.parity.test.ts`.
+
 **Delivery.** On install/reload the server builds `dist/host.js` and records
 its digest. Thread commands for the provider carry `{pluginId, digest}` to the
 host daemon, which downloads the bytes from the server, verifies the digest

@@ -70,6 +70,14 @@ the same scripted turn:
      `item/tool/call` reply), runs the bridge's deltas through the **real**
      delta assembler the kit ships, and asserts every capability above on the
      assembled events.
+   - `provider-bridge.parity.test.ts` replays `recordings/echo-agent/turn-tools`
+     — a real recording bb made of this plugin's built artifact (record
+     mode, `BB_PROVIDER_BRIDGE_RECORD_DIR`) — through the bridge the way the
+     runtime spawns it, and diffs the assembled events against the
+     recording's own: zero diffs, every recorded-cell conformance rule green.
+     The same test re-records the bridge lane beside a copy of the recording,
+     the workflow a deliberate bridge change follows. This is the regression
+     oracle the first-party bridges use, reached through the public kit.
    - `public-sdk-only.test.ts` guards the rule.
 2. **The server**: `apps/server/test/providers/echo-provider-canary.test.ts`
    installs this plugin from its path, builds the real thread command, runs
@@ -111,3 +119,20 @@ sources, `bb plugin reload echo-provider`.
 ```
 pnpm exec turbo run test --filter=bb-plugin-echo-provider
 ```
+
+## Re-record
+
+The recording under `recordings/` is never rewritten. To capture a new one,
+start a dev bb with `BB_PROVIDER_BRIDGE_RECORD_DIR=<dir>` exported in the
+daemon's environment, install this plugin, spawn a thread on `echo-agent`,
+then package the thread's lanes:
+
+```
+printf 'echo-agent\tturn-tools\t<threadId>\t\n' > /tmp/cells.tsv
+node scripts/provider-recordings/package-cells.mjs --raw <dir> --cells /tmp/cells.tsv \
+  --out examples/plugins/echo-provider/recordings \
+  --versions '{"echo-agent":"bb-plugin-echo-provider 0.1.0"}'
+```
+
+The packager redacts the lanes (home paths, tokens, emails) and refuses to
+finish if a secret shape survives.

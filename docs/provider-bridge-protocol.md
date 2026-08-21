@@ -508,5 +508,23 @@ scenario set: `replayRecordedCells` replays a bridge's cells and
 `checkRecordedCellReplay` reports `recorded/<cell>/{replays,
 events-schema-valid, grammar, turn-lifecycle, not-empty}` per cell. Each
 first-party bridge has a `bridge.recorded-conformance.test.ts` beside its
-scripted suite, so conformance reflects the real dialect as well as the
-protocol.
+scripted suite (`replayFirstPartyRecordedCells`, which supplies the
+checkout's bridge module and the provider's replay profile), so conformance
+reflects the real dialect as well as the protocol.
+
+The harness is provider-agnostic and published. `parity.ts` knows nothing
+about which providers bb ships: a caller names the recording, the bridge
+process (`resolveProviderBridgeLaunch({ modulePath, pluginId })` builds one
+through the bootstrap, exactly as the runtime spawns it) and, for a bridge
+with a provider child, a `ReplayProviderProfile` that points the child at
+`replay-provider-child.mjs` (an `env` for a bridge that reads its CLI path
+from the environment, `rewriteRuntimeLine` for one that reads it from
+`thread/start`, `prepareState` for state the bridge reads from disk). The
+first-party profiles and module paths live in `testing/first-party-replay.ts`,
+private. `@get-bb/plugin-sdk/provider-bridge/testing` re-exports the core
+(`experimental_replayRecording`, `experimental_compareParity`,
+`experimental_assembleRecordedEvents`, `experimental_replayRecordedCells`,
+`experimental_rerecordCurrentBridgeLane`, the recording readers) and ships
+the bootstrap and the replay child beside its bundle, so a third-party
+plugin replays its own recordings with the same oracle
+(`examples/plugins/echo-provider/provider-bridge.parity.test.ts`).

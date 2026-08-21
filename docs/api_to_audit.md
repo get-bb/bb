@@ -617,9 +617,23 @@ collector that feeds captured notifications through it
 `experimental_assembleCapturedThreadEvents`,
 `experimental_toConformanceMessages`); the in-process JSON-RPC harness
 (`experimental_captureBridgeJsonRpcOutput`,
-`experimental_createBridgeJsonRpcTestHarness`); and the calibration
+`experimental_createBridgeJsonRpcTestHarness`); the calibration
 normalizer (`experimental_normalizeCalibrationEvents`,
-`experimental_describeCalibrationEvents`).
+`experimental_describeCalibrationEvents`); and the recorded-replay harness —
+the regression oracle the first-party bridges use, keyed by the caller's
+provider id and bridge module rather than a list of bb's providers:
+`experimental_resolveProviderBridgeLaunch` (the bridge process as the
+runtime spawns it, through the bootstrap the kit ships beside its bundle),
+`experimental_replayRecording` (the recorded runtime lane in, the recorded
+provider lanes played by the kit's replay child, the bridge's output
+assembled), `experimental_assembleRecordedEvents`,
+`experimental_compareParity` / `experimental_normalizeParityEvents` /
+`experimental_normalizeParityRows` / `experimental_describeParityValue`,
+`experimental_replayRecordedCells` + `experimental_checkRecordedCellReplay`
+(the recorded-cell conformance verdicts), `experimental_rerecordCurrentBridgeLane`
+(the bridge's current output written beside a recording that is never
+rewritten), and the recording readers (`experimental_readBridgeRecording`,
+`experimental_listRecordedCells`, `experimental_withCurrentBridgeLane`).
 Framework-agnostic (the stdout capture patches `process.stdout.write`
 itself; nothing imports a test runner). Curated by hand, named exports only.
 The echo example and every first-party bridge suite import only this entry
@@ -641,9 +655,27 @@ protocol`'s `assembler`, `conformance`, and `testing` subpaths.
    (`turnId`, `itemId`, `id`, `parentToolCallId`) and drops
    `providerCheckpointId`. Confirm the defaults against a third-party
    bridge's goldens before fixing them.
-3. **Surface size.** 14 value exports plus 20 types. The JSON-RPC harness
+3. **Surface size.** 33 value exports plus 43 types. The JSON-RPC harness
    duplicates a little of the bridge kit's envelope parsing; fold or keep
    deliberately.
+4. **Replay profile shape.** `ReplayProviderProfile` is the three seams the
+   first-party bridges needed (`env`, `rewriteRuntimeLine`, `prepareState`)
+   and `ReplayDialect` is the two protocols the replay child speaks
+   (`json-rpc`, `claude-cli`). A third-party bridge whose CLI speaks neither
+   cannot replay its provider lanes. Decide whether the dialect set grows, or
+   whether the child becomes pluggable, before the profile is a promise.
+5. **Two shipped programs.** The kit's bundle spawns `provider-bridge-worker-entry.mjs`
+   and `replay-provider-child.mjs` from beside itself (`import.meta.url`),
+   so the published package carries both under `dist/`. Confirm the bundled
+   bootstrap tracks the daemon's (`apps/host-daemon/scripts/bundle-manifest.mjs`
+   builds the same entry) — a drift would make a replay differ from
+   production in argv or framing.
+6. **Workspace-path restoration.** `experimental_replayRecording` rewrites
+   this replay's temp workspace back to the recorded `cwd` in every line the
+   bridge emits, so a bridge that derives paths from `cwd` compares with the
+   recording. It is a textual substitution of a unique temp path; confirm
+   no bridge emits that path in a form the substitution misses (URL-encoded,
+   JSON-escaped backslashes on Windows).
 
 ## `app.experimental_useProviders` (`@get-bb/plugin-sdk/app`)
 

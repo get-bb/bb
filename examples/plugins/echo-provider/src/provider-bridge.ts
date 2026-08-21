@@ -409,7 +409,12 @@ function searchDeltas(turn: TurnContext): ThreadDelta[] {
 function delegationDeltas(turn: TurnContext): ThreadDelta[] {
   const id = itemId(turn, "delegate");
   const childTurnId = `${id}-turn`;
-  const childRef = `${id}-child`;
+  // The child's provider-native id. Keyed on the bb thread id, not on the
+  // minted provider thread id: `childRef` is a value (the assembler interns
+  // item and turn ids, not references to a child), so a ref that carried
+  // this process's entropy would differ on every replay of a recorded
+  // session and the parity oracle could never reproduce it.
+  const childRef = `${turn.session.threadId}-t${turn.ordinal}-child`;
   const childMessageId = `${id}-message`;
   const label = `Echo "${turn.prompt}" one more time`;
   const childText = `child echo: ${turn.prompt}`;

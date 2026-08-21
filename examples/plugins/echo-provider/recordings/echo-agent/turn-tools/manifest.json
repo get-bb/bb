@@ -1,0 +1,15 @@
+{
+  "provider": "echo-agent",
+  "cell": "turn-tools",
+  "threadId": "thr_qmtsvznxnc",
+  "scope": "thread",
+  "cliVersion": "bb-plugin-echo-provider 0.1.0",
+  "recordedAt": "2026-08-21",
+  "description": "One echo turn: command, fileRead, search, a delegation with a child turn, planSteps, a suppressed tool, the bb echo_stamp tool answered by the server, the receipt extension item, the mood state, the echoed message, usage.",
+  "note": "Recorded on a dev bb (bb plugin install <path>, shout=true, BB_ECHO_PROVIDER_GREETING unset) with BB_PROVIDER_BRIDGE_RECORD_DIR in the daemon env, then scripts/provider-recordings/package-cells.mjs. The echo bridge has no provider child, so the provider lanes are empty.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime\u2192bridge": 3,
+    "bridge\u2192runtime": 7
+  }
+}

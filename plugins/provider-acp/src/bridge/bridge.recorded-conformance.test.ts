@@ -4,7 +4,7 @@ import {
   formatConformanceReport,
   RECORDED_CONFORMANCE_CELLS,
 } from "@bb/provider-bridge-protocol/conformance";
-import { replayRecordedCells } from "@bb/provider-bridge-protocol/testing";
+import { replayFirstPartyRecordedCells } from "@bb/provider-bridge-protocol/testing";
 import { createBridgeDeltaEventCollector } from "@bb/provider-bridge-protocol/testing";
 
 /**
@@ -17,7 +17,7 @@ import { createBridgeDeltaEventCollector } from "@bb/provider-bridge-protocol/te
  * day of the recording (see each cell's manifest.json for the version).
  */
 it("reproduces every recorded matrix cell", async () => {
-  const replays = await replayRecordedCells({
+  const replays = await replayFirstPartyRecordedCells({
     servesProvider: (providerId) => providerId.startsWith("acp-"),
     cells: RECORDED_CONFORMANCE_CELLS,
     createAssembler: (providerId) => {

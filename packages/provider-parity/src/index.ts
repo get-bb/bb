@@ -14,6 +14,7 @@ import { createBridgeDeltaEventCollector } from "@bb/provider-bridge-protocol/te
 import {
   assembleRecordedEvents,
   compareParity,
+  firstPartyReplayBridge,
   readBridgeRecording,
   replayRecording,
   resolveReplayProfile,
@@ -158,9 +159,12 @@ export async function replayCell(
   options: ReplayCellOptions,
 ): Promise<CellInputs & { run: ParityRun }> {
   const projectRows = options.projectRows ?? projectParityRows;
+  const bridge = firstPartyReplayBridge(cell.provider, options.checkoutRoot);
   const run = await replayRecording({
     recordingDir: cell.dir,
-    bridge: { checkoutRoot: options.checkoutRoot, providerId: cell.provider },
+    providerId: cell.provider,
+    bridge: bridge.launch,
+    profile: bridge.profile,
     createAssembler: options.createAssembler ?? createParityAssembler,
     ...(options.planFromCurrentLane === undefined ? {} : { planFromCurrentLane: options.planFromCurrentLane }),
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
