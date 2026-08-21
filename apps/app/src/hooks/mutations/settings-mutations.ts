@@ -5,19 +5,16 @@ import {
   type AppThemeSelection,
   type Experiments,
 } from "@bb/domain";
-import type {
-  SystemConfigResponse,
-  SystemInstallCliSkillsRequest,
-} from "@bb/server-contract";
+import type { SystemInstallCliSkillsRequest } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import {
   invalidateGeneralSettingsDependencies,
   invalidateSystemConfig,
   resetModelCatalogsAfterStreamerModeChange,
 } from "../cache-owners/system-cache-effects";
-import { systemConfigQueryKey } from "../queries/query-keys";
 import {
   beginKeyboardSettingsCacheTransaction,
+  readCachedStreamerMode,
   rollbackKeyboardSettingsCacheTransaction,
 } from "../cache-owners/system-config-cache-owner";
 
@@ -57,9 +54,7 @@ export function useUpdateGeneralSettings() {
       sdk.system.updateGeneralSettings(settings),
     onSuccess: (_settings, written) => {
       // Read the previous value before the config invalidation replaces it.
-      const previous = queryClient.getQueryData<SystemConfigResponse>(
-        systemConfigQueryKey(),
-      )?.generalSettings.streamerMode;
+      const previous = readCachedStreamerMode(queryClient);
       invalidateGeneralSettingsDependencies({ queryClient });
       // An unknown previous value also resets: a stale preload is the risk.
       if (previous !== written.streamerMode) {
