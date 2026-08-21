@@ -30,7 +30,6 @@ import {
   BUILTIN_PLUGIN_NAMES,
   BUILTIN_PLUGINS,
   OFFICIAL_PLUGINS,
-  listBundledPluginRegistrations,
   resolveBuiltinPluginRootPath,
 } from "../../../src/services/plugins/builtin-registry.js";
 import { copyBuiltinPlugins } from "../../../scripts/copy-builtin-plugins.js";
@@ -441,16 +440,12 @@ describe("builtin plugin reconciliation", () => {
     expect(loadCount()).toBe(0);
   });
 
-  it("resolves the Plugin API Tester first-install default from the runtime", () => {
-    const production = listBundledPluginRegistrations({
-      isDevelopment: false,
-    }).find((builtin) => builtin.name === "plugin-api-tester");
-    const development = listBundledPluginRegistrations({
-      isDevelopment: true,
-    }).find((builtin) => builtin.name === "plugin-api-tester");
+  it("ships Plugin API Tester disabled on a fresh database", () => {
+    const pluginApiTester = BUILTIN_PLUGINS.find(
+      (builtin) => builtin.name === "plugin-api-tester",
+    );
 
-    expect(production?.defaultEnabled).toBe(false);
-    expect(development?.defaultEnabled).toBe(true);
+    expect(pluginApiTester?.defaultEnabled).toBe(false);
   });
 
   it("ships Workflows disabled on a fresh database", async () => {
