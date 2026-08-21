@@ -8,6 +8,7 @@ import type {
   ProviderCliStatus,
 } from "@bb/host-daemon-contract";
 import type { HostWorkspace } from "@bb/host-workspace";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import {
   dispatchCommand,
@@ -22,12 +23,6 @@ import type { CommandOf } from "./command-dispatch-support.js";
 import { RuntimeManager } from "./runtime-manager.js";
 
 const WORKSPACE_PATH = "/tmp/bb-command-dispatch-test";
-
-interface Deferred<TValue> {
-  promise: Promise<TValue>;
-  resolve: (value: TValue | PromiseLike<TValue>) => void;
-  reject: (reason?: Error) => void;
-}
 
 interface WriteInjectedSkillSourceArgs {
   dataDir: string;
@@ -125,16 +120,6 @@ async function setupBusySkillCatalogEnvironment(args: {
   };
 }
 
-function createDeferred<TValue>(): Deferred<TValue> {
-  let resolve!: Deferred<TValue>["resolve"];
-  let reject!: Deferred<TValue>["reject"];
-  const promise = new Promise<TValue>((innerResolve, innerReject) => {
-    resolve = innerResolve;
-    reject = innerReject;
-  });
-  return { promise, reject, resolve };
-}
-
 async function unexpectedWorkspaceCall(): Promise<never> {
   throw new Error("Unexpected workspace call");
 }
@@ -157,7 +142,6 @@ function createWorkspace(workspacePath = WORKSPACE_PATH): HostWorkspace {
     diffPatch: unexpectedWorkspaceCall,
     getPullRequest: unexpectedWorkspaceCall,
     runPullRequestAction: unexpectedWorkspaceCall,
-    listBranches: unexpectedWorkspaceCall,
     listFiles: unexpectedWorkspaceCall,
     commit: unexpectedWorkspaceCall,
     reset: unexpectedWorkspaceCall,
@@ -378,7 +362,7 @@ describe("dispatchCommand", () => {
     });
     runtime.setActiveTurn("thread-1", "turn-1");
 
-    const flushDeferred = createDeferred<void>();
+    const flushDeferred = createDeferredPromise<void>();
     const flush = vi.fn(async () => flushDeferred.promise);
     const command: CommandOf<"thread.stop"> = {
       type: "thread.stop",

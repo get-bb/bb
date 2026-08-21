@@ -15,7 +15,7 @@ import {
   toolCallResponseSchema,
 } from "@bb/domain";
 import { z } from "zod";
-import type { Endpoint } from "./common.js";
+import type { Endpoint } from "@bb/hono-typed-routes";
 import type {
   HostDaemonOnlineRpcCommandType,
   HostDaemonSettledCommandType,
@@ -31,7 +31,7 @@ import {
 } from "./commands.js";
 import { hostPlatformSchema } from "./local.js";
 
-export const HOST_DAEMON_WEBSOCKET_PROTOCOL = "bb-host-daemon.v1";
+const HOST_DAEMON_WEBSOCKET_PROTOCOL = "bb-host-daemon.v1";
 
 export const hostDaemonActiveThreadSchema = z.object({
   threadId: z.string().min(1),
@@ -40,7 +40,7 @@ export type HostDaemonActiveThread = z.infer<
   typeof hostDaemonActiveThreadSchema
 >;
 
-export const hostDaemonLoadedEnvironmentSchema = z.object({
+const hostDaemonLoadedEnvironmentSchema = z.object({
   environmentId: z.string().min(1),
 });
 export type HostDaemonLoadedEnvironment = z.infer<
@@ -56,7 +56,7 @@ export type HostDaemonRuntimePolicy = z.infer<
   typeof hostDaemonRuntimePolicySchema
 >;
 
-export const hostDaemonWatchSetWorkspaceTargetSchema = z
+const hostDaemonWatchSetWorkspaceTargetSchema = z
   .object({
     environmentId: z.string().min(1),
     workspaceContext: workspaceContextSchema,
@@ -66,7 +66,7 @@ export type HostDaemonWatchSetWorkspaceTarget = z.infer<
   typeof hostDaemonWatchSetWorkspaceTargetSchema
 >;
 
-export const hostDaemonWatchSetThreadStorageTargetSchema = z
+const hostDaemonWatchSetThreadStorageTargetSchema = z
   .object({
     environmentId: z.string().min(1),
     threadId: z.string().min(1),
@@ -76,7 +76,7 @@ export type HostDaemonWatchSetThreadStorageTarget = z.infer<
   typeof hostDaemonWatchSetThreadStorageTargetSchema
 >;
 
-export const hostDaemonWatchSetSchema = z
+const hostDaemonWatchSetSchema = z
   .object({
     generation: z.number().int().nonnegative(),
     workspaceTargets: z.array(hostDaemonWatchSetWorkspaceTargetSchema),
@@ -85,7 +85,7 @@ export const hostDaemonWatchSetSchema = z
   .strict();
 export type HostDaemonWatchSet = z.infer<typeof hostDaemonWatchSetSchema>;
 
-export const hostDaemonConnectSharesSchema = z
+const hostDaemonConnectSharesSchema = z
   .object({
     generation: z.number().int().nonnegative(),
     ports: z.array(z.number().int().min(1).max(65535)),
@@ -95,7 +95,7 @@ export type HostDaemonConnectShares = z.infer<
   typeof hostDaemonConnectSharesSchema
 >;
 
-export const hostDaemonPluginHostGenerationSchema = z
+const hostDaemonPluginHostGenerationSchema = z
   .object({
     pluginId: z.string().min(1),
     generation: z.string().min(1),
@@ -147,9 +147,7 @@ export const hostDaemonEnrollResponseSchema = z
     hostKey: z.string().min(1),
   })
   .strict();
-export type HostDaemonEnrollResponse = z.infer<
-  typeof hostDaemonEnrollResponseSchema
->;
+type HostDaemonEnrollResponse = z.infer<typeof hostDaemonEnrollResponseSchema>;
 
 export const hostDaemonEnrollKeyRequestSchema = z
   .object({
@@ -205,7 +203,7 @@ export type HostDaemonProjectAttachmentContentQuery = z.infer<
   typeof hostDaemonProjectAttachmentContentQuerySchema
 >;
 
-export const hostDaemonEventEnvelopeSchema = z
+const hostDaemonEventEnvelopeSchema = z
   .object({
     threadId: z.string().min(1),
     event: threadEventSchema,
@@ -245,13 +243,13 @@ const hostDaemonWireEventSchema = z
   })
   .pipe(threadEventSchema);
 
-export const hostDaemonEventGroupSchema = z
+const hostDaemonEventGroupSchema = z
   .object({
     threadId: z.string().min(1),
     events: z.array(hostDaemonWireEventSchema).min(1),
   })
   .strict();
-export type HostDaemonEventGroup = z.infer<typeof hostDaemonEventGroupSchema>;
+type HostDaemonEventGroup = z.infer<typeof hostDaemonEventGroupSchema>;
 
 export const hostDaemonEventBatchRequestSchema = z
   .object({
@@ -291,11 +289,11 @@ export function ungroupHostDaemonEvents(
   );
 }
 
-export const hostDaemonEventRejectionReasonSchema = z.enum([
+const hostDaemonEventRejectionReasonSchema = z.enum([
   "thread_not_owned_by_host",
 ]);
 
-export const hostDaemonRejectedEventSchema = z
+const hostDaemonRejectedEventSchema = z
   .object({
     eventIndex: z.number().int().nonnegative(),
     threadId: z.string().min(1),
@@ -324,7 +322,7 @@ export type HostDaemonEventBatchResponse = z.infer<
   typeof hostDaemonEventBatchResponseSchema
 >;
 
-export const hostDaemonEnvironmentChangeSchema = z
+const hostDaemonEnvironmentChangeSchema = z
   .enum(ENVIRONMENT_CHANGE_KINDS)
   .extract([
     "work-status-changed",
@@ -335,7 +333,7 @@ export type HostDaemonEnvironmentChange = z.infer<
   typeof hostDaemonEnvironmentChangeSchema
 >;
 
-export const hostDaemonEnvironmentChangePayloadSchema = z.object({
+const hostDaemonEnvironmentChangePayloadSchema = z.object({
   environmentId: z.string().min(1),
   change: hostDaemonEnvironmentChangeSchema,
 });
@@ -343,7 +341,7 @@ export type HostDaemonEnvironmentChangePayload = z.infer<
   typeof hostDaemonEnvironmentChangePayloadSchema
 >;
 
-export const hostDaemonEnvironmentMetadataChangePayloadSchema = z
+const hostDaemonEnvironmentMetadataChangePayloadSchema = z
   .object({
     environmentId: z.string().min(1),
     workspace: discoveredWorkspacePropertiesSchema,
@@ -353,7 +351,7 @@ export type HostDaemonEnvironmentMetadataChangePayload = z.infer<
   typeof hostDaemonEnvironmentMetadataChangePayloadSchema
 >;
 
-export const hostDaemonSessionCloseReasonSchema = z.enum([
+const hostDaemonSessionCloseReasonSchema = z.enum([
   "replaced",
   "expired",
   "daemon-disconnect",
@@ -809,7 +807,7 @@ export type HostDaemonInteractiveInterruptResponse = z.infer<
   typeof hostDaemonInteractiveInterruptResponseSchema
 >;
 
-export const hostDaemonSkillTreeEntrySchema = z
+const hostDaemonSkillTreeEntrySchema = z
   .object({
     path: z.string().min(1),
     mode: z.number().int().min(0).max(0o777),
@@ -906,7 +904,7 @@ export type HostDaemonInternalSchema = {
   };
 };
 
-export type HostDaemonInternalRoutes = Hono<{}, HostDaemonInternalSchema, "/">;
+type HostDaemonInternalRoutes = Hono<{}, HostDaemonInternalSchema, "/">;
 
 function parseProtocolHeader(protocolHeader: string | undefined): string[] {
   if (!protocolHeader) {

@@ -1,6 +1,6 @@
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
-import { useCallback, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { View, type StyleProp, type ViewStyle } from "react-native";
 import { useHosts } from "@/data/hosts";
 import {
@@ -50,9 +50,7 @@ function SidebarListSkeleton() {
   );
 }
 
-export interface SidebarThreadListProps {
-  /** Rendered above the first section (scrolls with the list). */
-  ListHeaderComponent?: ReactElement | null;
+interface SidebarThreadListProps {
   contentContainerStyle?: StyleProp<ViewStyle>;
   testID?: string;
 }
@@ -65,7 +63,6 @@ export interface SidebarThreadListProps {
  * previous data), so rows update in place instead of flashing.
  */
 export function SidebarThreadList({
-  ListHeaderComponent,
   contentContainerStyle,
   testID,
 }: SidebarThreadListProps) {
@@ -216,7 +213,6 @@ export function SidebarThreadList({
     if (isError) {
       return (
         <View className="gap-3 p-4" testID="sidebar-list-error">
-          {ListHeaderComponent}
           <EmptyStatePanel>
             <Text className="text-center text-sm text-muted-foreground">
               Could not load threads.
@@ -238,7 +234,6 @@ export function SidebarThreadList({
     if (isLoading) {
       return (
         <View className="flex-1">
-          {ListHeaderComponent}
           <SidebarListSkeleton />
         </View>
       );
@@ -257,7 +252,6 @@ export function SidebarThreadList({
       maintainVisibleContentPosition={DISABLE_MAINTAIN_POSITION}
       refreshing={refreshing}
       onRefresh={onRefresh}
-      ListHeaderComponent={ListHeaderComponent}
       ListEmptyComponent={
         isEmpty ? (
           <View className="gap-3 px-4 pt-6" testID="sidebar-list-empty">

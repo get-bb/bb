@@ -160,7 +160,6 @@ export function createThreadRecord(
   args: {
     environmentId: string | null;
     request: ThreadCreateServiceRequest;
-    status?: "starting";
   },
 ) {
   const sectionId = args.request.sectionId ?? null;
@@ -181,7 +180,7 @@ export function createThreadRecord(
       originKind: args.request.originKind,
       originPluginId: args.request.originPluginId ?? null,
       visibility: args.request.visibility,
-      status: args.status ?? "starting",
+      status: "starting",
     });
     emitPluginThreadCreated(thread);
     return thread;

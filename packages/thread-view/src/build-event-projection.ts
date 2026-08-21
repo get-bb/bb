@@ -22,14 +22,7 @@ import {
 import { parseFileEditFromItemEvent } from "./file-edit-parsing.js";
 import { parseWebActivityLifecycleEvent } from "./web-activity-lifecycle.js";
 import { parseOperationMessage } from "./parse-operation-message.js";
-import {
-  parseErrorMessage,
-  isDuplicateEventType,
-  isIgnoredItemStartEvent,
-  isIgnoredItemCompletedEvent,
-  appendDebugEvent,
-} from "./parse-error-message.js";
-import { isIgnoredNoiseType } from "./timeline-noise-events.js";
+import { parseErrorMessage } from "./parse-error-message.js";
 import {
   normalizeEventProjection,
   sortEventProjectionMessagesBySource,
@@ -189,7 +182,6 @@ function isEventProjectionCallMessage(
     case "web-search":
       return true;
     case "assistant-text":
-    case "debug/raw-event":
     case "error":
     case "operation":
     case "permission-grant-lifecycle":
@@ -640,7 +632,6 @@ function buildFlatProjectionData(
   args: BuildFlatProjectionDataArgs,
 ): BuildFlatProjectionDataResult {
   const state = createProjectionState();
-  const includeDebugRawEvents = args.options?.includeDebugRawEvents ?? false;
   const shouldTrackActiveThinking = args.includeActiveThinking;
 
   const orderedEvents = args.events;
@@ -1076,23 +1067,6 @@ function buildFlatProjectionData(
       flushToolActivityBeforeNonToolMessage(state);
       state.messages.push(error);
       continue;
-    }
-
-    if (includeDebugRawEvents) {
-      const debugReason = isDuplicateEventType(eventType)
-        ? "duplicate-event"
-        : isIgnoredNoiseType(eventType) ||
-            isIgnoredItemStartEvent(decoded) ||
-            isIgnoredItemCompletedEvent(decoded)
-          ? "ignored-noise"
-          : "unhandled";
-
-      if (debugReason !== "unhandled") {
-        continue;
-      }
-
-      flushToolActivityBeforeNonToolMessage(state);
-      appendDebugEvent(state.messages, decoded, meta, debugReason);
     }
   }
 

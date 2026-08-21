@@ -122,7 +122,7 @@ function withCollapsedList(
 const DEFAULT_SIDEBAR_ORGANIZE: SidebarOrganizeMode = "project";
 const DEFAULT_SIDEBAR_SORT: SidebarSortMode = "updated";
 
-/** Lenient: accepts the web app's stored spellings for the same choice. */
+/** Lenient: unknown stored values fall back to the default. */
 function parseSidebarOrganizeMode(
   value: string | null | undefined,
 ): SidebarOrganizeMode {
@@ -131,8 +131,6 @@ function parseSidebarOrganizeMode(
     case "machine":
     case "manual":
       return value;
-    case "chronological":
-      return "manual";
     default:
       return DEFAULT_SIDEBAR_ORGANIZE;
   }

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { getWrappedImageIndex, ImageLightbox } from "@/components/ui/image-lightbox.js";
 import { Icon } from "@bb/shared-ui/icon";
-import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+import type { PromptDraftAttachment } from "@bb/client-core";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
 import {
   getLocalAttachmentPreviewSrc,

@@ -5,11 +5,10 @@ export {
   ProfilesProvider,
   useProfileClient,
   useProfiles,
-  type ProfilesContextValue,
 } from "./ProfilesProvider";
 export { ThreadOpenSignalHandler } from "./ThreadOpenSignalHandler";
 export { ShareIntentHandler } from "./ShareIntentHandler";
-export { useAppBoot, type AppBootState } from "./useAppBoot";
+export { useAppBoot } from "./useAppBoot";
 export {
   useConnectionBanner,
   useRealtimeConnectionState,

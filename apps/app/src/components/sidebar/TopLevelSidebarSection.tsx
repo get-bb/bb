@@ -2,6 +2,7 @@ import {
   useCallback,
   type CSSProperties,
   type KeyboardEventHandler,
+  type MouseEvent,
   type MouseEventHandler,
   type PointerEventHandler,
   type ReactNode,
@@ -9,7 +10,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
-import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
   SidebarStickyGroup,
   SidebarStickyTier,
@@ -24,9 +25,8 @@ import {
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { SIDEBAR_STANDARD_ROW_PADDING_CLASS } from "./sidebarRowClasses";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
-import type { CollapsedChildActivity } from "@/lib/thread-activity";
+import type { CollapsedChildActivity } from "@bb/client-core";
 import { CollapsedThreadStatusGlyph } from "./ThreadRow";
-import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import {
   useThreadGroupSplitIndicator,
   type ThreadSplitIndicatorTarget,
@@ -35,6 +35,10 @@ import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 import { COARSE_POINTER_ROW_ACTION_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 
 const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];
+
+function stopActionsClick(event: MouseEvent<HTMLSpanElement>) {
+  event.stopPropagation();
+}
 
 interface TopLevelSidebarSectionCollapseControl {
   isCollapsed: boolean;
@@ -81,10 +85,9 @@ export function TopLevelSidebarSection({
   consumeClickSuppression,
   isDropTargetActive = false,
 }: TopLevelSidebarSectionProps) {
-  const threadSplitsEnabled = useThreadSplitsEnabled();
   const collapsedSplitIndicator = useThreadGroupSplitIndicator(
     collapsedThreads,
-    threadSplitsEnabled && collapseControl?.isCollapsed === true,
+    collapseControl?.isCollapsed === true,
   );
   const handleClickCapture = useCallback<MouseEventHandler<HTMLDivElement>>(
     (event) => {
@@ -105,12 +108,6 @@ export function TopLevelSidebarSection({
       collapseControl?.onToggleCollapsed();
     },
     [collapseControl],
-  );
-  const stopActionsClick = useCallback<MouseEventHandler<HTMLSpanElement>>(
-    (event) => {
-      event.stopPropagation();
-    },
-    [],
   );
   const stopCollapseControlPointerDown = useCallback<
     PointerEventHandler<HTMLButtonElement>

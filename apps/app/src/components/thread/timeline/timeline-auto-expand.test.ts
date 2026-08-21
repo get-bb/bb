@@ -11,7 +11,7 @@ import {
 import {
   collectTimelineAutoExpansionRowIds,
   isWorkRowExpandable,
-} from "./timeline-auto-expand";
+} from "@bb/client-core";
 
 interface CollectAutoExpandedIdsArgs {
   rows: ReturnType<typeof buildTimelineViewRows>;

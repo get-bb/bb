@@ -1,7 +1,7 @@
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { BbHttpError } from "@bb/sdk/browser";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { View } from "react-native";
 import {
   accumulateRegistryPage,
@@ -11,6 +11,7 @@ import {
   useRegistrySkills,
   type RegistrySkillsAccumulator,
 } from "@/data/skills";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   Button,
   EmptyStatePanel,
@@ -24,15 +25,6 @@ import { registrySkillDetailHref } from "../shell/hrefs";
 import { Screen } from "../shell/Screen";
 
 const SEARCH_DEBOUNCE_MS = 300;
-
-function useDebouncedValue(value: string, delayMs: number): string {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [delayMs, value]);
-  return debounced;
-}
 
 /** skills.sh outages surface as 503 `skills_registry_unavailable`. */
 function describeRegistryError(error: unknown): string {

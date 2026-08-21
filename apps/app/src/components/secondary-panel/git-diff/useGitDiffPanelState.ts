@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useEnvironmentWorkStatus } from "../../../hooks/queries/environment-queries";
-import { type GitDiffSelectionOption } from "../ThreadSecondaryPanel";
+import type { GitDiffSelectionOption } from "../GitDiffToolbar";
 import {
   ALL_GIT_DIFF_SELECTION,
   buildGitDiffSelectionOptions,

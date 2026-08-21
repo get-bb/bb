@@ -154,12 +154,12 @@ interface HostOnlineRpcWaiter {
   timeout: ReturnType<typeof setTimeout>;
 }
 
-export interface RecordHostOnlineRpcResponseArgs {
+interface RecordHostOnlineRpcResponseArgs {
   message: HostDaemonOnlineRpcResponseMessage;
   sessionId: string;
 }
 
-export type HostOnlineRpcResponseDisposition =
+type HostOnlineRpcResponseDisposition =
   | { handled: true }
   | { handled: false; reason: "stale" }
   | {
@@ -678,14 +678,6 @@ export class NotificationHub implements DbNotifier {
   cancelPendingDaemonDisconnect(sessionId: string): void {
     this.cancelPendingDaemonDisconnectGrace(sessionId);
     this.cancelPendingDaemonActiveWorkDisconnect(sessionId);
-  }
-
-  async waitForThreadEvent(
-    threadId: string,
-    timeoutMs: number,
-  ): Promise<boolean> {
-    const { promise } = this.registerThreadEventWaiter(threadId, timeoutMs);
-    return promise;
   }
 
   requestHostOnlineRpc(args: {

@@ -32,6 +32,12 @@ function untypedHref(pathname: string, params?: HrefParams): Href {
   return href as Href;
 }
 
+/** The first value of an expo-router search param, trimmed ("" when absent). */
+export function firstParam(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw?.trim() ?? "";
+}
+
 /**
  * A mobile route path that was computed outside the builders (the deep-link
  * resolver's `next` path after adding a server). Same typed-route boundary.
@@ -65,7 +71,7 @@ export function serverStatusHref(): Href {
   return untypedHref("/settings/server");
 }
 
-export interface NewThreadHrefParams extends ComposeSeedParams {
+interface NewThreadHrefParams extends ComposeSeedParams {
   sectionId?: string;
   initialPrompt?: string;
 }
@@ -99,7 +105,7 @@ export function projectSettingsHref(projectId: string): Href {
   return untypedHref("/projects/[id]/settings", { id: projectId });
 }
 
-export interface ConnectEnrollHrefParams {
+interface ConnectEnrollHrefParams {
   code?: string;
   serverUrl?: string;
   apex?: string;
@@ -186,7 +192,7 @@ export function registrySkillDetailHref(registrySkillId: string): Href {
 
 // --- Settings, machines, updates (Phase 7; owned by @/screens/settings + machines)
 
-export type SettingsSectionRoute =
+type SettingsSectionRoute =
   | "general"
   | "appearance"
   | "experiments"

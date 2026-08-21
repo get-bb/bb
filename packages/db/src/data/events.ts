@@ -1017,12 +1017,6 @@ export interface FindStoredEventRowArgs {
   type: ThreadEventType;
 }
 
-export interface ListStoredEventRowsInRangeArgs {
-  seqEnd: number;
-  seqStart: number;
-  threadId: string;
-}
-
 export interface ListStoredEventRowsByParentToolCallIdsArgs {
   beforeSequence?: number;
   excludedTypes?: readonly ThreadEventType[];
@@ -1462,24 +1456,6 @@ export function findStoredEventRow(
       .limit(1)
       .get() ?? null
   );
-}
-
-export function listStoredEventRowsInRange(
-  db: DbQueryConnection,
-  args: ListStoredEventRowsInRangeArgs,
-): StoredEventRow[] {
-  return db
-    .select(storedEventRowFields)
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        gte(events.sequence, args.seqStart),
-        lte(events.sequence, args.seqEnd),
-      ),
-    )
-    .orderBy(events.sequence)
-    .all();
 }
 
 export function listStoredEventRowsByParentToolCallIds(
@@ -2773,26 +2749,6 @@ export function listTimelineSegmentAnchorsDescending(
 export interface TimelineSegmentAnchorLookupArgs {
   threadId: string;
   sequence: number;
-}
-
-/** The first segment anchor strictly after `sequence`, if any. */
-export function findTimelineSegmentAnchorSequenceAfter(
-  db: DbConnection,
-  args: TimelineSegmentAnchorLookupArgs,
-): number | undefined {
-  const row = db
-    .select({ sequence: events.sequence })
-    .from(events)
-    .where(
-      and(
-        timelineSegmentAnchorConditions(args.threadId),
-        gt(events.sequence, args.sequence),
-      ),
-    )
-    .orderBy(events.sequence)
-    .limit(1)
-    .get();
-  return row?.sequence;
 }
 
 /** The segment anchor at exactly `sequence`, if that turn qualifies as one. */

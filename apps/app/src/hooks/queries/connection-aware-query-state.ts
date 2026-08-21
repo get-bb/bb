@@ -70,9 +70,7 @@ export function getConnectionAwareQueryState({
  * True once the WebSocket has been disconnected for longer than the grace
  * period without re-establishing. Resets on every transition into "connected".
  */
-function useServerConnectionGracePeriodElapsed(
-  gracePeriodMs: number = CONNECTION_GRACE_PERIOD_MS,
-): boolean {
+function useServerConnectionGracePeriodElapsed(): boolean {
   const connectionState = useServerConnectionState();
   const [elapsed, setElapsed] = useState(false);
 
@@ -81,9 +79,12 @@ function useServerConnectionGracePeriodElapsed(
       setElapsed(false);
       return;
     }
-    const timer = setTimeout(() => setElapsed(true), gracePeriodMs);
+    const timer = setTimeout(
+      () => setElapsed(true),
+      CONNECTION_GRACE_PERIOD_MS,
+    );
     return () => clearTimeout(timer);
-  }, [connectionState, gracePeriodMs]);
+  }, [connectionState]);
 
   return elapsed;
 }

@@ -36,12 +36,10 @@ import { isFsErrorWithCode } from "./fs-errors.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import { resolveHostPlatform } from "./host-platform.js";
 
-export type WorkspaceOpenTargetListHandler = (
+type WorkspaceOpenTargetListHandler = (
   query: WorkspaceOpenTargetsQuery,
 ) => Promise<WorkspaceOpenTarget[]>;
-export type OpenInTargetHandler = (
-  request: OpenPathInTargetArgs,
-) => Promise<void>;
+type OpenInTargetHandler = (request: OpenPathInTargetArgs) => Promise<void>;
 
 /**
  * Browser-reachable local HTTP API for colocated setups.
@@ -52,7 +50,7 @@ export type OpenInTargetHandler = (
  * through the server and connected work host daemon instead of adding them to a
  * client.
  */
-export interface StartLocalApiServerOptions {
+interface StartLocalApiServerOptions {
   dataDir?: string;
   hostId: string;
   localApiConfig: HostDaemonLocalApiConfig;
@@ -281,12 +279,6 @@ export async function startLocalApiServer(
         { error: `origin "${origin}" is not a local BB app origin` },
         403,
       );
-    }
-    await next();
-  });
-  app.use("*", async (c, next) => {
-    if (options.localApiConfig.mode === "health-only") {
-      return c.notFound();
     }
     await next();
   });

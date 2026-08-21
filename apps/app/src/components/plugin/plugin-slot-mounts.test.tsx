@@ -69,7 +69,7 @@ import {
 import { NewTabActions } from "@/components/secondary-panel/NewTabFileSearch";
 import { buildFileOpenerPanelTab } from "./file-opener-tabs";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
-import type { PromptDraftState } from "@/lib/prompt-draft";
+import type { PromptDraftState } from "@bb/client-core";
 
 function composerTextEffectValues(storageKey: string | null) {
   return getComposerTextEffects(storageKey).map(({ effect }) => effect);

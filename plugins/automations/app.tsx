@@ -44,7 +44,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@bb/shared-ui/dialog";
-import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { ResourceListState } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { OptionRequestGate } from "./src/option-request-gate.js";

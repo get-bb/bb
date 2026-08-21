@@ -4,17 +4,18 @@ import type {
   ThreadTimelinePendingTodos,
 } from "@bb/domain";
 import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
-import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import {
+  PROMPT_STACK_CARD_ROW_HEIGHT,
+  PromptStackCard,
+} from "@/components/promptbox/banner/PromptStackCard";
 import {
   activityIconClass,
   activityRowClass,
   activityTextClass,
   type ActivityRowState,
-} from "@/components/ui/activity-row-styles";
+} from "@bb/shared-ui/activity-row-styles";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-
-const TODO_CARD_ROW_HEIGHT = 32;
 
 const STATUS_SORT_RANK: Record<ThreadTimelinePendingTodoItemStatus, number> = {
   in_progress: 0,
@@ -31,7 +32,7 @@ const STATUS_ACTIVITY_STATE: Record<
   completed: "completed",
 };
 
-export interface ThreadTodoCardProps {
+interface ThreadTodoCardProps {
   pendingTodos: ThreadTimelinePendingTodos | null;
   isExpanded: boolean;
   onToggle: () => void;
@@ -152,7 +153,7 @@ export function ThreadTodoCard({
     <PromptStackCard
       ariaLabel="To-do list"
       className="overflow-hidden"
-      style={{ minHeight: TODO_CARD_ROW_HEIGHT }}
+      style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
     >
       <div className="flex items-center">
         <button

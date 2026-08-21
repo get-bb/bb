@@ -34,7 +34,7 @@ import {
   DetailRow,
   DetailRowIconLabel,
 } from "@/components/ui/detail-card.js";
-import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens.js";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import {
   DropdownMenu,
@@ -400,11 +400,10 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
 }
 
 interface BranchRowProps {
-  thread: Thread;
   workspaceStatus: WorkspaceStatus | undefined;
 }
 
-export function BranchRow({ thread, workspaceStatus }: BranchRowProps) {
+export function BranchRow({ workspaceStatus }: BranchRowProps) {
   const checkoutDisplay = workspaceStatus
     ? formatWorkspaceCheckoutDisplay({ checkout: workspaceStatus.checkout })
     : null;
@@ -523,7 +522,6 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
 }
 
 interface MergeBaseRowProps {
-  thread: Thread;
   workspaceStatus: WorkspaceStatus | undefined;
   selectedMergeBaseBranch: string | undefined;
   mergeBaseBranchRef?: GitBranchRefClassification | null;
@@ -538,7 +536,6 @@ interface MergeBaseRowProps {
 }
 
 export function MergeBaseRow({
-  thread,
   workspaceStatus,
   selectedMergeBaseBranch,
   mergeBaseBranchRef,
@@ -800,13 +797,11 @@ export function ThreadCommitsRow({
 }
 
 interface ChangedFilesRowProps {
-  thread: Thread;
   workspaceStatus: WorkspaceStatus | undefined;
   onChangedFileClick?: (selection: WorkspaceChangedFileSelection) => void;
 }
 
 export function ChangedFilesRow({
-  thread,
   workspaceStatus,
   onChangedFileClick,
 }: ChangedFilesRowProps) {
@@ -1054,9 +1049,8 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         environmentDisplayHost={environmentDisplayHost}
       />
       <WorkspacePathRow environment={environment} />
-      <BranchRow thread={thread} workspaceStatus={workspaceStatus} />
+      <BranchRow workspaceStatus={workspaceStatus} />
       <MergeBaseRow
-        thread={thread}
         workspaceStatus={workspaceStatus}
         selectedMergeBaseBranch={selectedMergeBaseBranch}
         mergeBaseBranchRef={mergeBaseBranchRef}
@@ -1082,7 +1076,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         onCommitClick={onCommitClick}
       />
       <ChangedFilesRow
-        thread={thread}
         workspaceStatus={workspaceStatus}
         onChangedFileClick={onChangedFileClick}
       />

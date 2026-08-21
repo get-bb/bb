@@ -51,7 +51,6 @@ export interface QueuedMessagesListProps {
    * `useUpdateThreadQueuedMessage` with the message's `updatedAt`.
    */
   onEdit: (request: QueuedMessageEditRequest) => void;
-  testID?: string;
 }
 
 interface RowProps {
@@ -197,7 +196,6 @@ export function QueuedMessagesList({
   editingQueuedMessageId = null,
   savingQueuedMessageId = null,
   onEdit,
-  testID = "queued-messages-list",
 }: QueuedMessagesListProps) {
   const { tokens } = useTheme();
   const sendNow = useSendThreadQueuedMessage();
@@ -307,7 +305,7 @@ export function QueuedMessagesList({
   return (
     <View
       className="overflow-hidden rounded-lg border border-border bg-surface-recessed"
-      testID={testID}
+      testID="queued-messages-list"
     >
       <View className="flex-row items-center gap-2 border-b border-border-hairline px-3 py-1.5">
         <Icon name="ListView" size={14} color={tokens.mutedForeground} />

@@ -63,7 +63,7 @@ export interface TerminalViewHandle {
   paste(text: string): void;
 }
 
-export interface TerminalViewProps {
+interface TerminalViewProps {
   session: TerminalSession;
   /** The profile's server URL; the socket URL is derived from it. */
   serverUrl: string;
@@ -83,13 +83,9 @@ export interface TerminalViewProps {
   onSessionChange?: (session: TerminalSession) => void;
   /** The shell's OSC title (raw; the caller normalizes / debounces). */
   onTitleChange?: (title: string) => void;
-  onUserInput?: () => void;
-  /** Defaults to `Linking.openURL`. */
-  onOpenLink?: (url: string) => void;
   /** Dev / e2e: the page mirrors its last lines every 500 ms. */
   textMirror?: boolean;
   onTextMirror?: (lines: string[]) => void;
-  onReady?: () => void;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
@@ -125,11 +121,8 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
       onStickyControlConsumed,
       onSessionChange,
       onTitleChange,
-      onUserInput,
-      onOpenLink,
       textMirror = false,
       onTextMirror,
-      onReady,
       style,
       testID,
     },
@@ -151,10 +144,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
     const callbacksRef = useRef({
       onSessionChange,
       onTitleChange,
-      onUserInput,
-      onOpenLink,
       onTextMirror,
-      onReady,
       onStickyControlConsumed,
       fetchOutput,
     });
@@ -167,10 +157,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
       callbacksRef.current = {
         onSessionChange,
         onTitleChange,
-        onUserInput,
-        onOpenLink,
         onTextMirror,
-        onReady,
         onStickyControlConsumed,
         fetchOutput,
       };
@@ -283,14 +270,12 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
             transportRef.current?.sendResize(message.cols, message.rows);
             transportRef.current?.start();
             if (autoFocusRef.current) post({ type: "focus" });
-            callbacksRef.current.onReady?.();
             return;
           }
           case "data": {
             // xterm emits protocol replies through onData alongside typing;
             // none of it may reach a session that is not running.
             if (sessionStatusRef.current !== "running") return;
-            callbacksRef.current.onUserInput?.();
             const transport = transportRef.current;
             if (!transport) return;
             if (stickyControlRef.current) {
@@ -310,12 +295,9 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
           case "resize":
             transportRef.current?.sendResize(message.cols, message.rows);
             return;
-          case "link": {
-            const open = callbacksRef.current.onOpenLink;
-            if (open) open(message.url);
-            else void Linking.openURL(message.url).catch(() => undefined);
+          case "link":
+            void Linking.openURL(message.url).catch(() => undefined);
             return;
-          }
           case "title":
             if (sessionStatusRef.current !== "running") return;
             callbacksRef.current.onTitleChange?.(message.title);

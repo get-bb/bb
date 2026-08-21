@@ -3,9 +3,9 @@ import type {
   HostFileTabState,
   ThreadStorageFileTabState,
   WorkspaceFileTabState,
-} from "@/lib/file-preview";
+} from "@bb/client-core";
 import type { ThreadSecondaryPanel } from "@/lib/thread-secondary-panel";
-import type { FileTabViewerOverride } from "@/components/plugin/file-opener-tabs";
+import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
 
 type ThreadSecondaryPanelThreadId = string | undefined;
 
@@ -14,7 +14,7 @@ type ThreadSecondaryPanelDiffFileOpenHandler = (path: string) => void;
 type ThreadSecondaryPanelCommitDiffOpenHandler = (sha: string) => void;
 export interface ThreadSecondaryPanelFileOpenOptions {
   /** Per-open viewer choice (link context menu); absent = extension default. */
-  viewer?: FileTabViewerOverride;
+  viewer?: FileOpenerOverride;
 }
 export type ThreadSecondaryPanelWorkspaceFileOpenHandler = (
   file: WorkspaceFileTabState,

@@ -1,15 +1,15 @@
 import { spawn, type ChildProcess } from "node:child_process";
 
-export interface RuntimeLogBuffer {
+interface RuntimeLogBuffer {
   append(chunk: Buffer | string): void;
   text(): string;
 }
 
-export interface CreateRuntimeLogBufferArgs {
+interface CreateRuntimeLogBufferArgs {
   maxLines: number;
 }
 
-export interface StartBbAppProcessArgs {
+interface StartBbAppProcessArgs {
   bridgePath: string;
   cwd: string;
   env: NodeJS.ProcessEnv;
@@ -30,30 +30,26 @@ export interface BbAppProcessExit {
   signal: NodeJS.Signals | null;
 }
 
-export interface StopBbAppProcessArgs {
+interface StopBbAppProcessArgs {
   killSignal: NodeJS.Signals;
   killTimeoutMs: number;
   signal: NodeJS.Signals;
   timeoutMs: number;
 }
 
-export interface CreateElectronNodeEnvArgs {
-  env: NodeJS.ProcessEnv;
-}
+type BbAppProcessRuntimeMode = "electron-node" | "node";
 
-export type BbAppProcessRuntimeMode = "electron-node" | "node";
-
-export interface BbAppProcessRuntime {
+interface BbAppProcessRuntime {
   executablePath: string;
   mode: BbAppProcessRuntimeMode;
 }
 
-export interface CreateBbAppProcessEnvArgs {
+interface CreateBbAppProcessEnvArgs {
   env: NodeJS.ProcessEnv;
   runtimeMode: BbAppProcessRuntimeMode;
 }
 
-export interface ResolveBbAppProcessRuntimeArgs {
+interface ResolveBbAppProcessRuntimeArgs {
   env: NodeJS.ProcessEnv;
   isPackaged: boolean;
   processExecPath: string;
@@ -69,7 +65,7 @@ type ResolveWaitForProcessExitWithTimeout = (
   result: WaitForProcessExitWithTimeoutResult,
 ) => void;
 
-export function createRuntimeLogBuffer(
+function createRuntimeLogBuffer(
   args: CreateRuntimeLogBufferArgs,
 ): RuntimeLogBuffer {
   const lines: string[] = [];
@@ -93,20 +89,11 @@ export function createRuntimeLogBuffer(
   };
 }
 
-export function createElectronNodeEnv(
-  args: CreateElectronNodeEnvArgs,
-): NodeJS.ProcessEnv {
-  return {
-    ...args.env,
-    ELECTRON_RUN_AS_NODE: "1",
-  };
-}
-
 export function createBbAppProcessEnv(
   args: CreateBbAppProcessEnvArgs,
 ): NodeJS.ProcessEnv {
   if (args.runtimeMode === "electron-node") {
-    return createElectronNodeEnv({ env: args.env });
+    return { ...args.env, ELECTRON_RUN_AS_NODE: "1" };
   }
 
   const env = { ...args.env };

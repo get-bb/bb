@@ -18,10 +18,7 @@ import type { HostDaemon } from "./daemon.js";
 import { enrollDaemonHost } from "./enroll.js";
 import { loadHostIdentity, persistHostId } from "./identity.js";
 import { acquireDaemonLock } from "./lock.js";
-import {
-  resolveHostDaemonLocalApiConfig,
-  type HostDaemonLocalApiOverrides,
-} from "./local-api-config.js";
+import { resolveHostDaemonLocalApiConfig } from "./local-api-config.js";
 import {
   prepareRuntimeShellEnv,
   resolveBbExecutablePathInDirectory,
@@ -34,17 +31,13 @@ import {
   type MachineAuthProxy,
 } from "./machine-auth-proxy.js";
 
-export interface StartHostDaemonOptions {
-  dataDir?: string;
-  serverUrl?: string;
-  hostDaemonPort?: number;
+interface StartHostDaemonOptions {
   enrollKey?: string;
   hostId?: string;
   hostName?: string;
   bbExecutableDirectory?: string;
   bridgeBundleDir?: string;
   hostType?: HostType;
-  localApi?: HostDaemonLocalApiOverrides;
   machineCredential?: string;
   connectMachineId?: string;
   autoUpdate?: boolean;
@@ -53,11 +46,7 @@ export interface StartHostDaemonOptions {
 export async function startHostDaemon(
   options: StartHostDaemonOptions = {},
 ): Promise<HostDaemon> {
-  const resolvedConfig = loadHostDaemonStartConfig({
-    dataDir: options.dataDir,
-    hostDaemonPort: options.hostDaemonPort ?? options.localApi?.port,
-    serverUrl: options.serverUrl,
-  });
+  const resolvedConfig = loadHostDaemonStartConfig({});
   const dataDir = resolvedConfig.dataDir;
   const hostDaemonConfig = resolvedConfig.connectionConfig;
   // The real logger writes into the shared data dir, so it must not exist
@@ -100,7 +89,7 @@ export async function startHostDaemon(
     });
     const instanceId = randomUUID();
     const serverUrl = resolveServerUrl({
-      providedServerUrl: options.serverUrl ?? hostDaemonConfig.BB_SERVER_URL,
+      providedServerUrl: hostDaemonConfig.BB_SERVER_URL,
     });
     if (!serverUrl) {
       throw new Error("Host daemon server URL is required");
@@ -154,10 +143,7 @@ export async function startHostDaemon(
     }
 
     const localApiConfig = resolveHostDaemonLocalApiConfig({
-      hostDaemonPort:
-        options.hostDaemonPort ?? hostDaemonConfig.BB_HOST_DAEMON_PORT,
-      hostType,
-      localApi: options.localApi,
+      hostDaemonPort: hostDaemonConfig.BB_HOST_DAEMON_PORT,
     });
     const bbExecutablePath =
       options.bbExecutableDirectory !== undefined

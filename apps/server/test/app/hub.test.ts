@@ -714,7 +714,7 @@ describe("NotificationHub events-appended thread-list coalescing", () => {
       "thread-2",
     ]);
 
-    const waiter = hub.waitForThreadEvent("thread-1", 10_000);
+    const waiter = hub.registerThreadEventWaiter("thread-1", 10_000).promise;
     hub.notifyThread("thread-1", ["events-appended"]);
     await expect(waiter).resolves.toBe(true);
     // Merged frame without event types omits metadata entirely.

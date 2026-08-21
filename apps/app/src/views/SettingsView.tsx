@@ -125,44 +125,6 @@ export interface LocalOpenTargetSettingsSectionProps {
   targets: WorkspaceOpenTarget[];
 }
 
-interface InAppBrowserLinkSettingsControlProps {
-  enabled: boolean;
-  onEnabledChange: (enabled: boolean) => void;
-}
-
-interface RewriteLocalhostLinksSettingsControlProps {
-  enabled: boolean;
-  onEnabledChange: (enabled: boolean) => void;
-}
-
-interface RootComposeBehaviorSettingsControlProps {
-  navigateToThreadAfterCreate: boolean;
-  onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
-}
-
-interface SteerActiveThreadOnEnterSettingsControlProps {
-  disabled: boolean;
-  enabled: boolean;
-  onEnabledChange: (enabled: boolean) => void;
-}
-
-interface StreamerModeSettingsControlProps {
-  disabled: boolean;
-  enabled: boolean;
-  onEnabledChange: (enabled: boolean) => void;
-}
-
-interface RichTextEditingSettingsControlProps {
-  enabled: boolean;
-  onEnabledChange: (enabled: boolean) => void;
-}
-
-interface UnhandledProviderEventsSettingsControlProps {
-  disabled: boolean;
-  enabled: boolean;
-  onEnabledChange: (enabled: boolean) => void;
-}
-
 interface FaviconColorSettingsControlProps {
   disabled: boolean;
   faviconColor: FaviconColorPreference;
@@ -200,7 +162,11 @@ interface GeneralSettingsSectionProps {
   streamerModeDisabled: boolean;
 }
 
-type DebugSettingsSectionProps = UnhandledProviderEventsSettingsControlProps;
+interface DebugSettingsSectionProps {
+  disabled: boolean;
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+}
 
 function appPaletteLabel(
   appearance: AppTheme,
@@ -574,132 +540,6 @@ const STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL =
   "Steer running threads on Enter";
 const STREAMER_MODE_SETTING_LABEL = "Streamer mode";
 
-function RootComposeBehaviorSettingsControl({
-  navigateToThreadAfterCreate,
-  onNavigateToThreadAfterCreateChange,
-}: RootComposeBehaviorSettingsControlProps) {
-  return (
-    <SettingsWithControl label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}>
-      <Switch
-        checked={navigateToThreadAfterCreate}
-        onCheckedChange={onNavigateToThreadAfterCreateChange}
-        aria-label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
-      />
-    </SettingsWithControl>
-  );
-}
-
-function SteerActiveThreadOnEnterSettingsControl({
-  disabled,
-  enabled,
-  onEnabledChange,
-}: SteerActiveThreadOnEnterSettingsControlProps) {
-  return (
-    <SettingsWithControl
-      label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
-      description="Use Enter to steer the current run and Command+Enter to queue a follow-up."
-    >
-      <Switch
-        checked={enabled}
-        disabled={disabled}
-        onCheckedChange={onEnabledChange}
-        aria-label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
-      />
-    </SettingsWithControl>
-  );
-}
-
-function StreamerModeSettingsControl({
-  disabled,
-  enabled,
-  onEnabledChange,
-}: StreamerModeSettingsControlProps) {
-  return (
-    <SettingsWithControl
-      label={STREAMER_MODE_SETTING_LABEL}
-      description="Hide the custom models from config.json in every model picker, so a screen share does not show them."
-    >
-      <Switch
-        checked={enabled}
-        disabled={disabled}
-        onCheckedChange={onEnabledChange}
-        aria-label={STREAMER_MODE_SETTING_LABEL}
-      />
-    </SettingsWithControl>
-  );
-}
-
-function InAppBrowserLinkSettingsControl({
-  enabled,
-  onEnabledChange,
-}: InAppBrowserLinkSettingsControlProps) {
-  return (
-    <SettingsWithControl
-      label={IN_APP_BROWSER_LINK_SETTING_LABEL}
-      description="Open web links inside bb."
-    >
-      <Switch
-        checked={enabled}
-        onCheckedChange={onEnabledChange}
-        aria-label={IN_APP_BROWSER_LINK_SETTING_LABEL}
-      />
-    </SettingsWithControl>
-  );
-}
-
-function RewriteLocalhostLinksSettingsControl({
-  enabled,
-  onEnabledChange,
-}: RewriteLocalhostLinksSettingsControlProps) {
-  return (
-    <SettingsWithControl
-      label={REWRITE_LOCALHOST_LINKS_SETTING_LABEL}
-      description="Point localhost links at this host."
-    >
-      <Switch
-        checked={enabled}
-        onCheckedChange={onEnabledChange}
-        aria-label={REWRITE_LOCALHOST_LINKS_SETTING_LABEL}
-      />
-    </SettingsWithControl>
-  );
-}
-
-function RichTextEditingSettingsControl({
-  enabled,
-  onEnabledChange,
-}: RichTextEditingSettingsControlProps) {
-  return (
-    <SettingsWithControl label={RICH_TEXT_EDITING_SETTING_LABEL}>
-      <Switch
-        checked={enabled}
-        onCheckedChange={onEnabledChange}
-        aria-label={RICH_TEXT_EDITING_SETTING_LABEL}
-      />
-    </SettingsWithControl>
-  );
-}
-
-function UnhandledProviderEventsSettingsControl({
-  disabled,
-  enabled,
-  onEnabledChange,
-}: UnhandledProviderEventsSettingsControlProps) {
-  return (
-    <SettingsWithControl
-      label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
-      description="Show raw provider events bb does not recognize. Development builds always show these events."
-    >
-      <Switch
-        checked={enabled}
-        disabled={disabled}
-        onCheckedChange={onEnabledChange}
-        aria-label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
-      />
-    </SettingsWithControl>
-  );
-}
-
 export function AppearanceSettingsSection({
   appearance,
   appearanceDisabled,
@@ -874,41 +714,71 @@ export function GeneralSettingsSection({
   return (
     <SettingsSection title="General">
       <div className="space-y-5">
-        <RootComposeBehaviorSettingsControl
-          navigateToThreadAfterCreate={navigateToThreadAfterCreate}
-          onNavigateToThreadAfterCreateChange={
-            onNavigateToThreadAfterCreateChange
-          }
-        />
+        <SettingsWithControl
+          label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
+        >
+          <Switch
+            checked={navigateToThreadAfterCreate}
+            onCheckedChange={onNavigateToThreadAfterCreateChange}
+            aria-label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
+          />
+        </SettingsWithControl>
 
-        <RichTextEditingSettingsControl
-          enabled={richTextEditing}
-          onEnabledChange={onRichTextEditingChange}
-        />
+        <SettingsWithControl label={RICH_TEXT_EDITING_SETTING_LABEL}>
+          <Switch
+            checked={richTextEditing}
+            onCheckedChange={onRichTextEditingChange}
+            aria-label={RICH_TEXT_EDITING_SETTING_LABEL}
+          />
+        </SettingsWithControl>
 
-        <SteerActiveThreadOnEnterSettingsControl
-          disabled={steerActiveThreadOnEnterDisabled}
-          enabled={steerActiveThreadOnEnter}
-          onEnabledChange={onSteerActiveThreadOnEnterChange}
-        />
+        <SettingsWithControl
+          label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
+          description="Use Enter to steer the current run and Command+Enter to queue a follow-up."
+        >
+          <Switch
+            checked={steerActiveThreadOnEnter}
+            disabled={steerActiveThreadOnEnterDisabled}
+            onCheckedChange={onSteerActiveThreadOnEnterChange}
+            aria-label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
+          />
+        </SettingsWithControl>
 
         {desktopBrowserAvailable ? (
-          <InAppBrowserLinkSettingsControl
-            enabled={openLinksInAppBrowser}
-            onEnabledChange={onOpenLinksInAppBrowserChange}
-          />
+          <SettingsWithControl
+            label={IN_APP_BROWSER_LINK_SETTING_LABEL}
+            description="Open web links inside bb."
+          >
+            <Switch
+              checked={openLinksInAppBrowser}
+              onCheckedChange={onOpenLinksInAppBrowserChange}
+              aria-label={IN_APP_BROWSER_LINK_SETTING_LABEL}
+            />
+          </SettingsWithControl>
         ) : null}
 
-        <RewriteLocalhostLinksSettingsControl
-          enabled={rewriteLocalhostLinks}
-          onEnabledChange={onRewriteLocalhostLinksChange}
-        />
+        <SettingsWithControl
+          label={REWRITE_LOCALHOST_LINKS_SETTING_LABEL}
+          description="Point localhost links at this host."
+        >
+          <Switch
+            checked={rewriteLocalhostLinks}
+            onCheckedChange={onRewriteLocalhostLinksChange}
+            aria-label={REWRITE_LOCALHOST_LINKS_SETTING_LABEL}
+          />
+        </SettingsWithControl>
 
-        <StreamerModeSettingsControl
-          disabled={streamerModeDisabled}
-          enabled={streamerMode}
-          onEnabledChange={onStreamerModeChange}
-        />
+        <SettingsWithControl
+          label={STREAMER_MODE_SETTING_LABEL}
+          description="Hide the custom models from config.json in every model picker, so a screen share does not show them."
+        >
+          <Switch
+            checked={streamerMode}
+            disabled={streamerModeDisabled}
+            onCheckedChange={onStreamerModeChange}
+            aria-label={STREAMER_MODE_SETTING_LABEL}
+          />
+        </SettingsWithControl>
       </div>
     </SettingsSection>
   );
@@ -921,11 +791,17 @@ export function DebugSettingsSection({
 }: DebugSettingsSectionProps) {
   return (
     <SettingsSection title="Debug">
-      <UnhandledProviderEventsSettingsControl
-        disabled={disabled}
-        enabled={enabled}
-        onEnabledChange={onEnabledChange}
-      />
+      <SettingsWithControl
+        label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
+        description="Show raw provider events bb does not recognize. Development builds always show these events."
+      >
+        <Switch
+          checked={enabled}
+          disabled={disabled}
+          onCheckedChange={onEnabledChange}
+          aria-label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
+        />
+      </SettingsWithControl>
     </SettingsSection>
   );
 }

@@ -53,7 +53,7 @@ import { WorkspaceReadCaches } from "../../../apps/server/src/services/environme
 import { createPublicApiClient } from "@bb/server-contract";
 import { waitForHostConnected } from "./assertions.js";
 import { createIntegrationFetch } from "./fetch.js";
-import { removePathWithRetry } from "./remove-path.js";
+import { isNodeError, removePathWithRetry } from "./remove-path.js";
 import { createTestGitRepo } from "./seed.js";
 
 const repoRoot = path.resolve(
@@ -157,10 +157,6 @@ function resolveAdapterFactory(
     return options.adapterFactory;
   }
   return () => createFakeAdapter();
-}
-
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error;
 }
 
 function isRetryableSessionOpenFailure(error: unknown): boolean {
@@ -427,7 +423,6 @@ async function startHarnessDaemon(
       logger: testLogger,
       releaseLock,
       serverUrl: server.baseUrl,
-      threadStorageRootPath,
     });
     for (
       let attempt = 1;

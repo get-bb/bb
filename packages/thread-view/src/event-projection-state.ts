@@ -277,7 +277,6 @@ function finalizePendingMessageForInterruptedTurn(
       }
       return;
     case "assistant-text":
-    case "debug/raw-event":
     case "delegation":
     case "error":
     case "user":

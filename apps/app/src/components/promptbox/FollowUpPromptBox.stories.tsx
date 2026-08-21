@@ -62,7 +62,7 @@ import type {
   ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
 import { PageShell } from "@/components/ui/page-shell.js";
-import { promptDraftToInput, type PromptDraftState } from "@/lib/prompt-draft";
+import { promptDraftToInput, type PromptDraftState } from "@bb/client-core";
 import { queuedInputToDraft } from "@bb/client-core";
 
 export default {
@@ -73,14 +73,12 @@ const noop = () => {};
 const STORY_BRANCH_NAME = "bb/design-system-polish";
 
 // FollowUp commits the provider — omit `onChange` so the picker renders the
-// provider segment as locked, and pass `displayName` so the static label
-// shows even without a selectedId lookup.
+// provider segment as locked.
 const baseExecution = makeExecutionControlsProps({
   provider: {
     options: STORY_PROVIDER_OPTIONS,
     selectedId: "codex",
     hasMultiple: true,
-    displayName: "Codex",
   },
 });
 const claudePlanExecution = makeExecutionControlsProps({
@@ -88,7 +86,6 @@ const claudePlanExecution = makeExecutionControlsProps({
     options: STORY_PROVIDER_OPTIONS,
     selectedId: "claude-code",
     hasMultiple: true,
-    displayName: "Claude Code",
   },
   model: {
     active: { model: "claude-sonnet-5" },

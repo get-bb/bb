@@ -6,12 +6,12 @@ import type { LoggedWorkSessionDeps } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import type { SharedInjectedSkillSource } from "./injected-skills.js";
 
-export interface ResolvedSharedSkills {
+interface ResolvedSharedSkills {
   runtimeSources: SharedInjectedSkillSource[];
   summaries: SkillSummary[];
 }
 
-function hostPathDirname(filePath: string): string {
+export function hostPathDirname(filePath: string): string {
   return /^[a-zA-Z]:[\\/]/u.test(filePath)
     ? path.win32.dirname(filePath)
     : path.posix.dirname(filePath);

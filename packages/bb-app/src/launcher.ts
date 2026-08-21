@@ -2,7 +2,7 @@
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import {
   access,
   mkdir,
@@ -57,6 +57,7 @@ import {
 import { validateLogLevel } from "@bb/config/log-level";
 import { validateOptionalUrl } from "@bb/config/public-url";
 import { parseServerBindHost, type ServerBindHost } from "@bb/config/server";
+import { toOptionalString } from "@bb/config/strings";
 import {
   BB_PROD_HOST_DAEMON_PORT,
   BB_LOOPBACK_HOST,
@@ -166,12 +167,12 @@ const apiErrorResponseSchema = z.object({
   message: z.string(),
 });
 
-export type HostEnrollKeyResponse = z.infer<typeof hostEnrollKeyResponseSchema>;
+type HostEnrollKeyResponse = z.infer<typeof hostEnrollKeyResponseSchema>;
 type ClientHost = z.infer<typeof clientHostSchema>;
-export type ManagedConfigValues = BbAppManagedConfigValues;
-export type ManagedEnvConfig = BbAppManagedEnvConfig;
-export type ManagedEnvFile = BbAppManagedEnvFile;
-export type ManagedConfig = BbAppManagedConfig;
+type ManagedConfigValues = BbAppManagedConfigValues;
+type ManagedEnvConfig = BbAppManagedEnvConfig;
+type ManagedEnvFile = BbAppManagedEnvFile;
+type ManagedConfig = BbAppManagedConfig;
 // Write flows carry customAcpAgents and customModels as raw JSON: the parser
 // skips invalid entries with a warning, and a rewrite from the parsed view
 // would silently delete them from the user's file.
@@ -183,35 +184,26 @@ type ManagedConfigForWrite = Omit<
   customModels?: unknown[];
 };
 
-export interface HostEnrollKeyRequestBody {
+interface HostEnrollKeyRequestBody {
   hostId?: string;
 }
 
-export interface CreateHostEnrollKeyRequestBodyArgs {
+interface CreateHostEnrollKeyRequestBodyArgs {
   requestedHostId: string | null;
 }
 
-export interface ResolveDataDirArgs {
+interface ResolveDataDirArgs {
   env: NodeJS.ProcessEnv;
   homeDir: string;
 }
 
-export interface ResolveBbAppStartContextArgs {
+interface ResolveBbAppStartContextArgs {
   entrypointUrl: string;
   env: NodeJS.ProcessEnv;
   homeDir: string;
 }
 
-export interface ResolveBbAppRuntimeContextArgs {
-  entrypointUrl: string;
-  env: NodeJS.ProcessEnv;
-  homeDir: string;
-  options: LauncherCliOptions;
-  serverUrlMode: "local" | "managed";
-  worktreePolicy?: WorktreeRuntimePolicy;
-}
-
-export interface WorktreeRuntimePolicy {
+interface WorktreeRuntimePolicy {
   dataDir: string;
   devAppPort: null;
   hostDaemonPort: number;
@@ -221,12 +213,12 @@ export interface WorktreeRuntimePolicy {
   telemetry: false;
 }
 
-export interface ResolveWorktreeRuntimePolicyArgs {
+interface ResolveWorktreeRuntimePolicyArgs {
   env: NodeJS.ProcessEnv;
   homeDir: string;
 }
 
-export interface RunBbAppOptions {
+interface RunBbAppOptions {
   worktreePolicy: WorktreeRuntimePolicy | null;
 }
 
@@ -249,23 +241,18 @@ export interface BbAppStartContext {
   serverUrl: string;
 }
 
-export interface BbAppRuntimeState {
+interface BbAppRuntimeState {
   config: ManagedConfig;
   context: BbAppStartContext;
   env: NodeJS.ProcessEnv;
   serverEnv: NodeJS.ProcessEnv;
 }
 
-export interface IsMainModuleArgs {
-  entrypointPath: string | undefined;
-  moduleUrl: string;
-}
-
-export interface StartCommand {
+interface StartCommand {
   kind: "start";
 }
 
-export interface StopCommand {
+interface StopCommand {
   kind: "stop";
 }
 
@@ -274,31 +261,31 @@ export interface HostDaemonCommand {
   kind: "host-daemon";
 }
 
-export interface ClientCommand {
+interface ClientCommand {
   args: string[];
   kind: "client";
 }
 
-export interface ConfigCommand {
+interface ConfigCommand {
   args: string[];
   kind: "config";
 }
 
-export interface EnvCommand {
+interface EnvCommand {
   args: string[];
   kind: "env";
 }
 
-export interface HelpCommand {
+interface HelpCommand {
   kind: "help";
 }
 
-export interface InvalidCommand {
+interface InvalidCommand {
   command: string;
   kind: "invalid";
 }
 
-export interface LauncherCliOptions {
+interface LauncherCliOptions {
   autoUpdate?: boolean;
   dataDir?: string;
   enrollKey?: string;
@@ -313,7 +300,7 @@ export interface LauncherCliOptions {
   serverUrl?: string;
 }
 
-export interface ParsedLauncherArgs {
+interface ParsedLauncherArgs {
   options: LauncherCliOptions;
   positionals: string[];
 }
@@ -421,7 +408,7 @@ interface RestartManagedProcessArgs {
   start: StartManagedProcess;
 }
 
-export interface SuperviseFullStackProcessesArgs {
+interface SuperviseFullStackProcessesArgs {
   context: BbAppStartContext;
   delayMilliseconds: DelayMillisecondsFn;
   isShutdownRequested: () => boolean;
@@ -430,12 +417,12 @@ export interface SuperviseFullStackProcessesArgs {
   startServer: StartManagedProcess;
 }
 
-export interface TerminateManagedFullStackProcessesArgs {
+interface TerminateManagedFullStackProcessesArgs {
   processes: ManagedFullStackProcesses;
   signal: NodeJS.Signals;
 }
 
-export interface CompleteFullStackSupervisionArgs {
+interface CompleteFullStackSupervisionArgs {
   shutdownPromise: Promise<void> | null;
   supervisionResult: FullStackSupervisionResult;
 }
@@ -489,7 +476,7 @@ interface CreateSharedEnvArgs {
   env: NodeJS.ProcessEnv;
 }
 
-export interface CreateServerEnvArgs {
+interface CreateServerEnvArgs {
   context: BbAppStartContext;
   env: NodeJS.ProcessEnv;
 }
@@ -709,21 +696,13 @@ function createDefaultLauncherOptions(): LauncherCliOptions {
   return { help: false, json: false };
 }
 
-function trimToUndefined(value: string | undefined): string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
 function readStringOption(
   value: boolean | string | string[] | undefined,
 ): string | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
-  return trimToUndefined(value);
+  return toOptionalString(value);
 }
 
 function readBooleanOption(
@@ -928,9 +907,9 @@ function createEnvFromOptions(
 
 function resolveServerUrl(args: ResolveServerUrlArgs): string {
   return (
-    trimToUndefined(args.optionServerUrl) ??
+    toOptionalString(args.optionServerUrl) ??
     args.config.serverUrl ??
-    trimToUndefined(args.env.BB_SERVER_URL) ??
+    toOptionalString(args.env.BB_SERVER_URL) ??
     args.defaultServerUrl
   );
 }
@@ -1372,7 +1351,7 @@ export function resolveBbAppStartContext(
     serverEntry,
     serverPort,
     serverUrl:
-      trimToUndefined(args.env.BB_SERVER_URL) ??
+      toOptionalString(args.env.BB_SERVER_URL) ??
       `http://${BB_LOOPBACK_HOST}:${serverPort}`,
   };
 }
@@ -1458,12 +1437,6 @@ export async function resolveBbAppRuntimeState(
   };
 }
 
-export async function resolveBbAppRuntimeContext(
-  args: ResolveBbAppRuntimeContextArgs,
-): Promise<BbAppStartContext> {
-  return (await resolveBbAppRuntimeState(args)).context;
-}
-
 export function createHostEnrollKeyRequestBody(
   args: CreateHostEnrollKeyRequestBodyArgs,
 ): HostEnrollKeyRequestBody {
@@ -1481,7 +1454,7 @@ export function createHostEnrollKeyRequestBody(
  * an embedded runtime that passes no script argument.
  */
 function resolveLauncherEntryPath(): string {
-  const scriptArgument = trimToUndefined(process.argv[1]);
+  const scriptArgument = toOptionalString(process.argv[1]);
   return scriptArgument ?? fileURLToPath(import.meta.url);
 }
 
@@ -2163,7 +2136,7 @@ function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
   ];
 }
 
-export function assertBbAppArtifacts(context: BbAppStartContext): void {
+function assertBbAppArtifacts(context: BbAppStartContext): void {
   const missingArtifact = requiredArtifactPaths(context).find(
     (artifact) => !existsSync(artifact.path),
   );
@@ -2212,7 +2185,7 @@ async function requireExpectedHostDaemonId(args: {
   env: NodeJS.ProcessEnv;
 }): Promise<string> {
   const hostId =
-    trimToUndefined(args.env.BB_HOST_ID) ??
+    toOptionalString(args.env.BB_HOST_ID) ??
     (await readPersistedHostId(args.dataDir)) ??
     (await readPersistedHostAuthId(args.dataDir));
   if (hostId === null) {
@@ -2249,7 +2222,7 @@ async function requestHostEnrollKey(
 async function maybeAddAutoJoinEnv(
   args: MaybeAddAutoJoinEnvArgs,
 ): Promise<NodeJS.ProcessEnv> {
-  if (trimToUndefined(args.env.BB_HOST_ENROLL_KEY) !== undefined) {
+  if (toOptionalString(args.env.BB_HOST_ENROLL_KEY) !== undefined) {
     return args.env;
   }
   if (await pathExists(join(args.dataDir, HOST_AUTH_FILE_NAME))) {
@@ -2257,7 +2230,7 @@ async function maybeAddAutoJoinEnv(
   }
 
   const requestedHostId =
-    trimToUndefined(args.env.BB_HOST_ID) ??
+    toOptionalString(args.env.BB_HOST_ID) ??
     (await readPersistedHostId(args.dataDir));
   const enrollKeyResponse = await requestHostEnrollKey({
     requestedHostId,
@@ -2607,7 +2580,7 @@ function createCliEnv(args: CreateCliEnvArgs): NodeJS.ProcessEnv {
     NODE_ENV: "production",
   };
 
-  if (trimToUndefined(cliEnv.BB_SERVER_URL) === undefined) {
+  if (toOptionalString(cliEnv.BB_SERVER_URL) === undefined) {
     cliEnv.BB_SERVER_URL = args.context.serverUrl;
   }
 
@@ -2617,7 +2590,7 @@ function createCliEnv(args: CreateCliEnvArgs): NodeJS.ProcessEnv {
 function resolveHostDaemonServerUrl(
   args: ResolveHostDaemonServerUrlArgs,
 ): string {
-  return trimToUndefined(args.env.BB_SERVER_URL) ?? args.context.serverUrl;
+  return toOptionalString(args.env.BB_SERVER_URL) ?? args.context.serverUrl;
 }
 
 function createHostDaemonOnlyEnv(
@@ -2638,7 +2611,7 @@ function createHostDaemonOnlyEnv(
 function resolveEnrollmentRequirements(
   args: ResolveEnrollmentRequirementsArgs,
 ): EnrollmentRequirements {
-  const enrollKey = trimToUndefined(args.env.BB_HOST_ENROLL_KEY);
+  const enrollKey = toOptionalString(args.env.BB_HOST_ENROLL_KEY);
   return {
     enrolled: existsSync(join(args.context.dataDir, HOST_AUTH_FILE_NAME)),
     ...(enrollKey !== undefined ? { enrollKey } : {}),
@@ -2663,13 +2636,13 @@ export async function createHostDaemonJoinEnv(
   args: CreateHostDaemonJoinEnvArgs,
 ): Promise<NodeJS.ProcessEnv> {
   const requestedHostId =
-    trimToUndefined(args.env.BB_HOST_ID) ??
+    toOptionalString(args.env.BB_HOST_ID) ??
     (await readPersistedHostId(args.context.dataDir));
-  const suppliedJoinCode = trimToUndefined(args.env.BB_HOST_ENROLL_KEY);
-  const machineCredential = trimToUndefined(
+  const suppliedJoinCode = toOptionalString(args.env.BB_HOST_ENROLL_KEY);
+  const machineCredential = toOptionalString(
     args.env.BB_CONNECT_MACHINE_CREDENTIAL,
   );
-  const connectMachineId = trimToUndefined(args.env.BB_CONNECT_MACHINE_ID);
+  const connectMachineId = toOptionalString(args.env.BB_CONNECT_MACHINE_ID);
   if (suppliedJoinCode !== undefined) {
     if (requestedHostId === null) {
       throw new Error("--host-id is required when --join-code is supplied");
@@ -2723,7 +2696,7 @@ export async function runBundledCliCommand(
 ): Promise<number> {
   // Prefer the daemon-injected absolute CLI when present so packaged `bb`
   // trampolines match the running host daemon (dev workspace or this install).
-  const bbCliOverride = trimToUndefined(args.env.BB_CLI);
+  const bbCliOverride = toOptionalString(args.env.BB_CLI);
   const cliPath = bbCliOverride ?? join(args.context.daemonBundleDir, "bb");
   const childProcess = spawn(cliPath, args.args, {
     cwd: process.cwd(),
@@ -2978,19 +2951,6 @@ function installTerminationSignalForwarding(
     process.off("SIGINT", sigintHandler);
     process.off("SIGTERM", sigtermHandler);
   };
-}
-
-export function isMainModule(args: IsMainModuleArgs): boolean {
-  if (args.entrypointPath === undefined) {
-    return false;
-  }
-
-  const modulePath = fileURLToPath(args.moduleUrl);
-  try {
-    return realpathSync(args.entrypointPath) === realpathSync(modulePath);
-  } catch {
-    return resolve(args.entrypointPath) === resolve(modulePath);
-  }
 }
 
 function printBbAppHelp(): void {

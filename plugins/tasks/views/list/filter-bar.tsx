@@ -5,7 +5,7 @@ import {
   type TaskPriority,
   type TaskStatus,
 } from "../../shared/contract.js";
-import { TASK_SORTS, type TaskSort } from "../../shared/sort.js";
+import { TASK_SORTS, type TaskSort } from "../../shared/pagination.js";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,

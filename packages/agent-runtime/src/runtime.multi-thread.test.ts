@@ -151,7 +151,6 @@ describe("createAgentRuntime multi-thread routing", () => {
         const adapter = createFakeAdapter(scriptPath);
         return {
           ...adapter,
-          displayName: "Keep Provider Fake",
           id: providerId,
         };
       },

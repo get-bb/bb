@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type { QueuedMessageEditRequest } from "@/components/promptbox/banner/QueuedMessagesList";
-import type { PromptDraftState } from "@/lib/prompt-draft";
+import type { PromptDraftState } from "@bb/client-core";
 import { queuedInputToDraft } from "@bb/client-core";
 
 export interface InlineQueuedMessageEditState {
@@ -18,8 +18,8 @@ export interface InlineQueuedMessageEditState {
 }
 
 interface UseInlineQueuedMessageEditingArgs {
-  /** The thread whose queue may be edited inline. Null while no thread exists. */
-  ownerThreadId: string | null;
+  /** The thread whose queue may be edited inline. */
+  ownerThreadId: string;
   queuedMessages: readonly ThreadQueuedMessage[];
   /** Called when an edit session starts (e.g. clear attachment errors, focus). */
   onBeginEdit?: () => void;
@@ -135,9 +135,6 @@ export function useInlineQueuedMessageEditing({
 
   const beginEditQueuedMessage = useCallback(
     ({ queuedMessageId, queuedMessageIndex }: QueuedMessageEditRequest) => {
-      if (ownerThreadId === null) {
-        return;
-      }
       const queuedMessage = queuedMessagesByIdRef.current.get(queuedMessageId);
       if (!queuedMessage) {
         return;

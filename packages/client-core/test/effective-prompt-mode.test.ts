@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  isClaudePlanModePrompt,
   permissionDisplayForActivePromptMode,
   permissionDisplayForPromptMode,
   shouldDisablePermissionPickerForActivePromptMode,
-  shouldDisablePermissionPickerForPromptMode,
 } from "../src/prompt/effective-prompt-mode.js";
 
 const planCommandMention = {
@@ -71,10 +71,10 @@ describe("permissionDisplayForActivePromptMode", () => {
   });
 });
 
-describe("shouldDisablePermissionPickerForPromptMode", () => {
+describe("isClaudePlanModePrompt", () => {
   it("locks permissions for a Claude Code plan command pill", () => {
     expect(
-      shouldDisablePermissionPickerForPromptMode({
+      isClaudePlanModePrompt({
         providerId: "claude-code",
         value: "/plan inspect the failing test",
         mentionRanges: [planCommandMention],
@@ -84,14 +84,14 @@ describe("shouldDisablePermissionPickerForPromptMode", () => {
 
   it("does not lock permissions for plain text or other providers before submit", () => {
     expect(
-      shouldDisablePermissionPickerForPromptMode({
+      isClaudePlanModePrompt({
         providerId: "claude-code",
         value: "/plan inspect the failing test",
         mentionRanges: [],
       }),
     ).toBe(false);
     expect(
-      shouldDisablePermissionPickerForPromptMode({
+      isClaudePlanModePrompt({
         providerId: "codex",
         value: "/plan inspect the failing test",
         mentionRanges: [planCommandMention],

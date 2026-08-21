@@ -37,10 +37,6 @@ export type ProbeFetch = (
   json(): Promise<unknown>;
 }>;
 
-export interface ProbeServerOptions {
-  timeoutMs?: number;
-}
-
 const DEFAULT_PROBE_TIMEOUT_MS = 8000;
 
 function describeError(error: unknown): string {
@@ -86,12 +82,14 @@ async function getJson(
 export async function probeServer(
   serverUrl: string,
   fetchImpl: ProbeFetch,
-  options: ProbeServerOptions = {},
 ): Promise<ProbeServerResult> {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
   const base = serverUrl.replace(/\/+$/u, "");
 
-  const health = await getJson(fetchImpl, `${base}/health`, timeoutMs);
+  const health = await getJson(
+    fetchImpl,
+    `${base}/health`,
+    DEFAULT_PROBE_TIMEOUT_MS,
+  );
   if (!health.ok) {
     return { ok: false, serverUrl: base, stage: "health", error: health.error };
   }
@@ -107,7 +105,7 @@ export async function probeServer(
   const config = await getJson(
     fetchImpl,
     `${base}/api/v1/system/config`,
-    timeoutMs,
+    DEFAULT_PROBE_TIMEOUT_MS,
   );
   if (!config.ok) {
     return { ok: false, serverUrl: base, stage: "config", error: config.error };

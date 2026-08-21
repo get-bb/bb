@@ -17,15 +17,13 @@ import { ensureHostSessionReadyForWork } from "./host-lifecycle.js";
 
 const HOST_DAEMON_REGISTRATION_WAIT_MS = 1_000;
 
-export interface CallHostOnlineRpcArgs<
-  TCommand extends HostDaemonRpcCommand,
-> {
+interface CallHostOnlineRpcArgs<TCommand extends HostDaemonRpcCommand> {
   command: TCommand;
   hostId: string;
   timeoutMs: number;
 }
 
-export interface CallHostRetryableOnlineRpcArgs<
+interface CallHostRetryableOnlineRpcArgs<
   TCommand extends HostDaemonRetryableOnlineRpcCommand,
 > {
   command: TCommand;

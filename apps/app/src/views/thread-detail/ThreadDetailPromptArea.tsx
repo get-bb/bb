@@ -66,7 +66,6 @@ import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironme
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { useLatestRef } from "@/hooks/useLatestRef";
-import { useEscapeToHide } from "@/hooks/useEscapeToHide";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
 import {
@@ -96,13 +95,13 @@ import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
 import { getProjectComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { buildThreadHandoffLocationState } from "@/lib/thread-handoff-request";
+import { buildThreadHandoffLocationState } from "@bb/client-core";
 import { appToast } from "@/components/ui/app-toast";
 import {
   promptDraftToInput,
   type PromptDraftAttachment,
   type PromptDraftState,
-} from "@/lib/prompt-draft";
+} from "@bb/client-core";
 import {
   FollowUpPromptBox,
   type FollowUpComposerProps,
@@ -160,7 +159,6 @@ interface ThreadDetailPromptAreaProps {
   environmentIcon?: IconName;
   environmentLabel?: string;
   onCreateNewThreadInWorktree?: () => void;
-  onEscapeEmptyPrompt?: () => void;
   onPullRequestDraft?: () => void;
   onPullRequestMerge?: (method: PullRequestMergeMethod) => void;
   onPullRequestReady?: () => void;
@@ -169,7 +167,6 @@ interface ThreadDetailPromptAreaProps {
   pendingInteractions: readonly PendingInteraction[];
   pendingInteractionsInitialLoading: boolean;
   onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
-  openThreadDiffPanel: () => void;
   projectId: string;
   /** Click handler for inserted mention pills (navigate to threads, open file previews). */
   resolveMentionLink: PromptMentionLinkResolver;
@@ -407,7 +404,6 @@ export function ThreadDetailPromptArea({
   environmentIcon,
   environmentLabel,
   onCreateNewThreadInWorktree,
-  onEscapeEmptyPrompt,
   onPullRequestDraft,
   onPullRequestMerge,
   onPullRequestReady,
@@ -416,7 +412,6 @@ export function ThreadDetailPromptArea({
   pendingInteractions,
   pendingInteractionsInitialLoading,
   onChangedFileClick,
-  openThreadDiffPanel,
   projectId,
   resolveMentionLink,
   workspaceChangedFilesSection,
@@ -658,7 +653,6 @@ export function ThreadDetailPromptArea({
     selectedProviderId,
     providerOptions,
     hasMultipleProviders,
-    selectedProviderDisplayName,
     selectedProviderComposerActions,
     selectedModel,
     setSelectedModel,
@@ -719,7 +713,6 @@ export function ThreadDetailPromptArea({
     mentionsProjectId: projectId,
     providerId: thread.providerId,
     environmentId: thread.environmentId,
-    commandScope: "thread",
     currentThreadId: thread.id,
     selectedProviderComposerActions,
     resolveMentionLink,
@@ -821,18 +814,6 @@ export function ThreadDetailPromptArea({
     [currentPromptDraft, normalPluginComposerHostBinding],
   );
   const hasPromptDraftInput = currentPromptDraftInput.length > 0;
-  const isPromptEmpty = useCallback(
-    () => !hasPromptDraftInput,
-    [hasPromptDraftInput],
-  );
-  const hideEmptyPrompt = useCallback(() => {
-    onEscapeEmptyPrompt?.();
-  }, [onEscapeEmptyPrompt]);
-  useEscapeToHide({
-    enabled: onEscapeEmptyPrompt !== undefined,
-    isEmpty: isPromptEmpty,
-    onHide: hideEmptyPrompt,
-  });
   const canSubmitModifierShortcut = canSubmitFollowUpShortcut({
     hasPromptDraftInput,
     isFollowUpSubmitting,
@@ -1000,13 +981,6 @@ export function ThreadDetailPromptArea({
 
   const bottomFocusEndKey = `${composerFocusRequestNonce}:${bottomPluginFocusNonce}`;
 
-  const handlePromptBannerFileClick = useCallback(
-    (selection: WorkspaceChangedFileSelection) => {
-      onChangedFileClick(selection);
-    },
-    [onChangedFileClick],
-  );
-
   const handleToggleBannerSection = useCallback(
     (section: ThreadPromptContextBannerExpandedSection | null) => {
       setExpandedBannerSection((previous) =>
@@ -1158,7 +1132,6 @@ export function ThreadDetailPromptArea({
         options: providerOptions,
         selectedId: selectedProviderId,
         hasMultiple: hasMultipleProviders,
-        displayName: selectedProviderDisplayName,
       },
       model: {
         active: effectiveSelectedModel
@@ -1203,7 +1176,6 @@ export function ThreadDetailPromptArea({
       reasoningLevel,
       reasoningOptions,
       selectedModel,
-      selectedProviderDisplayName,
       selectedProviderId,
       serviceTier,
       serviceTierSupportByProvider,
@@ -1590,7 +1562,7 @@ export function ThreadDetailPromptArea({
                   changedFiles: workspaceChangedFilesSection,
                   mergeBase: contextBannerMergeBase,
                   onPromptBannerFileClick: canUseGitUi
-                    ? handlePromptBannerFileClick
+                    ? onChangedFileClick
                     : ignorePromptBannerFileClick,
                 }
               : null
@@ -1638,7 +1610,7 @@ export function ThreadDetailPromptArea({
       expandedBannerSection,
       handleDeleteQueuedMessage,
       beginEditQueuedMessage,
-      handlePromptBannerFileClick,
+      onChangedFileClick,
       handleReorderQueuedMessage,
       handleSendQueuedImmediately,
       handleSetQueuedMessageGroupBoundary,

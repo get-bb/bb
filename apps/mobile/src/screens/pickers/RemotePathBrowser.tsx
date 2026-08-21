@@ -397,17 +397,15 @@ export function RemotePathBrowser({
   );
 }
 
-export interface RemotePathBrowserSheetProps {
+interface RemotePathBrowserSheetProps {
   controller: SheetController;
   hostId: string | null;
   hostName?: string | null;
   title?: string;
-  description?: string;
   initialPath?: string | null;
   allowCreateFolder?: boolean;
   /** Fires with the resolved directory when the user confirms. */
   onSelect: (path: string) => void;
-  confirmLabel?: string;
   testID?: string;
 }
 
@@ -421,11 +419,9 @@ export function RemotePathBrowserSheet({
   hostId,
   hostName = null,
   title = "Choose a folder",
-  description,
   initialPath = null,
   allowCreateFolder = false,
   onSelect,
-  confirmLabel = "Use this folder",
   testID = "remote-path-sheet",
 }: RemotePathBrowserSheetProps) {
   const [directory, setDirectory] = useState<string | null>(null);
@@ -443,8 +439,7 @@ export function RemotePathBrowserSheet({
     >
       <View className="gap-3 px-4 pb-2 pt-3">
         <Text variant="caption">
-          {description ??
-            `Browse${hostName ? ` ${hostName}'s` : ""} folders, or edit the path directly.`}
+          {`Browse${hostName ? ` ${hostName}'s` : ""} folders, or edit the path directly.`}
         </Text>
         <View className="flex-row items-center gap-2">
           <Text variant="mono" numberOfLines={2} className="flex-1 text-xs">
@@ -460,7 +455,7 @@ export function RemotePathBrowserSheet({
             }}
             testID={`${testID}-confirm`}
           >
-            {confirmLabel}
+            Use this folder
           </Button>
         </View>
         {hostId === null ? (

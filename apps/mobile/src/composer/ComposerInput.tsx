@@ -45,8 +45,6 @@ export interface ComposerInputProps {
   placeholder?: string;
   editable?: boolean;
   autoFocus?: boolean;
-  /** Grow up to this many lines, then scroll. */
-  maxLines?: number;
   minHeight?: number;
   /**
    * One-line pill mode: nudge the text up so its x-height centre lines up
@@ -60,6 +58,8 @@ export interface ComposerInputProps {
 const FONT_SIZE = nativeTypography.base.fontSize;
 const LINE_HEIGHT = nativeTypography.base.lineHeight;
 const VERTICAL_PADDING = 10;
+/** Grow up to this many lines, then scroll. */
+const MAX_LINES = 8;
 const HORIZONTAL_PADDING = 12;
 const PILL_BASELINE_NUDGE = Platform.OS === "ios" ? 3 : 0;
 
@@ -89,7 +89,6 @@ export const ComposerInput = forwardRef<
     placeholder = "What should the agent do?",
     editable = true,
     autoFocus = false,
-    maxLines = 8,
     minHeight,
     pill = false,
     testID = "composer-input",
@@ -155,7 +154,7 @@ export const ComposerInput = forwardRef<
 
   const font = resolveFont({});
   const pillFont = resolveFont({ weight: "medium" });
-  const maxHeight = maxLines * LINE_HEIGHT + VERTICAL_PADDING * 2;
+  const maxHeight = MAX_LINES * LINE_HEIGHT + VERTICAL_PADDING * 2;
   const effectiveMinHeight = Math.max(
     minHeight ?? LINE_HEIGHT + VERTICAL_PADDING * 2,
     LINE_HEIGHT + VERTICAL_PADDING * 2,

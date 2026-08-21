@@ -337,13 +337,6 @@ export function pluginSettingsChanges(
   return changed;
 }
 
-/** Keys of a schema in declaration order (the server's object order). */
-export function pluginSettingEntries(
-  schema: Record<string, PluginSettingDescriptor>,
-): [string, PluginSettingDescriptor][] {
-  return Object.entries(schema);
-}
-
 /** One plugin's last update-check result, flattened for rendering. */
 export interface PluginUpdateSummary {
   outcome: PluginUpdateCheckEntry["outcome"];

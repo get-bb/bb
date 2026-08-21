@@ -2,17 +2,12 @@ export {
   useCancelPluginInteraction,
   useResolvePendingInteraction,
   useRespondPluginInteraction,
-  type CancelPluginInteractionRequest,
-  type ResolvePendingInteractionRequest,
-  type RespondPluginInteractionRequest,
 } from "./interaction-mutations";
 export {
   approvalDecisionButtonVariant,
   approvalResolutionDecision,
   describeApprovalSubject,
   labelForApprovalDecision,
-  type ApprovalDecisionButtonVariant,
-  type ApprovalSubjectPresentation,
 } from "./approval-presentation";
 export {
   answerStateFor,
@@ -25,7 +20,6 @@ export {
   setQuestionFreeText,
   toggleQuestionOption,
   toggleQuestionOther,
-  type InteractionFormOption,
   type InteractionFormQuestion,
   type QuestionAnswerState,
   type QuestionFormState,
@@ -33,7 +27,6 @@ export {
 export {
   buildSecretRequestResponse,
   parsePluginInteractionForm,
-  type PluginInteractionForm,
   type SecretRequestFormResult,
 } from "./plugin-interaction-payloads";
 export {

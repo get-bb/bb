@@ -125,9 +125,7 @@ async function confirmReset(targets: string[]): Promise<boolean> {
   }
 }
 
-export async function main(
-  argv: string[] = process.argv.slice(2),
-): Promise<void> {
+async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   const args = new Set(argv);
 
   if (args.has("--help") || args.has("-h")) {

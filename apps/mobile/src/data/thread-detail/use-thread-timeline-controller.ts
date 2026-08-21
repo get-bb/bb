@@ -1,7 +1,6 @@
 import {
   areTimelinePaginationCursorsEqual,
   buildLoadedTimelineState,
-  buildSurfaceKey,
   mergeLoadedTimelineWithLatest,
   prependOlderTimelineRows,
   recoverLoadedTimelineAfterStaleCursor,
@@ -79,11 +78,7 @@ export function useThreadTimelineController({
 }: UseThreadTimelineControllerArgs): UseThreadTimelineControllerResult {
   const { sdk } = useProfileClient();
   const latestTimelineQuery = useThreadTimeline(threadId, { enabled });
-  const surfaceKey = buildSurfaceKey({
-    rowFilter: undefined,
-    surfaceKey: undefined,
-    threadId,
-  });
+  const surfaceKey = threadId;
   const [loadedTimeline, setLoadedTimeline] = useState<LoadedTimelineState>(
     () => emptyLoadedTimeline(surfaceKey),
   );

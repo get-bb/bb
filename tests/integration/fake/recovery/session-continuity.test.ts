@@ -7,8 +7,8 @@ import {
 } from "../../helpers/assertions.js";
 import { withHarness } from "../../helpers/harness.js";
 import { readSessionRow } from "../../helpers/queries.js";
+import { assertMonotonicSequences } from "../smoke/shared.js";
 import {
-  assertMonotonicSequences,
   createRecoveryThread,
   RECOVERY_TEST_TIMEOUT_MS,
   RECOVERY_TIMEOUT_MS,

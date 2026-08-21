@@ -1,4 +1,3 @@
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 import type { ThreadListEntry } from "@bb/domain";
 import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
 import { Stack, useLocalSearchParams } from "expo-router";
@@ -27,7 +26,7 @@ import {
 } from "@/ui";
 import { Screen } from "../shell/Screen";
 import {
-  resolveThreadRowIndicator,
+  flatThreadRow,
   SidebarActionsProvider,
   projectSubtitle,
   SidebarThreadRowView,
@@ -38,22 +37,6 @@ import {
 
 /** Rows inserted at the top (unarchive, realtime) should simply appear, not shift the viewport. */
 const DISABLE_MAINTAIN_POSITION = { disabled: true };
-
-function toThreadRow(thread: ThreadListEntry): SidebarThreadRow {
-  return {
-    type: "thread",
-    key: `thread:${thread.id}`,
-    thread,
-    depth: 0,
-    childCount: 0,
-    collapsed: false,
-    indicator: resolveThreadRowIndicator({
-      thread,
-      hasHiddenChildren: false,
-      childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
-    }),
-  };
-}
 
 function ArchivedRow({
   row,
@@ -131,7 +114,8 @@ function ArchivedBody({
   }, [bootstrapData, projects]);
 
   const rows = useMemo(
-    () => (archived.data?.pages ?? []).flatMap((page) => page.map(toThreadRow)),
+    () =>
+      (archived.data?.pages ?? []).flatMap((page) => page.map(flatThreadRow)),
     [archived.data],
   );
 

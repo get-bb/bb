@@ -25,7 +25,6 @@ export function ThreadTimelinePane({
   return (
     <EmbeddedThreadChat
       variant="hosted-footer"
-      threadId={surface.threadId}
       footer={footer}
       scrollOverlay={
         <ThreadTableOfContents

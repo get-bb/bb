@@ -385,10 +385,9 @@ export async function resolveNpmUpdate(args: {
   current: PluginResolvedUpdateVersion;
   appVersion: string;
   run: NpmResolverRun;
-  includePinned?: boolean;
 }): Promise<PluginUpdateResolution> {
   const devMode = semver.coerce(args.appVersion)?.version === "0.0.0";
-  if (args.intent.specKind === "exact" && args.includePinned !== true) {
+  if (args.intent.specKind === "exact") {
     return {
       outcome: "pinned",
       current: args.current,

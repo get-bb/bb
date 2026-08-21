@@ -20,7 +20,7 @@ import {
 import {
   activityIconClass,
   activityRowClass,
-} from "@/components/ui/activity-row-styles";
+} from "@bb/shared-ui/activity-row-styles";
 import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
 import {
   formatChangeSummary,
@@ -80,7 +80,7 @@ export interface ThreadPromptParentThreadSection {
  * caller is responsible for filtering down to active children — the banner
  * just renders what it's given.
  */
-export interface ThreadPromptChildThreadItem {
+interface ThreadPromptChildThreadItem {
   id: string;
   title: string;
   href: string;
@@ -160,7 +160,7 @@ export type ThreadPromptContextBannerExpandedSection =
 export const THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT =
   PROMPT_STACK_CARD_ROW_HEIGHT;
 
-export interface ThreadPromptContextBannerProps {
+interface ThreadPromptContextBannerProps {
   gitSection: ThreadPromptGitSection | null;
   /**
    * True while the workspace status query for this thread is in flight. Holds

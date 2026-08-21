@@ -17,7 +17,7 @@ import {
   resolveRelativeLocalFileHref,
 } from "@/components/ui/markdown-local-file-link.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
-import { computeMutedPrefixLength } from "./compute-muted-prefix-length.js";
+import { computeMutedPrefixLength } from "@bb/client-core";
 import type {
   TimelineTitleActionResolver,
   TimelineTitleLinkResolver,
@@ -51,7 +51,7 @@ import {
   closeUnterminatedMarkdownCodeSpan,
   USER_MESSAGE_CHAR_CAP,
 } from "@bb/client-core";
-import { turnRequestLabel } from "./conversation-turn-request-label.js";
+import { turnRequestLabel } from "@bb/client-core";
 import { splitStreamingMarkdown } from "./streaming-markdown-split.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
 import { MessageActionBar } from "./MessageActionBar.js";
@@ -64,7 +64,7 @@ import {
   type MessageProseSelection,
 } from "./SelectableMessageProse.js";
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
-import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+import type { PromptDraftAttachment } from "@bb/client-core";
 import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
 
 interface ConversationMessageContentBaseProps {
@@ -119,7 +119,7 @@ interface ConversationMessageContentUserProps extends ConversationMessageContent
  */
 type AssistantMessageRowIdentity = Pick<
   TimelineRowBase,
-  "id" | "threadId" | "turnId" | "sourceSeqStart" | "sourceSeqEnd"
+  "id" | "threadId" | "turnId"
 >;
 
 const COLLAPSED_MESSAGE_FADE_STYLE: CSSProperties = {
@@ -187,7 +187,6 @@ interface ConversationMessageContentAssistantProps
    * delta re-parses only the tail. A completed message renders one document.
    */
   streaming: boolean;
-  turnRequest: null;
   workspaceRootPath?: string;
 }
 
@@ -372,7 +371,6 @@ function CollapsibleMessageText({
       {showToggle ? (
         <ConversationMessageOverflowToggle
           expanded={isExpanded}
-          labels={{ collapsed: "Show more", expanded: "Show less" }}
           onToggle={() => setIsExpanded((prev) => !prev)}
         />
       ) : null}
@@ -800,8 +798,6 @@ export function ConversationMessageContent(
       showActions={props.showActions}
       mobileActionDisplay={props.mobileActionDisplay}
       streaming={props.streaming}
-      sourceSeqEnd={props.sourceSeqEnd}
-      sourceSeqStart={props.sourceSeqStart}
       text={text}
       threadId={props.threadId}
       turnId={props.turnId}

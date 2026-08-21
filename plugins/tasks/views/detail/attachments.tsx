@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Attachment } from "../../shared/contract.js";
-import { formatBytes } from "./meta.js";
+import { formatFileSize } from "../activity/time.js";
 import { ConfirmDialog } from "../../components/confirm-dialog.js";
 import { Icon } from "@bb/shared-ui/icon";
 
@@ -110,7 +110,7 @@ export function Lightbox({
       <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-md bg-popover/90 px-3 py-1.5 text-xs text-popover-foreground shadow-md">
         <span className="max-w-72 truncate">{attachment.fileName}</span>
         <span className="text-muted-foreground">
-          {formatBytes(attachment.sizeBytes)}
+          {formatFileSize(attachment.sizeBytes)}
         </span>
       </div>
       <button
@@ -221,7 +221,7 @@ export function AttachmentsGrid({
         <span className="min-w-0">
           <span className="block max-w-48 truncate">{attachment.fileName}</span>
           <span className="block text-2xs text-muted-foreground">
-            {formatBytes(attachment.sizeBytes)}
+            {formatFileSize(attachment.sizeBytes)}
           </span>
         </span>
       </a>
@@ -237,7 +237,7 @@ export function AttachmentsGrid({
       <button
         type="button"
         className="block"
-        title={`${attachment.fileName} · ${formatBytes(attachment.sizeBytes)}`}
+        title={`${attachment.fileName} · ${formatFileSize(attachment.sizeBytes)}`}
         onClick={() => setLightbox(attachment)}
       >
         <img
@@ -286,7 +286,6 @@ export function AttachmentsGrid({
             : ""
         }
         confirmLabel="Remove"
-        destructive
         onConfirm={() => {
           if (confirm) void performRemove(confirm);
         }}

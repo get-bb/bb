@@ -1,4 +1,4 @@
-import { getHost, upsertHost } from "@bb/db";
+import { upsertHost } from "@bb/db";
 import { isLoopbackAddress } from "@bb/config/loopback";
 import {
   hostDaemonEnrollKeyRequestSchema,
@@ -15,7 +15,6 @@ import {
   getTrustedRemoteAddress,
   type GateAuthHeaderReader,
 } from "../request-context.js";
-import { assertMatchingExistingHostType } from "../services/hosts/host-type-guard.js";
 import { issuePersistentHostEnrollKey } from "../services/hosts/host-enrollment.js";
 import { requireBearerToken } from "./auth.js";
 
@@ -99,11 +98,6 @@ export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
       if (!enrollment) {
         throw new ApiError(401, "unauthorized", "Unauthorized");
       }
-      assertMatchingExistingHostType({
-        existingHost: getHost(deps.db, enrollment.metadata.hostId),
-        requestedHostType: enrollment.metadata.hostType,
-      });
-
       upsertHost(deps.db, deps.hub, {
         ...(connectMachineId !== undefined ? { connectMachineId } : {}),
         id: enrollment.metadata.hostId,

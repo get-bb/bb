@@ -35,7 +35,6 @@ import { gitRefNameForRow, gitSelectorForRow } from "./git-source-intent.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import { forgetMutableRoot } from "./plugin-runtime.js";
 import type {
-  InstallContext,
   InstallRegistrationIdentity,
   RegisterInstalledArgs,
 } from "./managed-plugin-artifacts.js";
@@ -437,14 +436,9 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     return entry;
   }
 
-  const directInstallContext: InstallContext = {
-    provenance: { kind: "direct" },
-  };
-
   async function installPathSource(
     path: string,
     selection: PluginSourceSelection,
-    context: InstallContext = directInstallContext,
   ): Promise<PluginListEntry> {
     const checkoutDir = resolve(path);
     const subdirectory = await resolveSelectedSubdirectory({
@@ -472,7 +466,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     return registerInstalled({
       rootDir,
       source: `path:${rootDir}`,
-      provenance: context.provenance,
+      provenance: { kind: "direct" },
       sourceIntent: { kind: "path", canonicalPath: rootDir },
       exactResolution: { kind: "path" },
       refuseEngineMismatch: false,

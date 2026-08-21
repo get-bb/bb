@@ -96,7 +96,6 @@ import { wsManager } from "@/lib/ws";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { findPaneByThread } from "@/lib/split-layout";
 import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
-import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 
@@ -396,7 +395,6 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const quickCreateProject = useQuickCreateProjectController();
   const isCompactViewport = useIsCompactViewport();
-  const threadSplitsEnabled = useThreadSplitsEnabled();
   const store = useStore();
   const contentShellRef = useRef<HTMLDivElement>(null);
   const providerRef = useRef<HTMLDivElement>(null);
@@ -463,10 +461,6 @@ export function AppLayout({ children }: AppLayoutProps) {
           projectId: signal.projectId,
           threadId: signal.threadId,
         });
-        if (!threadSplitsEnabled) {
-          void navigate(route);
-          return;
-        }
         const current = store.get(splitLayoutAtom);
         const alreadyOpen =
           current !== null &&
@@ -482,7 +476,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         }
         void navigate(route, alreadyOpen ? { replace: true } : undefined);
       }),
-    [isCompactViewport, navigate, store, threadSplitsEnabled],
+    [isCompactViewport, navigate, store],
   );
   useAppCommandHandler("thread.new", () => {
     if (projectId !== undefined) {
@@ -609,11 +603,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     resourceRouteLabel,
     location.search,
   );
-  const meta = isThreadView
-    ? {
-        title: thread ? getThreadDisplayTitle(thread) : "Thread",
-      }
-    : toolsAreaHeaderMeta?.kind === "extensions-title"
+  const meta =
+    toolsAreaHeaderMeta?.kind === "extensions-title"
       ? { title: toolsAreaHeaderMeta.title }
       : toolsAreaHeaderMeta?.kind === "breadcrumbs"
         ? {

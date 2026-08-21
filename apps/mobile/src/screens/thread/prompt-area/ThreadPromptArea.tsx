@@ -36,7 +36,7 @@ import {
 import { QueuedMessagesList } from "../queue";
 import type { FollowUpComposerController } from "./use-follow-up-composer";
 
-export interface ThreadPromptAreaProps {
+interface ThreadPromptAreaProps {
   threadId: string;
   thread: ThreadResponse | undefined;
   /** The environment / host ids the `@` menu searches (from the bootstrap). */
@@ -58,7 +58,6 @@ export interface ThreadPromptAreaProps {
   contextBanner: ThreadContextBannerProps;
   /** "Handoff to new thread" (compose seeded with a `@thread:` mention). */
   onHandoffToNewThread: () => void;
-  testID?: string;
 }
 
 /** Share of the window the stack + composer may take before the stack scrolls. */
@@ -94,7 +93,6 @@ export function ThreadPromptArea({
   contextWindowUsage,
   contextBanner,
   onHandoffToNewThread,
-  testID = "thread-prompt-area",
 }: ThreadPromptAreaProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -144,7 +142,7 @@ export function ThreadPromptArea({
         paddingBottom: Math.max(insets.bottom, 8),
         maxHeight: windowHeight * MAX_PROMPT_AREA_WINDOW_FRACTION,
       }}
-      testID={testID}
+      testID="thread-prompt-area"
     >
       {showBanner ? (
         <ScrollView

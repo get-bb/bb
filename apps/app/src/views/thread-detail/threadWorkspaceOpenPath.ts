@@ -4,7 +4,7 @@ import type { WorkspaceChangedFilesSection } from "@/components/workspace/worksp
 import type {
   EnvironmentFilePreviewSource,
   WorkspaceFilePreviewStatusLabel,
-} from "@/lib/file-preview";
+} from "@bb/client-core";
 import { buildAbsoluteFilePath } from "@/lib/absolute-file-path";
 
 interface ResolveThreadWorkspaceOpenPathArgs {
@@ -49,10 +49,6 @@ export function buildOpenInEditorHandler(
   };
 }
 
-interface ResolveThreadWorkspacePreviewRootPathArgs {
-  environment: Environment | null | undefined;
-}
-
 type WorkspaceChangedFileOpenTarget =
   | { kind: "diff" }
   | {
@@ -95,17 +91,6 @@ export function resolveWorkspaceChangedFileOpenTarget(
   }
 
   return { kind: "diff" };
-}
-
-/**
- * Workspace previews are served by the thread host through the server, so path
- * containment should use the environment's host path even when the browser
- * cannot use that path for local editor integration.
- */
-export function resolveThreadWorkspacePreviewRootPath(
-  args: ResolveThreadWorkspacePreviewRootPathArgs,
-): string | null {
-  return args.environment?.path ?? null;
 }
 
 export function resolveEnvironmentOpenContext(

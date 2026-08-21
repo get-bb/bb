@@ -209,7 +209,6 @@ function createFollowUpPromptBoxProps(
     execution: {
       provider: {
         selectedId: "codex",
-        displayName: "Codex",
       },
       model: {
         selected: "gpt-5",

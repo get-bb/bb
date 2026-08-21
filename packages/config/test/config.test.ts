@@ -706,10 +706,6 @@ describe("consumer-specific config", () => {
       appPort: 4173,
       serverHttpOrigin: "http://127.0.0.1:4444",
       serverPort: 4444,
-      serverWsOrigin: {
-        kind: "browser-host",
-        port: 4444,
-      },
     });
 
     const explicitViteDevConfig = loadViteDevConfig({

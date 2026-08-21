@@ -68,7 +68,6 @@ export interface ThreadTimelineSurfaceProps {
   ongoingIndicatorLabel?: string;
   isStopping?: boolean;
   stoppingAnchorAt?: number;
-  timelineErrorLabel?: string;
   timelineErrorClassName?: string;
   timelineRows: TimelineRow[];
   threadId: string;
@@ -169,7 +168,6 @@ export function ThreadTimelineSurface({
   ongoingIndicatorLabel,
   isStopping = false,
   stoppingAnchorAt = 0,
-  timelineErrorLabel = "Failed to load timeline",
   timelineErrorClassName = "mt-6 text-destructive",
   timelineRows,
   threadId,
@@ -218,7 +216,7 @@ export function ThreadTimelineSurface({
         (loadingContent ?? <DelayedThreadLoadingIndicator />)
       ) : timelineError ? (
         <TimelineStatusIndicator
-          label={timelineErrorLabel}
+          label="Failed to load timeline"
           className={timelineErrorClassName}
         />
       ) : timelineRowsWithPendingStop.length > 0 ? (

@@ -230,10 +230,6 @@ function modelCatalogCwdForResolvedEnvironment(
   }
 }
 
-interface EnsureCreateHostOnlineArgs {
-  resolvedEnvironment: ResolvedStableThreadRequestEnvironment;
-}
-
 interface ResolveManagedDefaultBaseBranchForCreateArgs {
   baseBranch: BaseBranchSpec;
   hostId: string;
@@ -332,19 +328,6 @@ function requireLiveSourceThread(
     );
   }
   return sourceThread;
-}
-
-/** Returns the host session's data directory. */
-async function ensureCreateHostOnline(
-  deps: ThreadCreateDeps,
-  args: EnsureCreateHostOnlineArgs,
-): Promise<string> {
-  const hostId =
-    args.resolvedEnvironment.type === "reuse"
-      ? args.resolvedEnvironment.environment.hostId
-      : args.resolvedEnvironment.hostId;
-  const session = await ensureHostSessionReadyForWork(deps, { hostId });
-  return session.dataDir;
 }
 
 async function resolveManagedDefaultBaseBranchForCreate(
@@ -481,7 +464,6 @@ async function createProvisioningThread(
   const thread = createThreadRecord(deps, {
     request: args.request,
     environmentId: args.environmentId,
-    status: "starting",
   });
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
   let context: ThreadProvisionContext;
@@ -742,9 +724,10 @@ export async function createThreadFromRequest(
     environment: request.environment,
     projectId: request.projectId,
   });
-  const hostDataDir = await ensureCreateHostOnline(deps, {
-    resolvedEnvironment,
-  });
+  const childHostId = childHostIdForResolvedEnvironment(resolvedEnvironment);
+  const hostDataDir = (
+    await ensureHostSessionReadyForWork(deps, { hostId: childHostId })
+  ).dataDir;
   const modelCatalogCwd =
     modelCatalogCwdForResolvedEnvironment(resolvedEnvironment);
   const resolvedExecutionDefaults = await resolveCatalogExecutionDefaults(
@@ -752,7 +735,7 @@ export async function createThreadFromRequest(
     {
       ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
       executionDefaults,
-      hostId: childHostIdForResolvedEnvironment(resolvedEnvironment),
+      hostId: childHostId,
       providerId,
       requestedModel,
     },
@@ -857,7 +840,7 @@ export async function createThreadFromRequest(
   }
 
   const fork = resolveForkDescriptor(deps, {
-    childHostId: childHostIdForResolvedEnvironment(resolvedEnvironment),
+    childHostId,
     originKind: request.originKind ?? null,
     providerId: request.providerId,
     sourceSeqEnd: request.sourceSeqEnd,

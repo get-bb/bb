@@ -5,7 +5,7 @@ import { usePickerSheetMaxHeight } from "./OptionSheet";
 import { PickerTrigger } from "./PickerTrigger";
 import { RemotePathBrowser } from "./RemotePathBrowser";
 
-export interface PathPickerProps {
+interface PathPickerProps {
   hostId: string | null;
   hostName?: string | null;
   /** The project checkout on that host (the default when `value` is null). */
@@ -14,7 +14,6 @@ export interface PathPickerProps {
   value: string | null;
   onChange: (path: string | null) => void;
   disabled?: boolean;
-  testID?: string;
 }
 
 /**
@@ -28,7 +27,6 @@ export function PathPicker({
   value,
   onChange,
   disabled,
-  testID = "path-picker",
 }: PathPickerProps) {
   const sheet = useSheet();
   const maxHeight = usePickerSheetMaxHeight();
@@ -42,7 +40,7 @@ export function PathPicker({
         label={label}
         onPress={sheet.present}
         disabled={disabled || hostId === null}
-        testID={testID}
+        testID="path-picker"
         accessibilityLabel="Workspace folder"
       />
       <Sheet
@@ -65,7 +63,7 @@ export function PathPicker({
             sheet.dismiss();
             onChange(null);
           }}
-          testID={`${testID}-default`}
+          testID="path-picker-default"
         />
         <View className="gap-3 px-4 pb-2 pt-3">
           <Text variant="caption">
@@ -84,7 +82,7 @@ export function PathPicker({
                 sheet.dismiss();
                 onChange(browsed);
               }}
-              testID={`${testID}-confirm`}
+              testID="path-picker-confirm"
             >
               Use this folder
             </Button>
@@ -96,7 +94,7 @@ export function PathPicker({
               initialPath={value ?? defaultPath}
               onDirectoryChange={setBrowsed}
               inSheet
-              testID={`${testID}-browser`}
+              testID="path-picker-browser"
             />
           ) : null}
         </View>

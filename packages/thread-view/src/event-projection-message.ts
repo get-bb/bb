@@ -10,7 +10,6 @@ import type {
   SystemMessageKind,
   SystemMessageSubject,
   Thread,
-  ThreadEventRow,
   ThreadEventScope,
   ThreadTurnInitiator,
   WorkflowProgressSnapshot,
@@ -24,7 +23,7 @@ const eventProjectionMessageStatusValues = [
   "error",
   "interrupted",
 ] as const;
-export type EventProjectionMessageStatus =
+type EventProjectionMessageStatus =
   (typeof eventProjectionMessageStatusValues)[number];
 
 const eventProjectionApprovalLifecycleStatusValues = [
@@ -72,7 +71,7 @@ const eventProjectionTurnRequestStatusValues = [
   "accepted",
   "rejected",
 ] as const;
-export type EventProjectionTurnRequestStatus =
+type EventProjectionTurnRequestStatus =
   (typeof eventProjectionTurnRequestStatusValues)[number];
 
 export interface EventProjectionTurnRequest {
@@ -237,7 +236,7 @@ const eventProjectionOperationTypeValues = [
   "compaction",
   "context-clear",
 ] as const;
-export type EventProjectionOperationType =
+type EventProjectionOperationType =
   (typeof eventProjectionOperationTypeValues)[number];
 
 const eventProjectionThreadOperationKindValues = [
@@ -297,7 +296,7 @@ export interface EventProjectionProvisioningMetadata {
   transcript?: EventProjectionProvisioningTranscriptEntry[];
 }
 
-export interface EventProjectionApprovalTarget {
+interface EventProjectionApprovalTarget {
   itemId: string;
   toolName: string | null;
 }
@@ -403,13 +402,6 @@ export interface EventProjectionErrorMessage extends EventProjectionMessageBase 
   willRetry?: boolean;
 }
 
-export interface EventProjectionDebugRawEventMessage extends EventProjectionMessageBase {
-  kind: "debug/raw-event";
-  rawType: string;
-  rawEvent: ThreadEventRow;
-  reason: "ignored-noise" | "duplicate-event" | "unhandled";
-}
-
 export type EventProjectionMessage =
   | EventProjectionUserMessage
   | EventProjectionAssistantTextMessage
@@ -424,11 +416,9 @@ export type EventProjectionMessage =
   | EventProjectionUserQuestionLifecycleMessage
   | EventProjectionDelegationMessage
   | EventProjectionWorkflowMessage
-  | EventProjectionErrorMessage
-  | EventProjectionDebugRawEventMessage;
+  | EventProjectionErrorMessage;
 
 export interface BuildEventProjectionMessagesOptions {
-  includeDebugRawEvents?: boolean;
   includeProviderUnhandledOperations?: boolean;
   threadStatus?: Thread["status"];
   /**

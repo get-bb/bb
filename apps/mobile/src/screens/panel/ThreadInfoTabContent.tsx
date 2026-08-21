@@ -8,7 +8,6 @@ import type {
   WorkspaceStatus,
 } from "@bb/domain";
 import type { ThreadResponse } from "@bb/server-contract";
-import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
 import { useCallback, useMemo, type ReactNode } from "react";
 import { Linking, Pressable, ScrollView, View } from "react-native";
@@ -33,6 +32,7 @@ import {
   useThreadsList,
   useUnarchiveThread,
 } from "@/data/threads";
+import { copyWithToast } from "@/lib/clipboard";
 import { useTheme } from "@/theme";
 import {
   Button,
@@ -64,12 +64,6 @@ import type { PanelTabContentProps } from "./registry";
  * Diff tab, storage → Files tab, parent / forks → thread) go through the
  * panel controller and the router.
  */
-
-function copyText(text: string, successMessage: string): void {
-  void Clipboard.setStringAsync(text)
-    .then(() => toast.success(successMessage))
-    .catch(() => toast.error("Could not copy"));
-}
 
 function DetailRow({
   icon,
@@ -259,7 +253,7 @@ function DirectoryRow({ path }: { path: string }) {
     <DetailRow
       icon="Folder"
       label="Directory"
-      onPress={() => copyText(path, "Directory copied")}
+      onPress={() => copyWithToast(path, "Directory copied")}
       accessibilityLabel="Copy directory"
       chevron={false}
       testID="panel-info-directory"
@@ -330,7 +324,7 @@ function BranchRow({ checkout }: { checkout: GitCheckoutRef }) {
       onPress={
         display.copyValue === null
           ? undefined
-          : () => copyText(display.copyValue ?? "", display.copiedMessage)
+          : () => copyWithToast(display.copyValue ?? "", display.copiedMessage)
       }
       accessibilityLabel={`${display.rowLabel}: ${display.label}`}
       chevron={false}
@@ -453,7 +447,7 @@ function CommitsSection({
           key={commit.sha}
           accessibilityRole="button"
           accessibilityLabel={`Copy commit ${commit.shortSha}`}
-          onLongPress={() => copyText(commit.sha, "Commit SHA copied")}
+          onLongPress={() => copyWithToast(commit.sha, "Commit SHA copied")}
           className="min-h-9 flex-row items-center gap-2 rounded-md px-2 py-1 active:bg-state-hover"
           testID="panel-info-commit"
         >
@@ -464,7 +458,7 @@ function CommitsSection({
             accessibilityRole="button"
             accessibilityLabel={`Copy commit ${commit.shortSha} SHA`}
             hitSlop={6}
-            onPress={() => copyText(commit.sha, "Commit SHA copied")}
+            onPress={() => copyWithToast(commit.sha, "Commit SHA copied")}
             className="rounded-sm px-1.5 py-0.5 active:bg-state-hover"
           >
             <Text variant="mono" className="text-xs text-subtle-foreground">

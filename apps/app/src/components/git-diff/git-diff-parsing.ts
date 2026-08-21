@@ -5,8 +5,6 @@ export type ParsedGitDiffFile = ReturnType<
   typeof parsePatchFiles
 >[number]["files"][number];
 
-export type { GitDiffFileChangeKind };
-
 export interface GitDiffStats {
   filesCount: number;
   insertions: number;
@@ -166,10 +164,6 @@ export function isPreviewableImagePath(path: string | undefined): boolean {
   return (
     extension !== undefined && IMAGE_GIT_DIFF_FILE_EXTENSIONS.has(extension)
   );
-}
-
-export function isImageGitDiffFile(file: ParsedGitDiffFile): boolean {
-  return isPreviewableImagePath(file.name);
 }
 
 export function isSvgGitDiffFile(file: ParsedGitDiffFile): boolean {

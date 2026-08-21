@@ -1,5 +1,5 @@
 import type { WorkspaceCommitSummary, WorkspaceDiffTarget } from "@bb/domain";
-import type { GitDiffSelectionOption } from "../ThreadSecondaryPanel";
+import type { GitDiffSelectionOption } from "../GitDiffToolbar";
 
 interface GitDiffIdentityParams {
   environmentId?: string;
@@ -63,17 +63,10 @@ interface GitDiffSelectionAvailability {
   hasUncommittedChanges: boolean;
 }
 
-type GitDiffTarget =
-  | { type: "commit"; sha: string }
-  | { type: "uncommitted" }
-  | { type: "branch_committed"; mergeBaseBranch: string }
-  | { type: "all"; mergeBaseBranch: string }
-  | undefined;
-
 export function buildGitDiffTarget(
   selectedGitDiffSelection: GitDiffSelectionValue,
   effectiveMergeBaseBranch: string | undefined,
-): GitDiffTarget {
+): WorkspaceDiffTarget | undefined {
   if (selectedGitDiffSelection === UNCOMMITTED_GIT_DIFF_SELECTION) {
     return { type: "uncommitted" };
   }

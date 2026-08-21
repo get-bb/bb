@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   mkdir,
   readFile,
@@ -12,6 +12,7 @@ import {
 import { join } from "node:path";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "./logger.js";
+import { sha256Hex } from "./sha256-hex.js";
 
 /**
  * The daemon's one content-addressed cache for executable artifacts it is
@@ -30,7 +31,7 @@ import type { HostDaemonLogger } from "./logger.js";
 
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/u;
 
-export type FetchNodeArtifact = (args: {
+type FetchNodeArtifact = (args: {
   digest: string;
   byteLength: number;
 }) => Promise<Uint8Array>;
@@ -46,11 +47,11 @@ export type FetchNodeArtifact = (args: {
  *   artifacts). Every use touches its digest directory, so age is a real
  *   "nobody has run this in a month" signal rather than a guess.
  */
-export type NodeArtifactPruneStrategy =
+type NodeArtifactPruneStrategy =
   | { kind: "keep-only-current" }
   | { kind: "keep-recently-used"; maxAgeMs: number };
 
-export interface EnsureCachedNodeArtifactArgs {
+interface EnsureCachedNodeArtifactArgs {
   /** Root of one artifact family. Digest directories are its children. */
   cacheDir: string;
   digest: string;
@@ -67,10 +68,6 @@ export interface EnsureCachedNodeArtifactArgs {
 /** In-flight pulls keyed by `${cacheDir}\0${digest}` so concurrent callers
  *  for the same artifact share one download. */
 const pendingPulls = new Map<string, Promise<string>>();
-
-function sha256Hex(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
 
 function describeMismatch(
   digest: string,

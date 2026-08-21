@@ -543,7 +543,6 @@ export async function sendThreadMessage(
                   },
           }),
           mode: "thread.start" as const,
-          sessionId: "history-replacement",
         }
       : await prepareReadyThreadTurnCommand(deps, commandArgs);
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({

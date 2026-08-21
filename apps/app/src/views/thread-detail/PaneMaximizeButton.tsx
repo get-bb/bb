@@ -4,7 +4,7 @@ import { Popover, PopoverAnchor, PopoverContent } from "@bb/shared-ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { HEADER_PANE_ACTION_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
-import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { useHoverPopover } from "@/components/ui/hooks/use-hover-popover";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import type { SplitSide } from "@/lib/split-layout";
@@ -48,15 +48,7 @@ function ArrangementGlyph({ side }: { side: SplitSide }) {
   );
 }
 
-export function PaneMaximizeButton({
-  defaultMenuOpen = false,
-  defaultTooltipOpen = false,
-}: {
-  /** Keeps the hover menu visible in its focused Ladle story. */
-  defaultMenuOpen?: boolean;
-  /** Keeps the full-screen tooltip visible in its focused Ladle story. */
-  defaultTooltipOpen?: boolean;
-}) {
+export function PaneMaximizeButton() {
   const { isMaximized, onToggleMaximize, onMoveToSide } = usePaneContext();
   const shortcut = useAppCommandShortcut("pane.maximize.toggle");
 
@@ -64,8 +56,6 @@ export function PaneMaximizeButton({
 
   return (
     <PaneArrangementButton
-      defaultMenuOpen={defaultMenuOpen}
-      defaultTooltipOpen={defaultTooltipOpen}
       isFullScreen={isMaximized}
       onMoveToSide={onMoveToSide ?? undefined}
       onToggleFullScreen={onToggleMaximize}
@@ -76,16 +66,12 @@ export function PaneMaximizeButton({
 
 export function PaneArrangementButton({
   className,
-  defaultMenuOpen = false,
-  defaultTooltipOpen = false,
   isFullScreen,
   onMoveToSide,
   onToggleFullScreen,
   shortcut,
 }: {
   className?: string;
-  defaultMenuOpen?: boolean;
-  defaultTooltipOpen?: boolean;
   isFullScreen: boolean;
   onMoveToSide?: (side: SplitSide) => void;
   onToggleFullScreen: () => void;
@@ -102,7 +88,7 @@ export function PaneArrangementButton({
 
   const label = isFullScreen ? "Exit Full Screen" : "Full Screen";
   const accessibleLabel = shortcut ? `${label} (${shortcut.label})` : label;
-  const menuOpen = !isFullScreen && (defaultMenuOpen || hoverOpen);
+  const menuOpen = !isFullScreen && hoverOpen;
   const button = (
     <Button
       type="button"
@@ -131,7 +117,7 @@ export function PaneArrangementButton({
 
   if (isFullScreen) {
     return (
-      <Tooltip defaultOpen={defaultTooltipOpen}>
+      <Tooltip>
         <TooltipTrigger asChild>{button}</TooltipTrigger>
         <TooltipContent side="bottom">
           <span>Exit Full Screen</span>

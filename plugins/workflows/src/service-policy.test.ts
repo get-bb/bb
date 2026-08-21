@@ -5,14 +5,12 @@ import {
   getCall,
   getRunRequired,
   migrations,
-  type Db,
 } from "./data.js";
 import plugin from "./server.js";
 import {
   createWorkflowService,
   formatWorkflowNotification,
   isRetryableProviderFailure,
-  type WorkflowService,
 } from "./service.js";
 import {
   DEFAULT_WORKFLOW_SETTINGS,

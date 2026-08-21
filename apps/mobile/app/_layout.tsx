@@ -26,7 +26,7 @@ export const unstable_settings = { anchor: "index" };
 export { RouteErrorBoundary as ErrorBoundary };
 
 export default function RootLayout() {
-  const fonts = useAppFonts({ hideSplashWhenReady: false });
+  const fonts = useAppFonts();
   const boot = useAppBoot();
   const ready = fonts.ready && boot.ready;
 

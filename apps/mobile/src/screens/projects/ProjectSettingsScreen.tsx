@@ -26,16 +26,12 @@ import {
   useSheet,
 } from "@/ui";
 import { HostStatusDot } from "../pickers";
+import { firstParam } from "../shell/hrefs";
 import { Screen } from "../shell/Screen";
 import {
   ProjectMachineSetupSheet,
   type ProjectMachineSetupTarget,
 } from "./ProjectMachineSetupSheet";
-
-function firstParam(value: string | string[] | undefined): string {
-  const raw = Array.isArray(value) ? value[0] : value;
-  return raw?.trim() ?? "";
-}
 
 /**
  * `/projects/[id]/settings`: rename, the project's sources per machine

@@ -39,7 +39,6 @@ import type {
   UpdateProjectInput,
   UpdateTaskInput,
   UpdateTaskPositionInput,
-  UpdateTaskThreadInput,
   UpsertTaskThreadInput,
 } from "./types";
 
@@ -1664,9 +1663,9 @@ export function createTasksStore(db: PluginDatabase) {
       .map(taskThreadFromRow);
   }
 
-  function updateTaskThread(
+  function updateTaskThreadStatus(
     id: string,
-    input: UpdateTaskThreadInput,
+    liveStatus: TaskThreadLiveStatus,
   ): TaskThread {
     const current = requireTaskThread(id);
     db.prepare<[string, string, TaskThreadLiveStatus, string, string]>(
@@ -1675,25 +1674,8 @@ export function createTasksStore(db: PluginDatabase) {
       SET preset_name = ?, title = ?, live_status = ?, updated_at = ?
       WHERE id = ?
     `,
-    ).run(
-      input.presetName === undefined
-        ? current.presetName
-        : requireNonEmpty(input.presetName, "Task thread presetName"),
-      input.title === undefined
-        ? current.title
-        : requireNonEmpty(input.title, "Task thread title"),
-      input.liveStatus ?? current.liveStatus,
-      nowIso(),
-      id,
-    );
+    ).run(current.presetName, current.title, liveStatus, nowIso(), id);
     return requireTaskThread(id);
-  }
-
-  function updateTaskThreadStatus(
-    id: string,
-    liveStatus: TaskThreadLiveStatus,
-  ): TaskThread {
-    return updateTaskThread(id, { liveStatus });
   }
 
   function deleteTaskThread(id: string): boolean {
@@ -1877,7 +1859,6 @@ export function createTasksStore(db: PluginDatabase) {
     getTaskThread,
     getTaskThreadByThreadId,
     listTaskThreads,
-    updateTaskThread,
     updateTaskThreadStatus,
     deleteTaskThread,
     createPreset,

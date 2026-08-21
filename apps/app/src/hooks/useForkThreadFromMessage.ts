@@ -6,7 +6,7 @@ import {
   FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY,
   isThreadForkable,
   type ForkThreadCreateSeed,
-} from "@/lib/fork-thread-request";
+} from "@bb/client-core";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";

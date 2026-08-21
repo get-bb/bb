@@ -4,13 +4,13 @@ import {
   type PromptTextMention,
 } from "@bb/domain";
 
-export interface PromptModeInput {
+interface PromptModeInput {
   mentionRanges: readonly PromptTextMention[];
   providerId: string | undefined;
   value: string;
 }
 
-export interface PermissionDisplayOverride {
+interface PermissionDisplayOverride {
   label: string;
   compactLabel?: string;
   description?: string;
@@ -56,12 +56,6 @@ export function permissionDisplayForActivePromptMode(
     return CLAUDE_PLAN_PERMISSION_DISPLAY;
   }
   return undefined;
-}
-
-export function shouldDisablePermissionPickerForPromptMode(
-  args: PromptModeInput,
-): boolean {
-  return isClaudePlanModePrompt(args);
 }
 
 export function shouldDisablePermissionPickerForActivePromptMode(

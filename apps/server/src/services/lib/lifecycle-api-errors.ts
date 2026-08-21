@@ -12,19 +12,13 @@ import type {
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 
-export type EnvironmentReadinessFields = Pick<
-  Environment,
-  "path" | "status"
->;
+type EnvironmentReadinessFields = Pick<Environment, "path" | "status">;
 
-export type ThreadEnvironmentStatusFields = Pick<Environment, "status">;
+type ThreadEnvironmentStatusFields = Pick<Environment, "status">;
 
-export type ThreadWritableFields = Pick<
-  Thread,
-  "archivedAt" | "deletedAt" | "status"
->;
+type ThreadWritableFields = Pick<Thread, "archivedAt" | "deletedAt" | "status">;
 
-export type HostUnavailableStatus = 404 | 502;
+type HostUnavailableStatus = 404 | 502;
 
 interface ParentThreadInvalidDetailsArgs {
   reason: ParentThreadInvalidReason;
@@ -178,23 +172,17 @@ export function throwProjectUnavailable(
 export function throwParentThreadInvalid(
   reason: ParentThreadInvalidReason,
 ): never {
-  throw new ApiError(
-    400,
-    "parent_thread_invalid",
-    "Parent thread is invalid",
-    { details: parentThreadInvalidDetails({ reason, subject: "parent" }) },
-  );
+  throw new ApiError(400, "parent_thread_invalid", "Parent thread is invalid", {
+    details: parentThreadInvalidDetails({ reason, subject: "parent" }),
+  });
 }
 
 export function throwSenderThreadInvalid(
   reason: Extract<ParentThreadInvalidReason, "deleted" | "not_found">,
 ): never {
-  throw new ApiError(
-    400,
-    "parent_thread_invalid",
-    "Sender thread is invalid",
-    { details: parentThreadInvalidDetails({ reason, subject: "sender" }) },
-  );
+  throw new ApiError(400, "parent_thread_invalid", "Sender thread is invalid", {
+    details: parentThreadInvalidDetails({ reason, subject: "sender" }),
+  });
 }
 
 function parentThreadInvalidDetails({

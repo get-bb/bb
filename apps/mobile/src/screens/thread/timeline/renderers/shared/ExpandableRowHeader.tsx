@@ -1,6 +1,6 @@
 import type { TimelineTitle } from "@bb/thread-view";
 import type { ReactNode } from "react";
-import { Pressable, View, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable, View } from "react-native";
 import { useTheme } from "@/theme";
 import { Icon, type IconName } from "@/ui";
 import {
@@ -14,11 +14,10 @@ import { PAST_ROW_DIM_OPACITY } from "./row-dim";
 export const ROW_LEADING_ICON_SIZE = 14;
 const CHEVRON_SIZE = 14;
 
-export interface TimelineRowShellProps {
+interface TimelineRowShellProps {
   depth: number;
   kind: string;
   children: ReactNode;
-  style?: StyleProp<ViewStyle>;
   /** Defaults to `timeline-row-<kind>`. */
   testID?: string;
 }
@@ -32,18 +31,14 @@ export function TimelineRowShell({
   depth,
   kind,
   children,
-  style,
   testID,
 }: TimelineRowShellProps) {
   return (
     <View
-      style={[
-        {
-          paddingLeft: timelineRowLeftPadding(depth),
-          paddingRight: TIMELINE_ROW_HORIZONTAL_PADDING_PX,
-        },
-        style,
-      ]}
+      style={{
+        paddingLeft: timelineRowLeftPadding(depth),
+        paddingRight: TIMELINE_ROW_HORIZONTAL_PADDING_PX,
+      }}
       testID={testID ?? `timeline-row-${kind}`}
     >
       {children}
@@ -51,7 +46,7 @@ export function TimelineRowShell({
   );
 }
 
-export interface ExpandableRowHeaderProps {
+interface ExpandableRowHeaderProps {
   title: TimelineTitle;
   /** Replaces the generic title renderer for a specialized header. */
   titleContent?: ReactNode;

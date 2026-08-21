@@ -8,7 +8,6 @@ import {
 import {
   DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
   DEFAULT_THREAD_WAIT_TIMEOUT_MS,
-  type ThreadWaitTarget,
 } from "@bb/sdk";
 import { joinValues } from "../helpers.js";
 
@@ -17,7 +16,6 @@ export const THREAD_WAIT_EXIT_CODE_INVALID_REQUEST = 3;
 export const THREAD_WAIT_EXIT_CODE_UNREACHABLE = 4;
 export const DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS =
   DEFAULT_THREAD_WAIT_TIMEOUT_MS / 1000;
-export type { ThreadWaitTarget };
 
 const SERVICE_TIERS: ServiceTier[] = ["fast", "default"];
 export const PERMISSION_MODE_HELP =

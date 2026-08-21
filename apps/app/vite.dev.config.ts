@@ -4,7 +4,7 @@ import { sharedViteConfig } from "./vite.config.js";
 
 const viteDevConfig = loadViteDevConfig();
 const devWebSocketBrowserHostPortDefine = JSON.stringify(
-  viteDevConfig.serverWsOrigin.port,
+  viteDevConfig.serverPort,
 );
 
 export default defineConfig({

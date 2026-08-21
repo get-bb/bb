@@ -28,7 +28,7 @@ const noop = () => {};
 type BranchPickerStoryConfig = Omit<
   BranchPickerProps,
   "onChange" | "options" | "variant"
->;
+> & { currentBranch?: string | null };
 
 interface BranchPickerStoryRowProps {
   label: string;

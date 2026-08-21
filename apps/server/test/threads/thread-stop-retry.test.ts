@@ -184,11 +184,10 @@ describe("thread stop dispatch", () => {
 
       // Daemon reconnect reconciliation re-finalizes settling threads; a second
       // completion of the same stop must change nothing.
-      const finalized = finalizeStoppedThread(harness.deps, {
+      finalizeStoppedThread(harness.deps, {
         threadId: thread.id,
       });
 
-      expect(finalized).toBe(true);
       expect(getThread(harness.db, thread.id)).toEqual(settled);
       const threadEvents = listEvents(harness.db, { threadId: thread.id });
       expect(

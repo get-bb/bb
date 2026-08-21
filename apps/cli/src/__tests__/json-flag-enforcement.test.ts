@@ -35,7 +35,7 @@ describe("CLI --json flag enforcement", () => {
     registerStatusCommand(program, getUrl);
     registerProjectCommands(program, getUrl);
     registerProviderCommands(program, getUrl);
-    registerManagerCommands(program, getUrl);
+    registerManagerCommands(program);
     registerMachineCommands(program, getUrl);
     registerThreadCommands(program, getUrl);
 

@@ -2,8 +2,6 @@ export {
   useProjectBranches,
   useProjectDefaultExecutionOptions,
   useProjectPaths,
-  type UseProjectBranchesOptions,
-  type UseProjectPathsArgs,
 } from "./project-queries";
 export {
   useAddProjectSource,
@@ -11,7 +9,4 @@ export {
   useDeleteProject,
   useRemoveProjectSource,
   useRenameProject,
-  type AddProjectSourceRequest,
-  type RemoveProjectSourceRequest,
-  type RenameProjectRequest,
 } from "./project-mutations";

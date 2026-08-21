@@ -45,7 +45,6 @@ import type {
   SecondaryPanelRenderableTab,
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelTab";
-export type { SecondaryPanelRenderableTab } from "./secondaryPanelTab";
 
 // Roughly one wide tab, so one click reveals the next tab without overshooting.
 const CHEVRON_SCROLL_STEP_PX = 140;

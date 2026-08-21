@@ -5,13 +5,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   hasVisibleArea,
   readPersistedWindowStateEntries,
-  readPersistedWindowState,
   restoreWindowState,
   writePersistedWindowStateEntries,
-  writePersistedWindowState,
 } from "../src/window-state.js";
 import type {
-  DefaultWindowState,
   DisplayWorkArea,
   PersistedWindowStateEntry,
   PersistedWindowState,
@@ -30,7 +27,7 @@ const displayWorkAreas: DisplayWorkArea[] = [
   },
 ];
 
-const defaultState: DefaultWindowState = {
+const defaultState: PersistedWindowState = {
   bounds: {
     height: 900,
     width: 1280,
@@ -114,33 +111,6 @@ describe("window state helpers", () => {
         displayWorkAreas,
       }),
     ).toBe(false);
-  });
-
-  it("persists and reads window state from disk", async () => {
-    const tempDir = await createTempDir();
-    const persistedState: PersistedWindowState = {
-      bounds: {
-        height: 720,
-        width: 1100,
-        x: 40,
-        y: 60,
-      },
-      isFullScreen: false,
-      isMaximized: true,
-    };
-
-    await writePersistedWindowState({
-      state: persistedState,
-      stateKey: "main",
-      userDataPath: tempDir.path,
-    });
-
-    await expect(
-      readPersistedWindowState({
-        stateKey: "main",
-        userDataPath: tempDir.path,
-      }),
-    ).resolves.toEqual(persistedState);
   });
 
   it("persists and reads multiple window states across restart", async () => {

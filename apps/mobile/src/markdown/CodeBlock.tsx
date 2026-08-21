@@ -47,10 +47,6 @@ export const CodeBlock = memo(function CodeBlock({
     [code, normalizedLanguage],
   );
   const copy = () => {
-    if (ctx.onCodeCopy) {
-      ctx.onCodeCopy(code, normalizedLanguage);
-      return;
-    }
     copyCodeToClipboard(code);
   };
   const mono = nativeTypography.xs;

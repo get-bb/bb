@@ -1,10 +1,9 @@
-import { createHostId, getHost } from "@bb/db";
+import { createHostId } from "@bb/db";
 import type { AppDeps } from "../../types.js";
-import { assertMatchingExistingHostType } from "./host-type-guard.js";
 
 type HostEnrollmentDeps = Pick<AppDeps, "db" | "machineAuth">;
 
-export interface IssuePersistentHostEnrollKeyArgs {
+interface IssuePersistentHostEnrollKeyArgs {
   enrollSource: "loopback" | "public-multi-machine";
   hostId?: string;
 }
@@ -20,10 +19,6 @@ export async function issuePersistentHostEnrollKey(
   args: IssuePersistentHostEnrollKeyArgs,
 ) {
   const hostId = args.hostId ?? createHostId();
-  assertMatchingExistingHostType({
-    existingHost: getHost(deps.db, hostId),
-    requestedHostType: "persistent",
-  });
 
   const enrollKey = await deps.machineAuth.issueHostEnrollKey({
     enrollSource: args.enrollSource,

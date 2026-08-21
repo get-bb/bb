@@ -1,5 +1,4 @@
 import { FlashList } from "@shopify/flash-list";
-import * as Clipboard from "expo-clipboard";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
@@ -10,8 +9,9 @@ import {
   usePluginLogs,
   type PluginLogLine,
 } from "@/data/plugins";
+import { copyWithToast } from "@/lib/clipboard";
 import { useTheme } from "@/theme";
-import { Button, EmptyStatePanel, Icon, Spinner, Text, toast } from "@/ui";
+import { Button, EmptyStatePanel, Icon, Spinner, Text } from "@/ui";
 import { Screen } from "../shell/Screen";
 
 const TAIL_OPTIONS = [100, PLUGIN_LOGS_DEFAULT_TAIL, 1000] as const;
@@ -19,11 +19,7 @@ const TAIL_OPTIONS = [100, PLUGIN_LOGS_DEFAULT_TAIL, 1000] as const;
 function LogLine({ line }: { line: PluginLogLine }) {
   return (
     <Pressable
-      onLongPress={() => {
-        void Clipboard.setStringAsync(line.text)
-          .then(() => toast.success("Line copied"))
-          .catch(() => toast.error("Could not copy"));
-      }}
+      onLongPress={() => copyWithToast(line.text, "Line copied")}
       className="flex-row gap-3 px-4 py-1 active:bg-state-hover"
       accessibilityRole="text"
     >

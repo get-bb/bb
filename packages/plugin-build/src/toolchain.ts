@@ -10,6 +10,18 @@ import { omitNpmScriptPolicyEnv } from "@bb/process-utils";
 
 const run = promisify(execFile);
 
+// Same shim scripts/build-utils.mjs applies to our own node bundles: plugin
+// deps may be CJS and reference require/__dirname/__filename, which do not
+// exist in ESM output.
+export const NODE_ESM_REQUIRE_BANNER = [
+  'import { createRequire as __createRequire } from "node:module";',
+  'import { dirname as __pathDirname } from "node:path";',
+  'import { fileURLToPath as __fileURLToPath } from "node:url";',
+  "const require = __createRequire(import.meta.url);",
+  "var __filename = __fileURLToPath(import.meta.url);",
+  "var __dirname = __pathDirname(__filename);",
+].join("\n");
+
 /**
  * Exact versions bb builds plugin bundles with. Pinned rather than ranged so
  * a fetched toolchain is reproducible and its directory name is stable.

@@ -33,8 +33,6 @@ export interface ActiveProfileConnector {
   activate(profile: ServerProfile | null): void;
   getSnapshot(): ActiveProfileConnection | null;
   subscribe(listener: () => void): () => void;
-  /** Tear everything down (app unmount / tests). */
-  dispose(): void;
 }
 
 export interface CreateActiveProfileConnectorDeps {
@@ -42,7 +40,6 @@ export interface CreateActiveProfileConnectorDeps {
   appState: AppStateLike;
   /** Built once per connect-mode activation; direct profiles never call it. */
   createSessionScheduler: () => SessionScheduler;
-  now?: () => number;
 }
 
 const IDLE_SESSION: SessionState = { status: "idle" };
@@ -108,11 +105,9 @@ function connectionIdentity(profile: ServerProfile): string {
 export function createActiveProfileConnector(
   deps: CreateActiveProfileConnectorDeps,
 ): ActiveProfileConnector {
-  const now = deps.now ?? Date.now;
   const listeners = new Set<() => void>();
   let snapshot: ActiveProfileConnection | null = null;
   let identity: string | null = null;
-  let disposed = false;
   let teardown: (() => void) | null = null;
 
   function setSnapshot(next: ActiveProfileConnection | null): void {
@@ -172,7 +167,7 @@ export function createActiveProfileConnector(
     };
     const unsubscribe = scheduler.onStateChange((session) => {
       if (session.status === "authenticated") {
-        lastVerifyAt = now();
+        lastVerifyAt = Date.now();
         // Queries started before this cookie existed hit the gate's 401
         // page (the screen renders as soon as the profile is active, while
         // the first mint is still in flight); fetch them again now.
@@ -199,7 +194,7 @@ export function createActiveProfileConnector(
     const verifySession = (): void => {
       if (verifying) return;
       verifying = true;
-      lastVerifyAt = now();
+      lastVerifyAt = Date.now();
       void scheduler
         .verifySession()
         .then((session) => {
@@ -219,7 +214,7 @@ export function createActiveProfileConnector(
       }, AUTH_FAILURE_REFETCH_DELAY_MS);
     };
     const tripBreaker = (): void => {
-      const retryAt = now() + AUTH_FAILURE_BREAKER_COOLDOWN_MS;
+      const retryAt = Date.now() + AUTH_FAILURE_BREAKER_COOLDOWN_MS;
       breaker = {
         retryAt,
         timer: setTimeout(() => {
@@ -232,7 +227,7 @@ export function createActiveProfileConnector(
     };
     const unsubscribeAuthFailure = client.onAuthFailure(() => {
       if (breaker !== null) return; // tripped: the cooldown timer retries
-      const sinceVerify = now() - lastVerifyAt;
+      const sinceVerify = Date.now() - lastVerifyAt;
       if (sinceVerify < AUTH_FAILURE_VERIFY_DEBOUNCE_MS) {
         // The cookie was just (re)installed: this request started without
         // it. Fetch the rejected queries again instead of minting again.
@@ -261,7 +256,9 @@ export function createActiveProfileConnector(
       (event) => {
         if (event.authRejected) return; // already handled via onAuthFailure
         if (client.realtime.isSuspended()) return;
-        if (now() - lastVerifyAt < CONNECT_FAILURE_VERIFY_INTERVAL_MS) return;
+        if (Date.now() - lastVerifyAt < CONNECT_FAILURE_VERIFY_INTERVAL_MS) {
+          return;
+        }
         verifySession();
       },
     );
@@ -287,7 +284,6 @@ export function createActiveProfileConnector(
 
   return {
     activate(profile) {
-      if (disposed) return;
       if (profile === null) {
         teardownCurrent();
         setSnapshot(null);
@@ -313,13 +309,6 @@ export function createActiveProfileConnector(
       return () => {
         listeners.delete(listener);
       };
-    },
-    dispose() {
-      if (disposed) return;
-      disposed = true;
-      teardownCurrent();
-      snapshot = null;
-      listeners.clear();
     },
   };
 }

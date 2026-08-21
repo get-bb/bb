@@ -91,10 +91,8 @@ interface EnvironmentPayloadThreadArgs {
   thread: Thread;
 }
 
-type CurrentProvisioningFailureThreadDeps = Pick<AppDeps, "db">;
-
 function getCurrentProvisioningFailureThread(
-  deps: CurrentProvisioningFailureThreadDeps,
+  deps: Pick<AppDeps, "db">,
   args: CurrentProvisioningFailureThreadArgs,
 ): Thread | null {
   const currentThread = getThread(deps.db, args.threadId);

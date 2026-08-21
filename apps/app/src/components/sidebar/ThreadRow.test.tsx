@@ -29,7 +29,7 @@ vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   }),
 }));
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
+import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import {
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
@@ -44,11 +44,7 @@ import {
 } from "@/lib/plugin-thread-row-status";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
-
-vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
-  useThreadSplitsEnabled: () => true,
-}));
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 
 vi.mock("@/components/thread/ThreadActionsMenu", () => ({
   ThreadActionsContextMenu: ({ children }: { children: ReactNode }) => (
@@ -622,7 +618,7 @@ describe("ThreadRow", () => {
     });
 
     render(
-      <SidebarThreadTitleMentionResourcesProvider
+      <ThreadTitleMentionResourcesProvider
         sectionNamesById={
           new Map([
             ["sec_mentioned", "Mention section"],
@@ -640,7 +636,7 @@ describe("ThreadRow", () => {
               "Compare @thread:thr_mentioned in @project:proj_mentioned, @section:sec_mentioned, legacy @folder:sec_legacy, and @apps/app/src/ThreadRow.tsx",
           })}
         />
-      </SidebarThreadTitleMentionResourcesProvider>,
+      </ThreadTitleMentionResourcesProvider>,
     );
 
     expect(screen.getByText("Mention target").closest("a")).toBeNull();
@@ -659,7 +655,7 @@ describe("ThreadRow", () => {
 
   it("marks a child from another project with the project name", () => {
     const { container } = render(
-      <SidebarThreadTitleMentionResourcesProvider
+      <ThreadTitleMentionResourcesProvider
         sectionNamesById={new Map()}
         projectNamesById={new Map([["proj_other", "Web App"]])}
         threadById={new Map()}
@@ -671,7 +667,7 @@ describe("ThreadRow", () => {
             projectId: "proj_other",
           })}
         />
-      </SidebarThreadTitleMentionResourcesProvider>,
+      </ThreadTitleMentionResourcesProvider>,
     );
 
     const marker = container.querySelector(

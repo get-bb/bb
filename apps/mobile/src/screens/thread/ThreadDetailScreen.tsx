@@ -48,14 +48,16 @@ import { ThreadWorkspacePanelProvider, usePanel } from "../panel";
 import { Screen } from "../shell/Screen";
 import {
   ThreadActionsSheet,
-  ThreadGitActionSheet,
-  useMessageActionHandlers,
   useThreadActionsSheet,
-  useThreadGitActions,
   type ThreadMenuAction,
-} from "./actions";
-import { MergeBasePickerSheet, useThreadContextBanner } from "./banner";
-import { ThreadPromptArea, useFollowUpComposer } from "./prompt-area";
+} from "./actions/ThreadActionsSheet";
+import { ThreadGitActionSheet } from "./actions/ThreadGitActionSheet";
+import { useMessageActionHandlers } from "./actions/use-message-action-handlers";
+import { useThreadGitActions } from "./actions/use-thread-git-actions";
+import { MergeBasePickerSheet } from "./banner/MergeBasePickerSheet";
+import { useThreadContextBanner } from "./banner/use-thread-context-banner";
+import { ThreadPromptArea } from "./prompt-area/ThreadPromptArea";
+import { useFollowUpComposer } from "./prompt-area/use-follow-up-composer";
 import { ThreadHeaderActions, ThreadHeaderTitle } from "./ThreadDetailHeader";
 import {
   describeThreadEnvironment,

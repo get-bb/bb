@@ -3,7 +3,6 @@ import {
   act,
   cleanup,
   fireEvent,
-  render,
   waitFor,
   within,
 } from "@testing-library/react";
@@ -175,7 +174,7 @@ describe("Docs nav panel", () => {
     const toolbar = await slot.findByRole("toolbar", {
       name: "Notes sidebar actions",
     });
-    const navigation = slot.getByRole("navigation", { name: "Notes" });
+    slot.getByRole("navigation", { name: "Notes" });
     expect(slot.container.querySelector("aside")).toBeNull();
     expect(slot.queryByRole("separator")).toBeNull();
     expect(

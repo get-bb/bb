@@ -73,7 +73,6 @@ type ThreadTimelineTurnMessageDetail = "summary" | "full";
 
 interface ThreadTimelineFromEventsBaseOptions {
   contextOnlyToolCallIds?: ReadonlySet<string>;
-  includeDebugRawEvents: boolean;
   includeProviderUnhandledOperations: boolean;
   /**
    * Tail-only state (`pendingTodos`) is only meaningful on the latest page —
@@ -797,17 +796,6 @@ function convertMessage(
         },
       ];
     }
-    case "debug/raw-event":
-      return [
-        {
-          ...buildTimelineRowBase(message, options.rowIdPrefix),
-          kind: "system",
-          systemKind: "debug",
-          title: message.rawType,
-          detail: JSON.stringify(message.rawEvent),
-          status: null,
-        },
-      ];
     default:
       return assertNever(message);
   }
@@ -1316,7 +1304,6 @@ export function buildThreadTimelineFromEvents(
 ): ThreadTimelineFromEventsResult {
   const projectionOptions = {
     acceptedClientRequestContext: args.acceptedClientRequestContext,
-    includeDebugRawEvents: args.options.includeDebugRawEvents,
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
     contextOnlyToolCallIds: args.options.contextOnlyToolCallIds,
@@ -1383,7 +1370,6 @@ export function buildThreadTimelineTurnDetailsFromEvents(
   args: BuildThreadTimelineTurnDetailsFromEventsArgs,
 ): ThreadTimelineTurnDetailsFromEventsResult {
   const projection = buildEventProjectionEntries(args.events, {
-    includeDebugRawEvents: false,
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
     providerDisplayName: args.options.providerDisplayName,

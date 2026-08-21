@@ -102,12 +102,10 @@ interface StartQaServerArgs {
   logPath: string;
   port: number;
   publicUrl?: string;
-  reuseExisting?: boolean;
 }
 
 interface StartQaServerResult {
-  process: ChildProcess | null;
-  reusedExisting: boolean;
+  process: ChildProcess;
   serverUrl: string;
 }
 
@@ -149,12 +147,12 @@ interface LoadDotEnvResult {
   path: string | null;
 }
 
-export interface BuildStandaloneRuntimeEnvArgs {
+interface BuildStandaloneRuntimeEnvArgs {
   baseEnv: NodeJS.ProcessEnv;
   overrides: NodeJS.ProcessEnv;
 }
 
-export interface ResolveStandaloneParentPidArgs {
+interface ResolveStandaloneParentPidArgs {
   env: NodeJS.ProcessEnv;
   fallbackPid: number;
 }
@@ -225,7 +223,7 @@ export function shellQuote(value: string): string {
   return `'${String(value).replaceAll("'", `'\\''`)}'`;
 }
 
-export function buildShellExports(env: EnvironmentMap): string {
+function buildShellExports(env: EnvironmentMap): string {
   return Object.entries(env)
     .map(([key, value]) => `export ${key}=${shellQuote(String(value))}`)
     .join("\n");
@@ -462,11 +460,11 @@ export async function reservePort(): Promise<number> {
   });
 }
 
-export function buildLocalServerUrl(port: number): string {
+function buildLocalServerUrl(port: number): string {
   return `http://127.0.0.1:${port}`;
 }
 
-export async function runGit(cwd: string, args: string[]): Promise<void> {
+async function runGit(cwd: string, args: string[]): Promise<void> {
   await execFile("git", args, { cwd });
 }
 
@@ -490,17 +488,6 @@ export function spawnLoggedProcess(
   }
 }
 
-async function isServerReady(serverUrl: string): Promise<boolean> {
-  try {
-    const response = await fetch(`${serverUrl}/api/v1/system/config`, {
-      signal: AbortSignal.timeout(1_000),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
 async function readLogExcerpt(logPath: string): Promise<string | null> {
   try {
     const content = await fs.readFile(logPath, "utf8");
@@ -517,14 +504,6 @@ export async function startQaServer(
   args: StartQaServerArgs,
 ): Promise<StartQaServerResult> {
   const serverUrl = buildLocalServerUrl(args.port);
-
-  if (args.reuseExisting && (await isServerReady(serverUrl))) {
-    return {
-      process: null,
-      reusedExisting: true,
-      serverUrl,
-    };
-  }
 
   const serverEnv: NodeJS.ProcessEnv = {
     ...(args.env ?? process.env),
@@ -561,7 +540,6 @@ export async function startQaServer(
 
   return {
     process: serverProcess,
-    reusedExisting: false,
     serverUrl,
   };
 }
@@ -869,7 +847,7 @@ export function buildDaemonRestartCommand(
   );
 }
 
-export async function waitFor<TResult>(
+async function waitFor<TResult>(
   check: () => Promise<TResult | null | false> | TResult | null | false,
   options: WaitForOptions,
 ): Promise<TResult> {
@@ -910,7 +888,7 @@ export async function waitForConnectedHost(serverUrl: string): Promise<Host> {
   );
 }
 
-export async function waitForServerReady(serverUrl: string): Promise<boolean> {
+async function waitForServerReady(serverUrl: string): Promise<boolean> {
   return waitFor(
     async () => {
       try {

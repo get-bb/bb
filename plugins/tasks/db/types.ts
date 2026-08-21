@@ -258,12 +258,6 @@ export interface UpsertTaskThreadInput {
   liveStatus: TaskThreadLiveStatus;
 }
 
-export interface UpdateTaskThreadInput {
-  presetName?: string;
-  title?: string;
-  liveStatus?: TaskThreadLiveStatus;
-}
-
 export interface CreatePresetInput {
   id?: string;
   name: string;

@@ -16,7 +16,6 @@ import {
 
 const BASE_OPTIONS = {
   permissionMode: "full",
-  permissionEscalation: null,
 } as const;
 
 function profileFor(spec: HostDaemonAcpLaunchSpec) {

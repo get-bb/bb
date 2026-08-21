@@ -1,8 +1,7 @@
-import type { TimelineTitle } from "@bb/thread-view";
 import type { ReactNode } from "react";
 import { View } from "react-native";
 import { useTheme } from "@/theme";
-import { Icon, type IconName } from "@/ui";
+import { Icon } from "@/ui";
 import type { TimelineRowRendererItem } from "../../renderers";
 import type { TimelineWorkRowKind } from "../../rows";
 import { TimelineTitleView } from "../../TimelineTitleView";
@@ -22,12 +21,8 @@ import {
 /** Icon size of the leading glyph (web `size-3.5`). */
 const WORK_ROW_ICON_SIZE = ROW_LEADING_ICON_SIZE;
 
-export interface WorkRowShellProps {
+interface WorkRowShellProps {
   item: TimelineRowRendererItem<TimelineWorkRowKind>;
-  /** Title override; defaults to the item's title. */
-  title?: TimelineTitle;
-  /** Leading glyph override; defaults to the kind's glyph. */
-  leadingIcon?: IconName;
   /** Whether the chevron shows and the header toggles the body. */
   expandable: boolean;
   expanded: boolean;
@@ -44,7 +39,6 @@ export interface WorkRowShellProps {
   /** Body shown under the header while expanded. */
   children?: ReactNode;
   accessibilityLabel?: string;
-  testID?: string;
 }
 
 /**
@@ -58,8 +52,6 @@ export interface WorkRowShellProps {
  */
 export function WorkRowShell({
   item,
-  title,
-  leadingIcon,
   expandable,
   expanded,
   onToggle,
@@ -68,13 +60,12 @@ export function WorkRowShell({
   belowHeader,
   children,
   accessibilityLabel,
-  testID,
 }: WorkRowShellProps) {
   const { tokens } = useTheme();
   const row = item.row;
   const dim = isPastWorkRow(row);
   const compactTitles = compactActivityIntentTitles(row, item.parentKind);
-  const rowTestID = testID ?? `timeline-row-${item.kind}`;
+  const rowTestID = `timeline-row-${item.kind}`;
 
   if (compactTitles !== null) {
     const contentStyle = dim ? { opacity: PAST_ROW_DIM_OPACITY } : undefined;
@@ -104,8 +95,8 @@ export function WorkRowShell({
   return (
     <TimelineRowShell depth={item.depth} kind={item.kind} testID={rowTestID}>
       <ExpandableRowHeader
-        title={title ?? item.title}
-        leadingIcon={leadingIcon ?? leadingIconForWorkRow(row)}
+        title={item.title}
+        leadingIcon={leadingIconForWorkRow(row)}
         expandable={expandable}
         expanded={expanded}
         onToggle={onToggle}

@@ -75,14 +75,14 @@ import { createJsonLocalStorage } from "@/lib/browser-storage";
 import {
   DEFAULT_PLUGIN_MENTION_TRIGGER,
   type PluginMentionTrigger,
-} from "@/lib/plugin-mention-triggers";
+} from "@bb/client-core";
 import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
 import {
   arePromptDraftStatesEqual,
   isPromptDraftEmpty,
   type PromptDraftAttachment,
   type PromptDraftState,
-} from "@/lib/prompt-draft";
+} from "@bb/client-core";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { VoiceRecordingBar } from "./VoiceRecordingBar";
@@ -377,14 +377,14 @@ export interface AttachmentsConfig {
   projectId?: string;
 }
 
-export interface PromptBoxZenModeConfig {
+interface PromptBoxZenModeConfig {
   layout?: ZenModeLayout;
   storageKey?: string | null;
   resetKey?: string | number;
   resetOnSubmit?: boolean;
 }
 
-export interface PromptBoxCompactConfig {
+interface PromptBoxCompactConfig {
   isCompact: boolean;
   placeholder?: string;
 }
@@ -396,7 +396,7 @@ export interface HistoryConfig {
   resetKey?: string | number;
 }
 
-export type PromptVoiceState = "idle" | "recording" | "transcribing" | "error";
+type PromptVoiceState = "idle" | "recording" | "transcribing" | "error";
 
 export interface PromptVoiceConfig {
   state: PromptVoiceState;
@@ -422,9 +422,9 @@ export interface PromptBoxHandle {
 
 export type { PromptBoxAction } from "./PromptBoxActionsMenu";
 
-export type MentionMenuPlacement = "top" | "bottom";
+type MentionMenuPlacement = "top" | "bottom";
 
-export interface PromptBoxInternalProps {
+interface PromptBoxInternalProps {
   id?: string;
   value: string;
   mentionRanges: readonly PromptTextMention[];
@@ -497,7 +497,7 @@ interface DismissedTriggerRange {
   hasLeftRange: boolean;
 }
 
-export interface PromptEditorValueKey {
+interface PromptEditorValueKey {
   text: string;
   mentions: readonly PromptTextMention[];
 }

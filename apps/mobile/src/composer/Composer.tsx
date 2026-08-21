@@ -114,7 +114,6 @@ export interface ComposerProps {
    * under the input (the dev showcase, composer near the top of a scroll view).
    */
   typeaheadPlacement?: "above" | "below";
-  autoFocus?: boolean;
   minInputHeight?: number;
   testID?: string;
 }
@@ -153,7 +152,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
       collapsible = false,
       onExpandedChange,
       typeaheadPlacement = "above",
-      autoFocus = false,
       minInputHeight,
       testID = "composer",
     },
@@ -529,7 +527,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
                   onBlur={handleBlur}
                   placeholder={placeholder}
                   editable={!disabled && !voiceBusy}
-                  autoFocus={autoFocus}
                   minHeight={
                     collapsed
                       ? undefined

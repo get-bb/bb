@@ -9,27 +9,17 @@ export interface EmptyStateProps {
   message: string;
   icon?: IconName;
   className?: string;
-  messageClassName?: string;
 }
 
 /** Inline zero-state hint (packages/shared-ui empty-state.tsx `EmptyState`). */
-export function EmptyState({
-  message,
-  icon,
-  className,
-  messageClassName,
-}: EmptyStateProps) {
+export function EmptyState({ message, icon, className }: EmptyStateProps) {
   const { tokens } = useTheme();
   return (
     <View className={cn("flex-row items-center gap-2", className)}>
       {icon ? (
         <Icon name={icon} size={16} color={tokens.subtleForeground} />
       ) : null}
-      <Text
-        className={cn("shrink text-xs text-muted-foreground", messageClassName)}
-      >
-        {message}
-      </Text>
+      <Text className="shrink text-xs text-muted-foreground">{message}</Text>
     </View>
   );
 }

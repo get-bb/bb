@@ -1,10 +1,9 @@
 import type { ReactNode } from "react";
 import { ScrollView, View, type StyleProp, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { cn } from "@/ui";
 import { ConnectionBanner } from "./ConnectionBanner";
 
-export interface ScreenProps {
+interface ScreenProps {
   children: ReactNode;
   /** Wrap content in a ScrollView (default). Lists supply their own. */
   scroll?: boolean;
@@ -14,7 +13,6 @@ export interface ScreenProps {
    * when an inline `contentContainerStyle` is also present.
    */
   contentStyle?: StyleProp<ViewStyle>;
-  contentClassName?: string;
   testID?: string;
 }
 
@@ -27,7 +25,6 @@ export function Screen({
   children,
   scroll = true,
   contentStyle,
-  contentClassName,
   testID,
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
@@ -47,7 +44,7 @@ export function Screen({
           {children}
         </ScrollView>
       ) : (
-        <View className={cn("flex-1", contentClassName)}>{children}</View>
+        <View className="flex-1">{children}</View>
       )}
     </View>
   );

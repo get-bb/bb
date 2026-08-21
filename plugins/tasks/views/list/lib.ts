@@ -5,7 +5,7 @@ import {
   type TaskPriority,
   type TaskStatus,
 } from "../../shared/contract.js";
-import type { TaskSort } from "../../shared/sort.js";
+import type { TaskSort } from "../../shared/pagination.js";
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   backlog: "Backlog",
@@ -30,7 +30,7 @@ export const SORT_LABELS: Record<TaskSort, string> = {
   due: "Due date",
 };
 
-export interface StatusGroup {
+interface StatusGroup {
   status: TaskStatus;
   tasks: Task[];
 }
@@ -118,7 +118,7 @@ export function activeWorkLabel(
   return `${threads.length} agents working`;
 }
 
-export interface LabelOverflow {
+interface LabelOverflow {
   visible: Label[];
   hidden: Label[];
 }

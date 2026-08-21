@@ -6,7 +6,7 @@ import { usePickerSheetMaxHeight } from "./OptionSheet";
 import { PickerTrigger } from "./PickerTrigger";
 import { SheetInput } from "./SheetInput";
 
-export type BranchPickerMode = "local" | "worktree";
+type BranchPickerMode = "local" | "worktree";
 
 export interface BranchPickerProps {
   /** `local`: branch to check out in the project folder; `worktree`: base branch. */
@@ -26,7 +26,6 @@ export interface BranchPickerProps {
   /** Local mode: create a new thread-named branch from `baseName` first. */
   onCreateFrom?: (baseName: string) => void;
   disabled?: boolean;
-  testID?: string;
 }
 
 function describeBranchSelection(
@@ -59,7 +58,6 @@ export function BranchPicker({
   onClear,
   onCreateFrom,
   disabled,
-  testID = "branch-picker",
 }: BranchPickerProps) {
   const sheet = useSheet();
   const { tokens } = useTheme();
@@ -81,7 +79,7 @@ export function BranchPicker({
         onPress={sheet.present}
         disabled={disabled}
         loading={isLoading && branches.length === 0 && selected === null}
-        testID={testID}
+        testID="branch-picker"
         accessibilityLabel={mode === "worktree" ? "Base branch" : "Branch"}
       />
       <Sheet
@@ -97,7 +95,7 @@ export function BranchPicker({
             placeholder="Search branches"
             autoCapitalize="none"
             mono
-            testID={`${testID}-search`}
+            testID="branch-picker-search"
           />
         </View>
         <ListRow
@@ -117,7 +115,7 @@ export function BranchPicker({
             sheet.dismiss();
             onClear();
           }}
-          testID={`${testID}-default`}
+          testID="branch-picker-default"
         />
         {mode === "local" && onCreateFrom && baseForNew ? (
           <ListRow
@@ -134,7 +132,7 @@ export function BranchPicker({
               sheet.dismiss();
               onCreateFrom(baseForNew);
             }}
-            testID={`${testID}-create`}
+            testID="branch-picker-create"
           />
         ) : null}
         <Separator />
@@ -166,7 +164,7 @@ export function BranchPicker({
                 ) : null
               }
               onPress={() => pick(name)}
-              testID={`${testID}-option-${name}`}
+              testID={`branch-picker-option-${name}`}
             />
           );
         })}
@@ -189,7 +187,7 @@ export function BranchPicker({
                     ) : null
                   }
                   onPress={() => pick(name)}
-                  testID={`${testID}-remote-${name}`}
+                  testID={`branch-picker-remote-${name}`}
                 />
               );
             })}

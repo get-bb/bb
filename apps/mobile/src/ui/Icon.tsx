@@ -45,4 +45,4 @@ export function Icon({
   );
 }
 
-export { ICON_MAP, ICON_NAMES, isIconName, type IconName } from "./icon-map";
+export { ICON_NAMES, isIconName, type IconName } from "./icon-map";

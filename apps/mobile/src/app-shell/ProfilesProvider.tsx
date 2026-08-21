@@ -20,10 +20,8 @@ import {
   type ServerProfile,
   type ServerProfilePatch,
 } from "@/lib/profiles";
-import {
-  createProfileQueryClient,
-  installAppStateQueryEvents,
-} from "@/lib/query";
+import { installAppStateQueryEvents } from "@/lib/query/app-state-query-events";
+import { createProfileQueryClient } from "@/lib/query/query-client";
 import type { ProfileClient } from "@/lib/sdk";
 import { getAppProfileClientRegistry } from "./client-registry";
 import { getActiveProfileConnector } from "./connector";

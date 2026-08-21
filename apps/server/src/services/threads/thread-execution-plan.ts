@@ -65,7 +65,6 @@ interface ResolveExistingThreadExecutionPlanArgs {
 }
 
 interface ExistingThreadExecutionPlan {
-  defaultView: ResolvedThreadExecutionOptions;
   resolvedExecution: ResolvedThreadExecutionOptions;
 }
 
@@ -354,7 +353,6 @@ export async function resolveExistingThreadExecutionPlan(
     source: args.executionSource,
   };
   return {
-    defaultView: resolvedExecution,
     resolvedExecution,
   };
 }

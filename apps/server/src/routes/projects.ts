@@ -92,14 +92,13 @@ import {
 } from "../services/projects/project-workspace.js";
 
 type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
-type ProjectResponseRow = ProjectResponseProjectFields;
 const PROJECT_CLONE_TIMEOUT_MS = 20 * 60 * 1000;
 // Stored attachment names embed a timestamp and a random suffix, so the bytes
 // behind a name never change: cache for a year but keep it private.
 const ATTACHMENT_CONTENT_CACHE_CONTROL = "private, immutable, max-age=31536000";
 
 function toProjectResponseProjectFields(
-  project: ProjectResponseRow,
+  project: ProjectResponseProjectFields,
 ): ProjectResponseProjectFields {
   return {
     id: project.id,
@@ -113,7 +112,7 @@ function toProjectResponseProjectFields(
 
 function buildProjectResponsesFromRows(
   deps: AppDeps,
-  projects: ProjectResponseRow[],
+  projects: ProjectResponseProjectFields[],
 ): ProjectResponse[] {
   if (projects.length === 0) {
     return [];
@@ -154,7 +153,7 @@ interface ProjectListOptions {
 function listDiscoverableProjects(
   deps: AppDeps,
   options: ProjectListOptions,
-): ProjectResponseRow[] {
+): ProjectResponseProjectFields[] {
   const projects = listPublicProjects(deps.db);
   if (!options.includePersonal) {
     return projects;
@@ -212,7 +211,7 @@ function buildProjectsWithThreadsResponse(
 
 function buildProjectsWithThreadsResponseFromRows(
   deps: AppDeps,
-  projectRows: ProjectResponseRow[],
+  projectRows: ProjectResponseProjectFields[],
 ): ProjectWithThreadsResponse[] {
   const projects = buildProjectResponsesFromRows(deps, projectRows);
   const projectIds = projects.map((project) => project.id);

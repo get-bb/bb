@@ -53,7 +53,6 @@ const threadStore = vi.hoisted(
   () =>
     new Map<string, { archivedAt: number | null; deletedAt: number | null }>(),
 );
-const experimentState = vi.hoisted(() => ({ enabled: true }));
 const viewportState = vi.hoisted(() => ({ compact: false }));
 const sidebarState = vi.hoisted(() => ({ showing: true }));
 const panelFullScreenState = vi.hoisted(() => ({
@@ -111,10 +110,6 @@ function RootComposeFixture() {
   );
   return <div data-testid="root-compose-view" />;
 }
-
-vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
-  useThreadSplitsEnabled: () => experimentState.enabled,
-}));
 
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => viewportState.compact,
@@ -603,7 +598,6 @@ function renderSplitArea(options: {
 }
 
 beforeEach(() => {
-  experimentState.enabled = true;
   viewportState.compact = false;
   sidebarState.showing = true;
   panelFullScreenState.isMainCollapsed = false;
@@ -639,21 +633,6 @@ describe("SplitThreadArea", () => {
     expect(host.dataset.pluginId).toBe("docs");
     expect(host.dataset.panelPath).toBe("docs");
     expect(host.dataset.flushPageInsets).toBe("true");
-  });
-
-  it("hosts Browser-tab navigation when split workspaces are disabled", async () => {
-    experimentState.enabled = false;
-
-    renderSplitArea({
-      path: "/plugins/docs/docs",
-      layout: pluginSplitLayout(),
-      routeContent: docsContent,
-    });
-
-    expect(
-      (await screen.findByTestId("plugin-browser-host")).dataset
-        .flushPageInsets,
-    ).toBe("true");
   });
 
   it("applies spotlight pane actions to the targeted open split and preference", async () => {

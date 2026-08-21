@@ -6,6 +6,7 @@ import type {
   ExistingThreadExecutionInputSources,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { wsManager } from "@/lib/ws";
@@ -100,14 +101,6 @@ function makeBannerTimeline(): ThreadTimelineResponse {
   };
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-  return { promise, resolve };
-}
-
 const executionInputSources = {
   model: "explicit",
   serviceTier: "client-preference",
@@ -141,7 +134,7 @@ describe("thread runtime mutations", () => {
   it("keeps the existing timeline while an edit is pending and lets connected realtime own success", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
-    const edit = deferred<{
+    const edit = createDeferredPromise<{
       ok: true;
       operationId: string;
       requestSequence: number;
@@ -207,7 +200,7 @@ describe("thread runtime mutations", () => {
     async (_label, useMutationHook, getSdkMethod) => {
       const { queryClient, wrapper } = createQueryClientTestHarness();
       const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
-      const cancellation = deferred<{ ok: true }>();
+      const cancellation = createDeferredPromise<{ ok: true }>();
       vi.mocked(getSdkMethod()).mockReturnValueOnce(cancellation.promise);
       queryClient.setQueryData(
         threadTimelineQueryKey("thread-1"),

@@ -419,7 +419,7 @@ describe("pruneClosedSessions", () => {
     hostId: string;
     instanceId: string;
   }): string {
-    const session = openSession(args.db, noopNotifier, {
+    const session = openSession(args.db, {
       hostId: args.hostId,
       instanceId: args.instanceId,
       hostName: "test-host",
@@ -458,7 +458,7 @@ describe("pruneClosedSessions", () => {
       hostId: host.id,
       instanceId: "inst-fresh",
     });
-    const active = openSession(db, noopNotifier, {
+    const active = openSession(db, {
       hostId: host.id,
       instanceId: "inst-active",
       hostName: "test-host",
@@ -497,7 +497,7 @@ describe("pruneClosedSessions", () => {
     const { db, host } = setup();
     const now = Date.now();
 
-    const active = openSession(db, noopNotifier, {
+    const active = openSession(db, {
       hostId: host.id,
       instanceId: "inst-active",
       hostName: "test-host",

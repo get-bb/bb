@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   normalizePluginMentionTriggers,
   type PluginMentionTrigger,
-} from "@/lib/plugin-mention-triggers";
+} from "@bb/client-core";
 import { pluginContributionsQueryKey } from "./query-keys";
 
 /**

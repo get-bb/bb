@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect } from "react";
 import type { DiffPresentation } from "@/components/code/code-rendering";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
@@ -22,7 +22,7 @@ import type {
   EnvironmentFilePreviewSource,
   FilePreviewLineRange,
   WorkspaceFilePreviewStatusLabel,
-} from "@/lib/file-preview";
+} from "@bb/client-core";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { DiffFilesPanel } from "./git-diff/DiffFilesPanel";
 import { clearDiffFileCardStates } from "./git-diff/diffFilesStore";
@@ -55,10 +55,6 @@ interface GitDiffTabContentProps {
   onSelectionAddToChat?: (text: string) => void;
   pendingGitDiffScrollPath?: string | null;
   workspaceRootPath?: string | null;
-}
-
-interface ThreadInfoTabContentProps {
-  metadataContent: ReactNode;
 }
 
 interface WorkspaceFilePreviewTabContentProps {
@@ -353,12 +349,6 @@ export function GitDiffTabContent({
       />
     </div>
   );
-}
-
-export function ThreadInfoTabContent({
-  metadataContent,
-}: ThreadInfoTabContentProps) {
-  return <div className="flex min-h-0 flex-1 flex-col">{metadataContent}</div>;
 }
 
 export function WorkspaceFilePreviewTabContent({

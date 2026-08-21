@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import {
-  TASK_PRIORITIES,
   TASK_STATUSES,
   type Label,
   type Task,

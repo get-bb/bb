@@ -30,7 +30,6 @@ export interface PillProps {
   variant: PillVariant;
   size?: PillSize;
   className?: string;
-  textClassName?: string;
   /** Strings truncate to one line; nodes render inside the pill as-is. */
   children: ReactNode;
 }
@@ -39,7 +38,6 @@ export function Pill({
   variant,
   size = "default",
   className,
-  textClassName,
   children,
 }: PillProps) {
   return (
@@ -53,7 +51,7 @@ export function Pill({
     >
       {typeof children === "string" || typeof children === "number" ? (
         <Text
-          className={cn("text-xs", PILL_TEXT_CLASS[variant], textClassName)}
+          className={cn("text-xs", PILL_TEXT_CLASS[variant])}
           numberOfLines={1}
         >
           {children}

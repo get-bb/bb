@@ -1,12 +1,7 @@
-import { buildThreadEventRow } from "@bb/domain";
-import type { ThreadEvent, ThreadEventType } from "@bb/domain";
+import type { ThreadEvent } from "@bb/domain";
 import type { EventMeta } from "./event-decode.js";
 import { messageId } from "./format-helpers.js";
-import type {
-  EventProjectionDebugRawEventMessage,
-  EventProjectionErrorMessage,
-  EventProjectionMessage,
-} from "./event-projection-types.js";
+import type { EventProjectionErrorMessage } from "./event-projection-types.js";
 
 interface ReconnectState {
   attempt: number;
@@ -90,64 +85,4 @@ export function parseErrorMessage(
         }
       : {}),
   };
-}
-
-export function isDuplicateEventType(eventType: ThreadEventType): boolean {
-  return (
-    eventType === "turn/started" ||
-    eventType === "turn/completed" ||
-    eventType === "item/commandExecution/outputDelta" ||
-    eventType === "item/fileChange/outputDelta" ||
-    eventType === "turn/diff/updated"
-  );
-}
-
-export function isIgnoredItemStartEvent(decoded: ThreadEvent): boolean {
-  if (decoded.type !== "item/started") return false;
-  return (
-    decoded.item.type === "reasoning" || decoded.item.type === "agentMessage"
-  );
-}
-
-export function isIgnoredItemCompletedEvent(decoded: ThreadEvent): boolean {
-  if (decoded.type !== "item/completed") return false;
-
-  if (decoded.item.type === "reasoning") {
-    return (
-      decoded.item.summary.length === 0 && decoded.item.content.length === 0
-    );
-  }
-
-  if (decoded.item.type === "agentMessage") {
-    return decoded.item.text.length === 0;
-  }
-
-  return false;
-}
-
-export function appendDebugEvent(
-  out: EventProjectionMessage[],
-  decoded: ThreadEvent,
-  meta: EventMeta,
-  reason: EventProjectionDebugRawEventMessage["reason"],
-): void {
-  out.push({
-    kind: "debug/raw-event",
-    id: messageId(decoded.threadId, "debug", `${meta.seq}:${decoded.type}`),
-    threadId: decoded.threadId,
-    sourceSeqStart: meta.seq,
-    sourceSeqEnd: meta.seq,
-    createdAt: meta.createdAt,
-    scope: decoded.scope,
-    rawType: decoded.type,
-    rawEvent: buildThreadEventRow({
-      id: meta.id,
-      scope: decoded.scope,
-      threadId: decoded.threadId,
-      seq: meta.seq,
-      createdAt: meta.createdAt,
-      event: decoded,
-    }),
-    reason,
-  });
 }

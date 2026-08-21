@@ -6,13 +6,7 @@
 import type { DynamicTool, InstructionMode, ReasoningLevel } from "@bb/domain";
 import { buildShellEnvOverrides } from "@bb/provider-bridge-protocol/bridge-kit";
 
-export type PiReasoningLevel =
-  | "off"
-  | "low"
-  | "medium"
-  | "high"
-  | "xhigh"
-  | "max";
+type PiReasoningLevel = "off" | "low" | "medium" | "high" | "xhigh" | "max";
 
 // BB's reasoning ladder is a superset of Pi's thinking levels. The only name
 // that differs is BB's "none" (no extended thinking), which Pi calls "off".
@@ -43,14 +37,14 @@ function toPiThinkingLevel(
  * satisfied by the canonical wire options (`bridgeExecutionOptionsSchema`
  * output).
  */
-export interface PiSessionOptions {
+interface PiSessionOptions {
   model?: string | undefined;
   reasoningLevel?: ReasoningLevel | undefined;
   instructions?: string | undefined;
   envVars?: Record<string, string> | undefined;
 }
 
-export interface BuildPiSessionParamsArgs {
+interface BuildPiSessionParamsArgs {
   threadId: string;
   cwd: string;
   options: PiSessionOptions;

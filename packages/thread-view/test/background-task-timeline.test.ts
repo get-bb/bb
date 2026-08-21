@@ -36,7 +36,6 @@ function buildTimeline(
     contextWindowEvents: [],
     events,
     options: {
-      includeDebugRawEvents: false,
       includeNestedRows: options.includeNestedRows ?? true,
       includeProviderUnhandledOperations: false,
       isLatestPage: true,

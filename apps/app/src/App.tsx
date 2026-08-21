@@ -166,10 +166,6 @@ export function LegacyToolsPathRedirect() {
   );
 }
 
-export function LegacyPluginBrowseRedirect() {
-  return <Navigate to={TOOLS_PLUGINS_ROUTE_PATH} replace />;
-}
-
 function hashTargetId(hash: string): string | null {
   if (hash.length <= 1) return null;
   try {
@@ -326,7 +322,7 @@ function AppRoutes() {
           <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<ToolsView />} />
           <Route
             path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
-            element={<LegacyPluginBrowseRedirect />}
+            element={<ExtensionsLandingRedirect />}
           />
           <Route
             path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH}

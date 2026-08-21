@@ -15,12 +15,8 @@ import {
   terminalsQueryKey,
   type TerminalQueryScope,
 } from "./query-keys";
-import { requireEnabledQueryArg } from "./query-helpers";
+import { requireEnabledQueryArg, type QueryOptions } from "./query-helpers";
 import { REALTIME_OWNED_NO_FOCUS_QUERY_POLICY } from "./query-policies";
-
-interface QueryOptions {
-  enabled?: boolean;
-}
 
 type ScopedCreateTerminalRequest = Omit<CreateTerminalRequest, "target">;
 

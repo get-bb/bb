@@ -8,7 +8,7 @@ import {
   normalizeFilePreviewMimeType,
   type FilePreview,
   type FilePreviewTarget,
-} from "./file-preview";
+} from "@bb/client-core";
 import {
   buildThreadHostFileContentUrl,
   buildThreadStorageContentUrl,

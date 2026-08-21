@@ -65,8 +65,8 @@ import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import {
+  isClaudePlanModePrompt,
   permissionDisplayForPromptMode,
-  shouldDisablePermissionPickerForPromptMode,
 } from "@bb/client-core";
 
 const NEW_THREAD_PROMPT_BOX_MIN_HEIGHT = 80;
@@ -163,7 +163,7 @@ export interface NewThreadModeConfig {
   header?: ReactNode;
 }
 
-export interface NewThreadPromptBoxUIProps {
+interface NewThreadPromptBoxUIProps {
   /** id forwarded to the underlying PromptBoxInternal (used for autofocus targeting). */
   id?: string;
 
@@ -374,7 +374,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
     [promptModeInput],
   );
   const permissionPickerDisabledByPlanMode =
-    shouldDisablePermissionPickerForPromptMode(promptModeInput);
+    isClaudePlanModePrompt(promptModeInput);
   const submitTitle = isSubmitting
     ? "Submitting..."
     : execution.model.isLoading
@@ -510,7 +510,6 @@ export function ThreadEnvSlot({
           variant="option"
           muted
           value={branch.value}
-          currentBranch={branch.currentBranch}
           isCreatingNew={branch.isNew}
           options={branch.options}
           remoteOptions={branch.remoteOptions}
@@ -592,19 +591,19 @@ export function ProjectlessMachineSlot({
   );
 }
 
-export type NewThreadConnectedEnvironmentConfig = Omit<
+type NewThreadConnectedEnvironmentConfig = Omit<
   NewThreadEnvironmentConfig,
   "host" | "isLocal" | "machines"
 >;
 
-export type NewThreadConnectedBranchConfig = Omit<
+type NewThreadConnectedBranchConfig = Omit<
   NewThreadBranchConfig,
   "onCreate"
 > & {
   onCreate: () => void;
 };
 
-export interface NewThreadConnectedModeConfig {
+interface NewThreadConnectedModeConfig {
   environment: NewThreadConnectedEnvironmentConfig;
   branch: NewThreadConnectedBranchConfig;
   worktree: NewThreadWorktreeConfig;

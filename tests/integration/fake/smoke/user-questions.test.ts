@@ -61,7 +61,6 @@ describe.sequential("fake provider user-question integration", () => {
       {
         adapterFactory: (providerId) =>
           createFakeAdapter({
-            displayName: providerId,
             id: providerId,
             supportsNativeUserQuestion: true,
           }),

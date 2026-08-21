@@ -21,17 +21,11 @@ import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-siz
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
-import { isThreadRead } from "@/lib/thread-read-state";
+import { isThreadRead } from "@bb/client-core";
 import { useThreadActions } from "./ThreadActionsProvider";
 
 interface ThreadActionsMenuBaseProps {
   thread: Thread;
-  /**
-   * Pass `false` to hide the Delete entry (e.g. sidebar rows that intentionally
-   * route users to the thread detail page for destructive actions). Defaults
-   * to true.
-   */
-  canDelete?: boolean;
   /**
    * When provided, adds a leading "Open in split" entry (the split feature's
    * second entry point, alongside cmd-click). Omitted where splits don't apply
@@ -49,7 +43,6 @@ export interface ThreadActionsMenuResponsiveAction {
 interface ThreadActionsMenuProps extends ThreadActionsMenuBaseProps {
   onOpenChange?: (open: boolean) => void;
   triggerClassName?: string;
-  align?: "start" | "center" | "end";
   /**
    * Contextual toolbar actions that move into this menu when a split header is
    * too narrow to show them inline.
@@ -133,7 +126,6 @@ function ThreadActionMenuSeparator({
 
 function ThreadActionsMenuItems({
   thread,
-  canDelete = true,
   onOpenInSplit,
   responsiveActions = [],
   surface,
@@ -234,20 +226,18 @@ function ThreadActionsMenuItems({
       >
         {isArchived ? "Unarchive" : "Archive"}
       </ThreadActionMenuItem>
-      {canDelete ? (
-        <ThreadActionMenuItem
-          surface={surface}
-          icon="Trash2"
-          variant="destructive"
-          onSelect={() => {
-            window.setTimeout(() => {
-              requestDelete(thread);
-            }, 0);
-          }}
-        >
-          Delete
-        </ThreadActionMenuItem>
-      ) : null}
+      <ThreadActionMenuItem
+        surface={surface}
+        icon="Trash2"
+        variant="destructive"
+        onSelect={() => {
+          window.setTimeout(() => {
+            requestDelete(thread);
+          }, 0);
+        }}
+      >
+        Delete
+      </ThreadActionMenuItem>
     </>
   );
 }
@@ -299,12 +289,10 @@ export function ThreadArchiveQuickAction({
 
 export function ThreadActionsMenu({
   thread,
-  canDelete = true,
   onOpenInSplit,
   responsiveActions,
   onOpenChange,
   triggerClassName,
-  align = "end",
 }: ThreadActionsMenuProps) {
   return (
     <DropdownMenu onOpenChange={onOpenChange}>
@@ -329,10 +317,9 @@ export function ThreadActionsMenu({
           />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align={align}>
+      <DropdownMenuContent align="end">
         <ThreadActionsMenuItems
           thread={thread}
-          canDelete={canDelete}
           onOpenInSplit={onOpenInSplit}
           responsiveActions={responsiveActions}
           surface="dropdown"
@@ -360,7 +347,6 @@ export function ThreadActionsContextMenu(props: ThreadActionsContextMenuProps) {
 function ThreadActionsCompactLongPressMenu({
   children,
   thread,
-  canDelete = true,
   onOpenInSplit,
   onOpenChange,
 }: ThreadActionsContextMenuProps) {
@@ -371,7 +357,6 @@ function ThreadActionsCompactLongPressMenu({
       items={
         <ThreadActionsMenuItems
           thread={thread}
-          canDelete={canDelete}
           onOpenInSplit={onOpenInSplit}
           surface="dropdown"
         />
@@ -385,7 +370,6 @@ function ThreadActionsCompactLongPressMenu({
 function ThreadActionsDesktopContextMenu({
   children,
   thread,
-  canDelete = true,
   onOpenInSplit,
   onOpenChange,
 }: ThreadActionsContextMenuProps) {
@@ -395,7 +379,6 @@ function ThreadActionsDesktopContextMenu({
       <ContextMenuContent aria-label="Thread actions">
         <ThreadActionsMenuItems
           thread={thread}
-          canDelete={canDelete}
           onOpenInSplit={onOpenInSplit}
           surface="context"
         />

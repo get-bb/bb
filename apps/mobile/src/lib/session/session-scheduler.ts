@@ -24,10 +24,6 @@ export interface SessionSchedulerDeps {
   cookieStore: CookieStoreLike;
   /** Defaults to `fetchDesktopSession` from @bb/connect-client. */
   fetchSession?: (credential: ConnectCredential) => Promise<DesktopSession>;
-  now?: () => number;
-  leadMs?: number;
-  minDelayMs?: number;
-  retryDelayMs?: number;
 }
 
 export interface SessionScheduler {
@@ -62,7 +58,8 @@ function describe(error: unknown): string {
 /**
  * Keeps a bb connect desktop-session cookie alive for one connect profile
  * (mirrors apps/desktop/src/connect-session-renewal.ts). The gate issues a
- * one-hour cookie; we re-mint `leadMs` before expiry and on demand. Every
+ * one-hour cookie; we re-mint `SESSION_RENEWAL_LEAD_MS` before expiry and on
+ * demand. Every
  * `start()`/`stop()` bumps a generation so a slow renewal for a profile the
  * user already left cannot reschedule itself.
  */
@@ -70,10 +67,6 @@ export function createSessionScheduler(
   deps: SessionSchedulerDeps,
 ): SessionScheduler {
   const fetchSession = deps.fetchSession ?? fetchDesktopSession;
-  const now = deps.now ?? Date.now;
-  const leadMs = deps.leadMs ?? SESSION_RENEWAL_LEAD_MS;
-  const minDelayMs = deps.minDelayMs ?? SESSION_MIN_RENEWAL_DELAY_MS;
-  const retryDelayMs = deps.retryDelayMs ?? SESSION_RETRY_DELAY_MS;
   const listeners = new Set<(state: SessionState) => void>();
 
   let generation = 0;
@@ -105,7 +98,7 @@ export function createSessionScheduler(
         if (generation !== startedGeneration) return;
         void renewNow();
       },
-      Math.max(0, at - now()),
+      Math.max(0, at - Date.now()),
     );
   }
 
@@ -128,7 +121,10 @@ export function createSessionScheduler(
       const expiresAt = session.cookie.expiresAt;
       setState({ status: "authenticated", expiresAt });
       scheduleAt(
-        Math.max(now() + minDelayMs, expiresAt - leadMs),
+        Math.max(
+          Date.now() + SESSION_MIN_RENEWAL_DELAY_MS,
+          expiresAt - SESSION_RENEWAL_LEAD_MS,
+        ),
         startedGeneration,
       );
       return state;
@@ -142,7 +138,7 @@ export function createSessionScheduler(
         return state;
       }
       if (mode === "verify") return state;
-      const retryAt = now() + retryDelayMs;
+      const retryAt = Date.now() + SESSION_RETRY_DELAY_MS;
       setState({ status: "error", detail: describe(error), retryAt });
       scheduleAt(retryAt, startedGeneration);
       return state;
@@ -200,7 +196,7 @@ export function createSessionScheduler(
       }
       if (
         state.status === "authenticated" &&
-        state.expiresAt - now() <= leadMs
+        state.expiresAt - Date.now() <= SESSION_RENEWAL_LEAD_MS
       ) {
         void renewNow();
       }

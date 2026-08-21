@@ -1,5 +1,5 @@
 import type { ThreadTimelineLocalFileLink } from "@/components/thread/timeline";
-import type { FilePreviewLineRange } from "./file-preview";
+import type { FilePreviewLineRange } from "@bb/client-core";
 import {
   isAbsoluteFilePathWithinRoot,
   normalizeAbsoluteFilePath,

@@ -8,7 +8,7 @@ import {
   buildProviderCliIssue,
   isProviderCliIssue,
   isProviderCliUpdateIssue,
-  providerCliUpdateEntries,
+  providerCliEntries,
   type ProviderCliIssue,
 } from "@/components/provider-cli/provider-cli-install";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
@@ -73,7 +73,7 @@ interface UseUpdateInventoryOptions {
 export function buildUpdateInventoryProviderIssues(
   providerStatus: ProviderCliStatusResponse,
 ): ProviderCliIssue[] {
-  return providerCliUpdateEntries(providerStatus)
+  return providerCliEntries(providerStatus)
     .map(buildProviderCliIssue)
     .filter(isProviderCliIssue);
 }

@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { createSentMessageEditOperationId } from "./sent-message-edit-operation-id";
+import { nanoid } from "nanoid";
 import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
@@ -42,7 +42,7 @@ import { appToast } from "@/components/ui/app-toast";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
-import { isThreadForkable } from "@/lib/fork-thread-request";
+import { isThreadForkable } from "@bb/client-core";
 import { useRequestEnvironmentAction } from "../../hooks/mutations/environment-mutations";
 import {
   useMarkThreadRead,
@@ -122,7 +122,7 @@ import {
   promptInputToDraft,
   type PromptDraftAttachment,
   type PromptDraftState,
-} from "@/lib/prompt-draft";
+} from "@bb/client-core";
 import { createLocalStorageEnumStorage } from "@/lib/browser-storage";
 import {
   getProjectComposeRoutePath,
@@ -179,7 +179,7 @@ import {
   SIDE_CHAT_PLUGIN_ID,
   SIDE_CHAT_PLUGIN_PANEL_ACTION_ID,
 } from "@/lib/side-chat-plugin";
-import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
+import { RightPanelFileTabIcon } from "@/components/secondary-panel/RightPanelFileTabIcon";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
@@ -215,7 +215,7 @@ import {
   normalizeExperimentalFileOpenOptions,
   toFilePreviewLineRange,
 } from "@/lib/live-file-navigation";
-import { getFilePreviewLineRangeStart } from "@/lib/file-preview";
+import { getFilePreviewLineRangeStart } from "@bb/client-core";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import {
   useThreadStorageBrowser,
@@ -245,7 +245,6 @@ import {
   buildOpenInEditorHandler,
   resolveEnvironmentOpenContext,
   resolveWorkspaceChangedFileOpenTarget,
-  resolveThreadWorkspacePreviewRootPath,
   resolveThreadWorkspaceOpenPath,
 } from "./threadWorkspaceOpenPath";
 import {
@@ -278,11 +277,9 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   DEFAULT_TERMINAL_COLS,
   DEFAULT_TERMINAL_ROWS,
-  terminalStatusLabel,
 } from "@/components/thread/terminal/useThreadTerminalController";
 import {
   getActiveFixedSecondaryTab,
-  getOpenFixedSecondaryTab,
   useSetThreadSecondaryPanelSelection,
   useToggleThreadSecondaryPanelSelection,
 } from "./threadSecondaryPanelSelection";
@@ -320,9 +317,6 @@ type MergeBasePickerOpenChangeHandler = NonNullable<
   ContextBannerMergeBaseConfig["onPickerOpenChange"]
 >;
 type SecondaryPanelChangeHandler = (panel: ThreadSecondaryPanelTab) => void;
-type NullableSecondaryPanelChangeHandler = (
-  panel: ThreadSecondaryPanelTab | null,
-) => void;
 type OpenInEditorHandler = NonNullable<
   ReturnType<typeof buildOpenInEditorHandler>
 >;
@@ -361,10 +355,6 @@ function getPullRequestMergeLoadingTitle(
   }
 }
 
-interface RightPanelFileTabIconProps {
-  path: string;
-}
-
 interface ThreadDetailViewPageProps {
   surface: "page";
 }
@@ -376,21 +366,6 @@ interface ThreadDetailViewPaneProps extends ThreadRoutePathArgs {
 type ThreadDetailViewProps =
   | ThreadDetailViewPageProps
   | ThreadDetailViewPaneProps;
-
-type ThreadDetailViewInternalProps =
-  | (ThreadDetailViewPageProps & ThreadRoutePathArgs)
-  | ThreadDetailViewPaneProps;
-
-function RightPanelFileTabIcon({ path }: RightPanelFileTabIconProps) {
-  const visual = resolveRightPanelFileVisual({ path });
-  return (
-    <Icon
-      name={visual.iconName}
-      className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-      aria-hidden
-    />
-  );
-}
 
 interface BuildMarkdownPreviewLinkRoutingArgs {
   baseDir: string | undefined;
@@ -520,11 +495,7 @@ function RoutedThreadDetailView() {
 
   return (
     <DefaultPaneContextProvider>
-      <ThreadDetailViewInternal
-        surface="page"
-        projectId={projectId}
-        threadId={threadId}
-      />
+      <ThreadDetailViewInternal projectId={projectId} threadId={threadId} />
     </DefaultPaneContextProvider>
   );
 }
@@ -536,7 +507,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   return <RoutedThreadDetailView />;
 }
 
-function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
+function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   const { projectId, threadId } = props;
   const { isFocused, navigateInPane, onRequestClose, isBoundedPane } =
     usePaneContext();
@@ -592,10 +563,9 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
   });
-  const openFixedSecondaryTab = getOpenFixedSecondaryTab({
-    activeFixedSecondaryTab,
-    isSecondaryPanelOpen: isPersistedSecondaryPanelOpen,
-  });
+  const openFixedSecondaryTab = isPersistedSecondaryPanelOpen
+    ? activeFixedSecondaryTab
+    : null;
   const retainedTerminalId = getRetainedTerminalTabId({
     activeTab: activeFixedSecondaryTab,
     isPanelOpen: isPersistedSecondaryPanelOpen,
@@ -637,11 +607,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     threadId,
     threadId,
   );
-  const setThreadSecondaryPanelForSurface =
-    useCallback<NullableSecondaryPanelChangeHandler>(
-      (panel) => setThreadSecondaryPanel(panel),
-      [setThreadSecondaryPanel],
-    );
   const toggleDefaultPersistedSecondaryPanel =
     useToggleThreadSecondaryPanelSelection(threadId, threadId);
   // Treat placeholder data (a full thread row primed from the sidebar list
@@ -707,9 +672,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     threadStorageFilesError,
     threadStorageRootPath,
   } = useThreadStorageViewer({
-    activePath: null,
     fileListEnabled: shouldLoadThreadStorageFiles,
-    filePreviewEnabled: false,
     threadId,
   });
   const terminalsListQuery = useThreadTerminals(threadId, {
@@ -1087,7 +1050,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       setSentMessageEditHostElement(null);
       setSentMessageEditSession({
         draft: editDraft,
-        operationId: createSentMessageEditOperationId(),
+        operationId: nanoid(),
         target,
         threadId: current.thread.id,
       });
@@ -1294,7 +1257,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       ? (thread?.environmentId ?? undefined)
       : undefined,
     mergeBaseBranchOptionsEnabled: hasRequestedMergeBaseOptions,
-    setThreadSecondaryPanel: setThreadSecondaryPanelForSurface,
+    setThreadSecondaryPanel,
     threadId,
   });
   const {
@@ -1317,7 +1280,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     openPersistedDiffFile,
     openPersistedDiffPanel,
     openPersistedHostFile,
-    openPersistedPanel: setThreadSecondaryPanelForSurface,
+    openPersistedPanel: setThreadSecondaryPanel,
     openPersistedStorageFile,
     openPersistedWorkspaceFile,
     togglePersistedPanel: toggleDefaultPersistedSecondaryPanel,
@@ -1575,9 +1538,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       ),
     [handleSecondaryPanelChange, threadFixedViewTabs],
   );
-  const handleSecondaryPanelFocus = useCallback(() => {
-    touchFixedPanelTabsState();
-  }, [touchFixedPanelTabsState]);
   // Click handler for inserted mention pills in the follow-up composer: threads
   // navigate, files open an in-app preview (workspace files need an
   // environment; thread-storage files need thread storage). Returning null
@@ -1653,9 +1613,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     }
     return desktopInfo.onOpenNewTab(handleOpenNewTab);
   }, [handleOpenNewTab, isFocused]);
-  const handleOpenBrowser = useCallback(() => {
-    openBrowserTabAndReveal();
-  }, [openBrowserTabAndReveal]);
   const handleStartTerminal = useCallback(() => {
     if (!canCreateTerminal || createTerminal.isPending || !threadId) {
       return;
@@ -1797,12 +1754,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     },
     [openSecondaryPanelDiffFile, openWorkspaceFile],
   );
-  const handleCommitClick = useCallback(
-    (sha: string) => {
-      openSecondaryPanelCommitDiff(sha);
-    },
-    [openSecondaryPanelCommitDiff],
-  );
   const workStatusQuery = useEnvironmentWorkStatus(
     thread?.environmentId,
     requestedMergeBaseBranch,
@@ -1942,9 +1893,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     }),
     [threadEnvironmentIsLocal, threadEnvironmentHost],
   );
-  const workspacePreviewRootPath = resolveThreadWorkspacePreviewRootPath({
-    environment,
-  });
+  const workspacePreviewRootPath = environment?.path ?? null;
   const threadOpenContext = resolveEnvironmentOpenContext({
     environment,
     serverOrigin: window.location.origin,
@@ -2064,7 +2013,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     handleMergeBaseBranchChange,
     showBranchComparisonUi,
     showMergeBase,
-    mergeBaseBranch,
   } = useEnvironmentMergeBase({
     environment,
     selectedMergeBaseBranch,
@@ -2489,7 +2437,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       ? environment.status
       : null;
   const threadGitStatusDisplay = getGitStatusDisplay(workspaceStatus, {
-    mergeBaseBranch,
+    mergeBaseBranch: effectiveMergeBaseBranch,
     showBranchComparison: showBranchComparisonUi,
     error: workspaceStatusError,
     workspaceUnavailable,
@@ -2562,7 +2510,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         <ThreadActionsMenu
           thread={thread}
           triggerClassName={HEADER_ICON_BUTTON_CLASS}
-          align="end"
           responsiveActions={
             includeResponsiveActions ? responsiveHeaderActions : undefined
           }
@@ -2608,13 +2555,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       environmentHostId={environment?.hostId}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
-      onEscapeEmptyPrompt={undefined}
       onPullRequestMerge={handlePullRequestMerge}
       onPullRequestDraft={handlePullRequestDraft}
       onPullRequestReady={handlePullRequestReady}
       pullRequestMergeMethod={pullRequestMergeMethod}
       onChangedFileClick={handleChangedFileClick}
-      openThreadDiffPanel={openSecondaryPanelDiffPanel}
       projectId={projectId}
       resolveMentionLink={resolveMentionLink}
       workspaceChangedFilesSection={
@@ -2695,7 +2640,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             onSelect={handleSelectFileSearchResult}
             onOpenBrowser={() => {
               activateTab(tab.id);
-              handleOpenBrowser();
+              openBrowserTabAndReveal();
             }}
             onStartTerminal={
               canCreateTerminal
@@ -2862,7 +2807,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             statusLabel:
               session === undefined || session.status === "running"
                 ? null
-                : terminalStatusLabel(session),
+                : session.status,
             onSelect: () => handleActivateTerminalTab(tab.terminalId),
             onClose: () => handleCloseTerminalTab(tab.terminalId),
           };
@@ -2991,7 +2936,9 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               onChangedFileClick: canUseGitUi
                 ? handleChangedFileClick
                 : undefined,
-              onCommitClick: canUseGitUi ? handleCommitClick : undefined,
+              onCommitClick: canUseGitUi
+                ? openSecondaryPanelCommitDiff
+                : undefined,
             }}
             secondaryPanel={{
               activeTab: activeFixedSecondaryTab,
@@ -3018,7 +2965,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               pendingGitDiffCommitSha,
               pendingGitDiffScrollPath,
               requestedMergeBaseBranch,
-              onPanelFocus: handleSecondaryPanelFocus,
+              onPanelFocus: touchFixedPanelTabsState,
             }}
             timeline={{
               activeThinking,

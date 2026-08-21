@@ -39,10 +39,8 @@ type CodexInteractiveResponse =
   | FileChangeRequestApprovalResponse
   | PermissionsRequestApprovalResponse;
 
-function assertNever(value: never, message?: string): never {
-  throw new ProviderResponseEncodeError(
-    message ?? `Unexpected value: ${String(value)}`,
-  );
+function assertNever(value: never): never {
+  throw new ProviderResponseEncodeError(`Unexpected value: ${String(value)}`);
 }
 
 function requireGrantedPermissions(

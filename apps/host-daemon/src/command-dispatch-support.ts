@@ -4,7 +4,6 @@ import {
   bridgeLaunchProcessKey,
   type AgentRuntime,
   type AgentRuntimeBridgeLaunch,
-  type AgentRuntimeOptions,
 } from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
@@ -223,18 +222,15 @@ export async function shutdownDefaultProviderMaintenanceRuntimes(): Promise<void
   await Promise.all(runtimes.map((runtime) => runtime.shutdown()));
 }
 
-export async function defaultListModels(
-  args: {
-    providerId: string;
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-    bridgeLaunch: AgentRuntimeBridgeLaunch;
-  },
-  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
-): Promise<{
+export async function defaultListModels(args: {
+  providerId: string;
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
+}): Promise<{
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }> {
-  const runtime = defaultProviderMaintenanceRuntime(args, options);
+  const runtime = defaultProviderMaintenanceRuntime(args);
   try {
     return await runtime.listModels(args);
   } catch (error) {
@@ -248,15 +244,11 @@ export async function defaultListModels(
   }
 }
 
-function defaultProviderMaintenanceRuntime(
-  args: {
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-    bridgeLaunch: AgentRuntimeBridgeLaunch;
-  },
-  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] },
-): AgentRuntime {
+function defaultProviderMaintenanceRuntime(args: {
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
+}): AgentRuntime {
   const runtimeKey =
-    `${options.bridgeBundleDir ?? ""}` +
     `#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}` +
     (args.acpLaunchSpec !== undefined
       ? `#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`
@@ -264,7 +256,6 @@ function defaultProviderMaintenanceRuntime(
   let runtime = defaultProviderMaintenanceRuntimes.get(runtimeKey);
   if (!runtime) {
     runtime = createAgentRuntime({
-      bridgeBundleDir: options.bridgeBundleDir,
       workspacePath: process.cwd(),
       onEvent: () => {},
       onToolCall: async () => ({
@@ -277,59 +268,43 @@ function defaultProviderMaintenanceRuntime(
   return runtime;
 }
 
-export async function defaultProviderHealth(
-  args: {
-    providerId: string;
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-    bridgeLaunch: AgentRuntimeBridgeLaunch;
-    cwd?: string;
-  },
-  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
-): Promise<ProviderHealthResult> {
-  return await defaultProviderMaintenanceRuntime(args, options).providerHealth(
-    args,
-  );
+export async function defaultProviderHealth(args: {
+  providerId: string;
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
+  cwd?: string;
+}): Promise<ProviderHealthResult> {
+  return await defaultProviderMaintenanceRuntime(args).providerHealth(args);
 }
 
-export async function defaultProviderUsage(
-  args: {
-    providerId: string;
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-    bridgeLaunch: AgentRuntimeBridgeLaunch;
-    cwd?: string;
-  },
-  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
-): Promise<ProviderUsageResult> {
-  return await defaultProviderMaintenanceRuntime(args, options).providerUsage(
-    args,
-  );
+export async function defaultProviderUsage(args: {
+  providerId: string;
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
+  cwd?: string;
+}): Promise<ProviderUsageResult> {
+  return await defaultProviderMaintenanceRuntime(args).providerUsage(args);
 }
 
-export async function defaultProviderInstallationStatus(
-  args: {
-    providerId: string;
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-    bridgeLaunch: AgentRuntimeBridgeLaunch;
-    cwd?: string;
-    requirement?: "thread_rewind";
-  },
-  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
-): Promise<ExperimentalProviderInstallationStatus> {
-  const runtime = defaultProviderMaintenanceRuntime(args, options);
+export async function defaultProviderInstallationStatus(args: {
+  providerId: string;
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
+  cwd?: string;
+  requirement?: "thread_rewind";
+}): Promise<ExperimentalProviderInstallationStatus> {
+  const runtime = defaultProviderMaintenanceRuntime(args);
   return await runtime.providerInstallationStatus(args);
 }
 
-export async function defaultProviderInstallationRun(
-  args: {
-    providerId: string;
-    action: "install" | "update";
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-    bridgeLaunch: AgentRuntimeBridgeLaunch;
-    cwd?: string;
-  },
-  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
-): Promise<ExperimentalProviderInstallationRunResult> {
-  const runtime = defaultProviderMaintenanceRuntime(args, options);
+export async function defaultProviderInstallationRun(args: {
+  providerId: string;
+  action: "install" | "update";
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
+  cwd?: string;
+}): Promise<ExperimentalProviderInstallationRunResult> {
+  const runtime = defaultProviderMaintenanceRuntime(args);
   return await runtime.providerInstallationRun(args);
 }
 

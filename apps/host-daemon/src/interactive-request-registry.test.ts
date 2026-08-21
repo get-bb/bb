@@ -4,16 +4,11 @@ import type {
   PendingInteractionResolution,
 } from "@bb/domain";
 import type { HostDaemonInteractiveRequestResponse } from "@bb/host-daemon-contract";
+import { createDeferredPromise } from "@bb/test-helpers";
 import {
   InteractiveRequestRegistry,
   InteractiveRequestRegistryError,
 } from "./interactive-request-registry.js";
-
-interface Deferred<TValue> {
-  promise: Promise<TValue>;
-  reject: (error: Error) => void;
-  resolve: (value: TValue) => void;
-}
 
 interface CreateRegistryArgs {
   registerRequest: (
@@ -23,20 +18,6 @@ interface CreateRegistryArgs {
 
 interface CreateCommandApprovalRequestArgs {
   providerRequestId?: string;
-}
-
-function createDeferred<TValue>(): Deferred<TValue> {
-  let resolveValue: (value: TValue) => void = () => {};
-  let rejectValue: (error: Error) => void = () => {};
-  const promise = new Promise<TValue>((resolve, reject) => {
-    resolveValue = resolve;
-    rejectValue = reject;
-  });
-  return {
-    promise,
-    reject: rejectValue,
-    resolve: resolveValue,
-  };
 }
 
 function createCommandApprovalRequest(
@@ -104,7 +85,8 @@ describe("InteractiveRequestRegistry", () => {
 
   it("deduplicates registration retries for the same live provider request", async () => {
     const request = createCommandApprovalRequest();
-    const registration = createDeferred<HostDaemonInteractiveRequestResponse>();
+    const registration =
+      createDeferredPromise<HostDaemonInteractiveRequestResponse>();
     const registrations: PendingInteractionCreate[] = [];
     const registry = createRegistry({
       registerRequest: async (registeredRequest) => {

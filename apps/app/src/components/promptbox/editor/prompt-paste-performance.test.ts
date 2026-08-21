@@ -54,7 +54,7 @@ import {
 import { findUltracodeRanges } from "./prompt-decoration-extension";
 import { findActiveTrigger } from "@bb/client-core";
 import type { TypeaheadTrigger } from "@bb/client-core";
-import { serializePromptDraftStorage } from "@/lib/prompt-draft";
+import { serializePromptDraftStorage } from "@bb/client-core";
 import { generateMinifiedJsFixture } from "@/test/fixtures/minified-js-paste-fixture";
 
 const PERF_ENABLED = process.env.PROMPTBOX_PERF === "1";

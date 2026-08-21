@@ -29,13 +29,10 @@ function renderAssistantMessage(text: string, streaming: boolean) {
           id="msg_stream"
           threadId="thr_stream"
           turnId="turn_stream"
-          sourceSeqStart={1}
-          sourceSeqEnd={2}
           showActions={false}
           mobileActionDisplay="overflow"
           streaming={streaming}
           text={text}
-          turnRequest={null}
         />
       </RouteNavigationProvider>
     </MemoryRouter>
@@ -53,13 +50,10 @@ function renderAssistantMessage(text: string, streaming: boolean) {
               id="msg_stream"
               threadId="thr_stream"
               turnId="turn_stream"
-              sourceSeqStart={1}
-              sourceSeqEnd={2}
               showActions={false}
               mobileActionDisplay="overflow"
               streaming={nextStreaming}
               text={nextText}
-              turnRequest={null}
             />
           </RouteNavigationProvider>
         </MemoryRouter>,

@@ -1,5 +1,4 @@
 import { isUtf8 } from "node:buffer";
-import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import mimeTypes from "mime-types";
@@ -10,6 +9,7 @@ import {
   ExpectedCommandDispatchError,
 } from "../command-dispatch-support.js";
 import { isFsErrorWithCode } from "../fs-errors.js";
+import { sha256Hex } from "../sha256-hex.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
 
 const IMAGE_FILE_SIZE_LIMIT_BYTES = 10 * 1024 * 1024;
@@ -17,11 +17,7 @@ export const NON_IMAGE_FILE_SIZE_LIMIT_BYTES = 25 * 1024 * 1024;
 
 type FileContentEncoding = "base64" | "utf8";
 
-export function sha256Hex(contents: Buffer): string {
-  return createHash("sha256").update(contents).digest("hex");
-}
-
-export interface ReadFileForTransportResult {
+interface ReadFileForTransportResult {
   content: string;
   contentEncoding: FileContentEncoding;
   mimeType?: string;
@@ -31,19 +27,19 @@ export interface ReadFileForTransportResult {
   sizeBytes: number;
 }
 
-export interface ReadFileMetadataForTransportResult {
+interface ReadFileMetadataForTransportResult {
   modifiedAtMs: number;
   path: string;
   sizeBytes: number;
 }
 
-export interface ReadFileForTransportArgs {
+interface ReadFileForTransportArgs {
   resolvedPath: string;
   resultPath: string;
   rootPath?: string;
 }
 
-export interface ReadRootRelativeFileForTransportArgs {
+interface ReadRootRelativeFileForTransportArgs {
   rootPath: string;
   relativePath: string;
   dotfiles: HostReadFileRelativeDotfilePolicy;
@@ -64,7 +60,7 @@ interface ValidatedRootRelativePath {
   resultPath: string;
 }
 
-export interface ReadFileFromGitRefArgs {
+interface ReadFileFromGitRefArgs {
   /** Repo root — `git -C <rootPath>` runs from here. Must be absolute. */
   rootPath: string;
   /** Path under rootPath the caller asked about. Must be absolute, must be within rootPath. */
@@ -87,7 +83,10 @@ function getFileSizeLimitBytes(mimeType?: string): number {
     : NON_IMAGE_FILE_SIZE_LIMIT_BYTES;
 }
 
-function isPathWithinRoot(candidatePath: string, rootPath: string): boolean {
+export function isPathWithinRoot(
+  candidatePath: string,
+  rootPath: string,
+): boolean {
   const relativePath = path.relative(rootPath, candidatePath);
   return (
     relativePath === "" ||
@@ -109,7 +108,7 @@ function getContentEncoding(
   return "base64";
 }
 
-function createMissingTargetError(
+export function createMissingTargetError(
   resultPath: string,
 ): ExpectedCommandDispatchError {
   return new ExpectedCommandDispatchError(

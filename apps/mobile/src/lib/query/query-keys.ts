@@ -8,13 +8,13 @@ import type { ThreadOriginKind } from "@bb/domain";
  */
 const SYSTEM_CONFIG_QUERY_KEY = "systemConfig";
 const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
-export const SYSTEM_PROVIDERS_QUERY_KEY = "systemProviders";
+const SYSTEM_PROVIDERS_QUERY_KEY = "systemProviders";
 export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
 export const SIDEBAR_NAVIGATION_QUERY_KEY = "sidebarNavigation";
 const PROJECTS_QUERY_KEY = "projects";
-export const PROJECT_PATHS_QUERY_KEY = "projectPaths";
-export const PROJECT_SOURCE_BRANCHES_QUERY_KEY = "projectSourceBranches";
-export const PROJECT_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
+const PROJECT_PATHS_QUERY_KEY = "projectPaths";
+const PROJECT_SOURCE_BRANCHES_QUERY_KEY = "projectSourceBranches";
+const PROJECT_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
   "projectDefaultExecutionOptions";
 export const THREADS_QUERY_KEY = "threads";
 const THREAD_SEARCH_QUERY_KEY = "threadSearch";
@@ -28,25 +28,25 @@ const THREAD_QUEUED_MESSAGES_QUERY_KEY = "threadQueuedMessages";
 const THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
   "threadDefaultExecutionOptions";
 const ENVIRONMENTS_QUERY_KEY = "environments";
-export const ENVIRONMENT_QUERY_KEY = "environment";
-export const ENVIRONMENT_WORK_STATUS_QUERY_KEY = "environmentWorkStatus";
-export const ENVIRONMENT_PULL_REQUEST_QUERY_KEY = "environmentPullRequest";
-export const ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY =
+const ENVIRONMENT_QUERY_KEY = "environment";
+const ENVIRONMENT_WORK_STATUS_QUERY_KEY = "environmentWorkStatus";
+const ENVIRONMENT_PULL_REQUEST_QUERY_KEY = "environmentPullRequest";
+const ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY =
   "environmentMergeBaseBranches";
 const HOSTS_QUERY_KEY = "hosts";
-export const HOST_QUERY_KEY = "host";
-export const HOST_DIRECTORY_QUERY_KEY = "hostDirectory";
-export const HOST_CLONE_DEFAULT_PATH_QUERY_KEY = "hostCloneDefaultPath";
+const HOST_QUERY_KEY = "host";
+const HOST_DIRECTORY_QUERY_KEY = "hostDirectory";
+const HOST_CLONE_DEFAULT_PATH_QUERY_KEY = "hostCloneDefaultPath";
 
 /** Second key segment of the paginated archived thread list. */
 export const ARCHIVED_THREADS_LIST_KIND = "archivedList";
 
-export interface SystemProvidersQueryKeyArgs {
+interface SystemProvidersQueryKeyArgs {
   environmentId?: string | null;
   hostId?: string | null;
 }
 
-export interface SystemExecutionOptionsQueryKeyArgs {
+interface SystemExecutionOptionsQueryKeyArgs {
   environmentId: string | null;
   hostId: string | null;
   providerId: string | null;
@@ -62,36 +62,34 @@ export interface ThreadListQueryFilters {
   limit?: number;
 }
 
-export interface ThreadSearchQueryFilters {
+interface ThreadSearchQueryFilters {
   query: string;
   limitPerGroup: number;
 }
 
 export type ArchivedThreadsKindFilter = "all" | "root" | "child";
 
-export interface ArchivedThreadsListFilters {
+interface ArchivedThreadsListFilters {
   projectId?: string;
   kind?: ArchivedThreadsKindFilter;
 }
 
-export type SystemConfigQueryKey = readonly [typeof SYSTEM_CONFIG_QUERY_KEY];
-export type SystemVersionQueryKey = readonly [typeof SYSTEM_VERSION_QUERY_KEY];
-export type SystemProvidersQueryKey = readonly [
+type SystemConfigQueryKey = readonly [typeof SYSTEM_CONFIG_QUERY_KEY];
+type SystemVersionQueryKey = readonly [typeof SYSTEM_VERSION_QUERY_KEY];
+type SystemProvidersQueryKey = readonly [
   typeof SYSTEM_PROVIDERS_QUERY_KEY,
   string | null,
   string | null,
 ];
-export type SystemExecutionOptionsQueryKey = readonly [
+type SystemExecutionOptionsQueryKey = readonly [
   typeof SYSTEM_EXECUTION_OPTIONS_QUERY_KEY,
   string | null,
   string | null,
   string | null,
 ];
-export type SidebarNavigationQueryKey = readonly [
-  typeof SIDEBAR_NAVIGATION_QUERY_KEY,
-];
-export type ProjectsQueryKey = readonly [typeof PROJECTS_QUERY_KEY];
-export type ProjectPathsQueryKey = readonly [
+type SidebarNavigationQueryKey = readonly [typeof SIDEBAR_NAVIGATION_QUERY_KEY];
+type ProjectsQueryKey = readonly [typeof PROJECTS_QUERY_KEY];
+type ProjectPathsQueryKey = readonly [
   typeof PROJECT_PATHS_QUERY_KEY,
   string,
   string | null,
@@ -101,11 +99,11 @@ export type ProjectPathsQueryKey = readonly [
   boolean,
   boolean,
 ];
-export type ProjectPathsQueryKeyPrefix = readonly [
+type ProjectPathsQueryKeyPrefix = readonly [
   typeof PROJECT_PATHS_QUERY_KEY,
   string,
 ];
-export type ProjectSourceBranchesQueryKey = readonly [
+type ProjectSourceBranchesQueryKey = readonly [
   typeof PROJECT_SOURCE_BRANCHES_QUERY_KEY,
   string,
   string,
@@ -113,37 +111,35 @@ export type ProjectSourceBranchesQueryKey = readonly [
   number,
   string,
 ];
-export type ProjectSourceBranchesQueryKeyPrefix = readonly [
+type ProjectSourceBranchesQueryKeyPrefix = readonly [
   typeof PROJECT_SOURCE_BRANCHES_QUERY_KEY,
   string,
 ];
-export type ProjectDefaultExecutionOptionsQueryKey = readonly [
+type ProjectDefaultExecutionOptionsQueryKey = readonly [
   typeof PROJECT_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY,
   string,
 ];
-export type ThreadsQueryKey = readonly [typeof THREADS_QUERY_KEY];
-export type ThreadListQueryKey = readonly [
+type ThreadsQueryKey = readonly [typeof THREADS_QUERY_KEY];
+type ThreadListQueryKey = readonly [
   typeof THREADS_QUERY_KEY,
   ThreadListQueryFilters,
 ];
-export type ArchivedThreadsListQueryKey = readonly [
+type ArchivedThreadsListQueryKey = readonly [
   typeof THREADS_QUERY_KEY,
   typeof ARCHIVED_THREADS_LIST_KIND,
   ArchivedThreadsListFilters,
 ];
-export type ThreadSearchQueryKey = readonly [
+type ThreadSearchQueryKey = readonly [
   typeof THREAD_SEARCH_QUERY_KEY,
   ThreadSearchQueryFilters,
 ];
-export type ThreadSearchQueryKeyPrefix = readonly [
-  typeof THREAD_SEARCH_QUERY_KEY,
-];
-export type ThreadQueryKey = readonly [typeof THREAD_QUERY_KEY, string];
-export type ThreadDetailBootstrapQueryKey = readonly [
+type ThreadSearchQueryKeyPrefix = readonly [typeof THREAD_SEARCH_QUERY_KEY];
+type ThreadQueryKey = readonly [typeof THREAD_QUERY_KEY, string];
+type ThreadDetailBootstrapQueryKey = readonly [
   typeof THREAD_DETAIL_BOOTSTRAP_QUERY_KEY,
   string,
 ];
-export type ThreadTimelineQueryKey = readonly [
+type ThreadTimelineQueryKey = readonly [
   typeof THREAD_TIMELINE_QUERY_KEY,
   string,
 ];
@@ -154,68 +150,65 @@ export interface ThreadTimelineTurnSummaryDetailsQueryIdentity {
   threadId: string;
   turnId: string;
 }
-export type ThreadTimelineTurnSummaryDetailsQueryKey = readonly [
+type ThreadTimelineTurnSummaryDetailsQueryKey = readonly [
   typeof THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
   string,
   string,
   number,
   number,
 ];
-export type ThreadTimelineTurnSummaryDetailsQueryKeyPrefix = readonly [
+type ThreadTimelineTurnSummaryDetailsQueryKeyPrefix = readonly [
   typeof THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
   string,
 ];
-export type ThreadPendingInteractionsQueryKey = readonly [
+type ThreadPendingInteractionsQueryKey = readonly [
   typeof THREAD_PENDING_INTERACTIONS_QUERY_KEY,
   string,
 ];
-export type ThreadQueuedMessagesQueryKey = readonly [
+type ThreadQueuedMessagesQueryKey = readonly [
   typeof THREAD_QUEUED_MESSAGES_QUERY_KEY,
   string,
 ];
-export type ThreadDefaultExecutionOptionsQueryKey = readonly [
+type ThreadDefaultExecutionOptionsQueryKey = readonly [
   typeof THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY,
   string,
 ];
-export type EnvironmentsQueryKey = readonly [typeof ENVIRONMENTS_QUERY_KEY];
-export type EnvironmentQueryKey = readonly [
-  typeof ENVIRONMENT_QUERY_KEY,
-  string,
-];
+type EnvironmentsQueryKey = readonly [typeof ENVIRONMENTS_QUERY_KEY];
+type EnvironmentQueryKey = readonly [typeof ENVIRONMENT_QUERY_KEY, string];
 /** `[key, environmentId, mergeBaseBranch | null]`. */
-export type EnvironmentWorkStatusQueryKey = readonly [
+type EnvironmentWorkStatusQueryKey = readonly [
   typeof ENVIRONMENT_WORK_STATUS_QUERY_KEY,
   string,
   string | null,
 ];
-export type EnvironmentWorkStatusQueryKeyPrefix = readonly [
+type EnvironmentWorkStatusQueryKeyPrefix = readonly [
   typeof ENVIRONMENT_WORK_STATUS_QUERY_KEY,
   string,
 ];
-export type EnvironmentPullRequestQueryKey = readonly [
+type EnvironmentPullRequestQueryKey = readonly [
   typeof ENVIRONMENT_PULL_REQUEST_QUERY_KEY,
   string,
 ];
 /** `[key, environmentId, query, limit, selectedBranch]`. */
-export type EnvironmentMergeBaseBranchesQueryKey = readonly [
+type EnvironmentMergeBaseBranchesQueryKey = readonly [
   typeof ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY,
   string,
   string,
   number,
   string,
 ];
-export type EnvironmentMergeBaseBranchesQueryKeyPrefix = readonly [
+type EnvironmentMergeBaseBranchesQueryKeyPrefix = readonly [
   typeof ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY,
   string,
 ];
-export type HostsQueryKey = readonly [typeof HOSTS_QUERY_KEY];
-export type HostQueryKey = readonly [typeof HOST_QUERY_KEY, string];
-export type HostDirectoryQueryKey = readonly [
+type HostsQueryKey = readonly [typeof HOSTS_QUERY_KEY];
+type HostQueryKey = readonly [typeof HOST_QUERY_KEY, string];
+type HostDirectoryQueryKey = readonly [
   typeof HOST_DIRECTORY_QUERY_KEY,
   string | null,
   string | null,
 ];
-export type HostCloneDefaultPathQueryKey = readonly [
+type HostCloneDefaultPathQueryKey = readonly [
   typeof HOST_CLONE_DEFAULT_PATH_QUERY_KEY,
   string | null,
   string | null,
@@ -550,16 +543,16 @@ export function allHostCloneDefaultPathQueryKeyPrefix(): readonly [
 // --- Composer typeahead (Phase 4b) -------------------------------------------
 
 const PLUGIN_CONTRIBUTIONS_QUERY_KEY = "pluginContributions";
-export const PLUGIN_MENTION_SEARCH_QUERY_KEY = "pluginMentionSearch";
+const PLUGIN_MENTION_SEARCH_QUERY_KEY = "pluginMentionSearch";
 const ENVIRONMENT_PATHS_QUERY_KEY = "environmentPaths";
-export const THREAD_STORAGE_PATHS_QUERY_KEY = "threadStoragePaths";
-export const PROJECT_COMMANDS_QUERY_KEY = "projectCommands";
+const THREAD_STORAGE_PATHS_QUERY_KEY = "threadStoragePaths";
+const PROJECT_COMMANDS_QUERY_KEY = "projectCommands";
 
-export type PluginContributionsQueryKey = readonly [
+type PluginContributionsQueryKey = readonly [
   typeof PLUGIN_CONTRIBUTIONS_QUERY_KEY,
 ];
 /** `[key, trigger, query, projectId | null, threadId | null]`. */
-export type PluginMentionSearchQueryKey = readonly [
+type PluginMentionSearchQueryKey = readonly [
   typeof PLUGIN_MENTION_SEARCH_QUERY_KEY,
   string,
   string,
@@ -567,7 +560,7 @@ export type PluginMentionSearchQueryKey = readonly [
   string | null,
 ];
 /** `[key, environmentId, query, limit, includeFiles, includeDirectories]`. */
-export type EnvironmentPathsQueryKey = readonly [
+type EnvironmentPathsQueryKey = readonly [
   typeof ENVIRONMENT_PATHS_QUERY_KEY,
   string,
   string,
@@ -575,12 +568,12 @@ export type EnvironmentPathsQueryKey = readonly [
   boolean,
   boolean,
 ];
-export type EnvironmentPathsQueryKeyPrefix = readonly [
+type EnvironmentPathsQueryKeyPrefix = readonly [
   typeof ENVIRONMENT_PATHS_QUERY_KEY,
   string,
 ];
 /** `[key, threadId, query, limit, includeFiles, includeDirectories]`. */
-export type ThreadStoragePathsQueryKey = readonly [
+type ThreadStoragePathsQueryKey = readonly [
   typeof THREAD_STORAGE_PATHS_QUERY_KEY,
   string,
   string,
@@ -588,12 +581,8 @@ export type ThreadStoragePathsQueryKey = readonly [
   boolean,
   boolean,
 ];
-export type ThreadStoragePathsQueryKeyPrefix = readonly [
-  typeof THREAD_STORAGE_PATHS_QUERY_KEY,
-  string,
-];
 /** `[key, projectId, providerId, environmentId | null, hostId | null]`. */
-export type ProjectCommandsQueryKey = readonly [
+type ProjectCommandsQueryKey = readonly [
   typeof PROJECT_COMMANDS_QUERY_KEY,
   string,
   string,
@@ -643,12 +632,6 @@ export function environmentPathsQueryKeyPrefix(
   return [ENVIRONMENT_PATHS_QUERY_KEY, environmentId];
 }
 
-export function allEnvironmentPathsQueryKeyPrefix(): readonly [
-  typeof ENVIRONMENT_PATHS_QUERY_KEY,
-] {
-  return [ENVIRONMENT_PATHS_QUERY_KEY];
-}
-
 export function threadStoragePathsQueryKey(
   threadId: string,
   query: string,
@@ -664,12 +647,6 @@ export function threadStoragePathsQueryKey(
     includeFiles,
     includeDirectories,
   ];
-}
-
-export function threadStoragePathsQueryKeyPrefix(
-  threadId: string,
-): ThreadStoragePathsQueryKeyPrefix {
-  return [THREAD_STORAGE_PATHS_QUERY_KEY, threadId];
 }
 
 export function allThreadStoragePathsQueryKeyPrefix(): readonly [
@@ -704,46 +681,37 @@ export function allProjectCommandsQueryKeyPrefix(): readonly [
 const THREAD_TABS_QUERY_KEY = "threadTabs";
 
 /** `GET /threads/:id/tabs` (the server-synced panel tab strip). */
-export type ThreadTabsQueryKey = readonly [
-  typeof THREAD_TABS_QUERY_KEY,
-  string,
-];
+type ThreadTabsQueryKey = readonly [typeof THREAD_TABS_QUERY_KEY, string];
 
 export function threadTabsQueryKey(threadId: string): ThreadTabsQueryKey {
   return [THREAD_TABS_QUERY_KEY, threadId];
 }
 
-export function allThreadTabsQueryKeyPrefix(): readonly [
-  typeof THREAD_TABS_QUERY_KEY,
-] {
-  return [THREAD_TABS_QUERY_KEY];
-}
-
 // --- Diff tab (Phase 6) --------------------------------------------------------
 
-export const ENVIRONMENT_DIFF_FILES_QUERY_KEY = "environmentDiffFiles";
+const ENVIRONMENT_DIFF_FILES_QUERY_KEY = "environmentDiffFiles";
 const ENVIRONMENT_DIFF_PATCH_QUERY_KEY = "environmentDiffPatch";
 
 /** `[key, environmentId, targetType | null, targetKey | null]`. */
-export type EnvironmentDiffFilesQueryKey = readonly [
+type EnvironmentDiffFilesQueryKey = readonly [
   typeof ENVIRONMENT_DIFF_FILES_QUERY_KEY,
   string,
   string | null,
   string | null,
 ];
-export type EnvironmentDiffFilesQueryKeyPrefix = readonly [
+type EnvironmentDiffFilesQueryKeyPrefix = readonly [
   typeof ENVIRONMENT_DIFF_FILES_QUERY_KEY,
   string,
 ];
 /** `[key, environmentId, targetType | null, targetKey | null, path]`. */
-export type EnvironmentDiffPatchQueryKey = readonly [
+type EnvironmentDiffPatchQueryKey = readonly [
   typeof ENVIRONMENT_DIFF_PATCH_QUERY_KEY,
   string,
   string | null,
   string | null,
   string,
 ];
-export type EnvironmentDiffPatchQueryKeyPrefix = readonly [
+type EnvironmentDiffPatchQueryKeyPrefix = readonly [
   typeof ENVIRONMENT_DIFF_PATCH_QUERY_KEY,
   string,
 ];
@@ -794,71 +762,53 @@ export function environmentDiffPatchQueryKeyPrefix(
   return [ENVIRONMENT_DIFF_PATCH_QUERY_KEY, environmentId];
 }
 
-export function allEnvironmentDiffPatchQueryKeyPrefix(): readonly [
-  typeof ENVIRONMENT_DIFF_PATCH_QUERY_KEY,
-] {
-  return [ENVIRONMENT_DIFF_PATCH_QUERY_KEY];
-}
-
 // --- Files: storage browser + file previews (Phase 6) --------------------------
 
-export const THREAD_STORAGE_FILES_QUERY_KEY = "threadStorageFiles";
+const THREAD_STORAGE_FILES_QUERY_KEY = "threadStorageFiles";
 const ENVIRONMENT_FILE_PREVIEW_QUERY_KEY = "environmentFilePreview";
-export const THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY = "threadStorageFilePreview";
+const THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY = "threadStorageFilePreview";
 const THREAD_HOST_FILE_PREVIEW_QUERY_KEY = "threadHostFilePreview";
-export const PROJECT_FILE_PREVIEW_QUERY_KEY = "projectFilePreview";
+const PROJECT_FILE_PREVIEW_QUERY_KEY = "projectFilePreview";
 
 /** `[key, threadId, query, limit]` — the flat storage file list. */
-export type ThreadStorageFilesQueryKey = readonly [
+type ThreadStorageFilesQueryKey = readonly [
   typeof THREAD_STORAGE_FILES_QUERY_KEY,
   string,
   string,
   number,
 ];
-export type ThreadStorageFilesQueryKeyPrefix = readonly [
-  typeof THREAD_STORAGE_FILES_QUERY_KEY,
-  string,
-];
 /** `[key, environmentId, path, sourceKey]` — a workspace file read through `/diff/file`. */
-export type EnvironmentFilePreviewQueryKey = readonly [
+type EnvironmentFilePreviewQueryKey = readonly [
   typeof ENVIRONMENT_FILE_PREVIEW_QUERY_KEY,
   string,
   string,
   string,
 ];
-export type EnvironmentFilePreviewQueryKeyPrefix = readonly [
+type EnvironmentFilePreviewQueryKeyPrefix = readonly [
   typeof ENVIRONMENT_FILE_PREVIEW_QUERY_KEY,
   string,
 ];
 /** `[key, threadId, path]`. */
-export type ThreadStorageFilePreviewQueryKey = readonly [
+type ThreadStorageFilePreviewQueryKey = readonly [
   typeof THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY,
   string,
-  string,
-];
-export type ThreadStorageFilePreviewQueryKeyPrefix = readonly [
-  typeof THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY,
   string,
 ];
 /** `[key, threadId, path]` — an absolute path on the thread's host. */
-export type ThreadHostFilePreviewQueryKey = readonly [
+type ThreadHostFilePreviewQueryKey = readonly [
   typeof THREAD_HOST_FILE_PREVIEW_QUERY_KEY,
   string,
-  string,
-];
-export type ThreadHostFilePreviewQueryKeyPrefix = readonly [
-  typeof THREAD_HOST_FILE_PREVIEW_QUERY_KEY,
   string,
 ];
 /** `[key, projectId, environmentId | null, hostId | null, path]`. */
-export type ProjectFilePreviewQueryKey = readonly [
+type ProjectFilePreviewQueryKey = readonly [
   typeof PROJECT_FILE_PREVIEW_QUERY_KEY,
   string,
   string | null,
   string | null,
   string,
 ];
-export type ProjectFilePreviewQueryKeyPrefix = readonly [
+type ProjectFilePreviewQueryKeyPrefix = readonly [
   typeof PROJECT_FILE_PREVIEW_QUERY_KEY,
   string,
 ];
@@ -869,12 +819,6 @@ export function threadStorageFilesQueryKey(
   limit: number,
 ): ThreadStorageFilesQueryKey {
   return [THREAD_STORAGE_FILES_QUERY_KEY, threadId, query, limit];
-}
-
-export function threadStorageFilesQueryKeyPrefix(
-  threadId: string,
-): ThreadStorageFilesQueryKeyPrefix {
-  return [THREAD_STORAGE_FILES_QUERY_KEY, threadId];
 }
 
 export function allThreadStorageFilesQueryKeyPrefix(): readonly [
@@ -897,23 +841,11 @@ export function environmentFilePreviewQueryKeyPrefix(
   return [ENVIRONMENT_FILE_PREVIEW_QUERY_KEY, environmentId];
 }
 
-export function allEnvironmentFilePreviewQueryKeyPrefix(): readonly [
-  typeof ENVIRONMENT_FILE_PREVIEW_QUERY_KEY,
-] {
-  return [ENVIRONMENT_FILE_PREVIEW_QUERY_KEY];
-}
-
 export function threadStorageFilePreviewQueryKey(
   threadId: string,
   path: string,
 ): ThreadStorageFilePreviewQueryKey {
   return [THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY, threadId, path];
-}
-
-export function threadStorageFilePreviewQueryKeyPrefix(
-  threadId: string,
-): ThreadStorageFilePreviewQueryKeyPrefix {
-  return [THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY, threadId];
 }
 
 export function allThreadStorageFilePreviewQueryKeyPrefix(): readonly [
@@ -927,18 +859,6 @@ export function threadHostFilePreviewQueryKey(
   path: string,
 ): ThreadHostFilePreviewQueryKey {
   return [THREAD_HOST_FILE_PREVIEW_QUERY_KEY, threadId, path];
-}
-
-export function threadHostFilePreviewQueryKeyPrefix(
-  threadId: string,
-): ThreadHostFilePreviewQueryKeyPrefix {
-  return [THREAD_HOST_FILE_PREVIEW_QUERY_KEY, threadId];
-}
-
-export function allThreadHostFilePreviewQueryKeyPrefix(): readonly [
-  typeof THREAD_HOST_FILE_PREVIEW_QUERY_KEY,
-] {
-  return [THREAD_HOST_FILE_PREVIEW_QUERY_KEY];
 }
 
 export function projectFilePreviewQueryKey(
@@ -970,8 +890,8 @@ export function allProjectFilePreviewQueryKeyPrefix(): readonly [
 
 // --- Terminals (Phase 6) ------------------------------------------------------
 
-export const TERMINALS_QUERY_KEY = "terminals";
-export const TERMINAL_SESSION_QUERY_KEY = "terminalSession";
+const TERMINALS_QUERY_KEY = "terminals";
+const TERMINAL_SESSION_QUERY_KEY = "terminalSession";
 
 /** What a terminal list is scoped to (mirrors the web `TerminalQueryScope`). */
 export type TerminalQueryScope =
@@ -980,12 +900,12 @@ export type TerminalQueryScope =
   | { kind: "host_path"; cwd?: string; hostId: string };
 
 /** `[key, scope]`: `GET /terminals?threadId|environmentId|hostId`. */
-export type TerminalsQueryKey = readonly [
+type TerminalsQueryKey = readonly [
   typeof TERMINALS_QUERY_KEY,
   TerminalQueryScope,
 ];
 /** `[key, terminalId]`: `GET /terminals/:id` (one attached session). */
-export type TerminalSessionQueryKey = readonly [
+type TerminalSessionQueryKey = readonly [
   typeof TERMINAL_SESSION_QUERY_KEY,
   string,
 ];
@@ -1017,66 +937,60 @@ export function allTerminalSessionQueryKeyPrefix(): readonly [
 // --- Plugins, marketplaces, skills (Phase 7) -----------------------------------
 
 const PLUGINS_QUERY_KEY = "plugins";
-export const PLUGIN_SETTINGS_QUERY_KEY = "pluginSettings";
+const PLUGIN_SETTINGS_QUERY_KEY = "pluginSettings";
 const PLUGIN_UPDATES_QUERY_KEY = "pluginUpdates";
 const PLUGIN_LOGS_QUERY_KEY = "pluginLogs";
-export const PLUGIN_CATALOG_SEARCH_QUERY_KEY = "pluginCatalogSearch";
+const PLUGIN_CATALOG_SEARCH_QUERY_KEY = "pluginCatalogSearch";
 const PLUGIN_CATALOG_INSTALL_PLAN_QUERY_KEY = "pluginCatalogInstallPlan";
 const PLUGIN_MARKETPLACES_QUERY_KEY = "pluginMarketplaces";
-export const PROJECT_SKILLS_QUERY_KEY = "projectSkills";
-export const SKILL_FILES_QUERY_KEY = "skillFiles";
-export const SKILL_CONTENT_QUERY_KEY = "skillContent";
+const PROJECT_SKILLS_QUERY_KEY = "projectSkills";
+const SKILL_FILES_QUERY_KEY = "skillFiles";
+const SKILL_CONTENT_QUERY_KEY = "skillContent";
 const SKILLS_REGISTRY_QUERY_KEY = "skillsRegistry";
 const SKILLS_REGISTRY_ENTRY_QUERY_KEY = "skillsRegistryEntry";
 const SKILLS_REGISTRY_DETAIL_QUERY_KEY = "skillsRegistryDetail";
 
 /** `GET /plugins` (every installed plugin). */
-export type PluginsQueryKey = readonly [typeof PLUGINS_QUERY_KEY];
+type PluginsQueryKey = readonly [typeof PLUGINS_QUERY_KEY];
 /** `[key, pluginId]`: `GET /plugins/:id/settings`. */
-export type PluginSettingsQueryKey = readonly [
+type PluginSettingsQueryKey = readonly [
   typeof PLUGIN_SETTINGS_QUERY_KEY,
   string,
 ];
 /** `GET /plugins/updates` (the last update check per plugin). */
-export type PluginUpdatesQueryKey = readonly [typeof PLUGIN_UPDATES_QUERY_KEY];
+type PluginUpdatesQueryKey = readonly [typeof PLUGIN_UPDATES_QUERY_KEY];
 /** `[key, pluginId, tail]`: `GET /plugins/:id/logs?tail=`. */
-export type PluginLogsQueryKey = readonly [
+type PluginLogsQueryKey = readonly [
   typeof PLUGIN_LOGS_QUERY_KEY,
   string,
   number,
 ];
-export type PluginLogsQueryKeyPrefix = readonly [
-  typeof PLUGIN_LOGS_QUERY_KEY,
-  string,
-];
+type PluginLogsQueryKeyPrefix = readonly [typeof PLUGIN_LOGS_QUERY_KEY, string];
 /** `[key, query]`: `GET /plugin-catalog/search?q=`. */
-export type PluginCatalogSearchQueryKey = readonly [
+type PluginCatalogSearchQueryKey = readonly [
   typeof PLUGIN_CATALOG_SEARCH_QUERY_KEY,
   string,
 ];
 /** `[key, entryId, marketplace | null]`: `GET /plugin-catalog/install-plan`. */
-export type PluginCatalogInstallPlanQueryKey = readonly [
+type PluginCatalogInstallPlanQueryKey = readonly [
   typeof PLUGIN_CATALOG_INSTALL_PLAN_QUERY_KEY,
   string,
   string | null,
 ];
 /** `GET /marketplaces`. */
-export type PluginMarketplacesQueryKey = readonly [
+type PluginMarketplacesQueryKey = readonly [
   typeof PLUGIN_MARKETPLACES_QUERY_KEY,
 ];
 /** `[key, projectId]`: `GET /projects/:id/skills` (default workspace). */
-export type ProjectSkillsQueryKey = readonly [
-  typeof PROJECT_SKILLS_QUERY_KEY,
-  string,
-];
+type ProjectSkillsQueryKey = readonly [typeof PROJECT_SKILLS_QUERY_KEY, string];
 /** `[key, projectId, skillId]`: `GET /projects/:id/skills/files`. */
-export type SkillFilesQueryKey = readonly [
+type SkillFilesQueryKey = readonly [
   typeof SKILL_FILES_QUERY_KEY,
   string,
   string,
 ];
 /** `[key, projectId, skillId, path]`: `GET /projects/:id/skills/content`. */
-export type SkillContentQueryKey = readonly [
+type SkillContentQueryKey = readonly [
   typeof SKILL_CONTENT_QUERY_KEY,
   string,
   string,
@@ -1087,18 +1001,18 @@ export type SkillContentQueryKey = readonly [
  * (pages live inside the one cache entry; the trailing 0 is kept so a future
  * single-page read can sit beside it).
  */
-export type SkillsRegistryQueryKey = readonly [
+type SkillsRegistryQueryKey = readonly [
   typeof SKILLS_REGISTRY_QUERY_KEY,
   string,
   number,
 ];
 /** `[key, registrySkillId]`: `GET /skills-registry/entry?id=`. */
-export type SkillsRegistryEntryQueryKey = readonly [
+type SkillsRegistryEntryQueryKey = readonly [
   typeof SKILLS_REGISTRY_ENTRY_QUERY_KEY,
   string,
 ];
 /** `[key, source, skillId]`: `GET /skills-registry/detail`. */
-export type SkillsRegistryDetailQueryKey = readonly [
+type SkillsRegistryDetailQueryKey = readonly [
   typeof SKILLS_REGISTRY_DETAIL_QUERY_KEY,
   string,
   string,
@@ -1221,30 +1135,28 @@ export function skillsRegistryDetailQueryKey(
 
 // --- Settings, machines, updates (Phase 7) ------------------------------------
 
-export const SYSTEM_USAGE_LIMITS_QUERY_KEY = "systemUsageLimits";
+const SYSTEM_USAGE_LIMITS_QUERY_KEY = "systemUsageLimits";
 const SYSTEM_CLI_SKILLS_QUERY_KEY = "systemCliSkills";
-export const HOST_PROVIDER_CLI_STATUS_QUERY_KEY = "hostProviderCliStatus";
+const HOST_PROVIDER_CLI_STATUS_QUERY_KEY = "hostProviderCliStatus";
 const THEME_CATALOG_QUERY_KEY = "themeCatalog";
 const SERVER_PROTOCOL_VERSION_QUERY_KEY = "serverProtocolVersion";
 
 /** `[key, hostId]`: `GET /system/usage-limits?hostId=` (null = primary host). */
-export type SystemUsageLimitsQueryKey = readonly [
+type SystemUsageLimitsQueryKey = readonly [
   typeof SYSTEM_USAGE_LIMITS_QUERY_KEY,
   string | null,
 ];
 /** `GET /system/cli-skills` (every enrolled machine). */
-export type SystemCliSkillsQueryKey = readonly [
-  typeof SYSTEM_CLI_SKILLS_QUERY_KEY,
-];
+type SystemCliSkillsQueryKey = readonly [typeof SYSTEM_CLI_SKILLS_QUERY_KEY];
 /** `[key, hostId]`: `GET /hosts/:id/provider-clis/status`. */
-export type HostProviderCliStatusQueryKey = readonly [
+type HostProviderCliStatusQueryKey = readonly [
   typeof HOST_PROVIDER_CLI_STATUS_QUERY_KEY,
   string,
 ];
 /** `GET /settings/themes`. */
-export type ThemeCatalogQueryKey = readonly [typeof THEME_CATALOG_QUERY_KEY];
+type ThemeCatalogQueryKey = readonly [typeof THEME_CATALOG_QUERY_KEY];
 /** `GET /install/version`: the server's host-daemon protocol version. */
-export type ServerProtocolVersionQueryKey = readonly [
+type ServerProtocolVersionQueryKey = readonly [
   typeof SERVER_PROTOCOL_VERSION_QUERY_KEY,
 ];
 
@@ -1291,7 +1203,7 @@ export function serverProtocolVersionQueryKey(): ServerProtocolVersionQueryKey {
  * one URL, so no realtime message invalidates this key.
  */
 const SERVER_SVG_ASSET_QUERY_KEY = "serverSvgAsset";
-export type ServerSvgAssetQueryKey = readonly [
+type ServerSvgAssetQueryKey = readonly [
   typeof SERVER_SVG_ASSET_QUERY_KEY,
   string,
 ];

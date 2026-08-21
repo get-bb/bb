@@ -14,8 +14,6 @@ interface UseComposerTypeaheadArgs {
   mentionsProjectId?: string;
   providerId: string;
   environmentId: string | null;
-  /** Composer surface used to exclude commands that require an existing thread. */
-  commandScope: "new-thread" | "thread";
   /** The thread the composer belongs to (excluded from thread mentions). */
   currentThreadId: string;
   selectedProviderComposerActions:
@@ -39,7 +37,6 @@ export function useComposerTypeahead({
   mentionsProjectId,
   providerId,
   environmentId,
-  commandScope,
   currentThreadId,
   selectedProviderComposerActions,
   resolveMentionLink,
@@ -65,7 +62,7 @@ export function useComposerTypeahead({
   const commandSuggestions = useCommandSuggestions({
     projectId,
     providerId,
-    commandScope,
+    commandScope: "thread",
     skillsTrigger: providerPromptActions.skillsTrigger,
     promptActions,
     environmentId,

@@ -27,7 +27,7 @@ import {
   DEFAULT_PLUGIN_MENTION_TRIGGER,
   PLUGIN_MENTION_TRIGGER_VALUES,
   type PluginMentionTrigger,
-} from "@/lib/plugin-mention-triggers";
+} from "@bb/client-core";
 
 const PROMPT_MENTION_SOURCE_LIMIT = 8;
 

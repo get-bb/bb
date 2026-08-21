@@ -6,6 +6,7 @@ import type {
   DiffPatchEntry,
   EnvironmentDiffPatchResponse,
 } from "@bb/server-contract";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { sdk } from "@/lib/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -33,19 +34,6 @@ function availableResponse(
   return { outcome: "available", patches: [entry] };
 }
 
-interface Deferred<T> {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((res) => {
-    resolve = res;
-  });
-  return { promise, resolve };
-}
-
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -62,7 +50,7 @@ describe("useEnvironmentDiffPatches", () => {
       type: "branch_committed",
       mergeBaseBranch: "main",
     };
-    const firstFetch = deferred<EnvironmentDiffPatchResponse>();
+    const firstFetch = createDeferredPromise<EnvironmentDiffPatchResponse>();
     vi.mocked(sdk.environments.diffPatch).mockReturnValue(firstFetch.promise);
 
     const { result, rerender } = renderHook(
@@ -100,7 +88,7 @@ describe("useEnvironmentDiffPatches", () => {
     };
 
     // First fetch hangs until we resolve it by hand, so we can evict mid-flight.
-    const firstFetch = deferred<EnvironmentDiffPatchResponse>();
+    const firstFetch = createDeferredPromise<EnvironmentDiffPatchResponse>();
     vi.mocked(sdk.environments.diffPatch)
       .mockReturnValueOnce(firstFetch.promise)
       .mockResolvedValueOnce(availableResponse(freshPatch));
@@ -175,7 +163,7 @@ describe("useEnvironmentDiffPatches", () => {
       truncated: false,
     };
 
-    const firstFetch = deferred<EnvironmentDiffPatchResponse>();
+    const firstFetch = createDeferredPromise<EnvironmentDiffPatchResponse>();
     vi.mocked(sdk.environments.diffPatch)
       .mockReturnValueOnce(firstFetch.promise)
       .mockResolvedValueOnce(availableResponse(freshPatch));
@@ -257,7 +245,7 @@ describe("useEnvironmentDiffPatches", () => {
       truncated: false,
     };
 
-    const firstFetch = deferred<EnvironmentDiffPatchResponse>();
+    const firstFetch = createDeferredPromise<EnvironmentDiffPatchResponse>();
     vi.mocked(sdk.environments.diffPatch)
       .mockReturnValueOnce(firstFetch.promise)
       .mockResolvedValueOnce(availableResponse(freshPatch));

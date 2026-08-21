@@ -674,7 +674,6 @@ function buildContextWindowUsage(
     contextWindowEvents,
     events: [],
     options: {
-      includeDebugRawEvents: false,
       includeNestedRows: false,
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
@@ -696,7 +695,6 @@ function buildTimelineRows(
     contextWindowEvents: [],
     events,
     options: {
-      includeDebugRawEvents: false,
       includeNestedRows: true,
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
@@ -720,7 +718,6 @@ function buildTimelineRowsWithAcceptedContext(
     contextWindowEvents: [],
     events,
     options: {
-      includeDebugRawEvents: false,
       includeNestedRows: true,
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
@@ -744,7 +741,6 @@ function buildTimelineRowsWithRejectedContext(
     contextWindowEvents: [],
     events,
     options: {
-      includeDebugRawEvents: false,
       includeNestedRows: true,
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
@@ -1156,7 +1152,6 @@ describe("buildThreadTimelineFromEvents", () => {
         event.inputAccepted({ clientRequestId: requestId }),
       ]),
       options: {
-        includeDebugRawEvents: false,
         includeNestedRows: true,
         includeProviderUnhandledOperations: false,
         isLatestPage: true,
@@ -1193,7 +1188,6 @@ describe("buildThreadTimelineFromEvents", () => {
         event.inputAccepted({ clientRequestId: requestId }),
       ]),
       options: {
-        includeDebugRawEvents: false,
         includeNestedRows: true,
         includeProviderUnhandledOperations: false,
         isLatestPage: true,
@@ -1229,7 +1223,6 @@ describe("buildThreadTimelineFromEvents", () => {
         event.inputAccepted({ clientRequestId: requestId }),
       ]),
       options: {
-        includeDebugRawEvents: false,
         includeNestedRows: true,
         includeProviderUnhandledOperations: false,
         isLatestPage: true,
@@ -1263,7 +1256,6 @@ describe("buildThreadTimelineFromEvents", () => {
         event.turnCompleted(),
       ]),
       options: {
-        includeDebugRawEvents: false,
         includeNestedRows: true,
         includeProviderUnhandledOperations: false,
         isLatestPage: true,
@@ -1374,7 +1366,6 @@ describe("buildThreadTimelineFromEvents", () => {
       contextWindowEvents: [],
       events,
       options: {
-        includeDebugRawEvents: false,
         includeNestedRows: true,
         includeProviderUnhandledOperations: false,
         isLatestPage: true,

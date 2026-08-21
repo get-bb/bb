@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PaneNode } from "@/lib/split-layout";
-import {
-  getAdjacentPaneId,
-  getPaneIdAtReadingIndex,
-} from "./splitPaneCommands";
+import { getAdjacentPaneId } from "./splitPaneCommands";
 
 function pane(paneId: string): PaneNode {
   return {
@@ -26,11 +23,5 @@ describe("split pane shortcut selection", () => {
 
   it("does not select an adjacent pane when unsplit", () => {
     expect(getAdjacentPaneId([PANES[0]!], "pane-1", 1)).toBeNull();
-  });
-
-  it("focuses only pane numbers that exist", () => {
-    expect(getPaneIdAtReadingIndex(PANES, 0)).toBe("pane-1");
-    expect(getPaneIdAtReadingIndex(PANES, 7)).toBe("pane-8");
-    expect(getPaneIdAtReadingIndex(PANES, 8)).toBeNull();
   });
 });

@@ -4,7 +4,11 @@ import path from "node:path";
 import type { AgentRuntime } from "@bb/agent-runtime";
 import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
 import type { HostWorkspace } from "@bb/host-workspace";
-import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
+import {
+  createDeferredPromise,
+  makeWorkspaceMergeBase,
+  makeWorkspaceStatus,
+} from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "../logger.js";
 import { RuntimeManager } from "../runtime-manager.js";
@@ -47,11 +51,6 @@ interface WaitForOutputArgs {
   text: string;
 }
 
-interface Deferred<T> {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-}
-
 type TerminalMessageObserver = (message: HostDaemonDaemonWsMessage) => void;
 
 interface CreateHarnessOptions {
@@ -75,19 +74,6 @@ async function makeTempDir(prefix: string): Promise<string> {
 async function writeEmptyFile(filePath: string): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, "");
-}
-
-function createDeferred<T>(): Deferred<T> {
-  let resolveDeferred: (value: T) => void = () => {
-    throw new Error("Deferred resolver was not set");
-  };
-  const promise = new Promise<T>((resolve) => {
-    resolveDeferred = resolve;
-  });
-  return {
-    promise,
-    resolve: resolveDeferred,
-  };
 }
 
 function createFakeLogger(): HostDaemonLogger {
@@ -279,7 +265,6 @@ function createFakeWorkspace(path: string): HostWorkspace {
     })),
     diffPatch: vi.fn(async () => []),
     getPullRequest: vi.fn(async () => ({ outcome: "none" as const })),
-    listBranches: vi.fn(async () => ["main"]),
     listFiles: vi.fn(async () => []),
     commit: vi.fn(async () => ({
       commitSha: "commit-1",
@@ -547,7 +532,7 @@ describe("TerminalManager", () => {
   });
 
   it("closes a terminal after an in-progress open finishes", async () => {
-    const shell = createDeferred<string>();
+    const shell = createDeferredPromise<string>();
     let resolveShellCalls = 0;
     const harness = createHarnessWithShell({
       resolveShell: () => {
@@ -610,7 +595,7 @@ describe("TerminalManager", () => {
   });
 
   it("closes environment terminals after in-progress opens finish", async () => {
-    const shell = createDeferred<string>();
+    const shell = createDeferredPromise<string>();
     let resolveShellCalls = 0;
     const harness = createHarnessWithShell({
       resolveShell: () => {
@@ -669,7 +654,7 @@ describe("TerminalManager", () => {
   });
 
   it("shuts down terminals after in-progress opens finish", async () => {
-    const shell = createDeferred<string>();
+    const shell = createDeferredPromise<string>();
     let resolveShellCalls = 0;
     const harness = createHarnessWithShell({
       resolveShell: () => {
@@ -719,7 +704,7 @@ describe("TerminalManager", () => {
   });
 
   it("rejects duplicate opens queued behind an in-progress open", async () => {
-    const shell = createDeferred<string>();
+    const shell = createDeferredPromise<string>();
     let resolveShellCalls = 0;
     const harness = createHarnessWithShell({
       resolveShell: () => {
@@ -780,7 +765,7 @@ describe("TerminalManager", () => {
   });
 
   it("serializes PTY exits behind already queued terminal messages", async () => {
-    const shell = createDeferred<string>();
+    const shell = createDeferredPromise<string>();
     let resolveShellCalls = 0;
     let exitOnOpened = false;
     let harness: TerminalManagerHarness | null = null;

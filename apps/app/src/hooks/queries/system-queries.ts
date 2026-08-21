@@ -47,7 +47,7 @@ import {
   systemUsageLimitsQueryKey,
   systemVersionQueryKey,
 } from "./query-keys";
-import { requireEnabledQueryArg } from "./query-helpers";
+import { requireEnabledQueryArg, type QueryOptions } from "./query-helpers";
 import {
   FOCUS_OWNED_LIVE_QUERY_POLICY,
   SERVER_SESSION_QUERY_POLICY,
@@ -65,10 +65,6 @@ interface UseSystemProviderStatesOptions extends QueryOptions {
   environmentId?: string;
   hostId?: string;
   poll?: boolean;
-}
-
-interface QueryOptions {
-  enabled?: boolean;
 }
 
 type SystemProviderRoutingArgs =

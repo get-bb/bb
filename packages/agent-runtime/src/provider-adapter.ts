@@ -27,7 +27,7 @@ import type {
 } from "./types.js";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 
-export interface ProviderAcceptedCommandTranslationArgs {
+interface ProviderAcceptedCommandTranslationArgs {
   command: AdapterCommand;
   providerThreadId?: string;
 }
@@ -96,7 +96,6 @@ export type AdapterCommand =
       type: "thread/start";
       threadId: string;
       cwd: string;
-      input?: PromptInput[];
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
       disallowedTools?: readonly string[];
@@ -207,7 +206,6 @@ export interface ClassifyProviderExecutionSettingsChangeArgs {
 
 export interface ProviderAdapter {
   id: string;
-  displayName: string;
   capabilities: ProviderCapabilities;
   /**
    * Selects where approval escalation is enforced. `runtime` adapters emit

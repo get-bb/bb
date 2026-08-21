@@ -175,7 +175,7 @@ function markDaemonTerminalSessionsDisconnected(
 }
 
 function openTestSession(db: TestDb, hostId: string): TestSession {
-  return openSession(db, noopNotifier, {
+  return openSession(db, {
     hostId,
     instanceId: "inst-1",
     hostName: "test-host",

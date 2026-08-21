@@ -16,7 +16,7 @@ import {
   SECRET_REQUEST_RENDERER_ID,
   secretRequestPayloadSchema,
   secretRequestResponseSchema,
-} from "./src/contracts.js";
+} from "@bb/plugin-interaction-contracts";
 import { reconcileDotenv } from "./src/dotenv.js";
 
 function SecretRequestInteraction({

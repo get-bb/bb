@@ -18,19 +18,14 @@ export {
   pluginRowSignal,
   pluginRuntimeStatusPresentation,
   pluginSecretIsSet,
-  pluginSettingEntries,
   pluginSettingFieldValue,
   pluginSettingsAvailability,
   pluginSettingsChanges,
   sortPlugins,
   summarizePluginUpdate,
-  type PluginCatalogGroup,
   type PluginRowSignal,
-  type PluginRuntimeStatusPresentation,
   type PluginSettingDraft,
-  type PluginSettingsAvailability,
   type PluginStatusTone,
-  type PluginUpdateSummary,
 } from "./plugin-model";
 export {
   PLUGIN_LOGS_DEFAULT_TAIL,
@@ -46,8 +41,6 @@ export {
   usePluginMarketplaces,
   usePluginSettings,
   usePluginUpdates,
-  type CatalogInstallPlanArgs,
-  type UsePluginLogsArgs,
 } from "./plugin-queries";
 export {
   useAddMarketplace,
@@ -60,15 +53,5 @@ export {
   useRemovePlugin,
   useSetPluginEnabled,
   useUpdatePluginSettings,
-  type AddMarketplaceArgs,
-  type ApplyPluginUpdateArgs,
-  type CheckPluginUpdatesArgs,
-  type InstallPluginArgs,
-  type RefreshMarketplacesArgs,
-  type ReloadPluginsArgs,
-  type RemoveMarketplaceArgs,
-  type RemovePluginArgs,
-  type SetPluginEnabledArgs,
-  type UpdatePluginSettingsArgs,
 } from "./plugin-mutations";
 export { useServerSvgAsset } from "./server-svg-asset";

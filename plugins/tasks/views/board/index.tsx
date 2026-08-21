@@ -6,7 +6,6 @@ import {
   type ReactNode,
 } from "react";
 import {
-  TASK_STATUSES,
   type Label,
   type Task,
   type TaskStatus,
@@ -19,7 +18,7 @@ import {
   type TasksRpc,
 } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
-import { NewTaskDialog } from "../manage/index.js";
+import { NewTaskDialog } from "../manage/new-task-dialog.js";
 import {
   applyBoardMove,
   BOARD_STATUSES,

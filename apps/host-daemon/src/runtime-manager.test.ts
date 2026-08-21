@@ -14,7 +14,11 @@ import {
   type HostWorkspace,
   type ProvisionWorkspaceArgs,
 } from "@bb/host-workspace";
-import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
+import {
+  createDeferredPromise,
+  makeWorkspaceMergeBase,
+  makeWorkspaceStatus,
+} from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   RuntimeManager,
@@ -130,20 +134,6 @@ afterEach(async () => {
   );
 });
 
-function createDeferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((innerResolve, innerReject) => {
-    resolve = innerResolve;
-    reject = innerReject;
-  });
-  return {
-    promise,
-    reject,
-    resolve,
-  };
-}
-
 function getProvisionWorkspacePath(args: ProvisionWorkspaceArgs): string {
   switch (args.workspaceProvisionType) {
     case "managed-worktree":
@@ -206,7 +196,6 @@ function createFakeWorkspace(
     diffPatch: vi.fn(async () => []),
     getPullRequest: vi.fn(async () => ({ outcome: "none" as const })),
     runPullRequestAction: vi.fn(async () => undefined),
-    listBranches: vi.fn(async () => ["main"]),
     listFiles: vi.fn(async () => []),
     commit: vi.fn(async (..._args: CommitArgs) => ({
       commitSha: "commit-1",
@@ -996,7 +985,7 @@ describe("RuntimeManager", () => {
   });
 
   it("shares existing environment provisioning cancellation across concurrent callers", async () => {
-    const provisionStarted = createDeferred<void>();
+    const provisionStarted = createDeferredPromise<void>();
     const provisionSignals: AbortSignal[] = [];
     let callCount = 0;
     const workspace = createFakeWorkspace("/tmp/env-1");
@@ -1254,43 +1243,6 @@ describe("RuntimeManager", () => {
     );
   });
 
-  it("merges managed shell env into future runtime creation", async () => {
-    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
-    const createRuntime = vi.fn(() => createFakeRuntime());
-    const manager = new RuntimeManager({
-      provisionWorkspace,
-      createRuntime,
-      shellEnv: {
-        PATH: "/tmp/bb-bin:/usr/bin",
-      },
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-1",
-      workspacePath: "/tmp/env-1",
-    });
-
-    manager.replaceManagedShellEnv({
-      GITHUB_TOKEN: "test-github-token",
-      OPENAI_API_KEY: "test-openai-key",
-    });
-    await manager.ensureEnvironment({
-      environmentId: "env-2",
-      workspacePath: "/tmp/env-2",
-    });
-
-    expect(createRuntime).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        shellEnv: {
-          GITHUB_TOKEN: "test-github-token",
-          OPENAI_API_KEY: "test-openai-key",
-          PATH: "/tmp/bb-bin:/usr/bin",
-        },
-      }),
-    );
-  });
-
   it("recreates the provider maintenance runtime after base shell env changes", async () => {
     const dataDir = await makeTempDir("bb-provider-maintenance-");
     const firstRuntime = createFakeRuntime();
@@ -1337,8 +1289,8 @@ describe("RuntimeManager", () => {
     try {
       const dataDir = await makeTempDir("bb-provider-maintenance-idle-");
       const runtime = createFakeRuntime();
-      const request = createDeferred<void>();
-      const requestStarted = createDeferred<void>();
+      const request = createDeferredPromise<void>();
+      const requestStarted = createDeferredPromise<void>();
       const manager = new RuntimeManager({
         createRuntime: () => runtime,
         providerMaintenanceIdleTimeoutMs: 100,
@@ -1370,7 +1322,7 @@ describe("RuntimeManager", () => {
     const dataDir = await makeTempDir("bb-provider-maintenance-race-");
     const staleRuntime = createFakeRuntime();
     const currentRuntime = createFakeRuntime();
-    const staleCreation = createDeferred<AgentRuntime>();
+    const staleCreation = createDeferredPromise<AgentRuntime>();
     const manager = new RuntimeManager({
       shellEnv: {
         PATH: "/old/bin:/usr/bin",
@@ -1726,7 +1678,7 @@ describe("RuntimeManager", () => {
   });
 
   it("skips idle eviction while environment creation is still pending", async () => {
-    const deferredWorkspace = createDeferred<HostWorkspace>();
+    const deferredWorkspace = createDeferredPromise<HostWorkspace>();
     const manager = new RuntimeManager({
       provisionWorkspace: vi.fn(async () => deferredWorkspace.promise),
       createRuntime: vi.fn(() => createFakeRuntime()),

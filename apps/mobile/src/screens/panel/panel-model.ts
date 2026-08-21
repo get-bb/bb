@@ -35,7 +35,7 @@ import type { IconName } from "@/ui/icon-map";
 // ---------------------------------------------------------------------------
 // Scope
 
-export interface ThreadPanelScope {
+interface ThreadPanelScope {
   kind: "thread";
   threadId: string;
   projectId: string | null;
@@ -45,7 +45,7 @@ export interface ThreadPanelScope {
 }
 
 /** The root-compose panel: a project (or none) before a thread exists. */
-export interface ProjectPanelScope {
+interface ProjectPanelScope {
   kind: "project";
   projectId: string | null;
   /** A reused environment picked on the compose screen, else null. */
@@ -134,7 +134,7 @@ export function resolvePanelActiveView(
 // ---------------------------------------------------------------------------
 // Tab descriptors
 
-export interface PanelTabDescriptor {
+interface PanelTabDescriptor {
   label: string;
   icon: IconName;
   /** Shown beside the label ("deleted"). */
@@ -247,7 +247,7 @@ export interface PanelStripEntry {
   target: PanelStripTarget;
 }
 
-export interface BuildPanelStripEntriesOptions {
+interface BuildPanelStripEntriesOptions {
   /** Info is a thread-only view. */
   showInfo: boolean;
   /** Diff needs a git-backed environment. */
@@ -365,7 +365,6 @@ export interface OpenFileRequest {
 }
 
 export type PanelOpenTarget =
-  | { kind: "info" }
   | { kind: "diff"; path?: string | null }
   | { kind: "files"; params?: Partial<FilesLauncherParams> }
   | {
@@ -375,7 +374,6 @@ export type PanelOpenTarget =
       target?: TerminalCreateTarget;
     }
   | { kind: "file"; request: OpenFileRequest }
-  | { kind: "tab"; tab: FixedPanelTab }
   | { kind: "tab-id"; tabId: string };
 
 function lineRangeFromRequest(
@@ -465,16 +463,6 @@ function applyOpenTarget(
   scope: PanelScope,
 ): PanelViewState {
   switch (target.kind) {
-    case "info": {
-      const info = createThreadInfoFixedPanelTab();
-      return {
-        ...withTabs(
-          state,
-          openSecondaryPanelTabInState({ state: state.tabs, tab: info }),
-        ),
-        launcher: null,
-      };
-    }
     case "diff": {
       const diff = createGitDiffFixedPanelTab();
       return {
@@ -519,14 +507,6 @@ function applyOpenTarget(
         launcher: null,
       };
     }
-    case "tab":
-      return {
-        ...withTabs(
-          state,
-          openSecondaryPanelTabInState({ state: state.tabs, tab: target.tab }),
-        ),
-        launcher: null,
-      };
     case "tab-id":
       return activateTab(state, target.tabId);
   }

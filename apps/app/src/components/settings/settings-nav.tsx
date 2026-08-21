@@ -53,8 +53,6 @@ function isSettingsSectionId(value: string): value is SettingsSectionId {
 }
 
 export interface SettingsNavState {
-  /** Host id from /settings/machines/:hostId, else null. */
-  activeMachineId: string | null;
   /** Provider id from /settings/providers/:providerId, else null. */
   activeProviderId: SettingsProviderId | null;
   /** Selected bucket; null while a provider page is active. */
@@ -142,7 +140,6 @@ export function useSettingsNavState(): SettingsNavState {
     .sort((left, right) => left.label.localeCompare(right.label));
 
   return {
-    activeMachineId,
     activePluginId,
     activeProviderId,
     activeSection,

@@ -1,5 +1,4 @@
 import type { InstalledPlugin, PluginCapability } from "@bb/server-contract";
-import * as Clipboard from "expo-clipboard";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo } from "react";
 import { View } from "react-native";
@@ -19,6 +18,7 @@ import {
   useRemovePlugin,
   useSetPluginEnabled,
 } from "@/data/plugins";
+import { copyWithToast } from "@/lib/clipboard";
 import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
 import {
@@ -461,11 +461,7 @@ function PluginDetailBody({
           title="Install path"
           subtitle={plugin.rootDir}
           leading="Folder"
-          onPress={() => {
-            void Clipboard.setStringAsync(plugin.rootDir)
-              .then(() => toast.success("Path copied"))
-              .catch(() => toast.error("Could not copy"));
-          }}
+          onPress={() => copyWithToast(plugin.rootDir, "Path copied")}
           titleLines={1}
         />
         {plugin.handlerStats.count > 0 ? (

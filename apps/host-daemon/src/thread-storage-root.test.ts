@@ -46,15 +46,4 @@ describe("thread storage root", () => {
 
     expect(rootPath).toBe(path.join(dataDir, "thread-storage"));
   });
-
-  it("uses an explicitly configured root", async () => {
-    const dataDir = await makeTempDir("bb-thread-storage-root-data-");
-    const configuredRoot = await makeTempDir("bb-thread-storage-root-env-");
-
-    const rootPath = await ensureThreadStorageRoot(dataDir, {
-      configuredRoot,
-    });
-
-    expect(rootPath).toBe(configuredRoot);
-  });
 });

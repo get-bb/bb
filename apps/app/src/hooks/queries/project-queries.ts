@@ -10,7 +10,8 @@ import {
   buildFilePreview,
   normalizeFilePreviewMimeType,
   type FilePreview,
-} from "@/lib/file-preview";
+} from "@bb/client-core";
+import { decodeBase64Bytes } from "@/lib/base64-bytes";
 import { buildProjectFileContentUrl } from "@/lib/file-content-urls";
 import { sdk } from "@/lib/sdk";
 import { useProjectDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
@@ -25,6 +26,8 @@ import { resolveProjectSourceBranchesPlaceholder } from "./query-placeholders";
 import {
   PROMPT_HISTORY_STALE_TIME_MS,
   requireEnabledQueryArg,
+  requireProjectId,
+  type QueryOptions,
 } from "./query-helpers";
 import {
   EXPENSIVE_MANUAL_QUERY_POLICY,
@@ -32,10 +35,6 @@ import {
   REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
   TYPEAHEAD_QUERY_POLICY,
 } from "./query-policies";
-
-interface QueryOptions {
-  enabled?: boolean;
-}
 
 interface BranchQueryOptions extends QueryOptions {
   limit?: number;
@@ -68,26 +67,6 @@ const PROJECT_SOURCE_BRANCHES_LIMIT = 50;
  * RPC without new information.
  */
 const PROJECT_SOURCE_BRANCHES_STALE_MS = 30_000;
-
-function decodeBase64Bytes(content: string): Uint8Array {
-  const binaryContent = atob(content);
-  const bytes = new Uint8Array(binaryContent.length);
-  for (let index = 0; index < binaryContent.length; index += 1) {
-    bytes[index] = binaryContent.charCodeAt(index);
-  }
-  return bytes;
-}
-
-function requireProjectId(
-  projectId: string | undefined,
-  hookName: string,
-): string {
-  return requireEnabledQueryArg({
-    value: projectId,
-    hookName,
-    argName: "projectId",
-  });
-}
 
 function requireProviderId(
   providerId: string | undefined,

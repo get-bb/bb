@@ -6,7 +6,6 @@ import { promisify } from "node:util";
 import type {
   AgentRuntime,
   AgentRuntimeBridgeLaunch,
-  AgentRuntimeExecutionOptions,
   AgentRuntimeProviderSession,
 } from "@bb/agent-runtime";
 import type {
@@ -62,11 +61,8 @@ interface FakeWorkspaceState {
   lastCommitMessage: string | undefined;
   lastDiffTarget: FakeWorkspaceDiffTarget | undefined;
   lastPullRequestAction: PullRequestActionOptions | undefined;
-  listedModelsProviderId: string | undefined;
-  listedModelsAcpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
   pullRequest: GitHostPullRequest | null;
   pullRequestLookupError: string | null;
-  resetCount: number;
   statusReads: number;
 }
 
@@ -74,7 +70,7 @@ interface FakeWorkspaceState {
  * Direct mutators for the fake runtime's thread state, replacing what the
  * deleted RuntimeManager thread bookkeeping used to provide in tests.
  */
-export interface FakeRuntimeThreadControls {
+interface FakeRuntimeThreadControls {
   clearProviderSession: (threadId: string) => void;
   endActiveTurn: (threadId: string) => void;
   setActiveTurn: (threadId: string, turnId: string) => void;
@@ -89,21 +85,13 @@ interface FakeRuntimeState {
   archivedProviderId: string | undefined;
   archivedProviderThreadId: string | undefined;
   archivedThreadId: string | undefined;
-  listedModelsProviderId: string | undefined;
-  listedModelsAcpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
   ranTurnClientRequestId: ClientTurnRequestId | undefined;
   ranTurnInput: PromptInput[] | undefined;
-  ranTurnInputGroups: PromptInput[][] | undefined;
-  ranTurnInstructions: string | undefined;
-  ranTurnOptions: AgentRuntimeExecutionOptions | undefined;
   ranTurnText: string | undefined;
   renamedTitle: string | undefined;
-  resumedDynamicTools: DynamicTool[] | undefined;
   resumedAcpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
   resumedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   resumedEnvironmentId: string | undefined;
-  resumedInstructions: string | undefined;
-  resumedOptions: AgentRuntimeExecutionOptions | undefined;
   resumedProviderThreadId: string | undefined;
   resumedThreadId: string | undefined;
   runningProviders: string[];
@@ -115,14 +103,10 @@ interface FakeRuntimeState {
   startedInput: PromptInput[] | undefined;
   startedInputGroups: PromptInput[][] | undefined;
   startedInstructions: string | undefined;
-  startedOptions: AgentRuntimeExecutionOptions | undefined;
   startedThreadId: string | undefined;
   steeredClientRequestId: ClientTurnRequestId | undefined;
-  steeredInput: PromptInput[] | undefined;
-  steeredInputGroups: PromptInput[][] | undefined;
   steeredTurnId: string | undefined;
   steeredTurnInstructions: string | undefined;
-  steeredTurnOptions: AgentRuntimeExecutionOptions | undefined;
   stoppedThreadId: string | undefined;
   unarchivedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   unarchivedProviderId: string | undefined;
@@ -142,10 +126,7 @@ export function createFakeWorkspace(pathname: string) {
     statusReads: 0,
     lastDiffTarget: undefined,
     lastCommitMessage: undefined,
-    resetCount: 0,
     destroyed: false,
-    listedModelsProviderId: undefined,
-    listedModelsAcpLaunchSpec: undefined,
     lastPullRequestAction: undefined,
     pullRequest: null,
     pullRequestLookupError: null,
@@ -238,9 +219,6 @@ export function createFakeWorkspace(pathname: string) {
     async runPullRequestAction(action) {
       state.lastPullRequestAction = action;
     },
-    async listBranches() {
-      return ["main"];
-    },
     async listFiles() {
       return listFilesRecursively(pathname, pathname);
     },
@@ -251,9 +229,7 @@ export function createFakeWorkspace(pathname: string) {
         commitSubject: options.message,
       };
     },
-    async reset() {
-      state.resetCount += 1;
-    },
+    async reset() {},
     async squashMerge(options: {
       targetBranch: string;
       commitMessage: string;
@@ -279,21 +255,13 @@ export function createFakeRuntime() {
     archivedProviderId: undefined,
     archivedProviderThreadId: undefined,
     archivedThreadId: undefined,
-    listedModelsProviderId: undefined,
-    listedModelsAcpLaunchSpec: undefined,
     ranTurnClientRequestId: undefined,
     ranTurnInput: undefined,
-    ranTurnInputGroups: undefined,
-    ranTurnInstructions: undefined,
-    ranTurnOptions: undefined,
     ranTurnText: undefined,
     renamedTitle: undefined,
-    resumedDynamicTools: undefined,
     resumedAcpLaunchSpec: undefined,
     resumedBridgeLaunch: undefined,
     resumedEnvironmentId: undefined,
-    resumedInstructions: undefined,
-    resumedOptions: undefined,
     resumedProviderThreadId: undefined,
     resumedThreadId: undefined,
     runningProviders: [],
@@ -305,14 +273,10 @@ export function createFakeRuntime() {
     startedInput: undefined,
     startedInputGroups: undefined,
     startedInstructions: undefined,
-    startedOptions: undefined,
     startedThreadId: undefined,
     steeredClientRequestId: undefined,
-    steeredInput: undefined,
-    steeredInputGroups: undefined,
     steeredTurnId: undefined,
     steeredTurnInstructions: undefined,
-    steeredTurnOptions: undefined,
     stoppedThreadId: undefined,
     unarchivedBridgeLaunch: undefined,
     unarchivedProviderId: undefined,
@@ -357,7 +321,6 @@ export function createFakeRuntime() {
       state.startedDynamicTools = args.dynamicTools;
       state.startedInput = args.input;
       state.startedInputGroups = args.inputGroups;
-      state.startedOptions = args.options;
       state.startedInstructions = args.instructions;
       providerSessionsByThreadId.set(args.threadId, {
         providerId: args.providerId,
@@ -379,9 +342,6 @@ export function createFakeRuntime() {
       state.resumedBridgeLaunch = args.bridgeLaunch;
       state.resumedEnvironmentId = args.environmentId;
       state.resumedThreadId = args.threadId;
-      state.resumedDynamicTools = args.dynamicTools;
-      state.resumedOptions = args.options;
-      state.resumedInstructions = args.instructions;
       state.resumedProviderThreadId = args.providerThreadId;
       const providerThreadId =
         args.providerThreadId ?? `provider-${args.threadId}`;
@@ -397,17 +357,11 @@ export function createFakeRuntime() {
         firstInput?.type === "text" ? firstInput.text : undefined;
       state.ranTurnClientRequestId = args.clientRequestId;
       state.ranTurnInput = args.input;
-      state.ranTurnInputGroups = args.inputGroups;
-      state.ranTurnOptions = args.options;
-      state.ranTurnInstructions = args.instructions;
       activeTurnsByThreadId.set(args.threadId, `turn-${nextTurnNumber++}`);
     },
     async steerTurn(args) {
       state.steeredTurnId = args.expectedTurnId;
       state.steeredClientRequestId = args.clientRequestId;
-      state.steeredInput = args.input;
-      state.steeredInputGroups = args.inputGroups;
-      state.steeredTurnOptions = args.options;
       state.steeredTurnInstructions = args.instructions;
       return { status: "steered" };
     },
@@ -463,9 +417,7 @@ export function createFakeRuntime() {
     hasOpenBackgroundWork() {
       return false;
     },
-    async listModels(args) {
-      state.listedModelsProviderId = args.providerId;
-      state.listedModelsAcpLaunchSpec = args.acpLaunchSpec;
+    async listModels() {
       return {
         models: [] satisfies AvailableModel[],
         selectedOnlyModels: [] satisfies AvailableModel[],

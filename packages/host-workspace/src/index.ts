@@ -1,6 +1,5 @@
 export {
   getPersonalWorkspaceRoot,
-  openWorkspace,
   provisionWorkspace,
   validatePersonalWorkspaceTargetPath,
 } from "./provision.js";

@@ -2,11 +2,11 @@ import { fileNameFromPath } from "@bb/thread-view";
 import { Image, type ImageLoadEventData } from "expo-image";
 import { useCallback, useState } from "react";
 import { Pressable, View } from "react-native";
+import { buildThreadHostFileContentUrl } from "@/data/thread-detail/file-content-urls";
 import { useTheme } from "@/theme";
 import { EmptyStatePanel, Text } from "@/ui";
 import { useTimelineRowHost } from "../../host/TimelineRowHostProvider";
 import type { TimelineRowRendererProps } from "../../renderers";
-import { buildThreadHostFileContentUrl } from "./work-row-model";
 import { WorkRowShell } from "./WorkRowShell";
 
 /** Web `max-w-96` / placeholder height before the intrinsic size is known. */

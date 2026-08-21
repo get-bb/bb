@@ -30,7 +30,7 @@ import { Textarea } from "@bb/shared-ui/textarea";
 import { Field } from "./shared.js";
 
 // Enum options mirror the contract's preset create/update inputs.
-export const REASONING_LEVELS = [
+const REASONING_LEVELS = [
   "low",
   "medium",
   "high",
@@ -39,7 +39,7 @@ export const REASONING_LEVELS = [
   "ultra",
 ] as const;
 export const PERMISSION_MODES = PRESET_PERMISSION_MODES;
-export type ReasoningLevel = (typeof REASONING_LEVELS)[number];
+type ReasoningLevel = (typeof REASONING_LEVELS)[number];
 export type PermissionMode = PresetPermissionMode;
 type EnvironmentKind = (typeof PRESET_ENVIRONMENT_KINDS)[number];
 
@@ -96,7 +96,7 @@ export function defaultPermissionMode(
   return modes.includes("auto") ? "auto" : "full";
 }
 
-function describeError(error: unknown): string {
+export function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 

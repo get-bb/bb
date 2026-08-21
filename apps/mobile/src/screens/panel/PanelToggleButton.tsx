@@ -2,12 +2,11 @@ import { Pressable } from "react-native";
 import { useTheme } from "@/theme";
 import { cn, Icon } from "@/ui";
 
-export interface PanelToggleButtonProps {
+interface PanelToggleButtonProps {
   onPress: () => void;
   /** Panel is presented (the glyph reads as selected). */
   active: boolean;
   disabled?: boolean;
-  testID?: string;
 }
 
 /**
@@ -18,7 +17,6 @@ export function PanelToggleButton({
   onPress,
   active,
   disabled = false,
-  testID = "thread-panel-button",
 }: PanelToggleButtonProps) {
   const { tokens } = useTheme();
   return (
@@ -34,7 +32,7 @@ export function PanelToggleButton({
         active && "bg-surface-selected",
         disabled && "opacity-40",
       )}
-      testID={testID}
+      testID="thread-panel-button"
     >
       <Icon name="PanelBottom" size={20} color={tokens.foreground} />
     </Pressable>

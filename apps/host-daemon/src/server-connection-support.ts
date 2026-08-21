@@ -87,15 +87,7 @@ export interface ServerConnectionOptions {
     session: HostDaemonSessionOpenResponse,
   ) => void | Promise<void>;
   createWebSocket?: CreateReconnectingWebSocket;
-  minReconnectionDelay?: number;
-  maxReconnectionDelay?: number;
-  reconnectionDelayGrowFactor?: number;
-  connectionTimeout?: number;
   startupTimeoutMs?: number;
-  setTimeoutFn?: typeof setTimeout;
-  clearTimeoutFn?: typeof clearTimeout;
-  setIntervalFn?: typeof setInterval;
-  clearIntervalFn?: typeof clearInterval;
 }
 
 export const DEFAULT_MIN_RECONNECTION_DELAY = 1_000;

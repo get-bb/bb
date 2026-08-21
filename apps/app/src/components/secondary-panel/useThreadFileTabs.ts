@@ -25,14 +25,14 @@ import {
   createFileOpenerTabForRequest,
   fileOpenerIdFromActionId,
   parseFileOpenerParams,
-  type FileTabViewerOverride,
 } from "@/components/plugin/file-opener-tabs";
+import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
 import type { OpenPluginPanelArgs } from "@/components/plugin/PluginPanelActions";
 import type {
   HostFileTabState,
   ThreadStorageFileTabState,
   WorkspaceFileTabState,
-} from "@/lib/file-preview";
+} from "@bb/client-core";
 import { useRecordThreadRecentItem } from "./threadRecentItems";
 import type {
   SecondaryPanelTabReorderHandler,
@@ -125,7 +125,6 @@ interface CreateTabForOpenRequestArgs {
 
 interface PruneSecondaryTabsArgs {
   activeTabId: string | null;
-  stateTabs: readonly FixedPanelTab[];
   tabs: readonly FixedPanelTab[];
 }
 
@@ -235,7 +234,6 @@ function openRequestForFileSearchSelection(
 
 function setPrunedSecondaryTabs({
   activeTabId,
-  stateTabs,
   tabs,
 }: PruneSecondaryTabsArgs): {
   activeTabId: string | null;
@@ -243,7 +241,7 @@ function setPrunedSecondaryTabs({
 } {
   return {
     activeTabId: getActiveTabIdAfterPrune(tabs, activeTabId),
-    tabs: tabs === stateTabs ? stateTabs : tabs,
+    tabs,
   };
 }
 
@@ -352,7 +350,6 @@ export function useThreadFileTabs({
     updateFixedPanelTabsState((state) => {
       const pruned = setPrunedSecondaryTabs({
         activeTabId: state.secondary.activeTabId,
-        stateTabs: state.secondary.tabs,
         tabs: removeWorkspaceTabsForOtherEnvironments(
           state.secondary.tabs,
           resolvedEnvironmentId,
@@ -377,7 +374,6 @@ export function useThreadFileTabs({
       const knownPaths = new Set(storageFiles.map((file) => file.path));
       const pruned = setPrunedSecondaryTabs({
         activeTabId: state.secondary.activeTabId,
-        stateTabs: state.secondary.tabs,
         tabs: pruneStorageTabs({
           knownPaths,
           tabs: state.secondary.tabs,
@@ -403,7 +399,6 @@ export function useThreadFileTabs({
     updateFixedPanelTabsState((state) => {
       const pruned = setPrunedSecondaryTabs({
         activeTabId: state.secondary.activeTabId,
-        stateTabs: state.secondary.tabs,
         tabs: pruneTerminalTabsForSessions({
           retainedTerminalId,
           tabs: state.secondary.tabs,
@@ -431,7 +426,7 @@ export function useThreadFileTabs({
     (
       request: OpenSecondaryPanelTabRequest,
       behavior: OpenResolvedTabBehavior,
-      viewer?: FileTabViewerOverride,
+      viewer?: FileOpenerOverride,
     ): SecondaryPanelTab | null => {
       const openerTab = createFileOpenerTabForRequest({
         fileOpeners,
@@ -486,7 +481,7 @@ export function useThreadFileTabs({
   const openTab = useCallback(
     (
       request: OpenSecondaryPanelTabRequest,
-      options?: { viewer?: FileTabViewerOverride },
+      options?: { viewer?: FileOpenerOverride },
     ): SecondaryPanelTab | null => {
       // Browser navigation replaces the transient new-tab launcher. Other
       // ordinary opens append or focus a tab. Both paths still share the

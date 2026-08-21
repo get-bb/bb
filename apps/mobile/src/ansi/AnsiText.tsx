@@ -16,8 +16,6 @@ export const TERMINAL_LINE_HEIGHT = Math.round(TERMINAL_FONT_SIZE * 1.25);
 
 export interface AnsiSpansTextProps extends Omit<RNTextProps, "children"> {
   spans: readonly AnsiSpan[];
-  /** Text color for unstyled spans; defaults to `mutedForeground` like the web. */
-  baseColor?: string;
   fontSize?: number;
   lineHeight?: number;
   style?: StyleProp<TextStyle>;
@@ -30,7 +28,6 @@ export interface AnsiSpansTextProps extends Omit<RNTextProps, "children"> {
  */
 export const AnsiSpansText = memo(function AnsiSpansText({
   spans,
-  baseColor,
   fontSize = TERMINAL_FONT_SIZE,
   lineHeight = TERMINAL_LINE_HEIGHT,
   style,
@@ -39,10 +36,10 @@ export const AnsiSpansText = memo(function AnsiSpansText({
   const { tokens, fonts } = useTheme();
   const defaults = useMemo(
     () => ({
-      foreground: baseColor ?? tokens.mutedForeground,
+      foreground: tokens.mutedForeground,
       background: tokens.background,
     }),
-    [baseColor, tokens],
+    [tokens],
   );
   const rootStyle = useMemo<TextStyle>(
     () => ({

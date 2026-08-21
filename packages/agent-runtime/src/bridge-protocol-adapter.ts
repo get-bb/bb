@@ -61,16 +61,15 @@ import type { AgentRuntimeSkillRoot } from "./types.js";
  * public {@link ProviderAdapter.capabilities}, and keeps the ladder to bound
  * what the initialize handshake may claim.
  */
-export interface BridgeAdapterCapabilities extends Omit<
+interface BridgeAdapterCapabilities extends Omit<
   ProviderCapabilities,
   "supportsFork" | "supportsSessionRewind"
 > {
   fork: ProviderFork;
 }
 
-export interface BridgeProtocolAdapterOptions {
+interface BridgeProtocolAdapterOptions {
   id: string;
-  displayName: string;
   capabilities: BridgeAdapterCapabilities;
   process: { command: string; args: string[]; env?: Record<string, string> };
   /**
@@ -241,7 +240,6 @@ export function createBridgeProtocolAdapter(
 
   const adapter: ProviderAdapter = {
     id: options.id,
-    displayName: options.displayName,
     capabilities,
     // The handshake owns approval-policy placement; before it completes the
     // runtime-owned default is the safe reading (every request re-checked).
@@ -340,7 +338,6 @@ export function createBridgeProtocolAdapter(
             params: {
               threadId: command.threadId,
               cwd: command.cwd,
-              ...(command.input !== undefined ? { input: command.input } : {}),
               options: toBridgeWireOptions(
                 command.options,
                 options.staticProviderOptions,

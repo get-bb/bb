@@ -41,7 +41,7 @@ export interface SidebarCollapsedState {
   builtInSections: ReadonlySet<string>;
 }
 
-export type SidebarHeaderTarget =
+type SidebarHeaderTarget =
   | { kind: "pinned" }
   | { kind: "project"; project: SidebarProject }
   | { kind: "machine"; key: string }
@@ -201,6 +201,23 @@ export function resolveThreadRowIndicator({
   );
 }
 
+/** A flat, depth-0 thread row (search results, archived lists). */
+export function flatThreadRow(thread: ThreadListEntry): SidebarThreadRow {
+  return {
+    type: "thread",
+    key: `thread:${thread.id}`,
+    thread,
+    depth: 0,
+    childCount: 0,
+    collapsed: false,
+    indicator: resolveThreadRowIndicator({
+      thread,
+      hasHiddenChildren: false,
+      childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+    }),
+  };
+}
+
 interface FlattenContext {
   collapsed: SidebarCollapsedState;
   rows: SidebarListRow[];
@@ -328,7 +345,7 @@ function headerTarget(group: SidebarGroup): SidebarHeaderTarget {
   }
 }
 
-export interface BuildSidebarListRowsArgs {
+interface BuildSidebarListRowsArgs {
   model: SidebarModel;
   collapsed: SidebarCollapsedState;
   /**

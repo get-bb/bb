@@ -144,7 +144,7 @@ function registerTestDaemon(
 }
 
 function openTestSession(args: OpenTestSessionArgs) {
-  const session = openSession(args.db, noopNotifier, {
+  const session = openSession(args.db, {
     hostId: args.hostId,
     instanceId: `instance-${randomUUID()}`,
     hostName: "Runtime Display Host",

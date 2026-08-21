@@ -80,24 +80,6 @@ describe("createComposePreferencesStore", () => {
     expect(parseStoredEnvironment("host:h1:bogus")).toBeNull();
   });
 
-  it("honours the legacy unscoped model/reasoning pair only for the provider that owns it, and clears it on provider change", () => {
-    const storage = memoryStorage({
-      "bb.promptbox.provider": "codex",
-      "bb.promptbox.model": "gpt-4.1",
-      "bb.promptbox.reasoning": "low",
-    });
-    const store = createComposePreferencesStore(storage);
-    expect(store.getProviderSelection("codex")).toEqual({
-      model: "gpt-4.1",
-      reasoningLevel: "low",
-    });
-    expect(store.getProviderSelection("claude").model).toBe("");
-    store.setProviderId("claude");
-    expect(storage.dump()["bb.promptbox.model"]).toBeUndefined();
-    expect(storage.dump()["bb.promptbox.reasoning"]).toBeUndefined();
-    expect(store.getProviderSelection("codex").model).toBe("");
-  });
-
   it("writes provider-scoped and project-scoped keys, bumps the revision, and notifies subscribers", () => {
     const storage = memoryStorage();
     const store = createComposePreferencesStore(storage);

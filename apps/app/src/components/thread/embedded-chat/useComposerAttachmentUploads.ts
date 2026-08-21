@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
-import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+import type { PromptDraftAttachment } from "@bb/client-core";
 import type { InlineQueuedMessageEditState } from "./useInlineQueuedMessageEditing";
 
 interface UseComposerAttachmentUploadsArgs {
@@ -25,7 +25,7 @@ interface UseComposerAttachmentUploadsResult {
   isAttachingInlineFiles: boolean;
 }
 
-export interface DraftAttachmentUploadTarget {
+interface DraftAttachmentUploadTarget {
   /** Changes whenever a newly mounted draft must not receive older uploads. */
   key: string;
   addAttachment: (attachment: PromptDraftAttachment) => void;

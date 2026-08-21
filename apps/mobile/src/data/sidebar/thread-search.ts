@@ -1,9 +1,10 @@
 import type { ThreadListEntry } from "@bb/domain";
 import type { ThreadSearchResponse } from "@bb/server-contract";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
 import { threadSearchQueryKey } from "@/lib/query/query-keys";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { sidebarThreadsFromBootstrap } from "../threads/thread-list-cache";
 import { useSidebarBootstrap } from "./sidebar-bootstrap";
 import {
@@ -14,15 +15,6 @@ import {
 } from "./thread-search-query";
 
 const THREAD_SEARCH_STALE_TIME_MS = 10_000;
-
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, delayMs]);
-  return debounced;
-}
 
 export interface UseThreadSearchArgs {
   /** Only search while the search UI is open. */

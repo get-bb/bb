@@ -4,7 +4,10 @@ import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import { durationToCompactString } from "@bb/thread-view";
 import { useResizeObserver } from "usehooks-ts";
 import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
-import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import {
+  PROMPT_STACK_CARD_ROW_HEIGHT,
+  PromptStackCard,
+} from "@/components/promptbox/banner/PromptStackCard";
 import { useSecondTick } from "@/hooks/useSecondTick";
 import { Icon } from "@bb/shared-ui/icon";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -13,10 +16,9 @@ import {
   activityMetaClass,
   activityRowClass,
   activityTextClass,
-} from "@/components/ui/activity-row-styles";
+} from "@bb/shared-ui/activity-row-styles";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-const CARD_ROW_HEIGHT = 32;
 const BODY_ID = "thread-background-commands-card-body";
 const TOGGLE_ID = "thread-background-commands-card-toggle";
 // Keep this threshold aligned with the promptbox-shell container query in
@@ -185,7 +187,7 @@ function BackgroundActivitySummary({
   );
 }
 
-export interface ThreadBackgroundCommandsCardProps {
+interface ThreadBackgroundCommandsCardProps {
   commands: TimelineWorkflowWorkRow[];
   isExpanded: boolean;
   onToggle: () => void;
@@ -237,7 +239,7 @@ export function ThreadBackgroundCommandsCard({
       rootRef={cardRef}
       ariaLabel={groupLabel}
       className="overflow-hidden"
-      style={{ minHeight: CARD_ROW_HEIGHT }}
+      style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
     >
       <div className="flex items-center">
         {canExpand ? (

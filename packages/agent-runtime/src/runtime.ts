@@ -145,11 +145,6 @@ interface ResolveProviderProcessKeyArgs {
   threadId?: string;
 }
 
-interface RequireProviderProcessArgs {
-  processKey: string;
-  providerId: string;
-}
-
 interface ArchiveOrUnarchiveThreadArgs {
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   commandType: "thread/archive" | "thread/unarchive";
@@ -353,15 +348,6 @@ export function createAgentRuntimeWithAdapters(
     string,
     { sinceMs: number; watchdogFired: boolean }
   >();
-  const pendingTurnStartThreadIds = {
-    has: (threadId: string) => pendingTurnStarts.has(threadId),
-    delete: (threadId: string) => pendingTurnStarts.delete(threadId),
-    add: (threadId: string) =>
-      pendingTurnStarts.set(threadId, {
-        sinceMs: Date.now(),
-        watchdogFired: false,
-      }),
-  };
   const turnStartWatchdogThresholdMs =
     options.turnStartWatchdog?.thresholdMs ?? 120_000;
   const turnStartWatchdogTimer = setInterval(() => {
@@ -404,7 +390,7 @@ export function createAgentRuntimeWithAdapters(
     bridgeNodeExecutablePath: process.execPath,
     captureThreadExitState: (threadId) => ({
       activeTurnId: turnState.getActiveTurnId(threadId),
-      pendingTurnStart: pendingTurnStartThreadIds.has(threadId),
+      pendingTurnStart: pendingTurnStarts.has(threadId),
       providerThreadId:
         threadIdentityRegistry.getProviderThreadId(threadId) ?? null,
       threadId,
@@ -461,18 +447,13 @@ export function createAgentRuntimeWithAdapters(
     return `${bridgeKey}#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`;
   }
 
-  function requireProviderProcess(
-    args: RequireProviderProcessArgs,
-  ): ProviderProcess {
-    return providerProcesses.requireProviderProcess(args);
-  }
-
   function requireProviderProcessForThread(threadId: string): ProviderProcess {
-    const providerId = resolveProviderForThread(threadId);
+    const providerId =
+      threadIdentityRegistry.resolveProviderForThread(threadId);
     const processKey =
       threadRuntimeConfigs.get(threadId)?.processKey ??
       resolveProviderProcessKey({ providerId });
-    return requireProviderProcess({ processKey, providerId });
+    return providerProcesses.requireProviderProcess({ processKey, providerId });
   }
 
   function isThreadScopedCodexProcess(proc: ProviderProcess): boolean {
@@ -542,7 +523,7 @@ export function createAgentRuntimeWithAdapters(
         });
         // Unarchiving can replace an exited provider process, so resolve the
         // process again instead of writing to the captured child's stdin.
-        retryProc = requireProviderProcess({
+        retryProc = providerProcesses.requireProviderProcess({
           processKey: args.proc.processKey,
           providerId: args.proc.providerId,
         });
@@ -559,10 +540,6 @@ export function createAgentRuntimeWithAdapters(
         pending: retryProc.pending,
       });
     }
-  }
-
-  function resolveProviderForThread(threadId: string): string {
-    return threadIdentityRegistry.resolveProviderForThread(threadId);
   }
 
   function skillRootsForProvider(
@@ -652,7 +629,7 @@ export function createAgentRuntimeWithAdapters(
   function clearThreadRuntimeConfig(threadId: string): void {
     codexThreadsRequiringAccountRestart.delete(threadId);
     idleProviderSessionSinceMsByThreadId.delete(threadId);
-    pendingTurnStartThreadIds.delete(threadId);
+    pendingTurnStarts.delete(threadId);
     threadGoalState.clearThread(threadId);
     threadRuntimeConfigs.delete(threadId);
   }
@@ -717,13 +694,6 @@ export function createAgentRuntimeWithAdapters(
    * running: identity, execution config, turn state (resolving pending
    * active-turn waiters with `null`), and replay-filter state.
    */
-  function forgetThreadRuntimeState(
-    proc: ProviderProcess,
-    threadId: string,
-  ): void {
-    forgetThreadRuntimeStateForProviderState(proc.identity, threadId);
-  }
-
   function forgetThreadRuntimeStateForProviderState(
     providerState: RuntimeProviderProcess["identity"],
     threadId: string,
@@ -746,7 +716,7 @@ export function createAgentRuntimeWithAdapters(
     if (
       threadIdentityRegistry.getProviderSession(threadId) === null ||
       turnState.getActiveTurnId(threadId) !== null ||
-      pendingTurnStartThreadIds.has(threadId)
+      pendingTurnStarts.has(threadId)
     ) {
       return;
     }
@@ -757,19 +727,19 @@ export function createAgentRuntimeWithAdapters(
 
   function observeProviderSessionIdleState(event: ThreadEvent): void {
     if (event.type === "turn/started") {
-      pendingTurnStartThreadIds.delete(event.threadId);
+      pendingTurnStarts.delete(event.threadId);
       markProviderSessionNotIdle(event.threadId);
       return;
     }
 
     if (event.type === "turn/completed") {
-      pendingTurnStartThreadIds.delete(event.threadId);
+      pendingTurnStarts.delete(event.threadId);
       markHostedProviderSessionIdle(event.threadId);
       return;
     }
 
     if (event.type === "provider/error" && event.willRetry !== true) {
-      pendingTurnStartThreadIds.delete(event.threadId);
+      pendingTurnStarts.delete(event.threadId);
       markHostedProviderSessionIdle(event.threadId);
     }
   }
@@ -779,7 +749,7 @@ export function createAgentRuntimeWithAdapters(
   ): ReapIdleProviderSessionCandidate | null {
     if (
       threadHasInFlightOperation(args.threadId) ||
-      pendingTurnStartThreadIds.has(args.threadId) ||
+      pendingTurnStarts.has(args.threadId) ||
       turnState.getActiveTurnId(args.threadId) !== null
     ) {
       return null;
@@ -876,7 +846,7 @@ export function createAgentRuntimeWithAdapters(
     }
 
     const providerThreadId = requireProviderThreadId(args.threadId);
-    const proc = requireProviderProcess({
+    const proc = providerProcesses.requireProviderProcess({
       processKey: currentConfig.processKey,
       providerId: currentConfig.providerId,
     });
@@ -947,7 +917,10 @@ export function createAgentRuntimeWithAdapters(
       providerId,
       ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
     });
-    const proc = requireProviderProcess({ processKey, providerId });
+    const proc = providerProcesses.requireProviderProcess({
+      processKey,
+      providerId,
+    });
     if (!proc.adapter.capabilities.supportsThreadArchive) {
       throw new Error(
         `Provider "${providerId}" does not support thread archive.`,
@@ -990,7 +963,7 @@ export function createAgentRuntimeWithAdapters(
     if (commandType === "thread/archive") {
       // An archived thread is no longer live in the runtime; the next turn
       // must resume it (after unarchive) instead of reusing stale state.
-      forgetThreadRuntimeState(proc, threadId);
+      forgetThreadRuntimeStateForProviderState(proc.identity, threadId);
     }
     await releaseIdleProviderProcess(proc);
   }
@@ -1021,7 +994,7 @@ export function createAgentRuntimeWithAdapters(
     // instructions) must never force a thread/resume, because a resume can
     // replace the live CLI session and kill its running background tasks.
     // Fresh instructions apply when the next session is constructed.
-    const proc = requireProviderProcess({
+    const proc = providerProcesses.requireProviderProcess({
       processKey: currentConfig.processKey,
       providerId: currentConfig.providerId,
     });
@@ -1143,44 +1116,41 @@ export function createAgentRuntimeWithAdapters(
           sourceThreadId: args.sourceThreadId,
         });
 
-      const targetThreadIds = resolvedBbThreadId ? [resolvedBbThreadId] : [];
-
-      if (targetThreadIds.length === 0) {
+      if (!resolvedBbThreadId) {
         options.onStderr?.(
           `Dropping unscoped provider event ${event.type}; no bb thread could be resolved`,
         );
         continue;
       }
+      const targetThreadId = resolvedBbThreadId;
 
-      for (const targetThreadId of targetThreadIds) {
-        if (suppressedThreadEventIds.has(targetThreadId)) {
-          continue;
-        }
-        const stampedEvent = stampThreadEventScope({
-          event,
-          providerThreadId:
-            threadIdentityRegistry.getProviderThreadId(targetThreadId),
-          threadId: targetThreadId,
-        });
-
-        const grammarResult = threadEventGrammar.observe(stampedEvent);
-        if (grammarResult.kind === "violation") {
-          options.onStderr?.(
-            `Dropping ${stampedEvent.type} from provider "${args.proc.providerId}" in thread "${targetThreadId}" (${grammarResult.rule}): ${grammarResult.reason}.`,
-          );
-          continue;
-        }
-
-        const normalizedEvent = normalizeProviderThreadNameEvent(stampedEvent);
-        turnState.observe(normalizedEvent);
-        backgroundWorkState.observe(normalizedEvent);
-        observeProviderSessionIdleState(normalizedEvent);
-        if (shouldRestartCodexThreadAfterEvent(normalizedEvent, args.proc)) {
-          codexThreadsRequiringAccountRestart.add(normalizedEvent.threadId);
-        }
-        options.onEvent(normalizedEvent);
-        threadGoalState.observe(normalizedEvent);
+      if (suppressedThreadEventIds.has(targetThreadId)) {
+        continue;
       }
+      const stampedEvent = stampThreadEventScope({
+        event,
+        providerThreadId:
+          threadIdentityRegistry.getProviderThreadId(targetThreadId),
+        threadId: targetThreadId,
+      });
+
+      const grammarResult = threadEventGrammar.observe(stampedEvent);
+      if (grammarResult.kind === "violation") {
+        options.onStderr?.(
+          `Dropping ${stampedEvent.type} from provider "${args.proc.providerId}" in thread "${targetThreadId}" (${grammarResult.rule}): ${grammarResult.reason}.`,
+        );
+        continue;
+      }
+
+      const normalizedEvent = normalizeProviderThreadNameEvent(stampedEvent);
+      turnState.observe(normalizedEvent);
+      backgroundWorkState.observe(normalizedEvent);
+      observeProviderSessionIdleState(normalizedEvent);
+      if (shouldRestartCodexThreadAfterEvent(normalizedEvent, args.proc)) {
+        codexThreadsRequiringAccountRestart.add(normalizedEvent.threadId);
+      }
+      options.onEvent(normalizedEvent);
+      threadGoalState.observe(normalizedEvent);
     }
   }
 
@@ -1339,7 +1309,7 @@ export function createAgentRuntimeWithAdapters(
     const cleanup = (async () => {
       let proc: ProviderProcess;
       try {
-        proc = requireProviderProcess({
+        proc = providerProcesses.requireProviderProcess({
           processKey: prepared.processKey,
           providerId: prepared.providerId,
         });
@@ -1370,7 +1340,10 @@ export function createAgentRuntimeWithAdapters(
         return;
       }
 
-      forgetThreadRuntimeState(proc, prepared.stagingThreadId);
+      forgetThreadRuntimeStateForProviderState(
+        proc.identity,
+        prepared.stagingThreadId,
+      );
       finishPreparedThreadRewindCleanup(leaseId, prepared);
       try {
         await releaseIdleProviderProcess(proc);
@@ -1446,12 +1419,14 @@ export function createAgentRuntimeWithAdapters(
             ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
           });
 
-          const proc = requireProviderProcess({ processKey, providerId });
-          const effectiveExecOpts = execOpts;
+          const proc = providerProcesses.requireProviderProcess({
+            processKey,
+            providerId,
+          });
           const providerSkillRoots = skillRootsForProvider(providerId);
           assertProviderSupportsExecutionOptions({
             adapter: proc.adapter,
-            options: effectiveExecOpts,
+            options: execOpts,
             providerId,
           });
           threadIdentityRegistry.registerThreadProvider({
@@ -1467,7 +1442,7 @@ export function createAgentRuntimeWithAdapters(
             environmentId,
             instructionMode,
             instructions,
-            options: effectiveExecOpts,
+            options: execOpts,
             processKey,
             projectId,
             providerId,
@@ -1489,7 +1464,7 @@ export function createAgentRuntimeWithAdapters(
 
           const providerExecutionContext = toProviderExecutionContext({
             envVars,
-            execOpts: effectiveExecOpts,
+            execOpts,
             instructions,
             skillRoots: providerSkillRoots,
           });
@@ -1573,7 +1548,7 @@ export function createAgentRuntimeWithAdapters(
             // failure cannot leak an idle provider under the daemon. A failed
             // FIRST TURN (below) deliberately keeps both — the constructed
             // session stays live for a retry.
-            forgetThreadRuntimeState(proc, threadId);
+            forgetThreadRuntimeStateForProviderState(proc.identity, threadId);
             try {
               await releaseIdleProviderProcess(proc);
             } catch (shutdownError) {
@@ -1595,7 +1570,7 @@ export function createAgentRuntimeWithAdapters(
               input,
               ...(inputGroups !== undefined ? { inputGroups } : {}),
               clientRequestId,
-              options: effectiveExecOpts,
+              options: execOpts,
               instructions,
             });
           }
@@ -1646,7 +1621,10 @@ export function createAgentRuntimeWithAdapters(
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
             ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
           });
-          const proc = requireProviderProcess({ processKey, providerId });
+          const proc = providerProcesses.requireProviderProcess({
+            processKey,
+            providerId,
+          });
           if (!proc.adapter.capabilities.supportsFork) {
             throw new Error(
               `Preparing a thread rewind is not supported by ${providerId}`,
@@ -1823,12 +1801,14 @@ export function createAgentRuntimeWithAdapters(
             ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
           });
 
-          const proc = requireProviderProcess({ processKey, providerId });
-          const effectiveExecOpts = execOpts;
+          const proc = providerProcesses.requireProviderProcess({
+            processKey,
+            providerId,
+          });
           const providerSkillRoots = skillRootsForProvider(providerId);
           assertProviderSupportsExecutionOptions({
             adapter: proc.adapter,
-            options: effectiveExecOpts,
+            options: execOpts,
             providerId,
           });
           threadIdentityRegistry.registerThreadProvider({
@@ -1844,7 +1824,7 @@ export function createAgentRuntimeWithAdapters(
             environmentId,
             instructionMode,
             instructions,
-            options: effectiveExecOpts,
+            options: execOpts,
             processKey,
             projectId,
             providerId,
@@ -1876,7 +1856,7 @@ export function createAgentRuntimeWithAdapters(
               providerThreadId ?? requireProviderThreadId(threadId),
             options: toProviderExecutionContext({
               envVars,
-              execOpts: effectiveExecOpts,
+              execOpts,
               instructions,
               skillRoots: providerSkillRoots,
             }),
@@ -1896,11 +1876,10 @@ export function createAgentRuntimeWithAdapters(
             }
             return { providerThreadId: currentProviderThreadId };
           }
-          const cmd = plan;
 
           const result = await sendCommand({
             proc,
-            message: cmd,
+            message: plan,
             resultSchema: threadIdentityResultSchema,
             recovery: {
               providerId,
@@ -1943,12 +1922,11 @@ export function createAgentRuntimeWithAdapters(
       return runThreadOperation({
         threadId,
         work: async () => {
-          const pid = resolveProviderForThread(threadId);
+          const pid = threadIdentityRegistry.resolveProviderForThread(threadId);
           requireProviderProcessForThread(threadId);
-          const effectiveExecOpts = execOpts;
           await restartCodexThreadForNextTurnIfNeeded({
             threadId,
-            options: effectiveExecOpts,
+            options: execOpts,
             instructions,
           });
           // An account restart replaces a thread-scoped Codex process, so
@@ -1956,12 +1934,12 @@ export function createAgentRuntimeWithAdapters(
           const proc = requireProviderProcessForThread(threadId);
           assertProviderSupportsExecutionOptions({
             adapter: proc.adapter,
-            options: effectiveExecOpts,
+            options: execOpts,
             providerId: pid,
           });
           await reconfigureThreadIfNeeded({
             threadId,
-            options: effectiveExecOpts,
+            options: execOpts,
           });
 
           const adapterCommand: AdapterCommand = {
@@ -1973,7 +1951,7 @@ export function createAgentRuntimeWithAdapters(
             clientRequestId,
             options: toProviderExecutionContext({
               envVars: {},
-              execOpts: effectiveExecOpts,
+              execOpts,
               instructions,
             }),
           };
@@ -1982,7 +1960,10 @@ export function createAgentRuntimeWithAdapters(
             plan: proc.adapter.buildCommandPlan(adapterCommand),
             providerId: pid,
           });
-          pendingTurnStartThreadIds.add(threadId);
+          pendingTurnStarts.set(threadId, {
+            sinceMs: Date.now(),
+            watchdogFired: false,
+          });
           markProviderSessionNotIdle(threadId);
           try {
             await sendCommand({
@@ -1996,7 +1977,7 @@ export function createAgentRuntimeWithAdapters(
               },
             });
           } catch (error) {
-            pendingTurnStartThreadIds.delete(threadId);
+            pendingTurnStarts.delete(threadId);
             markHostedProviderSessionIdle(threadId);
             throw error;
           }
@@ -2021,12 +2002,11 @@ export function createAgentRuntimeWithAdapters(
       return runThreadOperation({
         threadId,
         work: async () => {
-          const pid = resolveProviderForThread(threadId);
+          const pid = threadIdentityRegistry.resolveProviderForThread(threadId);
           const currentProc = requireProviderProcessForThread(threadId);
-          const effectiveExecOpts = execOpts;
           assertProviderSupportsExecutionOptions({
             adapter: currentProc.adapter,
-            options: effectiveExecOpts,
+            options: execOpts,
             providerId: pid,
           });
 
@@ -2043,7 +2023,7 @@ export function createAgentRuntimeWithAdapters(
 
           await restartCodexThreadForNextTurnIfNeeded({
             threadId,
-            options: effectiveExecOpts,
+            options: execOpts,
             instructions,
           });
           // An account restart replaces a thread-scoped Codex process, so
@@ -2051,7 +2031,7 @@ export function createAgentRuntimeWithAdapters(
           const proc = requireProviderProcessForThread(threadId);
           await reconfigureThreadIfNeeded({
             threadId,
-            options: effectiveExecOpts,
+            options: execOpts,
           });
 
           const adapterCommand: AdapterCommand = {
@@ -2064,7 +2044,7 @@ export function createAgentRuntimeWithAdapters(
             clientRequestId,
             options: toProviderExecutionContext({
               envVars: {},
-              execOpts: effectiveExecOpts,
+              execOpts,
               instructions,
             }),
           };
@@ -2109,7 +2089,7 @@ export function createAgentRuntimeWithAdapters(
       return runThreadOperation({
         threadId,
         work: async () => {
-          const pid = resolveProviderForThread(threadId);
+          const pid = threadIdentityRegistry.resolveProviderForThread(threadId);
           const proc = requireProviderProcessForThread(threadId);
           const providerThreadId = requireProviderThreadId(threadId);
           const activeTurnId = turnState.getActiveTurnId(threadId);
@@ -2127,7 +2107,7 @@ export function createAgentRuntimeWithAdapters(
                 `Adapter "${pid}" returned no provider request for thread/stop with active turn: ${cmd.reason}`,
               );
             }
-            forgetThreadRuntimeState(proc, threadId);
+            forgetThreadRuntimeStateForProviderState(proc.identity, threadId);
             await releaseIdleProviderProcess(proc);
             return { providerCheckpointId: null };
           }
@@ -2142,7 +2122,7 @@ export function createAgentRuntimeWithAdapters(
             proc,
             sourceThreadId: threadId,
           });
-          forgetThreadRuntimeState(proc, threadId);
+          forgetThreadRuntimeStateForProviderState(proc.identity, threadId);
           await releaseIdleProviderProcess(proc);
           return {
             providerCheckpointId: result.providerCheckpointId ?? null,
@@ -2155,7 +2135,7 @@ export function createAgentRuntimeWithAdapters(
       return runThreadOperation({
         threadId,
         work: async () => {
-          const pid = resolveProviderForThread(threadId);
+          const pid = threadIdentityRegistry.resolveProviderForThread(threadId);
           const proc = requireProviderProcessForThread(threadId);
           const adapterCommand: AdapterCommand = {
             type: "thread/goal/clear",
@@ -2193,7 +2173,7 @@ export function createAgentRuntimeWithAdapters(
       return runThreadOperation({
         threadId,
         work: async () => {
-          const pid = resolveProviderForThread(threadId);
+          const pid = threadIdentityRegistry.resolveProviderForThread(threadId);
           const proc = requireProviderProcessForThread(threadId);
           if (!proc.adapter.capabilities.supportsThreadRename) {
             throw new Error(
@@ -2279,7 +2259,7 @@ export function createAgentRuntimeWithAdapters(
         ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
         ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
       });
-      const proc = requireProviderProcess({
+      const proc = providerProcesses.requireProviderProcess({
         processKey: resolveProviderProcessKey({
           ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
           ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
@@ -2309,7 +2289,7 @@ export function createAgentRuntimeWithAdapters(
         ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
         ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
       });
-      const proc = requireProviderProcess({
+      const proc = providerProcesses.requireProviderProcess({
         processKey: resolveProviderProcessKey({
           ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
           ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
@@ -2337,7 +2317,7 @@ export function createAgentRuntimeWithAdapters(
         ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
         ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
       });
-      const proc = requireProviderProcess({
+      const proc = providerProcesses.requireProviderProcess({
         processKey: resolveProviderProcessKey({
           ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
           ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
@@ -2371,7 +2351,7 @@ export function createAgentRuntimeWithAdapters(
         ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
         ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
       });
-      const proc = requireProviderProcess({
+      const proc = providerProcesses.requireProviderProcess({
         processKey: resolveProviderProcessKey({
           ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
           ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
@@ -2407,7 +2387,7 @@ export function createAgentRuntimeWithAdapters(
         ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
         ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
       });
-      const proc = requireProviderProcess({
+      const proc = providerProcesses.requireProviderProcess({
         processKey: resolveProviderProcessKey({
           ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
           ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
@@ -2471,7 +2451,7 @@ export function createAgentRuntimeWithAdapters(
 
           let proc: ProviderProcess;
           try {
-            proc = requireProviderProcess({
+            proc = providerProcesses.requireProviderProcess({
               processKey: candidate.runtimeConfig.processKey,
               providerId: candidate.runtimeConfig.providerId,
             });

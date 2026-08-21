@@ -19,13 +19,11 @@ export interface DiffFileCardProps {
   workspaceRootPath?: string | null;
   /**
    * Collapse control. Provide `collapsed` + `onToggleCollapsed` to control it;
-   * provide `defaultCollapsed` (or nothing) for an uncontrolled card; pass
-   * `collapsible={false}` to hide the chevron (timeline rows collapse at the
-   * row level).
+   * provide nothing for an uncontrolled card; pass `collapsible={false}` to
+   * hide the chevron (timeline rows collapse at the row level).
    */
   collapsible?: boolean;
   collapsed?: boolean;
-  defaultCollapsed?: boolean;
   onToggleCollapsed?: () => void;
   /** Renders an "Add to chat" action in the header when provided. */
   onAddToChat?: (file: DiffFile) => void;
@@ -44,7 +42,6 @@ export interface DiffFileCardProps {
    * header. By default the label only shows when the card has no hunks.
    */
   showChangeKind?: boolean;
-  className?: string;
   testID?: string;
 }
 
@@ -68,19 +65,16 @@ export const DiffFileCard = memo(function DiffFileCard({
   workspaceRootPath,
   collapsible = true,
   collapsed,
-  defaultCollapsed = false,
   onToggleCollapsed,
   onAddToChat,
   maxLines = DIFF_DEFAULT_MAX_LINES,
   body,
   footer,
   showChangeKind = false,
-  className,
   testID,
 }: DiffFileCardProps) {
   const { tokens } = useTheme();
-  const [uncontrolledCollapsed, setUncontrolledCollapsed] =
-    useState(defaultCollapsed);
+  const [uncontrolledCollapsed, setUncontrolledCollapsed] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const isControlled = collapsed !== undefined;
   const isCollapsed = isControlled ? collapsed : uncontrolledCollapsed;
@@ -110,10 +104,7 @@ export const DiffFileCard = memo(function DiffFileCard({
 
   return (
     <View
-      className={cn(
-        "overflow-hidden rounded-lg border border-border bg-background",
-        className,
-      )}
+      className="overflow-hidden rounded-lg border border-border bg-background"
       testID={testID}
     >
       <Pressable

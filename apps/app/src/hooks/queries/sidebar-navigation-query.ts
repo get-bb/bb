@@ -11,25 +11,13 @@ import {
   useProjectListRealtimeSubscription,
   useThreadListRealtimeSubscription,
 } from "@/hooks/useRealtimeSubscription";
+import type { QueryOptions } from "./query-helpers";
+import { sidebarNavigationQueryKey } from "./query-keys";
 import { REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY } from "./query-policies";
 import {
   readCachedSidebarBootstrap,
   writeCachedSidebarBootstrap,
 } from "@/lib/sidebar-bootstrap-cache";
-
-export const SIDEBAR_NAVIGATION_QUERY_KEY = "sidebarNavigation";
-
-export type SidebarNavigationQueryKey = readonly [
-  typeof SIDEBAR_NAVIGATION_QUERY_KEY,
-];
-
-interface QueryOptions {
-  enabled?: boolean;
-}
-
-export function sidebarNavigationQueryKey(): SidebarNavigationQueryKey {
-  return [SIDEBAR_NAVIGATION_QUERY_KEY];
-}
 
 function fetchSidebarNavigation(
   signal?: AbortSignal,

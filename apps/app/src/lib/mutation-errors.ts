@@ -41,12 +41,7 @@ function stripTrailingPeriod(message: string): string {
 }
 
 function isAbortLikeError(error: unknown): boolean {
-  if (error instanceof DOMException && error.name === "AbortError") {
-    return true;
-  }
-
-  const record = toRecord(error);
-  return record?.name === "AbortError";
+  return toRecord(error)?.name === "AbortError";
 }
 
 function isNetworkTransportError(error: unknown): boolean {

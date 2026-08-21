@@ -14,7 +14,6 @@ export {
   skillScopeLabel,
   type ProviderDisplayNames,
   type RegistrySkillsAccumulator,
-  type SkillLibraryGroup,
 } from "./skill-model";
 export {
   useProjectSkill,
@@ -24,14 +23,5 @@ export {
   useRegistrySkills,
   useSkillContent,
   useSkillFiles,
-  type RegistrySkillDetailArgs,
-  type RegistrySkillsArgs,
-  type SkillContentArgs,
-  type SkillIdentityArgs,
 } from "./skill-queries";
-export {
-  useDeleteSkill,
-  useInstallRegistrySkill,
-  type DeleteSkillArgs,
-  type InstallRegistrySkillArgs,
-} from "./skill-mutations";
+export { useDeleteSkill, useInstallRegistrySkill } from "./skill-mutations";

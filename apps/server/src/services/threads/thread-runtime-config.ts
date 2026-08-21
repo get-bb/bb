@@ -28,7 +28,7 @@ import {
   getPluginSkillRootContributions,
   resolvePluginAgentConfiguration,
 } from "../plugins/plugin-agent-contributions.js";
-import { resolveSkillCatalogSources } from "../skills/skill-catalog.js";
+import { resolveSkillCatalog } from "../skills/skill-catalog.js";
 import { discoverPluginSkillIds } from "../skills/injected-skills.js";
 import { resolveWorkspaceProjectSkills } from "../skills/workspace-skills.js";
 import { resolveSharedSkills } from "../skills/shared-skills.js";
@@ -239,11 +239,11 @@ export async function resolveThreadRuntimeCommandConfig(
     },
     skillIdsByPlugin,
   });
-  const injectedSkillSources = resolveSkillCatalogSources(deps, {
+  const injectedSkillSources = resolveSkillCatalog(deps, {
     projectSkillSources,
     sharedSkillSources: sharedSkills.runtimeSources,
     pluginSkillSelections: conditionalConfiguration.selectedSkillIdsByPlugin,
-  });
+  }).map((entry) => entry.runtimeSource);
   const dataDirAgentInstructions = readDataDirAgentInstructions(
     deps.logger,
     deps.config.dataDir,

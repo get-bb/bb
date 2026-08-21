@@ -274,11 +274,9 @@ vi.mock("@/hooks/mutations/project-mutations", () => ({
 
 function renderEmbeddedChat({
   threadId = "thr_child",
-  isActive = true,
   surfaceTone = "background",
 }: {
   threadId?: string;
-  isActive?: boolean;
   surfaceTone?: "background" | "sidebar";
 } = {}) {
   return render(
@@ -289,7 +287,6 @@ function renderEmbeddedChat({
       projectId="proj-1"
       providerId="provider-1"
       promptContextEnvironmentId={null}
-      isActive={isActive}
       onOpenLink={mocks.onOpenLink}
       onOpenLocalFileLink={mocks.onOpenLocalFileLink}
       resolveMentionLink={mocks.resolveMentionLink}
@@ -455,20 +452,6 @@ describe("EmbeddedThreadChat", () => {
     );
   });
 
-  it("tracks read state only while active", () => {
-    renderEmbeddedChat({ isActive: false });
-    expect(mocks.readTrackingThreads.every((t) => t === undefined)).toBe(true);
-    cleanup();
-
-    mocks.readTrackingThreads = [];
-    renderEmbeddedChat({ isActive: true });
-    expect(
-      mocks.readTrackingThreads.some(
-        (t) => (t as { id?: string } | undefined)?.id === "thr_child",
-      ),
-    ).toBe(true);
-  });
-
   it("keeps queued messages adjacent to the composer", () => {
     mocks.queuedMessages = [{ id: "q1" }, { id: "q2" }];
     renderEmbeddedChat();
@@ -477,13 +460,6 @@ describe("EmbeddedThreadChat", () => {
     const composer = screen.getByTestId("embedded-chat-composer");
     expect(queue.nextElementSibling).toBe(composer);
     expect(screen.getByTestId("queued-count").textContent).toBe("2");
-  });
-
-  it("keeps queued messages visible while a retained embedded chat is inactive", () => {
-    mocks.queuedMessages = [{ id: "q1" }];
-    renderEmbeddedChat({ isActive: false });
-
-    expect(screen.getByTestId("queued-count").textContent).toBe("1");
   });
 
   // Only the main thread view used to render approvals, so a side chat in a

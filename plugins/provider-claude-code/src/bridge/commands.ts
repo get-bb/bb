@@ -1,7 +1,8 @@
 import {
+  dynamicToolSchema,
   instructionModeValues,
   permissionEscalationValues,
-  reasoningLevelValues,
+  reasoningLevelSchema,
   runtimePermissionScopeValues,
   threadDiscardParamsSchema as canonicalThreadDiscardParamsSchema,
   threadForkParamsSchema as canonicalThreadForkParamsSchema,
@@ -23,7 +24,6 @@ const bridgePermissionEscalationSchema = z
   .enum(permissionEscalationValues)
   .nullable();
 const bridgePermissionScopeSchema = z.enum(runtimePermissionScopeValues);
-const bridgeReasoningLevelSchema = z.enum(reasoningLevelValues);
 // Omission means the session has no extra writable roots; this keeps older
 // bridge messages compatible and avoids sending an empty protocol field.
 const bridgeAdditionalWorkspaceWriteRootsSchema = z
@@ -37,12 +37,6 @@ const bridgeClaudeLocalPluginSchema = z.object({
 const bridgeClaudePluginsSchema = z
   .array(bridgeClaudeLocalPluginSchema)
   .optional();
-
-const dynamicToolSchema = z.object({
-  name: z.string(),
-  description: z.string(),
-  inputSchema: z.unknown(),
-});
 
 export const claudeThreadStartParamsSchema = z.object({
   threadId: z.string(),
@@ -61,7 +55,7 @@ export const claudeThreadStartParamsSchema = z.object({
   permissionEscalation: bridgePermissionEscalationSchema,
   config: z.record(z.string(), z.unknown()).optional(),
   model: z.string().optional(),
-  reasoningLevel: bridgeReasoningLevelSchema.optional(),
+  reasoningLevel: reasoningLevelSchema.optional(),
   workflowsEnabled: z.boolean(),
   memoryEnabled: z.boolean().optional(),
   providerSubagentsEnabled: z.boolean().optional(),
@@ -88,7 +82,7 @@ export const claudeTurnStartParamsSchema = z.object({
   providerThreadId: z.string().nullable(),
   input: z.array(z.unknown()),
   model: z.string().optional(),
-  reasoningLevel: bridgeReasoningLevelSchema.optional(),
+  reasoningLevel: reasoningLevelSchema.optional(),
   workflowsEnabled: z.boolean().optional(),
   memoryEnabled: z.boolean().optional(),
   providerSubagentsEnabled: z.boolean().optional(),
@@ -102,7 +96,7 @@ export const claudeTurnSteerParamsSchema = z.object({
   expectedTurnId: z.string(),
   input: z.array(z.unknown()),
   model: z.string().optional(),
-  reasoningLevel: bridgeReasoningLevelSchema.optional(),
+  reasoningLevel: reasoningLevelSchema.optional(),
   workflowsEnabled: z.boolean().optional(),
   memoryEnabled: z.boolean().optional(),
   providerSubagentsEnabled: z.boolean().optional(),

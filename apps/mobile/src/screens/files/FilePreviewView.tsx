@@ -1,5 +1,4 @@
 import type { FilePreviewLineRange } from "@bb/client-core";
-import * as Clipboard from "expo-clipboard";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Linking, Pressable, View } from "react-native";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
@@ -16,6 +15,7 @@ import {
   useWorkspaceFilePreview,
   type FilePreviewContent,
 } from "@/data/files";
+import { copyWithToast } from "@/lib/clipboard";
 import { useTheme } from "@/theme";
 import {
   ActionSheet,
@@ -30,7 +30,7 @@ import {
   type ActionSheetAction,
 } from "@/ui";
 import { CsvFilePreviewBody } from "./CsvFilePreviewBody";
-import { useThreadFileOpener, type FileOpenHandler } from "./file-opener";
+import { useThreadFileOpener } from "./file-opener";
 import {
   describeFilePreviewTargetSource,
   type FilePreviewTarget,
@@ -53,7 +53,7 @@ import {
 } from "./TextFilePreviewBody";
 import { useThreadLocalFileLinks } from "./use-thread-local-file-links";
 
-export interface FilePreviewViewProps {
+interface FilePreviewViewProps {
   /** Null for the root-compose panel (project files only). */
   threadId: string | null;
   projectId: string | null;
@@ -65,13 +65,6 @@ export interface FilePreviewViewProps {
   target: FilePreviewTarget;
   /** Highlighted + scrolled to on open. */
   lineRange: FilePreviewLineRange | null;
-  /** Where links inside the file open (default: the thread file opener). */
-  onOpenFile?: FileOpenHandler;
-  /**
-   * "Add to chat" for a long-pressed line. Default: quote into the thread's
-   * registered composer host, else copy the `path:line` reference.
-   */
-  onAddToChat?: (text: string) => void;
   /** After a successful quote (a panel tab closes the panel so the composer shows). */
   onAddedToChat?: () => void;
   /** Rendered inside the workspace panel sheet: the markdown body uses the sheet-aware scroller. */
@@ -83,12 +76,6 @@ type ViewMode = "preview" | "source";
 
 function initialViewMode(lineRange: FilePreviewLineRange | null): ViewMode {
   return lineRange === null ? "preview" : "source";
-}
-
-function copyWithToast(text: string, label: string): void {
-  void Clipboard.setStringAsync(text)
-    .then(() => toast.success(label))
-    .catch(() => toast.error("Could not copy"));
 }
 
 /**
@@ -106,16 +93,13 @@ export function FilePreviewView({
   workspaceRootPath,
   target,
   lineRange,
-  onOpenFile,
-  onAddToChat,
   onAddedToChat,
   inSheet = false,
   testID = "file-preview",
 }: FilePreviewViewProps) {
   const { tokens } = useTheme();
   const { serverUrl } = useProfileClient();
-  const defaultOpen = useThreadFileOpener(threadId);
-  const openFile = onOpenFile ?? defaultOpen;
+  const openFile = useThreadFileOpener(threadId);
   const localLinks = useThreadLocalFileLinks({
     threadId,
     environmentId,
@@ -227,12 +211,6 @@ export function FilePreviewView({
   );
   const addToChat = useCallback(
     (text: string, reference: string) => {
-      if (onAddToChat) {
-        onAddToChat(text);
-        toast.success("Added to chat");
-        onAddedToChat?.();
-        return;
-      }
       const host =
         threadId === null ? null : resolveThreadComposerHost(threadId);
       if (host) {
@@ -243,7 +221,7 @@ export function FilePreviewView({
       }
       copyWithToast(reference, "Reference copied");
     },
-    [onAddToChat, onAddedToChat, threadId],
+    [onAddedToChat, threadId],
   );
   const lineActions = useMemo<ActionSheetAction[]>(() => {
     if (menuLine === null || sourceText === null) return [];

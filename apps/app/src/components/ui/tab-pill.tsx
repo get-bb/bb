@@ -35,11 +35,6 @@ interface TabPillProps {
   labelClassName?: string;
   title: string;
   isActive: boolean;
-  /**
-   * Full-width panels use a quiet underline because the view already owns the
-   * whole canvas; the filled selection surface is reserved for sibling panes.
-   */
-  activeTreatment?: "fill" | "underline";
   onSelect: () => void;
   labelMaxWidthClass?: string;
   closeAction: TabPillCloseAction | null;
@@ -55,7 +50,6 @@ export function TabPill({
   labelClassName,
   title,
   isActive,
-  activeTreatment = "fill",
   onSelect,
   labelMaxWidthClass = TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS,
   closeAction,
@@ -66,9 +60,7 @@ export function TabPill({
         `group/tab-pill relative inline-flex h-7 shrink-0 items-center rounded-md ${LIST_HOVER_TRANSITION} max-md:pointer-coarse:h-9`,
         COARSE_POINTER_TEXT_SM_CLASS,
         isActive
-          ? activeTreatment === "fill"
-            ? cn(CONTEXT_SELECTION_SURFACE_CLASS, "text-foreground")
-            : "text-foreground after:absolute after:inset-x-1.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-foreground/60"
+          ? cn(CONTEXT_SELECTION_SURFACE_CLASS, "text-foreground")
           : "text-muted-foreground hover:bg-state-hover",
       )}
     >

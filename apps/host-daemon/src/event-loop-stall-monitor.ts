@@ -21,7 +21,7 @@ function nanosecondsToMilliseconds(durationNs: number): number {
   return durationNs / NANOSECONDS_PER_MILLISECOND;
 }
 
-function roundDurationMs(durationMs: number): number {
+export function roundDurationMs(durationMs: number): number {
   return Math.round(durationMs * 10) / 10;
 }
 

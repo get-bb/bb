@@ -13,7 +13,6 @@ import { assistantRow, commandRow, userRow } from "../../test-fixtures";
 import {
   activeWorkflowPhaseKey,
   answeredQuestionEntries,
-  buildThreadHostFileContentUrl,
   buildWorkflowAgentStats,
   compactActivityIntentTitles,
   deriveWorkflowAgentDisplayState,
@@ -288,20 +287,6 @@ describe("toolArgEntries", () => {
       { key: "nested", value: '{\n  "a": [\n    1,\n    2\n  ]\n}' },
     ]);
     expect(toolArgEntries(null)).toEqual([]);
-  });
-});
-
-describe("buildThreadHostFileContentUrl", () => {
-  it("targets the profile server and encodes the path", () => {
-    expect(
-      buildThreadHostFileContentUrl(
-        "http://127.0.0.1:41999/",
-        "thread 1",
-        "/Users/dev/repo/img & co.png",
-      ),
-    ).toBe(
-      "http://127.0.0.1:41999/api/v1/threads/thread%201/host-files/content?path=%2FUsers%2Fdev%2Frepo%2Fimg%20%26%20co.png",
-    );
   });
 });
 

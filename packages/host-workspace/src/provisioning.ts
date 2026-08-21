@@ -42,7 +42,7 @@ type EmitStepArgs = {
   metadata?: ProvisioningTranscriptEntry["metadata"];
 };
 
-export interface CreateWorkspaceArgs {
+interface CreateWorkspaceArgs {
   /** Local repo path for worktrees */
   sourcePath: string;
   targetPath: string;
@@ -63,7 +63,7 @@ export interface CreateWorkspaceArgs {
   signal?: AbortSignal;
 }
 
-export interface RunSetupScriptArgs {
+interface RunSetupScriptArgs {
   workspacePath: string;
   timeoutMs: number;
   /** Resolved user-shell PATH. Falls back to the daemon process PATH. */
@@ -72,7 +72,7 @@ export interface RunSetupScriptArgs {
   signal?: AbortSignal;
 }
 
-export interface RemoveWorktreeArgs {
+interface RemoveWorktreeArgs {
   path: string;
   force?: boolean;
   pruneEmptyParent?: boolean;
@@ -215,7 +215,7 @@ function createProvisionCancelledError(cause?: unknown): WorkspaceError {
   );
 }
 
-function throwIfProvisionAborted(signal: AbortSignal | undefined): void {
+export function throwIfProvisionAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) {
     throw createProvisionCancelledError(signal.reason);
   }

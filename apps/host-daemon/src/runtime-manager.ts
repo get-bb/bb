@@ -150,7 +150,7 @@ export interface RuntimeEntry {
   terminals: Set<string>;
 }
 
-export interface InjectedSkillsChangedNotification {
+interface InjectedSkillsChangedNotification {
   changedPaths: string[];
   sourceType: InjectedSkillsObservedChange["sourceType"];
 }
@@ -173,15 +173,15 @@ export interface EnsureEnvironmentArgs {
   provision?: ProvisionWorkspaceArgs;
 }
 
-export interface CancelEnvironmentProvisionArgs {
+interface CancelEnvironmentProvisionArgs {
   environmentId: string;
 }
 
-export interface CancelEnvironmentProvisionResult {
+interface CancelEnvironmentProvisionResult {
   aborted: boolean;
 }
 
-export interface RefreshEnvironmentWorkspaceArgs {
+interface RefreshEnvironmentWorkspaceArgs {
   environmentId: string;
   provision: ProvisionWorkspaceArgs;
   workspacePath: string;
@@ -228,7 +228,7 @@ export interface RuntimeManagerReapIdleProviderSessionsArgs {
   providerSessionReapingEnabled: boolean;
 }
 
-export interface RuntimeManagerReapedIdleProviderSession extends ReapedIdleProviderSession {
+interface RuntimeManagerReapedIdleProviderSession extends ReapedIdleProviderSession {
   environmentId: string;
 }
 
@@ -240,9 +240,9 @@ export interface RuntimeManagerReapIdleProviderSessionsResult {
  * `interrupt` stops an old runtime even while it runs a turn. `keep` leaves
  * that turn alone and reports its environment to the caller.
  */
-export type ReleaseThreadActiveTurnPolicy = "interrupt" | "keep";
+type ReleaseThreadActiveTurnPolicy = "interrupt" | "keep";
 
-export interface ReleaseThreadFromOtherEnvironmentsResult {
+interface ReleaseThreadFromOtherEnvironmentsResult {
   /** Environments that still run a turn for the thread under `keep`. */
   activeTurnEnvironmentIds: string[];
   /** Provider checkpoint retained by a stopped runtime, when one reported it. */
@@ -329,7 +329,6 @@ export class RuntimeManager {
   private providerMaintenanceActiveRequests = 0;
   private providerMaintenanceIdleTimer: ReturnType<typeof setTimeout> | null =
     null;
-  private managedShellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]> = {};
   private stopWatchingDataDirSkillsRoot: StopWatching = STOP_WATCHING;
 
   constructor(private readonly options: RuntimeManagerOptions = {}) {
@@ -624,10 +623,7 @@ export class RuntimeManager {
   }
 
   getShellEnv(): NonNullable<AgentRuntimeOptions["shellEnv"]> {
-    return {
-      ...this.baseShellEnv,
-      ...this.managedShellEnv,
-    };
+    return { ...this.baseShellEnv };
   }
 
   async replaceBaseShellEnv(
@@ -827,12 +823,6 @@ export class RuntimeManager {
         : {}),
     });
     return null;
-  }
-
-  replaceManagedShellEnv(
-    shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]>,
-  ): void {
-    this.managedShellEnv = { ...shellEnv };
   }
 
   /**

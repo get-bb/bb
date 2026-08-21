@@ -2,7 +2,7 @@ import { isThreadRead } from "@bb/client-core";
 import type { ThreadResponse } from "@bb/server-contract";
 import * as Clipboard from "expo-clipboard";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { Linking, Pressable, View } from "react-native";
+import { Linking } from "react-native";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
 import { useSidebarBootstrap } from "@/data/sidebar";
 import {
@@ -33,6 +33,7 @@ import {
   type IconName,
   type SheetController,
 } from "@/ui";
+import { CenteredRow, CheckRow, SheetHeader } from "../../shell/sheet-rows";
 import { SheetNameForm } from "../../sidebar/SheetNameForm";
 import { buildThreadWebUrl } from "./thread-links";
 
@@ -53,7 +54,7 @@ type SheetState =
       childThreadCount: number | null;
     };
 
-export interface ThreadActionsSheetController {
+interface ThreadActionsSheetController {
   sheet: SheetController;
   state: SheetState | null;
   setState: (state: SheetState | null) => void;
@@ -93,26 +94,6 @@ export interface ThreadMenuAction {
 
 type MenuAction = ThreadMenuAction;
 
-function SheetHeader({
-  title,
-  message,
-}: {
-  title: string;
-  message?: string | null;
-}) {
-  return (
-    <>
-      <View className="gap-1 px-4 pb-3 pt-1">
-        <Text variant="heading" numberOfLines={2}>
-          {title}
-        </Text>
-        {message ? <Text variant="caption">{message}</Text> : null}
-      </View>
-      <Separator />
-    </>
-  );
-}
-
 function MenuRows({ actions }: { actions: readonly MenuAction[] }) {
   const { tokens } = useTheme();
   return (
@@ -146,60 +127,9 @@ function MenuRows({ actions }: { actions: readonly MenuAction[] }) {
   );
 }
 
-function CheckRow({
-  label,
-  icon,
-  checked,
-  onPress,
-  testID,
-}: {
-  label: string;
-  icon: IconName;
-  checked: boolean;
-  onPress: () => void;
-  testID: string;
-}) {
-  const { tokens } = useTheme();
-  return (
-    <ListRow
-      title={label}
-      leading={icon}
-      selected={checked}
-      trailing={
-        checked ? (
-          <Icon name="Check" size={18} color={tokens.foreground} />
-        ) : null
-      }
-      onPress={onPress}
-      testID={testID}
-    />
-  );
-}
-
-function CenteredRow({
-  label,
-  onPress,
-  testID,
-}: {
-  label: string;
-  onPress: () => void;
-  testID: string;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      className="min-h-[44px] items-center justify-center px-4 active:bg-state-hover"
-      testID={testID}
-    >
-      <Text variant="label">{label}</Text>
-    </Pressable>
-  );
-}
-
 const ARCHIVE_UNDO_TOAST_DURATION_MS = 8000;
 
-export interface ThreadActionsSheetProps {
+interface ThreadActionsSheetProps {
   controller: ThreadActionsSheetController;
   thread: ThreadResponse;
   /** Called after the thread was deleted (leave the screen). */

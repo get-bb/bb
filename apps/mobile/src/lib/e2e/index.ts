@@ -4,5 +4,4 @@ export {
   shouldResetOnLaunch,
   type ClearableStorage,
   type E2eEnv,
-  type ResetAppStateDeps,
 } from "./reset";

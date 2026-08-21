@@ -77,7 +77,6 @@ describe("useResolvedLiveFileTarget", () => {
       expect(result.current).toEqual({
         status: "available",
         absolutePath: "/var/lib/bb/thread-storage/thr_1/reports/summary.md",
-        hostId: "host_remote",
         openContext,
       });
       expect(mocks.useThreadStorageLocation).toHaveBeenCalledWith("thr_1", {

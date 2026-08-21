@@ -1,10 +1,6 @@
 import type { IconName } from "@bb/shared-ui/icon";
-import {
-  showcaseArchetypeId,
-  showcaseArchetypePrompt,
-  type ShowcaseArchetype,
-} from "@/components/showcase-hero/showcase-archetype";
-import { CREATE_PLUGIN_PROMPT } from "@/lib/create-resource-prompts";
+import type { ShowcaseArchetype } from "@/components/showcase-hero/showcase-archetype";
+import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
 
 /**
  * The Browse hero's job is two questions answered in one glance: what can a
@@ -91,12 +87,12 @@ const ARCHETYPE_SOURCE: readonly Omit<BrowseArchetype, "id">[] = [
 export const BROWSE_ARCHETYPES: readonly BrowseArchetype[] =
   ARCHETYPE_SOURCE.map((archetype) => ({
     ...archetype,
-    id: showcaseArchetypeId(archetype.title),
+    id: archetype.title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
   }));
 
 /** The full composer prompt for an archetype, matching the New plugin menu. */
 export function archetypePrompt(archetype: BrowseArchetype): string {
-  return showcaseArchetypePrompt(CREATE_PLUGIN_PROMPT, archetype);
+  return `${CREATE_PLUGIN_PROMPT}${archetype.brief}.`;
 }
 
 /**

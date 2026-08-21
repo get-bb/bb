@@ -1,8 +1,6 @@
 import { TASK_PRIORITIES, type Task } from "./contract.js";
 import type { TaskSort } from "./pagination.js";
 
-export { TASK_SORTS, type TaskSort } from "./pagination.js";
-
 const PRIORITY_RANK = new Map<Task["priority"], number>(
   TASK_PRIORITIES.map((priority, index) => [priority, index]),
 );

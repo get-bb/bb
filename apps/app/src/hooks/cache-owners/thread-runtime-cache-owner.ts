@@ -19,12 +19,14 @@ import type {
   TimelineRow,
   UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
-import type { AppCreateThreadRequest } from "@/lib/api-types";
-import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "@/lib/optimistic-timeline-row";
+import type { AppCreateThreadRequest } from "@bb/client-core";
+import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "@bb/client-core";
 import { collectPromptAttachments } from "@/lib/prompt-attachments";
 import { prependPromptHistoryEntry } from "@/lib/prompt-history";
 import {
   applyQueuedMessageReorder,
+  collectLeadQueuedMessageGroupIds,
+  preserveLeadQueuedMessageGroupAfterReorder,
   type QueuedMessageReorderRequest,
 } from "@/lib/queued-message-reorder";
 import type { SendThreadMessageMutationRequest } from "../mutations/mutation-request-types";
@@ -166,7 +168,6 @@ interface ReorderQueuedMessageRequest extends QueuedMessageReorderRequest {
 }
 
 interface SetQueuedMessageGroupBoundaryRequest {
-  expectedGroupedPrefixQueuedMessageIds: string[];
   groupBoundaryQueuedMessageId: string;
   id: string;
 }
@@ -319,43 +320,6 @@ function applyQueuedMessageGroupBoundary({
   return queuedMessages.map((queuedMessage, index) => ({
     ...queuedMessage,
     groupWithNext: index < boundaryIndex,
-  }));
-}
-
-function collectLeadQueuedMessageGroupIds(
-  queuedMessages: readonly ThreadQueuedMessage[],
-): string[] {
-  const ids: string[] = [];
-  for (const queuedMessage of queuedMessages) {
-    ids.push(queuedMessage.id);
-    if (!queuedMessage.groupWithNext) break;
-  }
-  return ids;
-}
-
-function preserveLeadQueuedMessageGroupAfterReorder({
-  originalLeadGroupIds,
-  queuedMessages,
-}: {
-  originalLeadGroupIds: readonly string[];
-  queuedMessages: readonly ThreadQueuedMessage[];
-}): ThreadQueuedMessage[] {
-  if (originalLeadGroupIds.length <= 1) {
-    return queuedMessages.map((queuedMessage) => ({
-      ...queuedMessage,
-      groupWithNext: false,
-    }));
-  }
-
-  const originalLeadGroupIdSet = new Set(originalLeadGroupIds);
-  const preservesLeadGroup = queuedMessages
-    .slice(0, originalLeadGroupIds.length)
-    .every((queuedMessage) => originalLeadGroupIdSet.has(queuedMessage.id));
-
-  return queuedMessages.map((queuedMessage, index) => ({
-    ...queuedMessage,
-    groupWithNext:
-      preservesLeadGroup && index < originalLeadGroupIds.length - 1,
   }));
 }
 

@@ -20,10 +20,7 @@ import type { CommandResultSideEffectsDeps } from "../../internal/command-result
 import { ApiError } from "../../errors.js";
 import { advanceEnvironmentProvisioning } from "../environments/environment-provisioning-internal.js";
 import { applyLoggedEnvironmentLifecycleEventInTransaction } from "../environments/lifecycle-outcome.js";
-import {
-  buildDirectEnvironmentProvisionRequest,
-  type EnvironmentProvisionRequest,
-} from "../environments/environment-provision-request.js";
+import type { EnvironmentProvisionRequest } from "../environments/environment-provision-request.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import {
   appendSystemErrorEvent,
@@ -157,7 +154,7 @@ interface BuildUnmanagedCheckoutArgs {
 interface ThreadProvisionEnvironmentPlan {
   buildRequest: (
     args: BuildEnvironmentProvisionRequestArgs,
-  ) => ReturnType<typeof buildDirectEnvironmentProvisionRequest>;
+  ) => EnvironmentProvisionRequest;
   environmentInput: CreateEnvironmentInput;
 }
 
@@ -414,7 +411,6 @@ async function resolveMetadataIfNeeded(
     const metadata = await inferThreadMetadata(deps, {
       environmentId: args.context.state.environmentId,
       generateBranchName: true,
-      generateTitle: true,
       input: args.context.request.input,
       provisioningId: args.context.state.provisioningId,
       threadId: args.thread.id,
@@ -442,7 +438,6 @@ async function resolveMetadataIfNeeded(
       void inferThreadMetadata(deps, {
         environmentId: null,
         generateBranchName: false,
-        generateTitle: true,
         input: args.context.request.input,
         provisioningId: args.context.state.provisioningId,
         threadId: args.thread.id,
@@ -515,7 +510,6 @@ async function resolveMetadataIfNeeded(
   const metadata = await inferThreadMetadata(deps, {
     environmentId: null,
     generateBranchName: needsBranch,
-    generateTitle: true,
     input: args.context.request.input,
     provisioningId: args.context.state.provisioningId,
     threadId: args.thread.id,
@@ -744,7 +738,7 @@ function buildCheckoutUnmanagedEnvironmentProvisionRequest(
     intent: CheckoutUnmanagedIntent;
     thread: Thread;
   },
-): ReturnType<typeof buildDirectEnvironmentProvisionRequest> {
+): EnvironmentProvisionRequest {
   const checkout = buildUnmanagedCheckout({
     branch: args.intent.branch,
     context: args.context,
@@ -762,7 +756,7 @@ function buildCheckoutUnmanagedEnvironmentProvisionRequest(
     checkout,
   });
 
-  return buildDirectEnvironmentProvisionRequest({ command });
+  return { command };
 }
 
 function buildDirectUnmanagedEnvironmentPlan(
@@ -787,7 +781,7 @@ function buildDirectUnmanagedEnvironmentPlan(
             thread: args.thread,
           })
         : undefined;
-      return buildDirectEnvironmentProvisionRequest({
+      return {
         command: buildEnvironmentProvisionCommand({
           environmentId: environment.id,
           hostId: args.intent.hostId,
@@ -799,7 +793,7 @@ function buildDirectUnmanagedEnvironmentPlan(
           workspaceProvisionType: "unmanaged",
           ...(checkout ? { checkout } : {}),
         }),
-      });
+      };
     },
   };
 }
@@ -839,7 +833,7 @@ function buildManagedEnvironmentPlan(
         setupTimeoutMs: SETUP_TIMEOUT_MS,
       });
 
-      return buildDirectEnvironmentProvisionRequest({ command });
+      return { command };
     },
   };
 }
@@ -855,22 +849,21 @@ function buildPersonalEnvironmentPlan(
       workspaceProvisionType: args.workspaceProvisionType,
       status: "provisioning",
     },
-    buildRequest: ({ context, environment }) =>
-      buildDirectEnvironmentProvisionRequest({
-        command: buildEnvironmentProvisionCommand({
+    buildRequest: ({ context, environment }) => ({
+      command: buildEnvironmentProvisionCommand({
+        environmentId: environment.id,
+        hostId: args.hostId,
+        initiator: {
+          threadId: args.thread.id,
+          provisioningId: context.state.provisioningId,
+        },
+        targetPath: resolvePersonalTargetPath({
+          dataDir: args.dataDir,
           environmentId: environment.id,
-          hostId: args.hostId,
-          initiator: {
-            threadId: args.thread.id,
-            provisioningId: context.state.provisioningId,
-          },
-          targetPath: resolvePersonalTargetPath({
-            dataDir: args.dataDir,
-            environmentId: environment.id,
-          }),
-          workspaceProvisionType: args.workspaceProvisionType,
         }),
+        workspaceProvisionType: args.workspaceProvisionType,
       }),
+    }),
   };
 }
 

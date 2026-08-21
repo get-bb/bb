@@ -82,7 +82,7 @@ export function usePaneContentSplitDrag({
       const startY = event.clientY;
       const startLayout = store.get(splitLayoutAtom);
       const fallback = singlePaneFallback(startLayout);
-      beginSplitDrag(startX, startY, {
+      beginSplitDrag({
         ghostLabel: label,
         sourceEl: rowEl,
         cancelSidebarReorderOnEngage: true,

@@ -26,10 +26,6 @@ export function createEnvironmentId(): string {
   return createId("env");
 }
 
-export function createEnvironmentProvisioningId(): string {
-  return createId("epv");
-}
-
 export function createThreadId(): string {
   return createId("thr");
 }

@@ -45,7 +45,7 @@ import {
   requirePositionals,
   type ParsedArgs,
 } from "./args";
-import { bytes, detail, json, table } from "./format";
+import { bytes, detail, table } from "./format";
 import { seedDemo } from "./seed";
 
 const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
@@ -568,7 +568,7 @@ async function runProject(
       ),
     );
     return args.flags.has("json")
-      ? json(result)
+      ? JSON.stringify(result)
       : `Created project ${result.project.prefix}  ${result.project.name}`;
   }
 
@@ -580,7 +580,7 @@ async function runProject(
       await domain.listFolders(tasksRpcContract.listFolders.input.parse(null)),
     ).folders;
     return args.flags.has("json")
-      ? json({ projects })
+      ? JSON.stringify({ projects })
       : projectTable(projects, folders);
   }
 
@@ -595,7 +595,7 @@ async function runProject(
     const folder = project.folderId
       ? await resolveFolder(domain, project.folderId)
       : null;
-    if (args.flags.has("json")) return json({ project, folder });
+    if (args.flags.has("json")) return JSON.stringify({ project, folder });
     return detail([
       ["Project", `${project.prefix} — ${project.name}`],
       ["ID", project.id],
@@ -691,7 +691,7 @@ async function runProject(
     );
     publishProjectsChanged(bb, updated.id);
     return args.flags.has("json")
-      ? json({ project: updated })
+      ? JSON.stringify({ project: updated })
       : `Updated project ${updated.prefix}  ${updated.name}`;
   }
 
@@ -729,7 +729,7 @@ async function runFolder(
       ),
     );
     return args.flags.has("json")
-      ? json(result)
+      ? JSON.stringify(result)
       : `Created folder ${result.folder.name}  ${result.folder.id}`;
   }
 
@@ -743,7 +743,7 @@ async function runFolder(
       result.folders.map((folder) => [folder.id, folder.name]),
     );
     return args.flags.has("json")
-      ? json(result)
+      ? JSON.stringify(result)
       : table(
           ["NAME", "PARENT", "ID"],
           result.folders.map((folder) => [
@@ -805,7 +805,7 @@ async function runFolder(
     );
     publishProjectsChanged(bb, null);
     return args.flags.has("json")
-      ? json({ folder: updated })
+      ? JSON.stringify({ folder: updated })
       : `Updated folder ${updated.name}  ${updated.id}`;
   }
 
@@ -832,7 +832,7 @@ async function runFolder(
       );
     }
     if (args.flags.has("json")) {
-      return json({ ...result, folder });
+      return JSON.stringify({ ...result, folder });
     }
     const projectCount = result.movedProjectIds.length;
     const folderCount = result.movedFolderIds.length;
@@ -953,7 +953,7 @@ async function runCreate(
     }
   }
   const stdout = args.flags.has("json")
-    ? json({ task, attachments, failedAttachments })
+    ? JSON.stringify({ task, attachments, failedAttachments })
     : [
         `Created ${task.key}  ${task.title}`,
         ...attachments.map(
@@ -1078,7 +1078,7 @@ async function runList(
   }
   const limit = taskPageLimit(args);
   if (args.flags.has("json")) {
-    return json({ tasks, nextCursor: result.nextCursor, limit });
+    return JSON.stringify({ tasks, nextCursor: result.nextCursor, limit });
   }
   const output = table(
     ["KEY", "STATUS", "PRIORITY", "DUE", "TITLE", "LABELS", "AGENTS"],
@@ -1157,7 +1157,7 @@ async function runShow(domain: TasksDomain, argv: string[]): Promise<string> {
     pullRequestUnavailableThreadIds: unavailableThreadIds,
     comments,
   };
-  if (args.flags.has("json")) return json(payload);
+  if (args.flags.has("json")) return JSON.stringify(payload);
 
   const sections = [
     detail([
@@ -1335,7 +1335,7 @@ async function runUpdate(
   );
   const updated = unwrapTask(result);
   return args.flags.has("json")
-    ? json({ task: updated })
+    ? JSON.stringify({ task: updated })
     : `Updated ${updated.key}  ${updated.title}`;
 }
 
@@ -1382,7 +1382,7 @@ async function runComment(
     notify: args.flags.has("notify"),
   });
   return args.flags.has("json")
-    ? json({ comment })
+    ? JSON.stringify({ comment })
     : `Commented on ${task.key}  ${comment.id}`;
 }
 
@@ -1413,7 +1413,7 @@ async function runLabel(domain: TasksDomain, argv: string[]): Promise<string> {
       ),
     );
     return args.flags.has("json")
-      ? json(result)
+      ? JSON.stringify(result)
       : `Created label ${result.label.name}  ${result.label.id}`;
   }
 
@@ -1426,7 +1426,7 @@ async function runLabel(domain: TasksDomain, argv: string[]): Promise<string> {
     );
     const labels = await projectLabels(domain, project.id);
     return args.flags.has("json")
-      ? json({ labels })
+      ? JSON.stringify({ labels })
       : table(
           ["NAME", "COLOR", "ID"],
           labels.map((label) => [label.name, label.color, label.id]),
@@ -1455,7 +1455,7 @@ async function runLabel(domain: TasksDomain, argv: string[]): Promise<string> {
       ),
     );
     return args.flags.has("json")
-      ? json({ ...result, label })
+      ? JSON.stringify({ ...result, label })
       : `Deleted label ${label.name}`;
   }
 
@@ -1505,7 +1505,7 @@ async function runAttachment(
       url: buildAttachmentUrl(attachment.id),
     };
     return args.flags.has("json")
-      ? json(payload)
+      ? JSON.stringify(payload)
       : `Added attachment ${attachment.fileName}  ${attachment.id}`;
   }
 
@@ -1525,7 +1525,7 @@ async function runAttachment(
     );
     await writeClientFile(bb, clientHostId, outPath, content);
     return args.flags.has("json")
-      ? json({ attachment, out: outPath })
+      ? JSON.stringify({ attachment, out: outPath })
       : `Saved ${attachment.fileName}  ${outPath}`;
   }
 
@@ -1561,7 +1561,7 @@ async function runAttachment(
     }
     const attachments = [...directAttachments, ...commentAttachments];
     return args.flags.has("json")
-      ? json({ task, attachments })
+      ? JSON.stringify({ task, attachments })
       : table(
           ["ID", "NAME", "TYPE", "SIZE"],
           attachments.map((attachment) => [
@@ -1594,7 +1594,7 @@ async function runAttachment(
       throw new CliError(`attachment not found: ${attachmentId}`);
     }
     return args.flags.has("json")
-      ? json({ deleted: true, attachment: result.attachment })
+      ? JSON.stringify({ deleted: true, attachment: result.attachment })
       : `Removed attachment ${result.attachment.fileName}  ${result.attachment.id}`;
   }
 
@@ -1612,7 +1612,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
     requirePositionals(args, 0, "bb tasks preset list [--json]");
     const presets = await listPresets(domain);
     return args.flags.has("json")
-      ? json({ presets })
+      ? JSON.stringify({ presets })
       : table(
           [
             "NAME",
@@ -1653,7 +1653,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
     );
     const preset = resolvePreset(await listPresets(domain), address!);
     return args.flags.has("json")
-      ? json({ preset })
+      ? JSON.stringify({ preset })
       : detail([
           ["Name", preset.name],
           ["Provider", preset.providerId],
@@ -1713,7 +1713,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
       ),
     );
     return args.flags.has("json")
-      ? json(result)
+      ? JSON.stringify(result)
       : `Created preset ${result.preset.name}  ${result.preset.id}`;
   }
 
@@ -1771,7 +1771,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
       ),
     );
     return args.flags.has("json")
-      ? json(result)
+      ? JSON.stringify(result)
       : `Updated preset ${result.preset.name}  ${result.preset.id}`;
   }
 
@@ -1789,7 +1789,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
       ),
     );
     return args.flags.has("json")
-      ? json({ ...result, preset })
+      ? JSON.stringify({ ...result, preset })
       : `Deleted preset ${preset.name}`;
   }
 
@@ -1821,7 +1821,7 @@ async function runDispatch(
     ),
   );
   return args.flags.has("json")
-    ? json({ task, preset, ...result })
+    ? JSON.stringify({ task, preset, ...result })
     : result.threadId;
 }
 
@@ -1851,7 +1851,7 @@ async function runAttach(
     ),
   );
   return args.flags.has("json")
-    ? json({ task, ...result })
+    ? JSON.stringify({ task, ...result })
     : `Attached ${result.threadId} to ${task.key}`;
 }
 
@@ -1870,7 +1870,7 @@ async function runThreads(
     ),
   );
   return args.flags.has("json")
-    ? json({ task, taskThreads: result.taskThreads })
+    ? JSON.stringify({ task, taskThreads: result.taskThreads })
     : table(
         ["THREAD", "STATUS", "PRESET", "TITLE"],
         result.taskThreads.map((thread) => [
@@ -2070,7 +2070,7 @@ export function registerTasksCli(
             }
             const result = await seedDemo(domain, ctx.projectId);
             stdout = args.flags.has("json")
-              ? json(result)
+              ? JSON.stringify(result)
               : detail([
                   ["Folders", result.foldersCreated],
                   ["Projects", result.projectsCreated],

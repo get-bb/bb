@@ -251,7 +251,6 @@ interface TimelineWindowRowsArgs {
  * backfills it has to say how much inline output it is willing to read.
  */
 interface TimelineWindowParentedRowsArgs extends TimelineWindowRowsArgs {
-  includeParentContext?: boolean;
   /** See {@link InlineOutputCharLimit}. */
   maxInlineOutputChars: InlineOutputCharLimit;
   /** Extra byte budget for child rows outside `sequenceBounds`. */
@@ -473,13 +472,6 @@ function ensureTimelineWindowParentedRows(
       }
     }
     rows = mergeStoredEventRowsById([...rows, ...newChildRows]);
-  }
-
-  if (args.includeParentContext === false) {
-    return {
-      contextOnlyToolCallIds: new Set(),
-      rows,
-    };
   }
 
   const contextOnlyToolCallIds = new Set<string>();
@@ -1458,20 +1450,6 @@ function selectStandardTimelineEventRows(
   };
 }
 
-function selectTimelineEventRows(
-  db: DbConnection,
-  thread: Thread,
-  options: BuildThreadTimelineInternalOptions,
-): TimelineEventRowSelection {
-  return selectStandardTimelineEventRows(
-    db,
-    thread,
-    options.page,
-    options.eventBudget,
-    options.maxInlineOutputChars,
-  );
-}
-
 function byteLengthOfStoredEventRows(rows: readonly StoredEventRow[]): number {
   let byteLength = 0;
   for (const row of rows) {
@@ -1610,7 +1588,14 @@ function buildThreadTimelineInternal(
   const eventSelection = measureThreadTimelineStage(
     profile,
     "event-query",
-    () => selectTimelineEventRows(db, thread, options),
+    () =>
+      selectStandardTimelineEventRows(
+        db,
+        thread,
+        options.page,
+        options.eventBudget,
+        options.maxInlineOutputChars,
+      ),
   );
   const rawEventRows = eventSelection.rows;
   if (profile) {
@@ -1658,7 +1643,6 @@ function buildThreadTimelineInternal(
     profile.contextWindowEventRowCount = contextWindowUsageRows.length;
   }
   const commonProjectionOptions = {
-    includeDebugRawEvents: false,
     includeProviderUnhandledOperations,
     isLatestPage: options.page.kind === "latest",
     providerDisplayName: options.providerDisplayName,
@@ -1873,7 +1857,6 @@ export function buildThreadConversationOutline(
       contextWindowEvents: [],
       events: decodedEvents,
       options: {
-        includeDebugRawEvents: false,
         includeNestedRows: false,
         includeProviderUnhandledOperations: false,
         isLatestPage: true,

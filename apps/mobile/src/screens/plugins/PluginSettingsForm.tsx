@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { View } from "react-native";
 import {
   pluginSecretIsSet,
-  pluginSettingEntries,
   pluginSettingFieldValue,
   pluginSettingsChanges,
   usePluginSettings,
@@ -206,7 +205,7 @@ function SettingField({
   );
 }
 
-export interface PluginSettingsFormProps {
+interface PluginSettingsFormProps {
   pluginId: string;
 }
 
@@ -242,7 +241,7 @@ export function PluginSettingsForm({ pluginId }: PluginSettingsFormProps) {
     );
   }
   const { schema, values } = view.data;
-  const entries = pluginSettingEntries(schema);
+  const entries = Object.entries(schema);
   if (entries.length === 0) {
     return (
       <CardNote testID="plugin-settings-none">

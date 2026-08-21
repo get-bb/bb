@@ -1,4 +1,8 @@
-import { defaultAppTheme, type FaviconColorPreference } from "@bb/domain";
+import {
+  defaultAppTheme,
+  isBuiltInThemeId,
+  type FaviconColorPreference,
+} from "@bb/domain";
 import { useMemo } from "react";
 import { View } from "react-native";
 import { useProfiles } from "@/app-shell";
@@ -6,7 +10,6 @@ import {
   buildPaletteOptions,
   FAVICON_COLOR_OPTIONS,
   faviconColorLabel,
-  isNativelyRenderedPalette,
   paletteLabel,
   useThemeCatalog,
   useUpdateAppearance,
@@ -124,7 +127,7 @@ function ConnectedAppearanceSections() {
   const selectFaviconColor = (faviconColor: FaviconColorPreference) =>
     updateAppearance.mutate({ themeId: appearance.themeId, faviconColor });
   const activeLabel = paletteLabel(appearance, pluginThemes);
-  const nativelyRendered = isNativelyRenderedPalette(appearance.themeId);
+  const nativelyRendered = isBuiltInThemeId(appearance.themeId);
 
   return (
     <>

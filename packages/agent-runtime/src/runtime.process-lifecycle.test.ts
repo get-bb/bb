@@ -166,7 +166,6 @@ describe("createAgentRuntime process lifecycle", () => {
     const adapter = createFakeAdapter(scriptPath);
     return {
       ...adapter,
-      displayName: "Codex",
       id: "codex",
       translateEvent(event) {
         const translated = adapter.translateEvent(event);
@@ -964,7 +963,6 @@ rl.on("line", (line) => {
         const adapter = createFakeAdapter(threadScopedProviderScript);
         return {
           ...adapter,
-          displayName: "Codex",
           id: "codex",
         };
       },
@@ -1106,7 +1104,6 @@ rl.on("line", (line) => {
         const adapter = createFakeAdapter(failingStartProviderScript);
         return {
           ...adapter,
-          displayName: "Codex",
           id: "codex",
         };
       },
@@ -1554,7 +1551,6 @@ rl.on("line", (line) => {
         const adapter = createFakeAdapter(threadScopedProviderScript);
         return {
           ...adapter,
-          displayName: "Codex",
           id: "codex",
         };
       },
@@ -1689,7 +1685,6 @@ rl.on("line", (line) => {
         const adapter = createFakeAdapter(threadScopedProviderScript);
         return {
           ...adapter,
-          displayName: "Codex",
           id: "codex",
         };
       },
@@ -1758,7 +1753,6 @@ rl.on("line", (line) => {
       }),
       adapterFactory: () => ({
         ...createFakeAdapter(providerScript),
-        displayName: "Claude Code",
         id: "claude-code",
       }),
     });
@@ -1814,7 +1808,6 @@ rl.on("line", (line) => {
       }),
       adapterFactory: () => ({
         ...createFakeAdapter(providerScript),
-        displayName: "Claude Code",
         id: "claude-code",
       }),
     });

@@ -123,15 +123,12 @@ Tab kinds → owner: `git-diff` (Diff agent), `workspace-file-preview` /
 
 ```ts
 panel.open(); // present (last view)
-panel.openInfo();
 panel.openDiff(path?); // Diff tab; path → panel.view.diffPath until consumeDiffPath()
 panel.openFiles({ section: "storage" }); // files launcher; → view.filesParams until consumeFilesParams()
 panel.openTerminal(terminalId?, target?); // tab of a session, or the launcher
 panel.openFile({ kind: "workspace" | "host" | "storage", path, line?, endLine?, source?, statusLabel? });
-panel.openTab(tab); // any FixedPanelTab
 panel.activate({ kind: "tab", tabId } | { kind: "launcher", launcher });
 panel.closeTab(id); panel.closeOtherTabs(id); panel.closeAllTabs(); panel.close();
-panel.updateTabsState(updater); // client-core updater on the synced state (prune terminal tabs, …)
 panel.view / panel.activeView / panel.entries / panel.scope / panel.visible
 ```
 

@@ -23,7 +23,7 @@ import { copyToClipboardWithToast } from "@/lib/clipboard";
 import type {
   FilePreviewLineRange,
   WorkspaceFilePreviewStatusLabel,
-} from "@/lib/file-preview";
+} from "@bb/client-core";
 import {
   DEFAULT_CODE_OVERFLOW_MODE,
   type CodeOverflowMode,
@@ -875,10 +875,7 @@ function MarkdownFilePreview({
     // Keep rendered Markdown on the ordinary document background. Its parent
     // owns the boundary, so another raised "paper" layer would make nested
     // file viewers feel like cards stacked inside cards.
-    <SecondaryPanelSelectionActions
-      className="contents"
-      onSelectionAddToChat={onSelectionAddToChat}
-    >
+    <SecondaryPanelSelectionActions onSelectionAddToChat={onSelectionAddToChat}>
       <div className="flex-auto bg-background px-4 py-4">
         <MarkdownPreview
           allowHtml
@@ -906,10 +903,7 @@ function CsvFilePreview({ file, onSelectionAddToChat }: CsvFilePreviewProps) {
   const truncationNote = getCsvTruncationNote(preview, bodyRows.length);
 
   return (
-    <SecondaryPanelSelectionActions
-      className="contents"
-      onSelectionAddToChat={onSelectionAddToChat}
-    >
+    <SecondaryPanelSelectionActions onSelectionAddToChat={onSelectionAddToChat}>
       {/* Single scroll container for both axes: the sticky header row and
           row-number gutter stick against this box, the horizontal scrollbar
           stays visible at the panel bottom, and the sticky cells are clipped

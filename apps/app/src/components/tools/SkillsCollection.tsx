@@ -47,6 +47,11 @@ const RESOURCE_SKILL_SOURCE_FILTERS: readonly ResourceSkillSourceFilter[] = [
   "user",
 ];
 
+const SOURCE_FILTER_OPTIONS = RESOURCE_SKILL_SOURCE_FILTERS.map((source) => ({
+  id: source,
+  label: skillSourceFilterLabel(source),
+}));
+
 /**
  * Names a provider the way the rest of the app does: the server's display name
  * first. The icon's aria label is a per-tier fallback — every unknown `acp-*`
@@ -302,7 +307,7 @@ function SkillRow({
   );
 }
 
-export interface SkillsOverviewProps {
+interface SkillsOverviewProps {
   skills: readonly SkillSummary[];
   /**
    * Provider display names from the server roster. Provider ids are
@@ -410,14 +415,6 @@ export function SkillsOverview({
         !providerCounts.has(provider) && !providerFilters.includes(provider),
     }));
   }, [providerCounts, providerDisplayNames, providerFilters]);
-  const sourceOptions = useMemo(
-    () =>
-      RESOURCE_SKILL_SOURCE_FILTERS.map((source) => ({
-        id: source,
-        label: skillSourceFilterLabel(source),
-      })),
-    [],
-  );
   useEffect(() => {
     if (sortMode === "provider" && providerBucketCount <= 1) {
       setSortMode("alpha");
@@ -580,7 +577,7 @@ export function SkillsOverview({
                       {
                         id: "type",
                         label: "Type",
-                        options: sourceOptions,
+                        options: SOURCE_FILTER_OPTIONS,
                         selectedValues: sourceFilters,
                         onChange: (values) =>
                           setSourceFilters(
@@ -625,7 +622,7 @@ export function SkillsOverview({
   );
 }
 
-export interface SkillDetailDialogViewProps {
+interface SkillDetailDialogViewProps {
   skill: SkillSummary | null;
   /** See {@link SkillsOverviewProps.providerDisplayNames}. */
   providerDisplayNames: ProviderDisplayNames;

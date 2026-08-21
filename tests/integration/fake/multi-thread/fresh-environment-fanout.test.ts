@@ -119,7 +119,6 @@ describe.sequential(
         {
           adapterFactory: (providerId) =>
             createFakeAdapter({
-              displayName: providerId,
               id: providerId,
             }),
         },

@@ -11,7 +11,6 @@ type ResolvedLiveFileTarget =
   | {
       status: "available";
       absolutePath: string;
-      hostId: string;
       openContext: OpenInTargetContext;
     };
 
@@ -48,7 +47,6 @@ export function useResolvedLiveFileTarget(
       return {
         status: "available",
         absolutePath: target.path,
-        hostId: target.hostId,
         openContext: isLocalDaemonHost(target.hostId)
           ? { kind: "local" }
           : {
@@ -71,7 +69,6 @@ export function useResolvedLiveFileTarget(
           location.storageRootPath,
           target.path,
         ),
-        hostId: location.hostId,
         openContext: isLocalDaemonHost(location.hostId)
           ? { kind: "local" }
           : {
@@ -90,7 +87,6 @@ export function useResolvedLiveFileTarget(
     return {
       status: "available",
       absolutePath: buildAbsoluteHostPath(environment.path, target.path),
-      hostId: environment.hostId,
       openContext: isLocalDaemonHost(environment.hostId)
         ? { kind: "local" }
         : {

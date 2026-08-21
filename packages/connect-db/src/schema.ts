@@ -104,7 +104,7 @@ export const profile = sqliteTable("profile", {
   createdAt: timestampMs("created_at").notNull(),
 });
 
-export const labelClaimKinds = ["handle", "server", "machine"] as const;
+const labelClaimKinds = ["handle", "server", "machine"] as const;
 
 /**
  * The authoritative global routing-label namespace. Product rows retain their
@@ -235,12 +235,6 @@ export const auditLog = sqliteTable(
   },
   (table) => [index("audit_log_user_id_idx").on(table.userId)],
 );
-
-export const connectCodePurposes = [
-  "server-pair",
-  "manual-pair",
-  "machine-pair",
-] as const;
 
 export const schema = {
   user,

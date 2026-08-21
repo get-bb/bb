@@ -119,6 +119,7 @@ import {
   type CursorMcpApproval,
 } from "./cursor-mcp-approval.js";
 import {
+  ACP_NATIVE_REASONING_EFFORTS,
   buildAgentModelCatalog,
   buildAcpNativeReasoningSupport,
   buildModelCatalogFromConfigOptions,
@@ -144,7 +145,6 @@ import {
 
 interface AcpSessionPolicy {
   permissionMode: "accept-edits" | "full";
-  permissionEscalation: "ask" | "deny" | null;
   workspaceWriteRoots: string[];
 }
 
@@ -180,7 +180,6 @@ interface AcpThreadSession {
   supportsImageInput: boolean;
   supportsLoadSession: boolean;
   policy: AcpSessionPolicy;
-  cwd: string;
   pendingInstructions: string | undefined;
   /**
    * Which agent prompt is in flight for this bb turn: an ordinary `"turn"`,
@@ -507,12 +506,7 @@ const ACP_DEFAULT_MODEL: AvailableModel = {
   model: ACP_DEFAULT_MODEL_ID,
   displayName: "Agent default",
   description: "Model selection is managed by the connected ACP agent.",
-  supportedReasoningEfforts: [
-    {
-      reasoningEffort: "medium",
-      description: "Reasoning effort is managed by the connected ACP agent.",
-    },
-  ],
+  supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
   defaultReasoningEffort: "medium",
   isDefault: true,
 };
@@ -523,7 +517,9 @@ const AUTH_REQUIRED_MODEL_LIST_ERROR_MESSAGE =
   "ACP agent is not authenticated.";
 
 function reasoningSupportFromCli(
-  reasoningCli: AcpBridgeReasoningCli | undefined,
+  reasoningCli:
+    | Pick<AcpBridgeReasoningCli, "supportedLevels" | "defaultLevel">
+    | undefined,
 ):
   | Pick<AvailableModel, "supportedReasoningEfforts" | "defaultReasoningEffort">
   | undefined {
@@ -535,28 +531,6 @@ function reasoningSupportFromCli(
     reasoningCli.defaultLevel !== undefined &&
     supportedLevels.includes(reasoningCli.defaultLevel)
       ? reasoningCli.defaultLevel
-      : supportedLevels.includes("medium")
-        ? "medium"
-        : supportedLevels[0];
-  return {
-    supportedReasoningEfforts: reasoningEffortsForLevels(supportedLevels),
-    defaultReasoningEffort,
-  };
-}
-
-function reasoningSupportFromNativeHint(
-  nativeReasoning: AcpBridgeNativeReasoning | undefined,
-):
-  | Pick<AvailableModel, "supportedReasoningEfforts" | "defaultReasoningEffort">
-  | undefined {
-  if (nativeReasoning === undefined) {
-    return undefined;
-  }
-  const supportedLevels = nativeReasoning.supportedLevels;
-  const defaultReasoningEffort =
-    nativeReasoning.defaultLevel !== undefined &&
-    supportedLevels.includes(nativeReasoning.defaultLevel)
-      ? nativeReasoning.defaultLevel
       : supportedLevels.includes("medium")
         ? "medium"
         : supportedLevels[0];
@@ -591,7 +565,7 @@ function applyNativeReasoningHintToModel(
   model: AvailableModel,
   nativeReasoning: AcpBridgeNativeReasoning | undefined,
 ): AvailableModel {
-  const reasoningSupport = reasoningSupportFromNativeHint(nativeReasoning);
+  const reasoningSupport = reasoningSupportFromCli(nativeReasoning);
   return reasoningSupport === undefined ||
     !modelHasOnlyAgentManagedReasoning(model)
     ? model
@@ -623,28 +597,15 @@ function applyConfiguredReasoningToModels(
   return models.map((model) => applyConfiguredReasoningToModel(model, args));
 }
 
-function resolveReasoningCliValue(args: {
-  reasoningCli: AcpBridgeReasoningCli;
+function resolveHintReasoningValue(args: {
+  hint: Pick<AcpBridgeReasoningCli, "supportedLevels" | "levelValues">;
   reasoningLevel: ReasoningLevel;
 }): string | undefined {
-  const override = args.reasoningCli.levelValues?.[args.reasoningLevel];
+  const override = args.hint.levelValues?.[args.reasoningLevel];
   if (override !== undefined) {
     return override;
   }
-  return args.reasoningCli.supportedLevels.includes(args.reasoningLevel)
-    ? args.reasoningLevel
-    : undefined;
-}
-
-function nativeReasoningLevelToValue(args: {
-  nativeReasoning: AcpBridgeNativeReasoning;
-  reasoningLevel: ReasoningLevel;
-}): string | undefined {
-  const override = args.nativeReasoning.levelValues?.[args.reasoningLevel];
-  if (override !== undefined) {
-    return override;
-  }
-  return args.nativeReasoning.supportedLevels.includes(args.reasoningLevel)
+  return args.hint.supportedLevels.includes(args.reasoningLevel)
     ? args.reasoningLevel
     : undefined;
 }
@@ -656,8 +617,8 @@ function nativeReasoningToThoughtLevelOption(
     return undefined;
   }
   const options = nativeReasoning.supportedLevels.flatMap((level) => {
-    const value = nativeReasoningLevelToValue({
-      nativeReasoning,
+    const value = resolveHintReasoningValue({
+      hint: nativeReasoning,
       reasoningLevel: level,
     });
     return value === undefined
@@ -672,8 +633,8 @@ function nativeReasoningToThoughtLevelOption(
   const currentValue =
     nativeReasoning.defaultLevel === undefined
       ? undefined
-      : nativeReasoningLevelToValue({
-          nativeReasoning,
+      : resolveHintReasoningValue({
+          hint: nativeReasoning,
           reasoningLevel: nativeReasoning.defaultLevel,
         });
   return {
@@ -1128,8 +1089,8 @@ async function resolveAgentLaunchArgs(
     params.reasoningCli !== undefined &&
     params.launchReasoningLevel !== undefined
   ) {
-    const reasoningValue = resolveReasoningCliValue({
-      reasoningCli: params.reasoningCli,
+    const reasoningValue = resolveHintReasoningValue({
+      hint: params.reasoningCli,
       reasoningLevel: params.launchReasoningLevel,
     });
     if (reasoningValue !== undefined) {
@@ -1695,10 +1656,8 @@ async function startAgentSession(
     supportsLoadSession: false,
     policy: {
       permissionMode: params.permissionMode,
-      permissionEscalation: params.permissionEscalation,
       workspaceWriteRoots: params.workspaceWriteRoots,
     },
-    cwd: params.cwd,
     pendingInstructions: params.instructions,
     activePromptKind: null,
     queuedInputs: [],

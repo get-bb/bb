@@ -39,39 +39,19 @@ import {
 import { getPluginHomepageSectionAnchor } from "@/lib/plugin-homepage-section";
 import { projectSkillsQueryKey } from "@/hooks/queries/query-keys";
 
-function pluginActivityIcon(
-  activity: "service" | "schedule",
-  state: "running" | "backoff" | "stopped" | "ok" | "error" | null,
-): { name: IconName; className: string; label: string } {
-  if (activity === "service" && state === "running") {
-    return {
-      name: "CircleCheck",
-      className: "text-success",
-      label: "Running",
-    };
-  }
-  if (activity === "service" && state === "backoff") {
-    return {
-      name: "RotateCcw",
-      className: "text-warning",
-      label: "Restarting",
-    };
-  }
-  if (activity === "service" && state === "stopped") {
-    return {
-      name: "Pause",
-      className: "text-muted-foreground",
-      label: "Stopped",
-    };
-  }
-  if (activity === "schedule" && state === null) {
+function pluginActivityIcon(state: "running" | "ok" | "error" | null): {
+  name: IconName;
+  className: string;
+  label: string;
+} {
+  if (state === null) {
     return {
       name: "Clock",
       className: "text-muted-foreground",
       label: "Scheduled",
     };
   }
-  if (activity === "schedule" && state === "running") {
+  if (state === "running") {
     // The app says "working" by shimmering a row's own icon, never by swapping
     // it for a spinner (ThreadRow.tsx:144). A running job keeps its clock.
     return {
@@ -80,27 +60,21 @@ function pluginActivityIcon(
       label: "Running",
     };
   }
-  if (activity === "schedule" && state === "ok") {
+  if (state === "ok") {
     return {
       name: "CircleCheck",
       className: "text-success",
       label: "Succeeded",
     };
   }
-  if (activity === "schedule" && state === "error") {
+  if (state === "error") {
     return { name: "CircleX", className: "text-destructive", label: "Failed" };
   }
-  return activity === "service"
-    ? {
-        name: "Pause",
-        className: "text-muted-foreground",
-        label: "Stopped",
-      }
-    : {
-        name: "Clock",
-        className: "text-muted-foreground",
-        label: "Scheduled",
-      };
+  return {
+    name: "Clock",
+    className: "text-muted-foreground",
+    label: "Scheduled",
+  };
 }
 
 function pluginServiceStatus(state: "running" | "backoff" | "stopped"): {
@@ -131,13 +105,11 @@ function pluginServiceStatus(state: "running" | "backoff" | "stopped"): {
 }
 
 function PluginActivityState({
-  activity,
   state,
 }: {
-  activity: "service" | "schedule";
-  state: "running" | "backoff" | "stopped" | "ok" | "error" | null;
+  state: "running" | "ok" | "error" | null;
 }) {
-  const icon = pluginActivityIcon(activity, state);
+  const icon = pluginActivityIcon(state);
   return (
     <PluginDetailGlyph
       icon={icon.name}
@@ -679,12 +651,7 @@ export function PluginSchedules({ plugin }: { plugin: PluginListItem }) {
       {plugin.schedules.map((schedule) => (
         <PluginDetailRow
           key={schedule.name}
-          glyph={
-            <PluginActivityState
-              activity="schedule"
-              state={schedule.lastStatus}
-            />
-          }
+          glyph={<PluginActivityState state={schedule.lastStatus} />}
           name={schedule.name}
           detail={
             schedule.lastError ??

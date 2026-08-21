@@ -28,11 +28,11 @@ import {
   Spinner,
   Text,
 } from "@/ui";
+import { ComposeDock } from "../compose/ComposeDock";
 import {
-  ComposeDock,
   useComposeController,
   type ComposeParams,
-} from "../compose";
+} from "../compose/useComposeController";
 import { threadHref, threadSearchHref } from "../shell/hrefs";
 import { Screen } from "../shell/Screen";
 import { WorkspaceMenuButton } from "../shell/WorkspaceMenu";

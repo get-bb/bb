@@ -50,7 +50,7 @@ export function getCollapsibleHeaderToneClass(isExpanded: boolean): string {
     : COLLAPSIBLE_HEADER_COLLAPSED_TONE_CLASS;
 }
 
-export interface CollapsibleHeaderProps {
+interface CollapsibleHeaderProps {
   summaryContent: ReactNode;
   toneClassName: string;
   summaryClassName?: string;
@@ -118,18 +118,15 @@ interface ExpandablePanelProps {
   onToggle?: () => void;
   collapsedContent?: ReactNode;
   forceHeaderChevronVisible?: boolean;
-  headerButtonClassName?: string;
   summaryContentClassName?: string;
   children?: ReactNode;
   renderBody?: () => ReactNode;
   className?: string;
   headerClassName?: string;
-  bodyClassName?: string;
   contentClassName?: string;
 }
 
 interface AnimatedExpandablePanelContentProps {
-  bodyClassName?: string;
   collapsedContent: ReactNode;
   contentClassName?: string;
   isExpanded: boolean;
@@ -137,7 +134,6 @@ interface AnimatedExpandablePanelContentProps {
 }
 
 function AnimatedExpandablePanelContent({
-  bodyClassName,
   collapsedContent,
   contentClassName,
   isExpanded,
@@ -189,10 +185,7 @@ function AnimatedExpandablePanelContent({
   return (
     <div
       ref={regionRef}
-      className={cn(
-        "relative transition-[height] duration-200 ease-out",
-        bodyClassName,
-      )}
+      className="relative transition-[height] duration-200 ease-out"
       style={{
         overflowX: "visible",
         overflowY: "clip",
@@ -218,22 +211,16 @@ export function ExpandablePanel({
   onToggle,
   collapsedContent,
   forceHeaderChevronVisible = false,
-  headerButtonClassName,
   summaryContentClassName,
   children,
   renderBody,
   className,
   headerClassName,
-  bodyClassName,
   contentClassName,
 }: ExpandablePanelProps) {
   const hasCollapsedContent =
     collapsedContent !== undefined && collapsedContent !== null;
-  const headerRootClassName = cn(
-    "px-2 py-1",
-    headerClassName,
-    headerButtonClassName,
-  );
+  const headerRootClassName = cn("px-2 py-1", headerClassName);
   const [isClosing, setIsClosing] = useState(false);
   const renderedBodyRef = useRef<ReactNode>(null);
   const expandedBody = useMemo(() => {
@@ -325,7 +312,6 @@ export function ExpandablePanel({
       </div>
       {hasCollapsedContent ? (
         <AnimatedExpandablePanelContent
-          bodyClassName={bodyClassName}
           collapsedContent={collapsedContent}
           contentClassName={contentClassName}
           isExpanded={isExpanded}
@@ -339,7 +325,6 @@ export function ExpandablePanel({
             isExpanded
               ? "pointer-events-auto grid-rows-[1fr] opacity-100"
               : "pointer-events-none grid-rows-[0fr] opacity-0",
-            bodyClassName,
           )}
         >
           <div className="overflow-hidden">

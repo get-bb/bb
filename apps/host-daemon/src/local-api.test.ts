@@ -24,7 +24,6 @@ describe("local API server", () => {
       bindHost: "localhost",
       healthPath: "/health",
       healthValue: "ok",
-      mode: "full",
       port: 0,
       ...overrides,
     };
@@ -470,31 +469,5 @@ describe("local API server", () => {
       path: "/tmp/workspace",
       targetId: "vscode",
     });
-  });
-
-  it("supports health-only mode", async () => {
-    server = await startLocalApiServer({
-      hostId: "host-1",
-      localApiConfig: createLocalApiConfig({
-        bindHost: "127.0.0.1",
-        healthPath: "/ready",
-        healthValue: "bb-host-daemon",
-        mode: "health-only",
-      }),
-      serverUrl: "http://server.test",
-      serverPort: 3334,
-      devAppPort: 5173,
-      getConnected: () => true,
-    });
-
-    const healthResponse = await fetch(`http://127.0.0.1:${server.port}/ready`);
-    expect(healthResponse.status).toBe(200);
-    expect(await healthResponse.text()).toBe("bb-host-daemon");
-
-    const client = createHostDaemonLocalClient(
-      `http://127.0.0.1:${server.port}`,
-    );
-    const statusResponse = await client.status.$get();
-    expect(statusResponse.status).toBe(404);
   });
 });

@@ -1,4 +1,3 @@
-import { getProjectSourceByHost } from "@bb/db";
 import {
   type Environment,
   type LocalPathProjectSource,
@@ -12,6 +11,7 @@ import {
   assertUsableHostId,
   requireConnectedPrimaryHostId,
 } from "../hosts/primary-host.js";
+import { requireSourceForHost } from "./thread-create-helpers.js";
 
 type ThreadRequestEnvironment = EnvironmentArgs;
 type ThreadRequestEnvironmentDeps = Pick<AppDeps, "config" | "db" | "hub">;
@@ -150,14 +150,7 @@ function resolveHostThreadRequestEnvironment(
     };
   }
 
-  const localSource = getProjectSourceByHost(deps.db, projectId, hostId);
-  if (!localSource || localSource.type !== "local_path") {
-    throw new ApiError(
-      409,
-      "invalid_request",
-      "No project source configured for this host",
-    );
-  }
+  const localSource = requireSourceForHost(deps, projectId, hostId);
 
   return {
     hostId,

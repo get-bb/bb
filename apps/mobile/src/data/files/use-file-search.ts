@@ -1,20 +1,12 @@
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useEnvironmentPaths, useThreadStoragePaths } from "../composer";
 import { useProjectPaths } from "../projects";
 import { buildFileSearchSections, type FileSearchSection } from "./file-search";
 
 const FILE_SEARCH_DEBOUNCE_MS = 120;
 const FILE_SEARCH_LIMIT_PER_SOURCE = 12;
-
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, delayMs]);
-  return debounced;
-}
 
 export interface UseFileSearchArgs {
   threadId: string | null;

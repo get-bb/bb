@@ -158,7 +158,7 @@ function buildDiffFileTarget(
 }
 
 // Browser-renderable raster image MIME types. Mirrors the extension allowlist
-// in `isImageGitDiffFile`. SVG remains a text result; the card converts that
+// in `isPreviewableImagePath`. SVG remains a text result; the card converts that
 // text into a preview data URL while keeping the raw diff toggle available.
 const PREVIEWABLE_IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
   "image/avif",

@@ -5,8 +5,6 @@ import type {
 } from "@bb/server-contract";
 import { isOptimisticTimelineRowId } from "./optimistic-timeline-row.js";
 
-export type ThreadTimelineRowFilter = (row: TimelineRow) => boolean;
-
 type NullableTimelinePaginationCursor = TimelinePaginationCursor | null;
 
 export interface LoadedTimelineState {
@@ -29,7 +27,7 @@ interface AreTimelinePaginationCursorsEqualArgs {
   right: NullableTimelinePaginationCursor;
 }
 
-export interface MergeLatestTimelineRowsArgs {
+interface MergeLatestTimelineRowsArgs {
   latestRows: readonly TimelineRow[];
   latestWindowStartSequence: number;
   loadedRows: TimelineRow[];
@@ -55,64 +53,21 @@ interface AreTimelineRowReferencesEqualArgs {
   right: readonly TimelineRow[];
 }
 
-export interface PrependOlderTimelineRowsArgs {
+interface PrependOlderTimelineRowsArgs {
   loadedRows: readonly TimelineRow[];
   olderRows: readonly TimelineRow[];
 }
 
-export interface MergeLoadedTimelineWithLatestArgs {
+interface MergeLoadedTimelineWithLatestArgs {
   current: LoadedTimelineState;
   latestTimeline: ThreadTimelineResponse;
   surfaceKey: string;
 }
 
-export interface RecoverLoadedTimelineAfterStaleCursorArgs {
+interface RecoverLoadedTimelineAfterStaleCursorArgs {
   current: LoadedTimelineState;
   latestTimeline: ThreadTimelineResponse;
   surfaceKey: string;
-}
-
-interface BuildSurfaceKeyArgs {
-  rowFilter: ThreadTimelineRowFilter | undefined;
-  surfaceKey: string | undefined;
-  threadId: string;
-}
-
-export function buildSurfaceKey({
-  rowFilter,
-  surfaceKey,
-  threadId,
-}: BuildSurfaceKeyArgs): string {
-  if (surfaceKey !== undefined) {
-    return surfaceKey;
-  }
-  return rowFilter === undefined ? threadId : `${threadId}:filtered`;
-}
-
-export function filterTimelineRows({
-  rowFilter,
-  rows,
-}: {
-  rowFilter: ThreadTimelineRowFilter | undefined;
-  rows: readonly TimelineRow[];
-}): TimelineRow[] {
-  return rowFilter === undefined ? [...rows] : rows.filter(rowFilter);
-}
-
-export function filterThreadTimelineResponse({
-  response,
-  rowFilter,
-}: {
-  response: ThreadTimelineResponse;
-  rowFilter: ThreadTimelineRowFilter | undefined;
-}): ThreadTimelineResponse {
-  if (rowFilter === undefined) {
-    return response;
-  }
-  return {
-    ...response,
-    rows: response.rows.filter(rowFilter),
-  };
 }
 
 export function buildLoadedTimelineState({

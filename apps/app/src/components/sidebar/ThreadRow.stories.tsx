@@ -10,11 +10,11 @@ import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
 import { SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
-import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
+import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import {
   NO_COLLAPSED_CHILD_ACTIVITY,
   type CollapsedChildActivity,
-} from "@/lib/thread-activity";
+} from "@bb/client-core";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 
@@ -666,7 +666,7 @@ export function Overview() {
         label="parent with a child from another project"
         hint="a child that lives in a different project than its parent shows the folder-export marker after its title; hover it for the project name"
       >
-        <SidebarThreadTitleMentionResourcesProvider
+        <ThreadTitleMentionResourcesProvider
           sectionNamesById={new Map()}
           projectNamesById={new Map([["proj_web", "web"]])}
           threadById={new Map()}
@@ -696,7 +696,7 @@ export function Overview() {
               options={childOption}
             />
           </SidebarStage>
-        </SidebarThreadTitleMentionResourcesProvider>
+        </ThreadTitleMentionResourcesProvider>
       </StoryRow>
       <StoryRow
         label="parent, collapsed"

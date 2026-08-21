@@ -141,15 +141,7 @@ function summarizeServerMessagePayload(
 
 export class ServerConnection {
   private readonly createWebSocket: CreateReconnectingWebSocket;
-  private readonly minReconnectionDelay: number;
-  private readonly maxReconnectionDelay: number;
-  private readonly reconnectionDelayGrowFactor: number;
-  private readonly connectionTimeout: number;
   private readonly startupTimeoutMs: number;
-  private readonly setTimeoutFn: typeof setTimeout;
-  private readonly clearTimeoutFn: typeof clearTimeout;
-  private readonly setIntervalFn: typeof setInterval;
-  private readonly clearIntervalFn: typeof clearInterval;
 
   private session: HostDaemonSessionOpenResponse | null = null;
   private websocket: ReconnectingWebSocketLike | null = null;
@@ -173,21 +165,8 @@ export class ServerConnection {
   constructor(private readonly options: ServerConnectionOptions) {
     this.createWebSocket =
       options.createWebSocket ?? createDefaultReconnectingWebSocket;
-    this.minReconnectionDelay =
-      options.minReconnectionDelay ?? DEFAULT_MIN_RECONNECTION_DELAY;
-    this.maxReconnectionDelay =
-      options.maxReconnectionDelay ?? DEFAULT_MAX_RECONNECTION_DELAY;
-    this.reconnectionDelayGrowFactor =
-      options.reconnectionDelayGrowFactor ??
-      DEFAULT_RECONNECTION_DELAY_GROW_FACTOR;
-    this.connectionTimeout =
-      options.connectionTimeout ?? DEFAULT_CONNECTION_TIMEOUT_MS;
     this.startupTimeoutMs =
       options.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT_MS;
-    this.setTimeoutFn = options.setTimeoutFn ?? setTimeout;
-    this.clearTimeoutFn = options.clearTimeoutFn ?? clearTimeout;
-    this.setIntervalFn = options.setIntervalFn ?? setInterval;
-    this.clearIntervalFn = options.clearIntervalFn ?? clearInterval;
   }
 
   get sessionId(): string | null {
@@ -294,7 +273,7 @@ export class ServerConnection {
     if (this.terminalSocketDrainTimeout !== null) {
       return;
     }
-    this.terminalSocketDrainTimeout = this.setTimeoutFn(() => {
+    this.terminalSocketDrainTimeout = setTimeout(() => {
       this.terminalSocketDrainTimeout = null;
       this.flushTerminalSocketPayloads(false);
     }, TERMINAL_SOCKET_DRAIN_POLL_MS);
@@ -338,7 +317,7 @@ export class ServerConnection {
 
   private clearTerminalSocketPayloads(): void {
     if (this.terminalSocketDrainTimeout !== null) {
-      this.clearTimeoutFn(this.terminalSocketDrainTimeout);
+      clearTimeout(this.terminalSocketDrainTimeout);
       this.terminalSocketDrainTimeout = null;
     }
     this.pendingTerminalSocketPayloads.length = 0;
@@ -449,10 +428,10 @@ export class ServerConnection {
         return this.buildWebSocketUrl(sessionId);
       },
       {
-        minReconnectionDelay: this.minReconnectionDelay,
-        maxReconnectionDelay: this.maxReconnectionDelay,
-        reconnectionDelayGrowFactor: this.reconnectionDelayGrowFactor,
-        connectionTimeout: this.connectionTimeout,
+        minReconnectionDelay: DEFAULT_MIN_RECONNECTION_DELAY,
+        maxReconnectionDelay: DEFAULT_MAX_RECONNECTION_DELAY,
+        reconnectionDelayGrowFactor: DEFAULT_RECONNECTION_DELAY_GROW_FACTOR,
+        connectionTimeout: DEFAULT_CONNECTION_TIMEOUT_MS,
         headers: {
           authorization: buildHostDaemonWebSocketAuthorizationHeader(
             this.options.hostKey,
@@ -473,7 +452,7 @@ export class ServerConnection {
       let settled = false;
       let hasOpened = false;
 
-      const startupTimer = this.setTimeoutFn(() => {
+      const startupTimer = setTimeout(() => {
         if (this.protocolMismatchObserved) {
           return;
         }
@@ -489,7 +468,7 @@ export class ServerConnection {
           return;
         }
         settled = true;
-        this.clearTimeoutFn(startupTimer);
+        clearTimeout(startupTimer);
         void this.shutdown();
         reject(normalizeCaughtError(error));
       };
@@ -505,7 +484,7 @@ export class ServerConnection {
         const handleOpen = async () => {
           hasOpened = true;
           this.sessionInvalidationInProgress = false;
-          this.clearTimeoutFn(startupTimer);
+          clearTimeout(startupTimer);
           this.resetHeartbeat();
           this.options.setSession?.(session);
           this.options.logger.info(
@@ -748,7 +727,7 @@ export class ServerConnection {
     }
 
     this.lastHeartbeatTickAt = Date.now();
-    this.heartbeatInterval = this.setIntervalFn(() => {
+    this.heartbeatInterval = setInterval(() => {
       const session = this.session;
       if (!session) {
         return;
@@ -801,7 +780,7 @@ export class ServerConnection {
     if (!this.heartbeatInterval) {
       return;
     }
-    this.clearIntervalFn(this.heartbeatInterval);
+    clearInterval(this.heartbeatInterval);
     this.heartbeatInterval = null;
     this.lastHeartbeatTickAt = null;
   }

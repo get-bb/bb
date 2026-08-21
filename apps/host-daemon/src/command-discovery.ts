@@ -29,7 +29,7 @@ interface CommandScanRootBase {
   skillIdentitySeed?: string;
 }
 
-export interface CommandScanDirectoryRoot extends CommandScanRootBase {
+interface CommandScanDirectoryRoot extends CommandScanRootBase {
   /** Optional boundary that a project-origin recursive root must stay within. */
   boundaryPath?: string;
   /** Absolute directory to scan. Missing dir -> no records (no throw). */
@@ -37,13 +37,13 @@ export interface CommandScanDirectoryRoot extends CommandScanRootBase {
   shape: "skill" | "skill-recursive" | "skill-directory" | "command";
 }
 
-export interface CommandScanFileRoot extends CommandScanRootBase {
+interface CommandScanFileRoot extends CommandScanRootBase {
   /** Absolute file to scan. Missing file -> no record (no throw). */
   filePath: string;
   shape: "command-file";
 }
 
-export interface CommandScanSkillFileRoot extends CommandScanRootBase {
+interface CommandScanSkillFileRoot extends CommandScanRootBase {
   /** Fallback command name used when the file has no frontmatter `name`. */
   fallbackName: string;
   /** Absolute SKILL.md file to scan. Missing file -> no record (no throw). */
@@ -75,7 +75,7 @@ export type CommandScanRoot =
   | CommandScanFileRoot
   | CommandScanSkillFileRoot;
 
-export interface DiscoverProviderCommandsArgs {
+interface DiscoverProviderCommandsArgs {
   roots: readonly CommandScanRoot[];
 }
 
@@ -344,7 +344,7 @@ async function walkMarkdownTree(args: WalkMarkdownTreeArgs): Promise<void> {
   }
 }
 
-function isPathWithinDirectory(
+export function isPathWithinDirectory(
   directoryPath: string,
   candidatePath: string,
 ): boolean {
@@ -534,7 +534,7 @@ export type SkillScanRoot = CommandScanRoot & {
   rootKind: SkillRootKind;
 };
 
-export interface DiscoverSkillsArgs {
+interface DiscoverSkillsArgs {
   roots: readonly SkillScanRoot[];
 }
 

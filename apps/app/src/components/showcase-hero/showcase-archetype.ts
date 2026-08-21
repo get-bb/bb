@@ -34,16 +34,3 @@ type ShowcaseScene = (props: { accentToken: string }) => ReactElement;
 
 /** Scene renderers keyed by archetype id. */
 export type ShowcaseScenes = Record<string, ShowcaseScene>;
-
-/** Stable, readable ids derived from the title. */
-export function showcaseArchetypeId(title: string): string {
-  return title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-}
-
-/** The full composer prompt for an archetype on a given surface. */
-export function showcaseArchetypePrompt(
-  promptPrefix: string,
-  archetype: ShowcaseArchetype,
-): string {
-  return `${promptPrefix}${archetype.brief}.`;
-}

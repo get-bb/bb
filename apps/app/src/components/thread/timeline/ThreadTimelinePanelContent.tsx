@@ -15,10 +15,9 @@ import {
   type UseThreadTimelineControllerResult,
 } from "./useThreadTimelineController.js";
 
-export interface ThreadTimelinePanelContentProps {
+interface ThreadTimelinePanelContentProps {
   isTurnSubmitting?: boolean;
   leadingContent?: ReactNode;
-  missingThreadLabel?: string;
   onMessageAddToChat?: ThreadTimelineSurfaceProps["onMessageAddToChat"];
   onSendToMainMessage?: ThreadTimelineSurfaceProps["onSendToMainMessage"];
   onSelectionAddToChat?: ThreadTimelineSurfaceProps["onSelectionAddToChat"];
@@ -27,19 +26,16 @@ export interface ThreadTimelinePanelContentProps {
   onOpenLink?: ThreadTimelineSurfaceProps["onOpenLink"];
   onOpenLocalFileLink?: ThreadTimelineSurfaceProps["onOpenLocalFileLink"];
   projectId?: string;
-  provisioningLabel?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
   surfaceKey?: string;
   threadId: string;
   timeline?: UseThreadTimelineControllerResult;
-  timelineErrorLabel?: string;
   workspaceRootPath?: string;
 }
 
 export function ThreadTimelinePanelContent({
   isTurnSubmitting = false,
   leadingContent,
-  missingThreadLabel = "This thread is no longer available.",
   onMessageAddToChat,
   onSendToMainMessage,
   onSelectionAddToChat,
@@ -48,12 +44,10 @@ export function ThreadTimelinePanelContent({
   onOpenLink,
   onOpenLocalFileLink,
   projectId,
-  provisioningLabel = "Provisioning thread...",
   resolveMentionLink,
   surfaceKey,
   threadId,
   timeline,
-  timelineErrorLabel = "Failed to load timeline",
   workspaceRootPath,
 }: ThreadTimelinePanelContentProps) {
   const threadQuery = useThread(threadId);
@@ -78,7 +72,7 @@ export function ThreadTimelinePanelContent({
     displayStatus === "host-reconnecting"
       ? "Waiting for reconnection"
       : isProvisioningDisplayStatus
-        ? provisioningLabel
+        ? "Provisioning thread..."
         : backgroundOnlyIndicatorLabel;
   const showOngoingIndicator =
     threadQuery.data?.status !== "stopping" &&
@@ -97,7 +91,7 @@ export function ThreadTimelinePanelContent({
       <ConversationTimeline className="flex-1">
         {leadingContent}
         <EmptyStatePanel className="mx-2 rounded-lg">
-          {missingThreadLabel}
+          This thread is no longer available.
         </EmptyStatePanel>
       </ConversationTimeline>
     );
@@ -130,7 +124,6 @@ export function ThreadTimelinePanelContent({
       resolveMentionLink={resolveMentionLink}
       showOngoingIndicator={showOngoingIndicator}
       ongoingIndicatorLabel={ongoingIndicatorLabel}
-      timelineErrorLabel={timelineErrorLabel}
       timelineErrorClassName="mx-2 mt-4 text-destructive"
       timelineRows={timelineRows}
       threadId={threadId}

@@ -35,13 +35,11 @@ import {
   listRecentStoredEventRows,
   listStoredConversationOutlineEventRows,
   listTimelineSegmentAnchorsDescending,
-  findTimelineSegmentAnchorSequenceAfter,
   getTimelineSegmentAnchorAtSequence,
   listOpenTurnInputAcceptedRowsByThreadIds,
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,
   listStoredEventRows,
-  listStoredEventRowsInRange,
   listStoredThreadProvisioningRowsByProvisioningId,
   findUnfinishedTurnCoveringSequence,
   hasParentedEventCrossingSequence,
@@ -1218,14 +1216,6 @@ describe("events", () => {
     ]);
 
     expect(
-      listStoredEventRowsInRange(db, {
-        seqEnd: 2,
-        seqStart: 1,
-        threadId: thread.id,
-      }),
-    ).toHaveLength(2);
-
-    expect(
       listRecentStoredEventRows(db, {
         excludedTypes: ["system/error"],
         maxInlineOutputChars: null,
@@ -1471,24 +1461,6 @@ describe("events", () => {
         threadId: thread.id,
       }),
     ).toEqual({ rowId: `${thread.id}:user-seed:2`, sequence: 2 });
-    expect(
-      findTimelineSegmentAnchorSequenceAfter(db, {
-        sequence: 7,
-        threadId: thread.id,
-      }),
-    ).toBe(8);
-    expect(
-      findTimelineSegmentAnchorSequenceAfter(db, {
-        sequence: 10,
-        threadId: thread.id,
-      }),
-    ).toBe(11);
-    expect(
-      findTimelineSegmentAnchorSequenceAfter(db, {
-        sequence: 11,
-        threadId: thread.id,
-      }),
-    ).toBeUndefined();
   });
 
   it("loads timeline event windows with sequence bounds and exclusions", () => {

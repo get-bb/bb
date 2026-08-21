@@ -1,4 +1,3 @@
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 import type { ThreadListEntry } from "@bb/domain";
 import type { ThreadSearchResult } from "@bb/server-contract";
 import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
@@ -17,7 +16,7 @@ import { useTheme } from "@/theme";
 import { EmptyState, Icon, Input, Spinner, Text } from "@/ui";
 import { Screen } from "../shell/Screen";
 import {
-  resolveThreadRowIndicator,
+  flatThreadRow,
   SidebarActionsProvider,
   projectSubtitle,
   SidebarThreadRowView,
@@ -37,22 +36,6 @@ type SearchListRow =
     };
 
 const DISABLE_MAINTAIN_POSITION = { disabled: true };
-
-function toThreadRow(thread: ThreadListEntry): SidebarThreadRow {
-  return {
-    type: "thread",
-    key: `thread:${thread.id}`,
-    thread,
-    depth: 0,
-    childCount: 0,
-    collapsed: false,
-    indicator: resolveThreadRowIndicator({
-      thread,
-      hasHiddenChildren: false,
-      childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
-    }),
-  };
-}
 
 function snippetFor(result: ThreadSearchResult): string | null {
   const match = result.matches.find(
@@ -78,7 +61,7 @@ function buildRows(args: {
         rows.push({
           type: "thread",
           key: `active:${result.thread.id}`,
-          row: toThreadRow(result.thread),
+          row: flatThreadRow(result.thread),
           snippet: snippetFor(result),
         });
       }
@@ -89,7 +72,7 @@ function buildRows(args: {
         rows.push({
           type: "thread",
           key: `archived:${result.thread.id}`,
-          row: toThreadRow(result.thread),
+          row: flatThreadRow(result.thread),
           snippet: snippetFor(result),
         });
       }
@@ -102,7 +85,7 @@ function buildRows(args: {
       rows.push({
         type: "thread",
         key: `recent:${thread.id}`,
-        row: toThreadRow(thread),
+        row: flatThreadRow(thread),
         snippet: null,
       });
     }

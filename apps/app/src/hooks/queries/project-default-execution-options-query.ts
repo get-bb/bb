@@ -2,12 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import type { ProjectExecutionDefaults } from "@bb/domain";
 import { sdk } from "@/lib/sdk";
 import { useProjectDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
-import { requireEnabledQueryArg } from "./query-helpers";
+import { requireProjectId, type QueryOptions } from "./query-helpers";
 import { projectDefaultExecutionOptionsQueryKey } from "./query-keys";
-
-interface QueryOptions {
-  enabled?: boolean;
-}
 
 interface UseProjectDefaultExecutionOptionsArgs {
   projectId: string | undefined;
@@ -16,17 +12,6 @@ interface UseProjectDefaultExecutionOptionsArgs {
 interface FetchProjectDefaultExecutionOptionsArgs {
   projectId: string;
   signal?: AbortSignal;
-}
-
-function requireProjectId(
-  projectId: string | undefined,
-  hookName: string,
-): string {
-  return requireEnabledQueryArg({
-    value: projectId,
-    hookName,
-    argName: "projectId",
-  });
 }
 
 function fetchProjectDefaultExecutionOptions({

@@ -25,15 +25,12 @@ import {
   PERMISSION_LABELS,
   PERMISSION_MODES,
   PresetDialog,
+  describeError,
   describePresetEnvironment,
   savePresetDraft,
   type PresetDraft,
 } from "./preset-dialog.js";
 import { ColorSwatchPicker, DEFAULT_COLOR } from "./shared.js";
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 // ---------------------------------------------------------------------------
 // Labels
@@ -256,7 +253,6 @@ function LabelsSection() {
             : "This label isn't used by any tasks."
         }
         confirmLabel="Delete label"
-        destructive
         onConfirm={() => {
           const target = confirmDelete;
           if (target) {
@@ -651,7 +647,6 @@ function FoldersSection() {
         title={`Delete folder “${confirmDelete?.name ?? ""}”?`}
         description={confirmDelete ? describeDeleteImpact(confirmDelete) : ""}
         confirmLabel="Delete folder"
-        destructive
         confirmDisabled={!impactReady}
         onConfirm={() => {
           const target = confirmDelete;

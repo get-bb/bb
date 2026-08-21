@@ -34,9 +34,8 @@ import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import {
   buildOpenInEditorHandler,
   resolveEnvironmentOpenContext,
-  resolveThreadWorkspacePreviewRootPath,
 } from "./thread-detail/threadWorkspaceOpenPath";
-import { getFilePreviewLineRangeStart } from "@/lib/file-preview";
+import { getFilePreviewLineRangeStart } from "@bb/client-core";
 import { resolveAbsoluteFilePath } from "@/lib/absolute-file-path";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
@@ -307,9 +306,7 @@ function RootComposeFilePreviewTabContent({
         : fileOpenerSource.threadId
       : null;
   const { threadStorageRootPath } = useThreadStorageViewer({
-    activePath: null,
     fileListEnabled: storageThreadId !== null,
-    filePreviewEnabled: false,
     threadId: storageThreadId ?? undefined,
   });
   const projectPreviewId =
@@ -374,9 +371,7 @@ function RootComposeFilePreviewTabContent({
       enabled: openContext !== null,
       ...(openContext ? { openContext } : {}),
     });
-  const workspaceRootPath = resolveThreadWorkspacePreviewRootPath({
-    environment,
-  });
+  const workspaceRootPath = environment?.path ?? null;
   const relativeFileRootPath =
     tab.kind === "workspace-file-preview"
       ? tab.environmentId === null

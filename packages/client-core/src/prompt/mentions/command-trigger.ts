@@ -6,13 +6,13 @@ import type {
 
 export type ProviderPromptActionCommand = ProviderComposerCommand;
 
-export interface ProviderPromptAction {
+interface ProviderPromptAction {
   kind: "goal" | "plan" | "skills";
   text: string;
   command?: ProviderPromptActionCommand;
 }
 
-export interface ProviderPromptActionProps {
+interface ProviderPromptActionProps {
   skillsTrigger: PromptMentionCommandTrigger | null;
   promptActions: readonly ProviderPromptAction[];
 }
@@ -50,9 +50,7 @@ export function buildProviderPromptActionProps(
   return { skillsTrigger, promptActions };
 }
 
-export function serializedProviderCommand(
-  command: ProviderComposerCommand,
-): string {
+function serializedProviderCommand(command: ProviderComposerCommand): string {
   return `${command.trigger}${command.name}${command.trailingText}`;
 }
 

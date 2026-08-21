@@ -21,7 +21,7 @@ import type { ProjectCommandWorkspace as CommandWorkspace } from "../projects/pr
 import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
 import { resolveSkillCatalog } from "./skill-catalog.js";
 import { readRegistrySkillProvenance } from "./registry-skill-provenance.js";
-import { resolveSharedSkills } from "./shared-skills.js";
+import { hostPathDirname, resolveSharedSkills } from "./shared-skills.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const SERVER_SKILL_FILE_LIMIT = 200;
@@ -48,12 +48,6 @@ const SKILL_SCOPE_ORDER: readonly SkillScope[] = [
   "provider-user",
   "plugin",
 ];
-
-function hostPathDirname(filePath: string): string {
-  return /^[a-zA-Z]:[\\/]/u.test(filePath)
-    ? path.win32.dirname(filePath)
-    : path.posix.dirname(filePath);
-}
 
 function hostPathBasename(filePath: string): string {
   return /^[a-zA-Z]:[\\/]/u.test(filePath)
@@ -109,7 +103,7 @@ export function mapSkillScope(
   }
 }
 
-export interface ProviderSkillDiscovery {
+interface ProviderSkillDiscovery {
   provider: SkillProvider;
   skills: DiscoveredSkill[];
 }

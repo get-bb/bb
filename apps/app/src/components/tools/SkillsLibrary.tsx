@@ -25,7 +25,7 @@ import {
 } from "@/components/tools/SkillsCollection";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { isSkillEditable } from "@/components/tools/skill-taxonomy";
-import { CREATE_SKILL_PROMPT } from "@/lib/create-resource-prompts";
+import { CREATE_SKILL_PROMPT } from "@bb/client-core";
 import {
   buildRegistrySkillReferencePrompt,
   fetchRegistrySkillDetail,

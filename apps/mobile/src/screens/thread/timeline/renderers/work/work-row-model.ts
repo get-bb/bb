@@ -167,7 +167,7 @@ function formatToolArgValue(value: JsonValue): string {
   return JSON.stringify(value, null, 2);
 }
 
-export interface ToolArgEntry {
+interface ToolArgEntry {
   key: string;
   value: string;
 }
@@ -210,29 +210,12 @@ export function estimateToolHeaderLines(
 }
 
 // ---------------------------------------------------------------------------
-// Image view
-// ---------------------------------------------------------------------------
-
-/**
- * `GET /api/v1/threads/:id/host-files/content?path=…` on the profile's
- * server (web `buildThreadHostFileContentUrl`, absolute for expo-image).
- */
-export function buildThreadHostFileContentUrl(
-  serverUrl: string,
-  threadId: string,
-  path: string,
-): string {
-  const base = serverUrl.replace(/\/+$/, "");
-  return `${base}/api/v1/threads/${encodeURIComponent(threadId)}/host-files/content?path=${encodeURIComponent(path)}`;
-}
-
-// ---------------------------------------------------------------------------
 // Approval (read-only decision glyph)
 // ---------------------------------------------------------------------------
 
-export type ApprovalDecisionTone = "pending" | "granted" | "denied" | "muted";
+type ApprovalDecisionTone = "pending" | "granted" | "denied" | "muted";
 
-export interface ApprovalDecision {
+interface ApprovalDecision {
   icon: IconName;
   tone: ApprovalDecisionTone;
   /** Accessibility label for the glyph. */
@@ -290,7 +273,7 @@ export function describeApprovalDecision(
 // Question (answered body)
 // ---------------------------------------------------------------------------
 
-export interface AnsweredQuestionEntry {
+interface AnsweredQuestionEntry {
   id: string;
   prompt: string;
   /** Option labels (falling back to raw values) the user picked. */
@@ -543,7 +526,7 @@ export function formatWorkflowUsage(
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-export type WorkflowBodyKind =
+type WorkflowBodyKind =
   | { kind: "tree"; snapshot: WorkflowProgressSnapshot }
   | { kind: "text"; text: string }
   | { kind: "none" };

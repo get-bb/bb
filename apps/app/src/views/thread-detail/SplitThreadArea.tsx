@@ -25,7 +25,6 @@ import {
 import { useIsMutating } from "@tanstack/react-query";
 import { BbHttpError } from "@/lib/sdk";
 import { useThread } from "@/hooks/queries/thread-queries";
-import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useSplitWorkspaceActive } from "@/hooks/useSplitWorkspaceActive";
 import {
   dimInactiveSplitsAtom,
@@ -93,16 +92,13 @@ import { resourceRouteLabelAtom } from "@/components/layout/resourceRouteLabelAt
 import { resolveAutomationBreadcrumbs } from "@/components/tools/tools-navigation";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
-import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { usePluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import {
   PluginPanelHeaderActions,
   PluginPanelHeaderCenter,
 } from "@/components/plugin/PluginPanelHeader";
-import {
-  getAdjacentPaneId,
-  getPaneIdAtReadingIndex,
-} from "./splitPaneCommands";
+import { getAdjacentPaneId } from "./splitPaneCommands";
 import {
   applyThreadPaneActionToLayout,
   createSinglePaneLayout,
@@ -265,7 +261,6 @@ export function SplitThreadArea(props: SplitThreadAreaProps = {}) {
 
 function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const { projectId, threadId } = useRouteState();
-  const threadSplitsEnabled = useThreadSplitsEnabled();
   const splitWorkspaceActive = useSplitWorkspaceActive();
   const navigate = useNavigate();
   const store = useStore();
@@ -291,13 +286,13 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   // layout. The reconcile is idempotent, so a URL that already matches the
   // focused pane is a no-op — no history spam, no render loop.
   useEffect(() => {
-    if (!threadSplitsEnabled || currentContent === null) {
+    if (currentContent === null) {
       return;
     }
     setLayout((previous) =>
       reconcileLayoutForContent(previous, currentContent),
     );
-  }, [currentContent, setLayout, threadSplitsEnabled]);
+  }, [currentContent, setLayout]);
 
   // Effective layout for render/handlers before the effect seeds the atom.
   const layout: SplitLayout | null =
@@ -338,9 +333,6 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   useEffect(
     () =>
       wsManager.onThreadPaneAction((signal) => {
-        if (!threadSplitsEnabled) {
-          return;
-        }
         const current = store.get(splitLayoutAtom);
         if (current === null) {
           return;
@@ -366,7 +358,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
           store.set(dimInactiveSplitsAtom, next.dimInactiveSplits);
         }
       }),
-    [navigate, setMaximizedPaneId, store, threadSplitsEnabled],
+    [navigate, setMaximizedPaneId, store],
   );
 
   // A maximized pane is always the focused/address-bar owner. External opens
@@ -562,7 +554,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
           : null;
       const startX = event.clientX;
       const startY = event.clientY;
-      beginSplitDrag(startX, startY, {
+      beginSplitDrag({
         ghostLabel: label,
         sourceEl,
         shouldEngage: (x, y) =>
@@ -745,7 +737,7 @@ function SplitPaneCommandHandlers({
   });
   useIndexedAppCommandHandlers(PANE_FOCUS_APP_COMMAND_IDS, (index) => {
     if (!isSplitActive) return false;
-    const paneId = getPaneIdAtReadingIndex(panes, index);
+    const paneId = panes[index]?.paneId ?? null;
     if (paneId !== null) focusPane(paneId);
     return true;
   });

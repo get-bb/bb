@@ -91,7 +91,6 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
       {
         adapterFactory: (providerId) => {
           const baseAdapter = createFakeAdapter({
-            displayName: providerId,
             id: providerId,
           });
           const buildCommandPlan: typeof baseAdapter.buildCommandPlan = (

@@ -318,18 +318,13 @@ function RawThreadMentionResolverProvider({
   );
 }
 
-interface RawThreadMentionBatchContextValue {
-  register: (threadId: string) => void;
-  resourceById: ReadonlyMap<string, PromptMentionResource>;
-}
-
-const EMPTY_RAW_THREAD_MENTION_BATCH: RawThreadMentionBatchContextValue = {
+const EMPTY_RAW_THREAD_MENTION_BATCH: RawThreadMentionResolverContextValue = {
   register: () => {},
   resourceById: new Map(),
 };
 
 const RawThreadMentionBatchContext =
-  createContext<RawThreadMentionBatchContextValue>(
+  createContext<RawThreadMentionResolverContextValue>(
     EMPTY_RAW_THREAD_MENTION_BATCH,
   );
 
@@ -417,19 +412,19 @@ export function ThreadTitleMentionResourcesProvider({
   );
 }
 
-function isMentionBoundary(text: string, index: number): boolean {
+export function isMentionBoundary(text: string, index: number): boolean {
   const previous = text[index - 1];
   return previous === undefined || !/[\p{L}\p{N}_.+-]/u.test(previous);
 }
 
-function isRawThreadIdBoundary(text: string, index: number): boolean {
+export function isRawThreadIdBoundary(text: string, index: number): boolean {
   const previous = text[index - 1];
   return (
     previous !== "/" && previous !== "\\" && isMentionBoundary(text, index)
   );
 }
 
-function isMentionEndBoundary(text: string, index: number): boolean {
+export function isMentionEndBoundary(text: string, index: number): boolean {
   const next = text[index];
   if (next === undefined) return true;
   if (next === ".") {
@@ -439,7 +434,7 @@ function isMentionEndBoundary(text: string, index: number): boolean {
   return !/[\p{L}\p{N}_.+\/-]/u.test(next);
 }
 
-function isRawThreadIdEndBoundary(text: string, index: number): boolean {
+export function isRawThreadIdEndBoundary(text: string, index: number): boolean {
   return text[index] !== "\\" && isMentionEndBoundary(text, index);
 }
 

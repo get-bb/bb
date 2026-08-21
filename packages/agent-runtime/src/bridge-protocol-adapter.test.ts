@@ -6,7 +6,6 @@ import type { ProviderExecutionContext } from "./provider-adapter.js";
 function makeAdapter() {
   return createBridgeProtocolAdapter({
     id: "fake-bridge",
-    displayName: "Fake Bridge",
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,

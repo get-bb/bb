@@ -68,11 +68,10 @@ import {
 
 /**
  * The per-event translation scope the caller passes in (the bridge stamps the
- * bb thread id; a parent tool-call id would arrive from nested traffic).
+ * bb thread id).
  */
-export interface AcpDeltaTranslationContext {
+interface AcpDeltaTranslationContext {
   threadId?: string;
-  parentToolCallId?: string;
 }
 
 const ASSISTANT_STREAM_KEY = "assistant";
@@ -291,10 +290,7 @@ export function createAcpDeltaTranslator() {
    * as provider/unhandled (includeKnown). `onlyIfNoTurn` reproduces exactly
    * that split assembler-side.
    */
-  function suppressedUnhandled(
-    rawEvent: JsonRpcMessage,
-    parentRef: string | undefined,
-  ): ThreadDelta[] {
+  function suppressedUnhandled(rawEvent: JsonRpcMessage): ThreadDelta[] {
     const fallback = noTurnFallbackFor(rawEvent);
     return [
       {
@@ -303,16 +299,12 @@ export function createAcpDeltaTranslator() {
         rawType: fallback.rawType,
         vouchedTurn: false,
         onlyIfNoTurn: true,
-        ...(parentRef ? { parentRef } : {}),
       },
     ];
   }
 
   /** Visibility classification: only unknown coverage becomes an `unhandled`. */
-  function unhandledDeltas(
-    rawEvent: JsonRpcMessage,
-    parentRef: string | undefined,
-  ): ThreadDelta[] {
+  function unhandledDeltas(rawEvent: JsonRpcMessage): ThreadDelta[] {
     const description = acpVisibilityMetadata.describeRawEvent(rawEvent);
     if (description.coverage !== "unknown") {
       return [];
@@ -323,7 +315,6 @@ export function createAcpDeltaTranslator() {
         raw: toRawEvent(rawEvent),
         rawType: description.kind,
         vouchedTurn: true,
-        ...(parentRef ? { parentRef } : {}),
       },
     ];
   }
@@ -333,21 +324,19 @@ export function createAcpDeltaTranslator() {
   // next message chunk / tool call / turn end arrives)
   // -------------------------------------------------------------------------
 
-  function closeThoughtStream(parentRef: string | undefined): ThreadDelta {
+  function closeThoughtStream(): ThreadDelta {
     return {
       kind: "message.close",
       channel: "reasoning",
       streamKey: THOUGHT_STREAM_KEY,
-      ...(parentRef ? { parentRef } : {}),
     };
   }
 
-  function closeAssistantStream(parentRef: string | undefined): ThreadDelta {
+  function closeAssistantStream(): ThreadDelta {
     return {
       kind: "message.close",
       channel: "assistant",
       streamKey: ASSISTANT_STREAM_KEY,
-      ...(parentRef ? { parentRef } : {}),
     };
   }
 
@@ -358,7 +347,6 @@ export function createAcpDeltaTranslator() {
   interface AcpCloseArgs {
     event: AcpToolCallUpdateEvent;
     status: ThreadEventItemStatus;
-    parentRef: string | undefined;
     noTurnFallback?: DeltaNoTurnFallback;
   }
 
@@ -375,7 +363,6 @@ export function createAcpDeltaTranslator() {
       kind: "item.close",
       key: {
         providerItemId: args.event.toolCallId,
-        ...(args.parentRef ? { parentRef: args.parentRef } : {}),
       },
       status: args.status,
       ...(outputText === undefined
@@ -399,7 +386,6 @@ export function createAcpDeltaTranslator() {
         toolCallClose({
           event,
           status,
-          parentRef: context?.parentToolCallId,
         }),
       );
     }
@@ -411,10 +397,9 @@ export function createAcpDeltaTranslator() {
     context: AcpDeltaTranslationContext | undefined,
     status: ThreadEventItemStatus,
   ): ThreadDelta[] {
-    const parentRef = context?.parentToolCallId;
     return [
-      closeThoughtStream(parentRef),
-      closeAssistantStream(parentRef),
+      closeThoughtStream(),
+      closeAssistantStream(),
       ...drainOpenToolCalls(context, status),
     ];
   }
@@ -427,8 +412,6 @@ export function createAcpDeltaTranslator() {
     update: AcpSessionUpdate,
     context: AcpDeltaTranslationContext | undefined,
   ): ThreadDelta[] {
-    const parentRef = context?.parentToolCallId;
-    const parentRefField = parentRef ? { parentRef } : {};
     const rawEvent = updateEnvelope(context, update);
 
     switch (update.sessionUpdate) {
@@ -438,17 +421,16 @@ export function createAcpDeltaTranslator() {
           ? extractAcpContentText(parsed.data.content)
           : undefined;
         if (text === undefined) {
-          return suppressedUnhandled(rawEvent, parentRef);
+          return suppressedUnhandled(rawEvent);
         }
         // A message chunk flushes the open thought stream first.
         return [
-          closeThoughtStream(parentRef),
+          closeThoughtStream(),
           {
             kind: "message.delta",
             channel: "assistant",
             streamKey: ASSISTANT_STREAM_KEY,
             text,
-            ...parentRefField,
             noTurnFallback: noTurnFallbackFor(rawEvent),
           },
         ];
@@ -460,7 +442,7 @@ export function createAcpDeltaTranslator() {
           ? extractAcpContentText(parsed.data.content)
           : undefined;
         if (text === undefined) {
-          return suppressedUnhandled(rawEvent, parentRef);
+          return suppressedUnhandled(rawEvent);
         }
         return [
           {
@@ -468,7 +450,6 @@ export function createAcpDeltaTranslator() {
             channel: "reasoning",
             streamKey: THOUGHT_STREAM_KEY,
             text,
-            ...parentRefField,
             noTurnFallback: noTurnFallbackFor(rawEvent),
           },
         ];
@@ -477,13 +458,10 @@ export function createAcpDeltaTranslator() {
       case "tool_call": {
         const parsed = acpToolCallUpdateEventSchema.safeParse(update);
         if (!parsed.success) {
-          return suppressedUnhandled(rawEvent, parentRef);
+          return suppressedUnhandled(rawEvent);
         }
         // A tool call flushes both open streams before its item.
-        const flush = [
-          closeThoughtStream(parentRef),
-          closeAssistantStream(parentRef),
-        ];
+        const flush = [closeThoughtStream(), closeAssistantStream()];
         if (isTerminalAcpStatus(parsed.data.status)) {
           // Arrived already settled: close-without-open, no cache entry.
           return [
@@ -491,7 +469,6 @@ export function createAcpDeltaTranslator() {
             toolCallClose({
               event: parsed.data,
               status: mapAcpToolCallStatus(parsed.data.status),
-              parentRef,
               noTurnFallback: noTurnFallbackFor(rawEvent),
             }),
           ];
@@ -506,7 +483,6 @@ export function createAcpDeltaTranslator() {
             kind: "item.open",
             key: {
               providerItemId: parsed.data.toolCallId,
-              ...parentRefField,
             },
             item: classifyAcpToolCall(parsed.data),
             noTurnFallback: noTurnFallbackFor(rawEvent),
@@ -517,7 +493,7 @@ export function createAcpDeltaTranslator() {
       case "tool_call_update": {
         const parsed = acpToolCallUpdateEventSchema.safeParse(update);
         if (!parsed.success) {
-          return suppressedUnhandled(rawEvent, parentRef);
+          return suppressedUnhandled(rawEvent);
         }
         const key = callKey(context, parsed.data.toolCallId);
         const merged = mergeAcpToolCallEvents(
@@ -530,7 +506,6 @@ export function createAcpDeltaTranslator() {
             toolCallClose({
               event: merged,
               status: mapAcpToolCallStatus(merged.status),
-              parentRef,
               noTurnFallback: noTurnFallbackFor(rawEvent),
             }),
           ];
@@ -543,20 +518,19 @@ export function createAcpDeltaTranslator() {
               kind: "item.progress",
               key: {
                 providerItemId: parsed.data.toolCallId,
-                ...parentRefField,
               },
               message: progressText,
               noTurnFallback: noTurnFallbackFor(rawEvent),
             },
           ];
         }
-        return suppressedUnhandled(rawEvent, parentRef);
+        return suppressedUnhandled(rawEvent);
       }
 
       case "plan": {
         const parsed = acpPlanUpdateSchema.safeParse(update);
         if (!parsed.success) {
-          return suppressedUnhandled(rawEvent, parentRef);
+          return suppressedUnhandled(rawEvent);
         }
         const steps: ThreadEventPlanStep[] = parsed.data.entries.map(
           (entry) => ({
@@ -592,7 +566,7 @@ export function createAcpDeltaTranslator() {
       }
 
       default:
-        return unhandledDeltas(rawEvent, parentRef);
+        return unhandledDeltas(rawEvent);
     }
   }
 
@@ -793,14 +767,11 @@ export function createAcpDeltaTranslator() {
       }
 
       default:
-        return unhandledDeltas(
-          {
-            jsonrpc: "2.0",
-            method: envelope.data.method,
-            ...(envelope.data.params ? { params: envelope.data.params } : {}),
-          },
-          context?.parentToolCallId,
-        );
+        return unhandledDeltas({
+          jsonrpc: "2.0",
+          method: envelope.data.method,
+          ...(envelope.data.params ? { params: envelope.data.params } : {}),
+        });
     }
   }
 

@@ -21,7 +21,6 @@ import {
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useUpdateThread } from "@/hooks/mutations/thread-state-mutations";
-import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import { toPluginSidebarThread } from "./plugin-sidebar-threads";
 import { useSetRootComposeProjectId } from "./root-compose-selection";
@@ -163,7 +162,6 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
   const navigate = useRouteNavigate();
   const store = useStore();
   const isCompact = useIsCompactViewport();
-  const threadSplitsEnabled = useThreadSplitsEnabled();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const hostActions = useThreadActions();
   const entriesById = useThreadEntryMap();
@@ -195,7 +193,6 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
             projectId,
             threadId,
             isCompact,
-            threadSplitsEnabled,
           });
           return;
         }
@@ -249,7 +246,6 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
       requireEntry,
       setRootComposeProjectId,
       store,
-      threadSplitsEnabled,
       updateThreadAsync,
     ],
   );

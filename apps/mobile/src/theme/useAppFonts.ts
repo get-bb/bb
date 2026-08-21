@@ -14,12 +14,10 @@ import {
 } from "@expo-google-fonts/inter";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
 import { FONT_FAMILIES, ITALIC_FONT_FAMILIES } from "./fonts";
 
 // Keep the native splash up until the fonts (and whatever else the root
-// layout awaits) are ready. `hideAsync` is idempotent, so the root layout
-// can call it again after its own gates.
+// layout awaits) are ready; the root layout hides it after its own gates.
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 const FONT_SOURCES = {
@@ -38,20 +36,10 @@ const FONT_SOURCES = {
 /**
  * Loads Inter and Fira Code (the web app's `--font-sans` / `--font-mono`).
  * Returns `ready` once loaded, or after a load error (the app then renders
- * with system fonts rather than staying on the splash forever). Hides the
- * splash screen when `hideSplashWhenReady` is true (default).
+ * with system fonts rather than staying on the splash forever).
  */
-export function useAppFonts(options?: { hideSplashWhenReady?: boolean }): {
-  ready: boolean;
-  error: Error | null;
-} {
+export function useAppFonts(): { ready: boolean; error: Error | null } {
   const [loaded, error] = useFonts(FONT_SOURCES);
   const ready = loaded || error !== null;
-  const hideSplash = options?.hideSplashWhenReady ?? true;
-  useEffect(() => {
-    if (ready && hideSplash) {
-      void SplashScreen.hideAsync().catch(() => undefined);
-    }
-  }, [ready, hideSplash]);
   return { ready, error };
 }

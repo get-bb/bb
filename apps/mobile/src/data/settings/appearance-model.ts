@@ -1,7 +1,6 @@
 import {
   builtInThemes,
   FAVICON_COLORS,
-  isBuiltInThemeId,
   type AppTheme,
   type BuiltInThemeId,
   type FaviconColor,
@@ -72,11 +71,6 @@ export function paletteLabel(
     pluginThemes.find((entry) => entry.id === appearance.themeId)?.name ??
     appearance.themeId
   );
-}
-
-/** Whether the active palette renders natively or falls back to `default`. */
-export function isNativelyRenderedPalette(themeId: string): boolean {
-  return isBuiltInThemeId(themeId);
 }
 
 export interface FaviconColorOption {

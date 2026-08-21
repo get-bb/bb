@@ -1,6 +1,6 @@
 import { fuzzyMatchText } from "@bb/fuzzy-match";
 import type { PromptMentionSuggestion } from "@bb/client-core";
-import { compareCodepoint } from "@/lib/codepoint-compare";
+import { compareCodepoint } from "@bb/client-core";
 
 type ProjectMentionSuggestion = Extract<
   PromptMentionSuggestion,

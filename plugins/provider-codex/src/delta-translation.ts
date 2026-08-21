@@ -44,8 +44,8 @@ import {
 } from "./schemas.js";
 import { codexVisibilityMetadata } from "./visibility.js";
 
-function assertNever(value: never, message?: string): never {
-  throw new Error(message ?? `Unexpected value: ${String(value)}`);
+function assertNever(value: never): never {
+  throw new Error(`Unexpected value: ${String(value)}`);
 }
 
 interface CodexEventTranslationState {

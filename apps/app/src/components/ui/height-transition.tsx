@@ -144,8 +144,6 @@ function cancelIntrinsicHeightRestore(
 interface HeightTransitionProps {
   visible: boolean;
   children: ReactNode;
-  durationMs?: number;
-  className?: string;
 }
 
 /**
@@ -157,12 +155,7 @@ interface HeightTransitionProps {
  * physics. Children stay mounted across the transition so consumer state
  * (e.g. an expandable panel's open flag) survives a hide/show cycle.
  */
-export function HeightTransition({
-  visible,
-  children,
-  durationMs = HEIGHT_TRANSITION_DURATION_MS,
-  className,
-}: HeightTransitionProps) {
+export function HeightTransition({ visible, children }: HeightTransitionProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const store = useStore();
@@ -217,10 +210,7 @@ export function HeightTransition({
   return (
     <div
       ref={wrapperRef}
-      className={cn(
-        className,
-        !visible && PAUSE_COLLAPSED_DESCENDANT_ANIMATIONS_CLASS,
-      )}
+      className={cn(!visible && PAUSE_COLLAPSED_DESCENDANT_ANIMATIONS_CLASS)}
       style={{
         // Clip vertically (so intermediate heights during the animation
         // don't leak content past the wrapper) without turning the wrapper
@@ -232,7 +222,7 @@ export function HeightTransition({
         overflowX: "visible",
         overflowY: "clip",
         opacity: visible ? 1 : 0,
-        transition: `height ${durationMs}ms ${HEIGHT_TRANSITION_EASE_CSS}, opacity ${durationMs}ms ${HEIGHT_TRANSITION_EASE_CSS}`,
+        transition: `height ${HEIGHT_TRANSITION_DURATION_MS}ms ${HEIGHT_TRANSITION_EASE_CSS}, opacity ${HEIGHT_TRANSITION_DURATION_MS}ms ${HEIGHT_TRANSITION_EASE_CSS}`,
       }}
     >
       {/*
@@ -251,8 +241,6 @@ export function HeightTransition({
 
 interface AutoHeightContainerProps {
   children: ReactNode;
-  className?: string;
-  durationMs?: number;
   /**
    * A revision for authoritative layout replacements that should not animate
    * through their intermediate height. Normal child growth still animates.
@@ -303,12 +291,10 @@ function useSnapHeightGrowth(): boolean {
 
 export function AutoHeightContainer({
   children,
-  className,
-  durationMs: requestedDurationMs = HEIGHT_TRANSITION_DURATION_MS,
   snapRevision,
 }: AutoHeightContainerProps) {
   const snapGrowth = useSnapHeightGrowth();
-  const durationMs = snapGrowth ? 0 : requestedDurationMs;
+  const durationMs = snapGrowth ? 0 : HEIGHT_TRANSITION_DURATION_MS;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const snapToCurrentHeightRef = useRef<(() => void) | null>(null);
@@ -411,7 +397,6 @@ export function AutoHeightContainer({
   return (
     <div
       ref={wrapperRef}
-      className={className}
       style={{
         // See HeightTransition: clip vertically without forcing the wrapper
         // into a horizontal scroll container, so children with intentional

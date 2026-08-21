@@ -24,8 +24,6 @@ export interface MultipartRequest {
 export interface PostMultipartOptions {
   signal?: AbortSignal;
   onUploadProgress?: (fraction: number) => void;
-  /** Override the request transport (tests). */
-  createRequest?: () => XMLHttpRequest;
 }
 
 function parseJsonBody(text: string): unknown {
@@ -61,9 +59,7 @@ export function postMultipart<T>(
   options: PostMultipartOptions = {},
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const xhr = options.createRequest
-      ? options.createRequest()
-      : new XMLHttpRequest();
+    const xhr = new XMLHttpRequest();
     const form = new FormData();
     for (const [name, value] of request.fields) {
       if (typeof value === "string") {

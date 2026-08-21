@@ -107,7 +107,7 @@ function validateFilePath(filePath: string): void {
   }
 }
 
-export interface ThreadStorageTarget {
+interface ThreadStorageTarget {
   hostId: string;
   storagePath: string;
 }
@@ -572,7 +572,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           input: {},
           threadId,
         })
-      )?.defaultView ?? null,
+      )?.resolvedExecution ?? null,
     );
   });
 

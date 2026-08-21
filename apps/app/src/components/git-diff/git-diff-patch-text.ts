@@ -353,7 +353,7 @@ export function buildDiffLineSelectionText({
   return buildUnifiedDiffPatchText({ fileDiff, lines: selectedLines });
 }
 
-function getDiffShadowRoots(containerElement: HTMLElement | null) {
+export function getDiffShadowRoots(containerElement: HTMLElement | null) {
   if (containerElement === null) {
     return [];
   }

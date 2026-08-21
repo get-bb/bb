@@ -69,7 +69,6 @@ interface OptionPickerProps<T extends string> {
     compactLabel?: string;
     description?: string;
     title?: string;
-    tone?: "default" | "warning";
   };
   /**
    * Render the trigger as a non-interactive, dimmed label showing the same
@@ -98,9 +97,7 @@ export function OptionPicker<T extends string>({
   showChevronWhenDisabled,
 }: OptionPickerProps<T>) {
   const selectedOption = options.find((option) => option.value === value);
-  const selectedTone = displayOverride
-    ? (displayOverride.tone ?? "default")
-    : selectedOption?.tone;
+  const selectedTone = displayOverride ? "default" : selectedOption?.tone;
   const selectedIsWarning = selectedTone === "warning";
   const SelectedIcon = selectedOption?.icon;
   const selectedLabel =

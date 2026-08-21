@@ -30,7 +30,6 @@ import {
 import { usePierreStrictModeRecoveryOptions } from "@/lib/pierre-strict-mode-recovery";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
-  hashSourceContents,
   truncateSourceCode,
   type SourceCodeTruncation,
 } from "./source-code-budget";
@@ -290,9 +289,10 @@ function BbSourceCode({
   scrollToHighlightedLines = false,
   onSelectionAddToChat,
 }: BbSourceCodeProps) {
+  const fileCacheKey = cacheKey ?? path;
   const file = useMemo<PierreFileContents>(
-    () => ({ name: path, contents: content, cacheKey: cacheKey ?? path }),
-    [cacheKey, content, path],
+    () => ({ name: path, contents: content, cacheKey: fileCacheKey }),
+    [content, fileCacheKey, path],
   );
   const preferredTheme = usePreferredTheme();
   const codeTheme = useResolvedCodeThemePair();
@@ -305,7 +305,7 @@ function BbSourceCode({
   const [workerPoolStats, setWorkerPoolStats] =
     useState<SourceCodeWorkerPoolStats | null>(null);
   const [, rerenderAfterWorkerPoolChange] = useState(0);
-  const fileIdentity = file.cacheKey ?? file.name;
+  const fileIdentity = fileCacheKey;
   const truncation = useMemo(
     () => truncateSourceCode(content),
     [content],
@@ -385,22 +385,19 @@ function BbSourceCode({
       ...file,
       // The worker highlight cache is keyed by `cacheKey`; the capped prefix
       // must not collide with the full file's entry.
-      cacheKey:
-        file.cacheKey === undefined ? undefined : `${file.cacheKey}:head`,
+      cacheKey: `${fileCacheKey}:head`,
       contents: truncation.contents,
     };
-  }, [file, showsFullFile, truncation]);
+  }, [file, fileCacheKey, showsFullFile, truncation]);
   // Pierre's virtualized file instance keeps the contents it was hydrated
   // with (`VirtualizedFile.render` ignores a later `file`), so a content swap
   // — the capped prefix giving way to the full file, or a refetch — needs a
   // fresh mount. Callers that supply a `cacheKey` already fold the content
-  // hash into it; otherwise hash here.
-  const renderedFileMountKey = useMemo(
-    () =>
-      renderedFile.cacheKey ??
-      `${renderedFile.name}:${hashSourceContents(renderedFile.contents)}`,
-    [renderedFile],
-  );
+  // hash into it.
+  const renderedFileMountKey =
+    showsFullFile || truncation === null
+      ? fileCacheKey
+      : `${fileCacheKey}:head`;
   // "Load full file" remounts pierre with the whole file; carry the reader's
   // scroll offset across so the prefix they were looking at stays put.
   const pendingViewportScrollTopRef = useRef<number | null>(null);

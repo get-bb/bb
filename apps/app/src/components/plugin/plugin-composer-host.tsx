@@ -11,7 +11,7 @@ import {
 } from "react";
 import type { ComposerView, PluginComposerScope } from "@get-bb/plugin-sdk";
 import { isComposerDraftEmpty } from "@get-bb/plugin-sdk/internal/composer-view";
-import type { PromptDraftState } from "@/lib/prompt-draft";
+import type { PromptDraftState } from "@bb/client-core";
 
 /**
  * Binds plugin composer hooks to the exact composer owned by a pane. This is

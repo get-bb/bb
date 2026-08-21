@@ -9,6 +9,7 @@ export {
   type SidebarRowSubtitle,
 } from "./SidebarRows";
 export {
+  flatThreadRow,
   resolveThreadRowIndicator,
   type SidebarThreadRow,
 } from "./sidebar-list-rows";

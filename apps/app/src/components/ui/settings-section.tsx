@@ -6,8 +6,6 @@ interface SettingsSectionProps {
   children: ReactNode;
   description?: string;
   title: ReactNode;
-  /** A compact utility that belongs directly beside the section title. */
-  titleAction?: ReactNode;
   /**
    * Extra classes for the card, e.g. a section whose whole body is one link
    * and needs a positioning context and a hover state.
@@ -20,7 +18,6 @@ export function SettingsSection({
   children,
   description,
   title,
-  titleAction,
   bodyClassName,
 }: SettingsSectionProps) {
   return (
@@ -36,7 +33,6 @@ export function SettingsSection({
             <h2 className="min-w-0 text-sm font-semibold text-foreground">
               {title}
             </h2>
-            {titleAction ? <div className="shrink-0">{titleAction}</div> : null}
           </div>
           {description ? (
             <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">

@@ -357,7 +357,7 @@ export function createPluginApi(options: {
       ports: readonly number[];
     }[],
   ) => void;
-  callPluginHost?: (args: {
+  callPluginHost: (args: {
     contract: PluginRpcContract;
     method: string;
     input: unknown;
@@ -1158,10 +1158,6 @@ export function createPluginApi(options: {
   const hosts: PluginHosts = {
     experimental_client({ contract, experimental_signals }) {
       assertLive();
-      if (callPluginHost === undefined) {
-        throw new Error("host plugin transport is unavailable");
-      }
-      const invokeHost = callPluginHost;
       return {
         async call(method, input, callOptions) {
           assertLive();
@@ -1181,7 +1177,7 @@ export function createPluginApi(options: {
           ) {
             throw new Error(`host rpc method "${method}" requires a host id`);
           }
-          return invokeHost({
+          return callPluginHost({
             contract,
             method,
             input,

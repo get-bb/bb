@@ -1,4 +1,3 @@
-import * as Clipboard from "expo-clipboard";
 import { useCallback, useMemo, useState, type ComponentType } from "react";
 import {
   FlatList,
@@ -16,6 +15,7 @@ import {
   type FileSearchSource,
   type StorageEntry,
 } from "@/data/files";
+import { copyWithToast } from "@/lib/clipboard";
 import { useTheme } from "@/theme";
 import {
   ActionSheet,
@@ -26,17 +26,16 @@ import {
   Skeleton,
   Spinner,
   Text,
-  toast,
   useSheet,
   type ActionSheetAction,
 } from "@/ui";
-import { useThreadFileOpener, type FileOpenRequest } from "./file-opener";
+import { useThreadFileOpener } from "./file-opener";
 import type { FilePreviewTarget } from "./file-preview-target";
 import { buildFilesTabRows, type FilesTabRow } from "./files-tab-model";
 import { FilePathRow } from "./FilePathRow";
 import { StorageBreadcrumbs } from "./ThreadStorageBrowser";
 
-export interface FilesTabContentProps {
+interface FilesTabContentProps {
   /** Null for the root-compose panel (no thread storage, no recents). */
   threadId: string | null;
   projectId: string | null;
@@ -50,20 +49,12 @@ export interface FilesTabContentProps {
   scroll?: "screen" | "sheet";
   /** Seed the search box (the panel's Files launcher params). */
   initialQuery?: string | null;
-  /** Override where a tapped file opens (default: the thread file opener). */
-  onOpenFile?: (request: FileOpenRequest) => void;
   testID?: string;
 }
 
 interface CopyMenuTarget {
   path: string;
   name: string;
-}
-
-function copyWithToast(text: string, label: string): void {
-  void Clipboard.setStringAsync(text)
-    .then(() => toast.success(label))
-    .catch(() => toast.error("Could not copy"));
 }
 
 function sourceLabel(source: FileSearchSource): string {
@@ -83,7 +74,6 @@ export function FilesTabContent({
   hostId,
   scroll = "screen",
   initialQuery = null,
-  onOpenFile,
   testID = "files-tab",
 }: FilesTabContentProps) {
   const { tokens } = useTheme();
@@ -101,25 +91,7 @@ export function FilesTabContent({
     enabled: threadId !== null,
   });
   const recent = useThreadRecentFiles(threadId);
-  const defaultOpen = useThreadFileOpener(threadId);
-  const recordRecent = recent.record;
-  // The default opener records recents itself; an override host gets the
-  // same bookkeeping so the Recent section reflects what was opened here.
-  const openFile = useCallback(
-    (request: FileOpenRequest) => {
-      if (!onOpenFile) {
-        defaultOpen(request);
-        return;
-      }
-      if (request.target.kind === "workspace-file") {
-        recordRecent("workspace", request.target.path);
-      } else if (request.target.kind === "storage-file") {
-        recordRecent("thread-storage", request.target.path);
-      }
-      onOpenFile(request);
-    },
-    [defaultOpen, onOpenFile, recordRecent],
-  );
+  const openFile = useThreadFileOpener(threadId);
 
   const storageEntries = useMemo(
     () =>

@@ -5,7 +5,7 @@ import type {
 } from "@bb/domain";
 import type { BbSdk } from "@bb/sdk";
 
-export interface FetchThreadPendingTodosArgs {
+interface FetchThreadPendingTodosArgs {
   sdk: Pick<BbSdk, "threads">;
   threadId: string;
 }
@@ -45,7 +45,6 @@ const STATUS_RANK: Record<ThreadTimelinePendingTodoItemStatus, number> = {
 };
 
 interface TodoCounts {
-  active: number;
   completed: number;
   total: number;
 }
@@ -53,13 +52,11 @@ interface TodoCounts {
 function countTodos(
   items: readonly ThreadTimelinePendingTodoItem[],
 ): TodoCounts {
-  let active = 0;
   let completed = 0;
   for (const item of items) {
     if (item.status === "completed") completed += 1;
-    else active += 1;
   }
-  return { active, completed, total: items.length };
+  return { completed, total: items.length };
 }
 
 /**

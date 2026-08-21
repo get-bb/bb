@@ -716,9 +716,7 @@ function ensureCodexStateDbExists(dbPath: string): void {
   }
 }
 
-export async function main(
-  argv: string[] = process.argv.slice(2),
-): Promise<void> {
+async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   const parsedArgs = parseArchiveTmpBbSessionsArgs(argv);
   if (parsedArgs.help) {
     process.stdout.write(renderHelpText());

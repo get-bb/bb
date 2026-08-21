@@ -28,7 +28,7 @@ export interface StickyBottomState {
   interacting: boolean;
 }
 
-export type StickyBottomEvent =
+type StickyBottomEvent =
   | { type: "scroll"; metrics: ScrollMetrics }
   | { type: "drag-start" }
   | { type: "drag-end"; metrics: ScrollMetrics; willDecelerate: boolean }
@@ -112,9 +112,7 @@ export function shouldShowJumpToLatest(
 }
 
 /** Where the list should land when the first window renders. */
-export type InitialScrollTarget =
-  | { kind: "end" }
-  | { kind: "index"; index: number };
+type InitialScrollTarget = { kind: "end" } | { kind: "index"; index: number };
 
 export function resolveInitialScrollTarget({
   itemCount,

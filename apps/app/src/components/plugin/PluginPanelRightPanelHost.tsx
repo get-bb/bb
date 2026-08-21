@@ -36,7 +36,6 @@ import type {
   SecondaryPanelRenderableTab,
 } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useThreadFileTabs } from "@/components/secondary-panel/useThreadFileTabs";
-import { terminalStatusLabel } from "@/components/thread/terminal/useThreadTerminalController";
 import {
   useCloseFixedSecondaryPanel,
   useReconciledFixedPanelTabsState,
@@ -802,7 +801,7 @@ export function PluginPanelRightPanelHost({
                 statusLabel:
                   session === undefined || session.status === "running"
                     ? null
-                    : terminalStatusLabel(session),
+                    : session.status,
                 onClose: () => closeTerminalTab(tab),
               },
             ];

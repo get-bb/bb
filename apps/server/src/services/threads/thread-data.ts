@@ -5,6 +5,7 @@ import {
   listStoredEventRows as listStoredEventRowRecords,
 } from "@bb/db";
 import type { DbConnection, StoredEventRow } from "@bb/db";
+import { toRecord } from "@bb/core-ui";
 import { buildThreadEventRow, parseStoredThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
 import type {
@@ -33,14 +34,6 @@ interface FindThreadEventArgs {
   afterSeq?: number;
   threadId: string;
   type: ThreadEventType;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function toRecord(value: unknown): Record<string, unknown> | null {
-  return isRecord(value) ? value : null;
 }
 
 function parseStoredEventPayload(

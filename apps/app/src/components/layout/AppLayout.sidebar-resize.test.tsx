@@ -32,10 +32,6 @@ vi.mock("@/components/sidebar/AppSidebar", async () => {
   };
 });
 
-vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
-  useThreadSplitsEnabled: () => false,
-}));
-
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
     data: {

@@ -32,9 +32,7 @@ export function countQueuedMessageAttachments(
   return count;
 }
 
-export function getQueuedMessageVisibleText(
-  input: readonly PromptInput[],
-): string {
+function getQueuedMessageVisibleText(input: readonly PromptInput[]): string {
   return visibleQueuedMessageInput(input)
     .filter(
       (chunk): chunk is Extract<PromptInput, { type: "text" }> =>

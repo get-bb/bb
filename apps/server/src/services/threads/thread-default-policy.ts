@@ -10,10 +10,7 @@ import { PERSONAL_PROJECT_ID, clampPermissionModeToCeiling } from "@bb/domain";
 import type { EnvironmentArgs } from "@bb/server-contract";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { WorkSessionDeps } from "../../types.js";
-import {
-  PRODUCT_PROVIDER_ORDER,
-  type ProviderRegistryService,
-} from "../providers/provider-registry.js";
+import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { ApiError } from "../../errors.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
@@ -39,16 +36,6 @@ export function resolveWorkflowsEnabledPolicy(
   return registry.getServerCapabilities(providerId)?.supportsWorkflows ?? false;
 }
 const DEFAULT_PERMISSION_MODE: PermissionMode = "auto";
-
-/**
- * The product default provider, used when neither the caller nor the project
- * has chosen one. It is the head of the registry's product order rather than
- * a second hardcoded id, so the picker's first entry and the default provider
- * cannot drift apart. Providers come only from plugin declarations now, so an
- * install with the codex plugin disabled falls through to whichever declared
- * provider ranks next.
- */
-export const PRODUCT_DEFAULT_PROVIDER_ID = PRODUCT_PROVIDER_ORDER[0] ?? "codex";
 
 function requireProductDefaultProviderId(
   registry: ProviderRegistryService,

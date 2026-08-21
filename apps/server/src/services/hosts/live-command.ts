@@ -20,9 +20,7 @@ import { callHostOnlineRpc } from "./online-rpc.js";
 
 export const LIVE_DAEMON_COMMAND_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
-export interface RunLiveHostCommandArgs<
-  TType extends HostDaemonSettledCommandType,
-> {
+interface RunLiveHostCommandArgs<TType extends HostDaemonSettledCommandType> {
   command: Extract<HostDaemonCommand, { type: TType }>;
   execution?: HostDaemonCommandExecutionRecord;
   hostId: string;
@@ -42,7 +40,7 @@ type LiveHostCommandErrorHandler<TType extends HostDaemonSettledCommandType> = (
   args: LiveHostCommandErrorHandlerArgs<TType>,
 ) => void;
 
-export interface StartLiveHostCommandArgs<
+interface StartLiveHostCommandArgs<
   TType extends HostDaemonSettledCommandType,
 > extends RunLiveHostCommandArgs<TType> {
   onError?: LiveHostCommandErrorHandler<TType>;
@@ -82,7 +80,7 @@ interface BuildLiveHostCommandFailureReportArgs<
   execution: HostDaemonCommandExecutionRecord;
 }
 
-export interface ExpectedLiveHostCommandErrorLogFields {
+interface ExpectedLiveHostCommandErrorLogFields {
   errorCode: string;
   errorMessage: string;
   errorStatus: number;

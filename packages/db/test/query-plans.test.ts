@@ -539,7 +539,7 @@ describe("slow query index plans", () => {
   it("uses the closed-session prune index for emitted delete SQL", () => {
     const { db, host, logger } = setup();
     const now = Date.now();
-    const staleSession = openSession(db, noopNotifier, {
+    const staleSession = openSession(db, {
       hostId: host.id,
       instanceId: "closed-prune-query-plan",
       hostName: "query-plan-host",

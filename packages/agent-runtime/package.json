@@ -8,11 +8,6 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
-    "./shared/json-rpc-envelope": {
-      "source": "./src/shared/json-rpc-envelope.ts",
-      "types": "./src/shared/json-rpc-envelope.ts",
-      "default": "./src/shared/json-rpc-envelope.ts"
-    },
     "./test": {
       "source": "./src/test/index.ts",
       "types": "./src/test/index.ts",

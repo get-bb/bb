@@ -18,7 +18,6 @@ import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSele
 
 interface SecondaryPanelSelectionActionsProps {
   children: ReactNode;
-  className?: string;
   onSelectionAddToChat?: (text: string) => void;
 }
 
@@ -96,7 +95,6 @@ function readSelectionWithinPanel({
 
 export function SecondaryPanelSelectionActions({
   children,
-  className,
   onSelectionAddToChat,
 }: SecondaryPanelSelectionActionsProps) {
   const nodeRef = useRef<HTMLDivElement>(null);
@@ -209,7 +207,7 @@ export function SecondaryPanelSelectionActions({
 
   return (
     <>
-      <div ref={nodeRef} className={className}>
+      <div ref={nodeRef} className="contents">
         {children}
       </div>
       <TimelineSelectionMenu

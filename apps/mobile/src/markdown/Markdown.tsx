@@ -31,8 +31,6 @@ export interface MarkdownProps extends MarkdownCallbacks {
   content: string;
   /** `sm` (timeline, default) or `base` (reading / composer). */
   textSize?: MarkdownTextSize;
-  /** Single newlines become line breaks (authored prompts, generated bodies). */
-  preserveSoftBreaks?: boolean;
   /**
    * Offset-based authored mentions (user messages): every kind renders as a
    * pill. Offsets index into `content`.
@@ -162,7 +160,6 @@ function Frontmatter({
 function MarkdownComponent({
   content,
   textSize = "sm",
-  preserveSoftBreaks = false,
   promptMentions,
   threadMentions,
   selectable = true,
@@ -176,7 +173,6 @@ function MarkdownComponent({
   onImagePress,
   onThreadPress,
   onMentionPress,
-  onCodeCopy,
   onBlockLongPress,
   renderDirective,
   resolveImageSource,
@@ -205,12 +201,12 @@ function MarkdownComponent({
   );
   const parseOptions = useMemo<ParseMarkdownOptions>(
     () => ({
-      preserveSoftBreaks: preserveSoftBreaks || promptMentions !== undefined,
+      preserveSoftBreaks: promptMentions !== undefined,
       threadMentions: threadMentions !== undefined,
       promptMentions: promptMentions !== undefined,
       directives: renderDirective !== undefined,
     }),
-    [preserveSoftBreaks, promptMentions, threadMentions, renderDirective],
+    [promptMentions, threadMentions, renderDirective],
   );
   const tree = useMemo(
     () => parseMarkdown(body, parseOptions),
@@ -235,7 +231,6 @@ function MarkdownComponent({
     onImagePress,
     onThreadPress,
     onMentionPress,
-    onCodeCopy,
     onBlockLongPress,
     renderDirective,
     resolveImageSource,

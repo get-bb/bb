@@ -2,7 +2,10 @@ import { isSettledWorkflowAgentState } from "@bb/domain";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import { durationToCompactString } from "@bb/thread-view";
 import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
-import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import {
+  PROMPT_STACK_CARD_ROW_HEIGHT,
+  PromptStackCard,
+} from "@/components/promptbox/banner/PromptStackCard";
 import { useSecondTick } from "@/hooks/useSecondTick";
 import { WorkflowWorkRowBody } from "@/components/thread/timeline/WorkflowWorkRowBody";
 import {
@@ -10,12 +13,11 @@ import {
   activityMetaClass,
   activityRowClass,
   activityTextClass,
-} from "@/components/ui/activity-row-styles";
+} from "@bb/shared-ui/activity-row-styles";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { WorkflowPhaseStrip } from "@bb/shared-ui/workflow-progress";
 
-const WORKFLOW_CARD_ROW_HEIGHT = 32;
 const BODY_ID = "thread-workflow-card-body";
 const TOGGLE_ID = "thread-workflow-card-toggle";
 const WORKFLOW_HEADER_BUTTON_CLASS = activityRowClass(
@@ -47,7 +49,7 @@ function agentProgressLabel(workflow: TimelineWorkflowWorkRow): string | null {
   return `${settled}/${agents.length} agents`;
 }
 
-export interface ThreadWorkflowCardProps {
+interface ThreadWorkflowCardProps {
   workflow: TimelineWorkflowWorkRow;
   isExpanded: boolean;
   onToggle: () => void;
@@ -81,7 +83,7 @@ export function ThreadWorkflowCard({
     <PromptStackCard
       ariaLabel="Workflow"
       className="overflow-hidden"
-      style={{ minHeight: WORKFLOW_CARD_ROW_HEIGHT }}
+      style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
     >
       <div className="flex items-center">
         <button

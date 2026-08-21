@@ -22,7 +22,7 @@ export function getAppUpdateCheckSnapshot(): boolean {
   return isChecking;
 }
 
-function checkErrorDescription(error: unknown): string {
+export function checkErrorDescription(error: unknown): string {
   if (error instanceof Error && error.message.length > 0) {
     return error.message;
   }

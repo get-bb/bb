@@ -6,7 +6,6 @@
 
 import {
   type DynamicTool,
-  type PermissionEscalation,
   type PermissionMode,
   type ReasoningLevel,
   type ServiceTier,
@@ -33,7 +32,6 @@ export interface AcpSessionExecutionOptions {
   instructions?: string | undefined;
   envVars?: Record<string, string> | undefined;
   permissionMode: PermissionMode;
-  permissionEscalation: PermissionEscalation | null;
   skillRoots?: readonly AcpSkillRoot[] | undefined;
 }
 
@@ -91,7 +89,7 @@ export interface AcpModelListParams {
  * `thought_level` config option, the bridge applies `reasoningLevel` via
  * `session/set_config_option`. Absent when the thread has no model preference.
  */
-export type AcpModelSelection =
+type AcpModelSelection =
   | {
       listCommand: AcpAgentCommandParam;
       selectFlag: string;
@@ -120,7 +118,6 @@ export interface AcpSessionParams {
    */
   permissionCli?: AcpAgentPermissionCli;
   permissionMode: "accept-edits" | "full";
-  permissionEscalation: PermissionEscalation | null;
   /** Roots (workspace plus configured extras) where client fs writes are allowed. */
   workspaceWriteRoots: string[];
   envVars?: Record<string, string>;
@@ -271,7 +268,7 @@ function buildAcpModelSelectionParam(
   };
 }
 
-export interface BuildAcpSessionParamsArgs {
+interface BuildAcpSessionParamsArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   cwd: string;
   dynamicTools?: readonly DynamicTool[] | undefined;
@@ -320,7 +317,6 @@ export function buildAcpSessionParams(
       ? { launchReasoningLevel: options.reasoningLevel }
       : {}),
     permissionMode: options.permissionMode,
-    permissionEscalation: options.permissionEscalation,
     workspaceWriteRoots: [cwd, ...args.additionalWorkspaceWriteRoots],
     ...(Object.keys(envVars).length > 0 ? { envVars } : {}),
     ...(instructions ? { instructions } : {}),

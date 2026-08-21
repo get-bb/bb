@@ -299,7 +299,6 @@ export function createPluginUpdates(
   async function resolveUpdateForRow(args: {
     row: InstalledPluginRow;
     npmRun: NpmResolverRun;
-    npmIntentOverride?: NpmSourceIntentForResolution;
   }): Promise<PluginUpdateResolution> {
     const installed = installedUpdateVersion(args.row);
     if (args.row.sourceKind === "path" || args.row.sourceKind === "builtin") {
@@ -321,11 +320,10 @@ export function createPluginUpdates(
     }
     if (args.row.sourceKind === "npm") {
       return resolveNpmUpdate({
-        intent: args.npmIntentOverride ?? npmIntentForRow(args.row),
+        intent: npmIntentForRow(args.row),
         current: installed,
         appVersion: deps.appVersion,
         run: args.npmRun,
-        includePinned: args.npmIntentOverride !== undefined,
       });
     }
     if (args.row.gitResolvedCommit === null) {
@@ -666,7 +664,6 @@ export function createPluginUpdates(
             await applyNpmCandidate({
               row: activationRow,
               selectionIntent: selectionNpmIntent,
-              sourceIntent: selectionNpmIntent,
               candidate: selected.candidate,
             });
           } else if (

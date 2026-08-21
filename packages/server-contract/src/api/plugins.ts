@@ -115,8 +115,6 @@ export const pluginServiceEntrySchema = z.object({
   name: z.string(),
   state: z.enum(["running", "backoff", "stopped"]),
 });
-export type PluginServiceEntry = z.infer<typeof pluginServiceEntrySchema>;
-
 export const pluginScheduleEntrySchema = z.object({
   name: z.string(),
   cron: z.string(),
@@ -275,9 +273,6 @@ export const pluginMutationResponseSchema = z.object({
   ok: z.literal(true),
   plugin: installedPluginSchema,
 });
-export type PluginMutationResponse = z.infer<
-  typeof pluginMutationResponseSchema
->;
 
 export const pluginInstallResponseSchema = pluginMutationResponseSchema;
 

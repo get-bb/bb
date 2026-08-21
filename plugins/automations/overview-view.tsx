@@ -12,7 +12,6 @@ import type {
 import {
   AutomationLifecycleControl,
   automationIconName,
-  automationScheduleLabel,
 } from "./detail-view.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
@@ -42,6 +41,7 @@ import {
   type AutomationStatusFilter,
   formatAutomationTrigger,
   formatOverviewScheduleMetadata,
+  formatScheduleStatusLabel,
   getOneShotLifecycle,
   matchesAutomationStatusFilters,
   oneShotLifecycleAllowsToggle,
@@ -366,7 +366,7 @@ export function AutomationOverviewView({
       return [
         automation.name,
         project.name,
-        automationScheduleLabel(automation),
+        formatScheduleStatusLabel(automation),
         formatAutomationTrigger(automation.trigger),
       ].some((value) => value?.toLowerCase().includes(normalizedQuery));
     });

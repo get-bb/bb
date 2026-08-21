@@ -66,8 +66,6 @@ export interface MarkdownCallbacks {
   onThreadPress?: (mention: MarkdownThreadMentionPress) => void;
   /** Tapped a non-thread prompt-mention pill (path, command, plugin, …). */
   onMentionPress?: (mention: IndexedPromptMention) => void;
-  /** Long-pressed a code block / the copy button. Default copies to clipboard. */
-  onCodeCopy?: (code: string, language: string | null) => void;
   /**
    * Long-pressed one flow block (paragraph, list, heading, …). When set,
    * every block with a known source slice becomes long-pressable; the
@@ -141,7 +139,6 @@ export function useMarkdownContextValue(
     onImagePress,
     onThreadPress,
     onMentionPress,
-    onCodeCopy,
     onBlockLongPress,
     renderDirective,
     resolveImageSource,
@@ -162,7 +159,6 @@ export function useMarkdownContextValue(
       onImagePress,
       onThreadPress,
       onMentionPress,
-      onCodeCopy,
       onBlockLongPress,
       renderDirective,
       resolveImageSource,
@@ -182,7 +178,6 @@ export function useMarkdownContextValue(
       onImagePress,
       onThreadPress,
       onMentionPress,
-      onCodeCopy,
       onBlockLongPress,
       renderDirective,
       resolveImageSource,

@@ -19,10 +19,11 @@ import {
   within,
 } from "@testing-library/react";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
+import { createDeferredPromise } from "@bb/test-helpers";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
-import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
+import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@bb/client-core";
 import { BbHttpError } from "@/lib/sdk";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
@@ -424,10 +425,6 @@ vi.mock("@/hooks/useCommandSuggestions", () => ({
   }),
 }));
 
-vi.mock("@/hooks/useEscapeToHide", () => ({
-  useEscapeToHide: () => undefined,
-}));
-
 vi.mock("@/hooks/usePromptDraftStorage", () => ({
   usePromptDraftStorage: () => mocks.promptDraft,
 }));
@@ -699,7 +696,6 @@ function buildPromptAreaElement({
       modelFallback={modelFallback}
       isEnvironmentActionPending={false}
       onChangedFileClick={vi.fn()}
-      openThreadDiffPanel={vi.fn()}
       parentThreadSection={null}
       pendingInteractions={pendingInteractions}
       pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
@@ -723,16 +719,6 @@ function buildPromptAreaElement({
 
 function renderPromptArea(options: RenderPromptAreaOptions = {}) {
   return render(buildPromptAreaElement(options));
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
-  return { promise, reject, resolve };
 }
 
 beforeEach(() => {
@@ -1322,7 +1308,7 @@ describe("ThreadDetailPromptArea", () => {
   });
 
   it("does not attach a delayed queued upload to a later edit or the bottom draft", async () => {
-    const upload = deferred<{
+    const upload = createDeferredPromise<{
       mimeType: string;
       name: string;
       path: string;
@@ -1361,7 +1347,7 @@ describe("ThreadDetailPromptArea", () => {
   });
 
   it("keeps a delayed bottom upload owned by the bottom draft", async () => {
-    const upload = deferred<{
+    const upload = createDeferredPromise<{
       mimeType: string;
       name: string;
       path: string;

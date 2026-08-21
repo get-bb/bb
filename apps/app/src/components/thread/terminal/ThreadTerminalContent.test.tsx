@@ -42,26 +42,18 @@ function controller(
 ): ThreadTerminalController {
   return {
     activeSession: session,
-    activeTerminalId: session.id,
     canCreateTerminal: true,
-    closingTerminalId: null,
-    emptyTerminalMessage: "No terminals",
     handleActiveTerminalSessionChange: () => undefined,
     handleActiveTerminalTitleChange: () => undefined,
     handleActiveTerminalUserInput: () => undefined,
-    handleClosePanel: () => undefined,
-    handleCloseTerminal: () => undefined,
     handleCreateTerminal: () => undefined,
     handleSelectTerminal: () => undefined,
     hasTerminalQueryError: false,
     isCreateTerminalPending: false,
     isPanelOpen,
-    isTerminalQueryLoading: false,
     shouldMountTerminalView,
-    showTerminalPlaceholders: false,
     shouldRetainActiveTerminalView: false,
     terminalBodyMessage: "No terminals",
-    visibleSessions: [session],
   };
 }
 

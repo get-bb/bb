@@ -14,14 +14,12 @@ type TimelineWorkRow = Extract<TimelineRow, { kind: "work" }>;
 
 interface RenderCompletedTimelineArgs {
   events: TimelineFixtureEvent[];
-  includeDebugRawEvents?: boolean;
 }
 
 function renderCompletedTimeline(args: RenderCompletedTimelineArgs) {
   return renderTimelineFixture({
     events: args.events,
     projectionOptions: {
-      includeDebugRawEvents: args.includeDebugRawEvents,
       threadStatus: "idle",
       turnMessageDetail: "summary",
     },
@@ -624,44 +622,6 @@ describe("completed turn summary rendering", () => {
     expect(
       turnRows(timeline.rows).map((row) => rowSignatures(row.children ?? [])),
     ).toEqual([["work:command"], ["work:command"]]);
-  });
-
-  it("keeps summary rows on both sides of debug raw events", () => {
-    const event = createTimelineEventFactory({ threadId: "thread-1" });
-
-    const timeline = renderCompletedTimeline({
-      events: [
-        event.turnStarted(),
-        event.commandCompleted({
-          itemId: "tool-before-debug",
-          command: "pnpm test",
-        }),
-        event.providerUnhandled({
-          rawType: "session.unexpected",
-        }),
-        event.commandCompleted({
-          itemId: "tool-after-debug",
-          command: "git status --short",
-        }),
-        event.assistantCompleted({
-          itemId: "assistant-1",
-          text: "Done.",
-        }),
-        event.turnCompleted(),
-      ],
-      includeDebugRawEvents: true,
-    });
-
-    expect(rowSignatures(timeline.rows)).toEqual([
-      "turn:2-2",
-      "system:debug",
-      "turn:4-4",
-      "conversation:assistant",
-    ]);
-    expect(topLevelWorkRows(timeline.rows)).toHaveLength(0);
-    expect(turnRows(timeline.rows).map((row) => row.summaryCount)).toEqual([
-      1, 1,
-    ]);
   });
 
   it("does not synthesize empty summary rows for user-only completed turns", () => {

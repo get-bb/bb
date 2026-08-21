@@ -1,6 +1,5 @@
 import type { ReactElement } from "react";
 import { FallbackTimelineRow } from "./FallbackTimelineRow";
-import { createTimelineRowRendererRegistry } from "./renderer-registry";
 import type { TimelineListItem, TimelineRowKind } from "./rows";
 
 /**
@@ -45,32 +44,31 @@ export interface TimelineRowRendererProps<
   projectId: string;
 }
 
-export type TimelineRowRenderer<K extends TimelineRowKind = TimelineRowKind> = (
+type TimelineRowRenderer<K extends TimelineRowKind = TimelineRowKind> = (
   props: TimelineRowRendererProps<K>,
 ) => ReactElement;
 
-const registry =
-  createTimelineRowRendererRegistry<TimelineRowRenderer>(FallbackTimelineRow);
+const registry = new Map<TimelineRowKind, TimelineRowRenderer>();
 
-/** Register the renderer for one kind; returns an unregister function. */
+/** Register the renderer for one kind. */
 export function registerTimelineRowRenderer<K extends TimelineRowKind>(
   kind: K,
   renderer: TimelineRowRenderer<K>,
-): () => void {
+): void {
   // The slot is typed for the whole union: a per-kind renderer can only be
   // stored by narrowing the props it receives. This is sound because
   // `getTimelineRowRenderer(item.kind)` is the sole dispatch path, so a slot
   // registered under `kind` is only ever called with items of that kind.
   const slot: TimelineRowRenderer = (props) =>
     renderer(props as TimelineRowRendererProps<K>);
-  return registry.register(kind, slot);
+  registry.set(kind, slot);
 }
 
 /** The renderer for `kind`, or the fallback when none is registered. */
 export function getTimelineRowRenderer(
   kind: TimelineRowKind,
 ): TimelineRowRenderer {
-  return registry.get(kind);
+  return registry.get(kind) ?? FallbackTimelineRow;
 }
 
 export function hasTimelineRowRenderer(kind: TimelineRowKind): boolean {

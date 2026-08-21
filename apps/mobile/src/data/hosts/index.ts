@@ -5,7 +5,6 @@ export {
   useHosts,
   usePrimaryHost,
   useServerProtocolVersion,
-  type HostProviderCliStatusEntry,
 } from "./host-queries";
 export { selectPrimaryHost } from "./select-primary-host";
 export {
@@ -14,7 +13,6 @@ export {
   useRetryHostUpdate,
   useUpdateHostPermissionCeiling,
 } from "./host-mutations";
-export { type UpdateHostPermissionCeilingRequest } from "./permission-ceiling";
 export {
   formatHostUpdateStatus,
   hostCanRetryUpdate,
@@ -29,39 +27,17 @@ export {
   PERMISSION_LIMIT_DESCRIPTION,
   PERMISSION_MODE_SHORT_LABELS,
   PRIMARY_HOST_REMOVE_DISABLED_REASON,
-  type MachineHeaderMetaArgs,
-  type MachineMetaLineArgs,
 } from "./host-display";
 export {
   hasProviderCliAction,
   providerCliIssues,
   providerCliRowState,
-  type ProviderCliActionableIssue,
-  type ProviderCliInstallOutcome,
   type ProviderCliIssue,
-  type ProviderCliRowState,
   type ProviderCliRowTone,
-  type ProviderCliStatusEntry,
 } from "./provider-cli-install";
-export {
-  type ProviderCliInstallJob,
-  type ProviderCliInstallJobStatus,
-  type ProviderCliInstallRecord,
-  type ProviderCliInstallSnapshot,
-  type ProviderCliInstallStore,
-} from "./provider-cli-install-store";
-export {
-  useProviderCliInstallRunner,
-  type ProviderCliInstallRunner,
-  type StartProviderCliInstallArgs,
-} from "./use-provider-cli-install";
-export {
-  formatCountdown,
-  type AddMachineCodes,
-  type AddMachinePresentation,
-  type ConnectMachineCode,
-  type ConnectMachineCodeResult,
-} from "./add-machine";
+export { type ProviderCliInstallRecord } from "./provider-cli-install-store";
+export { useProviderCliInstallRunner } from "./use-provider-cli-install";
+export { formatCountdown } from "./add-machine";
 export {
   useAddMachineSession,
   type AddMachineSession,

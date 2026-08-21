@@ -27,8 +27,6 @@ import {
   type CommentProvider,
 } from "../shared/contract";
 
-type PluginDatabase = ReturnType<BbPluginApi["storage"]["database"]>;
-
 interface TaskLabelIdRow {
   task_id: string;
   label_id: string;
@@ -178,10 +176,6 @@ function fail(code: TasksDomainError["code"], message: string): never {
 }
 
 function taskFailure(error: TasksDomainFailure) {
-  return { ok: false as const, error: error.detail };
-}
-
-function projectFailure(error: TasksDomainFailure) {
   return { ok: false as const, error: error.detail };
 }
 
@@ -712,7 +706,7 @@ export function registerHandlers(
         publishProjectsChanged(bb, project.id);
         return { ok: true, project };
       } catch (error) {
-        if (error instanceof TasksDomainFailure) return projectFailure(error);
+        if (error instanceof TasksDomainFailure) return taskFailure(error);
         throw error;
       }
     },
@@ -735,7 +729,7 @@ export function registerHandlers(
         }
         return { ok: true, deleted };
       } catch (error) {
-        if (error instanceof TasksDomainFailure) return projectFailure(error);
+        if (error instanceof TasksDomainFailure) return taskFailure(error);
         throw error;
       }
     },

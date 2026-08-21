@@ -30,7 +30,7 @@ export interface ProfileClient extends MobileSdk {
 }
 
 export interface CreateProfileClientRegistryOptions {
-  sdk?: CreateMobileSdkOptions;
+  sdk?: Omit<CreateMobileSdkOptions, "onAuthFailure">;
   createQueryClient?: () => QueryClient;
 }
 
@@ -67,7 +67,6 @@ export function createProfileClientRegistry(
     const { sdk, realtime, fetch } = createMobileSdk(profile, {
       ...options.sdk,
       onAuthFailure: (status) => {
-        options.sdk?.onAuthFailure?.(status);
         emitAuthFailure({ source: "fetch", status });
       },
     });

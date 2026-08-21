@@ -31,7 +31,8 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   tool: vi.fn((_name, _desc, _schema, handler) => handler),
 }));
 
-import { buildSessionOptions, handleLine } from "../bridge.js";
+import { handleLine } from "../bridge.js";
+import { buildSessionOptions } from "../session-options.js";
 import {
   type ClaudePermissionMode,
   type ClaudeUserQuestionInput,

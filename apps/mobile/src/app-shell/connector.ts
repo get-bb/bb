@@ -23,14 +23,12 @@ export function getActiveProfileConnector(): ActiveProfileConnector {
 
 /**
  * Resolve once the connector has activated `profileId` (the ProfilesProvider
- * activates the store's active profile on its next render), or after
- * `timeoutMs` so a deep link / notification never hangs on a profile that
- * fails to come up. Resolves immediately when it is already live.
+ * activates the store's active profile on its next render), or after 5 s so
+ * a deep link / notification never hangs on a profile that fails to come up.
+ * Resolves immediately when it is already live.
  */
-export function waitForActiveConnection(
-  profileId: string,
-  timeoutMs = 5_000,
-): Promise<boolean> {
+export function waitForActiveConnection(profileId: string): Promise<boolean> {
+  const timeoutMs = 5_000;
   const connector = getActiveProfileConnector();
   if (connector.getSnapshot()?.profile.id === profileId) {
     return Promise.resolve(true);

@@ -382,8 +382,3 @@ export function formatFileSize(bytes: number): string {
   }
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
 }
-
-/** Byte length of a text preview (UTF-8), for the header's size readout. */
-export function utf8ByteLength(text: string): number {
-  return new TextEncoder().encode(text).byteLength;
-}

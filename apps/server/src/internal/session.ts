@@ -101,7 +101,7 @@ export function registerInternalSessionRoutes(
       updateHost(deps.db, deps.hub, daemon.hostId, {
         lastRejectedProtocolVersion: null,
       });
-      const session = openSession(deps.db, deps.hub, {
+      const session = openSession(deps.db, {
         hostId: daemon.hostId,
         instanceId: payload.instanceId,
         hostName: payload.hostName,

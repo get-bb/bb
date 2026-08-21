@@ -1,5 +1,4 @@
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import * as Clipboard from "expo-clipboard";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
@@ -11,6 +10,7 @@ import {
   useSkillContent,
   useSkillFiles,
 } from "@/data/skills";
+import { copyWithToast } from "@/lib/clipboard";
 import { Markdown } from "@/markdown";
 import {
   ActionSheet,
@@ -198,11 +198,7 @@ export function SkillDetailScreen() {
                 title="SKILL.md path"
                 subtitle={skill.filePath}
                 leading="File"
-                onPress={() => {
-                  void Clipboard.setStringAsync(skill.filePath)
-                    .then(() => toast.success("Path copied"))
-                    .catch(() => toast.error("Could not copy"));
-                }}
+                onPress={() => copyWithToast(skill.filePath, "Path copied")}
                 testID="skill-detail-path"
               />
               {isSkillDeletable(skill) ? (

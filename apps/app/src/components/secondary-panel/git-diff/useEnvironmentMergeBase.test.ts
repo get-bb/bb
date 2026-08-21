@@ -1,4 +1,5 @@
 import type { Environment, WorkspaceStatus } from "@bb/domain";
+import { makeWorkspaceStatus as makeSharedWorkspaceStatus } from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
 import {
   resolveEffectiveMergeBaseBranch,
@@ -7,7 +8,6 @@ import {
 } from "./useEnvironmentMergeBase";
 
 type EnvironmentOverrides = Partial<Environment>;
-type WorkspaceStatusOverrides = Partial<WorkspaceStatus>;
 
 function makeEnvironment(overrides: EnvironmentOverrides = {}): Environment {
   return {
@@ -32,29 +32,13 @@ function makeEnvironment(overrides: EnvironmentOverrides = {}): Environment {
 }
 
 function makeWorkspaceStatus(
-  overrides: WorkspaceStatusOverrides = {},
+  overrides: Partial<WorkspaceStatus> = {},
 ): WorkspaceStatus {
-  return {
-    branch: {
-      currentBranch: "bb/thread",
-      defaultBranch: "main",
-    },
-    checkout: {
-      kind: "branch",
-      branchName: "bb/thread",
-      headSha: null,
-    },
-    mergeBase: null,
-    workingTree: {
-      deletions: 0,
-      files: [],
-      hasUncommittedChanges: false,
-      insertions: 0,
-      lineStatsComplete: true,
-      state: "clean",
-    },
+  return makeSharedWorkspaceStatus({
+    branch: { currentBranch: "bb/thread", defaultBranch: "main" },
+    checkout: { kind: "branch", branchName: "bb/thread", headSha: null },
     ...overrides,
-  };
+  });
 }
 
 describe("shouldSyncSelectedMergeBaseBranch", () => {

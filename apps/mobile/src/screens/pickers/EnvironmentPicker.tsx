@@ -21,13 +21,9 @@ import { PickerTrigger } from "./PickerTrigger";
 import { describeEnvironmentSelection } from "./environment-picker-model";
 
 /** The mode rows the picker offers; reuse rows carry their environment id. */
-export type EnvironmentPickerMode =
-  | "project-default"
-  | "local"
-  | "worktree"
-  | "reuse";
+type EnvironmentPickerMode = "project-default" | "local" | "worktree" | "reuse";
 
-export interface EnvironmentPickerProps {
+interface EnvironmentPickerProps {
   /** The effective selection (after `resolveEffectiveEnvironmentSelection`). */
   value: ThreadEnvironmentSelection;
   onChange: (selection: ThreadEnvironmentSelection) => void;
@@ -41,7 +37,6 @@ export interface EnvironmentPickerProps {
   /** Why "New worktree" is unavailable on this checkout, or null. */
   worktreeDisabledReason: string | null;
   disabled?: boolean;
-  testID?: string;
 }
 
 /**
@@ -60,7 +55,6 @@ export function EnvironmentPicker({
   reuseOptionsLoading,
   worktreeDisabledReason,
   disabled,
-  testID = "environment-picker",
 }: EnvironmentPickerProps) {
   const sheet = useSheet();
   const { tokens } = useTheme();
@@ -114,7 +108,7 @@ export function EnvironmentPicker({
         tone={summary.tone}
         onPress={sheet.present}
         disabled={disabled}
-        testID={testID}
+        testID="environment-picker"
         accessibilityLabel="Environment"
       />
       <Sheet
@@ -133,7 +127,7 @@ export function EnvironmentPicker({
           icon="Laptop"
           selected={selectedMode === "project-default"}
           onPress={() => pick({ type: "project-default" })}
-          testID={`${testID}-option-project-default`}
+          testID="environment-picker-option-project-default"
         />
         <ModeRow
           label={
@@ -164,7 +158,7 @@ export function EnvironmentPicker({
                 : { type: "unmanaged", path: null, branch: null },
             });
           }}
-          testID={`${testID}-option-local`}
+          testID="environment-picker-option-local"
         />
         <ModeRow
           label="New worktree"
@@ -182,7 +176,7 @@ export function EnvironmentPicker({
               workspace: { type: "managed-worktree", baseBranch: null },
             });
           }}
-          testID={`${testID}-option-worktree`}
+          testID="environment-picker-option-worktree"
         />
         <Separator />
         <View className="px-4 pb-1 pt-3">
@@ -230,7 +224,7 @@ export function EnvironmentPicker({
                 onPress={() =>
                   pick({ type: "reuse", environmentId: option.environmentId })
                 }
-                testID={`${testID}-option-reuse-${option.environmentId}`}
+                testID={`environment-picker-option-reuse-${option.environmentId}`}
               />
             );
           })

@@ -40,13 +40,6 @@ export function providerCliEntries(
   }));
 }
 
-/** Provider rows Settings → Updates owns, including Cursor. */
-export function providerCliUpdateEntries(
-  status: ProviderCliStatusResponse,
-): ProviderCliStatusEntry[] {
-  return providerCliEntries(status);
-}
-
 /**
  * Whether an issue is an *update* rather than a first install.
  *

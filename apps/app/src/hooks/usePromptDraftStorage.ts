@@ -1,9 +1,6 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import type { PromptTextMention } from "@bb/domain";
-import type {
-  PromptDraftAttachment,
-  PromptDraftState,
-} from "@/lib/prompt-draft";
+import type { PromptDraftAttachment, PromptDraftState } from "@bb/client-core";
 import {
   appendQuoteAndAttachmentsToDraft,
   arePromptDraftStatesEqual,
@@ -11,7 +8,7 @@ import {
   isPromptDraftEmpty,
   parsePromptDraftStorage,
   serializePromptDraftStorage,
-} from "@/lib/prompt-draft";
+} from "@bb/client-core";
 
 const PROMPT_DRAFT_STORAGE_PREFIX = "bb.promptbox.contents";
 const PROMPT_DRAFT_STORAGE_VERSION = "3";

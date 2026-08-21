@@ -13,9 +13,6 @@ const MIN_TITLE_GENERATION_WORDS = 5;
 const MAX_GENERATED_TITLE_WORDS = 5;
 const MAX_BRANCH_SLUG_LENGTH = 48;
 
-type ThreadMetadataGenerationDeps = LoggedWorkSessionDeps;
-type ThreadTitleApplyDeps = Pick<AppDeps, "db" | "hub">;
-
 interface ApplyGeneratedThreadTitleArgs {
   threadId: string;
   title: string;
@@ -124,7 +121,7 @@ function normalizeGeneratedThreadMetadata(
 }
 
 export async function generateThreadMetadataWithOutcome(
-  deps: ThreadMetadataGenerationDeps,
+  deps: LoggedWorkSessionDeps,
   args: ThreadMetadataGenerationArgs,
 ): Promise<ThreadMetadataGenerationOutcome> {
   const startedAt = Date.now();
@@ -171,7 +168,7 @@ export async function generateThreadMetadataWithOutcome(
 }
 
 export function applyGeneratedThreadTitle(
-  deps: ThreadTitleApplyDeps,
+  deps: Pick<AppDeps, "db" | "hub">,
   args: ApplyGeneratedThreadTitleArgs,
 ): boolean {
   const title = args.title.trim();

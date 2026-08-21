@@ -1,4 +1,3 @@
-import type { FixedPanelTab } from "@bb/client-core";
 import type { TerminalCreateTarget } from "@bb/server-contract";
 import {
   createContext,
@@ -10,10 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  useSyncedPanelTabs,
-  type FixedPanelTabsStateUpdater,
-} from "@/data/thread-tabs";
+import { useSyncedPanelTabs } from "@/data/thread-tabs";
 import {
   buildPanelStripEntries,
   createPanelViewState,
@@ -51,7 +47,6 @@ export interface PanelController {
   open(target?: PanelOpenTarget): void;
   close(): void;
   toggle(): void;
-  openInfo(): void;
   /** Diff tab; `path` asks the Diff content to scroll that file into view. */
   openDiff(path?: string | null): void;
   /** Files launcher (search / thread storage). */
@@ -60,8 +55,6 @@ export interface PanelController {
   openTerminal(terminalId?: string | null, target?: TerminalCreateTarget): void;
   /** A workspace / host / thread-storage file preview tab. */
   openFile(request: OpenFileRequest): void;
-  /** Any client-core tab (plugin panels, browser tabs opened by other clients, …). */
-  openTab(tab: FixedPanelTab): void;
   activate(target: PanelStripTarget): void;
   closeTab(tabId: string): void;
   closeOtherTabs(tabId: string): void;
@@ -70,12 +63,6 @@ export interface PanelController {
   consumeDiffPath(): void;
   /** The Files content read `view.filesParams`; clear it. */
   consumeFilesParams(): void;
-  /**
-   * Escape hatch for contents that own tabs of their kind (the Terminal
-   * content pruning tabs of closed sessions, a browser content updating a
-   * title): apply a client-core updater to the persisted, synced tab state.
-   */
-  updateTabsState(updater: FixedPanelTabsStateUpdater): void;
 }
 
 /**
@@ -97,7 +84,7 @@ export function useOptionalPanel(): PanelController | null {
   return useContext(PanelContext);
 }
 
-export interface WorkspacePanelProviderProps {
+interface WorkspacePanelProviderProps {
   scope: PanelScope;
   /** Key of the device-local tab state (the thread id, or the root-compose panel id). */
   panelStateId: string;
@@ -232,7 +219,6 @@ export function WorkspacePanelProvider({
       open: (target) => dispatch({ type: "open", target }),
       close: () => dispatch({ type: "close" }),
       toggle: () => dispatch({ type: "toggle" }),
-      openInfo: () => dispatch({ type: "open", target: { kind: "info" } }),
       openDiff: (path) =>
         dispatch({ type: "open", target: { kind: "diff", path } }),
       openFiles: (params) =>
@@ -244,17 +230,14 @@ export function WorkspacePanelProvider({
         }),
       openFile: (request) =>
         dispatch({ type: "open", target: { kind: "file", request } }),
-      openTab: (tab) =>
-        dispatch({ type: "open", target: { kind: "tab", tab } }),
       activate: (target) => dispatch({ type: "activate", target }),
       closeTab: (tabId) => dispatch({ type: "close-tab", tabId }),
       closeOtherTabs: (tabId) => dispatch({ type: "close-other-tabs", tabId }),
       closeAllTabs: () => dispatch({ type: "close-all-tabs" }),
       consumeDiffPath: () => dispatch({ type: "consume-diff-path" }),
       consumeFilesParams: () => dispatch({ type: "consume-files-params" }),
-      updateTabsState: update,
     }),
-    [activeView, dispatch, entries, scope, update, view],
+    [activeView, dispatch, entries, scope, view],
   );
 
   return (

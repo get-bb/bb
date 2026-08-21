@@ -229,10 +229,6 @@ export function createComposePreferencesStore(
     },
     setProviderId(providerId) {
       if (providerId === snapshot.providerId) return;
-      // The web app once kept a single unscoped model/reasoning pair owned by
-      // the current provider; a provider change orphans it.
-      storage.remove(COMPOSE_MODEL_STORAGE_KEY);
-      storage.remove(COMPOSE_REASONING_STORAGE_KEY);
       write(COMPOSE_PROVIDER_STORAGE_KEY, providerId);
     },
     setServiceTier(tier) {
@@ -259,22 +255,9 @@ export function createComposePreferencesStore(
       const scopedReasoning = storage.getString(
         scopedKey(COMPOSE_REASONING_STORAGE_KEY, providerId),
       );
-      // Legacy unscoped pair, valid only for the provider that wrote it.
-      const legacyOwner = storage.getString(COMPOSE_PROVIDER_STORAGE_KEY);
-      const legacyApplies = legacyOwner === providerId;
       return {
-        model:
-          scopedModel ??
-          (legacyApplies
-            ? storage.getString(COMPOSE_MODEL_STORAGE_KEY)
-            : undefined) ??
-          "",
-        reasoningLevel: parseStoredReasoningLevel(
-          scopedReasoning ??
-            (legacyApplies
-              ? storage.getString(COMPOSE_REASONING_STORAGE_KEY)
-              : undefined),
-        ),
+        model: scopedModel ?? "",
+        reasoningLevel: parseStoredReasoningLevel(scopedReasoning),
       };
     },
     setProviderSelection(providerId, selection) {

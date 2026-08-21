@@ -37,7 +37,7 @@ describe("createSidebarPreferencesStore", () => {
     });
     const store = createSidebarPreferencesStore(
       memoryStorage({
-        "bb.sidebar.organizationMode": "chronological",
+        "bb.sidebar.organizationMode": "manual",
         "bb.sidebar.chronologicalSort": "none",
         "bb.sidebar.collapsedProjects": '["p1","p1",7,"p2"]',
         "bb.sidebar.collapsedSections": '["pinned","bogus"]',

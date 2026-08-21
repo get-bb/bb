@@ -7,6 +7,7 @@ import {
 } from "@bb/server-contract";
 import semver from "semver";
 import { z } from "zod";
+import { formatIssues } from "../plugins/collection-manifest.js";
 import {
   gitRangeSourceSpec,
   gitSemverTagName,
@@ -308,15 +309,6 @@ const marketplaceManifestSchema = z
 
 export type MarketplaceManifest = z.infer<typeof marketplaceManifestSchema>;
 export type MarketplaceEntry = MarketplaceManifest["plugins"][number];
-
-function formatIssues(error: z.ZodError): string {
-  return error.issues
-    .map((issue) => {
-      const path = issue.path.join(".");
-      return path.length === 0 ? issue.message : `${path}: ${issue.message}`;
-    })
-    .join("; ");
-}
 
 /**
  * Parse a marketplace manifest. The document is rejected whole: consumers see

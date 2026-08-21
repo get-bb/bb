@@ -196,7 +196,6 @@ interface BranchPickerRowButtonProps {
   title?: string;
   selected: boolean;
   disabled?: boolean;
-  emphasizeLabel?: boolean;
   onSelect: () => void;
   onPointerEnter?: PointerEventHandler<HTMLButtonElement>;
   onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
@@ -233,7 +232,6 @@ interface FilterBranchOptionsArgs {
 
 interface OrderBranchPickerOptionsArgs {
   options: readonly string[];
-  priorityOptions: readonly string[];
   selectedValue: string | null;
 }
 
@@ -471,7 +469,6 @@ function BranchPickerRowButton({
   title,
   selected,
   disabled = false,
-  emphasizeLabel = false,
   onSelect,
   onPointerEnter: callerPointerEnter,
   onKeyDown: callerKeyDown,
@@ -502,12 +499,7 @@ function BranchPickerRowButton({
           COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
         )}
       />
-      <BranchPickerText
-        label={label}
-        emphasizePlainLabel={emphasizeLabel}
-        className="flex-1"
-        wrap
-      />
+      <BranchPickerText label={label} className="flex-1" wrap />
       <Icon
         name="Check"
         className={
@@ -621,7 +613,6 @@ function filterBranchOptions({
 
 export function orderBranchPickerOptions({
   options,
-  priorityOptions,
   selectedValue,
 }: OrderBranchPickerOptionsArgs): string[] {
   const availableOptions = new Set(options);
@@ -637,9 +628,6 @@ export function orderBranchPickerOptions({
   };
 
   append(selectedValue);
-  for (const branch of priorityOptions) {
-    append(branch);
-  }
   for (const branch of options) {
     append(branch);
   }
@@ -664,7 +652,6 @@ export interface BranchPickerProps {
   value: string | null;
   options: readonly string[];
   remoteOptions?: readonly string[];
-  currentBranch?: string | null;
   loading?: boolean;
   disabled?: boolean;
   placeholder?: string;
@@ -712,7 +699,6 @@ export function BranchPicker({
   value,
   options,
   remoteOptions = EMPTY_BRANCH_OPTIONS,
-  currentBranch,
   loading = false,
   disabled,
   placeholder,
@@ -804,7 +790,6 @@ export function BranchPicker({
     () =>
       orderBranchPickerOptions({
         options: filteredLocalBranchOptions,
-        priorityOptions: EMPTY_BRANCH_OPTIONS,
         selectedValue: value,
       }),
     [filteredLocalBranchOptions, value],
@@ -813,7 +798,6 @@ export function BranchPicker({
     () =>
       orderBranchPickerOptions({
         options: filteredCombinedBranchOptions,
-        priorityOptions: EMPTY_BRANCH_OPTIONS,
         selectedValue: value,
       }),
     [filteredCombinedBranchOptions, value],

@@ -10,7 +10,6 @@ import {
   resolveThreadDefaultPermissionMode,
   resolveThreadExecutionPermissionMode,
   resolveWorkflowsEnabledPolicy,
-  PRODUCT_DEFAULT_PROVIDER_ID,
 } from "../../src/services/threads/thread-default-policy.js";
 import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 import {
@@ -86,7 +85,6 @@ describe("resolveCreateThreadExecutionDefaults", () => {
   it("uses the picker's first provider without pinning a model", () => {
     // The product default and the picker's first entry are the same fact.
     const productProviderId = registry.list()[0]?.info.id;
-    expect(productProviderId).toBe(PRODUCT_DEFAULT_PROVIDER_ID);
 
     expect(
       resolveCreateThreadExecutionDefaults(registry, {

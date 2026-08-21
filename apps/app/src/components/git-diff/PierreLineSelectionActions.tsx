@@ -18,6 +18,7 @@ import {
   type SelectionAnchorSide,
 } from "@/components/thread/timeline/SelectableMessageProse.js";
 import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
+import { getDiffShadowRoots } from "./git-diff-patch-text";
 
 const LINE_SELECTION_MENU_INLINE_OFFSET_PX = 72;
 
@@ -103,15 +104,6 @@ function isGutterUtilityPath(
   );
 }
 
-function getPierreShadowRoots(containerElement: HTMLElement | null) {
-  if (containerElement === null) {
-    return [];
-  }
-  return Array.from(containerElement.querySelectorAll("diffs-container"))
-    .map((container) => container.shadowRoot)
-    .filter((root) => root !== null);
-}
-
 function selectedLineAttributeMatchesSide(
   element: HTMLElement,
   anchorSide: SelectionAnchorSide,
@@ -163,7 +155,7 @@ function resolveSelectedLineAnchorPoint({
   anchorSide: SelectionAnchorSide;
   containerElement: HTMLElement | null;
 }): SelectionAnchorPoint | null {
-  for (const root of getPierreShadowRoots(containerElement)) {
+  for (const root of getDiffShadowRoots(containerElement)) {
     const selectedLine = getBoundarySelectedLine(
       Array.from(
         root.querySelectorAll<HTMLElement>("[data-selected-line][data-line]"),
@@ -175,7 +167,7 @@ function resolveSelectedLineAnchorPoint({
     }
   }
 
-  for (const root of getPierreShadowRoots(containerElement)) {
+  for (const root of getDiffShadowRoots(containerElement)) {
     const selectedNumber = getBoundarySelectedLine(
       Array.from(
         root.querySelectorAll<HTMLElement>(
@@ -203,7 +195,7 @@ function resolveUtilityButtonAnchorPoint({
   anchorSide: SelectionAnchorSide;
   containerElement: HTMLElement | null;
 }): SelectionAnchorPoint | null {
-  for (const root of getPierreShadowRoots(containerElement)) {
+  for (const root of getDiffShadowRoots(containerElement)) {
     const utilityButton = root.querySelector("[data-utility-button]");
     if (utilityButton === null) {
       continue;

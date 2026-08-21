@@ -155,12 +155,6 @@ function formatQueuedMessageInputForSender(
   });
 }
 
-function queuedMessagesToThreadQueuedMessages(
-  queuedMessages: readonly ClaimedQueuedMessage[],
-): ThreadQueuedMessage[] {
-  return queuedMessages.map(toThreadQueuedMessage);
-}
-
 function releaseQueuedMessageClaims(
   deps: Pick<AppDeps, "db" | "hub">,
   queuedMessages: readonly ClaimedQueuedMessage[],
@@ -275,9 +269,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   }
 
   const environment = await requireReadyQueuedMessageEnvironment(deps, thread);
-  const queuedMessages = queuedMessagesToThreadQueuedMessages(
-    args.queuedMessages,
-  );
+  const queuedMessages = args.queuedMessages.map(toThreadQueuedMessage);
   const queuedMessage = queuedMessages[0]!;
 
   const senderThreadId = args.queuedMessages[0]!.senderThreadId;
@@ -314,10 +306,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   if (initiator === "user") {
     await recoverThreadModelOverride(deps, {
       model: payload.model,
-      modelSource:
-        payload.executionInputSources === undefined
-          ? "explicit"
-          : payload.executionInputSources.model,
+      modelSource: "explicit",
       thread,
     });
   }
@@ -395,9 +384,6 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     },
     { behavior: "immediate" },
   );
-  if (!command) {
-    throw createQueuedMessageClaimLostError();
-  }
 
   deps.hub.notifyThread(
     thread.id,
@@ -429,9 +415,7 @@ async function sendClaimedQueuedMessageForThread(
     return sent;
   }
 
-  const queuedMessages = queuedMessagesToThreadQueuedMessages(
-    args.queuedMessages,
-  );
+  const queuedMessages = args.queuedMessages.map(toThreadQueuedMessage);
   const queuedMessage = queuedMessages[0]!;
   const inputGroups = queuedMessages.map(
     (queuedMessage) => queuedMessage.content,

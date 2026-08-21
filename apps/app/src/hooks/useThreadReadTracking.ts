@@ -1,9 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { Thread } from "@bb/domain";
-import {
-  isThreadRead,
-  type ThreadReadState,
-} from "@/lib/thread-read-state";
+import { isThreadRead, type ThreadReadState } from "@bb/client-core";
 import {
   isDocumentVisible,
   useDocumentVisibilityRevision,

@@ -367,13 +367,6 @@ function applyUserTurnReadForEvent(
   };
 }
 
-function applyReadStateUpdateForEvent(
-  db: DbTransaction,
-  args: AppendThreadEventArgs,
-): ThreadReadStateUpdate | null {
-  return applyUserTurnReadForEvent(db, args);
-}
-
 function appendThreadEventsInTransactionWithAttention(
   db: DbTransaction,
   args: readonly AppendThreadEventArgs[],
@@ -381,7 +374,7 @@ function appendThreadEventsInTransactionWithAttention(
   assertStoredTurnStartedForEvents(db, args);
   const sequences = appendStoredThreadEventsInTransaction(db, args);
   const readStateUpdates = args
-    .map((eventArgs) => applyReadStateUpdateForEvent(db, eventArgs))
+    .map((eventArgs) => applyUserTurnReadForEvent(db, eventArgs))
     .filter(isThreadReadStateUpdate);
 
   return { readStateUpdates, sequences };
@@ -580,21 +573,6 @@ export function appendClientTurnEventInTransaction(
     (eventArgs) => appendThreadEventInTransaction(db, eventArgs),
     args,
   );
-}
-
-export function appendPreparedClientTurnRequestedEventInTransaction(
-  db: DbTransaction,
-  args: PreparedClientTurnRequestedEventArgs,
-): AppendedClientTurnRequest {
-  const result =
-    appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
-      db,
-      args,
-    );
-  return {
-    requestId: result.requestId,
-    sequence: result.sequence,
-  };
 }
 
 export function appendPreparedClientTurnRequestedEventWithNotificationInTransaction(

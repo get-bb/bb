@@ -40,7 +40,6 @@ interface ExpandableTimelineRowProps {
   title: TimelineTitle;
   /** Replaces the generic timeline-title renderer for a specialized header. */
   titleContent?: ReactNode;
-  className?: string;
   collapsedPreview?: ReactNode;
   expandable?: boolean;
   horizontalPadding?: TimelineRowHorizontalPadding;
@@ -80,7 +79,6 @@ function isInteractivePreviewTarget({
 
 function ExpandableTimelineRowComponent({
   autoExpanded = false,
-  className,
   collapsedPreview,
   expandable = true,
   forceExpanded = false,
@@ -225,7 +223,7 @@ function ExpandableTimelineRowComponent({
       forceHeaderChevronVisible={
         expandable && !isExpanded && collapsedPreviewActive
       }
-      className={cn("w-full", className)}
+      className="w-full"
       headerClassName={timelineRowHeaderClassName(horizontalPadding)}
       contentClassName={cn(horizontalPaddingClass, "pb-1 pt-0.5")}
       renderBody={renderBody}

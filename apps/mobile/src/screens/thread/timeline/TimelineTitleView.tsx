@@ -23,9 +23,6 @@ import { cn, ShimmerText, Text } from "@/ui";
 export interface TimelineTitleViewProps {
   title: TimelineTitle;
   style?: StyleProp<ViewStyle>;
-  /** One line (default) truncates the `truncate` segment; more lines wrap. */
-  numberOfLines?: number;
-  testID?: string;
 }
 
 function segmentClassName(
@@ -215,19 +212,13 @@ function renderDecoration(
   }
 }
 
-export function TimelineTitleView({
-  title,
-  style,
-  numberOfLines = 1,
-  testID,
-}: TimelineTitleViewProps) {
+export function TimelineTitleView({ title, style }: TimelineTitleViewProps) {
   const { tokens } = useTheme();
   return (
     <View
       className="min-w-0 flex-row items-baseline gap-x-1 overflow-hidden"
       style={style}
       accessibilityLabel={title.plain}
-      testID={testID}
     >
       {title.segments.map((segment, index) => {
         const className = cn("text-sm", segmentClassName(segment, title.tone));
@@ -241,7 +232,7 @@ export function TimelineTitleView({
               key={`s${index}`}
               className={className}
               containerStyle={sizing}
-              numberOfLines={numberOfLines}
+              numberOfLines={1}
             >
               {segment.text}
             </ShimmerText>
@@ -252,7 +243,7 @@ export function TimelineTitleView({
             key={`s${index}`}
             className={className}
             style={sizing}
-            numberOfLines={numberOfLines}
+            numberOfLines={1}
           >
             {segment.text}
           </Text>

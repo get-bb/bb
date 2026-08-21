@@ -273,24 +273,8 @@ export const githubRpcContract = defineRpcContract({
   },
 });
 
-interface RepoInfo {
-  repo: string; // "owner/name"
-  projectId: string | null;
-}
-
-interface CachedItem {
-  repo: string;
-  number: number;
-  kind: "issue" | "pr";
-  title: string;
-  state: string;
-  author: string;
-  labels: string[];
-  assignees: string[];
-  url: string;
-  body: string;
-  updatedAt: string;
-}
+type RepoInfo = z.infer<typeof repoInfoSchema>;
+type CachedItem = z.infer<typeof itemSchema>;
 
 interface GhListEntry {
   number?: unknown;

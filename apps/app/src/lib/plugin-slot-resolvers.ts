@@ -82,16 +82,6 @@ function composerCustomizationApplies(
   );
 }
 
-/** Preserve snapshot order while applying the shared Composer scope contract. */
-export function resolveComposerCustomizations(
-  customizations: readonly PluginComposerCustomizationSlot[],
-  scopeKind: PluginComposerScope["kind"],
-): readonly PluginComposerCustomizationSlot[] {
-  return customizations.filter((customization) =>
-    composerCustomizationApplies(customization, scopeKind),
-  );
-}
-
 export function resolveComposerActions(
   customizations: readonly PluginComposerCustomizationSlot[],
   scopeKind: PluginComposerScope["kind"],
@@ -255,6 +245,11 @@ export function resolveReplacement<Registration>(
     : { kind: "plugin", registration };
 }
 
+/**
+ * A per-open viewer choice (the link context menu): "builtin" pins the
+ * built-in preview; an opener ref forces that plugin opener. Absent means
+ * follow the extension's automatic or pinned Settings choice.
+ */
 export type FileOpenerOverride =
   | "builtin"
   | { pluginId: string; openerId: string };

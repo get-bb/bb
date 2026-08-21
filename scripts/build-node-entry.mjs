@@ -1,5 +1,4 @@
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { buildNodeEsmEntry, copyDirectory } from "./build-utils.mjs";
 
 const packageRoot = process.cwd();

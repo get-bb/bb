@@ -19,7 +19,6 @@ import { createConfiguredPiServices } from "./configured-services.js";
 export interface PiSdkSessionOptions {
   cwd: string;
   model?: string;
-  modelRuntime?: ModelRuntime;
   thinkingLevel?: CreateAgentSessionOptions["thinkingLevel"];
   additionalSkillPaths?: readonly string[];
   shellEnvOverrides?: ShellEnvOverrides;
@@ -29,7 +28,7 @@ export interface PiSdkSessionOptions {
   appendSystemPrompt?: string;
 }
 
-export type ShellEnvOverrides = Record<string, string>;
+type ShellEnvOverrides = Record<string, string>;
 
 type PiSessionEventHandler = (event: AgentSessionEvent) => void;
 type PiSessionDoneHandler = (error?: unknown) => void;
@@ -63,13 +62,13 @@ interface TrackedInputConsumption {
 }
 
 /** The outcome of an agent run pi started for a dispatched input. */
-export interface PiPromptRunOutcome {
+interface PiPromptRunOutcome {
   /** Omitted when the run finished without a fatal error. */
   error?: unknown;
 }
 
 /** How pi took a dispatched turn input. */
-export interface PiInputDispatch {
+interface PiInputDispatch {
   /**
    * Resolves once pi consumed the input — it started a run with it, or the
    * queue that held it delivered it. Rejects when pi refused the input or the
@@ -253,9 +252,6 @@ export class PiSdkSession {
     // auth, and custom models from the user's normal Pi directories.
     const services = await createConfiguredPiServices({
       cwd: this.options.cwd,
-      ...(this.options.modelRuntime
-        ? { modelRuntime: this.options.modelRuntime }
-        : {}),
       resourceLoaderOptions: {
         ...(additionalSkillPaths.length > 0
           ? { additionalSkillPaths: [...additionalSkillPaths] }

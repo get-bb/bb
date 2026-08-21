@@ -20,7 +20,6 @@ import type {
   QueryClientArg,
   ThreadArg,
 } from "../cache-effect-types";
-import { removeEnvironmentScopedQueries } from "./environment-cache-effects";
 import { invalidateQueryKeys } from "./cache-effect-utils";
 import {
   getProjectListInvalidationQueryKeys,
@@ -341,5 +340,3 @@ export function removeThreadScopedQueries({
     queryKey: threadStorageFilePreviewQueryKeyPrefix(threadId),
   });
 }
-
-export { removeEnvironmentScopedQueries };

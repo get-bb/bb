@@ -40,7 +40,7 @@ import {
 import { useHosts, usePrimaryHost } from "@/hooks/queries/host-queries";
 import { useDialogState } from "@/hooks/useDialogState";
 import { usePromptDraftInputThreadIds } from "@/hooks/usePromptDraftStorage";
-import { getCollapsedChildActivity } from "@/lib/thread-activity";
+import { getCollapsedChildActivity } from "@bb/client-core";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
@@ -58,7 +58,7 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog";
-import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -151,6 +151,7 @@ import {
 } from "./BuiltInSidebarSection";
 import { ReorderableSidebarSectionOrderList } from "./ReorderableSidebarSectionOrderList";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
+import { haveSameOrder } from "./usePersistedSidebarSectionOrder";
 import {
   resolveThreadTitleDisplayText,
   type ThreadTitleMentionResources,
@@ -282,16 +283,6 @@ type OpenSidebarMenu =
   | "threadsDisplayOptions"
   | `displayOptions:${string}`
   | null;
-
-function hasSameStringList(
-  left: readonly string[],
-  right: readonly string[],
-): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-  return left.every((sectionId, index) => sectionId === right[index]);
-}
 
 function removeCollapsedIds<T extends string>(
   current: T[],
@@ -1752,7 +1743,7 @@ function ProjectListComponent({
   );
   useEffect(() => {
     if (
-      hasSameStringList(
+      haveSameOrder(
         collapsedSidebarSectionIdList,
         normalizedCollapsedSidebarSectionIds,
       )

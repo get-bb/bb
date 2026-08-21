@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import lockfile from "proper-lockfile";
+import { isFsErrorWithCode } from "./fs-errors.js";
 
 export const DAEMON_LOCK_FILE_NAME = "daemon.lock";
 
@@ -17,12 +18,12 @@ const DAEMON_LOCK_ACQUIRE_RETRIES = 13;
 // service-manager restart.
 const DAEMON_LOCK_REACQUIRE_MAX_CYCLES = 20;
 
-export interface DaemonLockLogger {
+interface DaemonLockLogger {
   warn(fields: Record<string, unknown>, message: string): void;
   error(fields: Record<string, unknown>, message: string): void;
 }
 
-export interface AcquireDaemonLockOptions {
+interface AcquireDaemonLockOptions {
   /** Lock is treated as stale once its mtime is older than this many ms. */
   staleMs?: number;
   /**
@@ -47,13 +48,6 @@ const consoleLockLogger: DaemonLockLogger = {
   warn: (fields, message) => console.warn(message, fields),
   error: (fields, message) => console.error(message, fields),
 };
-
-function isErrorWithCode(error: unknown, code: string): boolean {
-  return (
-    error instanceof Error &&
-    (error as NodeJS.ErrnoException).code === code
-  );
-}
 
 export async function acquireDaemonLock(
   dataDir: string,
@@ -121,7 +115,7 @@ export async function acquireDaemonLock(
             if (released) {
               return;
             }
-            if (isErrorWithCode(acquireError, "ELOCKED")) {
+            if (isFsErrorWithCode(acquireError, "ELOCKED")) {
               logger.error(
                 { err: acquireError },
                 "Daemon lock is held by another live daemon; yielding the data dir",
@@ -198,7 +192,7 @@ export async function acquireDaemonLock(
       await release?.();
     } catch (error) {
       // A compromised lock is already dropped by proper-lockfile.
-      if (!isErrorWithCode(error, "ERELEASED")) {
+      if (!isFsErrorWithCode(error, "ERELEASED")) {
         throw error;
       }
     }

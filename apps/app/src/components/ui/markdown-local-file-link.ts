@@ -5,7 +5,7 @@ import {
 import {
   createFilePreviewLineRange,
   type FilePreviewLineRange,
-} from "@/lib/file-preview";
+} from "@bb/client-core";
 
 export interface MarkdownPreviewLocalFileLink {
   lineRange: FilePreviewLineRange | null;

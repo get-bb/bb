@@ -473,19 +473,6 @@ export function setInstalledPluginSourceClassification(
   return result.changes > 0;
 }
 
-export function setInstalledPluginActiveArtifact(
-  db: DbConnection,
-  id: string,
-  activeArtifactId: string | null,
-): boolean {
-  const result = db
-    .update(installedPlugins)
-    .set({ activeArtifactId, updatedAt: Date.now() })
-    .where(eq(installedPlugins.id, id))
-    .run();
-  return result.changes > 0;
-}
-
 export function deleteInstalledPlugin(db: DbConnection, id: string): boolean {
   const result = db
     .delete(installedPlugins)

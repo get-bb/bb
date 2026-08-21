@@ -19,7 +19,7 @@ describe("buildBranchPickerOptionGroups", () => {
 });
 
 describe("orderBranchPickerOptions", () => {
-  it("pins the selected branch before default and origin default refs", () => {
+  it("pins the selected branch before the remaining options", () => {
     expect(
       orderBranchPickerOptions({
         options: [
@@ -29,25 +29,14 @@ describe("orderBranchPickerOptions", () => {
           "origin/main",
           "origin/feature/login",
         ],
-        priorityOptions: ["main", "origin/main"],
         selectedValue: "origin/feature/login",
       }),
     ).toEqual([
       "origin/feature/login",
-      "main",
-      "origin/main",
       "develop",
+      "main",
       "feature/login",
+      "origin/main",
     ]);
-  });
-
-  it("keeps default refs near the top when no branch is selected", () => {
-    expect(
-      orderBranchPickerOptions({
-        options: ["develop", "origin/release", "main", "origin/main"],
-        priorityOptions: ["main", "origin/main"],
-        selectedValue: null,
-      }),
-    ).toEqual(["main", "origin/main", "develop", "origin/release"]);
   });
 });

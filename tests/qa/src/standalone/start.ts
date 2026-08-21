@@ -92,11 +92,6 @@ async function main() {
       port: serverPort,
     });
     serverProcess = qaServer.process;
-    if (!serverProcess) {
-      throw new Error(
-        "Standalone QA server unexpectedly reused an existing server",
-      );
-    }
 
     const enrollKey = await createHostEnrollKey(serverUrl);
 

@@ -17,7 +17,7 @@ import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@bb/shared-ui/button";
 import { HEADER_PANE_ACTION_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
-import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
   COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
   COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
@@ -62,10 +62,7 @@ import {
 } from "./useSecondaryPanelResize";
 import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 import { GitDiffToolbar } from "./GitDiffToolbar";
-import {
-  GitDiffTabContent,
-  ThreadInfoTabContent,
-} from "./ThreadSecondaryPanelTabContent";
+import { GitDiffTabContent } from "./ThreadSecondaryPanelTabContent";
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
@@ -99,7 +96,6 @@ import {
 } from "./SidebarSplitContainer";
 import { SIDEBAR_FIXED_INFO_TAB_ID } from "./sidebarSplitLayout";
 import type { GitDiffTabStatus } from "./gitDiffTabEligibility";
-export type { GitDiffSelectionOption } from "./GitDiffToolbar";
 export type {
   SecondaryPanelPaneRenderContext,
   SecondaryPanelRenderableTab,
@@ -918,7 +914,9 @@ export function ThreadSecondaryPanel({
               workspaceRootPath={workspaceRootPath}
             />
           ) : activeSurfaceFixedTab?.tab.kind === "thread-info" ? (
-            <ThreadInfoTabContent metadataContent={metadataContent} />
+            <div className="flex min-h-0 flex-1 flex-col">
+              {metadataContent}
+            </div>
           ) : (
             <EmptyStatePanel className="m-4 rounded-lg">
               This panel view is unavailable.

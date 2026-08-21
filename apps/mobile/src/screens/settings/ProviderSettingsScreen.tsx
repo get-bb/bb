@@ -5,13 +5,8 @@ import { useUpdateGeneralSettings } from "@/data/settings";
 import { useSystemConfig } from "@/data/system";
 import { EmptyStatePanel } from "@/ui";
 import { Screen } from "../shell/Screen";
-import type { SettingsProviderRoute } from "../shell/hrefs";
+import { firstParam, type SettingsProviderRoute } from "../shell/hrefs";
 import { SettingsSection, SettingsSwitchRow } from "./SettingsRows";
-
-function firstParam(value: string | string[] | undefined): string {
-  const raw = Array.isArray(value) ? value[0] : value;
-  return raw?.trim() ?? "";
-}
 
 function parseProvider(value: string): SettingsProviderRoute | null {
   return value === "codex" || value === "claude-code" ? value : null;

@@ -58,13 +58,6 @@ const CLI_OPTIONS_BY_COMMAND: Record<string, ReadonlySet<string>> = {
   remove: new Set(["--vault", "--recursive", "--json"]),
 };
 
-interface Vault {
-  id: string;
-  name: string;
-  hostId: string | null;
-  rootPath: string;
-}
-
 interface VaultWatcher {
   close(): void;
   on(event: "error", listener: () => void): void;
@@ -92,49 +85,6 @@ interface NoteSummary {
   title: string;
   preview: string;
   modifiedAtMs: number;
-}
-
-type SyncScope =
-  | { kind: "all" }
-  | { kind: "file"; path: string }
-  | { kind: "folder"; path: string };
-
-interface SyncFile {
-  remotePath: string;
-  localPath: string;
-  sha256: string;
-  sizeBytes: number;
-  contentEncoding: "base64" | "utf8";
-  mimeType: string | null;
-  modifiedAtMs: number | null;
-  content: string;
-}
-
-interface SyncStateEntry {
-  remotePath: string;
-  localPath: string;
-  sha256: string;
-  sizeBytes: number;
-  contentEncoding: "base64" | "utf8";
-  mimeType: string | null;
-  modifiedAtMs: number | null;
-}
-
-interface SyncState {
-  schemaVersion: 1;
-  vault: { id: string; name: string };
-  scope: SyncScope;
-  pulledAt: string;
-  entries: SyncStateEntry[];
-  directories: string[];
-}
-
-interface OpenerSource {
-  kind: "workspace" | "host" | "thread-storage";
-  threadId: string | null;
-  environmentId: string | null;
-  projectId: string | null;
-  experimental_hostId?: string;
 }
 
 interface ResolvedOpenerFile {
@@ -264,6 +214,13 @@ const syncWriteSchema = z
 const syncDeleteSchema = z
   .object({ path: vaultPathSchema, expectedSha256: z.string().min(1) })
   .strict();
+
+type Vault = z.infer<typeof vaultSchema>;
+type SyncScope = z.infer<typeof syncScopeSchema>;
+type SyncStateEntry = z.infer<typeof syncStateEntrySchema>;
+type SyncState = z.infer<typeof syncStateSchema>;
+type SyncFile = z.infer<typeof syncSnapshotEntrySchema>;
+type OpenerSource = z.infer<typeof openerSourceSchema>;
 
 export const docsRpcContract = defineRpcContract({
   syncSnapshot: {
@@ -485,27 +442,6 @@ function requireString(value: unknown, field: string): string {
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function parseOpenerSource(value: unknown): OpenerSource {
-  const source = requireRecord(value);
-  if (
-    source.kind !== "workspace" &&
-    source.kind !== "host" &&
-    source.kind !== "thread-storage"
-  ) {
-    throw new Error('"source.kind" must be workspace, host, or thread-storage');
-  }
-  return {
-    kind: source.kind,
-    threadId: typeof source.threadId === "string" ? source.threadId : null,
-    environmentId:
-      typeof source.environmentId === "string" ? source.environmentId : null,
-    projectId: typeof source.projectId === "string" ? source.projectId : null,
-    ...(typeof source.experimental_hostId === "string"
-      ? { experimental_hostId: source.experimental_hostId }
-      : {}),
-  };
 }
 
 function expandHome(rawPath: string): string {
@@ -1001,10 +937,9 @@ export default async function plugin(
   }
 
   async function resolveOpenerFile(
-    sourceValue: unknown,
+    source: OpenerSource,
     pathValue: unknown,
   ): Promise<ResolvedOpenerFile> {
-    const source = parseOpenerSource(sourceValue);
     const filePath = requireString(pathValue, "path");
     if (source.kind === "host") {
       if (!isAbsoluteHostPath(filePath)) {

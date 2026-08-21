@@ -203,7 +203,6 @@ export function createInvalidInteractiveRequestAdapter(
 export function createWarningEventAdapter(scriptPath: string): ProviderAdapter {
   return {
     id: "warning-fake",
-    displayName: "Warning Fake",
     approvalEnforcedBy: "runtime",
     capabilities: {
       supportsThreadArchive: false,
@@ -320,7 +319,6 @@ export function createWarningEventAdapter(scriptPath: string): ProviderAdapter {
 export function createStartedEventAdapter(scriptPath: string): ProviderAdapter {
   return {
     id: "started-fake",
-    displayName: "Started Fake",
     approvalEnforcedBy: "runtime",
     capabilities: {
       supportsThreadArchive: false,

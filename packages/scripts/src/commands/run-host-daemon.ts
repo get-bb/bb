@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +20,7 @@ import {
 import { loadHostDaemonEntrypointConfig } from "@bb/config/host-daemon-entrypoint";
 import type { HostDaemonRuntimeEnvironment } from "../lib/host-daemon-runtime.js";
 import { toHostDaemonProcessEnv } from "../lib/host-daemon-runtime.js";
+import { pathExists } from "../lib/legacy-dev-data-migration.js";
 import { resolveNodeEnvironment } from "../lib/script-config.js";
 import { runScriptProcess } from "../lib/process-helpers.js";
 import { waitForServerHealth } from "../lib/wait-for-server-health.js";
@@ -137,18 +138,6 @@ export function resolveHostDaemonProcessCommand(
   };
 }
 
-async function pathExists(pathToCheck: string): Promise<boolean> {
-  try {
-    await access(pathToCheck);
-    return true;
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return false;
-    }
-    throw error;
-  }
-}
-
 async function readPersistedHostId(dataDir: string): Promise<string | null> {
   try {
     const value = (
@@ -223,7 +212,7 @@ export async function maybeAddAutoJoinEnv(
   };
 }
 
-export async function main(): Promise<void> {
+async function main(): Promise<void> {
   const mode = resolveRuntimeMode();
   const autoJoin = shouldAutoJoin();
   const env = await maybeAddAutoJoinEnv(

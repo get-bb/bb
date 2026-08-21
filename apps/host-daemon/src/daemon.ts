@@ -1,18 +1,18 @@
 import type { HostDaemonLogger } from "./logger.js";
 import { normalizeCaughtError } from "./error-utils.js";
 
-export interface HostDaemonIdentity {
+interface HostDaemonIdentity {
   hostId: string;
   hostName: string;
   instanceId: string;
 }
 
-export interface SignalSource {
+interface SignalSource {
   on(event: NodeJS.Signals, listener: () => void): void;
   off(event: NodeJS.Signals, listener: () => void): void;
 }
 
-export interface CreateDaemonOptions {
+interface CreateDaemonOptions {
   identity: HostDaemonIdentity;
   logger: HostDaemonLogger;
   releaseLock: () => Promise<void>;
@@ -43,15 +43,6 @@ const TERMINATION_SIGNALS: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
  * shutdown step or an undrained event loop must not keep the daemon alive.
  */
 const DEFAULT_SHUTDOWN_EXIT_GRACE_MS = 15_000;
-
-function listActiveResources(): string[] {
-  const getActiveResourcesInfo = (
-    process as NodeJS.Process & {
-      getActiveResourcesInfo?: () => string[];
-    }
-  ).getActiveResourcesInfo;
-  return getActiveResourcesInfo ? getActiveResourcesInfo() : [];
-}
 
 export function createDaemon(options: CreateDaemonOptions): HostDaemon {
   let started = false;
@@ -85,7 +76,7 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
       options.shutdownExitGraceMs ?? DEFAULT_SHUTDOWN_EXIT_GRACE_MS;
     const timer = setTimeout(() => {
       options.logger.error(
-        { reason, graceMs, activeResources: listActiveResources() },
+        { reason, graceMs, activeResources: process.getActiveResourcesInfo() },
         "Host daemon shutdown did not end the process; forcing exit so the service manager can restart it.",
       );
       forceExit(0);

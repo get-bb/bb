@@ -1,4 +1,4 @@
-import { jsonValueSchema, type JsonObject, type JsonValue } from "@bb/domain";
+import type { JsonObject, JsonValue } from "@bb/domain";
 import type {
   HostDaemonCommand,
   HostDaemonCommandResult,
@@ -9,6 +9,7 @@ import {
   storeChatGptCloudflareCookies,
 } from "./chatgpt-cloudflare-cookies.js";
 import {
+  parseJsonValue,
   readCodexAuthCredentials,
   type CodexAuthCredentials,
   type CodexChatGptAuthCredentials,
@@ -167,10 +168,6 @@ function optionalString(value: JsonValue | undefined): string | null {
 
 function optionalJsonArray(value: JsonValue | undefined): JsonValue[] | null {
   return Array.isArray(value) ? value : null;
-}
-
-function parseJsonValue(raw: string): JsonValue {
-  return jsonValueSchema.parse(JSON.parse(raw));
 }
 
 function isCloudflareChallenge(response: Response): boolean {

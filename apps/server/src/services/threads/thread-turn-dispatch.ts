@@ -52,11 +52,6 @@ interface DispatchTurnDuringReprovisionArgs {
   thread: Thread;
 }
 
-type ThreadTurnDispatchReadDeps = Pick<
-  LoggedPendingInteractionWorkSessionDeps,
-  "db"
->;
-
 function reprovisionStartedText(
   workspaceProvisionType: Environment["workspaceProvisionType"],
 ): string {
@@ -71,7 +66,7 @@ function reprovisionStartedText(
 }
 
 function canRecoverPreStartErroredThread(
-  deps: ThreadTurnDispatchReadDeps,
+  deps: Pick<LoggedPendingInteractionWorkSessionDeps, "db">,
   thread: Thread,
 ): boolean {
   return (

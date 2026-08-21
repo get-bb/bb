@@ -38,7 +38,7 @@ import type {
 import type { AppDeps } from "../../src/types.js";
 import { registerTestHostRpcCapture } from "./commands.js";
 
-export interface SeedEventArgs<TType extends ThreadEventType> {
+interface SeedEventArgs<TType extends ThreadEventType> {
   createdAt?: number;
   data: StoredThreadEventDataForType<TType>;
   environmentId?: string | null;
@@ -49,7 +49,7 @@ export interface SeedEventArgs<TType extends ThreadEventType> {
   type: TType;
 }
 
-export interface SeedStoredEventArgs {
+interface SeedStoredEventArgs {
   createdAt?: number;
   data: Record<string, unknown>;
   environmentId?: string | null;
@@ -63,7 +63,7 @@ export interface SeedStoredEventArgs {
   type: ThreadEventType;
 }
 
-export interface SeedTurnStartedArgs {
+interface SeedTurnStartedArgs {
   environmentId?: string | null;
   providerThreadId?: string;
   sequence?: number;
@@ -107,7 +107,7 @@ export function seedPrimaryHost(
 }
 
 export function seedSession(deps: Pick<AppDeps, "db" | "hub">, hostId: string) {
-  const session = openSession(deps.db, deps.hub, {
+  const session = openSession(deps.db, {
     hostId,
     instanceId: "instance-1",
     hostName: "Test Host",

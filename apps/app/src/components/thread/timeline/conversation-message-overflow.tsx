@@ -82,14 +82,8 @@ function observeOverflow(
   };
 }
 
-interface ConversationMessageOverflowToggleLabels {
-  collapsed: string;
-  expanded: string;
-}
-
 interface ConversationMessageOverflowToggleProps {
   expanded: boolean;
-  labels: ConversationMessageOverflowToggleLabels;
   onToggle: () => void;
 }
 
@@ -153,7 +147,6 @@ export function useIsOverflowing(args: UseOverflowMeasurementArgs): boolean {
 
 export function ConversationMessageOverflowToggle({
   expanded,
-  labels,
   onToggle,
 }: ConversationMessageOverflowToggleProps) {
   return (
@@ -164,7 +157,7 @@ export function ConversationMessageOverflowToggle({
         className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground"
         aria-expanded={expanded}
       >
-        {expanded ? labels.expanded : labels.collapsed}
+        {expanded ? "Show less" : "Show more"}
       </button>
     </div>
   );

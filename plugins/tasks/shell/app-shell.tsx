@@ -13,11 +13,9 @@ import { TasksTopbar } from "./topbar.js";
 import { ListView } from "../views/list/index.js";
 import { BoardView } from "../views/board/index.js";
 import { DetailView } from "../views/detail/index.js";
-import {
-  ManagePanel,
-  NewProjectDialog,
-  NewTaskDialog,
-} from "../views/manage/index.js";
+import { NewTaskDialog } from "../views/manage/new-task-dialog.js";
+import { NewProjectDialog } from "../views/manage/new-project-dialog.js";
+import { ManagePanel } from "../views/manage/manage-panel.js";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { TasksRefreshProvider } from "./refresh.js";

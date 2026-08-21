@@ -7,7 +7,7 @@ import {
   writeCachedThreadExecutionOptions,
 } from "@/lib/thread-execution-options-cache";
 import { useThreadDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
-import { requireEnabledQueryArg } from "./query-helpers";
+import { requireThreadId } from "./query-helpers";
 import { threadDefaultExecutionOptionsQueryKey } from "./query-keys";
 import { REALTIME_OWNED_NO_FOCUS_QUERY_POLICY } from "./query-policies";
 
@@ -20,10 +20,6 @@ interface ThreadDefaultExecutionOptionsQueryOptions {
   enabled?: boolean;
   refetchOnMount?: boolean | "always";
   staleTime?: number;
-}
-
-function requireThreadId(id: string, hookName: string): string {
-  return requireEnabledQueryArg({ value: id, hookName, argName: "thread id" });
 }
 
 async function fetchThreadDefaultExecutionOptions(

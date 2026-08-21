@@ -11,7 +11,7 @@ describe("bb manager command output", () => {
   setupCommandOutputTestEnvironment();
 
   const register: CommandRegistrar = (program) =>
-    registerManagerCommands(program, () => "http://server");
+    registerManagerCommands(program);
 
   it("bb manager exits with a parent-thread replacement message", async () => {
     await expect(runCommand(["manager"], register)).rejects.toThrow(

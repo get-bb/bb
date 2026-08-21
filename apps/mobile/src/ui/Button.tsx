@@ -98,7 +98,6 @@ export interface ButtonProps
   haptic?: ButtonHaptic | boolean;
   onPress?: () => void;
   className?: string;
-  textClassName?: string;
 }
 
 const TEXT_TOKEN: Record<ButtonVariant, keyof NativeThemeTokens> = {
@@ -129,7 +128,6 @@ export function Button({
   disabled,
   onPress,
   className,
-  textClassName,
   accessibilityRole = "button",
   ...props
 }: ButtonProps) {
@@ -164,7 +162,7 @@ export function Button({
       {iconPosition === "left" ? glyph : null}
       {typeof children === "string" ? (
         <Text
-          className={cn(buttonTextVariants({ variant, size }), textClassName)}
+          className={cn(buttonTextVariants({ variant, size }))}
           numberOfLines={1}
         >
           {children}

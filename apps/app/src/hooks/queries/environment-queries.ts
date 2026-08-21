@@ -19,7 +19,8 @@ import {
   normalizeFilePreviewMimeType,
   type EnvironmentFilePreviewSource,
   type FilePreview,
-} from "@/lib/file-preview";
+} from "@bb/client-core";
+import { decodeBase64Bytes, encodeBase64Bytes } from "@/lib/base64-bytes";
 import { buildEnvironmentDiffFileContentUrl } from "@/lib/file-content-urls";
 import { sdk } from "@/lib/sdk";
 import { useEnvironmentDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
@@ -38,7 +39,7 @@ import {
   resolveEnvironmentMergeBaseBranchesPlaceholder,
   resolveEnvironmentWorkStatusPlaceholder,
 } from "./query-placeholders";
-import { requireEnabledQueryArg } from "./query-helpers";
+import { requireEnabledQueryArg, type QueryOptions } from "./query-helpers";
 import {
   EXPENSIVE_MANUAL_QUERY_POLICY,
   HEAVY_PAYLOAD_QUERY_POLICY,
@@ -46,10 +47,6 @@ import {
   REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
   TYPEAHEAD_QUERY_POLICY,
 } from "./query-policies";
-
-interface QueryOptions {
-  enabled?: boolean;
-}
 
 interface EnvironmentQueryOptions extends QueryOptions {
   staleTime?: number;
@@ -418,26 +415,6 @@ function buildEnvironmentDiffArgs(
     case "commit":
       return { environmentId, sha: target.sha, target: target.type };
   }
-}
-
-function decodeBase64Bytes(content: string): Uint8Array {
-  const binaryContent = atob(content);
-  const bytes = new Uint8Array(binaryContent.length);
-  for (let index = 0; index < binaryContent.length; index += 1) {
-    bytes[index] = binaryContent.charCodeAt(index);
-  }
-  return bytes;
-}
-
-function encodeBase64Bytes(bytes: Uint8Array): string {
-  const chunkSize = 0x8000;
-  const binaryChunks: string[] = [];
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    binaryChunks.push(
-      String.fromCharCode(...bytes.subarray(index, index + chunkSize)),
-    );
-  }
-  return btoa(binaryChunks.join(""));
 }
 
 function buildEnvironmentFilePreviewQuery(

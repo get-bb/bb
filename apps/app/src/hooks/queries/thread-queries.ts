@@ -25,8 +25,8 @@ import type {
   TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
 import { applyTimelineDelta } from "@bb/server-contract";
-import type { ThreadListFilters } from "@/lib/api-types";
-import type { FilePreview } from "@/lib/file-preview";
+import type { ThreadListFilters } from "@bb/client-core";
+import type { FilePreview } from "@bb/client-core";
 import type { PathListOptions } from "@/lib/path-list-options";
 import type { ThreadStorageFileListOptions } from "@/lib/thread-storage-files";
 import * as api from "@/lib/api";
@@ -51,7 +51,7 @@ import {
 } from "./query-placeholders";
 import {
   PROMPT_HISTORY_STALE_TIME_MS,
-  requireEnabledQueryArg,
+  requireThreadId,
   shouldRetryTransientReadQuery,
   TRANSIENT_READ_RETRY_DELAY_MS,
 } from "./query-helpers";
@@ -196,10 +196,6 @@ const THREAD_MENTION_CANDIDATE_FILTERS = {
   archived: false,
   limit: THREAD_MENTION_CANDIDATE_LIMIT,
 } satisfies UseThreadsFilters;
-
-function requireThreadId(id: string, hookName: string): string {
-  return requireEnabledQueryArg({ value: id, hookName, argName: "thread id" });
-}
 
 function buildThreadSubsetListFilters({
   filters,

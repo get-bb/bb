@@ -4,7 +4,7 @@ import { useServerSvgAsset } from "@/data/plugins";
 import { useTheme } from "@/theme";
 import { Icon, isIconName, type IconName } from "@/ui";
 
-export interface ServerSvgIconProps {
+interface ServerSvgIconProps {
   /** Server-relative (`/api/v1/...`) or absolute URL of an SVG. */
   path: string | null;
   /** `@/ui` icon name drawn while the SVG loads / when there is none. */
@@ -12,7 +12,6 @@ export interface ServerSvgIconProps {
   size?: number;
   /** Resolves `currentColor`; defaults to the foreground token. */
   color?: string;
-  accessibilityLabel?: string;
 }
 
 /**
@@ -27,40 +26,27 @@ export function ServerSvgIcon({
   fallbackIcon,
   size = 20,
   color,
-  accessibilityLabel,
 }: ServerSvgIconProps) {
   const { tokens } = useTheme();
   const asset = useServerSvgAsset(path);
   const tint = color ?? tokens.foreground;
   if (asset.data === undefined) {
-    return (
-      <Icon
-        name={fallbackIcon}
-        size={size}
-        color={tint}
-        accessibilityLabel={accessibilityLabel}
-      />
-    );
+    return <Icon name={fallbackIcon} size={size} color={tint} />;
   }
   return (
-    <View
-      style={{ width: size, height: size }}
-      accessible={accessibilityLabel !== undefined}
-      accessibilityLabel={accessibilityLabel}
-    >
+    <View style={{ width: size, height: size }} accessible={false}>
       <SvgXml xml={asset.data} width={size} height={size} color={tint} />
     </View>
   );
 }
 
-export interface PluginIconProps {
+interface PluginIconProps {
   /** The plugin's `iconUrl` (compact SVG) when it declares one. */
   iconUrl: string | null;
   /** The plugin's `icon` (a shared vocabulary name) when it declares one. */
   icon: string | null;
   size?: number;
   color?: string;
-  accessibilityLabel?: string;
 }
 
 /** Plugin identity glyph: the plugin's SVG, else its named icon, else a puzzle piece. */
@@ -69,19 +55,13 @@ export function PluginIcon({
   icon,
   size = 20,
   color,
-  accessibilityLabel,
 }: PluginIconProps) {
   const { tokens } = useTheme();
   const fallback: IconName =
     icon !== null && isIconName(icon) ? icon : "Puzzle";
   if (iconUrl === null) {
     return (
-      <Icon
-        name={fallback}
-        size={size}
-        color={color ?? tokens.foreground}
-        accessibilityLabel={accessibilityLabel}
-      />
+      <Icon name={fallback} size={size} color={color ?? tokens.foreground} />
     );
   }
   return (
@@ -90,7 +70,6 @@ export function PluginIcon({
       fallbackIcon={fallback}
       size={size}
       color={color}
-      accessibilityLabel={accessibilityLabel}
     />
   );
 }

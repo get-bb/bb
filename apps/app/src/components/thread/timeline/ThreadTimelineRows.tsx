@@ -50,7 +50,7 @@ import {
   collectTimelineAutoExpansionRowIds,
   isNonExpandableSummary,
   isRowExpandable,
-} from "./timeline-auto-expand.js";
+} from "@bb/client-core";
 import { isRunningThreadRuntimeDisplayStatus } from "@bb/client-core";
 import type {
   ThreadTimelineAddToChatHandler,
@@ -99,7 +99,7 @@ import {
   joinSignatureParts,
   timelineRowRenderSignature,
   timelineRowsSignature,
-} from "./timelineRowSignatures.js";
+} from "@bb/client-core";
 import {
   TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
   timelineRowContainmentStyle,
@@ -1228,12 +1228,9 @@ const ConversationRowContent = memo(function ConversationRowContent({
       showActions={showAssistantMessageActions}
       mobileActionDisplay={mobileActionDisplay}
       streaming={streaming}
-      sourceSeqEnd={row.sourceSeqEnd}
-      sourceSeqStart={row.sourceSeqStart}
       text={row.text}
       threadId={row.threadId}
       turnId={row.turnId}
-      turnRequest={row.turnRequest}
       workspaceRootPath={workspaceRootPath}
     />
   );
@@ -1406,12 +1403,9 @@ function TimelineExpandableBody({
                   showActions={false}
                   mobileActionDisplay="overflow"
                   streaming={delegationActive}
-                  sourceSeqEnd={row.sourceSeqEnd}
-                  sourceSeqStart={row.sourceSeqStart}
                   text={row.output}
                   threadId={row.threadId}
                   turnId={row.turnId}
-                  turnRequest={null}
                   workspaceRootPath={workspaceRootPath}
                 />
               ) : null}

@@ -34,7 +34,7 @@ export interface ProjectMachineSetupCompletion {
   source: ProjectSource;
 }
 
-export interface ProjectMachineSetupSheetProps {
+interface ProjectMachineSetupSheetProps {
   controller: SheetController;
   /** Null keeps the sheet empty (it can stay mounted). */
   target: ProjectMachineSetupTarget | null;
@@ -44,7 +44,6 @@ export interface ProjectMachineSetupSheetProps {
   title?: string;
   /** Fires after the source is created (source queries already invalidated). */
   onComplete: (completion: ProjectMachineSetupCompletion) => void;
-  testID?: string;
 }
 
 type SetupOption = "clone" | "folder";
@@ -60,7 +59,6 @@ export function ProjectMachineSetupSheet({
   allowRemoteUrlEntry = false,
   title,
   onComplete,
-  testID = "machine-setup",
 }: ProjectMachineSetupSheetProps) {
   const maxHeight = usePickerSheetMaxHeight();
   const targetKey = target ? `${target.projectId}:${target.hostId}` : "none";
@@ -83,7 +81,7 @@ export function ProjectMachineSetupSheet({
           allowRemoteUrlEntry={allowRemoteUrlEntry}
           controller={controller}
           onComplete={onComplete}
-          testID={testID}
+          testID="machine-setup"
         />
       ) : (
         <View className="h-24" />

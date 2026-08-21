@@ -69,7 +69,6 @@ import {
   createPluginCatalogService,
   type PluginCatalogService,
 } from "./services/plugin-catalog/plugin-catalog-service.js";
-import type { ProviderRegistryService } from "./services/providers/provider-registry.js";
 import { callHostRetryableOnlineRpc } from "./services/hosts/online-rpc.js";
 import {
   allowedAppOrigins,
@@ -88,17 +87,16 @@ const PLUGIN_WIRE_HTTP_PATH = /^\/api\/v1\/plugins\/[^/]+\/http(?:\/|$)/u;
 import { rankAcceptedAssetEncodings } from "./asset-content-encoding.js";
 import { apiJsonCompression } from "./api-response-compression.js";
 
-export type CloseWebSockets = () => Promise<void>;
+type CloseWebSockets = () => Promise<void>;
 type NodeWebSocketServer = ReturnType<typeof createNodeWebSocket>["wss"];
 type WebSocketCloseError = Error | undefined;
 
-export interface ServerApp {
+interface ServerApp {
   app: Hono;
   closeWebSockets: CloseWebSockets;
   injectWebSocket: ReturnType<typeof createNodeWebSocket>["injectWebSocket"];
   pluginService: PluginService;
   pluginCatalogService: PluginCatalogService;
-  providerRegistry: ProviderRegistryService;
 }
 
 interface CloseWebSocketServerArgs {
@@ -683,6 +681,5 @@ export function createApp(
     injectWebSocket,
     pluginService,
     pluginCatalogService,
-    providerRegistry: deps.providerRegistry,
   };
 }

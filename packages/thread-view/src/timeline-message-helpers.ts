@@ -25,7 +25,7 @@ export function isTimelineUngroupableMessage(
   if (message.kind === "assistant-text") {
     return message.isLegacyUserMessage === true;
   }
-  return message.kind === "debug/raw-event";
+  return false;
 }
 
 export function isTimelineSummaryCountedMessage(

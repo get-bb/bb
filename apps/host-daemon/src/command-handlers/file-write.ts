@@ -3,13 +3,15 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
-import {
-  CommandDispatchError,
-  ExpectedCommandDispatchError,
-} from "../command-dispatch-support.js";
+import { CommandDispatchError } from "../command-dispatch-support.js";
 import type { CommandOf } from "../command-dispatch-support.js";
 import { isFsErrorWithCode } from "../fs-errors.js";
-import { NON_IMAGE_FILE_SIZE_LIMIT_BYTES, sha256Hex } from "./file-read.js";
+import { sha256Hex } from "../sha256-hex.js";
+import {
+  createMissingTargetError,
+  isPathWithinRoot,
+  NON_IMAGE_FILE_SIZE_LIMIT_BYTES,
+} from "./file-read.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
 
 const guardedWriteTails = new Map<string, Promise<void>>();
@@ -36,31 +38,11 @@ async function serializeGuardedWrite<T>(
   }
 }
 
-export interface ResolvedWriteTarget {
+interface ResolvedWriteTarget {
   /** Real (symlink-resolved) path to write, existing or not. */
   writePath: string;
   /** True when the write target's direct parent directory is missing. */
   parentMissing: boolean;
-}
-
-export function isPathWithinRoot(
-  candidatePath: string,
-  rootPath: string,
-): boolean {
-  const relativePath = path.relative(rootPath, candidatePath);
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-  );
-}
-
-function createMissingTargetError(
-  resultPath: string,
-): ExpectedCommandDispatchError {
-  return new ExpectedCommandDispatchError(
-    "ENOENT",
-    `Path does not exist: ${resultPath}`,
-  );
 }
 
 /**

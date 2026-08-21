@@ -56,7 +56,7 @@ function optionalBoolean(value: JsonValue | undefined): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
-function parseJsonValue(raw: string): JsonValue {
+export function parseJsonValue(raw: string): JsonValue {
   return jsonValueSchema.parse(JSON.parse(raw));
 }
 

@@ -89,7 +89,6 @@ interface PluginSettingFieldProps {
   descriptor: PluginSettingFieldDescriptor;
   draft: unknown;
   onChange: (value: string | boolean) => void;
-  settingKey: string;
   storedValue: unknown;
 }
 
@@ -97,7 +96,6 @@ function PluginSettingField({
   descriptor,
   draft,
   onChange,
-  settingKey,
   storedValue,
 }: PluginSettingFieldProps) {
   const projects = useSidebarNavigation({
@@ -256,7 +254,6 @@ export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
             : {})}
         >
           <PluginSettingField
-            settingKey={key}
             descriptor={descriptor}
             storedValue={view.values[key]}
             draft={drafts[key]}

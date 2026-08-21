@@ -7,21 +7,16 @@ export interface DesktopPathContext {
   resourcesPath: string;
 }
 
-export interface ResolveDesktopBridgePathArgs {
+interface ResolveDesktopBridgePathArgs {
   paths: DesktopPathContext;
 }
 
-export interface ResolveDesktopAssetPathArgs {
-  fileName: string;
-  paths: DesktopPathContext;
-}
-
-export interface ResolveDesktopIconPathArgs {
+interface ResolveDesktopIconPathArgs {
   packagedIconFileName: string;
   paths: DesktopPathContext;
 }
 
-export interface AssertPathExistsArgs {
+interface AssertPathExistsArgs {
   label: string;
   path: string;
 }
@@ -44,21 +39,14 @@ export function resolveDesktopBridgePath(
   return join(args.paths.appPath, "dist", "bb-app-bridge.mjs");
 }
 
-export function resolveDesktopAssetPath(
-  args: ResolveDesktopAssetPathArgs,
-): string {
-  return join(args.paths.appPath, "assets", args.fileName);
-}
-
 export function resolveDesktopIconPath(
   args: ResolveDesktopIconPathArgs,
 ): string {
-  return resolveDesktopAssetPath({
-    fileName: args.paths.isPackaged
-      ? args.packagedIconFileName
-      : "icon-dev.png",
-    paths: args.paths,
-  });
+  return join(
+    args.paths.appPath,
+    "assets",
+    args.paths.isPackaged ? args.packagedIconFileName : "icon-dev.png",
+  );
 }
 
 export function assertPathExists(args: AssertPathExistsArgs): void {

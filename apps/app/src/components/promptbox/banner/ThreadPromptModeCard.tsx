@@ -1,14 +1,16 @@
 import type { ThreadTimelineActivePromptMode } from "@bb/domain";
-import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import {
+  PROMPT_STACK_CARD_ROW_HEIGHT,
+  PromptStackCard,
+} from "@/components/promptbox/banner/PromptStackCard";
 import {
   activityIconClass,
   activityRowClass,
   activityTextClass,
-} from "@/components/ui/activity-row-styles";
+} from "@bb/shared-ui/activity-row-styles";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-const PROMPT_MODE_CARD_ROW_HEIGHT = 32;
 const PROMPT_MODE_HEADER_GROUP_CLASS = activityRowClass(
   "active",
   "flex w-full items-stretch rounded-none px-0 py-0",
@@ -18,7 +20,7 @@ const PROMPT_MODE_HEADER_BUTTON_CLASS =
 const PROMPT_MODE_EXIT_BUTTON_CLASS =
   "flex min-h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-none border-l border-border/35 bg-transparent text-muted-foreground transition-colors hover:text-foreground disabled:cursor-wait disabled:text-muted-foreground/60";
 
-export interface ThreadPromptModeCardProps {
+interface ThreadPromptModeCardProps {
   activePromptMode: ThreadTimelineActivePromptMode | null;
   isExitPending?: boolean;
   isExpanded: boolean;
@@ -46,7 +48,7 @@ export function ThreadPromptModeCard({
     <PromptStackCard
       ariaLabel="Prompt mode"
       className="overflow-hidden"
-      style={{ minHeight: PROMPT_MODE_CARD_ROW_HEIGHT }}
+      style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
     >
       <div
         role="group"

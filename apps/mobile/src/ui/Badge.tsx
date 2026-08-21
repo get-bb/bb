@@ -39,21 +39,13 @@ export type BadgeVariant = NonNullable<
 export interface BadgeProps extends VariantProps<typeof badgeVariants> {
   children: ReactNode;
   className?: string;
-  textClassName?: string;
 }
 
-export function Badge({
-  variant,
-  children,
-  className,
-  textClassName,
-}: BadgeProps) {
+export function Badge({ variant, children, className }: BadgeProps) {
   return (
     <View className={cn(badgeVariants({ variant }), className)}>
       {typeof children === "string" || typeof children === "number" ? (
-        <Text className={cn(badgeTextVariants({ variant }), textClassName)}>
-          {children}
-        </Text>
+        <Text className={cn(badgeTextVariants({ variant }))}>{children}</Text>
       ) : (
         children
       )}

@@ -50,7 +50,7 @@ import {
   resolveThreadListIndicator,
   type CollapsedChildActivity,
   type ThreadListIndicatorState,
-} from "@/lib/thread-activity";
+} from "@bb/client-core";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -73,13 +73,12 @@ import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 import { useSidebarThreadShortcut } from "./sidebarThreadShortcuts";
-import { SidebarThreadTitle } from "./SidebarThreadTitleMentions";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 import { usePaneContentSplitIndicator } from "./paneContentSplitIndicator";
-import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
 import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
 import {
+  ThreadTitleMentions,
   useSidebarProjectName,
   useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
@@ -554,10 +553,9 @@ function ThreadRowComponent({
     },
     [startEditing],
   );
-  const threadSplitsEnabled = useThreadSplitsEnabled();
   const splitIndicator = usePaneContentSplitIndicator(
     { kind: "thread", projectId, threadId: thread.id },
-    threadSplitsEnabled,
+    true,
   );
   const { onPointerDown: onSplitDragPointerDown, openInSplit } =
     useThreadRowSplitDrag({
@@ -730,7 +728,7 @@ function ThreadRowComponent({
             title={labelTitle}
             onDoubleClick={startTitleEditing}
           >
-            <SidebarThreadTitle title={threadTitle} />
+            <ThreadTitleMentions title={threadTitle} />
           </span>
         )}
         {crossProjectLabel !== null ? (

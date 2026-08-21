@@ -149,22 +149,10 @@ export function automationIconName(automation: AutomationResponse): IconName {
     : "Calendar";
 }
 
-export function automationScheduleLabel(
-  automation: AutomationResponse,
-): string {
-  return formatScheduleStatusLabel({
-    enabled: automation.enabled,
-    nextRunAt: automation.nextRunAt,
-    trigger: automation.trigger,
-    runCount: automation.runCount,
-    lastRunStatus: automation.lastRunStatus,
-  });
-}
-
 function automationDetailNextRun(
   automation: AutomationResponse,
 ): ReactNode | null {
-  const label = automationDetailScheduleLabel(automation);
+  const label = formatDetailScheduleStatusLabel(automation);
   if (label === null) return null;
   if (!label.startsWith("Next ")) return label;
   return (
@@ -172,18 +160,6 @@ function automationDetailNextRun(
       {label.slice("Next ".length)}
     </AutomationMetadataItem>
   );
-}
-
-function automationDetailScheduleLabel(
-  automation: AutomationResponse,
-): string | null {
-  return formatDetailScheduleStatusLabel({
-    enabled: automation.enabled,
-    nextRunAt: automation.nextRunAt,
-    trigger: automation.trigger,
-    runCount: automation.runCount,
-    lastRunStatus: automation.lastRunStatus,
-  });
 }
 
 function automationBodyLabel(execution: AutomationExecution): string {
@@ -955,7 +931,7 @@ export function AutomationDetailView({
             oneShotLifecycle === "expired"
               ? "Expired automation; edit to reschedule"
               : lifecycleLocked
-                ? `${automationScheduleLabel(automation)} automation`
+                ? `${formatScheduleStatusLabel(automation)} automation`
                 : automation.enabled
                   ? "Pause automation"
                   : "Resume automation"

@@ -19,10 +19,10 @@ import {
   hostsQueryKey,
   pluginListQueryKey,
   pluginMarketplacesQueryKey,
+  sidebarNavigationQueryKey,
   systemConfigQueryKey,
   systemVersionQueryKey,
 } from "../src/hooks/queries/query-keys";
-import { sidebarNavigationQueryKey } from "../src/hooks/queries/sidebar-navigation-query";
 import {
   buildUpdateInventoryProviderIssues,
   type UpdateInventoryMachine,
@@ -47,12 +47,12 @@ import {
 
 const SETTINGS_STORY_NOW = Date.parse("2026-08-19T08:00:00.000Z");
 
-export const SETTINGS_STORY_PRIMARY_HOST = makeHost({
+const SETTINGS_STORY_PRIMARY_HOST = makeHost({
   createdAt: SETTINGS_STORY_NOW - 45 * 24 * 60 * 60_000,
   lastSeenAt: SETTINGS_STORY_NOW,
 });
 
-export const SETTINGS_STORY_HOSTS = [
+const SETTINGS_STORY_HOSTS = [
   SETTINGS_STORY_PRIMARY_HOST,
   makeHost({
     id: HOST_IDS.remote,

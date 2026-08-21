@@ -25,6 +25,7 @@ import {
   type CommandDispatchOptions,
 } from "./command-dispatch.js";
 import { isExpectedOnlineRpcFailureError } from "./command-dispatch-support.js";
+import { roundDurationMs } from "./event-loop-stall-monitor.js";
 import type { HostDaemonLogger } from "./logger.js";
 import { RuntimeManager } from "./runtime-manager.js";
 import type { PluginHostManager } from "./plugin-host-manager.js";
@@ -122,10 +123,6 @@ export interface CommandRouterOptions {
 
 const HOST_COMMAND_LIFECYCLE_LOG_THRESHOLD_MS = 1_000;
 const CODEX_PROVIDER_ID = "codex";
-
-function roundDurationMs(durationMs: number): number {
-  return Math.round(durationMs * 10) / 10;
-}
 
 function elapsedMs(startedAtMs: number): number {
   return performance.now() - startedAtMs;

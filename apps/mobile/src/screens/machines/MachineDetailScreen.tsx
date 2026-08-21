@@ -42,16 +42,11 @@ import {
   SettingsSection,
   SettingsValueRow,
 } from "../settings/SettingsRows";
-import { projectSettingsHref } from "../shell/hrefs";
+import { firstParam, projectSettingsHref } from "../shell/hrefs";
 import { Screen } from "../shell/Screen";
 import { useNow } from "../shell/use-now";
 import { MachineRenameSheet } from "./MachineRenameSheet";
 import { ProviderCliInstallLogHost, ProviderCliRows } from "./ProviderCliRows";
-
-function firstParam(value: string | string[] | undefined): string {
-  const raw = Array.isArray(value) ? value[0] : value;
-  return raw?.trim() ?? "";
-}
 
 /**
  * `/settings/machines/[hostId]` (web MachineSettingsView): presence /

@@ -31,7 +31,6 @@ export interface MarkdownTextProps extends Pick<
   style?: StyleProp<TextStyle>;
   numberOfLines?: number;
   selectable?: boolean;
-  rewriteLocalhostLinks?: boolean;
   serverHostname?: string;
   testID?: string;
 }
@@ -79,7 +78,6 @@ function MarkdownTextComponent({
   style,
   numberOfLines,
   selectable = false,
-  rewriteLocalhostLinks: rewriteLocalhostLinksProp,
   serverHostname,
   testID,
   onLinkPress,
@@ -87,11 +85,7 @@ function MarkdownTextComponent({
   onThreadPress,
   onMentionPress,
 }: MarkdownTextProps) {
-  // The device-local `bb.rewriteLocalhostLinks` preference unless the caller
-  // decides (showcases, previews of other hosts' files).
-  const rewriteLocalhostLinksPreference = useRewriteLocalhostLinksPreference();
-  const rewriteLocalhostLinks =
-    rewriteLocalhostLinksProp ?? rewriteLocalhostLinksPreference;
+  const rewriteLocalhostLinks = useRewriteLocalhostLinksPreference();
   const substitution = useMemo(
     () =>
       promptMentions === undefined

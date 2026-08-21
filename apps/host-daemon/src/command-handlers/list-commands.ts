@@ -20,6 +20,7 @@ import {
 } from "../command-dispatch-support.js";
 import {
   discoverProviderCommands,
+  isPathWithinDirectory,
   type CommandScanRoot,
 } from "../command-discovery.js";
 
@@ -562,17 +563,6 @@ function originForClaudePluginScope(
   scope: ClaudePluginScope,
 ): ClaudePluginOrigin {
   return scope === "project" || scope === "local" ? "project" : "user";
-}
-
-function isPathWithinDirectory(
-  directoryPath: string,
-  candidatePath: string,
-): boolean {
-  const relativePath = path.relative(directoryPath, candidatePath);
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-  );
 }
 
 function shouldIncludeInstalledClaudePlugin(

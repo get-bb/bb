@@ -83,8 +83,6 @@ interface EmbeddedThreadChatLabels {
   placeholder: string;
   stopping: string;
   provisioning: string;
-  missingThread: string;
-  timelineError: string;
   sendError: string;
 }
 
@@ -92,12 +90,10 @@ const DEFAULT_LABELS: EmbeddedThreadChatLabels = {
   placeholder: "Reply…",
   stopping: "Stopping thread...",
   provisioning: "Provisioning thread...",
-  missingThread: "This thread is no longer available.",
-  timelineError: "Failed to load timeline",
   sendError: "Failed to send message",
 };
 
-export interface EmbeddedThreadChatComposerProps {
+interface EmbeddedThreadChatComposerProps {
   draftScope: PromptDraftScope;
   /** Thread whose resolved defaults seed the execution controls (the parent thread while drafting). */
   executionDefaultsThreadId: string;
@@ -125,8 +121,6 @@ interface EmbeddedThreadChatSharedProps {
   providerId: string;
   /** Environment context for mentions and command suggestions. */
   promptContextEnvironmentId: string | null;
-  /** Retained hidden surfaces pass false to pause read tracking + composer customizations. */
-  isActive?: boolean;
   resolveMentionLink: PromptMentionLinkResolver;
   leadingContent?: ReactNode;
   /** Surface-scoped consumer actions for the per-message action bar. */
@@ -154,7 +148,7 @@ interface EmbeddedThreadChatSharedProps {
   measure?: "panel" | "page";
 }
 
-export interface EmbeddedThreadChatComposerModeProps extends EmbeddedThreadChatSharedProps {
+interface EmbeddedThreadChatComposerModeProps extends EmbeddedThreadChatSharedProps {
   variant: "compact";
   /** Background shared by the timeline, footer, and its overflow fade. */
   surfaceTone?: "background" | "sidebar";
@@ -167,16 +161,15 @@ export interface EmbeddedThreadChatComposerModeProps extends EmbeddedThreadChatS
  * thread view keeps its chrome-heavy composer (context banners, git, goal cards)
  * outside for now; it shares the same engine hooks this component uses.
  */
-export interface EmbeddedThreadChatHostedFooterProps {
+interface EmbeddedThreadChatHostedFooterProps {
   variant: "hosted-footer";
-  threadId: string;
   footer: ReactNode;
   scrollOverlay?: ReactNode;
   surface: ThreadTimelineSurfaceProps;
   composer?: never;
 }
 
-export type EmbeddedThreadChatProps =
+type EmbeddedThreadChatProps =
   | EmbeddedThreadChatComposerModeProps
   | EmbeddedThreadChatHostedFooterProps;
 
@@ -196,7 +189,6 @@ export function EmbeddedThreadChat(props: EmbeddedThreadChatProps) {
 }
 
 function EmbeddedThreadChatHostedFooter({
-  threadId,
   footer,
   scrollOverlay,
   surface,
@@ -207,9 +199,9 @@ function EmbeddedThreadChatHostedFooter({
       className="flex h-full min-h-0 min-w-0 flex-col overflow-clip"
     >
       <PageShell
-        key={threadId}
+        key={surface.threadId}
         scrollBehavior="bottom-anchor"
-        scrollAnchorThreadId={threadId}
+        scrollAnchorThreadId={surface.threadId}
         shellClassName="!mx-0 !mt-0 md:!mx-0 md:!mt-0"
         contentClassName="gap-2 pt-4"
         footerClassName="chat-prompt-box"
@@ -227,7 +219,6 @@ function EmbeddedThreadChatWithComposer({
   projectId,
   providerId,
   promptContextEnvironmentId,
-  isActive = true,
   resolveMentionLink,
   leadingContent,
   consumerMessageActions,
@@ -257,7 +248,7 @@ function EmbeddedThreadChatWithComposer({
   );
   useThreadReadTracking({
     markThreadRead,
-    thread: isActive ? threadQuery.data : undefined,
+    thread: threadQuery.data,
   });
   const { data: queuedMessages = [] } = useThreadQueuedMessages(threadId);
 
@@ -283,7 +274,6 @@ function EmbeddedThreadChatWithComposer({
     selectedProviderId,
     providerOptions,
     hasMultipleProviders,
-    selectedProviderDisplayName,
     selectedProviderComposerActions,
     selectedModel,
     setSelectedModel,
@@ -406,7 +396,6 @@ function EmbeddedThreadChatWithComposer({
     projectId,
     providerId,
     environmentId: promptContextEnvironmentId,
-    commandScope: "thread",
     currentThreadId: threadId,
     selectedProviderComposerActions,
     resolveMentionLink,
@@ -596,12 +585,6 @@ function EmbeddedThreadChatWithComposer({
     threadId,
   ]);
 
-  const handleBottomComposerSubmit = useCallback(() => {
-    handleSubmit();
-  }, [handleSubmit]);
-  const handleBottomComposerModifierSubmit = useCallback(() => {
-    handleModifierSubmit();
-  }, [handleModifierSubmit]);
   const handleInlineComposerSubmit = useCallback(() => {
     void handleSaveInlineQueuedMessage();
   }, [handleSaveInlineQueuedMessage]);
@@ -638,18 +621,18 @@ function EmbeddedThreadChatWithComposer({
   const bottomComposerHostIdentity = useMemo(
     () =>
       createPluginComposerHostIdentity(
-        `${composer.composerIdentity ?? surfaceKey}:bottom:${isActive ? "active" : "inactive"}`,
+        `${composer.composerIdentity ?? surfaceKey}:bottom:active`,
       ),
-    [composer.composerIdentity, isActive, surfaceKey],
+    [composer.composerIdentity, surfaceKey],
   );
   const queuedComposerHostIdentity = useMemo(
     () =>
       queuedComposerIdentity
         ? createPluginComposerHostIdentity(
-            `queued-message:${queuedComposerIdentity.ownerThreadId}:${queuedComposerIdentity.queuedMessageId}:${queuedComposerIdentity.editSessionId}:${isActive ? "active" : "inactive"}`,
+            `queued-message:${queuedComposerIdentity.ownerThreadId}:${queuedComposerIdentity.queuedMessageId}:${queuedComposerIdentity.editSessionId}:active`,
           )
         : null,
-    [isActive, queuedComposerIdentity],
+    [queuedComposerIdentity],
   );
   const activeBottomComposerIdentityRef = useRef<string | null>(null);
   const activeQueuedComposerIdentityRef = useRef<string | null>(null);
@@ -662,9 +645,7 @@ function EmbeddedThreadChatWithComposer({
     committedInlineEditRef.current = inlineEditingQueuedMessage;
   }, [currentPromptDraft, inlineEditingQueuedMessage]);
   useLayoutEffect(() => {
-    activeBottomComposerIdentityRef.current = isActive
-      ? bottomComposerHostIdentity
-      : null;
+    activeBottomComposerIdentityRef.current = bottomComposerHostIdentity;
     return () => {
       if (
         activeBottomComposerIdentityRef.current === bottomComposerHostIdentity
@@ -672,12 +653,10 @@ function EmbeddedThreadChatWithComposer({
         activeBottomComposerIdentityRef.current = null;
       }
     };
-  }, [bottomComposerHostIdentity, isActive]);
+  }, [bottomComposerHostIdentity]);
   useLayoutEffect(() => {
     activeQueuedComposerIdentityRef.current =
-      isActive && queuedComposerHostIdentity
-        ? queuedComposerHostIdentity
-        : null;
+      queuedComposerHostIdentity ?? null;
     return () => {
       if (
         activeQueuedComposerIdentityRef.current === queuedComposerHostIdentity
@@ -685,7 +664,7 @@ function EmbeddedThreadChatWithComposer({
         activeQueuedComposerIdentityRef.current = null;
       }
     };
-  }, [isActive, queuedComposerHostIdentity]);
+  }, [queuedComposerHostIdentity]);
   const setStoredPromptDraft = promptDraft.setDraft;
   const bottomPluginComposerHost = useMemo<PluginComposerHost | null>(() => {
     if (bottomScope === null) return null;
@@ -783,12 +762,8 @@ function EmbeddedThreadChatWithComposer({
         : { ...queuedPluginComposerHost, draft: activeComposerDraft },
     [activeComposerDraft, queuedPluginComposerHost],
   );
-  const activeBottomPluginComposerHost = isActive
-    ? bottomPluginComposerHostWithDraft
-    : null;
-  const activeQueuedPluginComposerHost = isActive
-    ? queuedPluginComposerHostWithDraft
-    : null;
+  const activeBottomPluginComposerHost = bottomPluginComposerHostWithDraft;
+  const activeQueuedPluginComposerHost = queuedPluginComposerHostWithDraft;
   const bottomComposerTextEffects = useComposerTextEffects(
     activeBottomPluginComposerHost?.textEffectKey ?? null,
   );
@@ -817,8 +792,8 @@ function EmbeddedThreadChatWithComposer({
       message: currentPromptDraft.text,
       mentionRanges: currentPromptDraft.mentions,
       onChangeMessage: promptDraft.setTextAndMentions,
-      onModifierSubmit: handleBottomComposerModifierSubmit,
-      onSubmit: handleBottomComposerSubmit,
+      onModifierSubmit: handleModifierSubmit,
+      onSubmit: handleSubmit,
       compactPromptPlaceholder: composerPlaceholder,
       promptPlaceholder: composerPlaceholder,
       canModifierSubmit: canSubmitModifierShortcut,
@@ -831,8 +806,8 @@ function EmbeddedThreadChatWithComposer({
       composerPlaceholder,
       currentPromptDraft,
       displayStatus,
-      handleBottomComposerModifierSubmit,
-      handleBottomComposerSubmit,
+      handleModifierSubmit,
+      handleSubmit,
       isTurnSubmitting,
       promptDraft.setDraft,
       promptDraft.setTextAndMentions,
@@ -922,7 +897,6 @@ function EmbeddedThreadChatWithComposer({
         options: providerOptions,
         selectedId: selectedProviderId,
         hasMultiple: hasMultipleProviders,
-        displayName: selectedProviderDisplayName,
       },
       model: {
         active: activeModel,
@@ -959,7 +933,6 @@ function EmbeddedThreadChatWithComposer({
       reasoningLevel,
       reasoningOptions,
       selectedModel,
-      selectedProviderDisplayName,
       selectedProviderId,
       serviceTier,
       serviceTierSupportByProvider,
@@ -1068,7 +1041,6 @@ function EmbeddedThreadChatWithComposer({
           permissionReadOnly
           typeahead={typeaheadConfig}
           promptActions={promptActions}
-          suppressPluginComposerCustomizations={!isActive}
           zenModeResetKey={`${surfaceKey}:queued-message:${inlineEditingQueuedMessage.queuedMessageId}`}
           focusEndKey={`${inlineEditingQueuedMessage.editSessionId}:${inlineComposerFocusNonce}`}
           isPrimaryComposer={false}
@@ -1085,7 +1057,6 @@ function EmbeddedThreadChatWithComposer({
     inlineEditingQueuedMessage,
     inlineExecutionConfig,
     inlinePermissionConfig,
-    isActive,
     promptActions,
     queuedComposerTextEffects,
     surfaceKey,
@@ -1159,7 +1130,6 @@ function EmbeddedThreadChatWithComposer({
             permissionReadOnly={composer.permissionPolicy === "snapshot"}
             typeahead={typeaheadConfig}
             promptActions={promptActions}
-            suppressPluginComposerCustomizations={!isActive}
             zenModeResetKey={surfaceKey}
             focusEndKey={
               // Composite only when an external nonce is supplied, so existing
@@ -1184,16 +1154,13 @@ function EmbeddedThreadChatWithComposer({
       leadingContent={leadingContent}
       consumerMessageActions={consumerMessageActions}
       includePluginMessageActions={includePluginMessageActions}
-      missingThreadLabel={labels.missingThread}
       onOpenLink={onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
       onMessageAddToChat={handleAddToChat}
       onSelectionAddToChat={handleAddToChat}
       projectId={projectId}
-      provisioningLabel={labels.provisioning}
       resolveMentionLink={resolveMentionLink}
       threadId={threadId}
-      timelineErrorLabel={labels.timelineError}
       workspaceRootPath={workspaceRootPath}
     />
   );

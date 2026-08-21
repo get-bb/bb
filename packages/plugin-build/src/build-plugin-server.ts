@@ -10,7 +10,10 @@ import {
 import { isAbsolute, join, resolve } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import { isRecord, validatePluginBuildManifest } from "./plugin-manifest.js";
-import { type PluginBuildToolchain } from "./toolchain.js";
+import {
+  NODE_ESM_REQUIRE_BANNER,
+  type PluginBuildToolchain,
+} from "./toolchain.js";
 
 /**
  * `bb plugin build` — compile a plugin's `bb.server` entry into a
@@ -27,18 +30,6 @@ import { type PluginBuildToolchain } from "./toolchain.js";
  * - `dist/server.meta.json` — SDK compatibility plus authoritative plugin,
  *   artifact-format, and build-version metadata.
  */
-
-// Same shim scripts/build-utils.mjs applies to our own node bundles: plugin
-// deps may be CJS and reference require/__dirname/__filename, which do not
-// exist in ESM output.
-const NODE_ESM_REQUIRE_BANNER = [
-  'import { createRequire as __createRequire } from "node:module";',
-  'import { dirname as __pathDirname } from "node:path";',
-  'import { fileURLToPath as __fileURLToPath } from "node:url";',
-  "const require = __createRequire(import.meta.url);",
-  "var __filename = __fileURLToPath(import.meta.url);",
-  "var __dirname = __pathDirname(__filename);",
-].join("\n");
 
 /** The SDK package plugin server sources import. */
 const PLUGIN_SDK_SPECIFIER = "@get-bb/plugin-sdk";
@@ -117,7 +108,7 @@ async function readPluginServerConfig(
   };
 }
 
-export interface PluginServerBuildResult {
+interface PluginServerBuildResult {
   jsPath: string;
   mapPath: string;
   metaPath: string;

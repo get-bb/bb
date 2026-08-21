@@ -55,19 +55,6 @@ function formatOperationName(operation: WorkspaceGitOperation): string {
   }
 }
 
-function getCheckoutBranchName(
-  checkout: GitCheckoutRef | undefined,
-): string | null {
-  if (checkout?.kind !== "branch") {
-    return null;
-  }
-  return checkout.branchName;
-}
-
-function getOperationConflictState(operation: WorkspaceGitOperation): boolean {
-  return operation.kind !== "none" && operation.hasConflicts;
-}
-
 function formatCurrentCheckoutLabel(
   checkout: GitCheckoutRef | undefined,
 ): string {
@@ -101,30 +88,6 @@ function formatCurrentCheckoutTriggerLabel(
   }
 }
 
-function formatBranchFromOptionLabel(
-  defaultBranch: string | null | undefined,
-): string {
-  return defaultBranch ?? "default";
-}
-
-function formatBranchFromTriggerLabel(
-  defaultBranch: string | null | undefined,
-): string {
-  return `Branch from: ${defaultBranch ?? "default"}`;
-}
-
-function formatNewBranchTriggerLabel(branchName: string): string {
-  return `New branch from: ${branchName}`;
-}
-
-function formatCheckoutBranchTriggerLabel(branchName: string): string {
-  return `Checkout: ${branchName}`;
-}
-
-function formatCheckoutBranchTriggerTitle(branchName: string): string {
-  return `Checkout branch: ${branchName}`;
-}
-
 function buildOperationBlocker(
   operation: WorkspaceGitOperation,
 ): BranchMutationBlocker | null {
@@ -133,7 +96,7 @@ function buildOperationBlocker(
   }
 
   const operationName = formatOperationName(operation);
-  if (getOperationConflictState(operation)) {
+  if (operation.hasConflicts) {
     return {
       label: "Conflicts",
       title: "Checkout blocked by unresolved conflicts",
@@ -205,8 +168,8 @@ function buildWorktreeBranchUiState(
 ): RootComposeBranchUiState {
   const defaultBaseBranch =
     args.checkout?.defaultWorktreeBaseBranch ?? args.checkout?.defaultBranch;
-  const defaultOptionLabel = formatBranchFromOptionLabel(defaultBaseBranch);
-  const defaultTriggerLabel = formatBranchFromTriggerLabel(defaultBaseBranch);
+  const defaultOptionLabel = defaultBaseBranch ?? "default";
+  const defaultTriggerLabel = `Branch from: ${defaultBaseBranch ?? "default"}`;
 
   if (args.selectedBranch) {
     return {
@@ -248,7 +211,9 @@ export function buildRootComposeBranchUiState(
   }
 
   const mutationBlocker = resolveBranchMutationBlocker(args);
-  const currentBranch = getCheckoutBranchName(args.checkout?.checkout);
+  const checkoutRef = args.checkout?.checkout;
+  const currentBranch =
+    checkoutRef?.kind === "branch" ? checkoutRef.branchName : null;
   const currentOptionLabel = formatCurrentCheckoutLabel(
     args.checkout?.checkout,
   );
@@ -258,7 +223,7 @@ export function buildRootComposeBranchUiState(
       currentOptionLabel,
       mutationBlocker,
       placeholder: "Current checkout",
-      triggerLabel: formatNewBranchTriggerLabel(args.selectedBranch.name),
+      triggerLabel: `New branch from: ${args.selectedBranch.name}`,
       triggerTitle:
         mutationBlocker?.title ??
         `Create a new branch from ${args.selectedBranch.name}`,
@@ -271,10 +236,10 @@ export function buildRootComposeBranchUiState(
       currentOptionLabel,
       mutationBlocker,
       placeholder: "Current checkout",
-      triggerLabel: formatCheckoutBranchTriggerLabel(args.selectedBranch.name),
+      triggerLabel: `Checkout: ${args.selectedBranch.name}`,
       triggerTitle:
         mutationBlocker?.title ??
-        formatCheckoutBranchTriggerTitle(args.selectedBranch.name),
+        `Checkout branch: ${args.selectedBranch.name}`,
     };
   }
 

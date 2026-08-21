@@ -22,8 +22,6 @@ export interface ActionSheetProps {
   title?: string;
   message?: string;
   actions: readonly ActionSheetAction[];
-  /** Omit to hide the cancel row (swipe/backdrop still dismiss). */
-  cancelLabel?: string;
   onDismiss?: () => void;
   /** `"push"` keeps a presenting sheet in place underneath (default: switch). */
   stackBehavior?: SheetProps["stackBehavior"];
@@ -41,7 +39,6 @@ export function ActionSheet({
   title,
   message,
   actions,
-  cancelLabel = "Cancel",
   onDismiss,
   stackBehavior,
 }: ActionSheetProps) {
@@ -92,17 +89,13 @@ export function ActionSheet({
           testID={`action-sheet-${action.key}`}
         />
       ))}
-      {cancelLabel ? (
-        <>
-          <Separator />
-          <ListRow
-            title={cancelLabel}
-            onPress={controller.dismiss}
-            className="justify-center"
-            testID="action-sheet-cancel"
-          />
-        </>
-      ) : null}
+      <Separator />
+      <ListRow
+        title="Cancel"
+        onPress={controller.dismiss}
+        className="justify-center"
+        testID="action-sheet-cancel"
+      />
     </Sheet>
   );
 }

@@ -11,8 +11,6 @@ export interface ToolCallDetailBlockProps {
   output: string;
   /** Still pending: the output tail stays visible as bytes stream in. */
   streaming?: boolean;
-  /** Visible output lines before "N earlier lines" / "Show N more lines". */
-  maxOutputLines?: number;
   testID?: string;
 }
 
@@ -32,7 +30,6 @@ export const ToolCallDetailBlock = memo(function ToolCallDetailBlock({
   args,
   output,
   streaming = false,
-  maxOutputLines = DEFAULT_MAX_OUTPUT_LINES,
   testID,
 }: ToolCallDetailBlockProps) {
   const [headerExpanded, setHeaderExpanded] = useState(false);
@@ -48,8 +45,8 @@ export const ToolCallDetailBlock = memo(function ToolCallDetailBlock({
     [output],
   );
   const hiddenOutputLines =
-    !outputExpanded && outputLines.length > maxOutputLines
-      ? outputLines.length - maxOutputLines
+    !outputExpanded && outputLines.length > DEFAULT_MAX_OUTPUT_LINES
+      ? outputLines.length - DEFAULT_MAX_OUTPUT_LINES
       : 0;
   // While streaming keep the tail (newest bytes); settled output keeps the
   // head so the reader starts from the top.
@@ -57,7 +54,7 @@ export const ToolCallDetailBlock = memo(function ToolCallDetailBlock({
     hiddenOutputLines > 0
       ? streaming
         ? outputLines.slice(hiddenOutputLines)
-        : outputLines.slice(0, maxOutputLines)
+        : outputLines.slice(0, DEFAULT_MAX_OUTPUT_LINES)
       : outputLines;
   const headerTextStyle = {
     fontSize: TERMINAL_FONT_SIZE,

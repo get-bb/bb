@@ -148,13 +148,6 @@ export function createFileOpenerOriginalTab(
   return null;
 }
 
-/**
- * A per-open viewer choice (the link context menu): "builtin" pins the
- * built-in preview; an opener ref forces that plugin opener. Absent means
- * follow the extension's automatic or pinned Settings choice.
- */
-export type FileTabViewerOverride = FileOpenerOverride;
-
 interface CreateFileOpenerTabForRequestArgs {
   fileOpeners: readonly PluginFileOpenerSlot[];
   preference: FileOpenerPreferenceMap;
@@ -163,7 +156,7 @@ interface CreateFileOpenerTabForRequestArgs {
   request: OpenSecondaryPanelTabRequest;
   resolvedEnvironmentId: string | null | undefined;
   threadId: string | null | undefined;
-  viewer?: FileTabViewerOverride;
+  viewer?: FileOpenerOverride;
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import type { FileContents } from "@pierre/diffs";
+import type { GitDiffFileChangeKind } from "@bb/server-contract";
 import { useIntersectionObserver } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
@@ -22,10 +23,9 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   formatGitDiffFileLabel,
   enrichGitDiffFileForContext,
-  isImageGitDiffFile,
+  isPreviewableImagePath,
   isSvgGitDiffFile,
   normalizeGitDiffPath,
-  type GitDiffFileChangeKind,
   type ParsedGitDiffFile,
 } from "./git-diff-parsing";
 
@@ -234,7 +234,7 @@ function isImagePreviewCard(
     fileDiff.hunks.length === 0 &&
     fileDiff.type !== "rename-pure" &&
     onRequestFileContents !== undefined &&
-    isImageGitDiffFile(fileDiff)
+    isPreviewableImagePath(fileDiff.name)
   );
 }
 
@@ -253,14 +253,6 @@ function svgTextToDataUrl(contents: string): string | null {
   const trimmedContents = contents.trim();
   if (trimmedContents.length === 0) return null;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(trimmedContents)}`;
-}
-
-function getImageSizeStat(
-  enrichment: DiffFileEnrichmentState,
-  changeKind: GitDiffFileChangeKind,
-): DiffImageSizeStat | null {
-  if (enrichment.status !== "ready-image") return null;
-  return getGitDiffCardImageSizeStat(enrichment, changeKind);
 }
 
 interface UseGitDiffCardBodyArgs {
@@ -514,9 +506,10 @@ export function useGitDiffCardBody({
     setHasBodyEnteredViewport(true);
   }, []);
 
-  const imageSizeStat = isImageCard
-    ? getImageSizeStat(enrichment, changeKind)
-    : null;
+  const imageSizeStat =
+    isImageCard && enrichment.status === "ready-image"
+      ? getGitDiffCardImageSizeStat(enrichment, changeKind)
+      : null;
 
   return {
     bodySentinelRef,

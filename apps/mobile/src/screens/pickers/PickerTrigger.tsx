@@ -3,7 +3,7 @@ import { Pressable, View } from "react-native";
 import { useTheme } from "@/theme";
 import { cn, Icon, Spinner, Text, type IconName } from "@/ui";
 
-export interface PickerTriggerProps {
+interface PickerTriggerProps {
   label: string;
   /** Leading glyph. */
   icon?: IconName;
@@ -17,14 +17,11 @@ export interface PickerTriggerProps {
   loading?: boolean;
   /** Paint the warning tone (host offline, load failure). */
   tone?: "default" | "warning" | "destructive";
-  /** Hide the trailing chevron (read-only display). */
-  chevron?: boolean;
   /**
    * `ghost` (default): borderless, for the composer's pill rows. `outline`:
    * the bordered pill for pickers that stand alone on a settings screen.
    */
   variant?: "ghost" | "outline";
-  className?: string;
   testID?: string;
   /** The control's name; the spoken label becomes "<name>: <label>". */
   accessibilityLabel?: string;
@@ -45,9 +42,7 @@ export function PickerTrigger({
   disabled = false,
   loading = false,
   tone = "default",
-  chevron = true,
   variant = "ghost",
-  className,
   testID,
   accessibilityLabel,
 }: PickerTriggerProps) {
@@ -74,7 +69,6 @@ export function PickerTrigger({
         variant === "outline" && "border border-pill-surface-border bg-secondary",
         interactive && "active:bg-state-hover",
         disabled && "opacity-50",
-        className,
       )}
     >
       {leading ??
@@ -96,7 +90,7 @@ export function PickerTrigger({
       </View>
       {loading ? (
         <Spinner size="small" color={tokens.mutedForeground} />
-      ) : chevron && interactive ? (
+      ) : interactive ? (
         <Icon name="ChevronDown" size={14} color={tokens.mutedForeground} />
       ) : null}
     </Pressable>

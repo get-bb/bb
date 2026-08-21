@@ -305,7 +305,7 @@ export function SidebarSplitContainer({
       const startX = event.clientX;
       const startY = event.clientY;
       const label = tabs.find((tab) => tab.id === tabId)?.label ?? "Panel tab";
-      beginSplitDrag(startX, startY, {
+      beginSplitDrag({
         ghostLabel: label,
         sourceEl: sourceElement,
         fallback: {

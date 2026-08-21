@@ -123,13 +123,11 @@ type ThreadPlanCancelCommandResultReport =
 interface PreparedThreadStartCommand {
   command: ThreadStartCommand;
   mode: "thread.start";
-  sessionId: string;
 }
 
 interface PreparedReadyTurnSubmitCommand {
   command: TurnSubmitCommand;
   mode: "turn.submit";
-  sessionId: string;
 }
 
 type PreparedReadyThreadTurnCommand =
@@ -401,13 +399,11 @@ function threadCommandFailureDetailForInterruption(
 
 interface DispatchThreadStartFromRequestArgs {
   command: ThreadStartCommand;
-  hostId: string;
-  sessionId: string;
   sourceThreadStatus: ThreadStatus;
   threadId: string;
 }
 
-type ThreadStartDispatchDisposition = "blocked" | "started" | "existing-start";
+type ThreadStartDispatchDisposition = "blocked" | "started";
 
 interface DispatchThreadStartFromRequestResult {
   completedProvisionSequence: number | null;
@@ -418,14 +414,9 @@ interface ThreadLifecycleReadDeps {
   db: DbQueryConnection;
 }
 
-interface ThreadLifecycleWriteDeps extends ThreadLifecycleReadDeps {
-  hub: DbNotifier;
-}
-
-type ThreadLifecycleCommandDispatchDeps = CommandResultSideEffectsDeps;
-
-interface ThreadLifecycleTransactionDeps extends ThreadLifecycleWriteDeps {
+interface ThreadLifecycleTransactionDeps extends ThreadLifecycleReadDeps {
   db: DbTransaction;
+  hub: DbNotifier;
   logger: AppDeps["logger"];
 }
 
@@ -583,7 +574,7 @@ function applyActiveTurnInterruptionInTransaction(
 }
 
 export function dispatchSettledArchivedThreadProviderArchiveCommand(
-  deps: ThreadLifecycleCommandDispatchDeps,
+  deps: CommandResultSideEffectsDeps,
   args: DispatchSettledArchivedThreadProviderArchiveCommandArgs,
 ): boolean {
   const thread = getThread(deps.db, args.threadId);
@@ -857,17 +848,15 @@ export function settleThreadStartCommandResult(
   forgetActiveThreadProvisionContext(thread.id);
   const currentThread = getThread(args.deps.db, args.command.threadId);
   if (currentThread && currentThread.deletedAt !== null) {
-    const finalized = finalizeStoppedThreadInTransaction(args.deps, {
+    finalizeStoppedThreadInTransaction(args.deps, {
       threadId: currentThread.id,
     });
-    if (finalized) {
-      postCommitActions.push({
-        run: (deps) =>
-          runEnvironmentCleanupAdvance(deps, {
-            environmentId: args.command.environmentId,
-          }),
-      });
-    }
+    postCommitActions.push({
+      run: (deps) =>
+        runEnvironmentCleanupAdvance(deps, {
+          environmentId: args.command.environmentId,
+        }),
+    });
     return { postCommitActions };
   }
   if (
@@ -947,7 +936,7 @@ export async function prepareReadyThreadTurnCommand(
   deps: LoggedWorkSessionDeps,
   args: ThreadStartCommandArgs,
 ): Promise<PreparedReadyThreadTurnCommand> {
-  const session = await ensureHostSessionReadyForWork(deps, {
+  await ensureHostSessionReadyForWork(deps, {
     hostId: args.environment.hostId,
   });
   const providerThreadId = getLastProviderThreadId(deps, args.thread.id);
@@ -970,14 +959,12 @@ export async function prepareReadyThreadTurnCommand(
         requestId: args.requestId,
       }),
       mode: "turn.submit",
-      sessionId: session.id,
     };
   }
 
   return {
     command: await buildThreadStartCommand(deps, args),
     mode: "thread.start",
-    sessionId: session.id,
   };
 }
 
@@ -1003,22 +990,19 @@ export function settleThreadStopCommandResult(
       return emptyCommandResultSideEffects();
     }
 
-    const finalized = finalizeStoppedThreadInTransaction(args.deps, {
+    finalizeStoppedThreadInTransaction(args.deps, {
       threadId: args.command.threadId,
     });
-    if (finalized) {
-      return {
-        postCommitActions: [
-          {
-            run: (deps) =>
-              runEnvironmentCleanupAdvance(deps, {
-                environmentId: args.command.environmentId,
-              }),
-          },
-        ],
-      };
-    }
-    return emptyCommandResultSideEffects();
+    return {
+      postCommitActions: [
+        {
+          run: (deps) =>
+            runEnvironmentCleanupAdvance(deps, {
+              environmentId: args.command.environmentId,
+            }),
+        },
+      ],
+    };
   }
 
   finalizeStoppedThreadInTransaction(args.deps, {
@@ -1154,13 +1138,11 @@ async function requestThreadStartOnce(
     return;
   }
 
-  const session = await ensureHostSessionReadyForWork(deps, {
+  await ensureHostSessionReadyForWork(deps, {
     hostId: args.environment.hostId,
   });
   const result = dispatchThreadStartFromRequest(deps, {
     command,
-    hostId: args.environment.hostId,
-    sessionId: session.id,
     sourceThreadStatus: args.thread.status,
     threadId: args.thread.id,
   });
@@ -1327,10 +1309,10 @@ function requestPreStartThreadStop(
         };
       }
 
-      const finalized = finalizeStoppedThreadInTransaction(txDeps, {
+      finalizeStoppedThreadInTransaction(txDeps, {
         threadId: currentThread.id,
       });
-      return { cancelHostId: null, environmentId, finalized };
+      return { cancelHostId: null, environmentId, finalized: true };
     },
     { behavior: "immediate" },
   );
@@ -1732,9 +1714,9 @@ export function interruptActiveThreadsForHost(
 export function finalizeStoppedThread(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: FinalizeStoppedThreadArgs,
-): boolean {
+): void {
   const notificationBuffer = new NotificationBuffer();
-  const finalized = deps.db.transaction(
+  deps.db.transaction(
     (tx) =>
       finalizeStoppedThreadInTransaction(
         {
@@ -1747,21 +1729,18 @@ export function finalizeStoppedThread(
     { behavior: "immediate" },
   );
   notificationBuffer.flushInto(deps.hub);
-  if (finalized) {
-    dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
-      threadId: args.threadId,
-    });
-  }
-  return finalized;
+  dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
+    threadId: args.threadId,
+  });
 }
 
 export function finalizeStoppedThreadInTransaction(
   deps: FinalizeStoppedThreadTransactionDeps,
   args: FinalizeStoppedThreadArgs,
-): boolean {
+): void {
   const currentThread = getThread(deps.db, args.threadId);
   if (!currentThread) {
-    return true;
+    return;
   }
 
   const interruptionReason =
@@ -1809,7 +1788,7 @@ export function finalizeStoppedThreadInTransaction(
 
   const finalizedThread = getThread(deps.db, args.threadId);
   if (!finalizedThread) {
-    return true;
+    return;
   }
 
   if (finalizedThread.deletedAt === null) {
@@ -1848,21 +1827,15 @@ export function finalizeStoppedThreadInTransaction(
     requestEnvironmentCleanup(deps, {
       environmentId,
     });
-    return true;
   }
-
-  return true;
 }
 
 export function finalizeStoppedThreadAndRequestCleanupAdvance(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: FinalizeStoppedThreadArgs,
-): boolean {
+): void {
   const threadBeforeFinalize = getThread(deps.db, args.threadId);
-  const finalized = finalizeStoppedThread(deps, args);
-  if (!finalized) {
-    return false;
-  }
+  finalizeStoppedThread(deps, args);
 
   const threadAfterFinalize = getThread(deps.db, args.threadId);
   const environmentId =
@@ -1870,7 +1843,6 @@ export function finalizeStoppedThreadAndRequestCleanupAdvance(
     threadBeforeFinalize?.environmentId ??
     null;
   requestEnvironmentCleanupAdvance(deps, { environmentId });
-  return true;
 }
 
 export async function reconcileDaemonReportedThreads(

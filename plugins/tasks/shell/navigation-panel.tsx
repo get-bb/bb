@@ -9,7 +9,7 @@ import {
 import { TasksRefreshProvider } from "./refresh.js";
 import { parseTasksRoute, useTasksNavigation } from "./routes.js";
 import { TasksSidebar } from "./sidebar.js";
-import { NewProjectDialog } from "../views/manage/index.js";
+import { NewProjectDialog } from "../views/manage/new-project-dialog.js";
 import { useState } from "react";
 
 function isAwaitingFirstResult(query: {

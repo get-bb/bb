@@ -232,7 +232,7 @@ export function normalizeHostDaemonAcpLaunchSpec(
  *   is the only one, because its agent tree cannot be inlined into a
  *   relocatable artifact ({@link DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS}).
  */
-export const hostDaemonBridgeLaunchSchema = z
+const hostDaemonBridgeLaunchSchema = z
   .object({
     // The plugin that ships this bridge. It names the artifact to fetch, and
     // it scopes the bridge process's own directories on the host — a bridge is
@@ -355,7 +355,7 @@ function refineGroupedInputMatchesFlatInput(
   });
 }
 
-export const threadStartCommandSchema = hostDaemonThreadTargetSchema
+const threadStartCommandSchema = hostDaemonThreadTargetSchema
   .merge(hostDaemonThreadRuntimeContextSchema)
   .extend({
     type: z.literal("thread.start"),
@@ -383,7 +383,7 @@ export const threadStartCommandSchema = hostDaemonThreadTargetSchema
     refineGroupedInputMatchesFlatInput(value, ctx);
   });
 
-export const threadRewindPrepareCommandSchema = hostDaemonThreadTargetSchema
+const threadRewindPrepareCommandSchema = hostDaemonThreadTargetSchema
   .merge(hostDaemonThreadRuntimeContextSchema)
   .extend({
     type: z.literal("thread.rewind.prepare"),
@@ -394,14 +394,14 @@ export const threadRewindPrepareCommandSchema = hostDaemonThreadTargetSchema
   })
   .strict();
 
-export const threadRewindDiscardCommandSchema = hostDaemonThreadTargetSchema
+const threadRewindDiscardCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.rewind.discard"),
     leaseId: z.string().min(1),
   })
   .strict();
 
-export const turnSubmitTargetSchema = z.discriminatedUnion("mode", [
+const turnSubmitTargetSchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("start"),
   }),
@@ -441,7 +441,7 @@ const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
  * unloads a runtime the server already knows is idle, so the daemon skips that
  * wait and the server leaves thread lifecycle state alone.
  */
-export const threadStopIntentSchema = z.enum(["interrupt", "release"]);
+const threadStopIntentSchema = z.enum(["interrupt", "release"]);
 
 export type ThreadStopIntent = z.infer<typeof threadStopIntentSchema>;
 
@@ -562,10 +562,7 @@ const hostReadFileCommandSchema = z
     }
   });
 
-export const hostReadFileRelativeDotfilePolicySchema = z.enum([
-  "allow",
-  "deny",
-]);
+const hostReadFileRelativeDotfilePolicySchema = z.enum(["allow", "deny"]);
 export type HostReadFileRelativeDotfilePolicy = z.infer<
   typeof hostReadFileRelativeDotfilePolicySchema
 >;
@@ -626,10 +623,10 @@ const hostListFilesCommandSchema = z.object({
   limit: z.number().int().positive().max(FILE_LIST_LIMIT_MAX),
 });
 
-export const hostPathEntryKindSchema = z.enum(["file", "directory"]);
+const hostPathEntryKindSchema = z.enum(["file", "directory"]);
 export type HostPathEntryKind = z.infer<typeof hostPathEntryKindSchema>;
 
-export const hostPathEntrySchema = z.object({
+const hostPathEntrySchema = z.object({
   kind: hostPathEntryKindSchema,
   path: z.string(),
   name: z.string(),
@@ -769,14 +766,14 @@ const connectTunnelEnsureIdentityCommandSchema = z
   })
   .strict();
 
-export const directoryEntrySchema = z.object({
+const directoryEntrySchema = z.object({
   kind: hostPathEntryKindSchema,
   name: z.string(),
   path: z.string(),
 });
 export type DirectoryEntry = z.infer<typeof directoryEntrySchema>;
 
-export const directoryListingSchema = z.object({
+const directoryListingSchema = z.object({
   // Resolved absolute directory that was listed (symlinks already followed).
   directory: z.string(),
   // Absolute parent directory, or null at the filesystem root.
@@ -784,10 +781,10 @@ export const directoryListingSchema = z.object({
   entries: z.array(directoryEntrySchema),
 });
 
-export const hostCommandSourceSchema = z.enum(["skill", "command"]);
+const hostCommandSourceSchema = z.enum(["skill", "command"]);
 export type HostCommandSource = z.infer<typeof hostCommandSourceSchema>;
 
-export const hostCommandOriginSchema = z.enum(["project", "user"]);
+const hostCommandOriginSchema = z.enum(["project", "user"]);
 export type HostCommandOrigin = z.infer<typeof hostCommandOriginSchema>;
 
 /**
@@ -797,7 +794,7 @@ export type HostCommandOrigin = z.infer<typeof hostCommandOriginSchema>;
  * packages intentionally define matching record shapes independently, like
  * `hostPathEntrySchema` / `workspacePathEntrySchema`).
  */
-export const hostProviderCommandSchema = z.object({
+const hostProviderCommandSchema = z.object({
   name: z.string(),
   source: hostCommandSourceSchema,
   origin: hostCommandOriginSchema,
@@ -829,7 +826,7 @@ const hostListCommandsCommandSchema = z
  * `codex` → `codex`) and decides `manageable`. Kept here, not derived on the
  * daemon, because only the server knows which provider it queried.
  */
-export const skillRootKindSchema = z.enum([
+const skillRootKindSchema = z.enum([
   "bb-project",
   "bb-data-dir",
   "bb-builtin",
@@ -847,7 +844,7 @@ export type SkillRootKind = z.infer<typeof skillRootKindSchema>;
  * (backs View / Delete) and the originating `rootKind`. Skill-only — legacy
  * `command`-source entries are not surfaced here.
  */
-export const discoveredSkillSchema = z.object({
+const discoveredSkillSchema = z.object({
   id: z.string().regex(/^skill_[a-f0-9]{64}$/u),
   name: z.string(),
   description: z.string().nullable(),
@@ -882,7 +879,6 @@ export const deletableSkillScopeSchema = z.enum([
   "provider-user",
   "provider-project",
 ]);
-export type DeletableSkillScope = z.infer<typeof deletableSkillScopeSchema>;
 
 /**
  * Delete a local user-owned skill directory. bb roots are derived from scope;
@@ -1174,7 +1170,7 @@ const personalEnvironmentProvisionCommandSchema =
  * Lane-serialized per environmentId. Git worktree metadata mutations are
  * protected by the workspace implementation.
  */
-export const environmentProvisionCommandSchema = z.discriminatedUnion(
+const environmentProvisionCommandSchema = z.discriminatedUnion(
   "workspaceProvisionType",
   [
     unmanagedEnvironmentProvisionCommandSchema,
@@ -1186,15 +1182,12 @@ export type EnvironmentProvisionCommand = z.infer<
   typeof environmentProvisionCommandSchema
 >;
 
-export const environmentProvisionCancelCommandSchema =
+const environmentProvisionCancelCommandSchema =
   hostDaemonEnvironmentTargetSchema
     .extend({
       type: z.literal("environment.provision.cancel"),
     })
     .strict();
-export type EnvironmentProvisionCancelCommand = z.infer<
-  typeof environmentProvisionCancelCommandSchema
->;
 
 const environmentDestroyCommandSchema = hostDaemonWorkspaceTargetSchema
   .extend({
@@ -1575,7 +1568,7 @@ export type ProviderUsageWindow = z.infer<typeof providerUsageWindowSchema>;
  * - `error` — network/HTTP/parse failure; `message` is user-facing. Carries
  *   `planLabel`/`accountEmail` when they were known locally before the call.
  */
-export const providerUsageSchema = experimental_providerUsageSchema;
+const providerUsageSchema = experimental_providerUsageSchema;
 export type ProviderUsage = z.infer<typeof providerUsageSchema>;
 export type ProviderUsageResult = z.infer<
   typeof experimental_providerUsageResultSchema
@@ -2273,13 +2266,13 @@ const hostDaemonOnlineRpcCommandTypes = new Set<string>(
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
 );
 
-export function isHostDaemonSettledCommandType(
+function isHostDaemonSettledCommandType(
   type: string,
 ): type is HostDaemonSettledCommandType {
   return hostDaemonSettledCommandTypes.has(type);
 }
 
-export function isHostDaemonOnlineRpcCommandType(
+function isHostDaemonOnlineRpcCommandType(
   type: string,
 ): type is HostDaemonOnlineRpcCommandType {
   return hostDaemonOnlineRpcCommandTypes.has(type);
@@ -2299,7 +2292,7 @@ function isHostDaemonOnlineRpcCommandTypeValue(
 
 export const hostDaemonSettledCommandTypeSchema =
   z.custom<HostDaemonSettledCommandType>(isHostDaemonSettledCommandTypeValue);
-export const hostDaemonOnlineRpcCommandTypeSchema =
+const hostDaemonOnlineRpcCommandTypeSchema =
   z.custom<HostDaemonOnlineRpcCommandType>(
     isHostDaemonOnlineRpcCommandTypeValue,
   );
@@ -2328,7 +2321,7 @@ export const hostDaemonCommandResultSchemaByType =
 export const hostDaemonOnlineRpcResultSchemaByType =
   hostDaemonResultSchemaByTypeForTransport("onlineRpc");
 
-export type HostDaemonCommandResultByType = {
+type HostDaemonCommandResultByType = {
   [K in keyof HostDaemonCommandResultSchemaMap]: z.infer<
     HostDaemonCommandResultSchemaMap[K]
   >;

@@ -1,4 +1,4 @@
-export interface NeighborReorderItem {
+interface NeighborReorderItem {
   id: string;
 }
 
@@ -8,15 +8,13 @@ export interface NeighborReorderRequest {
   previousItemId: string | null;
 }
 
-export interface BuildNeighborReorderRequestArgs<
-  Item extends NeighborReorderItem,
-> {
+interface BuildNeighborReorderRequestArgs<Item extends NeighborReorderItem> {
   activeId: string;
   items: readonly Item[];
   overId: string;
 }
 
-export interface ApplyNeighborReorderArgs<Item extends NeighborReorderItem> {
+interface ApplyNeighborReorderArgs<Item extends NeighborReorderItem> {
   items: readonly Item[];
   request: NeighborReorderRequest;
 }

@@ -10,12 +10,9 @@ import {
   archetypePrompt,
   utilityPrompt,
 } from "@/components/plugin/browse-hero/browse-hero-archetypes";
-import {
-  CREATE_PLUGIN_PROMPT,
-  CREATE_SKILL_PROMPT,
-} from "@/lib/create-resource-prompts";
+import { CREATE_PLUGIN_PROMPT, CREATE_SKILL_PROMPT } from "@bb/client-core";
 
-export type CreateViaPromptKind = "skill" | "plugin";
+type CreateViaPromptKind = "skill" | "plugin";
 
 interface Example {
   label: string;
@@ -72,7 +69,7 @@ const CONFIG: Record<CreateViaPromptKind, KindConfig> = {
   },
 };
 
-export interface CreateExample {
+interface CreateExample {
   label: string;
   icon: IconName;
   description: string;
@@ -99,7 +96,7 @@ export function getCreateExamples(kind: CreateViaPromptKind): {
   };
 }
 
-export interface CreateWithTemplatesButtonProps {
+interface CreateWithTemplatesButtonProps {
   kind: CreateViaPromptKind;
   /** Main-button text, e.g. "New automation" or "New bb skill". */
   label: string;

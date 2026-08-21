@@ -41,7 +41,6 @@ export interface ModelReasoningPickerProps {
   /** The model probe failed; the picker shows the message and keeps the value. */
   loadErrorMessage?: string | null;
   disabled?: boolean;
-  testID?: string;
 }
 
 /**
@@ -62,7 +61,6 @@ export function ModelReasoningPicker({
   isLoading = false,
   loadErrorMessage = null,
   disabled,
-  testID = "model-picker",
 }: ModelReasoningPickerProps) {
   const sheet = useSheet();
   const { tokens } = useTheme();
@@ -95,7 +93,7 @@ export function ModelReasoningPicker({
         disabled={disabled || (!hasModels && !isLoading && !loadErrorMessage)}
         loading={isLoading && !hasModels}
         tone={loadErrorMessage ? "warning" : "default"}
-        testID={testID}
+        testID="model-picker"
         accessibilityLabel="Model and reasoning"
       />
       <Sheet
@@ -132,7 +130,7 @@ export function ModelReasoningPicker({
             option={option}
             selected={option.value === modelValue}
             onSelect={onModelChange}
-            testID={`${testID}-option-${option.value}`}
+            testID={`model-picker-option-${option.value}`}
           />
         ))}
         {moreModelOptions.length > 0 ? (
@@ -146,7 +144,7 @@ export function ModelReasoningPicker({
               }
               leading={showMore ? "ChevronUp" : "ChevronDown"}
               onPress={() => setShowMore((current) => !current)}
-              testID={`${testID}-more`}
+              testID="model-picker-more"
             />
             {showMore
               ? moreModelOptions.map((option) => (
@@ -155,7 +153,7 @@ export function ModelReasoningPicker({
                     option={option}
                     selected={option.value === modelValue}
                     onSelect={onModelChange}
-                    testID={`${testID}-option-${option.value}`}
+                    testID={`model-picker-option-${option.value}`}
                   />
                 ))
               : null}
@@ -175,7 +173,7 @@ export function ModelReasoningPicker({
                       accessibilityRole="button"
                       accessibilityState={{ selected: active }}
                       onPress={() => onReasoningChange(option.value)}
-                      testID={`${testID}-reasoning-${option.value}`}
+                      testID={`model-picker-reasoning-${option.value}`}
                       className={cn(
                         "h-9 flex-row items-center rounded-md border px-3",
                         active
@@ -211,7 +209,7 @@ export function ModelReasoningPicker({
               <Switch
                 checked={fastMode.enabled}
                 onCheckedChange={fastMode.onChange}
-                testID={`${testID}-fast`}
+                testID="model-picker-fast"
               />
             </View>
           </>

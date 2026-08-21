@@ -115,19 +115,10 @@ interface NotesData {
   error: string | null;
 }
 
-interface NoteContent {
-  content: string;
-  sha256: string;
-}
-
 interface PreviewLease {
   baseUrl: string;
   expiresAtMs: number;
 }
-
-type SaveResult =
-  | { outcome: "written"; sha256: string }
-  | { outcome: "conflict"; currentSha256: string | null };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

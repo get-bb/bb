@@ -17,11 +17,3 @@ export const THREAD_TIMELINE_EXCLUDED_EVENT_TYPES = [
   "turn/diff/updated",
   "turn/plan/updated",
 ] as const satisfies readonly ThreadEventType[];
-
-const timelineNoiseEventTypeSet = new Set<ThreadEventType>(
-  THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
-);
-
-export function isIgnoredNoiseType(eventType: ThreadEventType): boolean {
-  return timelineNoiseEventTypeSet.has(eventType);
-}

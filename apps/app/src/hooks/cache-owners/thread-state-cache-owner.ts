@@ -5,7 +5,7 @@ import type {
   ReorderPinnedThreadRequest,
   ThreadArchiveAllResponse,
 } from "@bb/server-contract";
-import { applyNeighborReorder } from "@/lib/neighbor-reorder";
+import { applyNeighborReorder } from "@bb/client-core";
 import {
   projectsQueryKey,
   sidebarNavigationQueryKey,

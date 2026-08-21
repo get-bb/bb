@@ -123,7 +123,6 @@ import {
   shouldRequestClaudePermissionApproval,
   toPendingInteractionPermissionProfile,
 } from "../interactive-contract.js";
-export { buildSessionOptions } from "./session-options.js";
 
 const promptInputItemSchema = z.discriminatedUnion("type", [
   z.object({

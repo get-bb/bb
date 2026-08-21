@@ -9,6 +9,7 @@ import {
   type ClientTurnRequestId,
   type PromptInput,
 } from "@bb/domain";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
 import {
   CommandRouter,
@@ -37,12 +38,6 @@ type TextPromptInput = Extract<PromptInput, { type: "text" }>;
 type ThreadStartCommand = Extract<HostDaemonCommand, { type: "thread.start" }>;
 type TurnSubmitCommand = Extract<HostDaemonCommand, { type: "turn.submit" }>;
 
-interface Deferred<T> {
-  promise: Promise<T>;
-  reject(error: Error): void;
-  resolve(value: T | PromiseLike<T>): void;
-}
-
 interface RunRouterCommandArgs {
   command: HostDaemonCommand;
   requestId: string;
@@ -64,23 +59,6 @@ interface CreateRouterArgs {
 }
 
 let nextClientRequestIdValue = 1;
-
-function createDeferred<T>(): Deferred<T> {
-  let resolveDeferred: ((value: T | PromiseLike<T>) => void) | undefined;
-  let rejectDeferred: ((error: Error) => void) | undefined;
-  const promise = new Promise<T>((resolve, reject) => {
-    resolveDeferred = resolve;
-    rejectDeferred = reject;
-  });
-  if (!resolveDeferred || !rejectDeferred) {
-    throw new Error("Deferred promise callbacks were not initialized");
-  }
-  return {
-    promise,
-    reject: rejectDeferred,
-    resolve: resolveDeferred,
-  };
-}
 
 function createClientRequestId(): ClientTurnRequestId {
   const requestId = encodeClientTurnRequestIdNumber({
@@ -260,8 +238,8 @@ describe("CommandRouter", () => {
       environmentId: "env-router",
       workspacePath: "/tmp/env-router",
     });
-    const destroyStarted = createDeferred<void>();
-    const releaseDestroy = createDeferred<void>();
+    const destroyStarted = createDeferredPromise<void>();
+    const releaseDestroy = createDeferredPromise<void>();
     harness.workspace.destroy = async () => {
       destroyStarted.resolve();
       await releaseDestroy.promise;
@@ -298,8 +276,8 @@ describe("CommandRouter", () => {
       environmentId: "env-router",
       workspacePath: "/tmp/env-router",
     });
-    const startEntered = createDeferred<void>();
-    const releaseStart = createDeferred<void>();
+    const startEntered = createDeferredPromise<void>();
+    const releaseStart = createDeferredPromise<void>();
     const originalStartThread = harness.runtime.startThread;
     harness.runtime.startThread = async (args) => {
       startEntered.resolve();
@@ -377,8 +355,8 @@ describe("CommandRouter", () => {
       providerThreadId: "provider-moved",
     });
 
-    const oldRunEntered = createDeferred<void>();
-    const releaseOldRun = createDeferred<void>();
+    const oldRunEntered = createDeferredPromise<void>();
+    const releaseOldRun = createDeferredPromise<void>();
     const originalOldRunTurn = oldRuntime.runTurn.bind(oldRuntime);
     oldRuntime.runTurn = async (args) => {
       oldRunEntered.resolve();
@@ -465,8 +443,8 @@ describe("CommandRouter", () => {
       providerThreadId: "provider-codex-turn",
     });
 
-    const stopEntered = createDeferred<void>();
-    const releaseStop = createDeferred<void>();
+    const stopEntered = createDeferredPromise<void>();
+    const releaseStop = createDeferredPromise<void>();
     const originalStopThread = harness.runtime.stopThread;
     harness.runtime.stopThread = async (args) => {
       stopEntered.resolve();

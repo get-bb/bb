@@ -45,7 +45,6 @@ interface SkillDetailViewProps {
   selectedPath: string;
   onSelectFile: (path: string) => void;
   contentState: SkillDetailContentState;
-  editor?: ReactNode;
   footer?: ReactNode;
 }
 
@@ -233,7 +232,6 @@ export function SkillDetailView({
   selectedPath,
   onSelectFile,
   contentState,
-  editor,
   footer,
 }: SkillDetailViewProps) {
   const directoryPath = getSkillDirectoryPath(path);
@@ -257,7 +255,7 @@ export function SkillDetailView({
       actions={headerActions}
     >
       <ResourceDetailStack>
-        {files.length > 1 && editor === undefined ? (
+        {files.length > 1 ? (
           <ResourceDetailIncludesSection label="Files">
             <SkillFileList
               files={files}
@@ -268,48 +266,47 @@ export function SkillDetailView({
         ) : null}
 
         <ResourceDefinitionSection label={selectedDisplayPath}>
-          {editor ??
-            (contentState.kind === "loading" ? (
-              <ResourceDetailPanel
-                surface="recessed"
-                className="px-3 py-10 text-center text-sm text-muted-foreground"
+          {contentState.kind === "loading" ? (
+            <ResourceDetailPanel
+              surface="recessed"
+              className="px-3 py-10 text-center text-sm text-muted-foreground"
+            >
+              Loading {selectedDisplayPath}…
+            </ResourceDetailPanel>
+          ) : contentState.kind === "error" ? (
+            <ResourceDetailPanel
+              surface="recessed"
+              className="px-3 py-10 text-center text-sm"
+            >
+              <div
+                role="alert"
+                className="flex items-start justify-center gap-2 text-foreground"
               >
-                Loading {selectedDisplayPath}…
-              </ResourceDetailPanel>
-            ) : contentState.kind === "error" ? (
-              <ResourceDetailPanel
-                surface="recessed"
-                className="px-3 py-10 text-center text-sm"
+                <Icon
+                  name="CircleX"
+                  className="mt-0.5 size-4 shrink-0 text-destructive"
+                  aria-hidden
+                />
+                <p>{contentState.message}</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={contentState.onRetry}
               >
-                <div
-                  role="alert"
-                  className="flex items-start justify-center gap-2 text-foreground"
-                >
-                  <Icon
-                    name="CircleX"
-                    className="mt-0.5 size-4 shrink-0 text-destructive"
-                    aria-hidden
-                  />
-                  <p>{contentState.message}</p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-3"
-                  onClick={contentState.onRetry}
-                >
-                  Retry
-                </Button>
-              </ResourceDetailPanel>
-            ) : (
-              <ScrollingSkillContent
-                key={`${selectedPath}:${contentState.content}`}
-                path={selectedPath}
-                content={contentState.content}
-                markdown={selectedFileIsMarkdown}
-              />
-            ))}
+                Retry
+              </Button>
+            </ResourceDetailPanel>
+          ) : (
+            <ScrollingSkillContent
+              key={`${selectedPath}:${contentState.content}`}
+              path={selectedPath}
+              content={contentState.content}
+              markdown={selectedFileIsMarkdown}
+            />
+          )}
         </ResourceDefinitionSection>
       </ResourceDetailStack>
       {footer}

@@ -220,7 +220,7 @@ function TaskDetail({ task }: { task: Task }) {
         ? { ok: true }
         : { ok: false, errorMessage: result.error.message };
     },
-    onError: (message) => pushRef.current("error", message),
+    onError: (message) => pushRef.current(message),
     delayMs: DESCRIPTION_SAVE_DELAY_MS,
   });
 
@@ -302,9 +302,9 @@ function TaskDetail({ task }: { task: Task }) {
         taskId: task.id,
         ...input,
       });
-      if (!result.ok) push("error", result.error.message);
+      if (!result.ok) push(result.error.message);
     } catch (error) {
-      push("error", error instanceof Error ? error.message : String(error));
+      push(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -329,7 +329,7 @@ function TaskDetail({ task }: { task: Task }) {
       try {
         await uploadAttachment(file, { taskId: task.id });
       } catch (error) {
-        push("error", error instanceof Error ? error.message : String(error));
+        push(error instanceof Error ? error.message : String(error));
       }
     }
     attachments.refresh();
@@ -344,13 +344,13 @@ function TaskDetail({ task }: { task: Task }) {
         status: "todo",
       });
       if (!result.ok) {
-        push("error", result.error.message);
+        push(result.error.message);
         return false;
       }
       subtasks.refresh();
       return true;
     } catch (error) {
-      push("error", error instanceof Error ? error.message : String(error));
+      push(error instanceof Error ? error.message : String(error));
       return false;
     }
   };
@@ -406,7 +406,7 @@ function TaskDetail({ task }: { task: Task }) {
             labels={labels.data}
             presets={presets.data}
             onUpdate={(update) => void updateTask(update)}
-            onError={(message) => push("error", message)}
+            onError={(message) => push(message)}
             className="mb-4 @[45rem]:hidden"
           />
 
@@ -462,7 +462,7 @@ function TaskDetail({ task }: { task: Task }) {
               if (!result.ok) throw new Error(result.error.message);
               attachments.refresh();
             }}
-            onError={(message) => push("error", message)}
+            onError={(message) => push(message)}
           />
 
           <SubTasksSection
@@ -500,7 +500,7 @@ function TaskDetail({ task }: { task: Task }) {
           threads={threads.data ?? []}
           presets={presets.data}
           onUpdate={(update) => void updateTask(update)}
-          onError={(message) => push("error", message)}
+          onError={(message) => push(message)}
           className="hidden @[45rem]:block"
         />
       </div>

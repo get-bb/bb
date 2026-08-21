@@ -1,7 +1,7 @@
 import type { TimelineConversationTurnRequest } from "@bb/server-contract";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { turnRequestLabel } from "./conversation-turn-request-label.js";
+import { turnRequestLabel } from "@bb/client-core";
 
 interface TurnRequestLabelProps {
   turnRequest: TimelineConversationTurnRequest;

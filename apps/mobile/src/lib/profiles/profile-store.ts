@@ -40,7 +40,6 @@ export interface ProfileStore {
   getSnapshot(): ProfileStoreState;
   subscribe(listener: () => void): () => void;
   listProfiles(): readonly ServerProfile[];
-  getProfile(id: string): ServerProfile | null;
   getActiveProfile(): ServerProfile | null;
   /** Adds and, when it is the first profile, activates it. */
   addProfile(input: NewServerProfile): Promise<ServerProfile>;
@@ -189,7 +188,6 @@ export function createProfileStore(deps: CreateProfileStoreDeps): ProfileStore {
       };
     },
     listProfiles: () => state.profiles,
-    getProfile: (id) => state.profiles.find((p) => p.id === id) ?? null,
     getActiveProfile: () =>
       state.profiles.find((p) => p.id === state.activeProfileId) ?? null,
 

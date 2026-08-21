@@ -29,7 +29,7 @@ import {
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import {
   appendClientTurnEventInTransaction,
-  appendPreparedClientTurnRequestedEventInTransaction,
+  appendPreparedClientTurnRequestedEventWithNotificationInTransaction,
   createClientTurnRequestId,
   getActiveTurnId,
 } from "./thread-events.js";
@@ -113,13 +113,7 @@ interface QueueReadyParentSystemMessageArgs extends ParentSystemMessageTaxonomy 
 }
 
 interface QueueActiveParentSystemMessageInTransactionArgs extends QueueReadyParentSystemMessageArgs {
-  sessionId: string;
   preparedCommand: PreparedTurnSubmitCommandPayload;
-}
-
-interface QueueActiveParentSystemMessageResult {
-  command: Extract<HostDaemonCommand, { type: "turn.submit" }> | null;
-  queued: boolean;
 }
 
 function splitRenderedParentSystemSlot(
@@ -210,7 +204,7 @@ export function buildParentSystemThreadMention(
 function queueActiveParentSystemMessageInTransaction(
   tx: DbTransaction,
   args: QueueActiveParentSystemMessageInTransactionArgs,
-): QueueActiveParentSystemMessageResult {
+): Extract<HostDaemonCommand, { type: "turn.submit" }> | null {
   const currentThread = getThread(tx, args.thread.id);
   if (
     !currentThread ||
@@ -219,7 +213,7 @@ function queueActiveParentSystemMessageInTransaction(
     currentThread.archivedAt !== null ||
     currentThread.deletedAt !== null
   ) {
-    return { command: null, queued: false };
+    return null;
   }
 
   const expectedSteerTurnId = getActiveTurnId({ db: tx }, args.thread.id);
@@ -240,19 +234,16 @@ function queueActiveParentSystemMessageInTransaction(
       expectedTurnId: expectedSteerTurnId,
     },
   });
-  return {
-    command: addRequestIdToTurnSubmitCommandPayload({
-      requestId: request.requestId,
-      preparedCommand: {
-        ...args.preparedCommand,
-        target: {
-          mode: "auto",
-          expectedTurnId: expectedSteerTurnId,
-        },
+  return addRequestIdToTurnSubmitCommandPayload({
+    requestId: request.requestId,
+    preparedCommand: {
+      ...args.preparedCommand,
+      target: {
+        mode: "auto",
+        expectedTurnId: expectedSteerTurnId,
       },
-    }),
-    queued: true,
-  };
+    },
+  });
 }
 
 async function queueActiveParentSystemMessage(
@@ -263,7 +254,7 @@ async function queueActiveParentSystemMessage(
   const permissionEscalation = resolvePermissionEscalation({
     initiator: "system",
   });
-  const session = await ensureHostSessionReadyForWork(deps, {
+  await ensureHostSessionReadyForWork(deps, {
     hostId: args.environment.hostId,
   });
   const preparedCommand = await prepareTurnSubmitCommandPayload(deps, {
@@ -284,16 +275,15 @@ async function queueActiveParentSystemMessage(
     },
   });
 
-  const queued = deps.db.transaction(
+  const command = deps.db.transaction(
     (tx) =>
       queueActiveParentSystemMessageInTransaction(tx, {
         ...args,
         preparedCommand,
-        sessionId: session.id,
       }),
     { behavior: "immediate" },
   );
-  if (!queued.queued || !queued.command) {
+  if (command === null) {
     return false;
   }
 
@@ -301,7 +291,7 @@ async function queueActiveParentSystemMessage(
     eventTypes: ["client/turn/requested"],
   });
   startLiveHostCommand(deps, {
-    command: queued.command,
+    command,
     hostId: args.environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
     onError: ({ error }) => {
@@ -351,7 +341,7 @@ async function queueReadyParentSystemMessage(
   deps.db.transaction(
     (tx) => {
       ensureThreadCanStartRequest(args.thread);
-      appendPreparedClientTurnRequestedEventInTransaction(tx, {
+      appendPreparedClientTurnRequestedEventWithNotificationInTransaction(tx, {
         threadId: args.thread.id,
         environmentId: args.environment.id,
         type: "client/turn/requested",

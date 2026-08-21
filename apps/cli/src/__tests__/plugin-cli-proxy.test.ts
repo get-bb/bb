@@ -32,7 +32,7 @@ function buildProgram(): Command {
   registerStatusCommand(program, getUrl);
   registerProjectCommands(program, getUrl);
   registerProviderCommands(program, getUrl);
-  registerManagerCommands(program, getUrl);
+  registerManagerCommands(program);
   registerThreadCommands(program, getUrl);
   registerEnvironmentCommands(program, getUrl);
   registerThemeCommands(program, getUrl);

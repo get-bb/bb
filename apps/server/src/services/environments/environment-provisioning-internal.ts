@@ -39,10 +39,7 @@ import {
   resolveManagedTargetPath,
   resolvePersonalTargetPath,
 } from "../threads/worktree-paths.js";
-import {
-  buildDirectEnvironmentProvisionRequest,
-  type EnvironmentProvisionRequest,
-} from "./environment-provision-request.js";
+import type { EnvironmentProvisionRequest } from "./environment-provision-request.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import {
   createLiveHostCommandExecution,
@@ -62,7 +59,6 @@ import {
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import { ensureWorkspaceReadyEventInTransaction } from "../threads/thread-provisioning-environment.js";
 import {
-  finalizeStoppedThreadAndRequestCleanupAdvance,
   finalizeStoppedThreadInTransaction,
   requestThreadStopForCurrentState,
 } from "../threads/thread-lifecycle.js";
@@ -634,25 +630,15 @@ export function settleEnvironmentProvisionCommandResult(
 
     for (const thread of boundThreads) {
       if (thread.deletedAt !== null) {
-        const finalized = finalizeStoppedThreadInTransaction(args.deps, {
+        finalizeStoppedThreadInTransaction(args.deps, {
           threadId: thread.id,
         });
-        if (finalized) {
-          postCommitActions.push({
-            run: (deps) =>
-              runEnvironmentCleanupAdvance(deps, {
-                environmentId: args.command.environmentId,
-              }),
-          });
-        } else {
-          postCommitActions.push({
-            run: (deps) => {
-              finalizeStoppedThreadAndRequestCleanupAdvance(deps, {
-                threadId: thread.id,
-              });
-            },
-          });
-        }
+        postCommitActions.push({
+          run: (deps) =>
+            runEnvironmentCleanupAdvance(deps, {
+              environmentId: args.command.environmentId,
+            }),
+        });
         continue;
       }
       if (
@@ -822,13 +808,12 @@ export function settleEnvironmentProvisionCancelCommandResult(
     });
   }
 
-  let finalizedThread = false;
   for (const thread of stoppedThreads) {
-    finalizedThread =
-      finalizeStoppedThreadInTransaction(args.deps, {
-        threadId: thread.id,
-      }) || finalizedThread;
+    finalizeStoppedThreadInTransaction(args.deps, {
+      threadId: thread.id,
+    });
   }
+  const finalizedThread = stoppedThreads.length > 0;
 
   if (finalizedThread || restoredProvisioningEnvironment) {
     postCommitActions.push({
@@ -1088,7 +1073,7 @@ export async function dispatchManagedEnvironmentReprovision(
   });
   await advanceEnvironmentProvisioning(deps, {
     environmentId: args.environment.id,
-    request: buildDirectEnvironmentProvisionRequest({ command }),
+    request: { command },
   });
   return {
     provisionEventSequence: args.provisionEventSequence,

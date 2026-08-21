@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Label } from "../../shared/contract.js";
 import { useProjects } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
-import { NewTaskDialog } from "../manage/index.js";
+import { NewTaskDialog } from "../manage/new-task-dialog.js";
 import { DetailToasts, useDetailToasts } from "../detail/toast.js";
 import { Button } from "@bb/shared-ui/button";
 import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
@@ -21,7 +21,8 @@ import {
   storeListPreference,
   type ListPreference,
 } from "./list-preference.js";
-import { sortTasks, type TaskSort } from "../../shared/sort.js";
+import { sortTasks } from "../../shared/sort.js";
+import type { TaskSort } from "../../shared/pagination.js";
 import { StatusIcon } from "./icons.js";
 import {
   listScrollScopeKey,
@@ -151,9 +152,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     labelIds,
   });
   const meta = useTaskListMeta(tasksQuery.data);
-  const edits = useListTaskEdits(tasksQuery.data, (message) =>
-    push("error", message),
-  );
+  const edits = useListTaskEdits(tasksQuery.data, (message) => push(message));
 
   const labelsById = useMemo(
     () => new Map((labels.data ?? []).map((label) => [label.id, label])),

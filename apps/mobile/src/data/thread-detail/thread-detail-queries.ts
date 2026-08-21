@@ -39,30 +39,21 @@ interface QueryOptions {
   enabled?: boolean;
 }
 
-export interface ThreadDetailBootstrapQueryOptions extends QueryOptions {
-  /**
-   * Start the timeline read in parallel with the thread shell read (default
-   * true). Serializing them adds a full round trip to every cold open, which
-   * is very visible through bb connect.
-   */
-  timelinePrefetch?: boolean;
-}
-
 /**
  * `GET /threads/:id?include=environment,host`: the thread shell plus the
  * environment and host it runs in. Seeds the live `useThread`, environment,
- * and host caches (see `ingestThreadDetailBootstrap`) and optionally kicks
- * off the timeline read at the same time. Static for the session: a history
- * rewrite is the only realtime change that invalidates it.
+ * and host caches (see `ingestThreadDetailBootstrap`) and kicks off the
+ * timeline read at the same time: serializing them adds a full round trip to
+ * every cold open, which is very visible through bb connect. Static for the
+ * session: a history rewrite is the only realtime change that invalidates it.
  */
 export function useThreadDetailBootstrap(
   threadId: string,
-  options?: ThreadDetailBootstrapQueryOptions,
+  options?: QueryOptions,
 ) {
   const { sdk } = useProfileClient();
   const queryClient = useQueryClient();
   const enabled = (options?.enabled ?? true) && Boolean(threadId);
-  const timelinePrefetch = options?.timelinePrefetch ?? true;
   useThreadDetailRealtimeSubscription(threadId, { enabled });
 
   return useQuery<ThreadWithIncludesResponse>({
@@ -73,20 +64,18 @@ export function useThreadDetailBootstrap(
         hookName: "useThreadDetailBootstrap",
         argName: "thread id",
       });
-      if (timelinePrefetch) {
-        void queryClient.prefetchQuery({
-          queryKey: threadTimelineQueryKey(id),
-          queryFn: ({ signal: timelineSignal }) =>
-            fetchThreadTimelineWindow({
-              fetchTimeline: (args) => sdk.threads.timeline(args),
-              previous: queryClient.getQueryData<ThreadTimelineResponse>(
-                threadTimelineQueryKey(id),
-              ),
-              signal: timelineSignal,
-              threadId: id,
-            }),
-        });
-      }
+      void queryClient.prefetchQuery({
+        queryKey: threadTimelineQueryKey(id),
+        queryFn: ({ signal: timelineSignal }) =>
+          fetchThreadTimelineWindow({
+            fetchTimeline: (args) => sdk.threads.timeline(args),
+            previous: queryClient.getQueryData<ThreadTimelineResponse>(
+              threadTimelineQueryKey(id),
+            ),
+            signal: timelineSignal,
+            threadId: id,
+          }),
+      });
       const thread = await sdk.threads.get({
         include: "environment,host",
         threadId: id,

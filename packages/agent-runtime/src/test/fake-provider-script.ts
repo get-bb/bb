@@ -567,9 +567,6 @@ function startOrResumeThread(
       method: "thread/identity",
       params: { threadId, providerThreadId },
     });
-    if (Array.isArray(params.input) && params.input.length > 0) {
-      beginTurn(threadId, params.input);
-    }
   }
 }
 

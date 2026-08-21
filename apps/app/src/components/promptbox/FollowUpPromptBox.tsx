@@ -19,6 +19,7 @@ import type {
 } from "@bb/domain";
 import type { ComposerView, PluginComposerScope } from "@get-bb/plugin-sdk";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
+import { isKeyboardFocusTarget } from "@/components/layout/useMobileVisualViewportHeight";
 import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
 import {
   PluginComposerHostProvider,
@@ -53,10 +54,10 @@ import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
 import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import {
+  isClaudePlanModePrompt,
   permissionDisplayForActivePromptMode,
   permissionDisplayForPromptMode,
   shouldDisablePermissionPickerForActivePromptMode,
-  shouldDisablePermissionPickerForPromptMode,
 } from "@bb/client-core";
 
 type PromptBoxWithScrollAnchorProps = ComponentProps<
@@ -127,15 +128,6 @@ const DEFAULT_FOLLOW_UP_COMPOSER_SCOPE = {
   projectId: null,
 } as const;
 
-function isKeyboardFocusTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement &&
-    (target.isContentEditable ||
-      target instanceof HTMLInputElement ||
-      target instanceof HTMLTextAreaElement ||
-      target instanceof HTMLSelectElement)
-  );
-}
 // The submit-mode discriminated union lives in @bb/client-core so the shared
 // submission policy and the native composer read the same shape.
 export type {
@@ -616,7 +608,7 @@ function FollowUpPromptBoxWithComposer({
   );
   const permissionPickerDisabledByPlanMode =
     shouldDisablePermissionPickerForActivePromptMode(activePromptMode) ||
-    shouldDisablePermissionPickerForPromptMode(promptModeInput);
+    isClaudePlanModePrompt(promptModeInput);
   const permissionReadOnlyResolved =
     (permissionReadOnly ?? readOnly ?? false) || hasPendingInteraction;
   const permissionPickerDisabled =

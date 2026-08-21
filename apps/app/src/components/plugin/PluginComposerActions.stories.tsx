@@ -28,7 +28,7 @@ import {
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import { setPluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
-import type { PromptDraftState } from "@/lib/prompt-draft";
+import type { PromptDraftState } from "@bb/client-core";
 import {
   ThreadRow,
   type ThreadRowOptions,

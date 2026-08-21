@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import type { ThreadListEntry } from "@bb/domain";
 import type { ThreadSearchMatch } from "@bb/server-contract";
-import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
   COARSE_POINTER_TEXT_SM_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,

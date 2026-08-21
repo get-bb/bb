@@ -17,11 +17,6 @@ export {
   threadOriginKindValues,
 } from "./thread-origin-kind.js";
 export type { ThreadOriginKind } from "./thread-origin-kind.js";
-export {
-  threadVisibilitySchema,
-  threadVisibilityValues,
-} from "./thread-visibility.js";
-export type { ThreadVisibility } from "./thread-visibility.js";
 
 const threadRuntimeDisplayStatusValues = [
   ...threadStatusValues,

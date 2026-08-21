@@ -1,7 +1,5 @@
-import {
-  createProfileQueryClient,
-  describeMutationErrorToast,
-} from "@/lib/query";
+import { describeMutationErrorToast } from "@/lib/query/mutation-errors";
+import { createProfileQueryClient } from "@/lib/query/query-client";
 import {
   createProfileClientRegistry,
   type ProfileClientRegistry,

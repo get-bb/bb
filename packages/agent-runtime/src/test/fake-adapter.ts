@@ -33,8 +33,7 @@ import { classifySessionExecutionSettingsChange } from "../execution-options.js"
 type FakeUserQuestionCapability =
   ProviderCapabilities["supportsNativeUserQuestion"];
 
-export interface CreateFakeProviderExecutionContext {
-  displayName?: string;
+interface CreateFakeProviderExecutionContext {
   id?: string;
   scriptPath?: string;
   supportsNativeUserQuestion?: FakeUserQuestionCapability;
@@ -46,7 +45,6 @@ interface FakeEventMessage {
 }
 
 const DEFAULT_ADAPTER_ID = "fake";
-const DEFAULT_DISPLAY_NAME = "Fake Provider";
 const FAKE_USER_QUESTION_REQUEST_METHOD = "interaction/user_question";
 const FAKE_APPROVAL_REQUEST_METHOD = "interaction/approval";
 
@@ -101,7 +99,6 @@ function buildCommandPlan(command: AdapterCommand): ProviderCommandPlan {
         params: {
           cwd: command.cwd,
           dynamicTools: command.dynamicTools,
-          input: command.input,
           options: command.options,
           threadId: command.threadId,
         },
@@ -644,7 +641,6 @@ export function createFakeAdapter(
     decodeInteractiveRequest: createDecodeInteractiveRequest(
       supportsNativeUserQuestion,
     ),
-    displayName: options.displayName ?? DEFAULT_DISPLAY_NAME,
     id: options.id ?? DEFAULT_ADAPTER_ID,
     parseModelListResult: parseAvailableModelList,
     process: {

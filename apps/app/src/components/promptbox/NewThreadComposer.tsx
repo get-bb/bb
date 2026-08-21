@@ -67,7 +67,7 @@ import {
   promptDraftToInput,
   type PromptDraftAttachment,
   type PromptDraftState,
-} from "@/lib/prompt-draft";
+} from "@bb/client-core";
 import {
   getProjectComposeRoutePath,
   getThreadRoutePath,
@@ -91,7 +91,7 @@ import {
   type RootComposeSelectedBranch,
 } from "@/views/root-compose-thread-environment";
 
-export type NewThreadComposerSelectionScope = "new-thread" | "component-local";
+type NewThreadComposerSelectionScope = "new-thread" | "component-local";
 
 export interface NewThreadComposerSeed {
   providerId?: string;
@@ -103,14 +103,14 @@ export interface NewThreadComposerSeed {
   initialPrompt?: string;
 }
 
-export interface NewThreadComposerLocks {
+interface NewThreadComposerLocks {
   project?: boolean;
   provider?: boolean;
   environment?: boolean;
   branch?: boolean;
 }
 
-export interface NewThreadComposerPromptOptions {
+interface NewThreadComposerPromptOptions {
   id?: string;
   placeholder?: string;
   autoFocus?: boolean;

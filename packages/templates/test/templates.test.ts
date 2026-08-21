@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  listTemplates,
   renderTemplate,
   type TemplateId,
   type TemplateVariables,
 } from "../src/index.js";
+import { templateDefinitions } from "../src/generated/templates.generated.js";
 
 describe("@bb/templates", () => {
   it("documents project creation machine routing", () => {
@@ -99,7 +99,7 @@ describe("@bb/templates", () => {
   });
 
   it("renders all templates without error", () => {
-    const templates = listTemplates();
+    const templates = templateDefinitions;
 
     // Build placeholder variables for each template
     const placeholderVariables: Record<string, Record<string, string>> = {};

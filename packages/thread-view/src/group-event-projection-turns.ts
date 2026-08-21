@@ -11,9 +11,9 @@ import { assertNever } from "./assert-never.js";
 import type { EventMeta } from "./event-decode.js";
 import {
   assertTerminalMessageIncludedInMessages,
-  findProjectionTerminalMessage,
   getProjectionSummaryCount,
 } from "./apply-turn-message-detail.js";
+import { findLastTerminalTimelineMessage } from "./timeline-message-helpers.js";
 
 /** A typed thread event paired with its row metadata. */
 export interface ThreadEventWithMeta {
@@ -210,7 +210,7 @@ function createEventProjectionEntry(
     );
   }
 
-  const terminalMessage = findProjectionTerminalMessage(turnDraft.messages);
+  const terminalMessage = findLastTerminalTimelineMessage(turnDraft.messages);
   const turn: EventProjectionTurn = {
     ...turnDraft.turn,
     summaryCount: getProjectionSummaryCount(

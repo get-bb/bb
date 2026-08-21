@@ -8,7 +8,7 @@ import {
 import { useTheme } from "@/theme";
 import { Button, Icon, Input, Text } from "@/ui";
 
-export interface SecretRequestFormProps {
+interface SecretRequestFormProps {
   /** Resets the fields when a different interaction takes over. */
   interactionId: string;
   payload: SecretRequestPayload;
@@ -16,7 +16,6 @@ export interface SecretRequestFormProps {
   submitting: boolean;
   onSubmit: (result: Extract<SecretRequestFormResult, { ok: true }>) => void;
   onCancel: () => void;
-  testID?: string;
 }
 
 /**
@@ -32,7 +31,6 @@ export function SecretRequestForm({
   submitting,
   onSubmit,
   onCancel,
-  testID,
 }: SecretRequestFormProps) {
   const { tokens } = useTheme();
   const [values, setValues] = useState<Record<string, string>>({});
@@ -57,7 +55,7 @@ export function SecretRequestForm({
   };
 
   return (
-    <View className="gap-4" testID={testID}>
+    <View className="gap-4">
       <View className="gap-2">
         {payload.purpose ? (
           <Text className="text-sm">{payload.purpose}</Text>

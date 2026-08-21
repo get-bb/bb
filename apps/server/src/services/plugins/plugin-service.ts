@@ -1450,7 +1450,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         if (!theme) continue;
         return readPluginThemeCodeTheme(
           themeId,
-          plugin.manifest.rootDir,
           theme.codeTheme ?? undefined,
           theme.codeThemePaths,
         );

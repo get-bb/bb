@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { threadStatusSchema, threadStatusValues } from "@bb/domain";
 import {
   DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
+  type ThreadWaitTarget,
   ThreadWaitTimeoutError,
   ThreadWaitUnreachableError,
 } from "@bb/sdk";
@@ -15,7 +16,6 @@ import {
   THREAD_WAIT_EXIT_CODE_INVALID_REQUEST,
   THREAD_WAIT_EXIT_CODE_TIMEOUT,
   THREAD_WAIT_EXIT_CODE_UNREACHABLE,
-  type ThreadWaitTarget,
 } from "./helpers.js";
 
 interface ThreadWaitCommandOptions {

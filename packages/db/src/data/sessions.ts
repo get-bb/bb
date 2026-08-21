@@ -38,7 +38,6 @@ export interface OpenSessionInput {
  */
 export function openSession(
   db: DbConnection,
-  notifier: DbNotifier,
   input: OpenSessionInput,
 ) {
   const now = Date.now();

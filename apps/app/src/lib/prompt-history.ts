@@ -8,7 +8,7 @@ import {
   isPromptDraftEmpty,
   promptInputToDraft,
   type PromptDraftState,
-} from "./prompt-draft";
+} from "@bb/client-core";
 
 export function promptHistoryEntriesToDrafts(
   entries: readonly PromptHistoryEntry[],

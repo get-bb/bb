@@ -6,13 +6,12 @@ import { ServerSvgIcon } from "../plugins/ServerSvgIcon";
 import { OptionSheet, type PickerOption } from "./OptionSheet";
 import { PickerTrigger } from "./PickerTrigger";
 
-export interface ProviderPickerProps {
+interface ProviderPickerProps {
   options: readonly ProviderPickerOption[];
   value: string;
   onChange: (providerId: string) => void;
   disabled?: boolean;
   loading?: boolean;
-  testID?: string;
 }
 
 /**
@@ -26,7 +25,6 @@ export function ProviderPicker({
   onChange,
   disabled,
   loading,
-  testID = "provider-picker",
 }: ProviderPickerProps) {
   const sheet = useSheet();
   const { tokens } = useTheme();
@@ -72,7 +70,7 @@ export function ProviderPicker({
         onPress={sheet.present}
         disabled={disabled || options.length === 0}
         loading={loading}
-        testID={testID}
+        testID="provider-picker"
         accessibilityLabel="Provider"
       />
       <OptionSheet
@@ -81,7 +79,7 @@ export function ProviderPicker({
         options={rows}
         value={value}
         onChange={onChange}
-        testIDPrefix={`${testID}-option`}
+        testIDPrefix="provider-picker-option"
         emptyMessage="No providers configured on the server."
       />
     </>
