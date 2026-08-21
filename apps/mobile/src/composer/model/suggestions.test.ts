@@ -110,6 +110,53 @@ describe("buildPathMentionSuggestions", () => {
 });
 
 describe("mergeMentionSuggestions", () => {
+  it("promotes the section with an exact match without splitting its rows", () => {
+    const thread = {
+      kind: "thread" as const,
+      path: "thread:t",
+      replacement: "thread:t",
+      projectId: "p",
+      threadId: "t",
+      title: "Plugin migration",
+    };
+    const installedExact = {
+      kind: "plugin" as const,
+      pluginId: "at-plugin",
+      providerId: "installed",
+      itemId: "installed:plugin",
+      providerLabel: "Installed",
+      title: "Plugin",
+      subtitle: null,
+      icon: null,
+      replacement: "Plugin",
+    };
+    const installedWeaker = {
+      ...installedExact,
+      itemId: "installed:plugin-guide",
+      title: "Plugin Guide",
+      replacement: "Plugin Guide",
+    };
+    const communityPrefix = {
+      ...installedExact,
+      providerId: "community",
+      itemId: "community:plugin-shop",
+      providerLabel: "Community",
+      title: "Plugin Shop",
+      replacement: "Plugin Shop",
+    };
+
+    expect(
+      mergeMentionSuggestions({
+        query: "plugin",
+        threads: [thread],
+        projects: [],
+        sections: [],
+        paths: [],
+        plugins: [installedExact, installedWeaker, communityPrefix],
+      }),
+    ).toEqual([installedExact, installedWeaker, thread, communityPrefix]);
+  });
+
   it("leads with paths when the query looks like a path", () => {
     const path = {
       kind: "path" as const,

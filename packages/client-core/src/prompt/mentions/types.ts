@@ -72,6 +72,76 @@ export type PromptMentionSuggestion =
       replacement: string;
     };
 
+function mentionSuggestionSearchNames(
+  suggestion: PromptMentionSuggestion,
+): string[] {
+  if (suggestion.kind === "thread") {
+    return [suggestion.title ?? "", suggestion.threadId];
+  }
+  if (suggestion.kind === "project") {
+    return [suggestion.name, suggestion.projectId];
+  }
+  if (suggestion.kind === "section") {
+    return [suggestion.name, suggestion.sectionId];
+  }
+  if (suggestion.kind === "plugin") {
+    return [suggestion.title];
+  }
+  return [suggestion.name, suggestion.path, suggestion.replacement];
+}
+
+function mentionSuggestionMatchRank(
+  suggestion: PromptMentionSuggestion,
+  normalizedQuery: string,
+): number {
+  if (normalizedQuery.length === 0) return 0;
+  const names = mentionSuggestionSearchNames(suggestion).map((name) =>
+    name.trim().toLowerCase(),
+  );
+  if (names.includes(normalizedQuery)) return 0;
+  return names.some((name) => name.startsWith(normalizedQuery)) ? 1 : 2;
+}
+
+function mentionSuggestionSectionKey(
+  suggestion: PromptMentionSuggestion,
+): string {
+  if (suggestion.kind === "path") return `path:${suggestion.source}`;
+  if (suggestion.kind === "plugin") {
+    return `plugin:${suggestion.pluginId}:${suggestion.providerId}`;
+  }
+  return suggestion.kind;
+}
+
+/**
+ * Rank mention rows by how directly the query names them, then keep every
+ * rendered section contiguous under its strongest row. Stable input order is
+ * the tie-breaker, so callers retain their default source order when match
+ * quality is equal.
+ */
+export function orderMentionSuggestions(
+  suggestions: readonly PromptMentionSuggestion[],
+  query: string,
+): PromptMentionSuggestion[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  const ranked = [...suggestions].sort(
+    (left, right) =>
+      mentionSuggestionMatchRank(left, normalizedQuery) -
+      mentionSuggestionMatchRank(right, normalizedQuery),
+  );
+
+  const bySection = new Map<string, PromptMentionSuggestion[]>();
+  for (const suggestion of ranked) {
+    const section = mentionSuggestionSectionKey(suggestion);
+    const existing = bySection.get(section);
+    if (existing) {
+      existing.push(suggestion);
+      continue;
+    }
+    bySection.set(section, [suggestion]);
+  }
+  return [...bySection.values()].flat();
+}
+
 /**
  * One row in the command typeahead menu, derived from a {@link ProviderCommand}
  * returned by `GET /projects/:id/commands`. The `kind: "command"` discriminant

@@ -22,7 +22,10 @@ import {
   usePathSuggestions,
   PATH_SUGGESTION_DEBOUNCE_MS,
 } from "./usePathSuggestions";
-import type { PromptMentionSuggestion } from "@bb/client-core";
+import {
+  orderMentionSuggestions,
+  type PromptMentionSuggestion,
+} from "@bb/client-core";
 import {
   DEFAULT_PLUGIN_MENTION_TRIGGER,
   PLUGIN_MENTION_TRIGGER_VALUES,
@@ -64,11 +67,9 @@ interface BuildPromptMentionSuggestionsArgs {
 function buildPromptMentionSuggestions(
   args: BuildPromptMentionSuggestionsArgs,
 ): PromptMentionSuggestion[] {
-  // A query containing "/" reads as a file path, so paths lead; otherwise the
-  // named entities (threads then projects) lead and paths trail. Plugin
-  // provider rows always trail the built-in sources (they render in their
-  // own labeled sections at the bottom of the menu).
-  return args.trimmedQuery.includes("/")
+  // A query containing "/" reads as a file path, so paths win relevance ties;
+  // otherwise the existing named-entity order remains the fallback.
+  const sourceOrdered = args.trimmedQuery.includes("/")
     ? [
         ...args.pathSuggestions,
         ...args.threadSuggestions,
@@ -83,6 +84,7 @@ function buildPromptMentionSuggestions(
         ...args.pathSuggestions,
         ...args.pluginSuggestions,
       ];
+  return orderMentionSuggestions(sourceOrdered, args.trimmedQuery);
 }
 
 function buildProjectNamesById(

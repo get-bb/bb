@@ -2,6 +2,7 @@ import {
   compareCodepoint,
   DEFAULT_PLUGIN_MENTION_TRIGGER,
   orderCommandSuggestions,
+  orderMentionSuggestions,
   PLUGIN_MENTION_TRIGGER_VALUES,
   toProviderCommandSuggestion,
   type PluginMentionTrigger,
@@ -343,8 +344,8 @@ export function buildPluginMentionTriggers(
 // --- Merge -------------------------------------------------------------------
 
 /**
- * Menu order: a query containing "/" reads as a path, so paths lead;
- * otherwise threads, projects, sections, then paths. Plugin rows always trail.
+ * A query containing "/" makes paths win relevance ties; otherwise the
+ * existing source order remains the fallback after cross-source match quality.
  */
 export function mergeMentionSuggestions(args: {
   query: string;
@@ -354,7 +355,7 @@ export function mergeMentionSuggestions(args: {
   paths: readonly PromptMentionSuggestion[];
   plugins: readonly PromptMentionSuggestion[];
 }): PromptMentionSuggestion[] {
-  return args.query.trim().includes("/")
+  const sourceOrdered = args.query.trim().includes("/")
     ? [
         ...args.paths,
         ...args.threads,
@@ -369,6 +370,7 @@ export function mergeMentionSuggestions(args: {
         ...args.paths,
         ...args.plugins,
       ];
+  return orderMentionSuggestions(sourceOrdered, args.query);
 }
 
 // --- Commands ----------------------------------------------------------------
